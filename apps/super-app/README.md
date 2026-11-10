@@ -105,8 +105,11 @@ port.
   nothing here uses; use `/devtool/` instead. Their in-app "Open trace" links point
   at that port, so they only work on the machine itself.
 - `pnpm dev` picks up client changes, but without HMR: each lab's pages (and the
-  DevTool page) are rebuilt with `vite build --watch` once the app is up, and a
-  browser refresh loads the new build. Vite's dev client loads from absolute
+  DevTool page) are rebuilt once the app is up, one ordinary `vite build` (about
+  20 seconds) each time a file the last build was made from changes, and a
+  browser refresh loads the new build. Nothing runs between builds:
+  `vite build --watch` held about 1.5GB a page and grew with each rebuild until
+  it ran out of heap. Vite's dev client loads from absolute
   paths that can't live under a prefix. Kitchen Sink keeps `next dev` HMR. A
   lab's server side (its flows and config) isn't watched: that needs a restart.
 - The button is an inline script, so a `Content-Security-Policy` an app sets

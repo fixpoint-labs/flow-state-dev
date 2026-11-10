@@ -195,7 +195,7 @@ async function apollo(h: Harness) {
   return { aliceLab, created };
 }
 
-describe("project rows", () => {
+describe("project entries", () => {
   it("creates an org project owned by the creator, listed by another member of the org", async () => {
     const h = await boot();
     const { created } = await apollo(h);

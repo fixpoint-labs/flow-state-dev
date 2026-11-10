@@ -95,7 +95,7 @@ const RUN_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
 export const RUN_LAB_USER_ID = "u_run_lab";
 /** The conversation with the lead the tasks are filed on. */
 const RUN_LAB_LEAD_SESSION = "s_run_lab_lead";
-/** The flow the inventory's worker rows are written from: the Lab's own, carrying the writer. */
+/** The flow the inventory's worker entries are written from: the Lab's own, carrying the writer. */
 const INVENTORY_WRITER_FLOW = "inventory-writer";
 /**
  * The model the coordinator's best-fit call would run on. `desk` routes to

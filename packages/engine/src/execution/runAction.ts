@@ -1357,7 +1357,8 @@ async function runActionAttempt<
             orgId: options.orgId,
             source,
             metadata: options.metadata,
-            input: options.input
+            input: options.input,
+            attachments: options.attachments
           },
           Date.now()
         )
@@ -1825,7 +1826,8 @@ async function runActionAttempt<
         provenance: RUNTIME_PROVENANCE,
         ts: Date.now(),
         ...requestTaskStamp(requestTaskId),
-        content: [{ type: "output_text", text }],
+        // The person's files after the text, in the order attached, as references.
+        content: [{ type: "output_text", text }, ...(options.attachments ?? [])],
         ...(metadata !== undefined ? { metadata } : {})
       };
       await response.emitItemAdded(userItem);

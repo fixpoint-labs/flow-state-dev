@@ -510,7 +510,7 @@ class InternalFlowState<TSettings extends object>
    * script, a test — outliving the request would mean outliving the process, and
    * that is not on offer. The only two options there are draining and silently
    * truncating, and truncating is how a `fsdev run` of a detached board left its
-   * task row stranded `in_progress` with the child failing on a closed store.
+   * task stranded `in_progress` with the child failing on a closed store.
    * For the tool `AGENTS.md` names as the default way to verify a
    * flow change, that is the worse answer.
    *
@@ -669,7 +669,7 @@ class InternalFlowState<TSettings extends object>
     // child outliving its parent process is the NORMAL case for durable work,
     // not an anomaly to tidy up:
     //
-    // - **The task row** recovers by lease. `isClaimable` admits a row whose
+    // - **The task** recovers by lease. `isClaimable` admits a row whose
     //   lease has lapsed even though its status is `in_progress`, and
     //   `claimDisposition` either re-claims it or settles it `errored` once
     //   `maxAbandonments` is exhausted — inside the atomic claim write. A

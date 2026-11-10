@@ -7,6 +7,7 @@
  * route execution to external workers with live event bridging.
  */
 import type { ActionCore } from "@flow-state-dev/core/types";
+import type { FileContent } from "@flow-state-dev/core/items";
 import type { ExecutionResult } from "../execution/types";
 import type { LeasePlace } from "./concurrency/lease-backend";
 
@@ -48,6 +49,12 @@ export interface DispatchEnvelope {
    * being non-recoverable. See `InboundRequestEnvelope.resolvedActionCore`.
    */
   resolvedActionCore?: ActionCore;
+  /**
+   * The person's files, in reference form: plain data, so they ride a queue.
+   * See `InboundRequestEnvelope.attachments`. `== null` → none, as on a job
+   * enqueued before this field existed.
+   */
+  attachments?: FileContent[];
   // FIX-1634.
   /**
    * The run's place on its concurrency key, taken by the dispatching host

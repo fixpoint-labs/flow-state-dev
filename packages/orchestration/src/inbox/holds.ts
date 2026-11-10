@@ -15,7 +15,7 @@ export const NO_FLOW_UNANSWERABLE =
 export const NO_BOARD_UNANSWERABLE =
   "This question can't be answered from the Inbox: the reader couldn't name the board's session and flow it is answered through.";
 
-/** An item's id for a task row: one per row, by its board and its task. */
+/** An item's id for a task: one per row, by its board and its task. */
 export function taskItemId(board: string, taskId: string): string {
   return `task:${board}:${taskId}`;
 }

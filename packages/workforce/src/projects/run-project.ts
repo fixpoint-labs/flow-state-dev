@@ -17,7 +17,7 @@
  *    names in `input.project`, by visibility and id.
  *
  * Every step reads stored, server-written data: the session's
- * server-written fields, the held row's filing stamp, the workstream entry, the project row and the row the
+ * server-written fields, the held row's filing stamp, the workstream entry, the project entry and the row the
  * claim gate verified for this run. The owner is the request's resolved user,
  * checked against the project's members on every path (and, for a workstream,
  * against its owner first), never a field of the task or a hand-over's payload.

@@ -4,6 +4,7 @@
  * the scheduler modules.
  */
 import type { RedisOptions } from "ioredis";
+import type { FileContent } from "@flow-state-dev/core/items";
 import type { LeasePlace, LeaseTurn } from "@flow-state-dev/engine/host";
 
 export interface BullmqConnectionOptions {
@@ -23,6 +24,8 @@ export interface FlowJobData {
   tenantId?: string;
   source?: string;
   metadata?: Record<string, unknown>;
+  /** The person's files, as references the action route checked and claimed. `== null` → none, as on an older job. */
+  attachments?: FileContent[];
   requestId?: string;
   /**
    * The run's place on its concurrency key, taken by the dispatching process

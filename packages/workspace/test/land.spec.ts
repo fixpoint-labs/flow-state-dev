@@ -407,3 +407,100 @@ describe("a run whose base is a remote-tracking ref", () => {
   });
 });
 
+
+// FIX-2658: a run moved its work off the branch it was given (renaming it to
+// get past a refused push, or opening its own pull request), and Retry failed
+// on `rev-parse … Needed a single revision` for a branch that no longer exists.
+describe("landing a run whose work moved off its branch", () => {
+  it("lands the branch its checkout is on, when that holds the run's commits", async () => {
+    const { h, place, commit } = await runWithCommit();
+    git(place.cwd, "branch", "-m", "fsd/run-1", "short-name");
+
+    const landed = await h.land!(
+      { cwd: place.cwd, branch: "fsd/run-1", baseRef: place.repo!.baseRef, baseCommit: place.repo!.baseCommit },
+      { kind: "pull-request", title: "t", body: "b", gh },
+    );
+
+    expect(upstream.rev("refs/heads/short-name")).toBe(commit);
+    expect(landed).toMatchObject({ kind: "pull-request", branch: "short-name", url: PR_URL });
+    expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes("--head acme:short-name"))).toBe(true);
+  });
+
+  it("refuses, naming what it found, when the checkout is on no branch holding the run's commits", async () => {
+    const { h, place } = await runWithCommit();
+    git(place.cwd, "checkout", "-q", "-b", "empty", place.repo!.baseCommit!);
+    git(place.cwd, "branch", "-D", "fsd/run-1");
+
+    await expect(
+      h.land!({ cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit }, { kind: "pull-request", title: "t", body: "b", gh }),
+    ).rejects.toMatchObject({ reason: "branch-gone", message: expect.stringContaining(`on "empty"`) });
+    expect(ghCalls()).toEqual([]);
+  });
+
+  it("takes the pull request already open from that branch, and opens no second one", async () => {
+    const { h, place, commit } = await runWithCommit();
+    git(place.cwd, "branch", "-m", "fsd/run-1", "teammates/tidy-task-list");
+    // The run pushed it and opened its pull request itself.
+    writeFileSync(
+      gh,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$2" = "list" ]; then echo '[{"number":5027,"url":"https://github.com/acme/widgets/pull/5027"}]'; else echo '${PR_URL}'; fi\n`,
+    );
+
+    const landed = await h.land!(
+      { cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit },
+      { kind: "pull-request", title: "t", body: "b", gh },
+    );
+
+    expect(landed).toMatchObject({ kind: "pull-request", number: 5027, branch: "teammates/tidy-task-list" });
+    expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
+    // The branch is still pushed, so a commit made since reaches the pull request.
+    expect(upstream.rev("refs/heads/teammates/tidy-task-list")).toBe(commit);
+  });
+
+  it("takes that pull request when the push is refused but the remote's branch already holds the run's commit", async () => {
+    const { h, place, commit } = await runWithCommit();
+    git(place.cwd, "branch", "-m", "fsd/run-1", "teammates/tidy-task-list");
+    // The run pushed its commit and one more on top: a push of the checkout's tip would not fast-forward.
+    git(repo, "checkout", "-q", "-b", "ahead", commit);
+    writeFileSync(join(repo, "other.txt"), "pushed by the run\n");
+    git(repo, "add", "other.txt");
+    git(repo, "commit", "-q", "-m", "Ahead");
+    git(repo, "push", "-q", "origin", "ahead:refs/heads/teammates/tidy-task-list");
+    const remoteTip = upstream.rev("refs/heads/teammates/tidy-task-list");
+    writeFileSync(
+      gh,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$2" = "list" ]; then echo '[{"number":5027,"url":"https://github.com/acme/widgets/pull/5027"}]'; else echo '${PR_URL}'; fi\n`,
+    );
+
+    const landed = await h.land!(
+      { cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit },
+      { kind: "pull-request", title: "t", body: "b", gh },
+    );
+
+    expect(landed).toMatchObject({ kind: "pull-request", number: 5027 });
+    expect(upstream.rev("refs/heads/teammates/tidy-task-list")).toBe(remoteTip);
+    expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
+  });
+
+  // The open pull request lacks the reviewed commit, so it is not the landing.
+  it("refuses with push-failed when the push is refused and the remote's branch lacks the run's commit", async () => {
+    const { h, place } = await runWithCommit();
+    git(place.cwd, "branch", "-m", "fsd/run-1", "teammates/tidy-task-list");
+    git(repo, "checkout", "-q", "-b", "elsewhere");
+    writeFileSync(join(repo, "other.txt"), "pushed by the run\n");
+    git(repo, "add", "other.txt");
+    git(repo, "commit", "-q", "-m", "Elsewhere");
+    git(repo, "push", "-q", "origin", "elsewhere:refs/heads/teammates/tidy-task-list");
+    const remoteTip = upstream.rev("refs/heads/teammates/tidy-task-list");
+    writeFileSync(
+      gh,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$2" = "list" ]; then echo '[{"number":5027,"url":"https://github.com/acme/widgets/pull/5027"}]'; else echo '${PR_URL}'; fi\n`,
+    );
+
+    await expect(
+      h.land!({ cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit }, { kind: "pull-request", title: "t", body: "b", gh }),
+    ).rejects.toMatchObject({ reason: "push-failed" });
+    expect(upstream.rev("refs/heads/teammates/tidy-task-list")).toBe(remoteTip);
+    expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
+  });
+});

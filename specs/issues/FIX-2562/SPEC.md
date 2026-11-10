@@ -10,7 +10,7 @@
 | **installs from npm and copies an example out** | The quick start throws at `fsdev run`; an example copied out of the repo doesn't run | Leg a runs the quick start; the `first-hour.example.*` cells run every example from a directory outside the repo, on the tarballs |
 | **autocompletes a root in an editor** | Harness and PR vocabulary on core's root; tracker ids in hovers | The *Surface* cells hold each owned root to its documented names, and the *Leakage* cells scan every installed `.d.ts` for ids. An `/internal` path may still be offered; [epic D2](../../epics/FIX-2447/DECISIONS.md#d2-completions) holds it by the import census and the path name |
 | **reads an action's output, or unit-tests an approval step** | Lists requests and searches the pages; `testFlow` can't suspend | `onepath.output-read`: one `sent.result()` call returns the output, read by request id. The testing package's own goal check, re-run in item 3, answers a `ctx.suspendForUser` stop in a `testFlow` test |
-| **upgrades a 0.4.0 project** | Old code that passes `human_approval` compiles and loses its Inbox item | Journey j5 walks every moved name: the changelog names its new home. No alias, refusal or old-shape reader is left to check ([epic D4](../../epics/FIX-2447/DECISIONS.md#d4)); `human_approval` still runs as a custom reason, D4's price |
+| **upgrades a 0.4.0 project** | Old code that passes `human_approval` compiles and loses its Inbox item | Journey j5 walks every moved name: the changelog names its new home. No alias, refusal or old-shape reader is left to check ([epic D4](../../epics/FIX-2447/DECISIONS.md#d4)) beyond [the four D4 keeps](../../epics/FIX-2447/DECISIONS.md#kept-refusals): `human_approval` throws, naming `user_approval`, and its *Shims* cells grade that (amended Nov 10) |
 
 ## The goal, and how we'll know it's met
 
@@ -18,14 +18,15 @@
 the packed tarballs follows the quick start, autocompletes each root, answers a stop, reads an
 output, tests an approval step and upgrades a 0.4.0 project, and each step runs as written and
 shows only app-author surface. Every manifest row passes and every control fails. Every root the
-set owns is clean, and every other published root sits at or below its ratchet baseline.**
+set owns is clean, and every other published root sits at or below its ratchet baseline at the
+epic's start, `ebec5326`** ([amended Nov 10](DECISIONS.md#the-gap-sweep)).
 
 | Is it the right goal? | |
 |---|---|
 | **The real need** | [The epic's goal](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met), proved on the assembled set: the gaps *between* children ([closure rule](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)) |
 | **Smaller, and rejected** | "FIX-2564's manifest is all `expect: pass` on `main`." Each child flipped its rows on its own commit, so a later merge that breaks an earlier row passes until someone reads the job. The export check and the tracker-id lint also read workspace source, and an adopter's editor reads the installed `.d.ts` |
 | **Bigger, and not this issue's** | The review's unfiled items, a 1.0 freeze ([epic](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met)), and cleaning the published roots the set doesn't own (workforce's wider root, memory, contracts, harness-manager, fsdev, workspace, tools, bullmq, mcp, scheduled, voice-openai): the ratchet holds them, and [FIX-2568](https://linear.app/fixpoint-labs/issue/FIX-2568) (workforce's wider root and memory, first) and [FIX-2569](https://linear.app/fixpoint-labs/issue/FIX-2569) (the other nine), related issues outside the epic, clean them |
-| **Not done if** | The epic's six rows, plus: a root outside the owned set grew past its ratchet baseline · a check ran on another commit · a journey ran against workspace `src` or a repo checkout · a control was skipped or passed · a child's check was skipped without a manifest row naming it · a seam was checked from one side · a check carried forward although its code, docs or surface changed since it passed · a finding was deferred, or dropped with its blocks relation left · a closure finding is open in Linear |
+| **Not done if** | The epic's six rows, plus: a root outside the owned set grew past its baseline at `ebec5326` · a check ran on another commit · a journey ran against workspace `src` or a repo checkout · a control was skipped or passed · a child's check was skipped without a manifest row naming it · a seam was checked from one side · a check carried forward although its code, docs or surface changed since it passed · a finding was deferred, or dropped with its blocks relation left · a closure finding is open in Linear |
 
 ```mermaid
 flowchart LR
@@ -128,7 +129,7 @@ every published package.
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** the manifest whole, one
 journey, every child's check and sixteen seams, on one pinned commit, on installed tarballs;
-owned roots clean, the rest at or below their ratchet. If wrong: the epic wraps on children that
+owned roots clean, the rest at or below their ratchet at `ebec5326`. If wrong: the epic wraps on children that
 each passed on their own commit, while the adopter's editor still shows our process.
 
 **[The debt](#whats-already-here-and-the-debt), net down a little:** the manifest and its

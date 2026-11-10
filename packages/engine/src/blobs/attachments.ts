@@ -9,7 +9,7 @@
  * (`test/blobs/one-resolver.test.ts` holds that).
  */
 import type { FileContent } from "@flow-state-dev/core/items";
-import { parseBlobRef } from "@flow-state-dev/core/attachments";
+import { normalizeMediaType, parseBlobRef } from "@flow-state-dev/core/attachments";
 import { uint8ArrayToBase64 } from "../streaming/binary";
 import { uploadedBy } from "./shared";
 import type { BlobRecord, BlobStore, BlobUploader } from "./types";
@@ -26,7 +26,7 @@ export function sessionKeyOfBlobOwner(owner: string): string | undefined {
 
 /** Why a message's attachments were refused. Nothing was claimed. */
 export type AttachmentRefusal = {
-  /** `invalid`: not a stored file's reference · `not-found`: no such upload of the caller's · `owned-elsewhere`: the caller's upload, already sent with another conversation. */
+  /** `invalid`: not a stored file's reference, or named as another type than the one it was uploaded as · `not-found`: no such upload of the caller's · `owned-elsewhere`: the caller's upload, already sent with another conversation. */
   reason: "invalid" | "not-found" | "owned-elsewhere";
   /** The attachment, by its position in the list. */
   index: number;
@@ -52,6 +52,19 @@ export async function claimAttachments(
     const id = parseBlobRef(attachment.data);
     if (id === undefined) return { refused: { reason: "invalid", index } };
     ids.push(id);
+  }
+  // A file names the type it was uploaded as, so the limits counted on the
+  // message's types are the limits on the stored files. Only the uploader's
+  // own file is compared; anyone else's is refused by the claim as not found.
+  for (const [index, id] of ids.entries()) {
+    const record = await blobs.head(id);
+    if (
+      record !== undefined &&
+      uploadedBy(record, claim.uploader) &&
+      normalizeMediaType(record.mediaType) !== normalizeMediaType(attachments[index]!.mediaType)
+    ) {
+      return { refused: { reason: "invalid", index } };
+    }
   }
   const held: string[] = [];
   for (const [index, id] of ids.entries()) {

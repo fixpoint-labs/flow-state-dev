@@ -120,10 +120,10 @@ export const workerInventoryResourceStateSchema = z.object({
   // BP-023, BP-030.
   /**
    * The incarnation of the hire or repair that published this row (see
-   * `roster/incarnation.ts`). Fire deletes a hired worker's row only when it
+   * `roster/incarnation.ts`). Fire deletes a hired worker's entry only when it
    * carries the incarnation fired (`null` only for a roster row from before
    * incarnations), so a worker hired again at the same address keeps its row,
-   * and never deletes a declared worker's. `null` on a declared worker's row and
+   * and never deletes a declared worker's. `null` on a declared worker's entry and
    * on a row written before the field.
    */
   incarnation: z.string().nullable().default(null),

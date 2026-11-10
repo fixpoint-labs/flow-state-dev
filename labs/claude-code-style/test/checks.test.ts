@@ -3,7 +3,7 @@
  * runs them in the run's worktree after the harness says it finished, and a
  * red one sends the run back with the command's output in the next brief.
  *
- * The flow hands the phase `projectChecks()`, the project row's `checks`;
+ * The flow hands the phase `projectChecks()`, the project entry's `checks`;
  * here the phase is graded with fixed commands on a real worktree, as the
  * manager calls it. A run that changed nothing (a question) skips them.
  */

@@ -26,7 +26,7 @@
  * `fsdev.config.mts` builds it: a worktree of the project's repository.
  *
  * **A run is done only when its project's checks pass** (`projectChecks()`:
- * the commands the project row names in `checks`, none by default). They run
+ * the commands the project entry names in `checks`, none by default). They run
  * in the run's worktree after the harness says it finished; a red one sends
  * the run back, and its next brief says which command failed and how. A run
  * that changed nothing (a question) skips them, so a project whose branch is

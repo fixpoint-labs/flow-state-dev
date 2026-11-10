@@ -243,7 +243,7 @@ function activateToolOn(ctx: BlockContext): boolean {
   return (turnConfigOf(ctx) as Partial<WorkerConfig>).skills?.activateTool === true;
 }
 
-/** `afterAnswer`, rescuing only when the task row says the result goes to the conversation. */
+/** `afterAnswer`, rescuing only when the task says the result goes to the conversation. */
 function afterAnswerStep(block: BlockDefinition<any, any>) {
   const keepTheAnswer = handler({
     name: "agent-after-answer-rescue",

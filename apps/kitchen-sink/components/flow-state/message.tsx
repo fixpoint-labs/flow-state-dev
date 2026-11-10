@@ -1,7 +1,7 @@
 "use client";
 
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
-import type { MessageItem } from "@flow-state-dev/core/items";
+import type { FileContent, MessageItem } from "@flow-state-dev/core/items";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -22,8 +22,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { AttachmentPreview, attachmentReadUrl } from "./attachments";
 import { MessageResponse } from "./message-response";
 
 export { MessageResponse, type MessageResponseProps } from "./message-response";
@@ -347,19 +349,84 @@ function extractMessageText(item: MessageItem): string {
     .join("\n\n");
 }
 
-export function Message({ item }: { item: MessageItem }) {
+/**
+ * Reads one file's bytes for a thumbnail. Give it when the server authenticates
+ * by headers a plain `<img>` request can't carry, for example through the
+ * client's own `fetcher`.
+ */
+export type ReadMessageFile = (file: FileContent, url: string) => Promise<Blob>;
+
+/** An image read through `readFile`, shown from a local object URL. */
+function ReadThumbnail({ file, url, readFile }: { file: FileContent; url: string; readFile: ReadMessageFile }) {
+  const [state, setState] = useState<{ src?: string; failed: boolean }>({ failed: false });
+  // The latest read and file, so an inline `readFile` or a rebuilt item doesn't read the bytes again.
+  const latest = useRef({ file, readFile });
+  latest.current = { file, readFile };
+  useEffect(() => {
+    let live = true;
+    let objectUrl: string | undefined;
+    latest.current.readFile(latest.current.file, url).then(
+      (blob) => {
+        if (!live) return;
+        objectUrl = URL.createObjectURL(blob);
+        setState({ src: objectUrl, failed: false });
+      },
+      () => live && setState({ failed: true }),
+    );
+    return () => {
+      live = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+  return <AttachmentPreview filename={file.filename ?? "file"} mediaType={file.mediaType} src={state.src} unavailable={state.failed} />;
+}
+
+/**
+ * The files a person's line carries: a thumbnail for each image, read through
+ * the server's read route, and a chip for anything else. `readBase` is where
+ * the server's API is mounted when it isn't this page's origin. `readFile`
+ * reads a thumbnail's bytes when a plain `<img>` request can't authenticate.
+ */
+export function MessageFiles({ files, readBase, readFile }: { files: FileContent[]; readBase?: string; readFile?: ReadMessageFile }) {
+  if (files.length === 0) return null;
+  return (
+    <ul aria-label="Attached files" className="flex flex-wrap justify-end gap-2">
+      {files.map((file, i) => {
+        const url = attachmentReadUrl(file.data, readBase);
+        return (
+          <li key={`${i}-${file.data}`}>
+            {readFile !== undefined && url !== undefined && file.mediaType.startsWith("image/") ? (
+              <ReadThumbnail file={file} url={url} readFile={readFile} />
+            ) : (
+              <AttachmentPreview filename={file.filename ?? "file"} mediaType={file.mediaType} src={url} />
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+export function Message({ item, readBase, readFile }: { item: MessageItem; readBase?: string; readFile?: ReadMessageFile }) {
   if (item.role !== "user" && item.role !== "assistant") return null;
   const text = extractMessageText(item);
-  if (!text) return null;
+  const files =
+    item.role === "user"
+      ? (item.content ?? []).filter((c): c is FileContent => c.type === "file")
+      : [];
+  if (!text && files.length === 0) return null;
   return (
     <MessageShell from={item.role as "user" | "assistant"}>
-      <MessageContent>
-        {item.role === "user" ? (
-          <p className="whitespace-pre-wrap text-sm">{text}</p>
-        ) : (
-          <MessageResponse>{text}</MessageResponse>
-        )}
-      </MessageContent>
+      <MessageFiles files={files} readBase={readBase} readFile={readFile} />
+      {text && (
+        <MessageContent>
+          {item.role === "user" ? (
+            <p className="whitespace-pre-wrap text-sm">{text}</p>
+          ) : (
+            <MessageResponse>{text}</MessageResponse>
+          )}
+        </MessageContent>
+      )}
     </MessageShell>
   );
 }

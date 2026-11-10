@@ -2,7 +2,7 @@
 
 [Spec](../SPEC.md) · [Decisions](../DECISIONS.md) · example
 
-> **PROPOSED.** A sketch from the design review, not code. None of the APIs it names exist yet (`defineView`, `defineKit`, `runBy`, `fsd.resource`, `useView`, `ViewOutput`, kit slots and the kits' views). Names follow the working name "kit", which is open hold [O5](../DECISIONS.md#o5). The child that builds each piece owns its real shape.
+> **PROPOSED.** A sketch from the design review, not code. None of the APIs it names exist yet (`defineView`, `defineKit`, `runBy`, `fsd.resource`, `useView`, `ViewOutput`, kit slots and the kits' views). The name "kit" is the owner's answer to [O5](../DECISIONS.md#o5). The child that builds each piece owns its real shape.
 
 Live by default, because the view declared its dependencies: no topics and no session in the component. Underneath, the shared live read ([FIX-2551](https://linear.app/fixpoint-labs/issue/FIX-2551)) re-runs the view on its notices; with ids on notices ([FIX-2625](https://linear.app/fixpoint-labs/issue/FIX-2625)) a notice re-runs only the rows it names.
 

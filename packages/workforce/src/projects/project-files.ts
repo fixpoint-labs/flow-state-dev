@@ -16,7 +16,7 @@ import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { projectAddressSchema, projectFilesPrefix } from "./collections";
 import { isMember } from "./membership-gate";
-import { projectAt, projectFilesAt, PROJECT_FILE_RESOURCES, PROJECT_ROW_RESOURCES } from "./project-address";
+import { projectAt, projectFilesAt, PROJECT_FILE_RESOURCES, PROJECT_ENTRY_RESOURCES } from "./project-address";
 import { ProjectRefusedError } from "./project-refusal";
 
 /** What reading a project's files takes: the project's address. */
@@ -43,7 +43,7 @@ export const readProjectFiles = handler({
   name: "project-read-files",
   inputSchema: readProjectFilesInputSchema,
   outputSchema: readProjectFilesOutputSchema,
-  resources: { ...PROJECT_ROW_RESOURCES, ...PROJECT_FILE_RESOURCES },
+  resources: { ...PROJECT_ENTRY_RESOURCES, ...PROJECT_FILE_RESOURCES },
   execute: async (input, ctx): Promise<ReadProjectFilesOutput> => {
     const { visibility, id } = input.project;
     const row = await projectAt(ctx, input.project);

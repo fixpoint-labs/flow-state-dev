@@ -2,7 +2,7 @@
 /**
  * The two ways a worker's model waits on the user: `holdTaskForUser`,
  * which holds its task on a question, and `suspendForUser`, which stops the turn
- * for the user's approval, review or (on a turn with no task row) input, as
+ * for the user's approval, review or (on a turn with no task) input, as
  * one capability a worker turn composes.
  *
  * Orchestration owns the tools and the rules for offering them

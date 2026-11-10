@@ -18,6 +18,7 @@ import type {
   ResolvedPrincipal,
   VoiceProvider
 } from "@flow-state-dev/core/types";
+import type { FileContent } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import type { LiveRequestStream } from "../streaming/live-stream";
@@ -170,6 +171,15 @@ export interface InboundRequestEnvelope {
    * alongside its non-recoverability; static bindings have neither limitation.
    */
   resolvedActionCore?: ActionCore;
+
+  /**
+   * The files the person's message carries, in reference form, already
+   * checked against the limits and claimed into the session by the action
+   * route's parse step (`routes/attachment-claim.ts`). Set by that step, never
+   * read from a body here. The run writes them on the user line and shows
+   * them to blocks as `ctx.request.attachments`.
+   */
+  attachments?: FileContent[];
 
   /**
    * Raw HTTP body bytes preserved for adapters that need pre-parse access

@@ -454,7 +454,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   };
   seedThreads();
 
-  /** An open task's row, by id, or the board's refusal in words. */
+  /** An open task, by id, or the board's refusal in words. */
   const openTask = (s: FixtureSession, id: string): FixtureTask => {
     const task = s.tasks.find((t) => t.id === id);
     if (!task) throw new Error(`No task "${id}" on this board.`);

@@ -44,6 +44,7 @@ import {
   type RunRecordState,
 } from "../src";
 import { RUNS, collectionRef } from "../src/run-record";
+import { WORKTREES, worktreesCollection, type WorktreeCollection, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { seedRepo } from "./fixtures";
 
 export const ORG_ID = "org_claim_host";
@@ -240,6 +241,7 @@ export function claimHost(options: HostOptions) {
       partition: z.string().optional(),
       id: z.string(),
       goal: z.string(),
+      title: z.string().optional(),
       input: z.unknown().optional(),
       maxAttempts: z.number().optional(),
       deps: z.array(z.string()).optional(),
@@ -252,6 +254,7 @@ export function claimHost(options: HostOptions) {
         await ref.createTask({
           id: input.id,
           goal: input.goal,
+          ...(input.title !== undefined ? { title: input.title } : {}),
           assignee: ASSIGNEE,
           ...(input.input !== undefined ? { input: input.input } : {}),
           ...(input.deps !== undefined ? { deps: input.deps } : {}),
@@ -337,6 +340,17 @@ export function claimHost(options: HostOptions) {
     resources: { runs: runRecordCollection },
     execute: async (input, ctx) => (await readRunRecord(ctx as never, input.topic)) ?? null,
   });
+  // The user's worktrees resource, as the host wrote it.
+  const worktreeRows = handler({
+    name: "claim-host-worktrees",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+    resources: { [WORKTREES]: worktreesCollection },
+    execute: async (_input, ctx) => {
+      const refs = await (ctx.resources as unknown as Record<string, WorktreeCollection>)[WORKTREES]!.list();
+      return refs.map((entry) => entry.state);
+    },
+  });
   // Write a run record as it stands, as an earlier version of the manager left it.
   const putRecordBlock = handler({
     name: "claim-host-put-record",
@@ -360,6 +374,7 @@ export function claimHost(options: HostOptions) {
       steer: { block: steer },
       cancel: { block: cancel },
       records: { block: records },
+      worktrees: { block: worktreeRows },
       putRecord: { block: putRecordBlock },
     },
     task: {
@@ -451,6 +466,7 @@ export function claimHost(options: HostOptions) {
         payload: {
           taskId: id,
           goal: claimed.goal,
+          ...(claimed.title !== undefined ? { title: claimed.title } : {}),
           attempts: claimed.attempts,
           ...(claimed.input !== undefined ? { input: claimed.input } : {}),
           ...(claimed.feedback !== undefined ? { feedback: claimed.feedback } : {}),
@@ -467,6 +483,9 @@ export function claimHost(options: HostOptions) {
   const record = async (topic: string): Promise<RunRecordState | null> =>
     (await act("records", { topic })).output as RunRecordState | null;
 
+  const worktrees = async (): Promise<WorktreeResourceState[]> =>
+    (await act("worktrees", {})).output as WorktreeResourceState[];
+
   const putRecord = async (topic: string, state: Record<string, unknown>): Promise<void> => {
     await act("putRecord", { topic, state });
   };
@@ -482,6 +501,7 @@ export function claimHost(options: HostOptions) {
     row,
     runAttempt,
     record,
+    worktrees,
     putRecord,
     inOrg,
     seen,

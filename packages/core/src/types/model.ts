@@ -377,4 +377,14 @@ export type ModelResolver = ((
    * back to `extractProviderName`'s config-free guess when it is absent.
    */
   providerOf?(modelId: string): string;
+
+  /**
+   * Turns the person's files on a call's user lines, held as references
+   * (`FileContent` whose `data` is `fsd-blob:<id>`), into the parts a model
+   * takes, with the bytes inline. The engine's run sets it; a generator calls
+   * it on the messages of every model call, at the call, so what a run
+   * records (a trace, a tool loop's prelude) keeps the references and never
+   * the bytes. Optional: without it the messages go as they are.
+   */
+  prepareMessages?(messages: unknown[]): Promise<unknown[]>;
 };

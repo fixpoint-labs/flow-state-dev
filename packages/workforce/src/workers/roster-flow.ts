@@ -24,7 +24,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import type { ActionConfig, BlockDefinition, SchedulesConfig } from "@flow-state-dev/core/types";
 import { defineWorkerInventoryCollection } from "../inventory/collections";
 import { workerMessagesResources } from "../messages/message-log";
-import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
+import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
 import { ROSTER_FLOW } from "./keys";
 
@@ -47,7 +47,7 @@ export function defineWorkerRosterFlow(
     kind: ROSTER_FLOW,
     resources: {
       ...installation.resources,
-      ...PROJECT_ROW_RESOURCES,
+      ...PROJECT_ENTRY_RESOURCES,
       ...workerMessagesResources,
       inventoryWorkers: defineWorkerInventoryCollection(),
       ...((routines?.resources ?? {}) as Record<string, never>)

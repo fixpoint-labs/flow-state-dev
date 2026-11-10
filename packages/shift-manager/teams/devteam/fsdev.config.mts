@@ -40,7 +40,7 @@
  *   which the host allows), so its runs are branches of it with the project's
  *   files in `project/` beside the checkout; Sandbox names none, so a run there
  *   works on the project's files alone. No folder is named for any of it.
- *   A run is done only when its project's checks pass (the project row's
+ *   A run is done only when its project's checks pass (the project entry's
  *   `checks`; none named runs nothing). `DEVTEAM_SETUP`, a command such as
  *   `pnpm install --frozen-lockfile`, runs in each fresh checkout first, so
  *   the checks find what they need; unset, nothing runs.
@@ -112,7 +112,7 @@ mkdirSync(dirname(STORE), { recursive: true });
 
 /**
  * Storefront's repository: a bare one beside the store, made once and kept, so
- * the project row a restart reads back still names a remote that exists.
+ * the project entry a restart reads back still names a remote that exists.
  */
 const storefrontRemote = createBareRemote("devteam-storefront", { at: join(dirname(STORE), "devteam-storefront.git") });
 

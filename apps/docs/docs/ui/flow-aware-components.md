@@ -11,7 +11,7 @@ Components that consume Flow State item types directly. They subscribe to sessio
 A pre-wired `RendererRegistry` that maps every standard item type to its default component. Drop it onto `FlowProvider` and you get defaults for messages, reasoning, tool calls, sources, errors, and approval gates (`suspension: Approval`). The default registry renders `<TaskPlan />` from each `task-board-meta` item.
 
 ```bash
-fsdev ui add chat-assistant
+pnpm fsdev ui add chat-assistant
 ```
 
 ```tsx
@@ -42,7 +42,7 @@ const renderers = {
 Human-in-the-loop approval card for `suspension` items. Shows the gate's message with Approve and Reject buttons while pending, then collapses to a tinted receipt once resolved. It's included in `chatAssistantRenderers` under the `suspension` slot, so chat surfaces get it without extra wiring.
 
 ```bash
-fsdev ui add approval
+pnpm fsdev ui add approval
 ```
 
 The card is presentation over the `useApproval` hook from `@flow-state-dev/react`, which owns the resume call and resolved state. It reads the resolution from `SessionItemsProvider`, so wrap your item list in one for the receipt to show on reload. For the full server-to-UI walkthrough, see the [Human-in-the-Loop guide](/guides/human-in-the-loop).
@@ -52,7 +52,7 @@ The card is presentation over the `useApproval` hook from `@flow-state-dev/react
 The line a failed turn leaves in a thread. It names who hit the failure, shows the reason, code and details in the same text the error item renderer uses, and draws a Retry button. While the retry's promise runs, the button is disabled and reads "Retrying…". If the promise rejects, the line adds "Retry failed:" and the error message.
 
 ```bash
-fsdev ui add request-recovery
+pnpm fsdev ui add request-recovery
 ```
 
 Pass it an `ErrorItem`'s fields and a retry callback:
@@ -95,7 +95,7 @@ The default text is "This turn was cut off before it finished." Pass `reason` to
 A small pill that shows which model actually answered. It reads a `ModelIdentity` (the `{ actual, requested?, gateway? }` record stamped on every generator-emitted item), renders `actual` as the label, and lists the requested string and gateway in the hover tooltip. It renders nothing when the model is undefined, so passing `item.model` straight from any item is safe.
 
 ```bash
-fsdev ui add model-badge
+pnpm fsdev ui add model-badge
 ```
 
 ```tsx
@@ -113,8 +113,8 @@ While the bar shows, `isFeedStale(state)` returns true. Add `STALE_CLASS` to are
 `ConnectionScreen` is the full-screen page for when the first read fails. With `kind: "refused"` there is no retry. With `kind: "unreachable"` it shows a Retry button and retries on its own after 2, 4, 8… seconds, up to 30. If `onRetry` returns a promise, the next wait starts once it settles. Once a first read has landed, later failures belong to the banner.
 
 ```bash
-fsdev ui add connection-banner
-fsdev ui add connection-screen
+pnpm fsdev ui add connection-banner
+pnpm fsdev ui add connection-screen
 ```
 
 ```tsx
@@ -136,7 +136,7 @@ import { ConnectionScreen } from "@/components/flow-state/connection-screen";
 One line for what a coding run spent: the model, the tokens, and the vendor's charge when it reported one, like `claude-sonnet-4-5 · 12.4k tokens · $0.42`. Hand it the `spend` a task carries (from `listTasks`), or the `spend` on a harness session's turn record; both have the same shape. A count nobody reported reads as "no tokens reported yet", never 0. A run on a subscription isn't billed per run, so it shows tokens and no dollar figure.
 
 ```bash
-fsdev ui add spend
+pnpm fsdev ui add spend
 ```
 
 ```tsx
@@ -153,7 +153,7 @@ import { Spend } from "@/components/flow-state/spend";
 Shows where a coding run left its work: the branch, how many commits it made, and copy buttons for the commands that get you there. That's `git switch` to the branch, `cd` into the run's checkout, and `git log` over just the run's commits. When the count can't be known, it says so instead of showing zero.
 
 ```bash
-fsdev ui add work-place
+pnpm fsdev ui add work-place
 ```
 
 It takes plain props, which you get from `workPlace` in `@flow-state-dev/harness-manager/work-place`, an entry a page can bundle. Pass it a coding task's output, or the worktree row a harness session points at (`state.workspace.worktree` is the row's key in the user's `worktrees` list). From a row it also shows the worktree's name, its state when it isn't ready, and whose worktree it is when your session is attached to someone else's. For a run with no branch, it renders nothing.
@@ -171,7 +171,7 @@ import { WorkPlace } from "@/components/flow-state/work-place";
 A compact card for [Response Auditor](/docs/patterns/response-auditor) findings. It lists the surfaced results with severity indicators, per-analyzer scores, and the evidence each analyzer flagged. You don't render it by hand: the `responseAuditor` pattern emits an `audit-annotation` component item whenever a result surfaces, and `chatAssistantRenderers` maps that item to this card, so the audit shows up automatically on any chat surface wired with those renderers.
 
 ```bash
-fsdev ui add audit-annotation
+pnpm fsdev ui add audit-annotation
 ```
 
 ## SessionItemsContext
@@ -179,7 +179,7 @@ fsdev ui add audit-annotation
 React context for passing session items down to nested components. Required by any component that needs to subscribe to the item stream without prop drilling — `TaskPlan`, `RequestGroup`, and registry components that watch their own items.
 
 ```bash
-fsdev ui add session-items-context
+pnpm fsdev ui add session-items-context
 ```
 
 ```tsx
@@ -195,7 +195,7 @@ import { SessionItemsProvider } from "@/components/flow-state/session-items-cont
 Groups items by request id. Renders a streaming indicator while a request is in flight, surfaces sources at the bottom, and folds each run of tool calls and reasoning between the agent's messages into one collapsed line using [`ToolGroup`](./common-components#tool). While the agent works, the line names what it is doing now (the call in flight, or "Thinking…"). When the run finishes, it summarizes the calls (for example "Ran 2 searches and wrote a file"), or reads "Thought" when the run holds only thinking. Opening the line shows every step in order, with each thought's text. A failed call is noted on the line as "(1 failed)".
 
 ```bash
-fsdev ui add request-group
+pnpm fsdev ui add request-group
 ```
 
 ## TaskPlan
@@ -203,7 +203,7 @@ fsdev ui add request-group
 The generalized renderer for any `TaskCollection` — the unified Plan/Task primitive from `@flow-state-dev/orchestration`. Subscribes to `task-change` and `task-board-meta` component items, latest-wins per task, and groups them into sections by status.
 
 ```bash
-fsdev ui add task-plan
+pnpm fsdev ui add task-plan
 ```
 
 ```tsx
@@ -219,7 +219,7 @@ For a board-style horizontal layout, build a `TaskCollection` consumer of the sa
 Composable artifact viewer shell with header, actions, and content slots. The base layer for any "expand to a side panel" view — code artifacts, JSX previews, file trees, etc.
 
 ```bash
-fsdev ui add artifact
+pnpm fsdev ui add artifact
 ```
 
 ## FileTree
@@ -227,7 +227,7 @@ fsdev ui add artifact
 Tree-structured file and folder display with expand/collapse and selection. Useful inside an `Artifact` shell for code-oriented agents.
 
 ```bash
-fsdev ui add file-tree
+pnpm fsdev ui add file-tree
 ```
 
 ## JSXPreview
@@ -239,7 +239,7 @@ The JSX is treated as untrusted. Common text, layout, list, table and form-contr
 Inside `{...}`, the JSX can read bindings, index with a literal (`items[0]`), call methods such as `.map()` with an arrow function, use ternaries and other operators, and spread an object into props. Values you pass in the `bindings` prop are readable from the JSX, which can send them out in a URL, so don't bind secrets. Other forms are refused: `this`, `new`, tagged templates, assignment, comma sequences, optional chaining (`a?.b`), computed keys (`items[i]`, `{ [k]: v }`), and anything that touches `constructor`, `prototype` or `__proto__`. Input longer than 100,000 characters is refused as well. When the input is refused or fails to parse (a half-streamed chunk, say), the error is passed to the `onError` callback and shown by the `JSXPreviewError` component, and the last good render stays on screen. The error clears once the input renders again.
 
 ```bash
-fsdev ui add jsx-preview
+pnpm fsdev ui add jsx-preview
 ```
 
 ## Sandbox
@@ -247,5 +247,5 @@ fsdev ui add jsx-preview
 Source/preview tab wrapper for JSX artifacts. Pairs `JSXPreview` and `CodeBlock` so the user can switch between rendered output and the source.
 
 ```bash
-fsdev ui add sandbox
+pnpm fsdev ui add sandbox
 ```

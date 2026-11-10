@@ -79,7 +79,7 @@ import { builtInRolesOf, type WorkerRole } from "./worker-roles";
  * The keys the factory itself reads. Everything else is the worker's settings.
  *
  * `name` is the worker's display name, for people only: views read it off the
- * worker's rows, and no worker flow is handed it.
+ * worker's entries, and no worker flow is handed it.
  *
  * `resources`, `references` and `packages` join them rather than travelling to
  * the worker flow as settings: each is an instruction to THIS step about what to mint

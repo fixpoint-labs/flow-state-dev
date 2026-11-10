@@ -1,3 +1,4 @@
+import type { FileContent } from "../items/content";
 import type { ItemStatus, ItemVisibility, MessageItem } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { CostEstimate, TokenLedger } from "./flow";
@@ -225,6 +226,13 @@ export type RequestScopeHandle<TState extends object = Record<string, unknown>> 
    * Opaque: compare it for equality, never parse it.
    */
   incarnation: string;
+  /**
+   * The files the person's message carried, in the order attached, as
+   * references (`FileContent` whose `data` is `fsd-blob:<id>`). Empty when it
+   * carried none. A block that hands files on itself (a harness turn) reads
+   * them here; they never appear in the block's input.
+   */
+  attachments: ReadonlyArray<FileContent>;
   state: Readonly<TState>;
   tokenUsage: TokenLedger;
   costEstimate: CostEstimate;

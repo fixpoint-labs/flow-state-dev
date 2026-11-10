@@ -43,9 +43,6 @@ export const screenVerdictSchema = z.object({ subscription: z.string().min(1), p
 
 export type ScreenVerdict = z.infer<typeof screenVerdictSchema>;
 
-/** A screen's whole answer: one verdict per subscription it was handed. **Pinned** (D1). */
-export const screenVerdictsSchema = z.object({ verdicts: z.array(screenVerdictSchema) });
-
 /** A subscription the index nominated: its id, and what the screens read of it. */
 const candidateSchema = z.object({ subscription: z.string().min(1), entry: indexEntrySchema });
 

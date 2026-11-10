@@ -33,7 +33,7 @@ const onRequest = (requestId: string, child: string, own?: string): Parked => ({
 });
 
 describe("the depth of a chain of waits", () => {
-  it("counts the waits above the running request, through task rows and dispatched requests", async () => {
+  it("counts the waits above the running request, through tasks and dispatched requests", async () => {
     // desk waits on t1; r1 works t1 and waits on its dispatch r2; r2 works nothing and waits on t3.
     const parked = [onTask("desk", "t1"), onRequest("r1", "r2", "t1")];
     // r2 is about to wait on t3, which nobody works below.

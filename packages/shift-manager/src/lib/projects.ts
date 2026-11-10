@@ -3,7 +3,7 @@
  * A project's own reads, beside the snapshot: its workstreams and the Lab's
  * project setup.
  *
- * **What a project view reads**: the project's row and its workstream
+ * **What a project view reads**: the project's entry and its workstream
  * entries by one prefix, through the user's own session on the roster flow,
  * which declares both. Never a Lab read. Progress is worked out from the
  * entries here, by Workforce's own `projectProgress`, so the view and the
@@ -113,7 +113,7 @@ function toEntry(storageKey: string, data: unknown): Omit<WorkstreamEntry, "stal
   };
 }
 
-/** The accessor a project's row is declared under on the roster flow, at its visibility. */
+/** The accessor a project's entry is declared under on the roster flow, at its visibility. */
 const projectsAccessor = (visibility: ProjectVisibility) => (visibility === "private" ? "privateProjects" : "projects");
 
 /**

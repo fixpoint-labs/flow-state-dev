@@ -125,7 +125,7 @@ describe("the Inbox against a real Lab", () => {
     expect(stale.drift).toEqual([`question ${answered.holds[0]!.id} on ${answered.task!.board}:${answered.task!.taskId}: no live stop`]);
   });
 
-  it("a user's own ask, with no task row: listed once, on its own, answerable and green", async () => {
+  it("a user's own ask, with no task: listed once, on its own, answerable and green", async () => {
     const client = await lab();
     const sessionId = "s_ops_loner";
     await client.flow(ASKER_FLOW).createSession({ sessionId, state: { workerId: "ops.loner" } });

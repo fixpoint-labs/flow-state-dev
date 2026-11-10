@@ -23,9 +23,9 @@ function projectTools() {
 }
 
 describe("Shift Coordinator tools presented with .as()", () => {
-  it("the project tools are createProject, setRepository, setBrief, openWorkstream and listProjects: none lists workstreams on a project row", () => {
+  it("the project tools are createProject, setRepository, setBrief, openWorkstream and listProjects: none lists workstreams on a project entry", () => {
     // A project's workstreams are the entries `openWorkstream` writes; there is
-    // no tool that writes a list of ids onto a project row.
+    // no tool that writes a list of ids onto a project entry.
     expect(Object.keys(projectTools().tools).sort()).toEqual(["createProject", "listProjects", "openWorkstream", "setBrief", "setRepository"]);
   });
 

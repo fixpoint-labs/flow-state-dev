@@ -1,7 +1,7 @@
 /**
  * Shared execution runtime types used by block and action orchestration paths.
  */
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { FileContent, OutputItem } from "@flow-state-dev/core/items";
 import type {
   ActionCore,
   BlockDefinition,
@@ -116,6 +116,14 @@ export type RunActionOptions<
    * it adds no caller-addressed attack surface.
    */
   resolvedActionCore?: ActionCore;
+  /**
+   * The files the person's message carries, in reference form. Written as a
+   * `file` part per file after the text on the line `userMessage` writes,
+   * recorded on the request, and shown to blocks as `ctx.request.attachments`.
+   * Over HTTP the action route checks and claims them first; a direct caller
+   * passes only files already claimed into the session.
+   */
+  attachments?: FileContent[];
   signal?: AbortSignal;
   /**
    * An abort controller the caller registered under `requestId` before the

@@ -34,7 +34,7 @@ import {
 } from "../workers/keys";
 import { projectAddressSchema, projectResourceStateSchema } from "./collections";
 import { isMember } from "./membership-gate";
-import { PROJECT_ROW_RESOURCES, projectResourcesAt } from "./project-address";
+import { PROJECT_ENTRY_RESOURCES, projectResourcesAt } from "./project-address";
 import { projectRef } from "./workstream-ref";
 
 /**
@@ -84,7 +84,7 @@ export function defineSetWorkProjectBlock(otherSession: (sessionId: string) => s
     name: "set-work-project",
     inputSchema: setWorkProjectInputSchema,
     outputSchema: setWorkProjectOutputSchema,
-    resources: { ...PROJECT_ROW_RESOURCES },
+    resources: { ...PROJECT_ENTRY_RESOURCES },
     execute: async (input, ctx) => {
       const state = (ctx.session.state ?? {}) as Record<string, unknown>;
       const running = state[WORKER_ID_STATE_KEY];

@@ -187,7 +187,7 @@ describe("WorkerDetail", () => {
     () => {
       // If the caller (or this component) hand-split a user-owned address
       // `<org>.~<user>.<id>` down to its trailing id and read with THAT, this
-      // source would happily answer with the OTHER, org-visible worker's row —
+      // source would happily answer with the OTHER, org-visible worker's entry —
       // the collision this check exists to catch. `WorkerDetail` never sees
       // that address at all here: the host passes no `workerId` for a
       // user-owned worker (see the file header's "Reuse" note), so there is no

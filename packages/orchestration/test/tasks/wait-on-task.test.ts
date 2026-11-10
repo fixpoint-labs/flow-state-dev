@@ -28,7 +28,7 @@ import {
   BOARD,
   finalAnswer,
   getTask,
-  rows,
+  storedTasks,
   runtimeFor,
   SESSION,
   statusOf,
@@ -60,7 +60,7 @@ describe("wait on a task: take the slot, park, and resume on the row's ending", 
       const parked = await act(state, flow, "run");
       expect(await statusOf(state, parked.requestId!)).toBe("suspended");
 
-      const [row] = await rows(state, flow);
+      const [row] = await storedTasks(state, flow);
       expect(row).toMatchObject({ status: "pending", resumeOwed: false });
       expect(row!.wait?.gateId.startsWith(`${waitGateId(BOARD, row!.id)}#`)).toBe(true);
       // Server-written: the waiting request, never input.
@@ -72,7 +72,7 @@ describe("wait on a task: take the slot, park, and resume on the row's ending", 
 
       await act(state, flow, "settle", { outcome: { kind: "complete", output: "Yes, renewed 2026-08" } });
       // The ending owes the waiting request its resume, not a notice.
-      const ended = (await rows(state, flow))[0]!;
+      const ended = (await storedTasks(state, flow))[0]!;
       expect(ended).toMatchObject({ status: "completed", resumeOwed: true });
       expect(owedMarkers(ended)).toEqual([]);
 
@@ -83,7 +83,7 @@ describe("wait on a task: take the slot, park, and resume on the row's ending", 
       const sent = toolResults(seen[1]!.messages);
       expect(sent).toContain('"status":"completed"');
       expect(sent).toContain("Yes, renewed 2026-08");
-      expect((await rows(state, flow))[0]).toMatchObject({ resumeOwed: false });
+      expect((await storedTasks(state, flow))[0]).toMatchObject({ resumeOwed: false });
     } finally {
       await state.dispose();
     }
@@ -118,7 +118,7 @@ describe("wait on a task: take the slot, park, and resume on the row's ending", 
 
       await act(state, flow, "settle", { outcome: { kind: "fail", error: "flaky" } });
       // A retried failure is not an ending: nothing is owed, the request stays parked.
-      expect((await rows(state, flow))[0]).toMatchObject({ status: "pending", resumeOwed: false });
+      expect((await storedTasks(state, flow))[0]).toMatchObject({ status: "pending", resumeOwed: false });
       expect((await act(state, flow, "touch")).output).toMatchObject({ resumed: [] });
       expect(await statusOf(state, parked.requestId!)).toBe("suspended");
 
@@ -141,7 +141,7 @@ describe("wait on a task: take the slot, park, and resume on the row's ending", 
     try {
       const parked = await act(state, flow, "run");
       await act(state, flow, "settle", { outcome: { kind: "complete", output: "answer" } });
-      const [row] = await rows(state, flow);
+      const [row] = await storedTasks(state, flow);
 
       // The touch resumes the request and dies before clearing the marker.
       const runtime = await state.getRuntime();
@@ -166,7 +166,7 @@ describe("wait on a task: take the slot, park, and resume on the row's ending", 
       expect(resumed.output).toEqual({ ok: true });
       await until(state, parked.requestId!, "completed");
 
-      expect((await rows(state, flow))[0]).toMatchObject({ resumeOwed: false });
+      expect((await storedTasks(state, flow))[0]).toMatchObject({ resumeOwed: false });
       expect((await act(state, flow, "touch")).output).toEqual({ resumed: [], stillOwed: [] });
     } finally {
       await state.dispose();
@@ -208,7 +208,7 @@ describe("wait on a task: each check refuses before anything is written", () => 
     try {
       const parked = await act(state, flow, "run");
       expect(await statusOf(state, parked.requestId!)).toBe("suspended");
-      const filed = await rows(state, flow);
+      const filed = await storedTasks(state, flow);
       expect(filed.filter((row) => row.wait !== undefined)).toHaveLength(1);
 
       const waited = filed.find((row) => row.wait !== undefined)!;
@@ -217,7 +217,7 @@ describe("wait on a task: each check refuses before anything is written", () => 
       await until(state, parked.requestId!, "completed");
       const sent = toolResults(seen[1]!.messages);
       expect(sent).toContain("wait_already_pending");
-      expect((await rows(state, flow)).find((row) => row.id === waited.id)).toMatchObject({ status: "completed" });
+      expect((await storedTasks(state, flow)).find((row) => row.id === waited.id)).toMatchObject({ status: "completed" });
     } finally {
       await state.dispose();
     }
@@ -232,7 +232,7 @@ describe("wait on a task: each check refuses before anything is written", () => 
     try {
       // The filing session waits, and parks.
       const parked = await act(state, flow, "run");
-      filedId = (await rows(state, flow))[0]!.id;
+      filedId = (await storedTasks(state, flow))[0]!.id;
       expect(await statusOf(state, parked.requestId!)).toBe("suspended");
 
       // The same user's other session reaches the same flow and names the task.
@@ -253,7 +253,7 @@ describe("wait on a task: each check refuses before anything is written", () => 
     const state = runtimeFor(flow);
     try {
       const parked = await act(state, flow, "run");
-      filedId = (await rows(state, flow))[0]!.id;
+      filedId = (await storedTasks(state, flow))[0]!.id;
 
       const second = stepModel([waitAgain("c1", () => filedId), finalAnswer]);
       const secondFlow = waitFlow(second.model);
@@ -261,7 +261,7 @@ describe("wait on a task: each check refuses before anything is written", () => 
       expect(await statusOf(state, run.requestId!)).toBe("completed");
       expect(toolResults(second.seen[1]!.messages)).toContain("wait_taken");
       // The first wait still holds the slot.
-      expect((await rows(state, flow))[0]!.wait?.requestId).toBe(parked.requestId);
+      expect((await storedTasks(state, flow))[0]!.wait?.requestId).toBe(parked.requestId);
     } finally {
       await state.dispose();
     }
@@ -275,7 +275,7 @@ describe("wait on a task: each check refuses before anything is written", () => 
       const run = await act(state, flow, "run");
       expect(await statusOf(state, run.requestId!)).toBe("completed");
       expect(toolResults(seen[1]!.messages)).toContain("wait_deadline_out_of_range");
-      expect((await rows(state, flow)).filter((row) => row.wait !== undefined)).toEqual([]);
+      expect((await storedTasks(state, flow)).filter((row) => row.wait !== undefined)).toEqual([]);
     } finally {
       await state.dispose();
     }
@@ -289,7 +289,7 @@ describe("wait on a task: each check refuses before anything is written", () => 
       const run = await act(state, flow, "run");
       expect(await statusOf(state, run.requestId!)).toBe("completed");
       expect(toolResults(seen[1]!.messages)).toContain("wait_unavailable");
-      expect((await rows(state, flow)).filter((row) => row.wait !== undefined)).toEqual([]);
+      expect((await storedTasks(state, flow)).filter((row) => row.wait !== undefined)).toEqual([]);
     } finally {
       await state.dispose();
     }
@@ -326,7 +326,7 @@ describe("wait on a task: an ending first, and the deadline that cancels nothing
       const suspensions = await (await state.getRuntime()).stores.suspensions.list({ sessionId: SESSION });
       expect(suspensions).toHaveLength(0);
       expect(toolResults(seen[1]!.messages)).toContain("already done");
-      expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "completed", resumeOwed: false })]);
+      expect(await storedTasks(state, flow)).toEqual([expect.objectContaining({ status: "completed", resumeOwed: false })]);
     } finally {
       await state.dispose();
     }
@@ -358,7 +358,7 @@ describe("wait on a task: an ending first, and the deadline that cancels nothing
       expect(toolResults(seen[1]!.messages)).toContain("already done");
       // Past the notice's due time: the fast path's copy and the pass's resend have both had their chance.
       await new Promise((r) => setTimeout(r, 2_500));
-      expect(owedMarkers((await rows(state, flow))[0]!)).toEqual([]);
+      expect(owedMarkers((await storedTasks(state, flow))[0]!)).toEqual([]);
       expect(notices).toEqual([]);
     } finally {
       await state.dispose();
@@ -377,7 +377,7 @@ describe("wait on a task: an ending first, and the deadline that cancels nothing
       const sent = toolResults(seen[1]!.messages);
       expect(sent).toContain('"status":"completed"');
       expect(sent).toContain("Yes, renewed 2026-08");
-      expect((await rows(state, flow))[0]).toMatchObject({ status: "completed", resumeOwed: false });
+      expect((await storedTasks(state, flow))[0]).toMatchObject({ status: "completed", resumeOwed: false });
     } finally {
       await state.dispose();
     }
@@ -412,7 +412,7 @@ describe("wait on a task: an ending first, and the deadline that cancels nothing
       const first = toolResults(seen[1]!.messages);
       expect(first).toContain('"status":"pending"');
       await until(state, parked.requestId!, "suspended");
-      const [row] = await rows(state, flow);
+      const [row] = await storedTasks(state, flow);
       // Nothing cancelled; the second wait holds the slot.
       expect(row).toMatchObject({ status: "pending" });
       expect(row!.wait?.lapsed).toBeUndefined();
@@ -457,7 +457,7 @@ describe("wait on a task: an ending first, and the deadline that cancels nothing
       expect(read).toContain("late but kept");
       // Delivered by the read: nothing owed, the slot released, and no notice past its due time either.
       await new Promise((r) => setTimeout(r, 2_500));
-      const [row] = await rows(state, flow);
+      const [row] = await storedTasks(state, flow);
       expect(row!.wait).toBeUndefined();
       expect(owedMarkers(row!)).toEqual([]);
       expect(notices).toEqual([]);
@@ -476,7 +476,7 @@ describe("wait on a task: an ending first, and the deadline that cancels nothing
       await until(state, parked.requestId!, "completed", 10_000);
       expect(toolResults(seen[1]!.messages)).toContain('"status":"pending"');
       // The request ended: its slot was released, and a later ending owes the notice.
-      expect((await rows(state, flow))[0]!.wait).toBeUndefined();
+      expect((await storedTasks(state, flow))[0]!.wait).toBeUndefined();
 
       await act(state, flow, "settle", { outcome: { kind: "complete", output: "heard by the filer" } });
       for (let i = 0; i < 400 && notices.length === 0; i += 1) await new Promise((r) => setTimeout(r, 10));
@@ -520,7 +520,7 @@ describe.each(STORES)("wait on a task: a deadline that passes while the request 
       expect(await statusOf(state, parked.requestId!)).toBe("suspended");
       await until(state, parked.requestId!, "completed", 2_000);
       expect(toolResults(seen[1]!.messages)).toContain('"status":"pending"');
-      expect((await rows(state, flow))[0]).toMatchObject({ status: "pending" });
+      expect((await storedTasks(state, flow))[0]).toMatchObject({ status: "pending" });
     } finally {
       await state.dispose();
     }

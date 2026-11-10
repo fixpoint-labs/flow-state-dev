@@ -2,37 +2,37 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-One decision is the sign-off surface: what lands now and what waits for the owner. The names
-themselves are the epic's holds ([O1](../../epics/FIX-2618/DECISIONS.md#o1),
-[O2](../../epics/FIX-2618/DECISIONS.md#o2), [O5](../../epics/FIX-2618/DECISIONS.md#o5)); this
-issue carries them and decides none.
+One decision is the sign-off surface: when the doc and the names land. The names themselves
+were the epic's holds ([O1](../../epics/FIX-2618/DECISIONS.md#o1),
+[O2](../../epics/FIX-2618/DECISIONS.md#o2), [O5](../../epics/FIX-2618/DECISIONS.md#o5)), all
+decided by the owner on 2026-11-10; this issue writes them down and decides none.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-2619"] --> D1["D1 · doc now under working names<br/>each glossary entry waits for its hold"]
-  D1 -.->|"rejected"| X1["everything waits for O1, O2 and O5<br/>the stage-2 specs wait with it"]
-  D1 -.->|"rejected"| X2["glossary entries now<br/>a check enforces a name the owner may reject"]
+  I["FIX-2619"] --> D1["D1 · doc, entries and objectives line<br/>in one PR, under the owner's names"]
+  D1 -.->|"superseded"| X1["doc now under working names<br/>each entry waits for its hold"]
+  D1 -.->|"rejected"| X2["everything waits for the owner<br/>moot once answered"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · The concept doc and the architecture docs land now under the working names; each glossary entry and the objectives line wait for the hold that fixes them
+## D1 · The concept doc, the architecture docs, the glossary entries and the objectives line land in one PR, under the owner's names
 
 | | |
 |---|---|
-| **Instead of** | Holding the whole issue until O1, O2 and O5 are answered · or adding every entry now, under the working names |
-| **Because** | The stage-2 specs need the model, not the final words: a doc that says "kit (working name, O5)" serves them as well as one that says the answer. A glossary entry is different, because the checks enforce it: an entry for a name the owner then rejects is a rule CI applies to every PR until someone reverts it |
-| **Locks in** | The concept doc may be renamed once after the owner answers, by the same child that edits the entry. The order the entries land in: "view" when O2 is answered; the unit's name and the narrowed FIX-2246 retire when O5 is (it keeps the session-factory names and drops `the kit`, `const kit` / `this kit` and `kit.x`); "slot" and the objectives line when O1 is. If O1 is "no kits", the unit and slot entries are never added and the objectives line stays as it is |
+| **Instead of** | The stage-1 call: the doc now under the working names, each glossary entry and the objectives line waiting for the hold that fixes it · or holding the whole issue for the owner |
+| **Because** | The owner answered O1, O2 and O5 before the doc was drafted, which was the stage-1 call's own flip condition. A split now would only rename the doc once for answers already given. CI still enforces only answered names |
+| **Locks in** | "view", "kit" and "slot" land with the concept doc, with the narrowed FIX-2246 retire (it keeps the session-factory names and drops `the kit`, `const kit` / `this kit` and `kit.x`) and the objectives non-goal line. The check that refuses "read" as the hook's name stays with FIX-2623 ([ER-9](../../epics/FIX-2618/DECISIONS.md#who-owns-what)) |
 
-![D1: the concept doc now under the working names with each glossary entry waiting for its hold, chosen, beside everything waiting for the owner. Decides it: whether the stage-2 specs can start from a written model. Price: the doc may be renamed once. Locks in that entries land in the order the holds are answered. Flips if the owner answers O1, O2 and O5 before the doc is drafted](figures/d1-names-wait.svg)
+![D1, revised after the owner answered: the doc, the glossary entries and the objectives line in one PR under the owner's names, chosen, beside the stage-1 plan of the doc now with each entry waiting. Decides it: the doc is never renamed. Price: one larger PR. CI enforces only answered names either way. Flips if the owner reopens O1, O2 or O5 before it merges](figures/d1-one-pr.svg)
 
-It comes down to the stage-2 specs: waiting on the owner holds them, not just the words.
+It comes down to renames: with every answer in, a split buys nothing but one.
 
-**What would change my mind:** the owner answering O1, O2 and O5 before the doc is drafted.
-Then it all lands in one PR and the split is moot.
+**What would change my mind:** the owner reopening O1, O2 or O5 before this merges. Then that
+entry waits for the new answer, as the stage-1 call had it.
 
 <a name="decided-not-asked"></a>
 ## Decided, not asked
@@ -47,8 +47,9 @@ Then it all lands in one PR and the split is moot.
   change that retires a term edits its entry in the same PR). See the set's
   [epic amendments](../../epics/FIX-2618/DECISIONS.md#who-owns-what).
 - **"Slot" keeps its block sense.** `ToolsSlot`, `UsesSlot` and the context slot are a typed
-  place a block's author fills; a kit's slot is a typed place one kit publishes and another
-  fills. Same idea, one level up. The entry says so and retires nothing.
+  place a block's author fills; a kit's slot is a typed place only its owning kit declares, with
+  a schema and a merge policy, and other kits fill. Same idea, one level up. The entry says so
+  and retires nothing.
 - **"View" is retired in the hook's sense only.** `readTaskView`, "derived views" in prose and
   FIX-2092's loose use stay: a view is an English word, and a `reach: "meaning"` retire of it
   would refuse ordinary prose.
@@ -87,5 +88,8 @@ whole set by the spec-set author; see the set PR.
 - **Draft (2026-11-09)** — written in the stage-1 spec set, against the merged epic spec.
 - **Set review** — the "read" retire moved to FIX-2623's PR, with an epic amendment to ER-9's
   wording; "slot" found to collide with the block config sense, kept and defined.
+- **Owner decisions (2026-11-10)** — amended in the epic's follow-up PR from `main` (this spec
+  merged in #4986). The owner answered O1, O2 and O5, so D1 flips to one PR; the doc's kit part
+  now describes the kit system, workforce's schema on top, slots, React components and placement.
 
-**Open: none of this issue's own.**
+**Open: none.**

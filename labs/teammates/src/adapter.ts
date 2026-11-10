@@ -36,7 +36,7 @@
  * | `taskActions`       | the Inbox client's `board(at)` on the conversation that filed the task, its   |
  * |                     | `"tasks"` board: cancel, steer, release, retry, and `refile` for a re-run      |
  * | `watchReview`       | the run's review stop, read by harness-manager's browser `reviewDetail`        |
- * | `watchRun`          | the items of the session the task's row names as its run, each tool call      |
+ * | `watchRun`          | the items of the session the task names as its run, each tool call      |
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  * | `watchWorking`      | the run session's items and its run request's own stream (which sends a call |
@@ -260,7 +260,7 @@ export interface TaskActions {
 }
 
 /** Your answer to what a task waits on: the words to a question, or a review's verdict, an accept naming how its work lands. */
-export type TaskAnswer = { text: string } | { verdict: "accepted"; land?: ReviewLand } | { verdict: "revise"; words: string };
+export type TaskAnswer = { text: string } | { verdict: "accepted"; land?: ReviewLand; words?: string } | { verdict: "revise"; words: string };
 
 /**
  * One step of a session as a popup draws it: a line given to the worker (a
@@ -991,11 +991,21 @@ export function reviewOf(items: readonly Item[]): ReviewDetail | undefined {
   return stop === undefined ? undefined : (reviewDetail(stop.data) ?? undefined);
 }
 
-/** A {@link TaskAnswer} as the Inbox client's answer for the hold it answers. */
-function inboxAnswerOf(answer: TaskAnswer): InboxAnswer {
+/**
+ * A {@link TaskAnswer} as the Inbox client's answer for the hold it answers.
+ * An accept's `words` (the note on Open a PR or Retry) go with it, so a failed
+ * landing hands them to the coding session. Exported for its tests.
+ */
+export function inboxAnswerOf(answer: TaskAnswer): InboxAnswer {
   if ("text" in answer) return { text: answer.text };
   if (answer.verdict === "revise") return { value: { verdict: "revise", words: answer.words } };
-  return { value: answer.land === undefined ? { verdict: "accepted" } : { verdict: "accepted", land: answer.land } };
+  return {
+    value: {
+      verdict: "accepted",
+      ...(answer.land === undefined ? {} : { land: answer.land }),
+      ...(answer.words === undefined ? {} : { words: answer.words }),
+    },
+  };
 }
 
 /** The harness by its name (the run's, else the worker's), and the run's model. */
