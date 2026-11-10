@@ -222,12 +222,23 @@ sees them.
 The session's history keeps the files as references
 (`engine/src/context/history-files.ts`): the turns are chosen on references,
 then, counting back from the newest line, files up to one message's limits are
-kept and older ones named. Only the model call reads bytes: the run's
+kept and older ones named. Only two places read bytes, and both read them at
+the moment they hand them on. The first is the model call: the run's
 `ModelResolver.prepareMessages`, which a generator applies to every call
 (`core/src/models/prepared-model.ts`), reads each file through
-`resolveAttachment` and sends it inline as an image or file part. Everything a
+`resolveAttachment` and sends it inline as an image or file part. The second
+is a coding harness's turn. `HarnessRunInput.attachments` carries the turn's
+files as references only, and its schema refuses bytes. The engine fills
+`HARNESS_ATTACHMENT_SEAM` on the block's context
+(`engine/src/context/createExecutionContext.ts`) with the same read-once
+resolver, bound to the request's session and person. A harness reads
+through `readHarnessAttachments`, so it can read only that session's files.
+Before it starts anything, a harness refuses a turn whose file is a type its
+`accepts` doesn't list, or whose file can't be read. A server with no blob
+store has no reader, so every turn with files is refused there. Everything a
 run records of its conversation (a generator's trace of its history, a tool
-loop's prelude) therefore holds references, never bytes. An older file is
+loop's prelude, a harness turn's input) therefore holds references, never
+bytes. An older file is
 named on its turn as `[image: shot.png, not re-sent]`, and one
 that can no longer be read as `no longer available`; a reference never reaches
 a provider. Re-sent files are billed as input on every call; prompt caching is

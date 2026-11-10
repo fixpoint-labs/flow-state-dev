@@ -85,7 +85,8 @@ function scriptedThread(threads: Threads, asked: string | null): CodexThreadLike
     get id() {
       return id;
     },
-    runStreamed: async (prompt, turnOptions) => {
+    runStreamed: async (input, turnOptions) => {
+      const prompt = typeof input === "string" ? input : input.map((part) => (part.type === "text" ? part.text : "")).join("");
       const signal = turnOptions?.signal;
       const has = (directive: string) => prompt.includes(`[${directive}]`);
       const stopped = () => signal?.aborted === true;
