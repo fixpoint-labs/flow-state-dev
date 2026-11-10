@@ -28,7 +28,8 @@ import {
   UnattributedOrgError,
   type OrgAttributedRecord
 } from "../context/org-attribution";
-import { sessionKeyOfBlobOwner } from "../blobs/attachments";
+import { sessionKeyOfBlobOwner, userBlobOwner } from "../blobs/attachments";
+import type { BlobUploader } from "../blobs/types";
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 import {
   jsonResponse,
@@ -412,8 +413,14 @@ export async function authorizeManagementRoute(
   let effective: RouteSubject = subject;
   if (subject.kind === "blob") {
     const owning = await blobSessionId(ctx.stores, subject.blobId, ctx.tenantId);
-    if (owning === undefined) return { denied: unknownBlobResponse() };
-    effective = { kind: "session", sessionId: owning };
+    // A file a person's own scope keeps (a task's brief, FIX-2522) is read
+    // under that person's check: the caller must be them, in their org.
+    const keeper = owning === undefined ? await blobUserScope(ctx.stores, subject.blobId, ctx.tenantId) : undefined;
+    if (owning !== undefined) effective = { kind: "session", sessionId: owning };
+    else if (keeper !== undefined) {
+      owner = keeper.userId;
+      ownerOrgId = keeper.orgId;
+    } else return { denied: unknownBlobResponse() };
   }
 
   switch (effective.kind) {
@@ -589,6 +596,11 @@ export async function authorizeManagementRoute(
   // admitted at all is answered as such rather than as somebody else's.
   if (pendingDenial !== undefined) return { denied: pendingDenial };
 
+  // Another person's kept file is no file at all, as another session's is.
+  if (subject.kind === "blob" && owner !== undefined && principal.userId !== owner) {
+    return { denied: unknownBlobResponse() };
+  }
+
   if (owner !== undefined && principal.userId !== owner) {
     // Only a user-addressed route reaches here (sessions and requests were
     // answered above): the path names someone else, and 403 says so.
@@ -629,6 +641,22 @@ export async function authorizeManagementRoute(
   }
 
   return { principal, ...checked };
+}
+
+// FIX-2522.
+/**
+ * The person whose own scope keeps a stored file (`userBlobOwner`), in
+ * `tenantId`'s namespace; `undefined` for any other file. The person is the
+ * file's uploader: a scope keeps only its own person's files.
+ */
+export async function blobUserScope(
+  stores: Pick<StoreRegistry, "blobs">,
+  blobId: string,
+  tenantId: string | undefined
+): Promise<BlobUploader | undefined> {
+  const record = await stores.blobs?.head(blobId);
+  if (record?.owner === undefined) return undefined;
+  return record.owner === userBlobOwner(tenantId, record.uploader) ? record.uploader : undefined;
 }
 
 /**

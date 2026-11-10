@@ -24,6 +24,7 @@ import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
 import type { SessionCreateCheck } from "./session-create";
 import type { ResourceVisibilityRule } from "./resource-visibility";
+import type { FileContent } from "../items/content";
 
 /** Legacy scope-keyed config alias preserved for type-internal usage. */
 export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
@@ -196,10 +197,21 @@ export interface ActionMcpConfig {
   session?: string | { fromInput: string };
 }
 
-/** What an action's `userMessage` may return beside plain text: the text, and the item's `metadata`. */
+/** What an action's `userMessage` may return beside plain text: the text, the item's `metadata`, and files the flow hands the line. */
 export type UserMessageEcho = {
   readonly text: string;
   readonly metadata?: Record<string, unknown>;
+  // FIX-2522.
+  /**
+   * Files the line carries that the flow kept itself, in reference form
+   * (`FileContent` whose `data` is `fsd-blob:<id>`), such as a task's brief
+   * files read off its row. Written as `file` parts after the person's own
+   * files, so a model reads them as part of the line. Read off server-written
+   * state, never off the action's input: a reference from input is a claim
+   * the action route never checked. A run reads only files its session or its
+   * person's own scope owns, so any other reference reads nothing.
+   */
+  readonly attachments?: ReadonlyArray<FileContent>;
 };
 
 /**

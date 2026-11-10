@@ -188,7 +188,8 @@ export function Conversation({
       autoSend={autoSend}
       onAutoSend={onAutoSend}
       seed={seed}
-      send={async (message, held) => {
+      uploader={client}
+      send={async (message, held, attachments) => {
         const settled = startWork?.();
         feed.sent();
         try {
@@ -200,7 +201,7 @@ export function Conversation({
               reread();
               held();
             },
-          });
+          }, attachments);
         } finally {
           // Read the Lab again however it ended. Stopped short, it may have raised an ask Inbox
           // should list; finished, it may have changed the organization, such as a project it

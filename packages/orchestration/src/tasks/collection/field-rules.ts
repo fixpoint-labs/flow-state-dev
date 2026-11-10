@@ -24,6 +24,10 @@ export const TASK_FIELD_RULES = {
   goal: "until-start",
   title: "until-start",
   context: "until-start",
+  // FIX-2522 D1: the brief's files are fixed when it starts, as its context is.
+  // No edit sets them (a model can't name a stored file), so `updateTask`
+  // takes none: the rule is here for the brief to stay one thing.
+  attachments: "until-start",
   input: "until-start",
   deps: "until-start",
   priority: "until-start",
@@ -46,10 +50,10 @@ export type TaskEditField = keyof typeof TASK_FIELD_RULES;
 
 /**
  * The settings `updateTask` takes as fields, beside `id`: the table less a
- * hold and a cancel, which it takes as `status`, and a message, which steers
- * rather than patches.
+ * hold and a cancel, which it takes as `status`, a message, which steers
+ * rather than patches, and the brief's files, which only a filing sets.
  */
-export type TaskUpdateField = Exclude<TaskEditField, "held" | "cancel" | "message">;
+export type TaskUpdateField = Exclude<TaskEditField, "held" | "cancel" | "message" | "attachments">;
 
 /**
  * Whether the row has ever started: claimed at least once. A retry's return

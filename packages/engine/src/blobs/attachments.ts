@@ -9,14 +9,26 @@
  * (`test/blobs/one-resolver.test.ts` holds that).
  */
 import type { FileContent } from "@flow-state-dev/core/items";
-import { normalizeMediaType, parseBlobRef } from "@flow-state-dev/core/attachments";
+import { normalizeMediaType, parseBlobRef, toBlobRef } from "@flow-state-dev/core/attachments";
 import { uint8ArrayToBase64 } from "../streaming/binary";
-import { uploadedBy } from "./shared";
+import { newBlobId, uploadedBy } from "./shared";
 import type { BlobRecord, BlobStore, BlobUploader } from "./types";
 
 /** The owner key for a session's files: its namespaced storage key, so the tenant is part of it. */
 export function sessionBlobOwner(sessionStorageKey: string): string {
   return `session:${sessionStorageKey}`;
+}
+
+// FIX-2522; epic FIX-2516 ER-7.
+/**
+ * The owner key for a person's own scope's files: what a board kept at their
+ * user scope (a conversation's task board) holds as a task's brief. Keyed by
+ * the tenant, the person and their organization, so no other person, org or
+ * tenant reads it; the scope crosses flows, as that board does.
+ */
+export function userBlobOwner(tenantId: string | undefined, user: BlobUploader): string {
+  const tenant = tenantId !== undefined && tenantId.length > 0 ? `${encodeURIComponent(tenantId)}:` : "";
+  return `user:${tenant}${encodeURIComponent(user.orgId)}:${encodeURIComponent(user.userId)}`;
 }
 
 /** The session storage key a session owner names, or `undefined` for any other owner. */
@@ -127,15 +139,17 @@ export class AttachmentUnavailableError extends Error {
  * the scope holds it, and that person uploaded it. A file is only ever claimed
  * by its uploader into a scope they own, so a file whose uploader is not the
  * scope's person landed there by a race with the scope's rebirth under someone
- * else, and is no file of theirs.
+ * else, and is no file of theirs. A caller working in more than one scope (a
+ * run reads its session's files and its person's own) names each.
  */
-export function readableIn(record: BlobRecord, owner: string, user: BlobUploader): boolean {
-  return record.owner === owner && uploadedBy(record, user);
+export function readableIn(record: BlobRecord, owner: string | ReadonlyArray<string>, user: BlobUploader): boolean {
+  const owners = typeof owner === "string" ? [owner] : owner;
+  return record.owner !== undefined && owners.includes(record.owner) && uploadedBy(record, user);
 }
 
 /**
- * The one resolver: a stored file's reference to its bytes, for the scope the
- * caller is working in. A reference that another scope holds, or that another
+ * The one resolver: a stored file's reference to its bytes, for the scope (or
+ * scopes) the caller is working in. A reference that another scope holds, or that another
  * person uploaded, is unavailable, so a crafted reference in one conversation
  * can't read another's file.
  *
@@ -144,7 +158,7 @@ export function readableIn(record: BlobRecord, owner: string, user: BlobUploader
 export async function resolveAttachment(
   blobs: BlobStore,
   attachment: FileContent,
-  scope: { owner: string; user: BlobUploader }
+  scope: { owner: string | ReadonlyArray<string>; user: BlobUploader }
 ): Promise<ResolvedAttachment> {
   const id = parseBlobRef(attachment.data);
   const found = id === undefined ? undefined : await blobs.read(id);
@@ -153,4 +167,52 @@ export async function resolveAttachment(
   }
   const { record, bytes } = found;
   return { record, bytes, base64: () => uint8ArrayToBase64(bytes) };
+}
+
+// FIX-2522; epic FIX-2516 ER-7 and the seam "a reference's owner".
+/**
+ * A copy of each file, owned by `owner`: the bytes `read` resolves, stored
+ * under a new id for the same uploader and claimed into `owner`, so the copy
+ * and the file it came from live and die apart (one owner per file). Each
+ * file is read through `read`, the one resolver bound to the caller's scope,
+ * so only a file the caller can read is copied. All or nothing: a copy made
+ * before a later one fails is deleted.
+ *
+ * @returns The copies' references, in order, under each file's name and type.
+ * @throws {AttachmentUnavailableError} From `read`, for a file the caller can't read.
+ */
+export async function copyAttachments(
+  blobs: BlobStore,
+  attachments: ReadonlyArray<FileContent>,
+  copy: { owner: string; send: string; read: (file: FileContent) => Promise<ResolvedAttachment> }
+): Promise<FileContent[]> {
+  const made: string[] = [];
+  try {
+    const out: FileContent[] = [];
+    for (const attachment of attachments) {
+      const { record, bytes } = await copy.read(attachment);
+      const id = newBlobId();
+      await blobs.put({
+        id,
+        bytes,
+        mediaType: record.mediaType,
+        ...(record.filename !== undefined ? { filename: record.filename } : {}),
+        uploader: record.uploader
+      });
+      made.push(id);
+      const claim = await blobs.claim(id, { uploader: record.uploader, owner: copy.owner, send: copy.send });
+      if (claim !== "claimed" && claim !== "already-owned") throw new AttachmentUnavailableError(attachment);
+      await blobs.confirm(id, copy.owner, copy.send);
+      out.push({
+        type: "file",
+        mediaType: record.mediaType,
+        ...(attachment.filename !== undefined ? { filename: attachment.filename } : {}),
+        data: toBlobRef(id)
+      });
+    }
+    return out;
+  } catch (error) {
+    for (const id of made) await blobs.delete(id).catch(() => undefined);
+    throw error;
+  }
 }

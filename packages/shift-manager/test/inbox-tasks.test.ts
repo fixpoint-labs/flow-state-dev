@@ -63,6 +63,7 @@ const row = (id: string, status: string, extra: Partial<BoardTaskView> = {}): Bo
   title: id,
   goal: null,
   context: null,
+  attachments: [],
   status,
   assignee: null,
   priority: null,

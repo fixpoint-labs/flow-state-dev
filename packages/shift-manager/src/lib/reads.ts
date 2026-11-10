@@ -59,7 +59,7 @@
  * session records as its owner (`flowId`), never the board's.
  */
 import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type SessionSummary } from "@flow-state-dev/client";
-import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
+import type { FileContent, OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { isUserSuspension, suspendForUserKindOf, type ResumeAction } from "@flow-state-dev/core/types";
 import { suspensionShape } from "@flow-state-dev/react";
 import { deriveSuspensions } from "@flow-state-dev/react/internal";
@@ -67,6 +67,7 @@ import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_K
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
 import { createInboxClient, inboxItems, taskActionName, taskHoldSchema, taskView, type BoardActions, type InboxAnswer, type TaskViewInput, type InboxHold, type InboxItem, type InboxTaskInput, type TaskHold } from "@flow-state-dev/orchestration/inbox";
+import { storedFiles } from "./files";
 import { withRetiredShapes, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 
 /** Why a read did not load. */
@@ -191,6 +192,9 @@ export type BoardTaskView = {
   goal: string | null;
   /** The rest of the brief beside the goal, as filed, or `null` when it has none. */
   context: string | null;
+  // FIX-2522.
+  /** The brief's files, as references, in order: every run of the task gets them. Empty when it has none. */
+  attachments: FileContent[];
   /** The status as stored (see `columns.ts` for how it is read). */
   status: string;
   assignee: string | null;
@@ -536,6 +540,7 @@ export function toBoardTaskView(boardRef: string, ownerSessionId: string, topic:
     title: text(field(data, "title")) ?? text(field(data, "goal")) ?? topic,
     goal: text(field(data, "goal")),
     context: text(field(data, "context")),
+    attachments: storedFiles(field(data, "attachments")),
     status: text(field(data, "status")) ?? "pending",
     assignee: text(field(data, "assignee")),
     priority: field(data, "priority") == null ? null : String(field(data, "priority")),

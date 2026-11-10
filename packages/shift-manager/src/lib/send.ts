@@ -38,8 +38,13 @@
  *
  * Only a failure of a client call counts as one of these. A fault in this
  * module's own reading is thrown as it is.
+ *
+ * **Files go beside the line.** A line's files ride the send options as
+ * references (`FileContent` whose `data` is `fsd-blob:<id>`), never in the
+ * door's `{ message }`; the Lab claims them into the
+ * session and writes them on the user line.
  */
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { FileContent, OutputItem } from "@flow-state-dev/core/items";
 import { ClientHttpError, type Client, type FlowHandle, type RequestResult } from "@flow-state-dev/client";
 import { pause } from "@flow-state-dev/client/internal";
 import { isUserSuspension } from "@flow-state-dev/core/types";
@@ -213,6 +218,7 @@ async function stopWithin(until: number, stop: Promise<TurnStop>): Promise<TurnS
  * Send `message` through the target's door, and resolve only once it is
  * delivered. Rejects with {@link TurnNotDelivered} otherwise.
  *
+ * @param attachments the line's files, as `useAttachments` uploaded them.
  * @param options.onHeld called once, while the request is still running, when
  * the session first holds the line. A request that ends before a poll sees it
  * running never calls it: the send's own resolve says the same thing then.
@@ -226,11 +232,14 @@ export async function sendTurn(
   target: TurnTarget,
   message: string,
   options: { timeoutMs?: number; pollMs?: number; onHeld?: () => void; onStarted?: (requestId: string) => void } = {},
+  attachments: readonly FileContent[] = [],
 ): Promise<{ requestId: string; suspended: boolean; stopped: TurnStop }> {
   const actions = client.flow(target.flowId);
+  const input = target.taskId === undefined ? { message } : { message, taskId: target.taskId };
+  const sendOptions = { sessionId: target.sessionId, ...(attachments.length > 0 ? { attachments: [...attachments] } : {}) };
   let requestId: string;
   try {
-    requestId = (await call(() => actions.send(target.door, target.taskId === undefined ? { message } : { message, taskId: target.taskId }, { sessionId: target.sessionId }))).id;
+    requestId = (await call(() => actions.send(target.door, input, sendOptions))).id;
   } catch (error) {
     if (error instanceof ClientCallFailed) throw new TurnNotDelivered("not-sent", error.message);
     throw error;

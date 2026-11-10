@@ -54,6 +54,8 @@ import {
   DISPATCH_SEAM,
   HARNESS_ATTACHMENT_SEAM,
   type HarnessAttachmentSeam,
+  USER_ATTACHMENT_SEAM,
+  type UserAttachmentSeam,
   REQUEST_RESUME_SEAM,
   REQUEST_SPEND_SEAM,
   type RequestResume,
@@ -171,7 +173,14 @@ import {
   LLM_AUDIENCE_TYPES,
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
-import { AttachmentUnavailableError, resolveAttachment, sessionBlobOwner, type ResolvedAttachment } from "../blobs/attachments";
+import {
+  AttachmentUnavailableError,
+  copyAttachments,
+  resolveAttachment,
+  sessionBlobOwner,
+  userBlobOwner,
+  type ResolvedAttachment
+} from "../blobs/attachments";
 import type { BlobStore } from "../blobs/types";
 import { resolveHistoryFiles } from "./history-files";
 import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
@@ -2934,10 +2943,13 @@ export async function createExecutionContext<
   // sends it again. A failed read isn't kept, so the next step tries again.
   const blobs = stores.blobs;
   const reads = new Map<string, Promise<ResolvedAttachment>>();
+  const runUser = { userId, orgId: resolvedOrgId };
+  const userOwner = userBlobOwner(options.tenantId, runUser);
   const readOnce = (store: BlobStore, file: FileContent) => {
     const cached = reads.get(file.data);
     if (cached !== undefined) return cached;
-    const read = resolveAttachment(store, file, { owner: sessionBlobOwner(sessionKey), user: { userId, orgId: resolvedOrgId } });
+    // The session's files, and the person's own scope's: a task's brief files, kept with its row (FIX-2522).
+    const read = resolveAttachment(store, file, { owner: [sessionBlobOwner(sessionKey), userOwner], user: runUser });
     reads.set(file.data, read);
     read.catch(() => reads.delete(file.data));
     return read;
@@ -2964,6 +2976,19 @@ export async function createExecutionContext<
             base64: resolved.base64
           };
         };
+  // FIX-2522. Copies of files kept in the person's own scope, read through the
+  // same resolver, so only a file this run can read is copied. No blob store:
+  // no keeper, and a caller that keeps files says so.
+  let keptSends = 0;
+  const userAttachmentSeam: UserAttachmentSeam | undefined =
+    blobs === undefined
+      ? undefined
+      : (files) =>
+          copyAttachments(blobs, files, {
+            owner: userOwner,
+            send: `keep:${requestId}:${(keptSends += 1)}`,
+            read: (file) => readOnce(blobs, file)
+          });
   // Evaluator strings resolve only through the flow's own resolver. When an
   // app-supplied resolver has no `resolveEvaluationModel`, the hook stays
   // absent and the evaluator refuses the string; the default resolver is
@@ -3956,6 +3981,7 @@ export async function createExecutionContext<
       // request's tenant. No bus (a registry no entry wrapped): no seam.
       ...(boardNoticeSeam !== undefined ? { [BOARD_NOTICE_SEAM]: boardNoticeSeam } : {}),
       ...(harnessAttachmentSeam !== undefined ? { [HARNESS_ATTACHMENT_SEAM]: harnessAttachmentSeam } : {}),
+      ...(userAttachmentSeam !== undefined ? { [USER_ATTACHMENT_SEAM]: userAttachmentSeam } : {}),
       settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,

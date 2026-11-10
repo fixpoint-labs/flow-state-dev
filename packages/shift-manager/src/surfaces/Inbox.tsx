@@ -517,11 +517,12 @@ function Reply({
         label={`Reply to ${workerLabel(ask.workerId ?? "this worker")}`}
         placeholder={`Reply to ${workerLabel(ask.workerId ?? "this worker")}…`}
         blocked={route.blocked}
-        send={async (message, held) => {
+        uploader={client}
+        send={async (message, held, attachments) => {
           // The box is disabled while blocked; a send that got here anyway
           // must not read as delivered.
           if (route.blocked !== null) throw new TurnNotDelivered("refused", route.blocked);
-          return sendTurn(client, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message, { onHeld: held });
+          return sendTurn(client, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message, { onHeld: held }, attachments);
         }}
         onHeld={onDelivered}
         onDelivered={onDelivered}
