@@ -32,7 +32,7 @@ import type { KeptFetchPins } from "./repository";
 import { firstLine, NO_HOOKS } from "./worktree";
 
 /** How long one landing may take, by default: every command in it shares this one deadline. */
-export const LAND_TIMEOUT_MS = 2 * 60_000;
+const LAND_TIMEOUT_MS = 2 * 60_000;
 
 /**
  * How long each command that puts a checkout back after a failed merge may
@@ -64,12 +64,12 @@ export type LandRequest =
       readonly body: string;
       /** The `gh` to run. Default `"gh"` on `PATH`. */
       readonly gh?: string;
-      /** The whole landing's wall clock. Default {@link LAND_TIMEOUT_MS}. */
+      /** The whole landing's wall clock. Default two minutes. */
       readonly timeoutMs?: number;
     }
   | {
       readonly kind: "merge";
-      /** The whole landing's wall clock. Default {@link LAND_TIMEOUT_MS}. */
+      /** The whole landing's wall clock. Default two minutes. */
       readonly timeoutMs?: number;
     };
 
