@@ -38,7 +38,7 @@ flowchart LR
   I --> E["root key census · testing, core, patterns · subpaths import"]
   S -->|"completed with output · second answer refused · mocks used after"| P["PASS"]
   E -->|"names off the roots and present on the subpaths"| P
-  C["control · --control=adopter-goal"] -.-> R
+  C["control · each fixture on the published tarballs"] -.-> R
   C -.-> E
   S -.->|"under the control"| F["must FAIL"]
 ```

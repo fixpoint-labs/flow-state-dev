@@ -150,8 +150,10 @@ accepts that price.
 > board's `dispatcher` refusal; and the stored `blocked` row read. FIX-2454 held them back for
 > the owner, who kept them by merging
 > [#4830](https://github.com/fixpoint-labs/flow-state-dev/pull/4830) as it was. They are *The one
-> guard* applied, not a new policy: each is an inline check at its site, with no table, helper or
-> removal version. The price line is corrected: on `main`, `human_approval` throws, naming
+> guard* applied, not a new policy: D3's generic retired-name helper was not built, and none has a
+> table or removal version. Engine's `dispatcher` refusal is one shared function,
+> `refuseRetiredDispatcherOption` in `engine/src/transports/runner.ts`, called by its four entry
+> points; the other three are inline checks at their sites. The price line is corrected: on `main`, `human_approval` throws, naming
 > `user_approval`. The figure shows the Nov 6 call.
 
 | | |

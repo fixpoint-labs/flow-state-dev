@@ -136,7 +136,7 @@ caller reaches it; the flag only stops it dropping the stored result.
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| `result()` on the request handle | `client` · `RequestHandle.wait()` | Composed: the one wait, then one read. A flag on `wait()` would change its return type ([dropped](DECISIONS.md#considered-and-dropped)) |
+| `result()` on the request handle | `client` · `RequestHandle.wait()` | Composed: the one wait, each poll carrying `include_result_output`, returning the read that settled it ([amended Nov 10](DECISIONS.md#d1)). A flag on `wait()` would change its return type ([dropped](DECISIONS.md#considered-and-dropped)) |
 | `include_result_output` on the status route; an optional `result` on its snapshot | The status route's by-id read; the session list's flag and its result projection | Extends: the list's flag name and wire shape, on the read that already loads the one record |
 | `signal` on `wait()` and `result()` | Each copy's own stop | One option on the one wait |
 | An option on `useAction` | `react` · `useAction`; `useSubscription` | Extends the hook that already sends one action |

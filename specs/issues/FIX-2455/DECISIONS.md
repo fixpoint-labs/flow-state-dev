@@ -75,8 +75,8 @@ It comes down to FIX-2367's rule: a read hook beside `useSubscription` is a seco
 ## Decided, not asked
 
 - **From the epic, cited, not restated:** [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-6](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `onepath.output-read`; contributes to `surface.root.react`.
-- **`result()` is `wait()` plus one read.** One polling loop on the handle; `result()` never
-  polls on its own. The convergence point for "settled" is `wait()`'s predicate (not
+- **`result()` is the one wait, with the flag on.** One polling loop on the handle; `result()`
+  never polls on its own, and returns the flagged read that settled it ([amended Nov 10](#d1)). The convergence point for "settled" is `wait()`'s predicate (not
   `in_progress`, no live heartbeat), and every copy that waits goes through it.
 - **`result()` is on every request handle**, not only `SentRequest`: orchestration waits on
   `flow.request(id)`.

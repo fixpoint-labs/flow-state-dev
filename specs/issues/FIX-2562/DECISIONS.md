@@ -59,7 +59,7 @@ Two things in the plan depended on Q1: **which commit is pinned**, and **how man
 
 | Q1's answer | The pinned commit | j5's upgrade | *Shims* |
 |---|---|---|---|
-| **Break as each lands** (the owner, Nov 6) | After the last child merges | One hop: 0.4.0 → the pinned commit. Each moved name fails to compile, and the package's changelog line names its new home ([ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what)). A TypeScript "no exported member" error names nothing, so the changelog line is the only thing that does: j5 grades that line, which is now the epic's whole *upgrades across a rename* promise | No exemption: `shims.never-published` only |
+| **Break as each lands** (the owner, Nov 6) | After the last child merges | One hop: 0.4.0 → the pinned commit. Each moved name fails to compile, and the package's changelog line names its new home ([ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what)). A TypeScript "no exported member" error names nothing, so the changelog line is the only thing that does: j5 grades that line, which is now the epic's whole *upgrades across a rename* promise | No exemption: `shims.never-published`, `shims.human-approval-throws` and `shims.stored-human-approval` (amended Nov 10) |
 
 A retired runtime value is not refused under D4, so the closure grades no refusal of its own; it
 checks that the changeset names the replacement, inside j5.
