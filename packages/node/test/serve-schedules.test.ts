@@ -3,7 +3,7 @@
  * has its due entries claimed each minute by the server that serves it.
  *
  * Why these matter: a long-lived host has no cron of its own, so this tick is
- * what fires the flow's schedules (subscription polls, recurring work). And a
+ * what fires the flow's schedules (subscription polls, clock routines). And a
  * server that failed to bind (a port already in use) must start nothing: a
  * tick left running there has no handle to stop it, and claims schedules another
  * process should fire.
