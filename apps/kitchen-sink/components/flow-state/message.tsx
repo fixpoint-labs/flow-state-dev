@@ -1,7 +1,7 @@
 "use client";
 
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
-import type { MessageItem } from "@flow-state-dev/core/items";
+import type { FileContent, MessageItem } from "@flow-state-dev/core/items";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +24,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { AttachmentPreview, attachmentReadUrl } from "./attachments";
 import { MessageResponse } from "./message-response";
 
 export { MessageResponse, type MessageResponseProps } from "./message-response";
@@ -347,19 +348,48 @@ function extractMessageText(item: MessageItem): string {
     .join("\n\n");
 }
 
-export function Message({ item }: { item: MessageItem }) {
+/**
+ * The files a person's line carries: a thumbnail for each image, read through
+ * the server's read route, and a chip for anything else. `readBase` is where
+ * the server's API is mounted when it isn't this page's origin.
+ */
+export function MessageFiles({ files, readBase }: { files: FileContent[]; readBase?: string }) {
+  if (files.length === 0) return null;
+  return (
+    <ul aria-label="Attached files" className="flex flex-wrap justify-end gap-2">
+      {files.map((file, i) => (
+        <li key={`${i}-${file.data}`}>
+          <AttachmentPreview
+            filename={file.filename ?? "file"}
+            mediaType={file.mediaType}
+            src={attachmentReadUrl(file.data, readBase)}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function Message({ item, readBase }: { item: MessageItem; readBase?: string }) {
   if (item.role !== "user" && item.role !== "assistant") return null;
   const text = extractMessageText(item);
-  if (!text) return null;
+  const files =
+    item.role === "user"
+      ? (item.content ?? []).filter((c): c is FileContent => c.type === "file")
+      : [];
+  if (!text && files.length === 0) return null;
   return (
     <MessageShell from={item.role as "user" | "assistant"}>
-      <MessageContent>
-        {item.role === "user" ? (
-          <p className="whitespace-pre-wrap text-sm">{text}</p>
-        ) : (
-          <MessageResponse>{text}</MessageResponse>
-        )}
-      </MessageContent>
+      <MessageFiles files={files} readBase={readBase} />
+      {text && (
+        <MessageContent>
+          {item.role === "user" ? (
+            <p className="whitespace-pre-wrap text-sm">{text}</p>
+          ) : (
+            <MessageResponse>{text}</MessageResponse>
+          )}
+        </MessageContent>
+      )}
     </MessageShell>
   );
 }
