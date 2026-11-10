@@ -11,7 +11,7 @@ Generic chat and content primitives. They take primitive props and have no runti
 Container for message threads, with a scroll-to-bottom button that shows while there is more below.
 
 ```bash
-fsdev ui add conversation
+pnpm fsdev ui add conversation
 ```
 
 ```tsx
@@ -30,7 +30,7 @@ Put `ScrollOnNewRequest` inside to bring each new request into view. When a conv
 Individual message display with streaming Markdown rendering. Accepts either primitive props (`role`, `content`) or a Flow State `MessageItem` directly.
 
 ```bash
-fsdev ui add message
+pnpm fsdev ui add message
 ```
 
 ```tsx
@@ -44,7 +44,7 @@ import { Message } from "@/components/flow-state/message";
 Smart input with auto-resize, file upload, and submit handling. Designed to drive `sendAction` but works with any submit handler.
 
 ```bash
-fsdev ui add prompt-input
+pnpm fsdev ui add prompt-input
 ```
 
 ## Reasoning
@@ -52,7 +52,7 @@ fsdev ui add prompt-input
 Expandable reasoning/thinking display with streaming awareness. Collapses by default and reveals on click.
 
 ```bash
-fsdev ui add reasoning
+pnpm fsdev ui add reasoning
 ```
 
 ## Tool
@@ -60,13 +60,13 @@ fsdev ui add reasoning
 Displays a tool call with its arguments, result, and status. `ToolGroup` folds a run of consecutive tool calls and reasoning into one collapsed line that opens to every step in order. A failed call is labelled on the line, for example "(1 failed)" on a group or "(failed)" on a single call.
 
 ```bash
-fsdev ui add tool
+pnpm fsdev ui add tool
 ```
 
 `tool` also installs `tool-naming`, two pure functions (no React, no DOM) that name a call from its tool name and arguments. Install it alone to label tool calls in your own components or in non-React code.
 
 ```bash
-fsdev ui add tool-naming
+pnpm fsdev ui add tool-naming
 ```
 
 ```ts
@@ -101,7 +101,7 @@ toolIntent("Bash", { command: "pnpm test", description: " Run the tests " });
 Syntax-highlighted code with a copy action and dual-theme support.
 
 ```bash
-fsdev ui add code-block
+pnpm fsdev ui add code-block
 ```
 
 ## Sources
@@ -109,7 +109,7 @@ fsdev ui add code-block
 Citation and source display with a collapsible list and favicons. Use `<SourcesGroup>` to render sources as a single grouped panel after a message thread.
 
 ```bash
-fsdev ui add sources
+pnpm fsdev ui add sources
 ```
 
 ## Suggestion
@@ -117,7 +117,7 @@ fsdev ui add sources
 Horizontal scrollable suggestion pills. Useful for "did you mean" hints or canned follow-ups.
 
 ```bash
-fsdev ui add suggestion
+pnpm fsdev ui add suggestion
 ```
 
 ## Shimmer
@@ -125,7 +125,7 @@ fsdev ui add suggestion
 Animated text shimmer for loading and in-progress states. Used internally by `Status` and `StreamingIndicator`.
 
 ```bash
-fsdev ui add shimmer
+pnpm fsdev ui add shimmer
 ```
 
 ## StreamingIndicator
@@ -133,7 +133,7 @@ fsdev ui add shimmer
 In-flight status indicator for the latest request while it streams. It shows before the first step, between steps (after one finishes and before the next begins), and while the answer streams. While a [Tool](#tool) call or [Reasoning](#reasoning) step is in progress it drops the status words, because that component already shows the step, and keeps the "Working..." label and the clock. Renders the latest value from the request-scoped status slot, falling back to "Working..." when the slot is empty. When the request has finished answering but background work is still running (`useSession.isFinishing`), the indicator shows a muted "Tidying up..." instead.
 
 ```bash
-fsdev ui add streaming-indicator
+pnpm fsdev ui add streaming-indicator
 ```
 
 ### Elapsed time
@@ -160,7 +160,7 @@ The timer reads `42s` under a minute, `1m 24s` from there, and `1h 3m` (no secon
 Status message display with a shimmer animation for in-progress states. Renders the current request status slot.
 
 ```bash
-fsdev ui add status
+pnpm fsdev ui add status
 ```
 
 ## Error
@@ -168,5 +168,5 @@ fsdev ui add status
 Error and step-error display with a recoverable / fatal distinction. Pairs with `ErrorItem` from the item stream.
 
 ```bash
-fsdev ui add error
+pnpm fsdev ui add error
 ```
