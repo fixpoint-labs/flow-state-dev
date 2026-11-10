@@ -36,6 +36,20 @@
  * session id: a copy conductor reads to say where a run was, never the source
  * anything resolves from.
  *
+ * ## A run's name
+ *
+ * The branch is `conductor/<name>` and the folder `<root>/<name>`, where the
+ * name is a slug of the task's title and 6 hex of everything that keeps one
+ * run apart from another (`runName`). The principal and the board are in the
+ * hex rather than spelled out, so the ref stays short whatever the identity:
+ * the long shape put three full digests in it and passed GitHub's 255-byte
+ * limit. Six hex can collide, so a new run takes the first spelling the host
+ * reserves for it, one no other run holds and no worktree or branch already has
+ * (`freeRunLocation`), and a run its record
+ * names a branch for is found from that branch (`locationFor`). That is the
+ * one thing read back: the record, which the run writes before its checkout
+ * exists, so a retry finds its tree whenever the run ever had one.
+ *
  * ## The derivation's inputs are not model-writable
  *
  * `issue` and `phase` ride on the task's typed `input` payload. The model-facing
@@ -462,6 +476,139 @@ export interface RunLocation {
    * it off for a run whose record names the branch without it.
    */
   trackerIssue?: string;
+  /**
+   * The task's title as filed, which the run's name is a slug of
+   * ({@link runName}). A run found from its record takes its name from the
+   * branch the record names, so a retitle never moves a tree.
+   */
+  title?: string;
+  /**
+   * The name's slug exactly as the run's record names it, so a run found
+   * again keeps it whatever its title says now. Set by {@link locationFor}.
+   */
+  slug?: string;
+  /**
+   * Which free spelling of the name the run took ({@link freeRunLocation}):
+   * absent for the first, 1 for `-2`, and so on. Read back from the record.
+   */
+  bump?: number;
+  /**
+   * Derive the place and branch in the long shape every run had before runs
+   * were named: the principal, board and issue-phase as nested segments, with
+   * full digests. **Only for a run whose record already names that branch**
+   * ({@link locationFor} decides), so a run under way keeps its tree. Implied
+   * by {@link orgless}. Never set it for a new run: its ref can pass GitHub's
+   * 255-byte limit, and the push is refused.
+   */
+  nested?: true;
+}
+
+/** The long shape: {@link RunLocation.nested}, or the older {@link RunLocation.orgless}. */
+function isNested(location: RunLocation): boolean {
+  return location.nested === true || location.orgless === true;
+}
+
+/** How long a run name's slug may be. */
+const MAX_NAME_SLUG = 32;
+
+/** Hex characters of a run name's suffix. */
+const NAME_HASH_LENGTH = 6;
+
+/** The prefix every run's branch carries. */
+const BRANCH_PREFIX = "conductor/";
+
+/** A run's name as a branch carries it: a slug, 6 hex, and an optional bump. */
+const RUN_NAME = /^([a-z0-9]+(?:-[a-z0-9]+)*)-([0-9a-f]{6})(?:-([2-9]|[1-9][0-9]+))?$/;
+
+/**
+ * A slug of `text`: lower-case letters and digits, single dashes, at most 32,
+ * cut at a word's end when a word ends past the first half.
+ */
+function slugOf(text: string): string {
+  const whole = text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (whole.length <= MAX_NAME_SLUG) return whole;
+  const cut = whole.slice(0, MAX_NAME_SLUG + 1);
+  const end = cut.lastIndexOf("-");
+  return (end > MAX_NAME_SLUG / 2 ? cut.slice(0, end) : cut.slice(0, MAX_NAME_SLUG)).replace(/-+$/g, "");
+}
+
+/**
+ * The hex that keeps two runs' names apart: a digest of every segment the
+ * long shape spelled out in full (tenant, organization, user, board with its
+ * partition, issue, phase, and the tracker issue), so two runs that the long
+ * shape kept apart differ here too, but for a 6-hex collision, which
+ * {@link freeRunLocation} turns into a bump rather than a shared tree.
+ */
+function nameHash(location: RunLocation): string {
+  return runIdentityKey(location).slice(0, NAME_HASH_LENGTH);
+}
+
+/**
+ * The whole digest a run's name hash is cut from: the same for every attempt of
+ * one run and different for any other run, however its name comes out. What a
+ * host's `reserve` records as a name's holder, so two runs whose 6 hex collide
+ * still tell each other apart.
+ */
+export function runIdentityKey(location: RunLocation): string {
+  const identity = [
+    ...locationSegments({ ...location, orgless: undefined }),
+    issuePhaseSegment(location),
+    location.trackerIssue === undefined ? "i0" : `i1${assertSafeSegment("issue", location.trackerIssue)}`,
+  ];
+  return createHash("sha256").update(joinIdentity(...identity), "utf8").digest("hex");
+}
+
+/**
+ * A run's name: a slug of the task's title (or of its issue-phase, when the
+ * title has none), led by the tracker issue when the task names one, then 6 hex of its identity, then `-<n>` when it was bumped.
+ * The branch is `conductor/<name>` and the folder is `<root>/<name>`, so
+ * `refs/heads/conductor/<name>` is at most 59 bytes however deep the run's
+ * identity is.
+ */
+export function runName(location: RunLocation): string {
+  // The tracker issue leads, so a pull request from the branch links to it.
+  const subject = slugOf(location.title ?? "") || slugOf(issuePhaseSegment(location)) || "run";
+  const slug =
+    location.slug ?? (location.trackerIssue === undefined ? subject : slugOf(`${location.trackerIssue}-${subject}`));
+  const bump = location.bump === undefined || location.bump < 1 ? "" : `-${location.bump + 1}`;
+  return `${slug}-${nameHash(location)}${bump}`;
+}
+
+/**
+ * The name a run's worktree carries in the `worktrees` resource: the run's own
+ * name, so the entry, the branch and the folder read alike. `undefined` for a
+ * run on the long shape, whose entry keeps the name the host gives it.
+ */
+export function worktreeNameFor(location: RunLocation): string | undefined {
+  return isNested(location) ? undefined : runName(location);
+}
+
+/** How many spellings {@link freeRunLocation} tries before it refuses. */
+const MAX_NAME_BUMPS = 8;
+
+/**
+ * The location a NEW run takes: its derived name, or the first bumped one
+ * (`-2`, `-3`, …) that `reserve` holds for this run. A host's reservation is
+ * atomic, so two runs whose names collide while neither has a checkout yet
+ * still get different names, and it names its holder, so a crash before the
+ * run records its branch takes the same name again. Ask it only for a run
+ * whose record names no branch; a recorded run is found with {@link locationFor}.
+ */
+export async function freeRunLocation(
+  location: RunLocation,
+  reserve: (candidate: RunLocation) => Promise<boolean>,
+): Promise<RunLocation> {
+  for (let bump = 0; bump < MAX_NAME_BUMPS; bump++) {
+    const candidate: RunLocation = bump === 0 ? location : { ...location, bump };
+    if (await reserve(candidate)) return candidate;
+  }
+  throw new Error(
+    `[harness-manager] every name tried for this run, from "${runName(location)}", is held by ` +
+      `another run or is already a worktree or a branch in the repository. Remove the stale ones and try again.`,
+  );
 }
 
 /**
@@ -494,15 +641,32 @@ function locationSegments(location: RunLocation): string[] {
  * older place through it.
  */
 export function locationFor(
-  location: Omit<RunLocation, "orgless">,
+  location: Omit<RunLocation, "orgless" | "nested" | "bump" | "slug">,
   recordedBranch: string | null | undefined,
 ): RunLocation {
   if (recordedBranch == null) return location;
-  // A run recorded before its branch led with the task's issue keeps that branch.
+  // A run that already has a short name keeps it: the record's own spelling,
+  // bump included, so a retitle never moves the tree.
+  const named = recordedBranch.startsWith(BRANCH_PREFIX)
+    ? RUN_NAME.exec(recordedBranch.slice(BRANCH_PREFIX.length))
+    : null;
+  if (named !== null) {
+    const kept: RunLocation = { ...location, slug: named[1]!, ...(named[3] !== undefined ? { bump: Number(named[3]) - 1 } : {}) };
+    // The slug is the record's own, so only the hex has to agree: with the
+    // tracker issue, or without it for a run recorded before it named one.
+    if (branchFor(kept) === recordedBranch) return kept;
+    const { trackerIssue: _tracked, ...untracked } = kept;
+    if (location.trackerIssue !== undefined && branchFor(untracked) === recordedBranch) return untracked;
+  }
+  // A run recorded in the long shape keeps it: with the tracker issue leading
+  // its leaf, without it, or from before the organization was a segment.
   const { trackerIssue: _issue, ...unlabelled } = location;
+  if (location.trackerIssue !== undefined && recordedBranch === branchFor({ ...location, nested: true })) {
+    return { ...location, nested: true };
+  }
+  if (recordedBranch === branchFor({ ...unlabelled, nested: true })) return { ...unlabelled, nested: true };
   const orgless: RunLocation = { ...unlabelled, orgless: true };
   if (recordedBranch === branchFor(orgless)) return orgless;
-  if (location.trackerIssue !== undefined && recordedBranch === branchFor(unlabelled)) return unlabelled;
   return location;
 }
 
@@ -539,7 +703,7 @@ export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation):
   // from. This comment used to say a host "should" pass an absolute one and call
   // the rest unguarded — which is the unenforced convention every other guard at
   // that door exists to replace.
-  return resolve(config.root, ...locationSegments(location), issuePhaseSegment(location));
+  return resolve(config.root, ...placeFor(location));
 }
 
 /** An encoded {@link taskIssueSegment}: `h-` and a {@link hashKeySegment}. */
@@ -592,15 +756,17 @@ export function runBoardSegment(ledgerId: string, partition: string | undefined)
 }
 
 /**
- * This issue-phase's branch, for this principal.
+ * This issue-phase's branch, for this principal: `conductor/<name>`
+ * ({@link runName}), or the long shape for a run recorded on it.
  *
- * Carries the principal for the same reason the path does, and it is the half
- * that is easier to miss: two users could be given separate directories and
+ * Carries the principal (in the name's hex) for the same reason the path
+ * does, and it is the half that is easier to miss: two users could be given separate directories and
  * still share a branch, at which point one user's commits land on the other's
  * branch and a pull request opened by either can satisfy the other's completion
  * check. Separate trees pushing one ref is not isolation.
  */
 export function branchFor(location: RunLocation): string {
+  if (!isNested(location)) return `${BRANCH_PREFIX}${runName(location)}`;
   const scope = locationSegments(location).join("/");
   // The same leaf the checkout path uses. It was spelled with a SINGLE dash
   // here while the path used `--`, so the branch aliased on inputs the path
@@ -612,12 +778,12 @@ export function branchFor(location: RunLocation): string {
     : `conductor/${scope}/${joinIdentity(assertSafeSegment("issue", location.trackerIssue), leaf)}`;
 }
 /**
- * The place segments of a run, under whatever root its host keeps: the same
- * segments {@link checkoutPathFor} resolves, so a fixed-repository run's place
- * is exactly the checkout this module has always derived.
+ * The place segments of a run, under whatever root its host keeps: the run's
+ * name alone ({@link runName}), or the nested segments of the long shape for a
+ * run recorded on it. {@link checkoutPathFor} resolves the same segments.
  */
 export function placeFor(location: RunLocation): string[] {
-  return [...locationSegments(location), issuePhaseSegment(location)];
+  return isNested(location) ? [...locationSegments(location), issuePhaseSegment(location)] : [runName(location)];
 }
 
 /** The lock file guarding one checkout. Beside it, not inside — see `acquireCheckout`. */
