@@ -10,7 +10,8 @@
  * so only findings the head adds anywhere fail.
  *
  * Both runs use the head's `.fallowrc.json`, so a change to the rules is never
- * read as a change to the code. The base is analyzed in this same checkout
+ * read as a change to the code. Files the change renames carry their base
+ * findings to their new path, so a moved file is not read as new dead code. The base is analyzed in this same checkout
  * (`git checkout --detach`, then back) to reuse the installed node_modules; the
  * working tree must be clean for that.
  *
@@ -21,7 +22,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -87,6 +88,19 @@ if (run("git", ["checkout", "-q", head]).status !== 0) problem ??= `cannot retur
 if (problem) {
   rmSync(dir, { recursive: true, force: true });
   fail(problem);
+}
+
+// The baseline keys findings by path, so rename each moved file in it.
+const renames = run("git", ["diff", "-M", "--name-status", "--diff-filter=R", base, head]).stdout
+  .split("\n")
+  .map((line) => line.split("\t"))
+  .filter((fields) => fields.length === 3);
+if (renames.length > 0) {
+  let text = readFileSync(baseline, "utf8");
+  for (const [, from, to] of renames) {
+    text = text.replace(new RegExp(`(?<=[":])${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=["#:])`, "g"), to);
+  }
+  writeFileSync(baseline, text);
 }
 
 const compared = run(FALLOW, ["dead-code", "-c", config, "--baseline", baseline, ...CATEGORIES], true);
