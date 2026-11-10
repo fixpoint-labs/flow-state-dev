@@ -27,6 +27,7 @@ import {
   ATTACHMENT_LIMITS,
   attachmentKind,
   attachmentMediaType,
+  formatKilobytes,
   isTextAttachmentType,
   normalizeMediaType,
   parseBlobRef,
@@ -193,10 +194,6 @@ function megabytes(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
-function kilobytes(bytes: number): string {
-  return `${Math.round(bytes / 1024)} KB`;
-}
-
 /** A file's size as a person reads it. */
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -213,7 +210,7 @@ function uploadRefusal(name: string, error: unknown, maxFileBytes: number): Atta
     return { code: "size", filename: name, message: `${name} is over ${ATTACHMENT_LIMITS.maxPdfPages} pages` };
   }
   if (code === "attachment_text_too_large") {
-    return { code: "size", filename: name, message: `${name} is over ${kilobytes(ATTACHMENT_LIMITS.maxTextBytes)}` };
+    return { code: "size", filename: name, message: `${name} is over ${formatKilobytes(ATTACHMENT_LIMITS.maxTextBytes)}` };
   }
   if (code === "pdf_unreadable") return { code: "type", filename: name, message: `${name} can't be opened` };
   if (code === "attachment_not_text") return { code: "type", filename: name, message: `${name} isn't text` };
@@ -325,7 +322,7 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
         }
         // Text goes in whole or not at all: a file cut to fit would be answered from its start.
         if (isTextAttachmentType(type) && picked.size > ATTACHMENT_LIMITS.maxTextBytes) {
-          batch.push({ code: "size", filename: name, message: `${name} is over ${kilobytes(ATTACHMENT_LIMITS.maxTextBytes)}` });
+          batch.push({ code: "size", filename: name, message: `${name} is over ${formatKilobytes(ATTACHMENT_LIMITS.maxTextBytes)}` });
           continue;
         }
         const kind = attachmentKind(type);

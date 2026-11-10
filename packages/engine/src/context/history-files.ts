@@ -27,6 +27,7 @@ import {
   ATTACHMENT_LIMITS,
   attachmentKind,
   attachmentSentAs,
+  AttachmentTextTooLargeError,
   parseBlobRef,
   type AttachmentAccepts
 } from "@flow-state-dev/core/attachments";
@@ -34,6 +35,7 @@ import type { FileContent } from "@flow-state-dev/core/items";
 import type { LLMMessage } from "@flow-state-dev/core/types";
 import { AttachmentUnavailableError, type ResolvedAttachment } from "../blobs/attachments";
 import { readAttachmentText, type ReadAttachment } from "../blobs/attachment-text";
+import { PdfTooManyPagesError, PdfUnreadableError } from "../blobs/pdf-text";
 
 export type { ReadAttachment } from "../blobs/attachment-text";
 
@@ -109,22 +111,34 @@ export async function resolveHistoryFiles(
 ): Promise<unknown[]> {
   const accepts = target?.accepts ?? UNNAMED_TARGET_ACCEPTS;
   if (!messages.some(hasFileReferences)) return messages;
+  // The newest user line is the turn being answered: only its files refuse
+  // the call. An older line's document that can't go as text is named on its
+  // turn, so one file can't fail every later turn of the session.
+  let newest = -1;
+  messages.forEach((message, index) => {
+    if ((message as { role?: unknown } | null)?.role === "user") newest = index;
+  });
   const out: unknown[] = [];
-  for (const message of messages) {
+  for (const [index, message] of messages.entries()) {
     if (!hasFileReferences(message)) {
       out.push(message);
       continue;
     }
     const content: unknown[] = [];
     for (const part of message.content) {
-      content.push(isFileReference(part) ? await toModelPart(part, read, accepts) : part);
+      content.push(isFileReference(part) ? await toModelPart(part, read, accepts, index === newest) : part);
     }
     out.push({ ...message, content });
   }
   return out;
 }
 
-async function toModelPart(file: FileContent, read: ReadAttachment | undefined, accepts: AttachmentAccepts): Promise<unknown> {
+async function toModelPart(
+  file: FileContent,
+  read: ReadAttachment | undefined,
+  accepts: AttachmentAccepts,
+  current: boolean
+): Promise<unknown> {
   if (read === undefined) return fileNote(file, "no longer available");
   let resolved: ResolvedAttachment;
   try {
@@ -138,8 +152,18 @@ async function toModelPart(file: FileContent, read: ReadAttachment | undefined, 
   }
   const { mediaType } = resolved.record;
   if (attachmentKind(mediaType) === "image") return { type: "image", image: resolved.base64(), mediaType };
-  // A PDF whose text is over the cap fails the call before it is sent: never cut.
-  if (attachmentSentAs(mediaType, accepts) === "text") return { type: "text", text: await readAttachmentText(file, resolved, read) };
+  // A PDF whose text is over the cap fails the call before it is sent, never
+  // cut; on an older turn it is named instead.
+  if (attachmentSentAs(mediaType, accepts) === "text") {
+    try {
+      return { type: "text", text: await readAttachmentText(file, resolved, read) };
+    } catch (error) {
+      if (current) throw error;
+      if (error instanceof AttachmentTextTooLargeError) return fileNote(file, "too much text to re-send");
+      if (error instanceof PdfUnreadableError || error instanceof PdfTooManyPagesError) return fileNote(file, "can't be read as text");
+      throw error;
+    }
+  }
   return {
     type: "file",
     data: resolved.base64(),

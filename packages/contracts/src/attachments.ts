@@ -142,23 +142,32 @@ export function formatAttachmentText(filename: string | undefined, text: string)
  * Thrown before a target that gets a PDF's text is called, when that text is
  * over `ATTACHMENT_LIMITS.maxTextBytes`. The text is never cut: the turn does
  * not run. The same PDF still goes whole to a target that reads PDFs.
+ * `kind: "text"` is a text-like file over the cap: upload refuses one, so
+ * this is the send's own check on a file stored some other way.
  */
 export class AttachmentTextTooLargeError extends Error {
-  readonly code = "pdf_text_too_large";
+  readonly code: "pdf_text_too_large" | "text_too_large";
   constructor(
     readonly filename: string | undefined,
-    /** Bytes of the PDF's text. */
-    readonly size: number
+    /** Bytes of the file's text. */
+    readonly size: number,
+    kind: "pdf" | "text" = "pdf"
   ) {
+    const cap = formatKilobytes(ATTACHMENT_LIMITS.maxTextBytes);
+    const name = filename === undefined ? undefined : `"${filename}"`;
     super(
-      `${filename === undefined ? "A PDF" : `"${filename}"`} holds ${kilobytes(size)} of text, and a PDF's text can be at most ` +
-        `${kilobytes(ATTACHMENT_LIMITS.maxTextBytes)} here. The turn did not run; send a shorter PDF, or ask where the whole PDF can be read.`
+      kind === "pdf"
+        ? `${name ?? "A PDF"} holds ${formatKilobytes(size)} of text, and a PDF's text can be at most ${cap} here. ` +
+            "The turn did not run; send a shorter PDF, or ask where the whole PDF can be read."
+        : `${name ?? "A text file"} is ${formatKilobytes(size)}, and a text file can be at most ${cap}. The turn did not run; send a shorter file.`
     );
+    this.code = kind === "pdf" ? "pdf_text_too_large" : "text_too_large";
     this.name = "AttachmentTextTooLargeError";
   }
 }
 
-function kilobytes(bytes: number): string {
+/** A size as the composer and the server both name it: KB, rounded up, so a file one byte over a cap never reads as the cap. */
+export function formatKilobytes(bytes: number): string {
   return `${Math.ceil(bytes / 1024)} KB`;
 }
 

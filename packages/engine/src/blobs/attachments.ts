@@ -11,7 +11,7 @@
 import type { FileContent } from "@flow-state-dev/core/items";
 import { normalizeMediaType, parseBlobRef } from "@flow-state-dev/core/attachments";
 import { uint8ArrayToBase64 } from "../streaming/binary";
-import { pdfTextBlobId } from "./pdf-text";
+import { isPdfTextBlobId, pdfTextBlobId } from "./pdf-text";
 import { uploadedBy } from "./shared";
 import type { BlobRecord, BlobStore, BlobUploader } from "./types";
 
@@ -51,7 +51,8 @@ export async function claimAttachments(
   const ids: string[] = [];
   for (const [index, attachment] of attachments.entries()) {
     const id = parseBlobRef(attachment.data);
-    if (id === undefined) return { refused: { reason: "invalid", index } };
+    // A PDF's stored text is no upload: named on its own it would skip the text cap.
+    if (id === undefined || isPdfTextBlobId(id)) return { refused: { reason: "invalid", index } };
     ids.push(id);
   }
   // A file names the type it was uploaded as, so the limits counted on the

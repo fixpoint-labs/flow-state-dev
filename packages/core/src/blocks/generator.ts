@@ -694,17 +694,22 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
   blockName: string
 ): Promise<{ modelId: string; model: GeneratorModel }> {
   const { modelId, model, accepts, prepared } = await resolveModelValue(value, input, ctx, blockName);
+  // A model array's entries are each wrapped already (`prepared`), so an intent inside one prepares per candidate;
+  // a single model is wrapped here, and a fallback group then prepares each of its candidates for its own provider.
   return { modelId, model: prepared === true ? model : withPreparedMessages(model, ctx.resolveModel?.prepareMessages, accepts) };
 }
 
 /**
  * What a model string's provider reads as files, for the run's
  * `prepareMessages`. `providerOf` classifies against the app's maps;
- * `extractProviderName` is the guess when the hook is absent.
+ * `extractProviderName` is the guess when the hook is absent. An intent
+ * resolves to a fallback group, which ignores this and prepares each of its
+ * candidates for that candidate's own provider. `provider` is the string's
+ * classification when the caller already has it.
  */
-async function attachmentAcceptsOf(ctx: BlockContext, modelStr: string): Promise<AttachmentAccepts> {
+async function attachmentAcceptsOf(ctx: BlockContext, modelStr: string, provider?: string): Promise<AttachmentAccepts> {
   const { extractProviderName } = await import("../models/providerDetection");
-  return providerAttachmentAccepts(ctx.resolveModel.providerOf?.(modelStr) ?? extractProviderName(modelStr));
+  return providerAttachmentAccepts(provider ?? ctx.resolveModel.providerOf?.(modelStr) ?? extractProviderName(modelStr));
 }
 
 async function resolveModelValue<TInput, TCtx extends BlockContext>(
@@ -745,18 +750,20 @@ async function resolveModelValue<TInput, TCtx extends BlockContext>(
     const providerOf = (modelStr: string) =>
       ctx.resolveModel.providerOf?.(modelStr) ?? extractProviderName(modelStr);
     // Each entry prepares its own calls, by what its own provider reads.
-    const entries = modelValue.map((modelStr) => {
-      const providerName = providerOf(modelStr);
-      return {
-        modelId: modelStr,
-        model: withPreparedMessages(
-          ctx.resolveModel(modelStr, blockName, callOptions),
-          ctx.resolveModel?.prepareMessages,
-          providerAttachmentAccepts(providerName)
-        ),
-        providerName,
-      };
-    });
+    const entries = await Promise.all(
+      modelValue.map(async (modelStr) => {
+        const providerName = providerOf(modelStr);
+        return {
+          modelId: modelStr,
+          model: withPreparedMessages(
+            ctx.resolveModel(modelStr, blockName, callOptions),
+            ctx.resolveModel?.prepareMessages,
+            await attachmentAcceptsOf(ctx, modelStr, providerName)
+          ),
+          providerName,
+        };
+      })
+    );
     const fallback = createFallbackModel({
       groupName: `${blockName}-fallback`,
       models: entries,

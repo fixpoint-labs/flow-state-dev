@@ -12,7 +12,7 @@
  * always with `nosniff`, so a file can't be run as a page whatever it holds.
  */
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { ATTACHMENT_LIMITS, isAttachmentMediaType, isTextAttachmentType, normalizeMediaType, toBlobRef } from "@flow-state-dev/core/attachments";
+import { ATTACHMENT_LIMITS, formatKilobytes, isAttachmentMediaType, isTextAttachmentType, normalizeMediaType, toBlobRef } from "@flow-state-dev/core/attachments";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { readableIn, sessionBlobOwner } from "../blobs/attachments";
 import { PdfTooManyPagesError, PdfUnreadableError, extractPdfText, pdfTextBlobId } from "../blobs/pdf-text";
@@ -160,7 +160,7 @@ async function checkDocument(mediaType: string, bytes: Uint8Array): Promise<Resp
         size: bytes.byteLength,
         limit: ATTACHMENT_LIMITS.maxTextBytes,
         message:
-          `This file is ${kilobytes(bytes.byteLength)}; a text file goes in whole, up to ${kilobytes(ATTACHMENT_LIMITS.maxTextBytes)}. ` +
+          `This file is ${formatKilobytes(bytes.byteLength)}; a text file goes in whole, up to ${formatKilobytes(ATTACHMENT_LIMITS.maxTextBytes)}. ` +
           "Split it, or send the part that matters."
       });
     }
@@ -193,10 +193,6 @@ function isUtf8Text(bytes: Uint8Array): boolean {
   } catch {
     return false;
   }
-}
-
-function kilobytes(bytes: number): string {
-  return `${Math.ceil(bytes / 1024)} KB`;
 }
 
 /** The request body, or `"too-large"` as soon as it passes `limit` bytes, without reading the rest. */

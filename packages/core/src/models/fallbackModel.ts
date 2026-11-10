@@ -6,6 +6,8 @@ import type {
 } from "../types";
 import type { ModelGroupDefaults, ModelRetryPolicy } from "./types";
 import { deepMerge } from "../helpers/deep-merge";
+import { providerAttachmentAccepts } from "./attachment-accepts";
+import { PREPARE_EACH_CANDIDATE, withPreparedMessages, type PrepareMessages } from "./prepared-model";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -287,8 +289,19 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
   const stepModels = models.filter((m) => m.model.generateStep !== undefined);
   const streamStepModels = models.filter((m) => m.model.streamStep !== undefined);
 
-  return {
+  const group: GeneratorModel & { [PREPARE_EACH_CANDIDATE]: (prepare: PrepareMessages) => GeneratorModel } = {
     modelId: `fsd:${groupName}`,
+
+    // Each candidate's messages are prepared for its own provider: a PDF goes
+    // as a file to one that reads PDFs, as its text to one that doesn't.
+    [PREPARE_EACH_CANDIDATE]: (prepare: PrepareMessages) =>
+      createFallbackModel({
+        ...config,
+        models: models.map((entry) => ({
+          ...entry,
+          model: withPreparedMessages(entry.model, prepare, providerAttachmentAccepts(entry.providerName))
+        }))
+      }),
 
     async generate(options): Promise<GeneratorModelResult> {
       return executeWithFallback(
@@ -348,4 +361,5 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
       return undefined;
     },
   };
+  return group;
 }

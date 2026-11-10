@@ -192,6 +192,18 @@ describe("documents at upload", () => {
     expect(put).not.toHaveBeenCalled();
   });
 
+  // The text kept beside a PDF is the server's, not an upload: named as a
+  // text file of its own it would go whole to a model, past the text cap.
+  it("refuses a PDF's stored text named as an attachment of its own, and claims nothing", async () => {
+    const { stores, upload, send } = setup();
+    const pdf = await attachmentOf(await upload("alice", makePdf(["x"]), "application/pdf", "r.pdf"));
+    const textId = pdfTextBlobId(parseBlobRef(pdf.data)!);
+    const refused = await send("alice", "s_side", [{ type: "file", mediaType: "text/plain", data: `fsd-blob:${textId}` }]);
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({ error: "attachment_invalid", index: 0 });
+    expect((await stores.blobs!.head(textId))?.owner).toBeUndefined();
+  });
+
   it("deletes a PDF's text with its session", async () => {
     const { stores, call, upload, send } = setup();
     const pdf = await attachmentOf(await upload("alice", makePdf(["x"]), "application/pdf", "r.pdf"));

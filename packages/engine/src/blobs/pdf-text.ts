@@ -89,3 +89,8 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfText> {
 export function pdfTextBlobId(pdfId: string): string {
   return `${pdfId}text`;
 }
+
+/** Whether `id` is a PDF's stored text: the server's, claimed only with its PDF, never named as an attachment. */
+export function isPdfTextBlobId(id: string): boolean {
+  return id.endsWith("text");
+}

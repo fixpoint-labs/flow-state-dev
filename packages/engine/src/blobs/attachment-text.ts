@@ -28,13 +28,19 @@ export type ReadAttachment = (file: FileContent) => Promise<ResolvedAttachment>;
  * read through the same resolver, so it is readable exactly where the PDF
  * is; a PDF stored before texts were kept has its text extracted here.
  *
- * @throws {AttachmentTextTooLargeError} When a PDF's text is over
- *   `ATTACHMENT_LIMITS.maxTextBytes`. A text-like file over it was refused at upload.
+ * @throws {AttachmentTextTooLargeError} When a PDF's text, or a text-like
+ *   file, is over `ATTACHMENT_LIMITS.maxTextBytes` (upload refuses such a
+ *   text file; this holds for one stored another way).
  * @throws {TypeError} When `file` is not a document (an image has no text).
  */
 export async function readAttachmentText(file: FileContent, resolved: ResolvedAttachment, read: ReadAttachment): Promise<string> {
   const type = normalizeMediaType(resolved.record.mediaType);
-  if (isTextAttachmentType(type)) return formatAttachmentText(file.filename, new TextDecoder().decode(resolved.bytes));
+  if (isTextAttachmentType(type)) {
+    if (resolved.bytes.byteLength > ATTACHMENT_LIMITS.maxTextBytes) {
+      throw new AttachmentTextTooLargeError(file.filename, resolved.bytes.byteLength, "text");
+    }
+    return formatAttachmentText(file.filename, new TextDecoder().decode(resolved.bytes));
+  }
   if (type !== "application/pdf") throw new TypeError(`A file of type ${type} has no text to send.`);
   const bytes = await storedPdfText(file, read) ?? new TextEncoder().encode((await extractPdfText(resolved.bytes)).text);
   if (bytes.byteLength > ATTACHMENT_LIMITS.maxTextBytes) throw new AttachmentTextTooLargeError(file.filename, bytes.byteLength);

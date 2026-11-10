@@ -7,6 +7,7 @@ import {
   attachmentMediaType,
   attachmentSentAs,
   formatAttachmentText,
+  formatKilobytes,
   attachmentLimitRefusal,
   isAttachmentMediaType,
   parseBlobRef,
@@ -139,11 +140,26 @@ describe("how a target gets a file", () => {
     expect(formatAttachmentText(undefined, "x")).toBe("### attachment\nx");
   });
 
+  // The composer and the server name a size the same way, rounded up, so a
+  // file one byte over the cap never reads as the cap itself.
+  it("names a size in KB, rounded up", () => {
+    expect(formatKilobytes(ATTACHMENT_LIMITS.maxTextBytes)).toBe("200 KB");
+    expect(formatKilobytes(ATTACHMENT_LIMITS.maxTextBytes + 1)).toBe("201 KB");
+    expect(formatKilobytes(250 * 1024)).toBe("250 KB");
+  });
+
   it("names a PDF whose text is over the cap, with its size and the cap", () => {
     const error = new AttachmentTextTooLargeError("dense.pdf", 300 * 1024);
     expect(error.code).toBe("pdf_text_too_large");
     expect(error.message).toContain("dense.pdf");
     expect(error.message).toContain("300 KB");
     expect(error.message).toContain("200 KB");
+  });
+
+  it("names a text file over the cap as a file, not a PDF", () => {
+    const error = new AttachmentTextTooLargeError("huge.log", 300 * 1024, "text");
+    expect(error.code).toBe("text_too_large");
+    expect(error.message).toContain("huge.log");
+    expect(error.message).not.toContain("PDF");
   });
 });

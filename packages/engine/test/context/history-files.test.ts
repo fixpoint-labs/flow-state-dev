@@ -230,7 +230,7 @@ describe("a user line's documents, by what the model reads", () => {
       parts(
         ((await resolveHistoryFiles(await read([], line(files)), readAttachment, accepts === undefined ? undefined : { accepts: accepts as never })) as LLMMessage[])[0]
       );
-    return { put, pdf, call };
+    return { put, pdf, call, readAttachment };
   }
 
   it("sends a text-like file as text headed by its name, to a provider that reads PDFs and one that doesn't", async () => {
@@ -239,6 +239,14 @@ describe("a user line's documents, by what the model reads", () => {
     for (const accepts of [READS_PDF, IMAGES_ONLY]) {
       expect((await call([csv], accepts))[1]).toEqual({ type: "text", text: "### errors.csv\nts,level\n1,error TANGERINE" });
     }
+  });
+
+  // Upload refuses a text file over the cap; one that is in the store anyway
+  // (written by another path) still never goes to a model whole.
+  it("fails the turn on a stored text-like file over the text cap, naming it", async () => {
+    const { put, call } = await documentFixture();
+    const big = await put(new Uint8Array(ATTACHMENT_LIMITS.maxTextBytes + 1).fill(97), "text/plain", "huge.log");
+    await expect(call([big], IMAGES_ONLY)).rejects.toMatchObject({ code: "text_too_large", filename: "huge.log" });
   });
 
   it("sends a PDF as a file where the provider reads PDFs, and as its stored text where it doesn't", async () => {
@@ -263,6 +271,27 @@ describe("a user line's documents, by what the model reads", () => {
     const dense = await pdf("dense.pdf", "x".repeat(ATTACHMENT_LIMITS.maxTextBytes + 1));
     await expect(call([dense], IMAGES_ONLY)).rejects.toBeInstanceOf(AttachmentTextTooLargeError);
     expect((await call([dense], READS_PDF))[1]).toMatchObject({ type: "file", mediaType: "application/pdf" });
+  });
+
+  // A refusal is for the turn that sent the file. An older line's PDF that
+  // can't go as text names itself on its turn, or every later turn of the
+  // session would fail on it (a model switched mid-session; a PDF stored
+  // before texts were kept that can't be opened).
+  it("names an older turn's PDF that can't go as text, and still answers the newest turn", async () => {
+    const { put, pdf, readAttachment } = await documentFixture();
+    const dense = await pdf("dense.pdf", "x".repeat(ATTACHMENT_LIMITS.maxTextBytes + 1));
+    const broken = await put(new Uint8Array([0x25, 0x50, 0x44, 0x46, 9]), "application/pdf", "broken.pdf");
+    const prior = [
+      turn("r1", [userLine("r1", "here are two", [dense, broken], 100) as unknown as OutputItem], 100)
+    ];
+    const live = [userLine("r2", "and now?", [], 200) as unknown as OutputItem];
+    const messages = (await resolveHistoryFiles(await read(prior, live), readAttachment, { accepts: IMAGES_ONLY as never })) as LLMMessage[];
+    expect(parts(messages[0])).toEqual([
+      { type: "text", text: "here are two" },
+      { type: "text", text: "[document: dense.pdf, too much text to re-send]" },
+      { type: "text", text: "[document: broken.pdf, can't be read as text]" }
+    ]);
+    expect(messages.at(-1)).toMatchObject({ role: "user", content: "and now?" });
   });
 
   it("sends a PDF as a file when the call names no target, as before", async () => {
