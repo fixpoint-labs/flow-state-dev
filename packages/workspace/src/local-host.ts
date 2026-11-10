@@ -2214,6 +2214,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       // With its directory gone, `remove` drops only this worktree's metadata;
       // `prune` would drop every missing worktree's, and any detached HEAD with it.
       await git(entry.repository, ["worktree", "remove", entry.cwd], left());
+      // The name is free again once its worktree is gone (`reserve`).
+      rmSync(`${entry.dir}${HOLDER_SUFFIX}`, { force: true });
       let branchDeleted = false;
       if (removeOptions.deleteBranch === true && branch !== null) {
         await git(entry.repository, ["branch", "-D", branch], left());
