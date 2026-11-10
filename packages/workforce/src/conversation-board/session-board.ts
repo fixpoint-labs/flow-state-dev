@@ -220,7 +220,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // FIX-2131.
     /**
      * `holdTaskForUser` on a task turn, and `suspendForUser` for an approval, a review
-     * or (with no task row) input: one entry for the model block's
+     * or (with no task) input: one entry for the model block's
      * `uses`, beside `tools`.
      */
     questions: userWaits,

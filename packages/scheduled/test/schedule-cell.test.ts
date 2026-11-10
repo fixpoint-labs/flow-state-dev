@@ -45,7 +45,7 @@ const ping = handler({
 });
 
 /**
- * A run writes one schedule row, the way an agent would set a reminder: the
+ * A run writes one schedule entry, the way an agent would set a reminder: the
  * documented call, which names no organization.
  */
 const plan = handler({
@@ -137,7 +137,7 @@ const kind = (name: string, cardinality: "collection" | "singleton") =>
 const workerKind = kind("research", "collection");
 const appKind = kind("reminders", "singleton");
 
-/** The user's cell in one org, where every flow keeps their schedule rows. */
+/** The user's cell in one org, where every flow keeps their schedule entries. */
 const cellOf = (userId: string, orgId: string) =>
   `${userId.replace(/[\\:]/g, "\\$&")}:~org:${orgId.replace(/[\\:]/g, "\\$&")}`;
 

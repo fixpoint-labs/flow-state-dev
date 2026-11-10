@@ -21,7 +21,7 @@
  * its output while it runs, and `holdTaskForUser` (`createHoldTaskForUser`) asks the
  * user a question the task holds on. `suspendForUser`
  * (`createSuspendForUserTool`) stops a turn for the user's approval, review or,
- * on a turn with no task row, input.
+ * on a turn with no task, input.
  *
  * ## Dispatching
  *
@@ -837,7 +837,7 @@ export function createHoldTaskForUser(options: TaskTurnToolOptions) {
   };
 }
 
-/** What a model's `suspendForUser` asks for: an approval, a review or, on a turn with no task row, input. */
+/** What a model's `suspendForUser` asks for: an approval, a review or, on a turn with no task, input. */
 const WAIT_KINDS = ["approval", "review", "input"] as const;
 
 // FIX-2131, on FIX-2129's.

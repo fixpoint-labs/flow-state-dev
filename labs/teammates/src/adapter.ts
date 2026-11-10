@@ -36,7 +36,7 @@
  * | `taskActions`       | the Inbox client's `board(at)` on the conversation that filed the task, its   |
  * |                     | `"tasks"` board: cancel, steer, release, retry, and `refile` for a re-run      |
  * | `watchReview`       | the run's review stop, read by harness-manager's browser `reviewDetail`        |
- * | `watchRun`          | the items of the session the task's row names as its run, each tool call      |
+ * | `watchRun`          | the items of the session the task names as its run, each tool call      |
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  * | `watchWorking`      | the run session's items and its run request's own stream (which sends a call |

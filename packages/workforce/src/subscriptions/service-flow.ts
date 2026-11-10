@@ -12,7 +12,7 @@
  *   no user's cell), selects by provider and kind, runs the screen chain (`chain.ts`),
  *   and returns the verdicts (at most {@link MAX_ROUTED_VERDICTS}) and an owner
  *   run for each subscription that passed. The host fires those
- *   (`routeServiceEvent`), each only once it has found the subscription's row
+ *   (`routeServiceEvent`), each only once it has found the subscription's entry
  *   in its user's cell, naming this org and tenant, and on.
  * - **Delivery** ({@link SUBSCRIPTION_DELIVER_ENTRY}) runs as the
  *   subscription's user. It reads the row again (on, this provider, this

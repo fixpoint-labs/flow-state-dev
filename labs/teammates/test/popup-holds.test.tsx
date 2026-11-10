@@ -143,7 +143,7 @@ describe("accepting a coding task's review says where its work goes", () => {
     const result = await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
     await waitFor(() => expect(result.textContent).toMatch(/Opened pull request #7 into main\. Next: review and merge it\./));
     expect(within(result).getByRole("link", { name: "pull request #7" }).getAttribute("href")).toBe("https://github.com/acme/relay/pull/7");
-    // The task's row in the thread says it too.
+    // The task in the thread says it too.
     expect(within(conversation()).getByRole("button", { name: `${TASK}, on Cursor` }).textContent).toMatch(/PR #7/);
   }, 20_000);
 });

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * A task row in the conversation's feed opens that task's session. The feed
+ * A task in the conversation's feed opens that task's session. The feed
  * was the one place a task showed with no way into it: the Tasks list and
  * Jump to went there, a row in the conversation did not.
  */
@@ -31,7 +31,7 @@ const change = (status: string): OutputItem =>
     data: { collectionId: "tasks", taskId: "t1", kind: "added", task: { id: "t1", goal: "Audit the licenses", status } },
   }) as unknown as OutputItem;
 
-describe("a task row in the feed", () => {
+describe("a task in the feed", () => {
   it("opens the task's session on the board of the conversation whose feed it is", async () => {
     window.history.pushState(null, "", "/");
     render(

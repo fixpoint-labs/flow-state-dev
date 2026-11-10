@@ -46,7 +46,7 @@ export interface ParsedScheduleId {
 
 export interface CreateResourceCollectionScheduleResolverOptions {
   /**
-   * The resource collection that holds schedule rows. Pass either a
+   * The resource collection that holds schedule entries. Pass either a
    * `defineResourceCollection(...)` result or any value with a
    * `pattern` string. The helper extracts the literal prefix (everything
    * before `*`) to build the storage key.
@@ -145,7 +145,7 @@ export function createResourceCollectionScheduleResolver(
     const scopeId = ctx.userStorageKey(parsed.userId, parsed.orgId);
     // Resource state, where the collection's `create` wrote the row — not the
     // content store, which holds an instance's content body and never a
-    // schedule row (FIX-1545).
+    // schedule entry (FIX-1545).
     const row = await ctx.stores.resourceState.get("user", scopeId, resourceKey);
     if (row === undefined) return null;
     const state = row.state as Partial<ScheduleResourceState>;

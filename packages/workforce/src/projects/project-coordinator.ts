@@ -52,7 +52,7 @@ import { workerConfigOf } from "../workers/verified-worker";
 import { delegateDefaultsOf, withRoster } from "../delegates/worker-delegates";
 import type { WorkerInstallation } from "../workers/installation";
 import type { ProjectAddress } from "./collections";
-import { PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
+import { PROJECT_ENTRY_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { DONE_STATUS } from "./project-progress";
 import { projectEntries, readProjectAt, readProjectOutputSchema } from "./project-read";
 import { ProjectRefusedError } from "./project-refusal";
@@ -277,7 +277,7 @@ const readLinkedProject = handler({
   outputSchema: readProjectOutputSchema.extend({
     workstreams: z.array(workstreamViewSchema.extend({ yours: z.boolean() }))
   }),
-  resources: { ...PROJECT_ROW_RESOURCES, ...WORKSTREAM_RESOURCES },
+  resources: { ...PROJECT_ENTRY_RESOURCES, ...WORKSTREAM_RESOURCES },
   execute: async (_input, ctx) => {
     const project = linkedProjectOf(ctx.session.state);
     if (project === undefined) {

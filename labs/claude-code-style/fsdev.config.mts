@@ -31,7 +31,7 @@
  * before the server takes it as interrupted (default one minute), so a goal can
  * read a dead run's row before the board takes it back.
  *
- * A coding run is done only when its project's checks pass (the project row's
+ * A coding run is done only when its project's checks pass (the project entry's
  * `checks`; none named runs nothing). `CLAUDE_CODE_STYLE_SETUP`, one command
  * such as `pnpm install --frozen-lockfile`, runs in each fresh worktree before
  * its run starts, so the checks find what they need; it runs with no shell,

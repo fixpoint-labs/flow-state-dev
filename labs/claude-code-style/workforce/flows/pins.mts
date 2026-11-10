@@ -1,7 +1,7 @@
 /**
  * The `pins` flow: the threads you pinned (FIX-2157 D4). Pinning is your
  * choice, not a task's state, so it is kept in your own user state as task
- * ids, never on the task row. The board reads it to put a pinned thread under
+ * ids, never on the task. The board reads it to put a pinned thread under
  * *Pinned*; a pin outlives the thread's status.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";

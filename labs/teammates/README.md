@@ -110,7 +110,7 @@ The result lands in Lead's conversation as
 the coding task's line, *Coding task finished: …*. To change a coding task, tell Lead, who starts the next one,
 or use the task's buttons.
 
-A task's popup has its buttons, which act on the task's row with no turn of Lead's in
+A task's popup has its buttons, which act on the task with no turn of Lead's in
 between. While the task runs: **Cancel**, which asks once, and a **Steer** line whose words reach
 the run. Once it failed or was cancelled: **Retry**, which runs it again as the same task, and, for
 a coding task, one **Re-run on …** per other coding agent. A re-run is a new task on that agent,

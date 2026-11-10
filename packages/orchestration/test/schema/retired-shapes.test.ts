@@ -1,5 +1,5 @@
 /**
- * The retired-shape read: a task row stored in a shape a published version
+ * The retired-shape read: a task stored in a shape a published version
  * wrote reads in the current shape. Two shapes are read: `blocked`, which
  * orchestration 0.5.0 and earlier stored, and a task's own hold marked
  * `source.kind: "row"`, which every version before FIX-2479 stored; the shapes

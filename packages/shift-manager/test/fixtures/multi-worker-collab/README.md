@@ -70,7 +70,7 @@ row starting from `eng.builder`'s lane) and wants a redraw.
   the task session the row ran in. The planner's Tasks tab therefore shows the row as filed, the
   task session's shows why it waited and what it was told, and the ledger collection in the
   Resources panel shows both rows as they stand.
-- **No run link on the planner's Tasks tab.** The DevTool links a task row to its run by decoding
+- **No run link on the planner's Tasks tab.** The DevTool links a task to its run by decoding
   the run's session key, and it decodes a dispatched board's key, not a conversation board's. The row
   still names its run session (`run`), and the navigator lists that session under the worker's flow,
   which is how the check opens it.

@@ -203,7 +203,7 @@ export function asksOfTask(snapshot: LabSnapshot | undefined, row: BoardTaskView
 /**
  * The door of the flow that owns a session: the worker inventory rows of the
  * workers on that flow name it, since a worker flow is registered under its name.
- * Every worker on one flow shares its door. `null` when no worker row is on the
+ * Every worker on one flow shares its door. `null` when no worker entry is on the
  * flow, or its worker flow takes no message.
  */
 export function doorOf(workers: readonly Worker[], flowId: string): string | null {
@@ -212,7 +212,7 @@ export function doorOf(workers: readonly Worker[], flowId: string): string | nul
 
 /**
  * Whether the door of the flow that owns a session takes a task id, read the
- * same way as {@link doorOf}. `false` when no worker row is on the flow.
+ * same way as {@link doorOf}. `false` when no worker entry is on the flow.
  */
 export function doorTakesTaskOf(workers: readonly Worker[], flowId: string): boolean {
   return workers.find((worker) => worker.kind === flowId)?.doorTakesTask ?? false;

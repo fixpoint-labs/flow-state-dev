@@ -89,7 +89,7 @@ const heldOnQuestion: Task = {
   holds: [{ id: "q1", source: { kind: "task" }, ask: { kind: "question", prompt: "Which region, eu-west or us-east?" } }],
 };
 
-describe("the reason on a task row", () => {
+describe("the reason on a task", () => {
   it("BR-1 · puts a row's reason on the row, with no expander opened", () => {
     renderBoard(notedRow);
 
