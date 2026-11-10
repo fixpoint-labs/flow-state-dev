@@ -48,11 +48,11 @@ README test fails at the first `expect` and the census finds `runBenchmark`.
 
 | How we verify | |
 |---|---|
-| **Goal check** | This issue's own: a leg c assertion in `scripts/packed-install/run.mjs` (the stop answered), plus a subpath-presence check under leg b, both run by `run.mjs --goal`. The closure re-runs it. Separately, the manifest's *Surface* cells: this issue owns testing's and contributes to core's and patterns' ([DECISIONS → Decided](DECISIONS.md#decided-not-asked)). Run by the implementer at completion; verdict in the implementation PR |
+| **Goal check** | This issue's own: two packed-install checks in `scripts/packed-install/run.mjs`, the stop answered (`test-a-stop`) and the subpath census (`benchmark-subpaths`), not `--goal` cells ([amended Nov 10](DECISIONS.md#decided-not-asked)). The closure re-runs it. Separately, the manifest's *Surface* cells: this issue owns testing's and contributes to core's and patterns' ([DECISIONS → Decided](DECISIONS.md#decided-not-asked)). Run by the implementer at completion; verdict in the implementation PR |
 | **Signal** | The README test (the code block under its *Testing a step that waits for a person* heading) passes: `suspended`, then `completed` with the step's output; a `reject` reaches the block as a no; a generator after the answer returns its mock; a `ctx.suspend` resumed with `run.resume` completes. The process exits in under 10 s with no force-exit flag. Census: `Object.keys` of the testing, core and patterns roots holds none of the moved or folded names (the list is the census on `ebec5326`, written into the goal check), and `testing/benchmark` and `patterns/benchmark` import from the tarball and export every one of them |
 | **Input** | The README's refund-approval example. A different stop kind (`input`, with a schema) must pass too |
 | **Anti-game** | Assert on the installed tarball, never workspace `src`. Prove the route, not the message: the stop is first answered through the engine's own answer route on the same stores, as a screen would, and only then does `run.answer` have to refuse it. A helper that keeps its own record of answered stops, or validates with its own schema check, can't see that answer |
-| **Control that must fail** | `run.mjs --control=adopter-goal`: fails on *suspended* (today `failed`) and on the census (`runBenchmark` on the root, no `testing/benchmark`). In the implementation PR, a variant with `run.answer` swapped for a direct `continueRequest` must fail the refusal-after-screen-answer assertion |
+| **Control that must fail** | Each fixture run against the published tarballs, not `--control=adopter-goal`, which runs only `--goal` cells ([amended Nov 10](DECISIONS.md#decided-not-asked); #4885 records the census's): fails on *suspended* (today `failed`) and on the census (`runBenchmark` on the root, no `testing/benchmark`). In the implementation PR, a variant with `run.answer` swapped for a direct `continueRequest` must fail the refusal-after-screen-answer assertion |
 
 ## What changes
 
@@ -153,7 +153,7 @@ engine code; the POC ran the answer and resume half ([Settled](DECISIONS.md#sett
 |---|---|
 | **Removes** | 21 benchmark and 3 scanner names from the testing root, 6 `Benchmark*` types from core's root, 8 benchmark names from patterns' root, `testSequencer` and `testRouter` and their result types |
 | **Adds** | Two public subpaths to keep. Patterns' new optional peer dependency on testing, for `patterns/benchmark`'s types. No deprecated aliases (Q1 answered break) |
-| **Leaves** | A test helper with no request host for spawning or messaging (FIX-1293). The testing package marker, which the epic gives FIX-2449 with the other three |
+| **Leaves** | A test helper with no request host for spawning or messaging (FIX-1293). The testing package marker, which the epic gives FIX-2449 with the other three. **Amended (Nov 10):** a known overlap, `runForTest` on testing's root beside `testBlock`, two ways to run one block; follow-up: fold or remove. `createReplayingRef` stays, as the replay-safety double |
 
 **Net: down.** The testing root loses 28 of its 90 names, two other roots lose their benchmark names,
 two helpers fold into one, and no answer path or wait is added. Patterns gains one optional peer.

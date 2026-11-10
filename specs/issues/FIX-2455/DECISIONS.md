@@ -34,6 +34,12 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 It comes down to the reach check: only the status route already holds it for one record.
 
+> **Amended (Nov 10).** `result()` sends `include_result_output` on every poll, so the read that
+> settles the request is the one returned: one wait, not `wait()` plus a second read, which a
+> resumed run could slip in front of. A running request has no stored result yet, so those polls
+> stay small; `wait()` and `status()` still poll without the flag. Built in [#4896](https://github.com/fixpoint-labs/flow-state-dev/pull/4896);
+> the figure on SPEC's *What changes* shows the earlier wait-then-read.
+
 **What would change my mind:** a host that caches or proxies the status route as a liveness
 probe. Then the output needs its own route, and FIX-1661 D1 is reopened on purpose.
 

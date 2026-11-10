@@ -104,6 +104,10 @@ It comes down to the pick: three names for one job is the choice the epic exists
   *One path* row names `testFlow`, so the manifest carries no stop-answer cell. The leg c
   assertion and the subpath-presence check run under `run.mjs --goal`, with
   `--control=adopter-goal` as the control; the closure re-runs them.
+  **Amended (Nov 10):** both run as `run.mjs` packed-install checks (`test-a-stop`,
+  `benchmark-subpaths`), not `--goal` cells, so the manifest gains no cell outside its rows
+  ([ER-9](../../epics/FIX-2447/DECISIONS.md#who-owns-what)). The goal was touched once, after FIX-2448 merged:
+  `goal-core-dts.mjs` stopped skipping its benchmark row ([#4885](https://github.com/fixpoint-labs/flow-state-dev/pull/4885)).
 - **Seams** are [the epic's](../../epics/FIX-2447/DECISIONS.md#coordination-seams). One it doesn't list: the router, in-process fetch,
   dispose and durability entries this uses may move to `engine/host` under FIX-2449; testing
   imports them from wherever that split puts them, and counts as their outside consumer.
