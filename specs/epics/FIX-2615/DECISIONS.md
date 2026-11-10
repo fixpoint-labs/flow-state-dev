@@ -121,24 +121,30 @@ Every rule has one owner. A cell that says *uses* is a place a child must not de
 | The Teammates lab's host | FIX-2645 and FIX-1986 | FIX-2645 installs Linear there; FIX-1986 makes its default Cursor runs reach it. Neither adds a lab-only MCP path |
 | MCP in both directions | This epic and FIX-2331 | They meet only at the MCP protocol. If one FSD host installs another's workforce server as a connector, that is an ordinary connector. FIX-2331's caller sign-in is not a connector key, and its `workforce_*` tool names do not collide with the `mcp__<connector>__` prefix |
 
+
 ## Decided before review, recorded so no child reopens them
 
 Engineering calls, decided under the EM posture and not asked:
 
-- **The word.** "Connector" for the thing a host installs; FIX-2645 adds its glossary entry. The
-  project row's `mcpServers` becomes `connectors`, and a row stored with the old key still reads
-  (BP-030). Renamed exports drop their old names with no alias (BP-034); pre-1.0.
-- **Allowed tools live on the connector.** `projectMcpCapability`'s `allow` moves onto the host's
-  entry, so a coding run obeys the same limit a worker does. A worker's file may narrow it further,
-  never widen it.
+- **The word.** "Connector" for what a host installs; FIX-2645 adds its glossary entry. The
+  project row's `mcpServers` becomes `connectors`, and a row with the old key still reads
+  (BP-030). Renamed exports drop their old names, no alias (BP-034).
+- **Allowed tools live on the connector**, so a coding run obeys the limit a worker does. A
+  worker's file may narrow it, never widen it.
 - **The set for work with no project is a host option on the same factory**, not a project row
-  and not a new collection.
-- **The Teammates lab is wired inside FIX-2645**, not as its own child: it is a few lines in one
-  host file, and the package slice needs a real consumer.
-- **FIX-1986 keeps its title.** A comment on it widens its scope to runs with no project, which
-  the one resolution gives it for free.
-- **FIX-2331 is related, not absorbed and not reparented.** It is the other direction: outside
-  agents reach FSD. Its own epic, in its own project.
+  or a new collection.
+- **The Teammates lab is wired inside FIX-2645**: a few lines in one host file, and the package
+  slice needs a real consumer.
+- **FIX-1986 keeps its title**; a comment widens it to runs with no project.
+- **FIX-2331 is related, not absorbed and not reparented.**
+
+## Decided in review
+
+- **Leg a checks a second user's key** (review, 2026-11-10). With one user, a lab-only
+  environment-key wiring passed leg a, so the check could not fail for the rejected smaller
+  goal (BP-003). Leg a now has a second Teammates user whose calls must carry that user's
+  stored key, and the lab-only wiring is a control that must fail. Enforces ER-3; no decision
+  moved.
 
 ## What the end-state POC showed
 
@@ -149,18 +155,17 @@ model, not whether the parts compose.
 
 ### Analysis — FIX-2615 epic spec · 2026-11-10 · watermark 2026-11-10
 
-Run in the author's own context: this dispatch has no sub-agent tool, so it is not the
-independent analyst the procedure asks for. The coordinator may dispatch one on the open PR.
+Run in the author's own context, not by an independent analyst; the coordinator may dispatch one.
 
 **Verdict:** Right approach — a small set that widens two shipped mechanisms instead of adding a third.
 
-1. Reuse — every Adds item extends an existing piece: `ProjectMcpServers` and `allow` become the connector; `planProjectMcp` gains the no-project read; `projectMcpTools` feeds Codex and Cursor. Only Codex's local endpoint is new, and FIX-1986's spec weighs serving it with `@flow-state-dev/mcp`'s transport. Kitchen Sink's chat agent's `createMcpCapability` with an environment key is a second install route outside workforce; named in *Leaves*.
-2. Prior art — Claude's connectors: an organization owner adds a connector once, and each member connects with their own account ([support.claude.com](https://support.claude.com/en/articles/11176164-use-connectors-to-extend-claude-s-capabilities)). Mastra's `MCPClient` splits a static tool set, shared credentials, from per-request `getToolsets()` for per-user keys ([mastra.ai](https://mastra.ai/docs/mcp/overview)). Both match ER-1 and ER-3: install once, key per user, resolved per request. Neither ties a connector to a project.
-3. Other shapes — the strongest other division is two issues by direction: "no project" and "every harness", with the connector rename split out. It loses because the rename and the no-project read touch the same resolution, and splitting them makes two children edit one function. Next-variant test (another server such as GitHub): one host entry and nothing copied.
-4. New factors — FIX-2388's worker capability merged 2026-11-03 (#4415); FIX-2421 merged 2026-11-02. Both are now *Already here*. FIX-2331 filed 2026-10-28; reconciled as a seam.
-5. Necessity — should exist. The leaner version (Teammates only, with an environment key) is the rejected smaller goal.
-6. Ergonomics — a host writes one map of connectors and, if it has no projects, one list. The surprise today is two names for one thing (`mcpServers` and the user page's "MCP servers" against the epic's "connectors"); the rename removes it.
-7. Concerns — Codex's endpoint is the one piece with unknown cost; the collapse trigger in *The set* bounds it.
+1. Reuse — every Adds item extends an existing piece; only Codex's local endpoint is new, and FIX-1986 weighs `@flow-state-dev/mcp`'s transport for it. Kitchen Sink's environment-keyed chat agent is named in *Leaves*.
+2. Prior art — Claude's connectors (an owner installs once, each member connects their own account, [support.claude.com](https://support.claude.com/en/articles/11176164-use-connectors-to-extend-claude-s-capabilities)) and Mastra's per-request `getToolsets()` ([mastra.ai](https://mastra.ai/docs/mcp/overview)) both match ER-1 and ER-3. Neither ties a connector to a project.
+3. Other shapes — splitting by direction ("no project", "every harness") makes two children edit one resolution. Next variant (GitHub): one host entry, nothing copied.
+4. New factors — FIX-2388 (#4415) and FIX-2421 merged; FIX-2331 filed, reconciled as a seam.
+5. Necessity — should exist; the leaner version is the rejected smaller goal.
+6. Ergonomics — one map of connectors, and one list without projects; the rename removes two names for one thing.
+7. Concerns — Codex's endpoint is the one unknown cost; the collapse trigger bounds it.
 
 | Finding | Objective | Changes the approach? | Disposition |
 |---------|-----------|-----------------------|-------------|
@@ -173,5 +178,6 @@ independent analyst the procedure asks for. The coordinator may dispatch one on 
 - **Drafted (Nov 10)** — two features, one bug and a closure. FIX-1986 and FIX-2012 reparented
   from no parent; FIX-2645 and the closure FIX-2646 filed. FIX-2331 related, not absorbed.
 - **Analysis (Nov 10)** — `allow` moved onto the connector so both routes obey it.
+- **Review round 1 (Nov 10)** — leg a gained a second user and the lab-only control.
 
 **Open: none.**
