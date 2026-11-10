@@ -26,5 +26,5 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| 2026-11-10 | (branch, pre-commit tree) | n/a | PASS | `GOAL_REGISTRY=copy` (ui.shadcn.com refused by this machine's proxy). Two thumbnails before Send; send held 2 references, no base64 run; wide image stored within 1568 px; three refusals in the live region; Tab reached + and both removes |
+| 2026-11-10 | 7629e123e (its tree, before commit) | n/a | PASS | `GOAL_REGISTRY=copy` (ui.shadcn.com refused by this machine's proxy). Two thumbnails before Send; send held 2 references, no base64 run; wide image stored within 1568 px; three refusals in the live region; Tab reached + and both removes |
 | 2026-11-10 | (same tree) | n/a | FAIL (expected) | `main-registry`, `GOAL_REGISTRY=copy`: thumbnails red (none drawn), references red (0 references, a 50,500-character base64 run), downscale and keyboard red, leg c threw on the single-file picker |
