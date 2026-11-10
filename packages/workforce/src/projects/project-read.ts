@@ -28,7 +28,7 @@ import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { projectAddressSchema, projectResourceStateSchema, projectVisibilitySchema, type ProjectAddress, type ProjectVisibility } from "./collections";
 import { isMember } from "./membership-gate";
-import { projectAt, projectResourcesAt, PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
+import { projectAt, projectResourcesAt, PROJECT_ENTRY_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { projectProgress } from "./project-progress";
 import {
   WORKSTREAM_RESOURCES,
@@ -85,7 +85,7 @@ export async function projectEntries(ctx: ResourcesContext, project: ProjectAddr
 /**
  * Read the project at `project`, its entries and its progress: the row by its
  * address, the entries by one prefix. `no-such-project` when the address
- * names none. The calling block declares the project rows and the entries.
+ * names none. The calling block declares the projects and their entries.
  */
 export async function readProjectAt(ctx: ResourcesContext, project: ProjectAddress): Promise<ReadProjectOutput> {
   const row = await projectAt(ctx, project);
@@ -103,7 +103,7 @@ export const readProject = handler({
   name: "project-read",
   inputSchema: readProjectInputSchema,
   outputSchema: readProjectOutputSchema,
-  resources: { ...PROJECT_ROW_RESOURCES, ...WORKSTREAM_RESOURCES },
+  resources: { ...PROJECT_ENTRY_RESOURCES, ...WORKSTREAM_RESOURCES },
   execute: (input, ctx): Promise<ReadProjectOutput> => readProjectAt(ctx, input.project)
 });
 
@@ -130,7 +130,7 @@ export type ListProjectsOutput = z.infer<typeof listProjectsOutputSchema>;
 /**
  * The projects `userId` is a member of: every shared row whose `members` hold
  * them, and every private row in their own scope. The calling block declares
- * the project rows at both visibilities.
+ * the project entries at both visibilities.
  */
 export async function listProjectsOf(ctx: ResourcesContext, userId: string | undefined): Promise<ListProjectsOutput> {
   const projects: ListProjectsOutput["projects"] = [];
@@ -155,6 +155,6 @@ export const listProjects = handler({
   name: "project-list",
   inputSchema: listProjectsInputSchema,
   outputSchema: listProjectsOutputSchema,
-  resources: { ...PROJECT_ROW_RESOURCES },
+  resources: { ...PROJECT_ENTRY_RESOURCES },
   execute: (_input, ctx): Promise<ListProjectsOutput> => listProjectsOf(ctx, ctx.session.identity.userId)
 });

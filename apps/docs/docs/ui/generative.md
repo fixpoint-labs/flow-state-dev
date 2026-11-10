@@ -118,7 +118,7 @@ Schema fields: `url`, `title`, `description?`, `siteName?`, `imageUrl?`, `favico
 For a polished, fully-customizable variant, install the renderer through the registry and override the entry on `FlowProvider`:
 
 ```bash
-fsdev ui add info-card
+pnpm fsdev ui add info-card
 ```
 
 ```tsx

@@ -57,7 +57,7 @@ export type ResumeAction = "approve" | "reject" | "submit" | "skip";
  * - `review`: a verdict on work the user looks at.
  * - `input`: an answer the code reads on its next line.
  *
- * Never a question: a question with a task row holds its task instead.
+ * Never a question: a question with a task holds its task instead.
  */
 export type SuspendForUserKind = "approval" | "review" | "input";
 

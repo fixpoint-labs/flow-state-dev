@@ -75,6 +75,10 @@ It comes down to the gate: inside the PR job, an expected fail blocks unrelated 
   dual-reads), not the three the issue named. FIX-2454's two `human_approval` cells left the grid
   with the owner's no-compat call ([epic D4](../../epics/FIX-2447/DECISIONS.md#d4)): nothing
   refuses that value or reads a stored one now, so there is nothing to assert.
+  **Amended (Nov 10):** they are back. The owner kept the `human_*` refusal and stored-stop reader
+  by merging [#4830](https://github.com/fixpoint-labs/flow-state-dev/pull/4830) as it was
+  ([epic D4](../../epics/FIX-2447/DECISIONS.md#kept-refusals)), so `shims.human-approval-throws`
+  and `shims.stored-human-approval` stay in the *Shims* row beside `shims.never-published`.
 - **Under the control, every row fails.** Probed on the published tarballs: core 0.4.0 carries 272
   tracker ids in its `.d.ts` and orchestration 0.5.0 ships `retired-shapes`. FIX-2457's probe
   shows a handler with state schemas alone already compiles on `main`, so `types.typed-handler`'s
@@ -94,6 +98,13 @@ It comes down to the gate: inside the PR job, an expected fail blocks unrelated 
 - **A moved import path is the one assertion edit a child may make.** If a child moves a name a
   fixture imports, its PR updates that path in the same diff and says so (BP-034). What a fixture
   asserts never changes outside this issue.
+- **Amended (Nov 10) · a contract name is exempt from `surface.collisions`.** `getAssetPath` is
+  the name `fsdev dev --app` reads from an app package, so every published `--app` package must
+  export it. Counting it would make each such package collide with shift-manager, the first. So a
+  name a contract requires is not a collision. Devtool's own copy, which was not the contract,
+  was renamed `getDevToolAssetPath` in [#4882](https://github.com/fixpoint-labs/flow-state-dev/pull/4882),
+  which raised the rule. `check-collisions.mjs` carries no exemption yet: with one `--app`
+  package it has nothing to exempt.
 - **Ids carry no tracker ids** (BP-006); ownership lives in this spec's table. Ids are
   `<row>.<what>`; *First hour* uses `first-hour.`, the prefix FIX-2461's cells already carry.
 

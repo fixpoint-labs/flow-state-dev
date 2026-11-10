@@ -22,11 +22,11 @@ export type SuspensionTruth = {
   readonly suspensionId: string;
   readonly sessionId: string;
   readonly requestId: string;
-  /** Whether its request is a task's run (source `task`): its stop lists from that task's row. */
+  /** Whether its request is a task's run (source `task`): its stop lists from that task. */
   readonly taskRun: boolean;
 };
 
-/** A task row's open user holds, as the board's own task listing records them. */
+/** A task's open user holds, as the board's own task listing records them. */
 export type TaskTruth = {
   readonly board: string;
   readonly taskId: string;

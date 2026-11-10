@@ -1,0 +1,65 @@
+/**
+ * A turn's files on a harness's run input (FIX-2519). They ride as stored
+ * files' references, never bytes; a harness refuses a type it doesn't take,
+ * naming the file and itself, before its run starts (epic FIX-2516 ER-5); and
+ * it reads the bytes only through the engine's seam, so a context with no
+ * reader is a named failure rather than a turn run without its files.
+ */
+import { describe, expect, it } from "vitest";
+import { toBlobRef } from "@flow-state-dev/core/attachments";
+import {
+  HarnessAttachmentRefusedError,
+  HarnessAttachmentUnavailableError,
+  harnessRunInputSchema,
+  readHarnessAttachments,
+  refuseUnacceptedAttachments,
+} from "@flow-state-dev/core/harness";
+import { HARNESS_ATTACHMENT_SEAM, type HarnessAttachmentSeam } from "@flow-state-dev/core/internal";
+import type { FileContent } from "@flow-state-dev/core/items";
+
+const shot: FileContent = { type: "file", mediaType: "image/png", data: toBlobRef("b_shot0001"), filename: "shot.png" };
+const photo: FileContent = { type: "file", mediaType: "image/heic", data: toBlobRef("b_photo001"), filename: "photo.heic" };
+
+describe("a harness run's files", () => {
+  it("ride on the run input as references, and bytes are refused", () => {
+    expect(harnessRunInputSchema.parse({ prompt: "look", attachments: [shot] })).toEqual({ prompt: "look", attachments: [shot] });
+    expect(harnessRunInputSchema.parse({ prompt: "look" })).toEqual({ prompt: "look" });
+    const inline = { ...shot, data: Buffer.from([1, 2, 3]).toString("base64") };
+    expect(harnessRunInputSchema.safeParse({ prompt: "look", attachments: [inline] }).success).toBe(false);
+  });
+
+  it("are refused, by file and harness, when the harness doesn't take the type", () => {
+    expect(() => refuseUnacceptedAttachments("Codex", ["image/png"], [shot])).not.toThrow();
+    // Types compare as the limits set normalizes them.
+    expect(() => refuseUnacceptedAttachments("Codex", ["image/png"], [{ ...shot, mediaType: "IMAGE/PNG; x=1" }])).not.toThrow();
+    let refusal: unknown;
+    try {
+      refuseUnacceptedAttachments("Codex", ["image/png"], [shot, photo]);
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(HarnessAttachmentRefusedError);
+    expect((refusal as HarnessAttachmentRefusedError).attachment).toBe(photo);
+    expect((refusal as Error).message).toMatch(/^Codex can't take "photo\.heic" \(image\/heic\)\. The turn did not run/);
+  });
+
+  it("are all refused by a harness that declares nothing it takes", () => {
+    expect(() => refuseUnacceptedAttachments("This harness", undefined, [shot])).toThrow(HarnessAttachmentRefusedError);
+    expect(() => refuseUnacceptedAttachments("This harness", undefined, [])).not.toThrow();
+  });
+
+  it("are read through the engine's seam, in order, and not without one", async () => {
+    const asked: string[] = [];
+    const read: HarnessAttachmentSeam = async (file) => {
+      asked.push(file.filename ?? "");
+      return { mediaType: file.mediaType, bytes: new Uint8Array([1]), base64: () => "AQ==" };
+    };
+    const second = { ...shot, filename: "second.png" };
+    const files = await readHarnessAttachments({ [HARNESS_ATTACHMENT_SEAM]: read }, [shot, second]);
+    expect(asked).toEqual(["shot.png", "second.png"]);
+    expect(files.map((file) => file.base64())).toEqual(["AQ==", "AQ=="]);
+
+    expect(await readHarnessAttachments({}, [])).toEqual([]);
+    await expect(readHarnessAttachments({}, [shot])).rejects.toBeInstanceOf(HarnessAttachmentUnavailableError);
+  });
+});

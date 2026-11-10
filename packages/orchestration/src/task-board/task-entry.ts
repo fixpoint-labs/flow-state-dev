@@ -557,7 +557,7 @@ function buildTaskGate(options: {
           abortSignal: () => currentLeaseRenewal()?.signal,
           // Suspension is the one exit neither recorder sees: `SuspensionError`
           // bypasses `.rescue()` and a suspended request never aborts its signal,
-          // so the driver would otherwise renew a parked worker's row forever.
+          // so the driver would otherwise renew a parked worker's entry forever.
           onSettled: (_ctx, outcome) => {
             if (outcome === "suspended") currentLeaseRenewal()?.stop();
           },

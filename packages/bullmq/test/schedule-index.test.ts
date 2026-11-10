@@ -97,7 +97,7 @@ describe("createBullmqScheduleIndex", () => {
    * Cells and keys both carry `:`, so joining them raw let two different rows
    * name one scheduler: the second upsert replaced the first, and removing
    * either stopped both. An app-wide row whose key happens to read like a worker
-   * suffix must stay apart from that worker's row — and keep the id it had
+   * suffix must stay apart from that worker's entry — and keep the id it had
    * before rows carried a cell, key colons and all.
    */
   it("never gives two (cell, key) rows one scheduler id", async () => {

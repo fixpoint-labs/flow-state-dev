@@ -57,6 +57,16 @@ export type {
   HarnessUsageWindow,
 } from "../types/harness";
 
+// FIX-2519.
+/** A turn's files, as a harness reads and refuses them. */
+export {
+  HarnessAttachmentRefusedError,
+  HarnessAttachmentUnavailableError,
+  readHarnessAttachments,
+  refuseUnacceptedAttachments,
+} from "../types/harness-attachments";
+export type { HarnessAttachmentBytes } from "../types/harness-attachments";
+
 /**
  * The run's plan record: the shape every harness writes its to-do list into,
  * the per-run list marker, and the writer for whole-list plans.

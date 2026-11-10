@@ -53,6 +53,17 @@ answer, and FIX-2623 specs it with the session-state refusal added on top.
 | Prove it end to end through a new route and the client | Builds FIX-2623's surface before its spec exists; the claim is about the context |
 | Skip the proof and let FIX-2623 find out | The point of [D2](../../epics/FIX-2618/DECISIONS.md#d2): a refuted premise after approval redraws approved specs |
 
+## Settled
+
+- **A view at user or org scope can run with no session at all: CONFIRMED, past a small change**
+  (2026-11-10, [`poc/no-session-read/`](poc/no-session-read/README.md)). Today's `runRead` with
+  no session id fails inside session birth; with a 61-line opt-in no-session mode in
+  `createExecutionContext` and execution metadata, one read block reads a user and an org
+  collection, a write throws `read_only`, `ctx.session` throws `NoSessionError`, and the session
+  store is never called. Resolved with evidence; don't reopen it without a run that says
+  otherwise. Not covered: generators in a view (their history reaches for the session) and the
+  request record's leftover session id label, both named for FIX-2623.
+
 ## Analysis
 
 2026-11-09 · watermark 2026-11-08 (the epic's analysis) · **Right approach.** Run over the

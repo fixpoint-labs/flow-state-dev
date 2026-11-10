@@ -613,7 +613,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     // unregistered address gets, as it does at the HTTP doors, so a sender
     // cannot probe which it was. Decided here, before a child session is
     // written or a request started: past acceptance the refusal would land in
-    // a child nobody awaits, and a task row handed to it would stay claimed.
+    // a child nobody awaits, and a task handed to it would stay claimed.
     // `createExecutionContext` still refuses the pin as the net under this.
     if (
       targetFlow === undefined ||

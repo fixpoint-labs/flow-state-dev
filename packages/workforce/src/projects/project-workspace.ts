@@ -13,12 +13,12 @@
  * filed from one (its readonly `filingWorkstreamId`, which each hand-over
  * carries down from the session that filed it), works for that workstream:
  *
- *   session's workstreamId → the owner's entry → the project's row at its visibility
+ *   session's workstreamId → the owner's entry → the project's entry at its visibility
  *         → the project's repository, with its files beside the checkout
  *         → or, with no repository, the project's files alone
  *
  * The workstream's owner is the session's user, so the entry read is always
- * theirs. A private project's row and files are read in the owner's own user
+ * theirs. A private project's entry and files are read in the owner's own user
  * scope, a shared project's in the organization's.
  *
  * **2. From the project the task was filed from.** A run in a task session a
@@ -93,7 +93,7 @@ import {
   type ProjectVisibility
 } from "./collections";
 import { repositoryProblem } from "./repository-value";
-import { collectionAt, projectFilesAccessor, PROJECT_FILE_RESOURCES, PROJECT_ROW_RESOURCES } from "./project-address";
+import { collectionAt, projectFilesAccessor, PROJECT_FILE_RESOURCES, PROJECT_ENTRY_RESOURCES } from "./project-address";
 import { notHeld, runProjectOf } from "./run-project";
 import { WORKSTREAM_RESOURCES } from "./workstream-collections";
 
@@ -102,7 +102,7 @@ export type { ProjectWorkspaceRefusalReason } from "./run-project";
 /**
  * The collections {@link projectWorkspace} reads: the workstream entries, the
  * projects and the project files, at both
- * visibilities, and the conversation ledger a task's row is read from. Pass it on the `uses` of the block that asks the source (for
+ * visibilities, and the conversation ledger a task is read from. Pass it on the `uses` of the block that asks the source (for
  * harness-manager, `harnessManager({ uses: [projectWorkspaceCapability] })`).
  *
  * The same declarations the project blocks install, so it meets them in one
@@ -111,7 +111,7 @@ export type { ProjectWorkspaceRefusalReason } from "./run-project";
 export const projectWorkspaceCapability = defineCapability({
   name: "project-workspace",
   resources: {
-    ...PROJECT_ROW_RESOURCES,
+    ...PROJECT_ENTRY_RESOURCES,
     ...PROJECT_FILE_RESOURCES,
     ...WORKSTREAM_RESOURCES,
     ...conversationLedgerResources
@@ -156,7 +156,7 @@ export interface ProjectWorkspaceOptions {
  * @param options `checkouts`: see {@link ProjectCheckout}.
  * @returns A `RunSource` to hand `localWorkspaceHost({ source })`.
  * @throws When called, for a checkout that isn't an absolute path, a remote
- *   a project's row couldn't store, or a project (organization, tenant and
+ *   a project's entry couldn't store, or a project (organization, tenant and
  *   id) named twice, naming the entry. When asked, if the block asking does
  *   not hold {@link projectWorkspaceCapability}.
  * @example

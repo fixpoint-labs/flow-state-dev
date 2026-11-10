@@ -54,7 +54,7 @@ export const LAB_DB_PATH = ".fsdev/data/multi-worker-collab.db";
 /** The organization every lab session runs in: the lab configures no resolver. */
 export const LAB_ORG_ID = DEFAULT_ORG_ID;
 
-/** The flow the inventory's worker rows are written from: the lab's own, carrying the writer. */
+/** The flow the inventory's worker entries are written from: the lab's own, carrying the writer. */
 export const INVENTORY_WRITER_FLOW = "inventory-writer";
 
 /**
@@ -203,7 +203,7 @@ export function hireLab(options: HireLabOptions): HiredLab {
     [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
   };
   const copies = hireWorkforce(installation);
-  // The inventory's worker rows take caller-supplied rows, so the writer is internal only.
+  // The inventory's worker entries take caller-supplied rows, so the writer is internal only.
   const writer = defineFlow({
     kind: INVENTORY_WRITER_FLOW,
     internal: { actions: { ...inventoryWriterActions() } },
@@ -222,7 +222,7 @@ export interface LabServer {
 /**
  * The documented boot, in-process, after the server is built: open the
  * organization's inventory under the organization the lab's sessions run in,
- * so each worker's row names its door.
+ * so each worker's entry names its door.
  *
  * @throws Naming every problem `openInventory` reported. A half-registered
  *   organization is not served, because a check graded on half of one proves

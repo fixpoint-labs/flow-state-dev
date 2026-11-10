@@ -34,7 +34,8 @@ const send = handler({
 
 const chat = defineFlow({
   kind: "chat",
-  actions: { send: { inputSchema: input, block: send } },
+  // Files ride on the user line, so the action that takes them writes one.
+  actions: { send: { inputSchema: input, block: send, userMessage: (i: { message: string }) => i.message } },
   session: { stateSchema: z.object({ files: z.array(file).default([]) }), client: { expose: ["files"] } },
 } as never)();
 

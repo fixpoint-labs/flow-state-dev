@@ -6,7 +6,7 @@
  * Every ask the manager makes comes here: a run's own question (its marker),
  * the judge's *ask*, and held work that does not match its record. Each one is
  * a question, so each holds the run's task on it through the board's one ask
- * write (`askMidway`): the question is kept on the task's row, the
+ * write (`askMidway`): the question is kept on the task, the
  * row's lease is dropped, and the turn ends without settling. The Inbox lists
  * the held task as a question, and its answer, from the Inbox or a line typed
  * in the run's session, owes the task one more turn on the same attempt. That

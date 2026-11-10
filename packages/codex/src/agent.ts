@@ -30,7 +30,9 @@ import {
   formatRunDuration,
   harnessRunInputSchema,
   observedPullRequestsCollection,
+  readHarnessAttachments,
   recordPullRequests as startPullRequestRecorder,
+  refuseUnacceptedAttachments,
   reportHarnessActivity,
   reportHarnessSpend,
 } from "@flow-state-dev/core/harness";
@@ -50,6 +52,7 @@ import {
 import { createEmitState, emitTranslatedEvent, finalizeOpenItems } from "./emit";
 import { readableFailure, translateCodexEvent } from "./translate";
 import { estimateCodexCost } from "./cost";
+import { CODEX_ACCEPTS, removeTurnImages, writeTurnImages, type TurnImages } from "./turn-images";
 import {
   CodexAgentAbortedError,
   CodexAgentConfigError,
@@ -67,6 +70,7 @@ import {
   type CodexThreadEvent,
   type CodexThreadLike,
   type CodexThreadOptions,
+  type CodexTurnInput,
   type ResolveCodexClient,
 } from "./types";
 
@@ -271,7 +275,9 @@ export function codexAgent(options: CodexAgentOptions = {}) {
   // not this block's to know.
   const billing: HarnessBilling | null = clientOptions?.apiKey ? "api-key" : null;
 
-  return handler({
+  // Declares `accepts` (core's harness contract): the image types a turn may
+  // carry, read by a host before it starts the turn.
+  return Object.assign(handler({
     name,
     description:
       "Run OpenAI's Codex agent through the Codex SDK, mirroring its streamed items into FSD items.",
@@ -291,6 +297,11 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       // A deadline that has already fired must not spawn a process it will
       // immediately have to kill.
       if (ctx.signal?.aborted) throw new CodexAgentAbortedError(null, ctx.signal.reason);
+      // A file Codex can't take refuses the run before anything starts, and
+      // every file is read before the thread is: a file that can't be read
+      // stops the turn rather than running it without the file.
+      refuseUnacceptedAttachments("Codex", CODEX_ACCEPTS, input.attachments);
+      const files = await readHarnessAttachments(ctx, input.attachments);
       if (recordPullRequests) startPullRequestRecorder(ctx);
 
       // Both resolved once per invocation, before anything is spawned, so the
@@ -355,9 +366,19 @@ export function codexAgent(options: CodexAgentOptions = {}) {
           billing,
         });
       reportSpend();
+      // The turn's images, in a folder of the turn's own outside the checkout,
+      // removed in the `finally` below however the run ends (D1).
+      let images: TurnImages | undefined;
       try {
         try {
-          const stream = await runStreamed(thread, prompt, ctx.signal);
+          if (files.length > 0) images = await writeTurnImages(files);
+          const stream = await runStreamed(
+            thread,
+            images === undefined
+              ? prompt
+              : [{ type: "text", text: prompt }, ...images.paths.map((path) => ({ type: "local_image" as const, path }))],
+            ctx.signal,
+          );
           const iterator = stream[Symbol.asyncIterator]();
           // The block's own signal, raced against the stream rather than merely
           // forwarded into it. The SDK's abort rejects only once the CLI's stdout
@@ -484,9 +505,10 @@ export function codexAgent(options: CodexAgentOptions = {}) {
         return handle;
       } finally {
         reportSpend();
+        if (images !== undefined) await removeTurnImages(images.folder);
       }
     },
-  });
+  }), { accepts: CODEX_ACCEPTS });
 }
 
 /**
@@ -557,7 +579,7 @@ type CodexAgentError = CodexAgentAbortedError | CodexAgentRunError | CodexSdkNot
  */
 async function runStreamed(
   thread: CodexThreadLike,
-  prompt: string,
+  prompt: CodexTurnInput,
   signal: AbortSignal | undefined,
 ): Promise<AsyncIterable<CodexThreadEvent>> {
   const { events } = await thread.runStreamed(

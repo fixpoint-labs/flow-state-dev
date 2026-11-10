@@ -177,7 +177,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const selected = inView.find((s) => s.id === selectedId);
   const pane = selected ? modeOfWorker(selected.worker)?.pane : undefined;
   const paneCollapsed = panels.paneCollapsed && pane !== undefined;
-  // The open session's task rows, read once for the main thread and its pane (FIX-2399 E1). Each read
+  // The open session's tasks, read once for the main thread and its pane (FIX-2399 E1). Each read
   // carries the session it was read for, so a switch never hands one session the last one's rows.
   // `stale` while the last read failed: the rows are the last ones read, and a task's quiet can't be told from them.
   const read = useWatch(

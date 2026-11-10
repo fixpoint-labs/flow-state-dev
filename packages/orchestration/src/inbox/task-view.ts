@@ -27,7 +27,7 @@ import type { InboxHold, InboxTaskInput } from "./types";
  */
 export type TaskViewStatus = "queued" | "held" | "running" | "waiting" | "failed" | "done" | "cancelled";
 
-/** A task row as the view reads it: an Inbox row plus what a board publishes beside it. A `Task` on its board fits. */
+/** A task as the view reads it: an Inbox row plus what a board publishes beside it. A `Task` on its board fits. */
 export type TaskViewInput = InboxTaskInput & {
   readonly error?: string | null;
   readonly statusNote?: string | null;
@@ -38,7 +38,7 @@ export type TaskViewInput = InboxTaskInput & {
   readonly completedAt?: number | null;
 };
 
-/** One task row, as a person sees it. */
+/** One task, as a person sees it. */
 export type TaskView<TDetail = unknown> = {
   readonly board: string;
   readonly id: string;
@@ -104,7 +104,7 @@ function spendOf(row: TaskViewInput, status: string): TaskSpendView | null {
 }
 
 /**
- * A task row as a person sees it: one display state, what it waits on the
+ * A task as a person sees it: one display state, what it waits on the
  * user for, its spend, its harness and its times.
  *
  * @param holds The row's holds from its Inbox item (`inboxItems`), when the

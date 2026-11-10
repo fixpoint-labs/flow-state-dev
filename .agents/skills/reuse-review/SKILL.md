@@ -177,7 +177,7 @@ searched against `main` only, so both passed as **genuinely new**. A third PR ad
 they wouldn't collide: a reconciler clause for a task listed by both, and a CI sweep rule.
 
 **Verdict that should have been:** **extend** one hold type that both write. The amendment
-is one `holds[]` list on the task row (`specs/epics/FIX-2058/DECISIONS.md` → ER-8): the
+is one `holds[]` list on the task (`specs/epics/FIX-2058/DECISIONS.md` → ER-8): the
 engine's suspensions are mirrored there as one `source`, and a new hold kind is a new value.
 A spec that adds a second "this task waits" field, route or release path beside `holds[]`
 is **extend `holds[]`**.

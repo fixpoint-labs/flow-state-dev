@@ -1,5 +1,5 @@
 /**
- * A task row filed with no title reads its goal as its title, so a Brief that
+ * A task filed with no title reads its goal as its title, so a Brief that
  * printed both said the same sentence twice. It shows a title only when the
  * row has one of its own.
  */

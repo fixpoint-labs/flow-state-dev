@@ -20,7 +20,7 @@ The CLI gives you a terminal interface for running flows and blocks without a se
 Execute a flow action with NDJSON streaming to stdout.
 
 ```bash
-fsdev run hello-chat chat -i '{"message": "Hello!"}'
+pnpm fsdev run hello-chat chat -i '{"message": "Hello!"}'
 ```
 
 **Reading the output:** Each line is a JSON object. Event types include:
@@ -35,8 +35,8 @@ You see the same events the client receives over SSE. Useful for verifying that 
 **Session reuse:** Pass `--session` to persist state between invocations.
 
 ```bash
-fsdev run hello-chat chat -i '{"message": "First"}' --session my-session
-fsdev run hello-chat chat -i '{"message": "Second"}' --session my-session
+pnpm fsdev run hello-chat chat -i '{"message": "First"}' --session my-session
+pnpm fsdev run hello-chat chat -i '{"message": "Second"}' --session my-session
 ```
 
 The second run continues the conversation. State (e.g. message count) accumulates. The CLI uses the same filesystem stores as the server by default, so sessions persist across terminal sessions. Helps test multi-turn behavior without a browser. For a live back-and-forth instead of one action per invocation, use `fsdev chat` (see [Interactive chat](/docs/cli/interactive-chat)).
@@ -44,7 +44,7 @@ The second run continues the conversation. State (e.g. message count) accumulate
 **Input from file:** Use `-f` or `--input-file` for larger payloads:
 
 ```bash
-fsdev run my-flow action -f ./test-inputs/scenario.json --session test-session
+pnpm fsdev run my-flow action -f ./test-inputs/scenario.json --session test-session
 ```
 
 ### `fsdev block <file>`
@@ -52,7 +52,7 @@ fsdev run my-flow action -f ./test-inputs/scenario.json --session test-session
 Run a single block in isolation. No flow. No session. Just the block and its input.
 
 ```bash
-fsdev block ./src/flows/hello-chat/blocks/counter.ts -i '{}'
+pnpm fsdev block ./src/flows/hello-chat/blocks/counter.ts -i '{}'
 ```
 
 **Why use it:** Test a handler or generator without wiring up a full flow. Faster feedback. Easier to pinpoint failures. The block runs in the testing harness (in-memory stores, optional mock generators).
@@ -64,8 +64,8 @@ fsdev block ./src/flows/hello-chat/blocks/counter.ts -i '{}'
 Swap models without changing code:
 
 ```bash
-fsdev run hello-chat chat -i '{"message": "Hi"}' -m openai/gpt-6-luna
-fsdev block ./src/blocks/summarizer.ts -i '{"text": "..."}' -m anthropic/claude-haiku-5-5
+pnpm fsdev run hello-chat chat -i '{"message": "Hi"}' -m openai/gpt-6-luna
+pnpm fsdev block ./src/blocks/summarizer.ts -i '{"text": "..."}' -m anthropic/claude-haiku-5-5
 ```
 
 Handy for forcing a cheaper model during development, and for comparing how two models behave on the same input.
@@ -77,7 +77,7 @@ The override reaches every generator that runs in the command's own process, and
 Start with specific state for debugging:
 
 ```bash
-fsdev run support-triage triageTicket -i '{"ticketId": "T1"}' \
+pnpm fsdev run support-triage triageTicket -i '{"ticketId": "T1"}' \
   --seed-session '{"openTicketCount": 3}'
 ```
 

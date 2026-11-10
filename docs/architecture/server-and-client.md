@@ -204,7 +204,45 @@ flow authenticates its callers, so the uploader is the user its sends resolve.
 ```ts
 const file = await fsd.flow("hello-chat").upload({ data: blob, filename: "plan.pdf" });
 // file.data === "fsd-blob:<id>"
+await fsd.flow("hello-chat").send("chat", { message: text }, { sessionId, attachments: [file] });
+// React: sendAction("chat", { message: text }, { userMessage: text, attachments: [file] })
 ```
+
+The action route's parse step checks the files once, for every flow, before it
+claims them: the action must have a `userMessage`, since files go on the
+person's line (`attachments_not_accepted` otherwise), each file must name the
+type it was uploaded as, and the message must be within
+`ATTACHMENT_LIMITS` (`attachmentLimitRefusal` in
+`@flow-state-dev/contracts/attachments`: `attachment_limit`,
+`attachment_type_refused`). The run then writes a `file` part per file after
+the text on the user line, in reference form, records them on the request, and
+shows them to blocks as `ctx.request.attachments`; a flow's input schema never
+sees them.
+
+The session's history keeps the files as references
+(`engine/src/context/history-files.ts`): the turns are chosen on references,
+then, counting back from the newest line, files up to one message's limits are
+kept and older ones named. Only two places read bytes, and both read them at
+the moment they hand them on. The first is the model call: the run's
+`ModelResolver.prepareMessages`, which a generator applies to every call
+(`core/src/models/prepared-model.ts`), reads each file through
+`resolveAttachment` and sends it inline as an image or file part. The second
+is a coding harness's turn. `HarnessRunInput.attachments` carries the turn's
+files as references only, and its schema refuses bytes. The engine fills
+`HARNESS_ATTACHMENT_SEAM` on the block's context
+(`engine/src/context/createExecutionContext.ts`) with the same read-once
+resolver, bound to the request's session and person. A harness reads
+through `readHarnessAttachments`, so it can read only that session's files.
+Before it starts anything, a harness refuses a turn whose file is a type its
+`accepts` doesn't list, or whose file can't be read. A server with no blob
+store has no reader, so every turn with files is refused there. Everything a
+run records of its conversation (a generator's trace of its history, a tool
+loop's prelude, a harness turn's input) therefore holds references, never
+bytes. An older file is
+named on its turn as `[image: shot.png, not re-sent]`, and one
+that can no longer be read as `no longer available`; a reference never reaches
+a provider. Re-sent files are billed as input on every call; prompt caching is
+what keeps that cheap.
 
 ### Sessions
 

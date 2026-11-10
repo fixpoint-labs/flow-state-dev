@@ -32,7 +32,7 @@ import {
 import { routineMakerSchema } from "../routines/listed-routine";
 
 /** The most terms a listed screen carries. */
-export const MAX_SCREEN_TERMS = 20;
+const MAX_SCREEN_TERMS = 20;
 
 const terms = z.array(z.string().min(1).max(100)).min(1).max(MAX_SCREEN_TERMS);
 
@@ -54,8 +54,6 @@ export const listedScreenSchema = z.discriminatedUnion("screen", [
   z.object({ screen: z.literal("custom"), name: z.string().min(1).max(100) }).strict(),
   z.object({ screen: z.literal("interest") }).strict()
 ]);
-
-export type ListedScreen = z.infer<typeof listedScreenSchema>;
 
 /** The five screen kinds, in the order the chain runs them. **Pinned**. */
 export const SCREEN_KINDS = ["sender", "own", "labels", "words", "allow"] as const;

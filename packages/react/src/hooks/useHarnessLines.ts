@@ -14,6 +14,10 @@
  * before it has started. It follows each with `followRequest` once the turn
  * before it has ended, and returns the lines still waiting, for a page to
  * mark. A view opened while turns wait follows the oldest running one first.
+ *
+ * A line can carry the person's files (`send(prompt, { attachments })`). Such
+ * a line never steers: steering is text, so it goes as the next turn and
+ * waits like any other, files and all.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -23,6 +27,7 @@ import {
   type HarnessLineOutcome,
   type HarnessLineSender
 } from "@flow-state-dev/client";
+import type { FileContent } from "@flow-state-dev/core/items";
 import { useClient } from "../internal/useClient";
 import type { SessionView } from "./useSession";
 
@@ -41,6 +46,12 @@ export type UseHarnessLinesOptions<TOutcome extends string = HarnessLineOutcome>
   sendOne?: (prompt: string, running: boolean, sender: HarnessLineSender) => Promise<TOutcome>;
 };
 
+/** Options for one line, {@link HarnessLinesView.send}'s second argument. */
+export type HarnessLineSendOptions = {
+  /** The line's files, each as `upload` returned it, in the order attached. */
+  attachments?: FileContent[];
+};
+
 /** A line waiting for the running turn, in {@link HarnessLinesView.waiting}. */
 export type HarnessWaitingLine = {
   /** Stable while the line waits: a key for a list. */
@@ -54,9 +65,11 @@ export type HarnessLinesView<TOutcome extends string = HarnessLineOutcome> = {
   /**
    * Send one line, after every line sent before it has its answer. Resolves
    * with where it went; a line that waits resolves once it is listed in
-   * `waiting`, and rejects if its turn could not be sent.
+   * `waiting`, and rejects if its turn could not be sent. `attachments` are
+   * the line's files, as `upload` returned them; a line with files never
+   * steers, so it runs as a turn of its own.
    */
-  send: (prompt: string) => Promise<TOutcome>;
+  send: (prompt: string, options?: HarnessLineSendOptions) => Promise<TOutcome>;
   /**
    * The lines waiting for the running turn, oldest first, until each one's
    * turn is followed. At most one is on the server; the rest wait in the page
@@ -71,6 +84,8 @@ type QueuedLine = {
   key: string;
   text?: string;
   input?: unknown;
+  /** Its files, sent beside its input. */
+  attachments?: FileContent[];
   requestId?: string;
   /** Its turn's send is out. */
   sending?: boolean;
@@ -158,7 +173,7 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
       if (sessionId === undefined) return;
       line.sending = true;
       try {
-        const sent = await client.flow(flowKind).send(turnAction, line.input, { sessionId });
+        const sent = await client.flow(flowKind).send(turnAction, line.input, { sessionId, ...filesOf(line.attachments) });
         line.requestId = sent.id;
       } catch (error) {
         queue.current = queue.current.filter((other) => other !== line);
@@ -264,7 +279,7 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
       void (async () => {
         for (const line of held) {
           try {
-            await client.flow(flowKind).send(turnAction, line.input, { sessionId: left });
+            await client.flow(flowKind).send(turnAction, line.input, { sessionId: left, ...filesOf(line.attachments) });
           } catch (error) {
             console.error("[useHarnessLines] a waiting line could not be sent", error);
           }
@@ -303,10 +318,13 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
   }, [sessionId, isLoading, runningTurns, followRequest, publish]);
 
   const send = useCallback(
-    (prompt: string): Promise<TOutcome> => {
+    (prompt: string, sendOptions?: HarnessLineSendOptions): Promise<TOutcome> => {
       if (sessionId === undefined) return Promise.reject(new Error("useHarnessLines needs a session id"));
+      const files = filesOf(sendOptions?.attachments);
       const sender: HarnessLineSender = {
         steer: async (text) => {
+          // Steering is text: a line with files goes as the next turn.
+          if (files.attachments !== undefined) return { taken: false, live: false };
           // Read when the line's turn comes, after the lines before it.
           if (queue.current.length > 0) return { taken: false, live: false };
           return steerRunningTurn(client, { flowKind, sessionId, prompt: text, action: steerAction });
@@ -317,14 +335,14 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
           // the queue holds that session's lines now, so the line goes straight
           // to its own session's server, where it waits under `defer`.
           if (queueSession.current !== sessionId) {
-            await client.flow(flowKind).send(turnAction, input, { sessionId });
+            await client.flow(flowKind).send(turnAction, input, { sessionId, ...files });
             return;
           }
           if (!streaming.current && queue.current.length === 0) {
-            await sendAction(turnAction, input, { userMessage: text });
+            await sendAction(turnAction, input, { userMessage: text, ...files });
             return;
           }
-          const line: QueuedLine = { key: `line-${++keys.current}`, text, input };
+          const line: QueuedLine = { key: `line-${++keys.current}`, text, input, ...files };
           queue.current = [...queue.current, line];
           publish();
           // Only the oldest line is ever sent. One before this waits on the server or
@@ -344,4 +362,9 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
   );
 
   return { send, waiting };
+}
+
+/** `{ attachments }` when there are any, else nothing: an empty list is sent as none. */
+function filesOf(attachments: FileContent[] | undefined): { attachments?: FileContent[] } {
+  return attachments !== undefined && attachments.length > 0 ? { attachments } : {};
 }

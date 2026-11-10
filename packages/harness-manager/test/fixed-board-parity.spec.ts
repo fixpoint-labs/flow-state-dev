@@ -8,7 +8,8 @@
  * stood before boards could be read from a claim; this compares against it
  * rather than re-deriving, which would only prove the code agrees with itself.
  * It was rewritten once, deliberately, when the organization became part of a
- * run's checkout and branch; a run recorded before that keeps its older place
+ * run's checkout and branch, and again when a run's branch and folder became
+ * its short name; a run recorded before either keeps its older place
  * (`org-place.spec.ts`).
  */
 import { afterAll, describe, expect, it } from "vitest";

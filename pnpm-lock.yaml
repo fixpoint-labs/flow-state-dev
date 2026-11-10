@@ -1275,6 +1275,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../workspace
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -1346,6 +1349,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../workspace
       zod:
         specifier: ^3.25.0
         version: 3.25.76
@@ -1820,6 +1826,9 @@ importers:
       '@flow-state-dev/fsdev':
         specifier: workspace:*
         version: link:../fsdev
+      nanoid:
+        specifier: ^5.1.6
+        version: 5.1.6
     devDependencies:
       '@cursor/sdk':
         specifier: 1.0.40

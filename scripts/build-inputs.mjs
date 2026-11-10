@@ -34,7 +34,8 @@ const hashOf = (file) => createHash("sha256").update(readFileSync(file)).digest(
  * the record still holds when the build is copied elsewhere in the checkout.
  *
  * The Vite config and this file are recorded too: they shape the output but
- * are loaded outside the module graph. A source file edited while the build
+ * are loaded outside the module graph. So is every file the build read
+ * outside it, such as a stylesheet pulled in by a CSS `@import`. A source file edited while the build
  * ran may be in the bundle as it was, so then no record is written and the
  * build counts as stale.
  *
@@ -57,12 +58,14 @@ export function recordBuildInputs({ repoRoot }) {
     buildStart() {
       startedAt = Date.now();
     },
-    /** @this {{ getModuleIds(): IterableIterator<string> }} */
+    /** @this {{ getModuleIds(): IterableIterator<string>, getWatchFiles(): string[] }} */
     writeBundle() {
       const record = join(outDir, BUILD_INPUTS_FILE);
       /** @type {Record<string, string>} */
       const inputs = {};
-      for (const id of [...this.getModuleIds(), ...configFiles]) {
+      // Watch files add what the build read without making it a module, such
+      // as a stylesheet a CSS `@import` inlines.
+      for (const id of new Set([...this.getModuleIds(), ...this.getWatchFiles(), ...configFiles])) {
         const file = id.split("?")[0];
         if (!isAbsolute(file) || file.includes(`${sep}node_modules${sep}`) || !existsSync(file)) continue;
         const path = relative(repoRoot, file);
@@ -87,14 +90,44 @@ export function recordBuildInputs({ repoRoot }) {
  * @returns {string | undefined}
  */
 export function staleBuildInputs(buildDir, repoRoot) {
-  const record = join(buildDir, BUILD_INPUTS_FILE);
-  if (!existsSync(record)) return `it has no ${BUILD_INPUTS_FILE}, so nothing says which source it was built from`;
-  /** @type {{ inputs: Record<string, string> }} */
-  const { inputs } = JSON.parse(readFileSync(record, "utf8"));
+  const inputs = readInputs(buildDir);
+  if (inputs === undefined) return `it has no ${BUILD_INPUTS_FILE}, so nothing says which source it was built from`;
   for (const [path, hash] of Object.entries(inputs)) {
     const file = join(repoRoot, path);
     if (!existsSync(file)) return `${path} is gone since it was built`;
     if (hashOf(file) !== hash) return `${path} changed since it was built`;
   }
   return undefined;
+}
+
+/**
+ * The absolute paths of the files the build in `buildDir` was made from, or
+ * `undefined` when it has no readable record.
+ *
+ * @param {string} buildDir
+ * @param {string} repoRoot
+ * @returns {string[] | undefined}
+ */
+export function recordedInputPaths(buildDir, repoRoot) {
+  try {
+    const inputs = readInputs(buildDir);
+    return inputs === undefined ? undefined : Object.keys(inputs).map((path) => join(repoRoot, path));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The `inputs` map of `buildDir`'s record (repo-relative path to hash), or
+ * `undefined` when there is no record. Throws on a record that isn't JSON.
+ *
+ * @param {string} buildDir
+ * @returns {Record<string, string> | undefined}
+ */
+function readInputs(buildDir) {
+  const record = join(buildDir, BUILD_INPUTS_FILE);
+  if (!existsSync(record)) return undefined;
+  /** @type {{ inputs: Record<string, string> }} */
+  const { inputs } = JSON.parse(readFileSync(record, "utf8"));
+  return inputs;
 }

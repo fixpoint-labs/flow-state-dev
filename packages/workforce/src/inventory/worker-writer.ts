@@ -1,6 +1,6 @@
 /**
  * The worker inventory's writer: the one action `openInventory` dispatches to
- * write the org's worker rows, built for a flow to install.
+ * write the org's worker entries, built for a flow to install.
  *
  * A worker has no session of its own, and a resource collection can only be
  * written from inside a running flow, so the rows are written by an action on
@@ -37,7 +37,7 @@ const registerWorkersInputSchema = z
 export const inventoryWorkersRegisteredSchema = z.object({ written: z.number() });
 
 /**
- * Write one worker row from a boot. A worker's row is its standard worker's, the
+ * Write one worker entry from a boot. A worker's entry is its standard worker's, the
  * same on every process, so a later boot's write replaces an earlier one's.
  */
 async function publishBootWorkerRow(workers: ResourceCollectionRef, row: WorkerInventoryResourceState): Promise<void> {
@@ -45,7 +45,7 @@ async function publishBootWorkerRow(workers: ResourceCollectionRef, row: WorkerI
 }
 
 /**
- * The block that writes the worker rows, keyed by its action name.
+ * The block that writes the worker entries, keyed by its action name.
  *
  * It refuses an org-less request by name. The inventory is org-scoped storage,
  * so without an org there is nothing to write in — and the resource registry
@@ -56,7 +56,7 @@ async function publishBootWorkerRow(workers: ResourceCollectionRef, row: WorkerI
  *   declares the collection it writes, so installing the entry installs the
  *   collection too. **Spread it into `internal.actions`, never `actions`**: its
  *   whole input is caller-supplied row data with nothing to check it against,
- *   so a public caller could write fabricated worker rows.
+ *   so a public caller could write fabricated worker entries.
  *
  * @example
  *   defineFlow({

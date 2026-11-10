@@ -106,7 +106,9 @@ function run() {
   }
   const parseMs = performance.now() - t0;
   const prose = [];
-  for (const p of [...code, ...docs]) {
+  // Every in-scope text file, as the guard reads the phrases: code, pages, and figures, YAML and JSON too.
+  const texts = tree.paths.filter((p) => areaOf(p)?.scope && tree.files.has(p));
+  for (const p of texts) {
     tree.files.get(p).split("\n").forEach((l, i) => {
       if (PROSE.test(l)) prose.push({ p, line: i + 1, text: l.trim().slice(0, 140), published: PUBLISHED.test(p), kept: kept(p) });
     });
@@ -125,7 +127,7 @@ function run() {
   console.log(`row-word declarations (local/parameter/property): outside kept paths ${decl.other} in ${decl.files.size} files · in kept paths ${decl.kept} in ${decl.keptFiles.size} files`);
   console.log(`  by kind, outside kept paths: ${Object.entries(byKind).map(([k, v]) => `${k} ${v}`).join(" · ")}`);
   console.log(`  by package:${Object.entries(byPkg).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`).join(" · ")}`);
-  console.log(`prose phrase lines outside kept paths: ${live.length} in ${files(live)} files (published ${live.filter((x) => x.published).length}, code ${live.filter((x) => CODE.test(x.p)).length}, other docs ${live.filter((x) => !x.published && DOC.test(x.p)).length}) · in kept paths ${prose.length - live.length}`);
+  console.log(`prose phrase lines outside kept paths: ${live.length} in ${files(live)} files (published ${live.filter((x) => x.published).length}, code ${live.filter((x) => CODE.test(x.p)).length}, other docs ${live.filter((x) => !x.published && DOC.test(x.p)).length}, other text ${live.filter((x) => !x.published && !CODE.test(x.p) && !DOC.test(x.p)).length}) · in kept paths ${prose.length - live.length}`);
   if (unscoped.length > 0 || parsed !== code.length) {
     console.error("TOTALITY FAIL");
     process.exitCode = 1;

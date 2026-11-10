@@ -75,6 +75,36 @@ export function attachmentKind(mediaType: string): "image" | "document" | undefi
   return undefined;
 }
 
+/** Why one message's attachments are over the limits set, and the first file that put them over. */
+export type AttachmentLimitRefusal =
+  | { reason: "type"; index: number }
+  | { reason: "too-many-images" | "too-many-documents"; index: number; limit: number };
+
+/**
+ * Check one message's attachments against {@link ATTACHMENT_LIMITS}: every
+ * file's type is on the list, and the images and documents are each within
+ * their count. `undefined` when the message may be sent. The server refuses by
+ * this check before any block runs; a composer can run the same check before
+ * send.
+ */
+export function attachmentLimitRefusal(
+  attachments: ReadonlyArray<{ mediaType: string }>
+): AttachmentLimitRefusal | undefined {
+  let images = 0;
+  let documents = 0;
+  for (const [index, attachment] of attachments.entries()) {
+    const kind = attachmentKind(attachment.mediaType);
+    if (kind === undefined) return { reason: "type", index };
+    if (kind === "image" && ++images > ATTACHMENT_LIMITS.imagesPerMessage) {
+      return { reason: "too-many-images", index, limit: ATTACHMENT_LIMITS.imagesPerMessage };
+    }
+    if (kind === "document" && ++documents > ATTACHMENT_LIMITS.documentsPerMessage) {
+      return { reason: "too-many-documents", index, limit: ATTACHMENT_LIMITS.documentsPerMessage };
+    }
+  }
+  return undefined;
+}
+
 /** True when an attachment may have `mediaType`. HEIC, and anything not listed, is refused. */
 export function isAttachmentMediaType(mediaType: string): mediaType is AttachmentMediaType {
   return attachmentKind(mediaType) !== undefined;

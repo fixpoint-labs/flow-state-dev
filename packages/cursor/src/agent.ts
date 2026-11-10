@@ -48,12 +48,15 @@ import {
   observedPlanCollection,
   observedPlanListCollection,
   observedPullRequestsCollection,
+  readHarnessAttachments,
   recordPullRequests as startPullRequestRecorder,
+  refuseUnacceptedAttachments,
   replacePlanList,
   reportHarnessActivity,
   type PlanListCollection,
   reportHarnessSpend,
 } from "@flow-state-dev/core/harness";
+import { ATTACHMENT_IMAGE_TYPES, type AttachmentAccepts } from "@flow-state-dev/core/attachments";
 import { randomUUID } from "node:crypto";
 import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import type {
@@ -122,6 +125,10 @@ function selectionOf(choice: ModelChoice | null | undefined): CursorModelSelecti
 
 /** The name Cursor's spend is kept under. */
 const CURSOR_HARNESS = "cursor";
+
+// FIX-2519.
+/** What Cursor takes as a turn's files: images, sent as base64 with the prompt. */
+const CURSOR_ACCEPTS: AttachmentAccepts = ATTACHMENT_IMAGE_TYPES;
 
 /** Options for {@link cursorAgent}. */
 export interface CursorAgentOptions {
@@ -460,7 +467,9 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         })
       : (options.resolveCursorClient ?? createDefaultResolveCursorClient());
 
-  return handler({
+  // Declares `accepts` (core's harness contract): the image types a turn may
+  // carry, read by a host before it starts the turn.
+  return Object.assign(handler({
     name,
     description:
       "Run Cursor's coding agent through the Cursor SDK, mirroring its streamed items into FSD items.",
@@ -488,6 +497,15 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       // A deadline that has already fired must not start a runtime it will
       // immediately have to kill.
       if (ctx.signal?.aborted) throw new CursorAgentAbortedError(null, ctx.signal.reason);
+      // A file Cursor can't take refuses the run before a runtime starts, and
+      // every file is read before one does: a file that can't be read stops
+      // the turn rather than running it without the file.
+      refuseUnacceptedAttachments("Cursor", CURSOR_ACCEPTS, input.attachments);
+      const files = await readHarnessAttachments(ctx, input.attachments);
+      const message =
+        files.length === 0
+          ? prompt
+          : { text: prompt, images: files.map((file) => ({ data: file.base64(), mimeType: file.mediaType })) };
       if (recordPullRequests) startPullRequestRecorder(ctx);
 
       const emitState = createEmitState();
@@ -522,7 +540,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // `onSession` all await before this, and a signal that is already
         // aborted never fires `abort` again.
         if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId, ctx.signal.reason);
-        const run = await agent.send(prompt, sendOptions);
+        const run = await agent.send(message, sendOptions);
         // Reported from here on as the run goes (FIX-2288), under one id for
         // the run: its configured model and no tokens at once, then each
         // finished turn's running total, then the settled total.
@@ -577,7 +595,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         closeQuietly(agent);
       }
     },
-  });
+  }), { accepts: CURSOR_ACCEPTS });
 }
 
 // FIX-2145, FIX-2288.

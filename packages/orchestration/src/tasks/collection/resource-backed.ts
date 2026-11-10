@@ -303,7 +303,7 @@ function sharedTaskSet(
 
 // FIX-2080 D2.
 /**
- * Add the stored task rows `mirror` doesn't hold yet, for a
+ * Add the stored tasks `mirror` doesn't hold yet, for a
  * touch's sweep: rows another process filed after this mirror was hydrated.
  * Never replaces or retires an entry; construction's {@link reconcileTaskSet}
  * owns that, for the reasons it lists.

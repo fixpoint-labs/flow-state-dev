@@ -166,7 +166,7 @@ export const PROJECTS_SESSION = "devforce-projects";
  */
 const SESSION_BOARD_COLLECTION = "tasks";
 
-/** The flow the inventory's worker rows are written from: the lab's own, carrying the writer. */
+/** The flow the inventory's worker entries are written from: the lab's own, carrying the writer. */
 export const INVENTORY_WRITER_FLOW = "inventory-writer";
 
 /**
@@ -1132,7 +1132,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     installation.standardWorkers().map((worker) => [worker.id, copyOf(flowOf(worker.id))]),
   );
 
-  // The flow the inventory's worker rows are written from. The write takes
+  // The flow the inventory's worker entries are written from. The write takes
   // caller-supplied rows, so it is internal only.
   const inventoryWriter =
     options.inventory === true

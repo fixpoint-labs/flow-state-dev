@@ -211,6 +211,15 @@ export type SendOptions = {
   sessionId?: string;
   requestId?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * The message's files, each as `upload` returned it (`data` is its
+   * `fsd-blob:` reference, never the bytes), in the order attached. They ride
+   * beside the input: the model gets them on the person's turn, and the
+   * conversation shows them on that line. The action must write a user
+   * message (`userMessage`) and the session must be named. Over the limits
+   * (10 images, 5 documents) the server refuses the send by name.
+   */
+  attachments?: FileContent[];
 };
 
 /**
@@ -774,7 +783,10 @@ function flowHandle<TFlow extends TypedFlow>(t: Transport, userId: string, addre
       userId,
       sessionId: sendOptions?.sessionId,
       requestId: sendOptions?.requestId,
-      metadata: sendOptions?.metadata
+      metadata: sendOptions?.metadata,
+      ...(sendOptions?.attachments !== undefined && sendOptions.attachments.length > 0
+        ? { attachments: sendOptions.attachments }
+        : {})
     };
     const path =
       sendOptions?.sessionId === undefined

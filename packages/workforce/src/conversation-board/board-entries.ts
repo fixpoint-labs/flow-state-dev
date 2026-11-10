@@ -55,7 +55,7 @@ export const PIECE_OF = "pieceOf";
 
 // FIX-2080.
 /**
- * The metadata key on a task's row naming the session that filed work for it
+ * The metadata key on a task naming the session that filed work for it
  * and that session's flow: where the filed half of its cascade is
  * sent. Server-written by the first piece's filing (`./cascade`).
  */
@@ -63,7 +63,7 @@ export const FILED_MARKER = "filedFrom";
 
 // FIX-2106; BP-030.
 /**
- * The metadata key on a task's row holding the worker-message hop count and
+ * The metadata key on a task holding the worker-message hop count and
  * chain of the turn that filed it: the task's turn starts there,
  * so a message from it counts on in its filer's exchange whichever session
  * it runs in, beside how many user's lines the filer's session had taken.
@@ -76,7 +76,7 @@ export const FILED_HOP = "filedAtHop";
 
 // FIX-2161; BP-030.
 /**
- * The metadata key on a task's row naming the project it was filed in,
+ * The metadata key on a task naming the project it was filed in,
  * in `projectRef` form: the filing session's project
  * (`filingProjectOf`), or, in a delegate's ongoing session, the stamp on the
  * task that session holds. The hand-over copies it onto the task session as

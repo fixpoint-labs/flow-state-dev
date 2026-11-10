@@ -1,5 +1,5 @@
 /**
- * The run a task's row names, and every read and the one write the task screen
+ * The run a task names, and every read and the one write the task screen
  * makes against it.
  *
  * The row's run link names a session and a request, never a flow. The run's
