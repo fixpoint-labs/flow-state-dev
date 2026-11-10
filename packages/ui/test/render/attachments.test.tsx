@@ -446,7 +446,7 @@ describe("a user line with files", () => {
     const saved = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL };
     Object.assign(URL, { createObjectURL: () => "blob:local-2", revokeObjectURL: () => {} });
     onTestFinished(() => void Object.assign(URL, saved));
-    const reads = vi.fn(async () => new Blob(["png"], { type: "image/png" }));
+    const reads = vi.fn(async (_file: FileContent, _url: string) => new Blob(["png"], { type: "image/png" }));
     const item = () =>
       ({
         id: "i5",
