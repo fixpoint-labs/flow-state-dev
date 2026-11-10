@@ -59,6 +59,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
+import type { FileContent } from "@flow-state-dev/core/items";
 import { isSendKey } from "@flow-state-dev/react";
 import {
   AttachmentFileInput,
@@ -316,6 +317,11 @@ export interface PromptInputMessage {
   text: string;
   /** The message's files, each by reference. */
   files: FileAttachment[];
+  /**
+   * The same files as `upload` returned them, in the order attached: what a
+   * send takes as its `attachments` (`sendAction`, `useHarnessLines().send`).
+   */
+  attachments: FileContent[];
 }
 
 export type PromptInputProps = Omit<
@@ -519,7 +525,7 @@ const PromptInputForm = ({
           ...(file.filename === undefined ? {} : { filename: file.filename }),
         }));
 
-        const result = onSubmit({ files, text }, event);
+        const result = onSubmit({ files, attachments: uploaded, text }, event);
 
         if (result instanceof Promise) {
           try {

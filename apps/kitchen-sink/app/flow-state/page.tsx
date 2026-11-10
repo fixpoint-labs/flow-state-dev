@@ -33,11 +33,14 @@ import {
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
+  PromptInputAttachButton,
+  PromptInputAttachments,
   PromptInputButton,
   PromptInputTextarea,
   PromptInputSubmit,
   type PromptInputMessage,
 } from "@/components/flow-state/prompt-input";
+import type { AttachmentUploader } from "@/components/flow-state/attachments";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
@@ -183,6 +186,8 @@ function writeSessionAddress(sessionId: string, how: AddressWrite): void {
 function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string | null; pickedLive: boolean }) {
   // The page's one client, as the app's user: the rail, the workforce panels and request statuses read through it.
   const fsd = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: BASE_PATH, fetcher: panelFetch }), []);
+  // Where the composer uploads a file as it is attached: the assistant's own flow, so its route's checks apply.
+  const assistantUploads = useMemo(() => fsd.flow("chat-agent"), [fsd]);
   // The assistant's own sessions, and which one the stream is on. The rail's
   // navigator reads the flow list once more for itself: one extra read per
   // page, never one per row.
@@ -425,7 +430,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
       const sessionId = flow.activeSessionId;
       if (!sessionId || text.length === 0) return;
       try {
-        await lines.send(text);
+        await lines.send(text, { attachments: msg.attachments });
         // The page may have moved to another session while it ran: the stored draft goes only if it is still this line.
         clearDraft(SESSION_DRAFT, sessionId, text);
         if (messageRef.current.trim() === text) setMessage("");
@@ -554,6 +559,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
       waiting={lines.waiting}
       conversationLoading={conversationLoading}
       session={session}
+      uploads={assistantUploads}
       sendSignal={chatSignal}
       voice={voice}
       ttsEnabled={ttsEnabled}
@@ -847,6 +853,8 @@ interface ChatPanelProps {
   waiting: readonly HarnessWaitingLine[];
   conversationLoading: boolean;
   session: ReturnType<typeof useSession>;
+  /** Where the composer uploads the files attached to a line. */
+  uploads: AttachmentUploader;
   /** The assistant conversation's "the user sent", heard by every drawing's feed. */
   sendSignal: SendSignal;
   /** The page's one voice: recording sends through it, and it plays each reply once. */
@@ -997,6 +1005,7 @@ function ChatPanel({
   waiting,
   conversationLoading,
   session,
+  uploads,
   sendSignal,
   voice,
   ttsEnabled,
@@ -1065,7 +1074,10 @@ function ChatPanel({
             <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={composerDisabled} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>
-          <PromptInput onSubmit={send}>
+          {/* A switch of session drops the draft's files. The session asked for, not its loaded snapshot's:
+              that arrives late, and its change would drop a file attached first. */}
+          <PromptInput onSubmit={send} client={uploads} sessionId={session.sessionId ?? null}>
+            <PromptInputAttachments />
             <PromptInputTextarea
               name="message"
               placeholder={
@@ -1078,6 +1090,7 @@ function ChatPanel({
               onChange={(e) => onSetMessage(e.target.value)}
               disabled={composerDisabled}
             />
+            <PromptInputAttachButton disabled={composerDisabled} />
             {/* While a turn runs, Stop and Send are two buttons: one that did both would stop the turn when a line was meant. */}
             {session.isStreaming && (
               <PromptInputButton

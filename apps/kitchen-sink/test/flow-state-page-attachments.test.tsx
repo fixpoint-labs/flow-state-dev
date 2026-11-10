@@ -14,10 +14,12 @@
  * Red state produced before this was trusted: on main, where the page gives
  * its composer no uploader and sends `lines.send(text)`, the case fails (the
  * pasted image is refused as unavailable, and `run` carries no `attachments`).
+ * And key the composer's session on the loaded snapshot's id, and the
+ * early-file case fails: the snapshot's arrival drops the file.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 const sendAction = vi.fn(async (..._args: unknown[]) => ({}) as never);
 /** Which flow kind each upload went to. */
@@ -159,5 +161,30 @@ describe("Flow State chat sends a pasted image", () => {
       attachments: [{ type: "file", mediaType: "image/png", filename: "shot.png", data: "fsd-blob:b_0000000001" }],
     });
     expect(uploadFlows).toEqual(["chat-agent"]);
+  });
+
+  // The session's snapshot arrives after the page can take a file. Keyed on it, the composer
+  // read its arrival as a switch of session and dropped the file: shown, then sent without it.
+  it("keeps a file attached before the session's snapshot arrives", async () => {
+    const loaded = session.snapshot;
+    (session as { snapshot: unknown }).snapshot = null;
+    onTestFinished(() => void ((session as { snapshot: unknown }).snapshot = loaded));
+    const { rerender } = render(<Page />);
+    await act(async () => undefined);
+    const box = screen.getAllByTestId("message-input")[0] as HTMLTextAreaElement;
+    const image = new File([new Uint8Array(16)], "early.png", { type: "image/png" });
+    await act(async () => {
+      fireEvent.paste(box, { clipboardData: { items: [{ kind: "file", getAsFile: () => image }], files: [image] } });
+    });
+    (session as { snapshot: unknown }).snapshot = loaded;
+    rerender(<Page />);
+    await act(async () => {
+      fireEvent.change(box, { target: { value: "and this?" } });
+    });
+    await act(async () => {
+      fireEvent.submit(box.closest("form")!);
+    });
+    await waitFor(() => expect(sendAction).toHaveBeenCalledOnce());
+    expect(sendAction.mock.calls[0]![2]).toMatchObject({ attachments: [expect.objectContaining({ filename: "early.png" })] });
   });
 });

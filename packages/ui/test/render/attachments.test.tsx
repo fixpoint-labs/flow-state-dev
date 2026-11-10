@@ -101,6 +101,8 @@ describe("attaching in PromptInput", () => {
     const sent = onSubmit.mock.calls[0]![0];
     expect(sent.files).toHaveLength(1);
     expect(sent.files[0]!.url).toMatch(/^fsd-blob:b_/);
+    // The same file as a send takes it: what `upload` returned, so a page hands it on untouched.
+    expect(sent.attachments).toEqual([{ type: "file", mediaType: "image/png", filename: "shot.png", data: sent.files[0]!.url }]);
     // No bytes, and no local preview address: a data URL, base64, or a `blob:` URL.
     expect(JSON.stringify(sent)).not.toMatch(/"(data|blob):|base64/);
     expect(client.upload).toHaveBeenCalledOnce();
