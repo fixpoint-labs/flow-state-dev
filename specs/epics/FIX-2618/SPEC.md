@@ -97,7 +97,8 @@ re-read cost lands on every view, and it is gated rather than dropped. **Collaps
 owner's to pull since [O1](DECISIONS.md#o1) is decided: if
 FIX-2622 shows the wiring pain is workforce's own API, FIX-2626 and FIX-2627 leave for a
 follow-up epic, FIX-2628 narrows to moving claude-code-style onto views and direct reads with no
-kits, so leg a still passes, and FIX-2629 drops leg b.
+kits, so leg a still passes, and FIX-2629 drops leg b. FIX-2622 showed it for the install half;
+the owner kept kits on 2026-11-10, so it is not pulled ([O1](DECISIONS.md#o1)).
 
 ## How the issues flow into each other
 

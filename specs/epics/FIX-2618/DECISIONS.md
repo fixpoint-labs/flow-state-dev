@@ -40,7 +40,8 @@ flowchart TD
 
 **What would change my mind:** the teammates proof (FIX-2622) showing that a better
 `createWorkerInstallation` removes the wiring with no new unit. Then the objective is met by
-views and resources alone, and kits wait for a second feature that needs them.
+views and resources alone, and kits wait for a second feature that needs them. FIX-2622 showed
+it for the install half; the owner kept kits ([O1](#o1)), so the collapse is not pulled.
 
 ![D1: one epic for four changes, chosen, beside four epics in dependency order. Decides it: who shapes the pieces a kit holds. Price: twelve children and two spec stages. Flips if the wiring pain is workforce's own API](figures/d1-worth-it.svg)
 
@@ -151,10 +152,17 @@ Decided by the owner, in session, 2026-11-10: kits, yes, in the shape below. It 
   generic walk primitives in `packages/workforce/src/loader` (`openRoot`, `classify`,
   `validateSegment`, the refusal wording, `IGNORED_ENTRIES`) lift to a Node-only engine subpath;
   workforce keeps only its own schema (`teams/`, `workers/`, `WORKER.md`, `PACKAGE.md`, `resources/`).
+- **Folders** (the owner, in session, 2026-11-10). Each kit owns at most one directory in the
+  app, a sibling of other kits' directories, never nested in one. A kit that requires another
+  (a workforce extension kit) contributes only through the slots that kit publishes, never by
+  putting files in its directory. Install order comes from `requires`, not folder placement.
 
-**What would change my mind.** FIX-2622 still builds the better-API host with equal effort. If
-it removes everything the kit removes, that goes back to the owner as a reason to reopen O1; it
-no longer fires [D1](#d1)'s collapse on its own.
+**What would change my mind.** FIX-2622 showed the better API removes everything the kit's
+install removes ([below](#what-the-end-state-poc-showed)). The owner kept O1 anyway, in session,
+2026-11-10: it rests on the client half and the copied file conventions, which that proof did
+not test. **Notes for the implementers, not gates:** FIX-2626's spec shows, on a real app, what
+only a kit's client half removes, before the slot contract is built; the workforce dead-cast and
+callback cleanup B0 found is worth doing now, kits or not.
 
 ![O1, decided: kits with a library half and an owned, scaffolded directory, chosen, beside fixing workforce's API. Decides it: only a kit's client half removes the adapters at the root. Price: slots are a new public contract. Locks in defineKit in core, install in the engine and workforce as the first kit. Flips if FIX-2622 shows the better API removes it all and the owner reopens O1](figures/o1-kits.svg)
 
@@ -279,7 +287,7 @@ the stage-2 specs.
 | ER-2 | A view never writes (its context refuses writes and dispatch, as a read's does today). Every byte a client sees comes through a checked read or view; a notice carries ids, never rows | FIX-2623 builds · FIX-2624, FIX-2625 use | Each child's spec review; the closure |
 | ER-3 | A session-free read or view takes user and org from the verified principal, never from the body, query or headers (BP-031) | FIX-2624 builds · FIX-2623 uses | FIX-2623's and FIX-2624's spec review |
 | ER-4 | No direct client-write path is added. A client writes a user or org resource by scope only through a flow: an action on its `runBy` session, the default write flow or the app's own; with no `runBy`, it can't. Schema, owner fence and `canWrite` run inside the flow ([O3](#o3)). `client.content.*` stays for session-scope collections. The skills drawer's user and org content writes are the one leftover, exempt by name until [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) moves them | FIX-2624 builds · FIX-2626, FIX-2628 use | The stage-2 cross-spec review |
-| ER-5 | A kit holds only existing pieces (flows, views, resources, capabilities, blocks, workers, a client half, config, slots). It reaches another kit only through slots that kit publishes, never patches one, and a host can turn off what it contributes. Slots are few, typed, and declared only by the kit that owns the concept, each with its merge policy (a keyed map refuses duplicates, a list appends). A kit's owned directory is read through the shared walker: every file consumed or refused loudly. What a user configures is scaffolded there, never also exported ([O1](#o1)) | FIX-2626 builds · FIX-2627, FIX-2628 use | FIX-2627's spec review; closure leg b |
+| ER-5 | A kit holds only existing pieces (flows, views, resources, capabilities, blocks, workers, a client half, config, slots). It reaches another kit only through slots that kit publishes, never patches one, and a host can turn off what it contributes. Slots are few, typed, and declared only by the kit that owns the concept, each with its merge policy (a keyed map refuses duplicates, a list appends). A kit's owned directory is read through the shared walker: every file consumed or refused loudly. What a user configures is scaffolded there, never also exported. A kit owns at most one directory, a sibling of other kits', never nested in one or written into by another kit; install order comes from `requires` ([O1](#o1)) | FIX-2626 builds · FIX-2627, FIX-2628 use | FIX-2627's spec review; closure leg b |
 | ER-6 | Data the server computes is typed by its view's output schema (`ViewOutput`). An app hand-writes only what its screen computes | FIX-2623 builds · FIX-2627, FIX-2628 use | FIX-2628's spec review; closure leg a |
 | ER-7 | One live read in the client: the coalescer and the path rule live in one place, and `useView` and every package watch sit on it | FIX-2551 builds · FIX-2623, FIX-2627 use | The stage-2 reuse review |
 | ER-8 | No lab adapter grows once the sibling amendments merge. A screen's new need is then a package read or view, never a new adapter verb or hand-written row type. Until FIX-2592, FIX-2616 and FIX-2369's amendments merge it is advisory, and FIX-2628 deletes what was added. It holds until that adapter is deleted ([D3](#d3)) | The coordinator (it asks for the amendments) · FIX-2628 uses | FIX-2592, FIX-2616 and FIX-2369's spec reviews, after the amendments |
@@ -344,6 +352,30 @@ four lines, by the amendment that lands it.
 - **Changed:** nothing in the division. FIX-2623 specs `scope: "user" | "org"` views on this
   context, and its first piece of work is the no-session mode and the metadata change the patch
   names; FIX-2624's direct reads use the same context.
+
+**FIX-2621 · `dependsOn` is checkable, from inside the engine (merged #5023): CONFIRMED, with a condition.**
+
+- **Built:** store, in-place and proxy recorders over the board's `listTasks` (`taskToolReads`),
+  the lab's `listPins` and a `taskBoard()` handle's `listTasks`.
+- **See it:** `bash specs/issues/FIX-2621/poc/dependency-check/run.sh`.
+- **Showed:** between them the recorders catch every one-left-out control, naming it, for at most
+  0.3 ms, under 1% of a read. Every recorder outside the engine has a gap: the store one
+  over-reports, the in-place one can't see state, the proxy one breaks identity and makes the
+  board skip its plan ledger.
+- **Changed:** O2 stands (the owner approved the direction by merging #5023). FIX-2623 records
+  inside the engine where each block's context is built (state getter, resource registry), and
+  weighs inferring `dependsOn`.
+
+**FIX-2622 · kit or install API (#5038, 2026-11-10): the better API removes all the kit's install removes.**
+
+- **Built:** the teammates host rebuilt as A (workforce as a kit), B (a better install API) and
+  B0 (today's API used as it allows), each passing today's flows, parity, typecheck and host tests.
+- **See it:** `bash specs/issues/FIX-2622/poc/kit-or-api/run.sh`.
+- **Showed:** A and B each remove the same 11 host lines; the "A only" row is empty. B0 removes 5
+  lines and 18 casts on `main` today. The kit adds 145 package lines to B's 34, an upper bound:
+  about 40% of the sketched `defineKit` never ran. The client half and more than one kit were not tested.
+- **Changed:** it fired [D1](#d1)'s mind-changer; the owner kept [O1](#o1) on the untested client
+  half and copied file conventions, with two notes for the implementers there.
 
 ## Analysis
 
@@ -411,6 +443,10 @@ objective or the division.
   [O5](#o5) as recommended; [ER-8](#who-owns-what) confirmed until each adapter is deleted; the
   project spec skipped, so cross-epic agreements live here ([D3](#d3)). FIX-2619, FIX-2621 and
   FIX-2622 are amended to match.
+- **Stage-1 results (2026-11-10)** — FIX-2621 (#5023) and FIX-2622 (#5038) recorded under
+  [What the end-state POC showed](#what-the-end-state-poc-showed). The owner, in session, kept
+  [O1](#o1) despite FIX-2622, added its folder rule (and [ER-5](#who-owns-what)'s), and declined
+  a "being replaced" banner on FIX-2619's Reads section (#5036).
 
 **Open:** none. **Decided by the owner:** [O3](#o3) in review; [O1](#o1), [O2](#o2), [O4](#o4)
 and [O5](#o5) in session.
