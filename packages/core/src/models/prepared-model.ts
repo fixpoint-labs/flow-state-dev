@@ -11,14 +11,17 @@ import type { GeneratorModel, GeneratorModelCallOptions } from "../types/model";
 export type PrepareMessages = (messages: unknown[], target?: { accepts: AttachmentAccepts }) => Promise<unknown[]>;
 
 /**
- * Set on a model that tries several candidates (a fallback group): it returns
- * a copy of itself that prepares each candidate's call for that candidate's
- * own provider, so the one a call falls back to is not handed messages built
- * for another.
+ * Set (`true`) on a model that tries several candidates (a fallback group).
+ * Such a model is handed the run's prepare on each call's options, under
+ * {@link CANDIDATE_PREPARE}, rather than prepared messages: it prepares each
+ * candidate's call for that candidate's own provider, so the one a call falls
+ * back to is not handed messages built for another. A wrapper that copies the
+ * group keeps the mark, and whatever else it changed.
  */
 export const PREPARE_EACH_CANDIDATE = Symbol.for("fsd.prepareEachCandidate");
 
-type PreparesEachCandidate = { [PREPARE_EACH_CANDIDATE]?: (prepare: PrepareMessages) => GeneratorModel };
+/** The call-option key a fallback group reads the run's prepare from. */
+export const CANDIDATE_PREPARE = Symbol.for("fsd.candidatePrepare");
 
 const CALLS = new Set(["generate", "stream", "generateStep", "streamStep"]);
 
@@ -28,7 +31,8 @@ const CALLS = new Set(["generate", "stream", "generateStep", "streamStep"]);
  * reads through unchanged. `prepare` undefined returns `model` itself.
  * `accepts`, what the model's provider reads as files, is passed to each
  * call's `prepare`; left out, the call names no target. A fallback group
- * ignores `accepts` and prepares each candidate for its own provider.
+ * ({@link PREPARE_EACH_CANDIDATE}) ignores `accepts` and prepares each
+ * candidate for its own provider.
  */
 export function withPreparedMessages(
   model: GeneratorModel,
@@ -36,8 +40,7 @@ export function withPreparedMessages(
   accepts?: AttachmentAccepts
 ): GeneratorModel {
   if (prepare === undefined) return model;
-  const eachCandidate = (model as PreparesEachCandidate)[PREPARE_EACH_CANDIDATE];
-  if (eachCandidate !== undefined) return eachCandidate(prepare);
+  const eachCandidate = (model as { [PREPARE_EACH_CANDIDATE]?: unknown })[PREPARE_EACH_CANDIDATE] === true;
   const named = accepts === undefined ? undefined : { accepts };
   const prepared = (messages: unknown[]) => (named === undefined ? prepare(messages) : prepare(messages, named));
   return new Proxy(model, {
@@ -45,6 +48,7 @@ export function withPreparedMessages(
       const value = Reflect.get(target, prop, receiver) as unknown;
       if (typeof value !== "function" || !CALLS.has(String(prop))) return value;
       const call = value as (options: GeneratorModelCallOptions) => unknown;
+      if (eachCandidate) return (options: GeneratorModelCallOptions) => call.call(target, { ...options, [CANDIDATE_PREPARE]: prepare });
       if (prop === "stream" || prop === "streamStep") {
         return (options: GeneratorModelCallOptions) =>
           (async function* () {

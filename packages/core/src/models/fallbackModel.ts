@@ -7,7 +7,7 @@ import type {
 import type { ModelGroupDefaults, ModelRetryPolicy } from "./types";
 import { deepMerge } from "../helpers/deep-merge";
 import { providerAttachmentAccepts } from "./attachment-accepts";
-import { PREPARE_EACH_CANDIDATE, withPreparedMessages, type PrepareMessages } from "./prepared-model";
+import { CANDIDATE_PREPARE, PREPARE_EACH_CANDIDATE, type PrepareMessages } from "./prepared-model";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -127,19 +127,58 @@ function mergeDefaults<T extends Record<string, unknown>>(
 // Fallback execution
 // ---------------------------------------------------------------------------
 
+type CallOptions = Parameters<GeneratorModel["generate"]>[0];
+
+/** A call's options as one candidate gets them: the group's defaults merged, its messages prepared for its provider. */
+type OptionsFor = (entry: FallbackModelEntry) => Promise<CallOptions>;
+
+/**
+ * Errors a candidate's messages failed to be prepared with (a file its
+ * provider can't take). Kept so a group nested as a candidate, which rethrows
+ * one when none of its own candidates could take the file, is passed over the
+ * same way.
+ */
+const prepareFailures = new WeakSet<object>();
+
+function isPrepareFailure(error: unknown): boolean {
+  return typeof error === "object" && error !== null && prepareFailures.has(error);
+}
+
+/**
+ * Every candidate failed. When each failed only because its messages couldn't
+ * be prepared, the first such error is the answer (it names the file and why);
+ * otherwise the group's summary of every failure.
+ */
+function exhausted(errors: Array<{ modelId: string; error: Error }>, label: string): Error {
+  if (errors.length > 0 && errors.every((e) => isPrepareFailure(e.error))) return errors[0]!.error;
+  const summary = errors.map((e) => `  ${e.modelId}: ${e.error.message}`).join("\n");
+  return new Error(`${label} failed:\n${summary}`);
+}
+
 async function executeWithFallback<T>(
   models: FallbackModelEntry[],
   retryPolicy: Required<ModelRetryPolicy>,
   groupName: string,
-  fn: (model: GeneratorModel, entry: FallbackModelEntry) => Promise<T>,
+  optionsFor: OptionsFor,
+  fn: (model: GeneratorModel, options: CallOptions) => Promise<T>,
   onResolved?: (entry: FallbackModelEntry) => void
 ): Promise<T> {
   const errors: Array<{ modelId: string; error: Error }> = [];
 
   for (const entry of models) {
+    // Prepared once per candidate: a retry reuses it rather than reading
+    // the conversation's files again. A candidate that can't take them is
+    // passed over.
+    let options: CallOptions;
+    try {
+      options = await optionsFor(entry);
+    } catch (error) {
+      errors.push({ modelId: entry.modelId, error: error as Error });
+      continue;
+    }
     for (let attempt = 1; attempt <= retryPolicy.maxAttemptsPerModel; attempt++) {
       try {
-        const result = await fn(entry.model, entry);
+        const result = await fn(entry.model, options);
         onResolved?.(entry);
         return result;
       } catch (error) {
@@ -165,14 +204,7 @@ async function executeWithFallback<T>(
     }
   }
 
-  // All models exhausted
-  const summary = errors
-    .map((e) => `  ${e.modelId}: ${e.error.message}`)
-    .join("\n");
-
-  throw new Error(
-    `All models in group "${groupName}" failed:\n${summary}`
-  );
+  throw exhausted(errors, `All models in group "${groupName}"`);
 }
 
 /**
@@ -185,13 +217,12 @@ async function executeWithFallback<T>(
  */
 async function* executeStreamWithFallback(
   models: FallbackModelEntry[],
-  defaults: ModelGroupDefaults | undefined,
   groupName: string,
   onResolved: ((entry: FallbackModelEntry) => void) | undefined,
   pickStream: (
     model: GeneratorModel
   ) => GeneratorModel["stream"] | GeneratorModel["streamStep"],
-  options: Record<string, unknown>
+  optionsFor: OptionsFor
 ): AsyncGenerator<GeneratorModelStreamChunk> {
   const errors: Array<{ modelId: string; error: Error }> = [];
 
@@ -200,9 +231,16 @@ async function* executeStreamWithFallback(
     const streamFn = pickStream(entry.model);
     if (!streamFn) continue;
 
+    let merged: CallOptions;
+    try {
+      merged = await optionsFor(entry);
+    } catch (error) {
+      // Its messages can't be prepared for it: the next candidate may take them.
+      errors.push({ modelId: entry.modelId, error: error as Error });
+      continue;
+    }
     let yieldedFirstChunk = false;
     try {
-      const merged = mergeDefaults(options, defaults, entry.providerName);
       for await (const chunk of streamFn.call(
         entry.model,
         merged as Parameters<NonNullable<GeneratorModel["stream"]>>[0]
@@ -225,7 +263,7 @@ async function* executeStreamWithFallback(
       // next one, mirroring the generate loop. Guarded on "no chunk
       // yielded" so an error after content has been emitted still
       // surfaces instead of silently restarting on another model.
-      if (!yieldedFirstChunk && isProviderLoadError(error)) {
+      if (!yieldedFirstChunk && (isProviderLoadError(error) || isPrepareFailure(error))) {
         continue;
       }
 
@@ -237,12 +275,7 @@ async function* executeStreamWithFallback(
   }
 
   // If we get here, all streaming models failed with retryable errors
-  const summary = errors
-    .map((e) => `  ${e.modelId}: ${e.error.message}`)
-    .join("\n");
-  throw new Error(
-    `All streaming models in group "${groupName}" failed:\n${summary}`
-  );
+  throw exhausted(errors, `All streaming models in group "${groupName}"`);
 }
 
 // ---------------------------------------------------------------------------
@@ -289,27 +322,45 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
   const stepModels = models.filter((m) => m.model.generateStep !== undefined);
   const streamStepModels = models.filter((m) => m.model.streamStep !== undefined);
 
-  const group: GeneratorModel & { [PREPARE_EACH_CANDIDATE]: (prepare: PrepareMessages) => GeneratorModel } = {
+  /**
+   * A call's options for one candidate: the group's defaults for its
+   * provider merged in and, when the run handed a prepare
+   * (`withPreparedMessages`), its messages prepared for what that provider
+   * reads. A candidate that is itself a group is handed the prepare, to
+   * prepare each of its own.
+   */
+  const optionsFor = (options: CallOptions): OptionsFor => {
+    const { [CANDIDATE_PREPARE]: prepare, ...rest } = options as CallOptions & { [CANDIDATE_PREPARE]?: PrepareMessages };
+    return async (entry) => {
+      const merged = mergeDefaults(rest as CallOptions, defaults, entry.providerName);
+      if (prepare === undefined) return merged;
+      if ((entry.model as { [PREPARE_EACH_CANDIDATE]?: unknown })[PREPARE_EACH_CANDIDATE] === true) {
+        return { ...merged, [CANDIDATE_PREPARE]: prepare } as CallOptions;
+      }
+      try {
+        const messages = await prepare(merged.messages, { accepts: providerAttachmentAccepts(entry.providerName) });
+        return { ...merged, messages } as CallOptions;
+      } catch (error) {
+        if (typeof error === "object" && error !== null) prepareFailures.add(error);
+        throw error;
+      }
+    };
+  };
+
+  return {
     modelId: `fsd:${groupName}`,
 
     // Each candidate's messages are prepared for its own provider: a PDF goes
     // as a file to one that reads PDFs, as its text to one that doesn't.
-    [PREPARE_EACH_CANDIDATE]: (prepare: PrepareMessages) =>
-      createFallbackModel({
-        ...config,
-        models: models.map((entry) => ({
-          ...entry,
-          model: withPreparedMessages(entry.model, prepare, providerAttachmentAccepts(entry.providerName))
-        }))
-      }),
+    [PREPARE_EACH_CANDIDATE]: true,
 
     async generate(options): Promise<GeneratorModelResult> {
       return executeWithFallback(
         models,
         retryPolicy,
         groupName,
-        (model, entry) =>
-          model.generate(mergeDefaults(options, defaults, entry.providerName)),
+        optionsFor(options),
+        (model, callOptions) => model.generate(callOptions),
         onResolved
       );
     },
@@ -318,11 +369,10 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
       ? (options: Parameters<NonNullable<GeneratorModel["stream"]>>[0]) =>
           executeStreamWithFallback(
             models,
-            defaults,
             groupName,
             onResolved,
             (model) => model.stream,
-            options
+            optionsFor(options)
           )
       : undefined,
 
@@ -332,8 +382,8 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
             stepModels,
             retryPolicy,
             groupName,
-            (model, entry) =>
-              model.generateStep!(mergeDefaults(options, defaults, entry.providerName)),
+            optionsFor(options),
+            (model, callOptions) => model.generateStep!(callOptions),
             onResolved
           )
       : undefined,
@@ -342,11 +392,10 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
       ? (options: Parameters<NonNullable<GeneratorModel["streamStep"]>>[0]) =>
           executeStreamWithFallback(
             streamStepModels,
-            defaults,
             groupName,
             onResolved,
             (model) => model.streamStep,
-            options
+            optionsFor(options)
           )
       : undefined,
 
@@ -360,6 +409,5 @@ export function createFallbackModel(config: FallbackModelConfig): GeneratorModel
       }
       return undefined;
     },
-  };
-  return group;
+  } as GeneratorModel;
 }
