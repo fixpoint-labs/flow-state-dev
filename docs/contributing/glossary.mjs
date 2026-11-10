@@ -1337,7 +1337,7 @@ const EXEMPTIONS = [
     id: "registry-copies",
     terms: ["kind", "person"],
     where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\//.test(path),
-    strip: /\bkinds?\b|\bpersons?\b|\bperson's\b/gi,
+    strip: /\battachmentKind\b|\bkinds?\b|\bpersons?\b|\bperson's\b/gi,
     why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test: its words are the registry's",
   },
   {
