@@ -54,13 +54,15 @@ flowchart LR
   lists the follow-up under `attached`. Leg **b2**: a follow-up of A filed while A is still
   starting, before A provisions, is queued and then runs in A's folder on A's branch once A
   settles `ready` (**`b2:joins-pending-root`**); if A ends with no ready entry, the follow-up
-  fails at open, naming why, and does not provision. Leg **c**: an unrelated task filed with
+  fails at open, naming why, and does not provision. Leg **b3**: a follow-up of A filed after
+  A's worktree was removed fails at open, naming why, and does not provision
+  (**`b3:refuses-removed-root`**). Leg **c**: an unrelated task filed with
   `worktreeOf: A` does the same. Leg **d**: `worktreeOf` naming an unknown task, another user's
   task, a task whose worktree was removed, or a task still open is refused at filing, naming why;
   an attached run that leaves the worktree on another branch fails its attempt.
 - **Controls that must fail:** `GOAL_CONTROL=no-default` drops workforce's follow-up default at
-  filing (the manager is untouched); legs b and b2 fail
-  **`b:joins-root`** and **`b2:joins-pending-root`**. `GOAL_CONTROL=no-attach` provisions instead of attaching; leg c fails
+  filing (the manager is untouched); legs b, b2 and b3 fail
+  **`b:joins-root`**, **`b2:joins-pending-root`** and **`b3:refuses-removed-root`**. `GOAL_CONTROL=no-attach` provisions instead of attaching; leg c fails
   **`c:attached`**, and leg b fails too. Each control reddens only its own legs.
 - **Unit and lab:** the filing rules in orchestration and workforce; the manager's attach path
   (lock shared, owner entry checked, a retry keeps its base); the lab contract tests show the
@@ -93,9 +95,9 @@ provisioned for an attached run.
   task that itself attached (resolved one hop, as `followUpOf` is to its root).
 - **A follow-up joins its root's worktree on its own** ([D2](DECISIONS.md#d2), Jake's call):
   workforce's filing path finds the owner, which is the root, or the root's own `worktreeOf`
-  when the root attached. It writes `worktreeOf: <owner>` onto the follow-up when the owner
-  has a `ready` entry for this user, or is a coding run on a repository that hasn't
-  provisioned yet (then `ready` is checked when the follow-up opens). A follow-up whose root is
+  when the root attached. It writes `worktreeOf: <owner>` onto the follow-up whenever the
+  owner is a coding run on a repository; `ready` is checked when the follow-up opens, and a
+  missing or removed worktree is refused by name, never replaced. A follow-up whose root is
   not a coding run on a repository (a chat task, a files-only run) gets none and provisions
   as today. The manager reads only `worktreeOf`, never `followUpOf`.
 - **The manager attaches instead of provisioning** ([D3](DECISIONS.md#d3)): when the task

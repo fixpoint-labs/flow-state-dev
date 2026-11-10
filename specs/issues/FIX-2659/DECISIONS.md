@@ -49,12 +49,12 @@ flowchart TD
   ([D1](#d1)). When a follow-up is filed, workforce finds the worktree's owner the same way it
   does for an explicit `worktreeOf`: the root (one hop, as `followUpOf` already resolves), or,
   when the root itself carries `worktreeOf`, that owner. Workforce writes `worktreeOf: <owner>`
-  onto the follow-up when the owner has a `ready` worktree entry for this user, **or** the
-  owner is a coding run on a repository that is still open and hasn't provisioned yet. A
-  follow-up filed while its root is starting is a supported case (`resolveFollowUp` accepts a
-  running root and queues the follow-up), and it must not fall back to a fresh checkout. In
-  that case the `ready` check moves to run time: the manager attaches when the follow-up
-  opens, and refuses by name if the owner still has no ready entry. The default skips D1's
+  onto the follow-up whenever the owner is a coding run on a repository, whatever state its
+  entry is in. The `ready` check happens at run time: the manager attaches when the follow-up
+  opens, and refuses by name if the owner has no ready entry. That covers a follow-up filed
+  while its root is still starting (`resolveFollowUp` accepts a running root and queues the
+  follow-up), and one filed after the root's worktree was removed or lost. Neither falls back
+  to a fresh checkout. The default skips D1's
   at-filing checks (finished, `ready` entry): those guard a filer's explicit choice, while this
   value is workforce's own, so the implementer must not run it through D1's refusals. So a follow-up of B, where
   B ran in A's worktree, joins A's worktree; it never names B, which owns no entry. A root
@@ -132,6 +132,9 @@ flowchart TD
 - Codex (spec PR): a follow-up filed before its coding root provisions must not lose the
   default. D2 now writes the owner for an open coding root on a repository, and checks
   `ready` at run time in that case.
+- Codex (spec PR): the same gap held for a finished root whose worktree was removed or lost
+  before the follow-up was filed. D2 now writes the owner for every coding root on a
+  repository, whatever its entry state, and checks `ready` only at run time; leg b3 covers it.
 - Gitar (spec PR): that pending-root path needed its own check. The goal gains leg b2
   (`b2:joins-pending-root`, red under `no-default`), and D2 says its default skips D1's
   at-filing refusals.
