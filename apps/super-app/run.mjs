@@ -27,6 +27,10 @@
  * one ordinary build per change (`rebuild.mjs`); `serve` serves what
  * `pnpm build` made.
  *
+ * `dev` also keeps the workspace current (`workspace.mjs`): it installs what is
+ * missing before any app starts, builds the packages then, and builds them
+ * again before every page rebuild, so a page never bundles a stale package.
+ *
  * The rules are `settings.mjs`. An app that stops leaves the others running; its route answers 502 and the
  * landing page marks it stopped. Ctrl-C stops everything.
  */
@@ -40,6 +44,7 @@ import { createProxy } from "./proxy.mjs";
 import { rebuildOnChange } from "./rebuild.mjs";
 import { reclaimPort } from "./reclaim.mjs";
 import { resolveSettings } from "./settings.mjs";
+import { createWorkspaceRefresh } from "./workspace.mjs";
 
 const mode = process.argv[2];
 if (mode !== "dev" && mode !== "serve") {
@@ -100,12 +105,25 @@ function runStep(step, label, port) {
   });
 }
 
+/** The install and package-build steps `dev` runs, from the repository root. */
+const workspace = createWorkspaceRefresh({
+  run: (step) => runStep({ cmd: step.cmd, args: step.args, cwd: REPO }, step.label, 0),
+  warn: (line) => process.stderr.write(`[super-app] ${line}\n`),
+});
+
+/** One page build, preceded by a package build so it bundles the packages as they are now. */
+const buildPage = async (step, label, port) => {
+  if (stopping) return;
+  await workspace.packages();
+  if (!stopping) await runStep(step, label, port);
+};
+
 /** Watchers wait for the app to answer: the checkout may still be building the pages they'd rebuild. */
 function startWatchers(app, i) {
   const label = `${color(i)}[${app.id}]\x1b[0m`;
   for (const step of app.run[mode].filter((s) => s.background)) {
     if (step.rebuildOnChange !== undefined) {
-      rebuildOnChange({ outDir: step.rebuildOnChange, repoRoot: REPO, build: () => (stopping ? Promise.resolve() : runStep(step, label, app.port)) });
+      rebuildOnChange({ outDir: step.rebuildOnChange, repoRoot: REPO, build: () => buildPage(step, label, app.port) });
       continue;
     }
     void runStep(step, label, app.port).then((code) => {
@@ -197,10 +215,14 @@ for (const [what, wanted, id] of [["the proxy", port, undefined], ...apps.map((a
 
 const devtoolDir = fileURLToPath(new URL("./dist", import.meta.url));
 if (mode === "dev") {
+  // Before any app starts: dependencies installed and packages built, so every app comes up on the latest of both.
+  // The install is only ever here; replacing `node_modules` under a running server would break it.
+  await workspace.install();
+  await workspace.packages();
   // Builds the page when it is missing or stale, then rebuilds it as its source changes; a refresh picks the new build up.
   // Until the first build is written, /devtool/ answers that it isn't built.
   const step = { cmd: "pnpm", args: ["run", "build:devtool"], cwd: fileURLToPath(new URL(".", import.meta.url)) };
-  rebuildOnChange({ outDir: devtoolDir, repoRoot: REPO, build: () => (stopping ? Promise.resolve() : runStep(step, "[devtool]", port)) });
+  rebuildOnChange({ outDir: devtoolDir, repoRoot: REPO, build: () => buildPage(step, "[devtool]", port) });
 } else if (!existsSync(`${devtoolDir}/index.html`)) {
   process.stderr.write("[super-app] the DevTool page isn't built (run `pnpm build`); /devtool/ won't load.\n");
 }

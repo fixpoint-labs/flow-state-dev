@@ -33,6 +33,27 @@ app as the user that app declares: Kitchen Sink's one user, and for a lab the
 `userId` (and token, if any) its pages carry. With none declared, the panel's own
 user editor decides. It sits behind the same sign-in as everything else.
 
+## Staying current in `pnpm dev`
+
+The pages bundle the workspace packages from their built `dist/`, so `pnpm dev`
+keeps those current too (`workspace.mjs`):
+
+- **At start**, before any app comes up: `pnpm install --frozen-lockfile` (what
+  is missing gets installed; the lockfile is never rewritten), then a Turbo
+  build of `packages/*`.
+- **Before every page rebuild**: the same package build again, so the page
+  bundles the packages as they are now. Turbo's cache makes it about a second
+  when nothing changed.
+
+A failing step is logged and the run goes on with the last good build. Installs
+only happen at start: replacing `node_modules` under a running server would
+break it. Shift Manager's package build is skipped, because it is its page
+build, which the page rebuild already runs.
+
+A page rebuild is still started by a change to a file the last build was made
+from, so a package edit alone doesn't rebuild anything until a page file changes
+or the run restarts.
+
 The page is a small Vite build (`pnpm build:devtool`, into `dist/`). `pnpm dev`
 rebuilds it at start and again as its source changes; `pnpm serve` serves what `pnpm build` made, and warns when
 there is none.
