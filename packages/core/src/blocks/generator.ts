@@ -9,6 +9,7 @@ import { getZodTypeName } from "../helpers/zod-introspect";
 import { walkBlockGraph } from "../helpers/block-graph";
 import { assertStrictCompatible } from "../models/makeSchemaStrict";
 import { isTextOutputSchema } from "../models/output-root";
+import { withPreparedMessages } from "../models/prepared-model";
 import type {
   BlockConfig,
   BlockContext,
@@ -679,7 +680,22 @@ function isGeneratorModel(value: unknown): value is GeneratorModel {
   );
 }
 
+/**
+ * The generator's model for this run, its calls reading the person's files
+ * through the run's `prepareMessages` (`withPreparedMessages`), whichever way
+ * the model was named.
+ */
 async function resolveModel<TInput, TCtx extends BlockContext>(
+  value: ResolvableModel<TInput, TCtx>,
+  input: TInput,
+  ctx: TCtx,
+  blockName: string
+): Promise<{ modelId: string; model: GeneratorModel }> {
+  const { modelId, model } = await resolveModelValue(value, input, ctx, blockName);
+  return { modelId, model: withPreparedMessages(model, ctx.resolveModel?.prepareMessages) };
+}
+
+async function resolveModelValue<TInput, TCtx extends BlockContext>(
   value: ResolvableModel<TInput, TCtx>,
   input: TInput,
   ctx: TCtx,
@@ -1866,7 +1882,7 @@ async function applyOwnedPrepareStep(params: {
       // with a warning. Like the SDK bridge, this re-resolves by id alone —
       // any block-level `preferProvider` call option is intentionally not
       // threaded through a per-step model switch.
-      const resolved = ctx.resolveModel(prep.modelId, blockName);
+      const resolved = withPreparedMessages(ctx.resolveModel(prep.modelId, blockName), ctx.resolveModel?.prepareMessages);
       if (resolved[params.requires] !== undefined) {
         stepModel = resolved;
       } else {

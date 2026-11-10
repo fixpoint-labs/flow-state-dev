@@ -17,6 +17,7 @@ import { resolveAttachment, sessionBlobOwner } from "../../src/blobs/attachments
 import { createMemoryBlobStore } from "../../src/blobs/memory-blob-store";
 import { newBlobId } from "../../src/blobs/shared";
 import { createSessionItemViews, itemToLLMMessages } from "../../src/context/history";
+import { resolveHistoryFiles } from "../../src/context/history-files";
 import type { RequestRecord } from "../../src/stores/types";
 
 const ALICE = { userId: "alice", orgId: "acme" };
@@ -69,17 +70,22 @@ function turn(id: string, items: OutputItem[], startedAtMs: number): RequestReco
   };
 }
 
-function history(
+/** The session's history as a block reads it: files budgeted, still references. */
+function read(prior: RequestRecord[], live: OutputItem[]): Promise<LLMMessage[]> {
+  return createSessionItemViews([], prior, {
+    tokenCounter: estimateTokenCounter,
+    resolveModelId: () => "test-model",
+    readLiveItems: () => live
+  }).history();
+}
+
+/** The same history as the model call gets it: read, then each reference resolved. */
+async function history(
   prior: RequestRecord[],
   live: OutputItem[],
   readAttachment?: (file: FileContent) => ReturnType<typeof resolveAttachment>
 ): Promise<LLMMessage[]> {
-  return createSessionItemViews([], prior, {
-    tokenCounter: estimateTokenCounter,
-    resolveModelId: () => "test-model",
-    readLiveItems: () => live,
-    ...(readAttachment !== undefined ? { readAttachment } : {})
-  }).history();
+  return (await resolveHistoryFiles(await read(prior, live), readAttachment)) as LLMMessage[];
 }
 
 type Part = { type: string; text?: string; image?: unknown; data?: unknown; mediaType?: string; filename?: string };
@@ -160,6 +166,20 @@ describe("a user line's files in the history", () => {
     expect(named(messages[0])).toHaveLength(6);
     // The turn's own text stays first.
     expect(parts(messages[0])[0]).toEqual({ type: "text", text: "first" });
+  });
+
+  // A block's history read is recorded (a generator's trace, a tool loop's
+  // prelude): it carries the reference, and only the model call reads bytes.
+  it("keeps references in the history a block reads, and leaves them untouched when resolving", async () => {
+    const { add, readAttachment } = filesFixture();
+    const shot = await add("image/png", "shot.png");
+    const read1 = await read([], [userLine("r1", "look", [shot], 1) as unknown as OutputItem]);
+    expect(parts(read1[0])).toEqual([{ type: "text", text: "look" }, shot]);
+    const resolved = await resolveHistoryFiles(read1, readAttachment);
+    expect(parts(resolved[0] as LLMMessage)[1]).toMatchObject({ type: "image" });
+    expect(parts(read1[0])[1]).toEqual(shot);
+    // A call whose files are already bytes is passed through, not read again.
+    expect(await resolveHistoryFiles(resolved, readAttachment)).toBe(resolved);
   });
 
   it("names a file that can no longer be read instead of failing the call", async () => {

@@ -36,7 +36,7 @@ import {
   failedToolResultText,
 } from "@flow-state-dev/core/models";
 import type { RequestRecord } from "../stores/types";
-import { budgetHistoryFiles, resolveHistoryFiles, type ReadAttachment } from "./history-files";
+import { budgetHistoryFiles } from "./history-files";
 
 /**
  * Set of item types that enter LLM context.
@@ -75,7 +75,8 @@ function fileReference(file: FileContent): FileContent {
  *
  * A user line with files becomes one message whose content is a text part,
  * then a `file` part per file in reference form. Those parts are not yet what
- * a model takes: `loadLLMHistory` budgets and resolves them.
+ * a model takes: `loadLLMHistory` budgets them, and the model call reads
+ * their bytes (`resolveHistoryFiles`, the run's `prepareMessages`).
  *
  * Items with `history: false` (resolved via `resolveItemVisibility`) are
  * excluded. Returns an empty array for item types that don't map to
@@ -367,8 +368,7 @@ export async function loadLLMHistory(
   resolveModelId: () => string,
   query?: ItemQuery,
   readLiveItems?: () => RuntimeItem[],
-  readStartedAtMs?: (requestId: string) => Promise<number | undefined>,
-  readAttachment?: ReadAttachment
+  readStartedAtMs?: (requestId: string) => Promise<number | undefined>
 ): Promise<LLMMessage[]> {
   const allowedTypes = query?.itemTypes
     ? new Set(query.itemTypes)
@@ -400,8 +400,10 @@ export async function loadLLMHistory(
   // Defense-in-depth: with turn-aligned slicing orphans should be
   // structurally unreachable in normal operation, but keep the trim for
   // edge data states (e.g., a request whose items begin mid-tool-pair).
-  // The turns were chosen on references; only the files that go are read.
-  return resolveHistoryFiles(budgetHistoryFiles(trimOrphanedToolMessages(messages)), readAttachment);
+  // A person's files stay references here, budgeted (D1): the bytes are read
+  // only at the model call (`resolveHistoryFiles`), so nothing that records
+  // this history records them.
+  return budgetHistoryFiles(trimOrphanedToolMessages(messages));
 }
 
 /**
@@ -538,12 +540,6 @@ export function createSessionItemViews(
      * or not, in the window or not, the running request included.
      */
     readStartedAtMs?: (requestId: string) => Promise<number | undefined>;
-    /**
-     * Reads a file on a person's line for the model, through the one resolver
-     * bound to this session. Without it, a file is named in the history, never
-     * sent as a reference.
-     */
-    readAttachment?: ReadAttachment;
   }
 ): SessionItemViews {
   // Compute once — priorItems is immutable for the request lifetime.
@@ -608,8 +604,7 @@ export function createSessionItemViews(
         options.resolveModelId,
         query,
         options.readLiveItems,
-        options.readStartedAtMs,
-        options.readAttachment
+        options.readStartedAtMs
       ),
     selectForContext: (query) => select(query),
     turns: (query) => options.readTurns?.(query) ?? Promise.resolve([]),

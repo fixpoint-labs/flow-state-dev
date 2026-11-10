@@ -92,7 +92,10 @@ window should shrink.
   what cuts the cost. The file budget is a newest-first walk of its own
   (`engine/src/context/history-files.ts`) that runs after `selectRequestsByLimit` has chosen the
   turns on references: the turn walk drops whole turns, the file walk never drops a turn, only
-  names its older files. A file that can no longer be read is named on its line
-  (`no longer available`) rather than failing the call; a failing store still fails it.
+  names its older files. Bytes are read only at the model call (the run's
+  `prepareMessages`, applied by the generator to every call), so a generator's recorded
+  history and a tool loop's prelude keep references. A file that can no longer be read is
+  named on its line (`no longer available`) rather than failing the call; a failing store
+  still fails it. A retry of a turn carries its files.
 
 **Open: none.**

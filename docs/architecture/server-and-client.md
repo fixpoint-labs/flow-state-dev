@@ -219,11 +219,16 @@ the text on the user line, in reference form, records them on the request, and
 shows them to blocks as `ctx.request.attachments`; a flow's input schema never
 sees them.
 
-A model call reaches the bytes through the session's history
+The session's history keeps the files as references
 (`engine/src/context/history-files.ts`): the turns are chosen on references,
 then, counting back from the newest line, files up to one message's limits are
-read through `resolveAttachment` and sent inline as image and file parts. An
-older file is named on its turn as `[image: shot.png, not re-sent]`, and one
+kept and older ones named. Only the model call reads bytes: the run's
+`ModelResolver.prepareMessages`, which a generator applies to every call
+(`core/src/models/prepared-model.ts`), reads each file through
+`resolveAttachment` and sends it inline as an image or file part. Everything a
+run records of its conversation (a generator's trace of its history, a tool
+loop's prelude) therefore holds references, never bytes. An older file is
+named on its turn as `[image: shot.png, not re-sent]`, and one
 that can no longer be read as `no longer available`; a reference never reaches
 a provider. Re-sent files are billed as input on every call; prompt caching is
 what keeps that cheap.

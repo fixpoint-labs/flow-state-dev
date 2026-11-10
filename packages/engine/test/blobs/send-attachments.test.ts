@@ -18,6 +18,7 @@ import { z } from "zod";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "../../src";
 import { createMemoryBlobStore } from "../../src/blobs/memory-blob-store";
 import { createInMemoryStores } from "../../src/host";
+import { retryRequest } from "../../src/execution/request-recovery";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
 const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 9, 9]);
@@ -29,22 +30,47 @@ const byHeader = (context: { request?: Request }) => {
 
 type ModelCall = { messages: LLMMessage[] };
 
-function recordingResolver(calls: ModelCall[]) {
-  const resolver = ((modelId: string) =>
-    ({
+/**
+ * A model that records what it was sent. With `toolLoop`, it is step-capable
+ * and calls the `lookup` tool once before answering, so the generator runs
+ * its own tool loop and records its prelude.
+ */
+function recordingResolver(calls: ModelCall[], toolLoop: boolean) {
+  const resolver = ((modelId: string) => {
+    if (!toolLoop) {
+      return {
+        modelId,
+        async generate(options: { messages: LLMMessage[] }) {
+          calls.push({ messages: options.messages });
+          return { text: "seen" };
+        }
+      } as unknown as GeneratorModel;
+    }
+    let step = 0;
+    return {
       modelId,
-      async generate(options: { messages: LLMMessage[] }) {
+      async generate() {
+        throw new Error("the owned loop calls generateStep");
+      },
+      async generateStep(options: { messages: LLMMessage[] }) {
         calls.push({ messages: options.messages });
-        return { text: "seen" };
+        step += 1;
+        return step === 1
+          ? { toolCalls: [{ toolCallId: "c1", toolName: "lookup", args: {} }], finishReason: "tool-calls" }
+          : { text: "seen", finishReason: "stop" };
       }
-    }) as unknown as GeneratorModel) as ((modelId: string) => GeneratorModel) & { resolveId: (id: string) => string };
+    } as unknown as GeneratorModel;
+  }) as ((modelId: string) => GeneratorModel) & { resolveId: (id: string) => string };
   resolver.resolveId = (id) => id;
   return resolver;
 }
 
 const input = z.object({ message: z.string() });
 
-function chatFlow(seen: { attachments?: ReadonlyArray<FileContent> }) {
+type Options = { toolLoop?: boolean; failFirst?: boolean };
+
+function chatFlow(seen: { attachments?: ReadonlyArray<FileContent> }, options: Options) {
+  let failuresLeft = options.failFirst === true ? 1 : 0;
   // Records what the block's context says the request carried, then answers.
   const look = handler({
     name: "look",
@@ -52,14 +78,20 @@ function chatFlow(seen: { attachments?: ReadonlyArray<FileContent> }) {
     outputSchema: input,
     execute: (value, ctx) => {
       seen.attachments = ctx.request.attachments;
+      if (failuresLeft > 0) {
+        failuresLeft -= 1;
+        throw new Error("the first run fails");
+      }
       return { message: value.message };
     }
   });
+  const lookup = handler({ name: "lookup", inputSchema: z.object({}), outputSchema: z.object({ ok: z.boolean() }), execute: () => ({ ok: true }) });
   const answer = generator({
     name: "answer",
     model: "mock",
     prompt: "You answer.",
     history: true,
+    ...(options.toolLoop === true ? { tools: [lookup] } : {}),
     // The same words the user line holds: the model must still get one user turn.
     user: (value: { message: string }) => value.message
   });
@@ -76,13 +108,14 @@ function chatFlow(seen: { attachments?: ReadonlyArray<FileContent> }) {
   })();
 }
 
-function setup() {
+function setup(options: Options = {}) {
   const seen: { attachments?: ReadonlyArray<FileContent> } = {};
   const calls: ModelCall[] = [];
   const registry = createFlowRegistry();
-  registry.register(chatFlow(seen));
+  registry.register(chatFlow(seen, options));
   const stores: StoreRegistry = { ...createInMemoryStores(), blobs: createMemoryBlobStore() };
-  const router = createFlowApiRouter({ registry, stores, resolvePrincipal: byHeader, modelResolver: recordingResolver(calls) });
+  const modelResolver = recordingResolver(calls, options.toolLoop === true);
+  const router = createFlowApiRouter({ registry, stores, resolvePrincipal: byHeader, modelResolver });
   const call = (method: "GET" | "POST", path: string, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
     headers.set("x-user", "alice");
@@ -107,7 +140,9 @@ function setup() {
   /** Wait for a request to finish, and return its record. */
   const finished = async (response: Response) => {
     expect(response.status).toBe(202);
-    const id = ((await response.json()) as { request: { id: string } }).request.id;
+    return settled(((await response.json()) as { request: { id: string } }).request.id);
+  };
+  const settled = async (id: string) => {
     for (let i = 0; i < 100; i += 1) {
       const record = await stores.request.get(id);
       if (record !== undefined && record.status !== "in_progress") return record;
@@ -115,8 +150,19 @@ function setup() {
     }
     throw new Error(`request ${id} never finished`);
   };
-  return { seen, calls, stores, upload, send, finished };
+  return { seen, calls, stores, registry, modelResolver, upload, send, finished, settled };
 }
+
+/** A file big enough that a copy of its bytes in a record can't hide: random, so it doesn't compress into a short run. */
+function bigPng(): Uint8Array {
+  const bytes = new Uint8Array(64 * 1024);
+  for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  bytes.set(PNG.slice(0, 4));
+  return bytes;
+}
+
+/** Any run of base64 characters long enough to be a file's bytes rather than an id. */
+const BASE64_RUN = /[A-Za-z0-9+/]{1024,}/;
 
 const userLines = (items: ReadonlyArray<{ type: string; role?: string }> | undefined) =>
   (items ?? []).filter((item): item is MessageItem => item.type === "message" && item.role === "user");
@@ -161,6 +207,49 @@ describe("a message's files, from the request to the model", () => {
     const first = calls.at(-1)!.messages.find((m) => m.role === "user")!;
     expect(first.content).toEqual([
       { type: "text", text: "here is the error" },
+      { type: "image", image: Buffer.from(PNG).toString("base64"), mediaType: "image/png" }
+    ]);
+  });
+
+  // The bytes go to the model and nowhere else: what a run records (the
+  // generator's trace of its history, the tool loop's prelude) keeps the
+  // reference, or every request record would carry a copy of every file.
+  for (const toolLoop of [false, true]) {
+    it(`keeps the bytes out of the request record${toolLoop ? " when the generator runs its own tool loop" : ""}`, async () => {
+      const { calls, upload, send, finished } = setup({ toolLoop });
+      const bytes = bigPng();
+      const shot = await upload(bytes, "image/png", "big.png");
+      const record = await finished(await send("s1", [shot]));
+      expect(record.status).toBe("completed");
+
+      // The model did get the bytes, on every call.
+      const base64 = Buffer.from(bytes).toString("base64");
+      expect(calls.length).toBe(toolLoop ? 2 : 1);
+      for (const c of calls) expect(JSON.stringify(c.messages)).toContain(base64);
+      // The record holds the reference only.
+      const stored = JSON.stringify(record);
+      expect(stored).toContain(shot.data);
+      expect(stored).not.toMatch(BASE64_RUN);
+      expect(stored.length).toBeLessThan(32 * 1024);
+    });
+  }
+
+  // A retried turn is the person's turn again: the same files on its line,
+  // on its record and to the model.
+  it("carries the files into a retry of a failed turn", async () => {
+    const { calls, stores, registry, modelResolver, upload, send, finished, settled } = setup({ failFirst: true });
+    const shot = await upload(PNG, "image/png", "shot.png");
+    const failed = await finished(await send("s1", [shot]));
+    expect(failed.status).toBe("failed");
+
+    const { newRequestId } = await retryRequest({ originalRequestId: failed.id, stores, flowRegistry: registry, runtimeConfig: { modelResolver } });
+    const retried = await settled(newRequestId);
+    expect(retried.status).toBe("completed");
+    expect(retried.attachments).toEqual([shot]);
+    expect(userLines(retried.items)[0]!.content).toEqual([{ type: "output_text", text: "what is in these?" }, shot]);
+    const users = calls.at(-1)!.messages.filter((m) => m.role === "user");
+    expect(users.at(-1)!.content).toEqual([
+      { type: "text", text: "what is in these?" },
       { type: "image", image: Buffer.from(PNG).toString("base64"), mediaType: "image/png" }
     ]);
   });

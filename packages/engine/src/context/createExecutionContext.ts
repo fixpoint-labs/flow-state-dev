@@ -170,6 +170,7 @@ import {
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
 import { resolveAttachment, sessionBlobOwner } from "../blobs/attachments";
+import { resolveHistoryFiles } from "./history-files";
 import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
@@ -2923,6 +2924,18 @@ export async function createExecutionContext<
   if (providerOf !== undefined) {
     resolveModel.providerOf = (modelId: string) => providerOf.call(modelResolver, modelId);
   }
+  // A person's files reach the model at the call, through the one resolver,
+  // for this session and this person only. The history and everything a run
+  // records of it keep the references.
+  const blobs = stores.blobs;
+  resolveModel.prepareMessages = (messages: unknown[]) =>
+    resolveHistoryFiles(
+      messages,
+      blobs === undefined
+        ? undefined
+        : (file: FileContent) =>
+            resolveAttachment(blobs, file, { owner: sessionBlobOwner(sessionKey), user: { userId, orgId: resolvedOrgId } })
+    );
   // Evaluator strings resolve only through the flow's own resolver. When an
   // app-supplied resolver has no `resolveEvaluationModel`, the hook stays
   // absent and the evaluator refuses the string; the default resolver is
@@ -3116,17 +3129,6 @@ export async function createExecutionContext<
       },
       items: createSessionItemViews(priorItems, settledPriorRequests, {
         readTurns,
-        // A person's files reach the model through the one resolver, for this
-        // session and this person only.
-        ...(stores.blobs !== undefined
-          ? {
-              readAttachment: (file: FileContent) =>
-                resolveAttachment(stores.blobs!, file, {
-                  owner: sessionBlobOwner(sessionKey),
-                  user: { userId, orgId: resolvedOrgId }
-                })
-            }
-          : {}),
         // A summary's mark can name the request running now (a waiting turn
         // that resumed), which `turns()` leaves out: read its start directly.
         readStartedAtMs: async (id) => {
