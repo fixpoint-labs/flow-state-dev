@@ -42,7 +42,7 @@ const ruleSchema = z.object({ number: z.number(), text: z.string() });
 const listOutputSchema = z.object({ rules: z.array(ruleSchema), max: z.number() });
 // `saved` is the one field a reply may rest "saved" on: a refusal still
 // carries the list, which a model can otherwise read as the write landing.
-const toolOutputSchema = z.union([
+const toolOutputSchema = z.discriminatedUnion("saved", [
   listOutputSchema.extend({ saved: z.literal(true), line: z.string() }),
   listOutputSchema.extend({ saved: z.literal(false), refused: z.string() })
 ]);
@@ -55,7 +55,7 @@ const ACKNOWLEDGE =
 async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
   // Withheld on an unmarked turn, and a caller that names the tool still can't write.
   if (!isUserTurn(ctx)) {
-    const refused = "Standing rules change only on a turn a user started; this one can't edit them.";
+    const refused = "Not saved: standing rules change only on a turn a user started; this one can't edit them.";
     const current = await readStandingRules(ctx).catch(() => undefined);
     return current === undefined
       ? { rules: [], max: MAX_RULES, saved: false as const, refused }
