@@ -10,8 +10,10 @@
  *
  * - every anchor must match today's host exactly as often as the row says,
  *   so a row whose anchor matches nothing can't be credited as removed;
- * - the control: today's host read as a variant must come out "neither" on
- *   every row, or the script exits non-zero.
+ * - the red-path controls: today's host with one row (the loader import)
+ *   really removed, handed in as A and B, as A alone, as B alone, and as B0
+ *   too, must credit that row "both", "A only", "B only" and "removable on
+ *   main", and every other row "neither", or the script exits non-zero.
  *
  * The credit: a row B0 (today's API, used as it allows) also removes is
  * "neither change: removable on main"; otherwise both / A only / B only /
@@ -37,7 +39,9 @@ const ROWS = [
   { id: "install-imports", what: "`createWorkerInstallation` and `hireWorkforce` imports", anchors: [/^  createWorkerInstallation,$/, /^  hireWorkforce,$/], lines: 2, casts: 0, owner: "install" },
   { id: "callback-variable", what: "`let flows = {}`, `flows = {`, `};`", anchors: [/let flows: Record<string, unknown> = \{\};/, /^  flows = \{$/], lines: 3, casts: 0, owner: "the circular callback" },
   { id: "callback-install", what: "`createWorkerInstallation({ ..., workerFlows: () => flows as never })`", anchors: [/workerFlows: \(\) => flows as never/], lines: 1, casts: 1, owner: "the circular callback" },
-  { id: "hire", what: "`hireWorkforce(installation) as Array<{ id: string }>`", anchors: [/const copies = hireWorkforce\(installation\) as Array<\{ id: string \}>;/], lines: 1, casts: 1, owner: "install" },
+  // The call and its cast are two rows: a host that drops the cast and keeps the call removed no line.
+  { id: "hire-call", what: "`const copies = hireWorkforce(installation)`", anchors: [/const copies = hireWorkforce\(installation\)/], lines: 1, casts: 0, owner: "install" },
+  { id: "hire-cast", what: "its cast, `as Array<{ id: string }>`", anchors: [/hireWorkforce\(installation\) as Array<\{ id: string \}>/], lines: 0, casts: 1, owner: "casts" },
   { id: "spread", what: "the hand-spread flows map (`[...copies, ...]`)", anchors: [/Object\.fromEntries\(\[\.\.\.copies, readinessFlow, contextFlow\]/], lines: 1, casts: 0, owner: "the spread" },
   { id: "create-cast", what: "`createFlowState({ ... } as never)`", anchors: [/^  \} as never\);$/], lines: 0, casts: 1, owner: "casts" },
   { id: "harness-casts", what: "three harness blocks: `as never) as unknown as HarnessBlock` (and the type import)", anchors: [/\} as never\) as unknown as HarnessBlock,$/, /^import type \{ HarnessBlock \} from "@flow-state-dev\/core\/harness";$/], n: [3, 1], lines: 1, casts: 9, owner: "harness blocks" },
@@ -81,13 +85,44 @@ function credit(row, kept) {
   return row.views ? "neither (views, FIX-2623)" : "neither";
 }
 
-// The control: today's host as every variant removes nothing.
-const control = ROWS.map((row) => credit(row, { b0: hasRow(today, row), a: hasRow(today, row), b: hasRow(today, row) }));
-if (control.some((c) => c !== "neither" && c !== "neither (views, FIX-2623)")) {
-  console.error(`control failed: today's host credited a removal: ${control.join(", ")}`);
-  process.exit(1);
+/** Each row's credit, for hosts given as text. */
+const attribute = ({ b0, a, b }) => ROWS.map((row) => credit(row, { b0: hasRow(b0, row), a: hasRow(a, row), b: hasRow(b, row) }));
+
+// The red-path controls: synthetic hosts made from today's by one real edit, which the table must
+// credit exactly, every row it doesn't name staying "neither". They show a removal is detected, that
+// a row only A removes comes out "A only" (so the empty "A only" row below is a reading the table
+// could have come out otherwise), and that dropping a cast while keeping its call removes no line.
+const loaderStripped = today
+  .split("\n")
+  .filter((line) => !/^import \{ readDeclaredRoster \} from "@flow-state-dev\/workforce\/loader";$/.test(line))
+  .join("\n");
+const castStripped = today.replace("hireWorkforce(installation) as Array<{ id: string }>;", "hireWorkforce(installation);");
+if (castStripped === today) throw new Error("control: the hire cast isn't in today's host");
+const NEITHER = new Set(["neither", "neither (views, FIX-2623)"]);
+const controls = [
+  { name: "loader import stripped from A and B", hosts: { b0: today, a: loaderStripped, b: loaderStripped }, want: { "loader-import": "both" } },
+  { name: "loader import stripped from A only, B keeps it", hosts: { b0: today, a: loaderStripped, b: today }, want: { "loader-import": "A only" } },
+  { name: "loader import stripped from B only, A keeps it", hosts: { b0: today, a: today, b: loaderStripped }, want: { "loader-import": "B only" } },
+  { name: "loader import stripped from B0 too", hosts: { b0: loaderStripped, a: loaderStripped, b: loaderStripped }, want: { "loader-import": "neither change: removable on main (B0)" } },
+  { name: "hire cast dropped in B0, A and B, the call kept", hosts: { b0: castStripped, a: castStripped, b: castStripped }, want: { "hire-cast": "neither change: removable on main (B0)" } },
+  { name: "hire cast dropped in A and B, the call kept", hosts: { b0: today, a: castStripped, b: castStripped }, want: { "hire-cast": "both" } },
+];
+for (const control of controls) {
+  const unknown = Object.keys(control.want).filter((id) => !ROWS.some((row) => row.id === id));
+  if (unknown.length > 0) throw new Error(`control ${control.name} names no row: ${unknown.join(", ")}`);
+  const credits = attribute(control.hosts);
+  const wrong = ROWS.flatMap((row, i) => {
+    const want = control.want[row.id];
+    const ok = want === undefined ? NEITHER.has(credits[i]) : credits[i] === want;
+    return ok ? [] : [`${row.id} reads "${credits[i]}", want ${want === undefined ? '"neither"' : `"${want}"`}`];
+  });
+  if (wrong.length > 0) {
+    console.error(`control failed, ${control.name}: ${wrong.join("; ")}`);
+    process.exit(1);
+  }
+  const named = Object.entries(control.want).map(([id, c]) => `${id} "${c}"`).join(", ");
+  console.log(`control: ${control.name} → ${named}, every other row "neither" ✓`);
 }
-console.log(`control: today's host against itself, ${control.length} rows, every one "neither" ✓`);
 
 const rows = ROWS.map((row) => {
   const kept = { b0: hasRow(hosts.b0, row), a: hasRow(hosts.a, row), b: hasRow(hosts.b, row) };
@@ -155,3 +190,7 @@ for (const [name, path, added] of [
   const d = churn(path);
   console.log(`| ${name} | ${lines} | ${codeLines(text)} | ${c.asNever} | ${c.all} | −${d.removed} +${d.added} | ${added} | ${lines <= 300 ? "yes" : "no"} |`);
 }
+
+// How far apart the two variants are: `diff a-kit/host.mts b-api/host.mts`, changed lines on either side.
+const ab = spawnSync("diff", [join(here, "a-kit/host.mts"), join(here, "b-api/host.mts")], { encoding: "utf8" }).stdout;
+console.log(`\nA vs B hosts: ${count(ab, /^[<>] /)} changed lines (${count(ab, /^< /)} only in A, ${count(ab, /^> /)} only in B): the imports, the install site and how lab-context reaches the installation`);

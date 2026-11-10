@@ -22,7 +22,8 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient } from "@flow-state-dev/client";
 import type { ModelResolver } from "@flow-state-dev/core/types";
@@ -64,7 +65,7 @@ interface Opened {
 }
 
 /** Opens `host.zz-<name>.mts` on a fresh store and a one-commit repository. */
-async function open(name: string): Promise<Opened> {
+async function open(name: string, extra: Record<string, unknown> = {}): Promise<Opened> {
   const data = mkdtempSync(join(tmpdir(), `fix2622-${name}-`));
   const repo = join(data, "repo");
   const git = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
@@ -82,6 +83,7 @@ async function open(name: string): Promise<Opened> {
     runsRoot: join(data, "runs"),
     scriptedHarnessStepMs: 20,
     modelResolver: script(),
+    ...extra,
   });
   const fetch = createInProcessFetch(state as never) as unknown as Opened["fetch"];
   const lab = createLabAdapter(createClient({ userId: "you", baseUrl: "", fetcher: fetch as never }));
@@ -191,4 +193,25 @@ describe.each(HOSTS)("host %s", (name) => {
       throw failure;
     }
   }, 90_000);
+
+  // `tree` names the workers' folder as a user would, in an env var: a path relative to where the
+  // host was started. Every host must read it against the working directory, as today's does.
+  if (!EXPECT_RED) {
+    it("reads a relative `tree` against the working directory", async () => {
+      const lab = fileURLToPath(new URL("..", import.meta.url));
+      const tree = relative(process.cwd(), join(lab, "workforce"));
+      if (resolve(lab, tree) === join(lab, "workforce")) {
+        throw new Error(`run this from a folder other than ${lab} (run.sh runs it from the repository root): from here a relative tree reads the same against either folder`);
+      }
+      let host: Opened | undefined;
+      try {
+        host = await open(name, { tree });
+        const served = await servedIds(host);
+        expect(served, `served with tree "${tree}"`).toEqual(expectedIds);
+        expect((await host.lab.listWorkers()).some((w) => w.id === CHIEF), `the roster read from "${tree}" lists Lead`).toBe(true);
+      } finally {
+        await host?.close();
+      }
+    }, 60_000);
+  }
 });

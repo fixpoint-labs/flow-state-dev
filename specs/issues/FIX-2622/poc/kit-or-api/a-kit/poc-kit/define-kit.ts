@@ -12,7 +12,8 @@
  *   slot no installed kit declares is refused.
  * - **Order.** Kits install in `requires` order; a missing requirement is refused.
  * - **The owned directory.** A kit may own one directory in the app, resolved
- *   against the app's `root` (or a path the kit's config names instead). It is
+ *   against the app's `root`. A path the kit's config names instead is
+ *   resolved against the working directory, as today's hosts read one. It is
  *   opened with the shared walk primitive (`openRoot`, standing in for the
  *   engine subpath it lifts to) and handed to the kit's own `load`.
  * - **Flows.** Each kit's install returns the flows it serves, and anything
@@ -85,8 +86,9 @@ export function defineKit<Config, Directory, Slots extends Record<string, unknow
         const { directory: chosen, ...own } = config;
         let directory: Directory = undefined as Directory;
         if (spec.directory !== undefined) {
-          const path = chosen ?? spec.directory.path;
-          const absolute = isAbsolute(path) ? path : resolve(root, path);
+          // The kit's own path is the app's; a path the app names in config is read as any other
+          // path a user gives (an env var, a flag), against the working directory.
+          const absolute = chosen !== undefined ? resolve(chosen) : isAbsolute(spec.directory.path) ? spec.directory.path : resolve(root, spec.directory.path);
           await openRoot(absolute);
           directory = await spec.directory.load(absolute);
         }

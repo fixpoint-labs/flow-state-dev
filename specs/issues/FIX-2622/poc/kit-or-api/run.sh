@@ -33,8 +33,11 @@ steps=" ${FIX2622_STEPS:-1 2 3 4 5} "
 step() { [[ "$steps" == *" $1 "* ]]; }
 
 # Runs vitest in the lab; prints the summary lines, or the whole log on a failure.
-run_vitest() {
-  if "${quiet_env[@]}" ../../node_modules/.bin/vitest run --root . "$@" >"$log" 2>&1; then
+run_vitest() { run_vitest_in "$root" --root . "$@"; }
+run_vitest_in() {
+  local top="$1"
+  shift
+  if "${quiet_env[@]}" "$top/node_modules/.bin/vitest" run "$@" >"$log" 2>&1; then
     grep -E "RED \(as required\)|host serves|✓ |Test Files|Tests " "$log" || true
   else
     cat "$log" >&2
@@ -54,7 +57,7 @@ cp "$here/parity.test.ts" "$lab/test/zz-fix2622-parity.poc.test.ts"
 cp "$here/cost.test.ts" "$lab/test/zz-fix2622-cost.poc.test.ts"
 
 if step 1; then
-  echo "== 1. attribution (the control: today's host reads 'neither' on every row)"
+  echo "== 1. attribution (red-path controls: one stripped row must read both, A only, B only, removable on main)"
   node "$here/attribute.mjs" "$lab/host.mts" "$here"
 fi
 
@@ -62,8 +65,10 @@ cd "$lab"
 all="today,$(IFS=,; echo "${variants[*]}")"
 
 if step 2; then
-  echo "== 2. host parity: $all"
-  FIX2622_HOSTS="$all" run_vitest test/zz-fix2622-parity.poc.test.ts
+  # From the repository root, so the working directory isn't the hosts' own folder and a relative
+  # `tree` reads differently against the two.
+  echo "== 2. host parity, and a relative tree: $all"
+  (cd "$root" && FIX2622_HOSTS="$all" run_vitest_in "$root" --root labs/teammates zz-fix2622-parity)
 fi
 
 if step 3; then

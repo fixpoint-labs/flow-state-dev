@@ -88,11 +88,20 @@ whole set by the spec-set author; see the set PR. One finding folded: D1.
 - **The proof ran, and the "A only" row is empty** (2026-11-10, `main` at `f60ca70a7`;
   [`poc/kit-or-api/`](poc/kit-or-api/README.md), run with
   `bash specs/issues/FIX-2622/poc/kit-or-api/run.sh`). Workforce as a kit and a better
-  install API each remove the same 10 host lines: the tree read and its refusal, the install
-  imports and the hand-spread map. The kit adds 146 package lines for it, the API 34. Both
-  variants serve today's five flows and pass the parity check, the lab's typecheck, its four
-  host tests and the contract test's real column. The control without `lab-context` fails
-  parity. Opening either costs the same within 2 ms.
+  install API each remove the same 11 host lines: the tree read and its refusal, the install
+  imports, the `hireWorkforce` call and the hand-spread map. The kit adds 145 package lines for
+  it, the API 34. Both variants serve today's five flows, read a relative `tree` against the
+  working directory as today's host does, and pass the lab's typecheck, its four host tests and
+  the contract test's real column. Opening either costs the same within noise (A − B −0.3 ms).
+- **The controls, and what each proves.**
+  - Parity fails on a host without `lab-context`, so a variant that dropped a flow can't pass.
+  - The relative-`tree` case fails on a kit that reads the path against the app's folder (an
+    earlier draft of A did), so a variant can't pass by reading a different tree.
+  - In the attribution, synthetic hosts with one real edit must be credited exactly. Stripping
+    the loader import from A alone reads "A only", so the empty "A only" row is a reading the
+    table could have come out otherwise.
+  - Dropping the hire's cast while keeping the call must leave the call "neither". An earlier
+    row that anchored on both had credited B0 with removing the call.
 - **The callback and the casts were never workforce's API.** A third host, B0, uses only
   today's API. Eight of the nine `as never` casts are dead on `main` (`tsc` passes without
   them). The circular `workerFlows: () => flows` callback and the ninth cast go with
