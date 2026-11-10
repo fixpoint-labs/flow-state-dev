@@ -43,8 +43,9 @@
  * run apart from another (`runName`). The principal and the board are in the
  * hex rather than spelled out, so the ref stays short whatever the identity:
  * the long shape put three full digests in it and passed GitHub's 255-byte
- * limit. Six hex can collide, so a new run takes the first spelling no
- * worktree or branch already has (`freeRunLocation`), and a run its record
+ * limit. Six hex can collide, so a new run takes the first spelling the host
+ * reserves for it, one no other run holds and no worktree or branch already has
+ * (`freeRunLocation`), and a run its record
  * names a branch for is found from that branch (`locationFor`). That is the
  * one thing read back: the record, which the run writes before its checkout
  * exists, so a retry finds its tree whenever the run ever had one.
@@ -542,12 +543,22 @@ function slugOf(text: string): string {
  * {@link freeRunLocation} turns into a bump rather than a shared tree.
  */
 function nameHash(location: RunLocation): string {
+  return runIdentityKey(location).slice(0, NAME_HASH_LENGTH);
+}
+
+/**
+ * The whole digest a run's name hash is cut from: the same for every attempt of
+ * one run and different for any other run, however its name comes out. What a
+ * host's `reserve` records as a name's holder, so two runs whose 6 hex collide
+ * still tell each other apart.
+ */
+export function runIdentityKey(location: RunLocation): string {
   const identity = [
     ...locationSegments({ ...location, orgless: undefined }),
     issuePhaseSegment(location),
     location.trackerIssue === undefined ? "i0" : `i1${assertSafeSegment("issue", location.trackerIssue)}`,
   ];
-  return createHash("sha256").update(joinIdentity(...identity), "utf8").digest("hex").slice(0, NAME_HASH_LENGTH);
+  return createHash("sha256").update(joinIdentity(...identity), "utf8").digest("hex");
 }
 
 /**
@@ -580,22 +591,23 @@ const MAX_NAME_BUMPS = 8;
 
 /**
  * The location a NEW run takes: its derived name, or the first bumped one
- * (`-2`, `-3`, …) that `taken` says no worktree or branch already has. The
- * same answer every time for the same repository, so a crash before the run
- * records its branch picks the same name again. Ask it only for a run whose
- * record names no branch; a recorded run is found with {@link locationFor}.
+ * (`-2`, `-3`, …) that `reserve` holds for this run. A host's reservation is
+ * atomic, so two runs whose names collide while neither has a checkout yet
+ * still get different names, and it names its holder, so a crash before the
+ * run records its branch takes the same name again. Ask it only for a run
+ * whose record names no branch; a recorded run is found with {@link locationFor}.
  */
 export async function freeRunLocation(
   location: RunLocation,
-  taken: (candidate: RunLocation) => Promise<boolean>,
+  reserve: (candidate: RunLocation) => Promise<boolean>,
 ): Promise<RunLocation> {
   for (let bump = 0; bump < MAX_NAME_BUMPS; bump++) {
     const candidate: RunLocation = bump === 0 ? location : { ...location, bump };
-    if (!(await taken(candidate))) return candidate;
+    if (await reserve(candidate)) return candidate;
   }
   throw new Error(
-    `[harness-manager] every name tried for this run, from "${runName(location)}", is already a ` +
-      `worktree or a branch in the repository. Remove the stale ones and try again.`,
+    `[harness-manager] every name tried for this run, from "${runName(location)}", is held by ` +
+      `another run or is already a worktree or a branch in the repository. Remove the stale ones and try again.`,
   );
 }
 

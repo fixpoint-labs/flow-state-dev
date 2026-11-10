@@ -18,6 +18,7 @@ import {
   branchFor,
   checkoutPathFor,
   freeRunLocation,
+  runIdentityKey,
   harnessTaskId,
   hostForConfig,
   locationFor,
@@ -1923,18 +1924,20 @@ describe("a run's name — short, readable, and its own", () => {
     const config = workspace();
     const host = hostForConfig(config);
     const answer = { kind: "repo" as const, repo: resolve(config.sourceRepo), baseRef: config.baseRef };
-    const taken = (candidate: RunLocation) =>
-      host.taken!(answer, { place: placeFor(candidate), branch: branchFor(candidate) });
     const location = at("FIX-1219", "implement", { title: "Fix the thing" });
+    // The reservation a new run asks the host for, as the run named `holder`.
+    const reserveAs = (holder: string) => (candidate: RunLocation) =>
+      host.reserve!(answer, { place: placeFor(candidate), branch: branchFor(candidate), holder });
 
     // Free: the name derived from the task.
-    expect(branchFor(await freeRunLocation(location, taken))).toBe(branchFor(location));
+    expect(branchFor(await freeRunLocation(location, reserveAs("run-a")))).toBe(branchFor(location));
 
-    // Someone else's branch holds that name: the run takes the next one.
-    execFileSync("git", ["branch", branchFor(location)], { cwd: config.sourceRepo, stdio: "pipe" });
-    const bumped = await freeRunLocation(location, taken);
-    expect(branchFor(bumped)).toBe(`${branchFor(location)}-2`);
-    expect(branchFor(await freeRunLocation(location, taken))).toBe(branchFor(bumped));
+    // Someone else's branch holds that name: a new run takes the next one, and
+    // the same one when it asks again.
+    execFileSync("git", ["branch", `${branchFor(location)}-2`], { cwd: config.sourceRepo, stdio: "pipe" });
+    const bumped = await freeRunLocation(location, reserveAs("run-b"));
+    expect(branchFor(bumped)).toBe(`${branchFor(location)}-3`);
+    expect(branchFor(await freeRunLocation(location, reserveAs("run-b")))).toBe(branchFor(bumped));
 
     // The bumped run is found again from its record, and provisions there.
     const again = locationFor(location, branchFor(bumped));
@@ -1943,11 +1946,30 @@ describe("a run's name — short, readable, and its own", () => {
     expect(checkout.branch).toBe(branchFor(bumped));
     expect(checkout.path).toBe(checkoutPathFor(config, bumped));
 
-    // Now its worktree holds the second spelling, so a new run takes the third.
-    expect(branchFor(await freeRunLocation(location, taken))).toBe(`${branchFor(location)}-3`);
     // A bare folder counts too: it may hold someone's work.
-    mkdirSync(checkoutPathFor(config, { ...location, bump: 2 }), { recursive: true });
-    expect(branchFor(await freeRunLocation(location, taken))).toBe(`${branchFor(location)}-4`);
+    mkdirSync(checkoutPathFor(config, { ...location, bump: 3 }), { recursive: true });
+    expect(branchFor(await freeRunLocation(location, reserveAs("run-c")))).toBe(`${branchFor(location)}-5`);
+  });
+
+  it("gives two runs whose names collide different names, even before either has a checkout", async () => {
+    const config = workspace();
+    const host = hostForConfig(config);
+    const answer = { kind: "repo" as const, repo: resolve(config.sourceRepo), baseRef: config.baseRef };
+    // Two tasks whose 6 hex collide: same title, same board, same user.
+    const base = { principal: { orgId: "org_a", userId: "alice" }, epic: "tasks", phase: "change", title: "Fix the thing" };
+    const first: RunLocation = { ...base, issue: "task_2890" };
+    const second: RunLocation = { ...base, issue: "task_3408" };
+    expect(branchFor(first)).toBe(branchFor(second));
+    expect(runIdentityKey(first)).not.toBe(runIdentityKey(second));
+    const reserveFor = (run: RunLocation) => (candidate: RunLocation) =>
+      host.reserve!(answer, { place: placeFor(candidate), branch: branchFor(candidate), holder: runIdentityKey(run) });
+
+    // Both open at once, before either provisions: one gets the name, the other the next.
+    const [a, b] = await Promise.all([freeRunLocation(first, reserveFor(first)), freeRunLocation(second, reserveFor(second))]);
+    expect(new Set([branchFor(a), branchFor(b)])).toEqual(new Set([branchFor(first), `${branchFor(first)}-2`]));
+    // A run asking again (its attempt crashed before it recorded a branch) gets its own name back.
+    expect(branchFor(await freeRunLocation(first, reserveFor(first)))).toBe(branchFor(a));
+    expect(branchFor(await freeRunLocation(second, reserveFor(second)))).toBe(branchFor(b));
   });
 
   it("keeps the branch and folder of a run already under way on the long name", () => {
