@@ -187,11 +187,13 @@ import {
   ASK_MARKER_IGNORED,
   acquireCheckout,
   branchFor,
+  freeRunLocation,
   locationFor,
   hostForConfig,
   placeFor,
   releaseCheckout,
   runBoardSegment,
+  worktreeNameFor,
   taskIssueSegment,
   type RunLocation,
   type RunPrincipal,
@@ -2296,7 +2298,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     try {
       const place = await host.provision(answer, {
         ...(worktrees !== undefined
-          ? { worktrees: { collection: worktrees, owner: { kind: "run" as const, id: state.taskId ?? placeFor(location).join("/") } } }
+          ? {
+              worktrees: {
+                collection: worktrees,
+                owner: { kind: "run" as const, id: state.taskId ?? placeFor(location).join("/") },
+                // Its entry in the worktrees resource reads as the branch and folder do (FIX-2657).
+                ...(worktreeNameFor(location) !== undefined ? { name: worktreeNameFor(location)! } : {}),
+              },
+            }
           : {}),
         place: placeFor(location),
         branch: state.branch!,
@@ -2550,12 +2559,6 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       }
       // The record is read first because a run it names an older branch for
       // keeps that branch and its tree (see `locationFor`).
-      const location = locationFor(
-        { principal: runPrincipal(ctx), epic, issue, phase: phaseName, ...branchIssue(claim !== null, trackerIssue) },
-        recorded?.branch,
-      );
-      const branch = branchFor(location);
-      await ctx.sequencer!.patchState({ branch });
       const pinned = {
         remote: recorded?.remote ?? null,
         baseRef: recorded?.baseRef ?? null,
@@ -2570,6 +2573,28 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       });
       const answer = pinnedAnswer(await host.source(ctx), pinned);
       if (answer.kind === "refused") throw runRefused(ctx, refusedMessage("source", answer));
+      // The run is named from the task's title (FIX-2657). A run its record
+      // names a branch for keeps that branch and its tree; a new one takes the
+      // first spelling no other worktree or branch here already has.
+      let location = locationFor(
+        {
+          principal: runPrincipal(ctx),
+          epic,
+          issue,
+          phase: phaseName,
+          ...branchIssue(claim !== null, trackerIssue),
+          ...(input.title !== undefined ? { title: input.title } : {}),
+        },
+        recorded?.branch,
+      );
+      if (recorded?.branch == null && host.taken !== undefined) {
+        const taken = host.taken;
+        location = await freeRunLocation(location, (candidate) =>
+          taken(answer, { place: placeFor(candidate), branch: branchFor(candidate) }),
+        );
+      }
+      const branch = branchFor(location);
+      await ctx.sequencer!.patchState({ branch });
       const workspacePath = host.locate(answer, { place: placeFor(location) }).cwd;
       await ctx.sequencer!.patchState({ workspacePath });
 
@@ -2680,7 +2705,16 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     try {
       const state = managerState(raw);
       const place = placeFor(
-        locationFor({ principal: runPrincipal(ctx), epic: state.epic!, issue: state.issue!, phase: state.phase! }, state.branch),
+        locationFor(
+          {
+            principal: runPrincipal(ctx),
+            epic: state.epic!,
+            issue: state.issue!,
+            phase: state.phase!,
+            ...branchIssue(state.claim !== null, state.trackerIssue),
+          },
+          state.branch,
+        ),
       );
       const read = await host.recordCheckout({ place }, { worktrees, by: { kind: "run", id: state.taskId ?? place.join("/") } });
       // A null read means the place has no row.

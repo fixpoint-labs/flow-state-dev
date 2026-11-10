@@ -447,6 +447,14 @@ export interface WorkspaceHost {
    */
   locate(answer: RunSourceAnswer, request: Pick<PlaceRequest, "place">): { dir: string; cwd: string };
   /**
+   * Whether a place or branch of these names is already here: the place's
+   * directory exists, or the repository the answer names (a listed one, or
+   * the host's clone of its remote) has the branch. Asked before a NEW run
+   * takes a name, so it never inherits another run's tree or branch. Makes
+   * nothing and contacts no remote. Optional, as `remove` is.
+   */
+  taken?(answer: RunSourceAnswer, request: { place: readonly string[]; branch: string }): Promise<boolean>;
+  /**
    * Make (or hand back) the place for one run.
    *
    * Rejects with a `WorkspaceRefusedError` for a refused source or remote,
@@ -1400,6 +1408,25 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       return { dir, cwd: dir };
     }
     return { dir, cwd: join(dir, CHECKOUT_DIR) };
+  }
+
+  async function taken(answer: RunSourceAnswer, request: { place: readonly string[]; branch: string }): Promise<boolean> {
+    if (existsSync(placeDir(request.place))) return true;
+    if (answer.kind !== "repo" || !isPlainBranch(request.branch)) return false;
+    let repo = localRepository(answer.repo);
+    if (repo === undefined) {
+      const remote = checkRemote(answer.repo, allow);
+      if ("reason" in remote) return false;
+      repo = join(root, CLONES_DIR, `${remote.cloneKey}.git`);
+      if (!existsSync(repo)) return false;
+    }
+    try {
+      await git(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${request.branch}^{commit}`], GIT_TIMEOUT_MS);
+      return true;
+    } catch (error) {
+      if (gitAnsweredNo(error)) return false;
+      throw error;
+    }
   }
 
   async function provision(answer: RunSourceAnswer, request: PlaceRequest): Promise<WorkspacePlace> {
@@ -2364,6 +2391,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     source: options.source,
     provisionTimeoutMs,
     locate,
+    taken,
     provision,
     checkRepository,
     save,

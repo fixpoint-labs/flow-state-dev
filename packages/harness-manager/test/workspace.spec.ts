@@ -12,14 +12,18 @@ import {
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import {
   acquireCheckout,
   branchFor,
   checkoutPathFor,
+  freeRunLocation,
   harnessTaskId,
+  hostForConfig,
   locationFor,
+  placeFor,
   provisionCheckout,
+  runBoardSegment,
   type RunLocation,
   type RunPrincipal,
   type WorkspaceConfig,
@@ -141,13 +145,9 @@ describe("provisioning", () => {
       cwd: checkout.path,
       encoding: "utf8",
     }).trim();
-    expect(head).toBe(
-      // The principal segment is DERIVED, not spelled: it is a digest, and a
-      // literal here would only pin how the digest happens to be computed
-      // today. What this asserts is the SHAPE — untenanted tag, organization, user,
-      // board identity, framed leaf.
-      `conductor/t0/${encodeSegment("org_a")}/${encodeSegment("alice")}/conductor-tasks-test-epic/${harnessTaskId("FIX-1219", "implement")}`,
-    );
+    // A run's own short name, the same one its folder carries.
+    expect(head).toBe(branchFor(at("FIX-1219", "implement")));
+    expect(head).toBe(`conductor/${basename(checkout.path)}`);
   });
 
   it("fails loudly when the branch was deleted underneath", async () => {
@@ -1106,7 +1106,7 @@ describe("a run opened before the organization was part of its place", () => {
   it("derives with the organization for a run with no record, or one on the new branch", () => {
     expect(locationFor(base, null)).toEqual(base);
     expect(locationFor(base, undefined)).toEqual(base);
-    expect(locationFor(base, branchFor(base))).toEqual(base);
+    expect(branchFor(locationFor(base, branchFor(base)))).toBe(branchFor(base));
   });
 });
 
@@ -1683,6 +1683,8 @@ describe("the identity rule — injective, and safe for every consumer", () => {
       ["FIX", "1219-implement"],
     ];
     const seen = new Map<string, string>();
+    const paths = new Set<string>();
+    const branches = new Set<string>();
     for (const [issue, phase] of tuples) {
       const id = harnessTaskId(issue, phase);
       const previous = seen.get(id);
@@ -1690,10 +1692,13 @@ describe("the identity rule — injective, and safe for every consumer", () => {
       seen.set(id, `${issue} + ${phase}`);
       // The path and the branch must agree with it, or the isolation the id
       // buys is undone by the two derivations that actually touch disk.
-      expect(checkoutPathFor(config, at(issue, phase))).toContain(id);
-      expect(branchFor(at(issue, phase))).toContain(id);
+      // The slug of a name may spell two tuples alike; its hash never does.
+      paths.add(checkoutPathFor(config, at(issue, phase)));
+      branches.add(branchFor(at(issue, phase)));
     }
     expect(seen.size).toBe(tuples.length);
+    expect(paths.size).toBe(tuples.length);
+    expect(branches.size).toBe(tuples.length);
   });
 
   it("refuses a component that could forge the frame", () => {
@@ -1778,7 +1783,7 @@ describe("a board-minted task id standing in for the issue", () => {
     const segment = taskIssueSegment(routed);
     expect(segment).not.toBe(routed);
     expect(() => harnessTaskId(segment, "answer")).not.toThrow();
-    expect(branchFor(at(segment, "answer"))).toContain(harnessTaskId(segment, "answer"));
+    expect(branchFor(at(segment, "answer"))).toMatch(new RegExp(`^conductor/${segment}-answer-[0-9a-f]{6}$`));
   });
 
   it("gives distinct ids distinct segments, an id shaped like an encoding included", () => {
@@ -1865,4 +1870,93 @@ describe("the poll sleep observes a signal that already aborted", () => {
     expect(Date.now() - started).toBeLessThan(5_000);
     releaseCheckout(held);
   }, 20_000);
+});
+
+describe("a run's name — short, readable, and its own", () => {
+  // A deeply nested run: a tenant, an organization, a user, a board kept per
+  // conversation, a tracker issue, and a long title. Its branch was built from
+  // three full digests plus the board's, and GitHub refused the push: a ref may
+  // be at most 255 bytes.
+  const title =
+    "Cap Failed at five with Show all and Show fewer, and let failed tasks be cleared from the panel in one go";
+  const deep: RunLocation = {
+    principal: { tenantId: "tenant_acme", orgId: "org_2abcdefghijklmnopqrstuvwx", userId: "user_2zyxwvutsrqponmlkjihgfed" },
+    epic: runBoardSegment("tasks", "conv_01NczDiGjFZajtRSbPY8697x"),
+    issue: taskIssueSegment("task_62b5f71c45ac40a8b049"),
+    phase: "change",
+    trackerIssue: "FIX-2657",
+    title: `${title} ${"x".repeat(120 - title.length - 1)}`,
+  };
+
+  it("keeps the full ref well under GitHub's limit, names the task, and matches its folder", () => {
+    const config = workspace();
+    const branch = branchFor(deep);
+    expect(Buffer.byteLength(`refs/heads/${branch}`, "utf8")).toBeLessThan(100);
+    // The tracker issue leads, so a pull request from it links to the issue.
+    expect(branch).toMatch(/^conductor\/fix-2657-cap-failed-at-five-with-[0-9a-f]{6}$/);
+    // The branch and the folder end in one name, so either finds the other.
+    const folder = checkoutPathFor(config, deep);
+    expect(basename(folder)).toBe(branch.slice("conductor/".length));
+    expect(dirname(folder)).toBe(resolve(config.root));
+  });
+
+  it("gives two tasks with one title different names across users and organizations", () => {
+    const config = workspace();
+    const names = [
+      deep,
+      { ...deep, principal: { ...deep.principal, userId: "someone_else" } },
+      { ...deep, principal: { ...deep.principal, orgId: "another_org" } },
+      { ...deep, principal: { orgId: deep.principal.orgId, userId: deep.principal.userId } },
+      { ...deep, epic: runBoardSegment("tasks", "conv_other") },
+    ];
+    expect(new Set(names.map((location) => branchFor(location))).size).toBe(names.length);
+    expect(new Set(names.map((location) => checkoutPathFor(config, location))).size).toBe(names.length);
+  });
+
+  it("falls back to the issue for a task with no usable title", () => {
+    const { trackerIssue: _issue, ...untracked } = deep;
+    expect(branchFor({ ...untracked, title: "!!!" })).toMatch(/^conductor\/task-62b5f71c45ac40a8b049-change-[0-9a-f]{6}$/);
+    expect(branchFor({ ...deep, title: undefined })).toBe(branchFor({ ...deep, title: "!!!" }));
+  });
+
+  it("bumps the name, the same way every time, when another worktree or branch already has it", async () => {
+    const config = workspace();
+    const host = hostForConfig(config);
+    const answer = { kind: "repo" as const, repo: resolve(config.sourceRepo), baseRef: config.baseRef };
+    const taken = (candidate: RunLocation) =>
+      host.taken!(answer, { place: placeFor(candidate), branch: branchFor(candidate) });
+    const location = at("FIX-1219", "implement", { title: "Fix the thing" });
+
+    // Free: the name derived from the task.
+    expect(branchFor(await freeRunLocation(location, taken))).toBe(branchFor(location));
+
+    // Someone else's branch holds that name: the run takes the next one.
+    execFileSync("git", ["branch", branchFor(location)], { cwd: config.sourceRepo, stdio: "pipe" });
+    const bumped = await freeRunLocation(location, taken);
+    expect(branchFor(bumped)).toBe(`${branchFor(location)}-2`);
+    expect(branchFor(await freeRunLocation(location, taken))).toBe(branchFor(bumped));
+
+    // The bumped run is found again from its record, and provisions there.
+    const again = locationFor(location, branchFor(bumped));
+    expect(checkoutPathFor(config, again)).toBe(checkoutPathFor(config, bumped));
+    const checkout = await provisionCheckout(config, again);
+    expect(checkout.branch).toBe(branchFor(bumped));
+    expect(checkout.path).toBe(checkoutPathFor(config, bumped));
+
+    // Now its worktree holds the second spelling, so a new run takes the third.
+    expect(branchFor(await freeRunLocation(location, taken))).toBe(`${branchFor(location)}-3`);
+    // A bare folder counts too: it may hold someone's work.
+    mkdirSync(checkoutPathFor(config, { ...location, bump: 2 }), { recursive: true });
+    expect(branchFor(await freeRunLocation(location, taken))).toBe(`${branchFor(location)}-4`);
+  });
+
+  it("keeps the branch and folder of a run already under way on the long name", () => {
+    const { title: _title, ...untitled } = deep;
+    const long = branchFor({ ...untitled, nested: true });
+    expect(long.length).toBeGreaterThan(200);
+    const kept = locationFor(deep, long);
+    expect(branchFor(kept)).toBe(long);
+    // And a record that names the short name keeps it after a retitle.
+    expect(branchFor(locationFor({ ...deep, title: "Something else" }, branchFor(deep)))).toBe(branchFor(deep));
+  });
 });
