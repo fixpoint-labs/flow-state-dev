@@ -187,7 +187,8 @@ framework gains kits and slots. If wrong: a slot contract that is hard to change
 **Open: four holds for the owner**, hardest first, each revisiting a sign-off with its reason
 kept: [O1](DECISIONS.md#o1) kits as a unit, library half and copied half · [O2](DECISIONS.md#o2) views replace reads ·
 [O4](DECISIONS.md#o4) ids on notices and the hour window · [O5](DECISIONS.md#o5) the unit's name.
-None blocks stage 1; O4 gates FIX-2625, and O1 and O5 gate FIX-2626's spec.
+None blocks stage 1's specs or proofs; O1, O2 and O5 time FIX-2619's glossary entries, O4 gates
+FIX-2625, and O1 and O5 gate FIX-2626's spec.
 
 **Decided in review: [O3](DECISIONS.md#o3).** Every client write goes through a flow; a pin is
 one line through the default write flow. If wrong: a request row per plain write.
