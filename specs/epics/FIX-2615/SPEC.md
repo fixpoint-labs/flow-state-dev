@@ -7,7 +7,7 @@
 | A team that… | Today | After this epic |
 |---|---|---|
 | **runs a host with no projects** (the Teammates lab) | No worker and no coding run can reach Linear or any MCP server: every route asks for a project first | The host installs Linear once, enables it for work outside a project, and every worker and run can use it |
-| **works in projects** (Shift Manager, the Claude Code-style lab) | A project names MCP servers, and a Claude Code run gets them. A Codex or Cursor run on the same project gets nothing | A project enables connectors from the host's set, and a run gets them on any of the three harnesses |
+| **works in projects** (Shift Manager) | A project names MCP servers, and a Claude Code run gets them. A Codex or Cursor run on the same project gets nothing | A project enables connectors from the host's set, and a run gets them on any of the three harnesses |
 | **keeps its own key** | The key stays server-side on the MCP path, but the error report keeps a short key in clear text (FIX-2012) | One rule takes a key out of everything that leaves the server, and a check proves it on every route |
 | **builds the next workforce feature** | "Project" and "MCP server" are defined only by code comments and a user page | One contributor reference defines a project and a connector, and the next epic reads that |
 
