@@ -96,7 +96,7 @@ export async function claimRequestAttachments(
         refused: jsonResponse(400, {
           error: "attachment_type_refused",
           index: overLimit.index,
-          message: "Attachments may be PNG, JPEG, WebP or GIF images, or PDFs."
+          message: "Attachments may be PNG, JPEG, WebP or GIF images, PDFs, or text, Markdown, CSV, JSON, YAML, HTML, XML or source files."
         })
       };
     }

@@ -10,12 +10,14 @@
  */
 import { describe, expect, it } from "vitest";
 import { estimateTokenCounter } from "@flow-state-dev/core";
-import { toBlobRef } from "@flow-state-dev/core/attachments";
+import { ATTACHMENT_LIMITS, AttachmentTextTooLargeError, toBlobRef } from "@flow-state-dev/core/attachments";
 import type { FileContent, MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import type { LLMMessage } from "@flow-state-dev/core/types";
 import { resolveAttachment, sessionBlobOwner } from "../../src/blobs/attachments";
 import { createMemoryBlobStore } from "../../src/blobs/memory-blob-store";
+import { pdfTextBlobId } from "../../src/blobs/pdf-text";
 import { newBlobId } from "../../src/blobs/shared";
+import { makePdf } from "../blobs/pdf-fixture";
 import { createSessionItemViews, itemToLLMMessages } from "../../src/context/history";
 import { resolveHistoryFiles } from "../../src/context/history-files";
 import type { RequestRecord } from "../../src/stores/types";
@@ -198,5 +200,74 @@ describe("a user line's files in the history", () => {
     const shot = await add("image/png", "shot.png");
     const messages = await history([], [userLine("r1", "look", [shot], 1) as unknown as OutputItem]);
     expect(JSON.stringify(messages)).not.toContain(shot.data);
+  });
+});
+
+// FIX-2520: a document reaches each model as the provider reads it. A
+// text-like file is text everywhere; a PDF is a file where the provider reads
+// PDFs, and its extracted text everywhere else.
+describe("a user line's documents, by what the model reads", () => {
+  const READS_PDF = ["image/png", "application/pdf"] as const;
+  const IMAGES_ONLY = ["image/png"] as const;
+
+  async function documentFixture() {
+    const { blobs, readAttachment } = filesFixture();
+    let n = 0;
+    const put = async (bytes: Uint8Array, mediaType: string, filename: string, id = newBlobId()): Promise<FileContent> => {
+      n += 1;
+      await blobs.put({ id, bytes, mediaType, filename, uploader: ALICE });
+      await blobs.claim(id, { uploader: ALICE, owner: OWNER, send: `doc-${n}` });
+      return { type: "file", mediaType, data: toBlobRef(id), filename };
+    };
+    /** A PDF stored as the upload route stores one: its text beside it. */
+    const pdf = async (filename: string, text: string) => {
+      const id = newBlobId();
+      await put(new TextEncoder().encode(text), "text/plain", `${filename}.txt`, pdfTextBlobId(id));
+      return put(makePdf(["original bytes"]), "application/pdf", filename, id);
+    };
+    const line = (files: FileContent[]) => [userLine("r1", "what does it say?", files, 1) as unknown as OutputItem];
+    const call = async (files: FileContent[], accepts: ReadonlyArray<string> | undefined) =>
+      parts(
+        ((await resolveHistoryFiles(await read([], line(files)), readAttachment, accepts === undefined ? undefined : { accepts: accepts as never })) as LLMMessage[])[0]
+      );
+    return { put, pdf, call };
+  }
+
+  it("sends a text-like file as text headed by its name, to a provider that reads PDFs and one that doesn't", async () => {
+    const { put, call } = await documentFixture();
+    const csv = await put(new TextEncoder().encode("ts,level\n1,error TANGERINE"), "text/csv", "errors.csv");
+    for (const accepts of [READS_PDF, IMAGES_ONLY]) {
+      expect((await call([csv], accepts))[1]).toEqual({ type: "text", text: "### errors.csv\nts,level\n1,error TANGERINE" });
+    }
+  });
+
+  it("sends a PDF as a file where the provider reads PDFs, and as its stored text where it doesn't", async () => {
+    const { pdf, call } = await documentFixture();
+    const spec = await pdf("spec.pdf", "[page 1]\nintro\n\n[page 3]\ncode word TANGERINE");
+    expect((await call([spec], READS_PDF))[1]).toMatchObject({ type: "file", mediaType: "application/pdf", filename: "spec.pdf" });
+    expect((await call([spec], IMAGES_ONLY))[1]).toEqual({
+      type: "text",
+      text: "### spec.pdf\n[page 1]\nintro\n\n[page 3]\ncode word TANGERINE"
+    });
+  });
+
+  it("extracts a PDF's text at the call when it was stored before texts were kept", async () => {
+    const { put, call } = await documentFixture();
+    const old = await put(makePdf(["code word TANGERINE"]), "application/pdf", "old.pdf");
+    expect((await call([old], IMAGES_ONLY))[1]).toEqual({ type: "text", text: "### old.pdf\n[page 1]\ncode word TANGERINE" });
+  });
+
+  // D2 holds for a PDF's text: refused, never cut, and only where text is sent.
+  it("refuses a PDF whose text is over 200 KB where text is sent, and still sends the PDF where it is read", async () => {
+    const { pdf, call } = await documentFixture();
+    const dense = await pdf("dense.pdf", "x".repeat(ATTACHMENT_LIMITS.maxTextBytes + 1));
+    await expect(call([dense], IMAGES_ONLY)).rejects.toBeInstanceOf(AttachmentTextTooLargeError);
+    expect((await call([dense], READS_PDF))[1]).toMatchObject({ type: "file", mediaType: "application/pdf" });
+  });
+
+  it("sends a PDF as a file when the call names no target, as before", async () => {
+    const { pdf, call } = await documentFixture();
+    const spec = await pdf("spec.pdf", "text");
+    expect((await call([spec], undefined))[1]).toMatchObject({ type: "file", mediaType: "application/pdf" });
   });
 });

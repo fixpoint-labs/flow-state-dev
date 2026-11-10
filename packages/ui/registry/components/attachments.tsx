@@ -23,9 +23,11 @@ import type { FileContent } from "@flow-state-dev/core/items";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import {
-  ATTACHMENT_IMAGE_TYPES,
+  ATTACHMENT_ACCEPT,
   ATTACHMENT_LIMITS,
   attachmentKind,
+  attachmentMediaType,
+  isTextAttachmentType,
   normalizeMediaType,
   parseBlobRef,
 } from "@flow-state-dev/core/attachments";
@@ -79,7 +81,7 @@ export interface UseAttachmentsOptions {
   client?: AttachmentUploader | null;
   /** The open conversation. A switch drops the draft's files. */
   sessionId?: string | null;
-  /** The types the picker offers and the composer takes: a comma list as `<input accept>` reads it. Defaults to the contract's image types. */
+  /** The types the picker offers and the composer takes: a comma list as `<input accept>` reads it, types and `.ext` names. Defaults to every type the contract takes. */
   accept?: string;
   limits?: AttachmentLimitOverrides;
   /** Turns a picked file into the bytes uploaded. Defaults to `downscaleImage`. */
@@ -131,7 +133,7 @@ export interface Attachments {
 /** The longest side, in pixels, an image is downscaled to before upload. */
 export const ATTACHMENT_IMAGE_MAX_EDGE = 1568;
 
-const DEFAULT_ACCEPT = ATTACHMENT_IMAGE_TYPES.join(",");
+const DEFAULT_ACCEPT = ATTACHMENT_ACCEPT;
 
 /** The size that fits `width` × `height` within `maxEdge` on its longest side, or `undefined` when it already fits. */
 export function fitWithin(width: number, height: number, maxEdge: number): { width: number; height: number } | undefined {
@@ -170,18 +172,29 @@ export async function downscaleImage(file: File, maxEdge = ATTACHMENT_IMAGE_MAX_
   }
 }
 
-/** Whether `type` matches an `accept` list (`image/*`, `image/png`, …). A blank list, like `<input accept="">`, takes any type. */
-function accepts(accept: string, type: string): boolean {
+/** Whether a file named `name` of `type` matches an `accept` list (`image/*`, `image/png`, `.md`, …). A blank list, like `<input accept="">`, takes any type. */
+function accepts(accept: string, type: string, name: string): boolean {
   if (accept.trim() === "") return true;
+  const lowerName = name.toLowerCase();
   return accept
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean)
-    .some((pattern) => (pattern.endsWith("/*") ? type.startsWith(pattern.slice(0, -1)) : type === pattern));
+    .some((pattern) =>
+      pattern.startsWith(".")
+        ? lowerName.endsWith(pattern)
+        : pattern.endsWith("/*")
+          ? type.startsWith(pattern.slice(0, -1))
+          : type === pattern,
+    );
 }
 
 function megabytes(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
+}
+
+function kilobytes(bytes: number): string {
+  return `${Math.round(bytes / 1024)} KB`;
 }
 
 /** A file's size as a person reads it. */
@@ -191,9 +204,19 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** The line a server refusal shows, from its HTTP status. */
+/** The line a server refusal shows, from its HTTP status, or from its error code for a document's own limits. */
 function uploadRefusal(name: string, error: unknown, maxFileBytes: number): AttachmentRefusal {
   const status = typeof error === "object" && error !== null ? (error as { status?: unknown }).status : undefined;
+  const body = typeof error === "object" && error !== null ? (error as { body?: unknown }).body : undefined;
+  const code = typeof body === "object" && body !== null ? (body as { error?: unknown }).error : undefined;
+  if (code === "pdf_too_many_pages") {
+    return { code: "size", filename: name, message: `${name} is over ${ATTACHMENT_LIMITS.maxPdfPages} pages` };
+  }
+  if (code === "attachment_text_too_large") {
+    return { code: "size", filename: name, message: `${name} is over ${kilobytes(ATTACHMENT_LIMITS.maxTextBytes)}` };
+  }
+  if (code === "pdf_unreadable") return { code: "type", filename: name, message: `${name} can't be opened` };
+  if (code === "attachment_not_text") return { code: "type", filename: name, message: `${name} isn't text` };
   if (status === 413) return { code: "size", filename: name, message: `${name} is over ${megabytes(maxFileBytes)}` };
   if (status === 415) return { code: "type", filename: name, message: `${name} isn't supported` };
   if (status === 501) return { code: "unavailable", filename: name, message: "Attachments aren't set up on this server" };
@@ -294,13 +317,19 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
       const added: Array<[PendingAttachment, File]> = [];
       for (const picked of list) {
         const name = picked.name || "file";
-        const type = normalizeMediaType(picked.type);
+        // A text-like file is typed by its name: a browser types `.ts` as video.
+        const type = attachmentMediaType({ name, type: picked.type });
         if (picked.size > maxFileBytes) {
           batch.push({ code: "size", filename: name, message: `${name} is over ${megabytes(maxFileBytes)}` });
           continue;
         }
+        // Text goes in whole or not at all: a file cut to fit would be answered from its start.
+        if (isTextAttachmentType(type) && picked.size > ATTACHMENT_LIMITS.maxTextBytes) {
+          batch.push({ code: "size", filename: name, message: `${name} is over ${kilobytes(ATTACHMENT_LIMITS.maxTextBytes)}` });
+          continue;
+        }
         const kind = attachmentKind(type);
-        if (kind === undefined || !accepts(accept, type)) {
+        if (kind === undefined || !accepts(accept, type, name)) {
           batch.push({ code: "type", filename: name, message: `${name} isn't supported` });
           continue;
         }

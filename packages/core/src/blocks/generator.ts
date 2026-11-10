@@ -10,6 +10,8 @@ import { walkBlockGraph } from "../helpers/block-graph";
 import { assertStrictCompatible } from "../models/makeSchemaStrict";
 import { isTextOutputSchema } from "../models/output-root";
 import { withPreparedMessages } from "../models/prepared-model";
+import { providerAttachmentAccepts } from "../models/attachment-accepts";
+import type { AttachmentAccepts } from "../attachments";
 import type {
   BlockConfig,
   BlockContext,
@@ -691,8 +693,18 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
   ctx: TCtx,
   blockName: string
 ): Promise<{ modelId: string; model: GeneratorModel }> {
-  const { modelId, model } = await resolveModelValue(value, input, ctx, blockName);
-  return { modelId, model: withPreparedMessages(model, ctx.resolveModel?.prepareMessages) };
+  const { modelId, model, accepts, prepared } = await resolveModelValue(value, input, ctx, blockName);
+  return { modelId, model: prepared === true ? model : withPreparedMessages(model, ctx.resolveModel?.prepareMessages, accepts) };
+}
+
+/**
+ * What a model string's provider reads as files, for the run's
+ * `prepareMessages`. `providerOf` classifies against the app's maps;
+ * `extractProviderName` is the guess when the hook is absent.
+ */
+async function attachmentAcceptsOf(ctx: BlockContext, modelStr: string): Promise<AttachmentAccepts> {
+  const { extractProviderName } = await import("../models/providerDetection");
+  return providerAttachmentAccepts(ctx.resolveModel.providerOf?.(modelStr) ?? extractProviderName(modelStr));
 }
 
 async function resolveModelValue<TInput, TCtx extends BlockContext>(
@@ -700,7 +712,7 @@ async function resolveModelValue<TInput, TCtx extends BlockContext>(
   input: TInput,
   ctx: TCtx,
   blockName: string
-): Promise<{ modelId: string; model: GeneratorModel }> {
+): Promise<{ modelId: string; model: GeneratorModel; accepts?: AttachmentAccepts; prepared?: true }> {
   const resolved = typeof value === "function" ? await value(input, ctx) : value;
 
   // Unwrap structured selection from selectModel into a model value plus
@@ -719,6 +731,7 @@ async function resolveModelValue<TInput, TCtx extends BlockContext>(
     return {
       modelId: modelValue,
       model: ctx.resolveModel(modelValue, blockName, callOptions),
+      accepts: await attachmentAcceptsOf(ctx, modelValue),
     };
   }
 
@@ -731,17 +744,25 @@ async function resolveModelValue<TInput, TCtx extends BlockContext>(
     // providerOf classifies against the app's maps; extractProviderName is the guess when the hook is absent.
     const providerOf = (modelStr: string) =>
       ctx.resolveModel.providerOf?.(modelStr) ?? extractProviderName(modelStr);
-    const entries = modelValue.map((modelStr) => ({
-      modelId: modelStr,
-      model: ctx.resolveModel(modelStr, blockName, callOptions),
-      providerName: providerOf(modelStr),
-    }));
+    // Each entry prepares its own calls, by what its own provider reads.
+    const entries = modelValue.map((modelStr) => {
+      const providerName = providerOf(modelStr);
+      return {
+        modelId: modelStr,
+        model: withPreparedMessages(
+          ctx.resolveModel(modelStr, blockName, callOptions),
+          ctx.resolveModel?.prepareMessages,
+          providerAttachmentAccepts(providerName)
+        ),
+        providerName,
+      };
+    });
     const fallback = createFallbackModel({
       groupName: `${blockName}-fallback`,
       models: entries,
       retryPolicy: { maxAttemptsPerModel: 2, baseDelayMs: 1000, maxDelayMs: 10000 },
     });
-    return { modelId: modelValue[0], model: fallback };
+    return { modelId: modelValue[0], model: fallback, prepared: true };
   }
 
   if (isGeneratorModel(modelValue)) {
@@ -1882,7 +1903,11 @@ async function applyOwnedPrepareStep(params: {
       // with a warning. Like the SDK bridge, this re-resolves by id alone —
       // any block-level `preferProvider` call option is intentionally not
       // threaded through a per-step model switch.
-      const resolved = withPreparedMessages(ctx.resolveModel(prep.modelId, blockName), ctx.resolveModel?.prepareMessages);
+      const resolved = withPreparedMessages(
+        ctx.resolveModel(prep.modelId, blockName),
+        ctx.resolveModel?.prepareMessages,
+        await attachmentAcceptsOf(ctx, prep.modelId)
+      );
       if (resolved[params.requires] !== undefined) {
         stepModel = resolved;
       } else {

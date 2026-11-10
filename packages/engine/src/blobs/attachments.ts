@@ -11,6 +11,7 @@
 import type { FileContent } from "@flow-state-dev/core/items";
 import { normalizeMediaType, parseBlobRef } from "@flow-state-dev/core/attachments";
 import { uint8ArrayToBase64 } from "../streaming/binary";
+import { pdfTextBlobId } from "./pdf-text";
 import { uploadedBy } from "./shared";
 import type { BlobRecord, BlobStore, BlobUploader } from "./types";
 
@@ -56,6 +57,10 @@ export async function claimAttachments(
   // A file names the type it was uploaded as, so the limits counted on the
   // message's types are the limits on the stored files. Only the uploader's
   // own file is compared; anyone else's is refused by the claim as not found.
+  // A PDF's extracted text (FIX-2520 D1) is claimed with it, into the same
+  // owner, so it is read where the PDF is and deleted with it. A PDF stored
+  // before texts were kept has none; its text is extracted at the send.
+  const claims: Array<{ id: string; index: number }> = [];
   for (const [index, id] of ids.entries()) {
     const record = await blobs.head(id);
     if (
@@ -65,9 +70,14 @@ export async function claimAttachments(
     ) {
       return { refused: { reason: "invalid", index } };
     }
+    claims.push({ id, index });
+    if (record !== undefined && normalizeMediaType(record.mediaType) === "application/pdf") {
+      const text = await blobs.head(pdfTextBlobId(id));
+      if (text !== undefined && uploadedBy(text, claim.uploader)) claims.push({ id: text.id, index });
+    }
   }
   const held: string[] = [];
-  for (const [index, id] of ids.entries()) {
+  for (const { id, index } of claims) {
     let result: Awaited<ReturnType<BlobStore["claim"]>>;
     try {
       result = await blobs.claim(id, claim);

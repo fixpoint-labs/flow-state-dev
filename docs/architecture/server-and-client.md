@@ -234,7 +234,8 @@ files as references only, and its schema refuses bytes. The engine fills
 resolver, bound to the request's session and person. A harness reads
 through `readHarnessAttachments`, so it can read only that session's files.
 Before it starts anything, a harness refuses a turn whose file is a type its
-`accepts` doesn't list, or whose file can't be read. A server with no blob
+`accepts` doesn't list and that has no text to send in its place, or whose
+file can't be read. A server with no blob
 store has no reader, so every turn with files is refused there. Everything a
 run records of its conversation (a generator's trace of its history, a tool
 loop's prelude, a harness turn's input) therefore holds references, never
@@ -243,6 +244,30 @@ named on its turn as `[image: shot.png, not re-sent]`, and one
 that can no longer be read as `no longer available`; a reference never reaches
 a provider. Re-sent files are billed as input on every call; prompt caching is
 what keeps that cheap.
+
+A document reaches each target as that target reads it
+(`attachmentSentAs` in `@flow-state-dev/contracts/attachments`). A text-like
+file (text, Markdown, CSV, JSON, YAML, HTML, XML, source) always goes as text
+headed `### <filename>`. A PDF goes as a file part where the target's
+`accepts` lists `application/pdf` (a generator's comes from its model's
+provider, `core/src/models/attachment-accepts.ts`; Claude Code's lists it),
+and as its extracted text everywhere else (Codex, Cursor, a provider not in the
+table). The provider is `ModelResolver.providerOf`'s answer for the model
+string, else `extractProviderName`'s guess, so an app resolver that maps its
+own aliases sends PDFs as text unless it also maps `providerOf`; a
+`GeneratorModel` instance names no target and gets PDFs as files, as before.
+The upload route checks a document before it stores it: a text-like
+file is UTF-8 with no NUL bytes and at most `maxTextBytes` (`attachment_text_too_large`,
+`attachment_not_text`); a PDF opens and has at most `maxPdfPages` pages,
+counted from its page tree (`pdf_too_many_pages`, `pdf_unreadable`). The same
+pass extracts the PDF's text page by page, a page with no text layer saying
+so, and stores it beside the PDF under `pdfTextBlobId`
+(`engine/src/blobs/pdf-text.ts`); a claim takes it with the PDF into the same
+owner, so it is read where the PDF is and deleted with it. Both readers get a
+document's text through `readAttachmentText` (`engine/src/blobs/attachment-text.ts`),
+which refuses a PDF's text over `maxTextBytes` with `pdf_text_too_large`
+before the target is called; a harness splits its turn with
+`readHarnessTurnFiles`. Text is never cut.
 
 ### Sessions
 

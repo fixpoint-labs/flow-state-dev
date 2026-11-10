@@ -1,5 +1,6 @@
 import type { ZodTypeAny } from "zod";
 import type { ModelIdentity } from "@flow-state-dev/contracts";
+import type { AttachmentAccepts } from "../attachments";
 import type { EvaluationModel } from "./evaluation";
 
 // `ModelIdentity` is a pure shape consumed by the item taxonomy, so its
@@ -385,6 +386,11 @@ export type ModelResolver = ((
    * it on the messages of every model call, at the call, so what a run
    * records (a trace, a tool loop's prelude) keeps the references and never
    * the bytes. Optional: without it the messages go as they are.
+   *
+   * `target.accepts` is what the call's model reads as files, from its
+   * provider (`providerAttachmentAccepts`): a PDF goes as a file where it
+   * is listed and as its text where it isn't; a text-like file always goes
+   * as text. A call that names no target reads images and PDFs.
    */
-  prepareMessages?(messages: unknown[]): Promise<unknown[]>;
+  prepareMessages?(messages: unknown[], target?: { accepts: AttachmentAccepts }): Promise<unknown[]>;
 };
