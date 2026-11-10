@@ -417,4 +417,15 @@ describe("upload", () => {
     expect(new Headers(init?.headers).get("content-type")).toBe("image/png");
     expect(new Uint8Array(await (init?.body as Blob).arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
   });
+
+  // A flow that signs its own callers in checks the upload too, so the file is
+  // held for the user that flow's send resolves.
+  it("uploads through a flow's own route when asked through that flow", async () => {
+    const attachment = { type: "file", mediaType: "image/png", data: "fsd-blob:b_0123456789abcdef" };
+    const fetcher = routed({ "POST /api/flows/chat/blobs": () => json({ attachment }, 201) });
+    const client = createClient({ userId: "u1", fetcher });
+
+    expect(await client.flow("chat").upload({ data: new Uint8Array([1]), mediaType: "image/png" })).toEqual(attachment);
+    expect(new URL(String(fetcher.mock.calls[0]![0]), "http://x").pathname).toBe("/api/flows/chat/blobs");
+  });
 });

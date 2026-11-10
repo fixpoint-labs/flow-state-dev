@@ -653,6 +653,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "upload_blob") {
+        if (route.flowKind !== undefined && options.registry.get(route.flowKind) === undefined) {
+          return jsonResponse(404, { error: `Unknown flow "${route.flowKind}"` });
+        }
         return await handleUploadBlob(request, { stores, principal, hostDisk });
       }
 

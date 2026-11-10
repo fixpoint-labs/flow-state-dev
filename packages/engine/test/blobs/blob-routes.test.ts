@@ -18,9 +18,16 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
 
-function chatFlow() {
+/** Who is asking: the `x-user` header, in organization `acme`. */
+const byHeader = (context: { request?: Request }) => {
+  const user = context.request?.headers.get("x-user");
+  return user === null || user === undefined ? null : { userId: user, orgId: "acme" };
+};
+
+function chatFlow(authenticated = false) {
   return defineFlow({
     kind: "chat",
+    ...(authenticated ? { authentication: { resolvePrincipal: byHeader } } : {}),
     actions: {
       send: {
         inputSchema: z.object({ message: z.string() }),
@@ -35,9 +42,13 @@ function chatFlow() {
   })();
 }
 
-function setup(options: { blobs?: boolean } = {}) {
+/**
+ * `flowAuth`: the flow authenticates its own callers and the host resolver is
+ * left at its default, so only a route governed by the flow knows who asks.
+ */
+function setup(options: { blobs?: boolean; flowAuth?: boolean } = {}) {
   const registry = createFlowRegistry();
-  registry.register(chatFlow());
+  registry.register(chatFlow(options.flowAuth === true));
   const stores: StoreRegistry = {
     ...createInMemoryStores(),
     ...(options.blobs === false ? {} : { blobs: createMemoryBlobStore() })
@@ -45,10 +56,7 @@ function setup(options: { blobs?: boolean } = {}) {
   const router = createFlowApiRouter({
     registry,
     stores,
-    resolvePrincipal: (context) => {
-      const user = context.request?.headers.get("x-user");
-      return user === null || user === undefined ? null : { userId: user, orgId: "acme" };
-    }
+    ...(options.flowAuth === true ? {} : { resolvePrincipal: byHeader })
   });
   const call = (method: "GET" | "POST" | "DELETE", path: string, user: string | undefined, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
@@ -58,8 +66,8 @@ function setup(options: { blobs?: boolean } = {}) {
       params: { path: url.pathname.replace(/^\/api\/flows\//, "").split("/").map(decodeURIComponent) }
     });
   };
-  const upload = async (user: string, bytes = PNG, mediaType = "image/png", filename = "shot.png") =>
-    call("POST", `blobs?filename=${encodeURIComponent(filename)}`, user, {
+  const upload = async (user: string, bytes = PNG, mediaType = "image/png", filename = "shot.png", flow?: string) =>
+    call("POST", `${flow === undefined ? "" : `${flow}/`}blobs?filename=${encodeURIComponent(filename)}`, user, {
       headers: { "content-type": mediaType },
       body: bytes as Uint8Array<ArrayBuffer>
     });
@@ -249,5 +257,38 @@ describe("a claim racing a session's rebirth", () => {
     // Nor can a block of Bob's session resolve it.
     const bobs = { owner: sessionBlobOwner("s_taken"), user: { userId: "bob", orgId: "acme" } };
     await expect(resolveAttachment(stores.blobs!, attachment, bobs)).rejects.toBeInstanceOf(AttachmentUnavailableError);
+  });
+});
+
+describe("an upload for a flow that authenticates its own callers", () => {
+  it("records the uploader the flow's resolver names, so the flow's send can claim it", async () => {
+    const { call, upload, send } = setup({ flowAuth: true });
+    const attachment = await attachmentOf(await upload("alice", PNG, "image/png", "shot.png", "chat"));
+    expect((await send("alice", "s_flow", [attachment])).status).toBe(202);
+    await settle();
+    const id = parseBlobRef(attachment.data)!;
+    expect((await call("GET", `blobs/${id}`, "alice")).status).toBe(200);
+    expect((await call("GET", `blobs/${id}`, "bob")).status).toBe(404);
+  });
+
+  it("refuses an anonymous upload through the flow, and an upload to a flow that is not here", async () => {
+    const { call, upload } = setup({ flowAuth: true });
+    const response = await call("POST", "chat/blobs", undefined, { headers: { "content-type": "image/png" }, body: PNG });
+    expect(response.status).toBe(401);
+    expect((await upload("alice", PNG, "image/png", "shot.png", "nope")).status).toBe(404);
+  });
+});
+
+describe("a long file name", () => {
+  it("keeps whole characters when it cuts a name to 255, so the file still downloads", async () => {
+    const { call, upload, send } = setup();
+    const name = `${"a".repeat(254)}\u{1F600}`;
+    const attachment = await attachmentOf(await upload("alice", PNG, "image/png", name));
+    expect(attachment.filename).toBe(name);
+    await send("alice", "s_name", [attachment]);
+    await settle();
+    const read = await call("GET", `blobs/${parseBlobRef(attachment.data)!}`, "alice");
+    expect(read.status).toBe(200);
+    expect(read.headers.get("content-disposition")).toContain(encodeURIComponent(name));
   });
 });

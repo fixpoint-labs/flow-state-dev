@@ -430,6 +430,13 @@ export interface FlowHandle<TFlow extends TypedFlow = UntypedFlow> {
   read<TOutput = unknown>(name: string, input: unknown, options: { sessionId: string }): Promise<TOutput>;
   /** Start a session on this flow, as the client's user. */
   createSession(options?: CreateSessionOptions): Promise<SessionDetail>;
+  /**
+   * Upload one file to attach to this flow's messages, checked by this flow's
+   * own sign-in, so the file is held for the user its sends resolve. Use this
+   * when the flow authenticates its own callers; otherwise `client.upload` is
+   * the same.
+   */
+  upload(request: UploadRequest): Promise<FileContent>;
   /** A request of this flow, by id. Reads nothing until a method is called. */
   request(id: string): RequestHandle;
 }
@@ -731,19 +738,22 @@ export function createClient(options: CreateClientOptions): Client {
         { userId, language: request.language }
       );
     },
-    upload: async (request) => {
-      const mediaType = request.mediaType ?? (request.data instanceof Blob ? request.data.type : "");
-      const body =
-        request.data instanceof Blob ? request.data : new Blob([request.data as Uint8Array<ArrayBuffer>], { type: mediaType });
-      const answer = await t.json<{ attachment: FileContent }>(
-        "/api/flows/blobs",
-        { method: "POST", headers: { "content-type": mediaType }, body },
-        { userId, filename: request.filename }
-      );
-      return answer.attachment;
-    }
+    upload: (request) => uploadTo(t, "/api/flows/blobs", userId, request)
   };
   return client;
+}
+
+/** POST one file's raw bytes to an upload route and resolve to its reference. */
+async function uploadTo(t: Transport, path: string, userId: string, request: UploadRequest): Promise<FileContent> {
+  const mediaType = request.mediaType ?? (request.data instanceof Blob ? request.data.type : "");
+  const body =
+    request.data instanceof Blob ? request.data : new Blob([request.data as Uint8Array<ArrayBuffer>], { type: mediaType });
+  const answer = await t.json<{ attachment: FileContent }>(
+    path,
+    { method: "POST", headers: { "content-type": mediaType }, body },
+    { userId, filename: request.filename }
+  );
+  return answer.attachment;
 }
 
 // ---------------------------------------------------------------------------
@@ -804,6 +814,7 @@ function flowHandle<TFlow extends TypedFlow>(t: Transport, userId: string, addre
           body: JSON.stringify({ userId, ...create })
         })
       ).session,
+    upload: (request) => uploadTo(t, `/api/flows/${seg(flow)}/blobs`, userId, request),
     request: (id) => requestHandle(t, flow, requireValue(id, "requestId"), undefined)
   };
 }

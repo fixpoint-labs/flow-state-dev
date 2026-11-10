@@ -161,6 +161,8 @@ async function readCapped(request: Request, limit: number): Promise<Uint8Array |
 function cleanFilename(raw: string | null): string | undefined {
   const base = (raw ?? "").split(/[\\/]/).pop() ?? "";
   // eslint-disable-next-line no-control-regex
-  const clean = base.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 255);
+  // Cut by code point: a cut through a surrogate pair leaves a name that
+  // `encodeURIComponent` throws on, and the file could never be downloaded.
+  const clean = Array.from(base.replace(/[\u0000-\u001f\u007f]/g, "").trim()).slice(0, 255).join("");
   return clean.length === 0 ? undefined : clean;
 }

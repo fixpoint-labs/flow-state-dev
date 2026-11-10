@@ -23,7 +23,7 @@ export type ParsedFlowRoute =
   | { kind: "user_stream"; userId: string }
   | { kind: "user_stream_mint"; userId: string }
   | { kind: "transcribe" }
-  | { kind: "upload_blob" }
+  | { kind: "upload_blob"; flowKind?: string }
   | { kind: "get_blob"; blobId: string }
   | { kind: "retry_request"; flowKind: string; sessionId: string; requestId: string }
   | { kind: "continue_request"; flowKind: string; sessionId: string; requestId: string }

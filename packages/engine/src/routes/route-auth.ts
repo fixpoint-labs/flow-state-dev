@@ -254,10 +254,14 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "list_sessions":
     case "active_requests":
     case "transcribe":
-    // An upload has no owner yet: it is held for the caller who sent it, so
-    // "host" means authentication only, as for `transcribe`.
-    case "upload_blob":
       return { kind: "host" };
+
+    // An upload has no owner yet: it is held for the caller who sent it, so
+    // this is authentication only. Addressed to a flow, it is that flow's own
+    // sign-in, so the uploader is the principal the flow's send resolves;
+    // otherwise the host's, as for `transcribe`.
+    case "upload_blob":
+      return route.flowKind === undefined ? { kind: "host" } : { kind: "flow", flowKind: route.flowKind };
 
     case "get_blob":
       return { kind: "blob", blobId: route.blobId };

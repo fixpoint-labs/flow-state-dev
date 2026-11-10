@@ -98,6 +98,7 @@ export function fakeClient(parts: FakeClientParts): Client {
         return Object.assign(handle(address, response.request.id), { response });
       }) as never,
       createSession: async (options?: unknown) => call(parts.flow?.createSession, "flow.createSession", options),
+      upload: async () => missing("flow.upload"),
       read: (async (name: string, input: unknown, options: unknown) => call(parts.flow?.read, "flow.read", name, input, options)) as never,
       request: (id: string) => handle(address, id)
     }),
