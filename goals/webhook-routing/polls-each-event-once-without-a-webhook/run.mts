@@ -23,17 +23,14 @@ import {
   hireWorkforce,
   messageReceivedEntry,
   subscriptionResources,
-  subscriptionTools,
   workerConfigSchema,
   workerMessagesResources,
   workerTaskEntry,
+  type DeclaredRoutine,
   type SubscriptionProvider,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import {
-  SUBSCRIPTION_POLLS_PATTERN,
-  subscriptionPolling
-} from "@flow-state-dev/workforce/internal";
+import { SUBSCRIPTION_POLLS_PATTERN, workerRoutineVerbs } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
 import { REPO_ROOT, goalTmpDir, runGoal, silentLogger } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
@@ -76,10 +73,17 @@ const PATCHES: Record<string, ModulePatch[]> = {
     { module: SF, from: String.raw`const etags = owed\.length === 0 \? \(fetched\?\.etags \?\? input\.etags\) : undefined;`, to: "const etags = fetched?.etags ?? input.etags;" }
   ],
   // A fire ignores the app's declared list: a declared routine that left config keeps polling.
-  "keep-removed": [{ module: SF, from: String.raw`      if \(declared !== undefined\) \{`, to: "      if (false) {" }],
+  "keep-removed": [
+    {
+      module: SF,
+      from: String.raw`for \(const sub of subs\.filter\(\(s\) => s\.id\.startsWith\(DECLARED_ROUTINE_KEY_PREFIX\) && !kept\.has\(s\.id\)\)\)`,
+      to: "for (const sub of [] as typeof subs)"
+    },
+    { module: SF, from: String.raw`subs = subs\.filter\(\(s\) => !s\.id\.startsWith\(DECLARED_ROUTINE_KEY_PREFIX\) \|\| kept\.has\(s\.id\)\);`, to: "" }
+  ],
   // A subscription's own cadence is ignored: every poll runs at the default.
   "ignore-cadence": [
-    { module: "packages/workforce/src/subscriptions/subscribe.ts", from: String.raw`row\.everyMinutes \?\? polling\.everyMinutes`, to: "polling.everyMinutes" },
+    { module: "packages/workforce/src/subscriptions/subscribe.ts", from: String.raw`moved\.now\.everyMinutes \?\? write\.polling\.everyMinutes`, to: "write.polling.everyMinutes" },
     { module: SF, from: String.raw`s\.everyMinutes \?\? polling!\.everyMinutes`, to: "polling!.everyMinutes" }
   ]
 };
@@ -165,7 +169,8 @@ let beat = 0;
 interface BootOptions {
   readonly db: string;
   readonly push?: boolean;
-  readonly declared?: () => readonly { readonly id: string }[];
+  /** The app's declared routines, as its config lists them at this boot. */
+  readonly declared?: readonly DeclaredRoutine[];
   /** Delivery ids whose first dispatch is lost; whose take first fails; whose dispatch is always lost. */
   readonly losses?: { lost: Set<string>; untaken: Set<string>; never: Set<string> };
 }
@@ -195,7 +200,6 @@ async function boot(options: BootOptions) {
     standardWorkers: [{ id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] } as WorkerManifest],
     workerFlows: () => flowsRef as never
   });
-  let polling: ReturnType<typeof subscriptionPolling> | undefined;
   // The SQLite stores lay out the index's table as they open, after the flows are built: open the index on first use.
   let opened: ReturnType<typeof createSQLiteScheduleIndex> | undefined;
   const real = () => (opened ??= createSQLiteScheduleIndex(indexDb));
@@ -204,36 +208,37 @@ async function boot(options: BootOptions) {
     remove: (entry) => real().remove(entry),
     claimDue: (now, limit) => real().claimDue(now, limit)
   };
-  const pollingOf = () => (polling ??= subscriptionPolling({ index }));
   const doorInput = z.object({ message: z.string() });
   const door = handler({ name: "follower-run", inputSchema: doorInput, execute: async () => "ok" });
   let instances: Record<string, FlowInstance> = {};
   const build = () => {
-    const tools = subscriptionTools({ providers: [github], poll: pollingOf() });
+    // The worker verbs as actions, called as a model would; their providers and polling come from hireWorkforce's routines.
+    const tools = workerRoutineVerbs(installation);
     flowsRef.follower = {
       roles: ["contributor"],
       flow: defineFlow({
         kind: "follower",
         configSchema: workerConfigSchema(),
         session: installation.session(),
-        resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources, ...pollingOf().resources },
+        resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
         actions: {
           respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
-          subscribe: { inputSchema: tools.subscribe.inputSchema, block: tools.subscribe },
-          unsubscribe: { inputSchema: tools.unsubscribe.inputSchema, block: tools.unsubscribe }
+          ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
         },
         internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
         task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: door }) } }
       })
     };
-    instances = Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy]));
+    // Polling, configured once: its own index, beside the routines' providers and the app's declared routines.
+    const routines = { providers: [github], poll: { index }, ...(options.declared === undefined ? {} : { declared: options.declared }) };
+    instances = Object.fromEntries(hireWorkforce(installation, { routines }).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy]));
     instances["github-service"] = defineSubscriptionServiceFlow({
       kind: "github-service",
       provider: github,
       installation,
       trustedBots: BOTS,
       capPerHour: 10_000,
-      poll: { ...pollingOf(), ...(options.declared === undefined ? {} : { declared: options.declared }) }
+      poll: true
     });
   };
   // The index's table exists once the stores initialized; the flows are built after.
@@ -343,13 +348,15 @@ async function boot(options: BootOptions) {
       stores: runtime.stores,
       runtimeConfig: { ...runtime.runtimeConfig }
     })) as { output?: any; error?: unknown };
-  const act = (user: string, sessionId: string, action: string, input: unknown) => run(instances.follower!, user, sessionId, action, input);
-  /** Store a copy of `user`'s subscription `from` under `key`, as the declared routines' seed writes one. */
-  const storeAs = async (user: string, from: string, key: string) => {
-    const cell = `${user}:~org:${ORG}`;
-    const stored = await runtime.stores.resourceState.get("user", cell, `workforce/subscriptions/${from}`);
-    await runtime.stores.resourceState.set("user", cell, `workforce/subscriptions/${key}`, { ...(stored!.state as object), id: key } as never, "any" as never);
+  /** Save an event routine in `sessionId` as a model would: its subscription's id, or why it was refused. */
+  const subscribe = async (user: string, sessionId: string, event: Record<string, unknown>): Promise<{ id?: string; refused?: string }> => {
+    const answer = (await run(instances.follower!, user, sessionId, "saveRoutine", { trigger: { event: { provider: "github", ...event } } })).output;
+    return answer?.ok === true ? { id: String(answer.routine.id).replace(/^event:/, "") } : { refused: answer?.error ?? "no answer" };
   };
+  /** Delete the event routine on subscription `id`, as a model would. */
+  const unsubscribe = (user: string, sessionId: string, id: string) => run(instances.follower!, user, sessionId, "deleteRoutine", { id: `event:${id}` });
+  /** One roster run for `user`: its request seeds the app's declared routines. */
+  const seed = (user: string) => run(instances.roster!, user, `roster-${user}`, "listRoutines", {});
   const route = async (event: SubscriptionEvent) => {
     const routed = await routeServiceEvent(captured!, { flowKind: "github-service", entry: "routeSubscriptionEvent", input: event, principal: { userId: "service:github", orgId: ORG } });
     if (routed.error !== undefined) throw new Error(`routing failed: ${JSON.stringify(routed.error)}`);
@@ -375,7 +382,7 @@ async function boot(options: BootOptions) {
   const storedAt = async (user: string, pattern: string) =>
     Object.values(await runtime.stores.resourceState.getByPrefix("user", `${user}:~org:${ORG}`, pattern.replace("*", ""))).map((v) => v.state as Record<string, any>);
 
-  return { calls, fires, tick, createFollower, act, storeAs, route, landed, storedAt, injected, dispose: async () => (await state.dispose(), indexDb.close()) };
+  return { calls, fires, tick, createFollower, subscribe, unsubscribe, seed, route, landed, storedAt, injected, dispose: async () => (await state.dispose(), indexDb.close()) };
 }
 
 // ---- the legs ----------------------------------------------------------------
@@ -390,8 +397,8 @@ async function subscribeAll(app: App) {
   for (const sub of SUBSCRIPTIONS) {
     const sessionId = await app.createFollower(sub.user);
     sessions.set(sub.label, sessionId);
-    const out = await app.act(sub.user, sessionId, "subscribe", { provider: "github", ...sub.input });
-    if (out.output?.id !== undefined) ids.set(sub.label, out.output.id);
+    const out = await app.subscribe(sub.user, sessionId, sub.input);
+    if (out.id !== undefined) ids.set(sub.label, out.id);
   }
   return { sessions, ids };
 }
@@ -406,7 +413,7 @@ async function runTimeline(app: App, made: Awaited<ReturnType<typeof subscribeAl
       moveTo(EVENTS[next]!.at);
       for (const sub of SUBSCRIPTIONS) {
         if (sub.unsubscribeAt === next && made.ids.has(sub.label)) {
-          await app.act(sub.user, made.sessions.get(sub.label)!, "unsubscribe", { id: made.ids.get(sub.label) });
+          await app.unsubscribe(sub.user, made.sessions.get(sub.label)!, made.ids.get(sub.label)!);
           unsubscribedAt.set(sub.label, Date.now());
         }
       }
@@ -552,21 +559,23 @@ await runGoal(async (failures, tell) => {
   }
 
   // ---- leg 4: cadence, a restart, and a declared routine leaving config ---------
-  // The declared routines' seed is FIX-2614's; this leg stands in for its subscription (a cfg_ copy) and grades what polling owns.
+  // The routines' own seed writes the declared routine; what polling owns is ending it once config drops it.
   {
-    let declared: Array<{ id: string }> = [{ id: "web-pr" }];
+    const declared: DeclaredRoutine[] = [{ id: "web-pr", trigger: { event: { provider: "github", thread: "github:acme/web#9", interest: "the web PR" } }, worker: "eng.follower" }];
     const db = join(SCRATCH, "leg4.sqlite");
     moveTo(T0 - 2 * MINUTE);
-    const cold = await boot({ db, declared: () => declared });
+    const cold = await boot({ db, declared });
     const repoSession = await cold.createFollower("alice");
     const webSession = await cold.createFollower("alice");
-    await cold.act("alice", repoSession, "subscribe", { provider: "github", thread: "github:acme/api", interest: "the repo", everyMinutes: 15 });
-    const web = (await cold.act("alice", webSession, "subscribe", { provider: "github", thread: "github:acme/web#9", interest: "the web PR" })).output?.id as string;
+    await cold.subscribe("alice", repoSession, { thread: "github:acme/api", interest: "the repo", everyMinutes: 15 });
+    const web = (await cold.subscribe("alice", webSession, { thread: "github:acme/web#9", interest: "the web PR" })).id!;
+    const seeded = await cold.seed("alice");
+    if (seeded.error !== undefined) failures.push(`leg 4 · j: the roster's seed failed: ${JSON.stringify(seeded.error)}`);
     // The declared routines' key for entry web-pr, written again here, not imported: cfg_ and a hash of the roster flow and the entry id.
     const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode("workforce-roster\nweb-pr")));
     const declaredKey = `cfg_${[...digest.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
-    await cold.storeAs("alice", web, declaredKey);
-    const three = await cold.act("alice", repoSession, "subscribe", { provider: "github", thread: "github:acme/web", interest: "too often", everyMinutes: 3 });
+    if ((await cold.storedAt("alice", "workforce/subscriptions/*")).find((r) => r.id === declaredKey)?.enabled !== true) failures.push("leg 4 · j: the seed wrote no declared subscription");
+    const three = await cold.subscribe("alice", repoSession, { thread: "github:acme/web", interest: "too often", everyMinutes: 3 });
     for (let t = T0 - MINUTE; t <= T0 + 30 * MINUTE; t += MINUTE) {
       moveTo(t);
       beat = t;
@@ -576,14 +585,13 @@ await runGoal(async (failures, tell) => {
     const coldFires = [...cold.fires];
     const pollsBefore = (await cold.storedAt("alice", SUBSCRIPTION_POLLS_PATTERN)).length;
     await cold.dispose();
-    // A restart: a new process over the same file adds no poll, and the polls keep firing.
-    const warm = await boot({ db, declared: () => declared });
+    // A restart over config without the entry: a new process over the same file adds no poll, and the polls keep firing.
+    const warm = await boot({ db, declared: [] });
     const pollsAfter = (await warm.storedAt("alice", SUBSCRIPTION_POLLS_PATTERN)).length;
     tell.over("leg 4 · j · polls before the restart", Array.from({ length: pollsBefore }));
     if (pollsAfter !== pollsBefore || pollsBefore !== 2) failures.push(`leg 4 · j: ${pollsBefore} poll(s) before the restart, ${pollsAfter} after, for two threads`);
     if (coldMessages === 0) failures.push("leg 4 · j: the polled subscriptions heard nothing");
-    // The declared entry leaves config: its subscription ends at its next fire; the session's own subscription stays.
-    declared = [];
+    // The declared entry left config: its subscription ends at its next fire, with no roster run; the session's own subscription stays.
     for (let t = T0 + 31 * MINUTE; t <= T0 + 50 * MINUTE; t += MINUTE) {
       moveTo(t);
       beat = t;
@@ -600,7 +608,7 @@ await runGoal(async (failures, tell) => {
     const repoFires = tell.over("leg 4 · k · the 15-minute poll's fires", all.filter((f) => f.key === repoKey));
     gradeFires("leg 4", all, (key) => (key === repoKey ? 15 : 5));
     if (repoFires.length < 3) failures.push(`leg 4 · k: the 15-minute poll fired ${repoFires.length} time(s) in 50 minutes`);
-    if (three.output?.id !== undefined) failures.push("leg 4 · k: a cadence of 3 was accepted");
+    if (three.id !== undefined) failures.push("leg 4 · k: a cadence of 3 was accepted");
     evidence.push(`leg 4: ${pollsBefore} polls before a restart and ${pollsAfter} after; the repo poll fired ${repoFires.length} times; the removed declared subscription ${removed?.endedReason}`);
     await warm.dispose();
   }

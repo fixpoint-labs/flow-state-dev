@@ -145,9 +145,14 @@ describe("updateTask's answers", () => {
     expect(await b.act("updateTask", { id: filed.taskId, answers: hold, done: false, message: "not this week" })).toEqual({ ok: true });
     const row = b.get(filed.taskId)!;
     expect(row).toMatchObject({ status: "cancelled", attempts: 0, error: 'No to "Ship once it builds?": not this week', cancelledVia: "action" });
+    // Pinned: the No cancels and keeps no answer on the hold. Workforce's retry of a cancelled
+    // inferred task reads an answer kept on its confirm as the user's yes, so a No recorded here
+    // would let that retry start work the user declined.
+    expect((row.steers ?? []).filter((steer) => steer.answers === hold)).toEqual([]);
     expect(await b.ref.claim("w")).toBeNull();
     // A retry after the cancel landed; a different answer is refused as finished.
     expect(await b.act("updateTask", { id: filed.taskId, answers: hold, done: false, message: "not this week" })).toEqual({ ok: true });
+    expect((b.get(filed.taskId)!.steers ?? []).filter((steer) => steer.answers === hold)).toEqual([]);
     expect(await b.act("updateTask", { id: filed.taskId, answers: hold, done: true })).toMatchObject({ ok: false, error: expect.stringMatching(/^task_finished:/) });
   });
 

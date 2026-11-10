@@ -11,7 +11,7 @@
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
  *     /messages                      every message between the user's workers
- *     /schedules                     the user's scheduled work, each with its next run
+ *     /routines                      the user's routines, clock and event, each with its maker
  *     /usage                         how much of each harness's subscription the user has used
  *     /s/<sessionId>                 one of the user's sessions with a worker, as a conversation
  *     /p/<projectId>/<stream|board|workstreams|brief>[?owner=<userId>&ws=<workstreamId>]
@@ -40,7 +40,7 @@ export type Route =
   | { level: "tasks"; by: TaskGrouping }
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
   | { level: "messages" }
-  | { level: "schedules" }
+  | { level: "routines" }
   | { level: "usage" }
   | { level: "session"; sessionId: string }
   | {
@@ -83,7 +83,8 @@ export function parseRoute(pathname: string, search = ""): Route {
   if (head === "roster" && a !== undefined && (b === "settings" || b === "rules")) return { level: "worker-settings", worker: a };
   if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
   if (head === "messages") return { level: "messages" };
-  if (head === "schedules") return { level: "schedules" };
+  // `/schedules` was this page's address; links to it keep opening it.
+  if (head === "routines" || head === "schedules") return { level: "routines" };
   if (head === "usage") return { level: "usage" };
   if (head === "s" && a !== undefined) return { level: "session", sessionId: a };
   if (head === "inbox") return { level: "inbox", item: a ?? null };
@@ -113,8 +114,8 @@ export function pathFor(route: Route): string {
       return `/tasks/${e(route.boardRef)}/${e(route.taskId)}/${route.tab}`;
     case "messages":
       return "/messages";
-    case "schedules":
-      return "/schedules";
+    case "routines":
+      return "/routines";
     case "usage":
       return "/usage";
     case "session":

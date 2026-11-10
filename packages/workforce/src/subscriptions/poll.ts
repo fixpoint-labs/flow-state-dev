@@ -6,7 +6,7 @@
  * credentials, and what it fetches reaches only that user's subscriptions on
  * the thread, through the same screens and delivery as push (ER-4).
  *
- * - **Cadence.** Every `everyMinutes` is one of {@link POLL_CADENCES}; anything
+ * - **Cadence.** Every `everyMinutes` is one of {@link ROUTINE_CADENCES}; anything
  *   else throws ({@link assertPollCadence}). The schedule's cron fires every
  *   `everyMinutes`, offset by a minute its key picks, so polls spread over the
  *   hour and one poll's fires are exactly `everyMinutes` apart.
@@ -18,31 +18,29 @@
  *   a fire that finds no enabled subscription on the thread turns it off, and
  *   ends a declared routine's subscription whose entry left config.
  *
- * An app polls by building one {@link subscriptionPolling} from its schedule
- * index and handing it to the service flow and to whatever subscribes
- * (`subscriptionTools`, `followPullRequest`). One index is one polling, so
- * every flow that declares it declares the same collection.
+ * An app polls by giving `hireWorkforce(installation, { routines: { poll: { index } } })`
+ * a schedule index of its own (one index ticks one flow, and the clock
+ * routines' index is the roster's), and turning `poll` on in its service flow.
+ * Each installation has one {@link installationPolling}: one poll collection,
+ * declared when its flows are built and mirrored into that index once
+ * `hireWorkforce` has run, so every flow that declares it declares the same one.
  */
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { defineScheduleCollection, type ScheduleCollectionState, type ScheduleIndex } from "@flow-state-dev/scheduled/collection";
 import { z } from "zod";
-import { ROSTER_FLOW } from "../workers/keys";
+import { ROUTINE_CADENCES } from "../routines/keys";
 import { SUBSCRIPTION_POLL_HANDLER, SUBSCRIPTION_POLLS_PATTERN, SUBSCRIPTION_POLLS_RESOURCE } from "./keys";
 import { indexKeyOf } from "./rows";
+import { routinePollIndexOf, routinePollMinutesOf, routinePollingOn } from "../routines/routines-options";
 
-/** The cadences a subscription may poll at, in minutes. Five is the floor (epic D10). **Pinned.** */
-export const POLL_CADENCES = [5, 10, 15, 20, 30, 60] as const;
-
-/** The cadence a subscription that names none polls at, unless the app names another. */
-const DEFAULT_POLL_MINUTES = 5;
 
 /** Polls a fire may still owe a delivery before it gives that event up (D2). */
 export const POLL_GIVE_UP_AFTER = 3;
 
-/** Throw unless `minutes` is one of {@link POLL_CADENCES}. */
-function assertPollCadence(minutes: number, where: string): void {
-  if (!(POLL_CADENCES as readonly number[]).includes(minutes)) {
-    throw new Error(`${where}: everyMinutes must be one of ${POLL_CADENCES.join(", ")}; got ${minutes}.`);
+/** Throw unless `minutes` is one of {@link ROUTINE_CADENCES}. */
+export function assertPollCadence(minutes: number, where: string): void {
+  if (!(ROUTINE_CADENCES as readonly number[]).includes(minutes)) {
+    throw new Error(`${where}: everyMinutes must be one of ${ROUTINE_CADENCES.join(", ")}; got ${minutes}.`);
   }
 }
 
@@ -83,48 +81,46 @@ export const pollScheduleInputSchema = z.object({
 
 export type PollScheduleInput = z.infer<typeof pollScheduleInputSchema>;
 
-/** A poll schedule as the schedule collection stores it, its `input` typed. */
-export type PollScheduleState = Omit<ScheduleCollectionState, "input"> & { input: PollScheduleInput };
+/** A poll schedule as the schedule collection stores it, its `input` typed; a poll carries no `metadata`. */
+export type PollScheduleState = Omit<ScheduleCollectionState, "input" | "metadata"> & { input: PollScheduleInput };
 
-/** What {@link subscriptionPolling} is built with. */
-export interface SubscriptionPollingOptions {
-  /** The schedule index the polls mirror into, for the tick to claim due ones from. Required: a poll no tick finds never fires. */
-  readonly index: ScheduleIndex;
-  /** The cadence a subscription that names none polls at. One of {@link POLL_CADENCES}; default {@link DEFAULT_POLL_MINUTES}. */
-  readonly everyMinutes?: number;
-}
-
-/** An app's polling: the poll schedules' collection, mirrored into its index, and the default cadence. */
+/** An installation's polling: the poll schedules' collection, mirrored into its index, and the default cadence. */
 export interface SubscriptionPolling {
   readonly index: ScheduleIndex;
+  /** The cadence a subscription that names none polls at: `routines.poll.everyMinutes`, else 5. */
   readonly everyMinutes: number;
   /** The poll schedules, for a flow's (or a block's) `resources`. */
   readonly resources: { readonly [SUBSCRIPTION_POLLS_RESOURCE]: ReturnType<typeof defineScheduleCollection> };
 }
 
-const pollings = new WeakMap<ScheduleIndex, SubscriptionPolling>();
+const pollings = new WeakMap<object, SubscriptionPolling>();
 
 /**
- * One app's polling, by its schedule index. The same index gives the same
- * collection, so the service flow and the subscribe tools declare one
- * resource; a second default cadence for one index throws.
+ * `installation`'s polling: one per installation, so the service flow, the
+ * routine verbs and the roster declare one collection. Its index and cadence
+ * are the ones `hireWorkforce`'s `routines.poll` was given, read when a poll
+ * schedule is written: a flow is built before `hireWorkforce` runs.
  */
-export function subscriptionPolling(options: SubscriptionPollingOptions | SubscriptionPolling): SubscriptionPolling {
-  if ("resources" in options) return options;
-  const everyMinutes = options.everyMinutes ?? DEFAULT_POLL_MINUTES;
-  assertPollCadence(everyMinutes, "poll");
-  const known = pollings.get(options.index);
-  if (known !== undefined) {
-    if (known.everyMinutes !== everyMinutes) {
-      throw new Error(`poll: this schedule index already polls every ${known.everyMinutes} minutes by default; got ${everyMinutes}.`);
-    }
-    return known;
-  }
+export function installationPolling(installation: object): SubscriptionPolling {
+  const known = pollings.get(installation);
+  if (known !== undefined) return known;
+  const index = routinePollIndexOf(installation);
   // Never isolated: the fire resolves a poll from the user's shared cell, whatever the subscribing flow isolates.
-  const collection = defineScheduleCollection({ pattern: SUBSCRIPTION_POLLS_PATTERN, index: options.index, flowIsolation: false });
-  const polling: SubscriptionPolling = { index: options.index, everyMinutes, resources: { [SUBSCRIPTION_POLLS_RESOURCE]: collection } };
-  pollings.set(options.index, polling);
+  const collection = defineScheduleCollection({ pattern: SUBSCRIPTION_POLLS_PATTERN, index, flowIsolation: false });
+  const polling: SubscriptionPolling = {
+    index,
+    get everyMinutes() {
+      return routinePollMinutesOf(installation);
+    },
+    resources: { [SUBSCRIPTION_POLLS_RESOURCE]: collection }
+  };
+  pollings.set(installation, polling);
   return polling;
+}
+
+/** `installation`'s polling once its `hireWorkforce` turned it on (`routines.poll`), and otherwise `undefined`: read when a write runs. */
+export function pollingOn(installation: object): SubscriptionPolling | undefined {
+  return routinePollingOn(installation) ? installationPolling(installation) : undefined;
 }
 
 /** The running user's poll schedules, when the running block declares them. */
@@ -163,14 +159,3 @@ export async function ensurePollSchedule(ctx: BlockContext, provider: string, th
   const input = existing !== undefined && existing.enabled !== false ? existing.input : { polledThrough: Date.now() };
   await polls.create(key, pollScheduleState(provider, thread, everyMinutes, { ...input, key }), { replace: true });
 }
-
-// FIX-2614 (#4970) owns the declared routines and their seed. This is its
-// `declaredRoutineKey`, the same formula, until both land and this imports it.
-/** A declared routine's stored key: `cfg_` and a hash of the roster flow kind and the entry's id. */
-export async function declaredSubscriptionKey(entryId: string): Promise<string> {
-  const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${ROSTER_FLOW}\n${entryId}`)));
-  return `cfg_${[...digest.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
-}
-
-/** Whether a subscription is a declared routine's: its key starts `cfg_`. */
-export const isDeclaredSubscriptionKey = (id: string) => id.startsWith("cfg_");

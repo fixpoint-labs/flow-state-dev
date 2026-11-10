@@ -11,8 +11,8 @@
  * must not double a pinned repo on every restart (D3).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { declaredSubscriptionKey } from "../src/subscriptions/poll";
-import { bootSubscriptionsHost, event, pollTimeline, type SubscriptionsHost } from "./subscriptions-harness";
+import { declaredRoutineKey, type DeclaredRoutine } from "../src/routines";
+import { bootSubscriptionsHost, event, pollTimeline, type SubscriptionsHost, type SubscriptionsHostOptions } from "./subscriptions-harness";
 
 const PR = "github:acme/api#412";
 const T0 = Date.parse("2026-11-09T10:00:00Z");
@@ -34,8 +34,8 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-async function withPolling(run: (host: SubscriptionsHost) => Promise<void>, poll: NonNullable<Parameters<typeof bootSubscriptionsHost>[0]>["poll"] = {}) {
-  const host = bootSubscriptionsHost({ poll });
+async function withPolling(run: (host: SubscriptionsHost) => Promise<void>, options: SubscriptionsHostOptions = {}) {
+  const host = bootSubscriptionsHost({ poll: {}, ...options });
   try {
     await run(host);
   } finally {
@@ -99,7 +99,7 @@ describe("one poll per user and thread", () => {
   it("refuses a cadence off the list", () =>
     withPolling(async (host) => {
       const one = await host.follower("alice");
-      expect(await host.subscribe("alice", one, { thread: PR, everyMinutes: 3 })).toBeUndefined();
+      expect(await host.subscribe("alice", one, { thread: PR, everyMinutes: 3 })).toEqual({ refused: expect.stringMatching(/^invalid_cadence/) });
       expect(await host.subscriptionRows("alice")).toHaveLength(0);
       expect(await host.pollSchedules("alice")).toHaveLength(0);
     }));
@@ -215,7 +215,7 @@ describe("a worker flow that isolates its user state", () => {
         expect(host.fires.map((f) => f.status)).toEqual([202]);
         expect(await host.heard(one)).toHaveLength(1);
       },
-      { isolateFollower: true }
+      { isolatedFollower: true }
     ));
 });
 
@@ -360,30 +360,43 @@ describe("a poll's life", () => {
 });
 
 describe("declared routines on a polled thread", () => {
-  // The seed is the routines' own; what polling owns is ending a declared routine's subscription whose entry left config.
-  it("ends a declared routine's subscription at its next fire once its entry leaves config, and leaves a session's own subscription on", () => {
-    let declared = [{ id: "api-pr" }];
-    return withPolling(
+  /** The roster's request seeds the app's declared routines, as any roster run does. */
+  const seed = (host: SubscriptionsHost, user: string) => host.act(user, `roster-${user}`, "listRoutines", {}, "roster");
+
+  // The seed is the routines' own: it writes the declared routine, and the write makes its poll at the entry's cadence.
+  it("polls a declared event routine the seed wrote, at the entry's cadence", async () => {
+    const declared: DeclaredRoutine[] = [{ id: "api-pr", trigger: { event: { provider: "github", thread: PR, interest: "reviews", everyMinutes: 15 } }, worker: "eng.follower" }];
+    await withPolling(
       async (host) => {
+        await seed(host, "alice");
+        const key = await declaredRoutineKey("api-pr");
+        expect((await host.subscriptionRows("alice")).find((r) => r.id === key)).toMatchObject({ enabled: true, everyMinutes: 15 });
+        const [poll] = await host.pollSchedules("alice");
+        expect(poll).toMatchObject({ enabled: true, input: { thread: PR, everyMinutes: 15 } });
+      },
+      { hire: { routines: { declared } } }
+    );
+  });
+
+  // What polling owns is ending a declared routine's subscription whose entry left config, at its next fire.
+  it("ends a declared routine's subscription at its next fire once its entry leaves config, and leaves a session's own subscription on", async () => {
+    const declared: DeclaredRoutine[] = [{ id: "api-pr", trigger: { event: { provider: "github", thread: PR, interest: "reviews" } }, worker: "eng.follower" }];
+    await withPolling(
+      async (host) => {
+        await seed(host, "alice");
         const one = await host.follower("alice");
         const own = ((await host.subscribe("alice", one, { thread: PR })) as { id: string }).id;
-        const key = await declaredSubscriptionKey("api-pr");
-        await host.storeAs("alice", own, key);
+        const key = await declaredRoutineKey("api-pr");
         await run(host, 5);
         expect((await host.subscriptionRows("alice")).find((r) => r.id === key)).toMatchObject({ enabled: true });
-        declared = [];
+        // Config without the entry, as the next deploy loads it: no roster run reseeds before the fire.
+        declared.length = 0;
         await run(host, 5);
         const subscriptions = await host.subscriptionRows("alice");
         expect(subscriptions.find((r) => r.id === key)).toMatchObject({ enabled: false, endedReason: "config_removed" });
         expect(subscriptions.find((r) => r.id === own)).toMatchObject({ enabled: true });
       },
-      { declared: () => declared }
+      { hire: { routines: { declared } } }
     );
   });
-
-  // The routines' `declaredRoutineKey` pins the same value: a drift in either formula fails one of the two.
-  it("names a declared routine's subscription as the routines' seed does: entry api-pr on workforce-roster is cfg_05562bf34a380505896ae059", async () => {
-    expect(await declaredSubscriptionKey("api-pr")).toBe("cfg_05562bf34a380505896ae059");
-  });
 });
-

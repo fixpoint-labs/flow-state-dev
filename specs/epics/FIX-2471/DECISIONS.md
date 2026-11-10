@@ -188,13 +188,14 @@ per normalized event.
 forwarded; drops are counted. The service flow never calls `createTask`.
 
 <a name="d10"></a>
-**D10 · Polling runs on per-user schedule rows** (cadence, owner, Nov 2; rows, EM, Nov 3). Each
-subscription is a row (`defineScheduleCollection`, `createResourceCollectionScheduleResolver`,
-`onOverlap: "skip"`) at its own cadence from the allowed list, 5 minutes the floor, checked at
-subscribe (owner, 2026-11-08). Config-declared subscriptions seed the rows `subscribe` writes,
-through it and idempotently (owner, 2026-11-08); child 6 generalises that config over both
-triggers. Implementer notes: the poll walks the resolver's due index, not every subscription;
-conditional requests, per-repo batching; check runs on terminal state, comment edits once per object.
+**D10 · Polling runs on per-user schedule rows** (cadence, owner, Nov 2; rows, EM, Nov 3; per user
+and thread, owner, 2026-11-09). Each user's thread is a row (`defineScheduleCollection`,
+`createResourceCollectionScheduleResolver`, `onOverlap: "skip"`) at their fastest subscription's
+cadence from the allowed list, 5 minutes the floor, checked at
+subscribe (owner, 2026-11-08). Config-declared subscriptions seed through `subscribe`, idempotently
+(owner, 2026-11-08); child 6 generalises that config over both triggers. Implementer notes: the
+poll walks the resolver's due index;
+conditional requests; per-repo batching deferred until a user meets GitHub's secondary limit (FIX-2536); check runs on terminal state, comment edits once per object.
 
 <a name="d11"></a>
 **D11 · Explicit vs inferred work** (owner, Nov 2). `off`, `observe`, `auto`: one key beside

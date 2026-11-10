@@ -144,9 +144,9 @@ describe("what the snapshot hears", () => {
     expect(heardSessionIds(listed, USER)).toEqual(["conv-1", "orphan-run", "sub-1"]);
   });
 
-  it("leaves out the roster session Schedules reads through, even when its id was generated", () => {
+  it("leaves out the roster session Routines reads through, even when its id was generated", () => {
     // Workforce's client opens a roster session without an id; the project reader reuses it, and
-    // Schedules runs an action on it after every read. Hearing it would make each read start the next.
+    // Routines runs an action on it after every read. Hearing it would make each read start the next.
     const listed = [session("conv-1"), session("roster-generated-7f3a", PROJECT_READER_FLOW)];
     expect(heardSessionIds(listed, USER)).toEqual(["conv-1"]);
   });

@@ -50,7 +50,8 @@ import { z } from "zod";
 import { PLAN_WAITING_STATE } from "./plan";
 import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";
 import { defineWorkerDelegates, soleTaskDelegate, type TaskDelegates } from "../delegates/worker-delegates";
-import { messageHopStateShape } from "../messages/hop";
+import type { InferredWork } from "../coordinator/coordinator-keys";
+import { INFERRED_FORWARD_METADATA, messageHopStateShape, RECEIVED_FORWARD_STATE, turnForwardOf } from "../messages/hop";
 import { workerMessagesResources } from "../messages/message-log";
 import { defineSendMessageCapability } from "../messages/message-tool";
 import { MESSAGE_RECEIVED_ENTRY } from "../messages/keys";
@@ -137,6 +138,24 @@ export interface SessionBoardOptions {
    * conversation is handed here, which attaches the message.
    */
   readonly routes?: RoutedFiling;
+  // FIX-2538 D2.
+  /**
+   * What the running session may do with work nobody asked for: an inferred
+   * forward (an event no other subscription heard). `off` lands it as a line
+   * with no turn; `observe` runs the turn, and every task it files waits on
+   * the user's yes, and it sends no message; `auto` runs it as any turn. Read
+   * at the turn. Unset reads `observe`: a flow that never set it holds.
+   */
+  readonly inferredWork?: (ctx: BlockContext) => InferredWork;
+}
+
+/** The most of a goal a confirm's prompt quotes. */
+const CONFIRM_GOAL_CHARS = 600;
+
+/** The confirm an inferred task waits on: its goal, and the event it came from. */
+function inferredConfirmPrompt(goal: string, url: string): string {
+  const quoted = goal.length <= CONFIRM_GOAL_CHARS ? goal : `${goal.slice(0, CONFIRM_GOAL_CHARS - 1)}…`;
+  return `Nobody asked for this: it was inferred from ${url}. Run it? ${quoted}`;
 }
 
 /**
@@ -146,6 +165,9 @@ export interface SessionBoardOptions {
  */
 export function defineSessionBoard(options: SessionBoardOptions) {
   const delegates = defineWorkerDelegates(options);
+  /** The running turn's inferred forward's mode, or `undefined` on any other turn (an addressed one's included). */
+  const inferredOn = (ctx: BlockContext): InferredWork | undefined =>
+    turnForwardOf(ctx)?.as === "inferred" ? (options.inferredWork?.(ctx) ?? "observe") : undefined;
   const board = defineConversationBoard({
     delegates: delegates.taskDelegates,
     flowKind: options.flowKind,
@@ -166,10 +188,23 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         return due.length === 0 ? undefined : Math.min(...due);
       }
     },
-    ...(options.routes === undefined ? {} : { routes: options.routes })
+    ...(options.routes === undefined ? {} : { routes: options.routes }),
+    // On an inferred turn in `observe`, every filing waits on the user's yes.
+    holdsFiling: (ctx, init) => {
+      const forward = turnForwardOf(ctx);
+      if (forward === undefined || inferredOn(ctx) !== "observe") return undefined;
+      const prompt = inferredConfirmPrompt(init.goal, forward.url);
+      // The marker names the confirm by its prompt, so a retry can tell whether the user said yes.
+      return { prompt, metadata: { [INFERRED_FORWARD_METADATA]: { ...forward, confirm: prompt } } };
+    }
   });
 
-  const messages = defineSendMessageCapability(options.installation, options.flowKind);
+  // A message would hand inferred work on without the yes the board's filings wait on.
+  const messages = defineSendMessageCapability(options.installation, options.flowKind, (ctx) =>
+    inferredOn(ctx) === "observe"
+      ? "inferred_work_waits: nobody asked for this, so what you hand on from this turn waits on the user's yes. File it as a task for a delegate; it starts once they say yes. Nothing was sent."
+      : undefined
+  );
 
   // The manager's pieces: a flow that spreads any of them declares `manager` (`../worker-roles`).
   const managerActions = { ...board.actions, ...delegates.actions };
@@ -274,7 +309,19 @@ export function defineSessionBoard(options: SessionBoardOptions) {
           "manager"
         ),
         [TASK_SETTLED_ENTRY]: markRolePiece(
-          taskSettledEntry({ turn, policy, ...(onRouted === undefined ? {} : { onRouted }) }),
+          taskSettledEntry({
+            turn,
+            policy,
+            ...(onRouted === undefined ? {} : { onRouted }),
+            // A task filed on an inferred turn wakes its filer's turn as that forward's turn did (a No's
+            // cancel included), so the work the user declined isn't filed again unheld.
+            turnStateOf: (task) => {
+              const forward = task.metadata?.[INFERRED_FORWARD_METADATA] as { as?: unknown; url?: unknown } | undefined;
+              return forward?.as === "inferred" && typeof forward.url === "string"
+                ? { [RECEIVED_FORWARD_STATE]: { as: "inferred", url: forward.url } }
+                : undefined;
+            }
+          }),
           "manager"
         ),
         // A check of the session's waiting task, on the notices' line: what
@@ -283,7 +330,13 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         // The turn a steer no request took is owed (FIX-2086 D2), on the
         // notices' line: the claim gate's check and the steer's write start it.
         [STEER_TURN_ENTRY]: steerTurnEntry({ name: "conversation-steer-turn", turn }),
-        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ turn: promptedMessageTurn(turn), installation: options.installation, flowKind: options.flowKind }),
+        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({
+          turn: promptedMessageTurn(turn),
+          installation: options.installation,
+          flowKind: options.flowKind,
+          // `off`: an inferred forward lands as a line, and no model runs on it.
+          landsOnly: (ctx, message) => message.forward?.as === "inferred" && (options.inferredWork?.(ctx) ?? "observe") === "off"
+        }),
         [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!, async (ctx) =>
           soleTaskDelegate(await delegates.taskDelegates(ctx))
         )

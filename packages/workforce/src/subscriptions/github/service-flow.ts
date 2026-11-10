@@ -1,4 +1,4 @@
-// FIX-2535 D1; epic FIX-2471.
+// FIX-2535 D1; FIX-2538; epic FIX-2471.
 /**
  * GitHub's service flow: the subscription service flow built for GitHub, with the
  * webhook service route declared (`webhooks: { github: { service } }`). A
@@ -19,7 +19,7 @@
  * ```
  */
 import type { WorkerInstallation } from "../../workers/installation";
-import { defineSubscriptionServiceFlow, type SubscriptionServicePollOptions } from "../service-flow";
+import { defineSubscriptionServiceFlow } from "../service-flow";
 import { GITHUB_PROVIDER, normalizeGitHubEvent } from "./normalize";
 import type { GitHubSubscriptionProvider } from "./provider";
 
@@ -47,7 +47,13 @@ export interface GitHubServiceFlowOptions {
   /** The most subscriptions one event is delivered to. */
   readonly maxOwnerRuns?: number;
   /** Poll GitHub for subscriptions with no webhook: see `defineSubscriptionServiceFlow`'s `poll`. */
-  readonly poll?: SubscriptionServicePollOptions;
+  readonly poll?: boolean;
+  /**
+   * The kinds of event forwarded to a coordinator that follows the thread
+   * `unmatched`, when no other subscription heard one (`["issue", "comment"]`).
+   * Unset, nothing is forwarded.
+   */
+  readonly forwards?: { readonly kinds: readonly string[] };
 }
 
 /** Build GitHub's service flow, with its webhook service route. */
@@ -64,6 +70,7 @@ export function githubServiceFlow(options: GitHubServiceFlowOptions) {
     ...(options.capPerHour === undefined ? {} : { capPerHour: options.capPerHour }),
     ...(options.maxOwnerRuns === undefined ? {} : { maxOwnerRuns: options.maxOwnerRuns }),
     ...(options.poll === undefined ? {} : { poll: options.poll }),
+    ...(options.forwards === undefined ? {} : { forwards: options.forwards }),
     normalize: (event, at) =>
       normalizeGitHubEvent(
         {

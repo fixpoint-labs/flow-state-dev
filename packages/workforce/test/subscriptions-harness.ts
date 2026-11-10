@@ -1,14 +1,18 @@
 /**
- * A host for subscriptions on the real engine (FIX-2534): the board host's
+ * A host for subscriptions on the real engine (FIX-2534; screens, FIX-2537): the board host's
  * worker flows, a `follower` worker flow whose sessions subscribe (its
- * actions are the two subscription tools, so a test calls them as a model
- * would, with no model), and a GitHub service flow that routes events.
+ * actions are the four routine verbs a worker's tools run, so a test calls them
+ * as a model would, with no model), and a GitHub service flow that routes
+ * events. Two workers run on it: `eng.follower`, and `eng.watcher`, another
+ * worker of the same user. Two scripted generators sit on it too: `chat` uses
+ * the routines capability, `chat-plain` doesn't. The routines' providers are
+ * the GitHub one, given to `hireWorkforce` as an app gives them.
  *
  * `route(event)` is what an ingestion does: it runs the service flow's routing
  * entry as the service, then each owner run it names, through the host
  * (`routeServiceEvent`), and waits for them and the messages they send.
  */
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, generator, handler } from "@flow-state-dev/core";
 import type { BlockContext, FlowInstance, SubscriptionEvent } from "@flow-state-dev/core/types";
 import { routeServiceEvent } from "@flow-state-dev/engine/internal";
 import { runAction } from "@flow-state-dev/engine";
@@ -25,10 +29,12 @@ import {
   defineSubscriptionServiceFlow,
   subscribe,
   subscriptionResources,
-  subscriptionTools,
   type SubscriptionProvider,
+  type SubscriptionScreens,
   type SubscriptionServiceOptions
 } from "../src/subscriptions";
+import { createRoutinesCapability } from "../src/routines";
+import { workerRoutineVerbs } from "../src/routines/routines";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
@@ -36,7 +42,6 @@ import { boardWorkers, bootBoardHost, ORG, type BoardHostOptions } from "./conve
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { parseNextFireAt, runScheduleTick, scheduleDispatchRequest, type ScheduleIndex, type ScheduleIndexEntry } from "@flow-state-dev/scheduled/collection";
 import { SUBSCRIPTION_POLLS_PATTERN } from "../src/subscriptions/keys";
-import { subscriptionPolling, type SubscriptionPolling } from "../src/subscriptions/poll";
 
 /** Users whose read access to private threads a test has taken away. */
 export const revoked = new Set<string>();
@@ -56,7 +61,7 @@ export const pollTimeline: { events: SubscriptionEvent[]; calls: Array<{ userId:
 };
 
 /** The GitHub provider the host is built with: read access by {@link readableBy}, the user's GitHub login `<user>-gh`, and a poll over {@link pollTimeline}. */
-const github: SubscriptionProvider = {
+export const github: SubscriptionProvider = {
   provider: "github",
   canRead: (thread, ctx: BlockContext) => readableBy((ctx.session.identity as { userId: string }).userId, thread),
   self: (ctx: BlockContext) => `${(ctx.session.identity as { userId: string }).userId}-gh`,
@@ -100,8 +105,11 @@ function memoryScheduleIndex(): ScheduleIndex & { entries: Map<string, ScheduleI
 
 const doorInput = z.object({ message: z.string() });
 
-function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, polling: SubscriptionPolling | undefined, isolateUserState = false) {
-  const tools = subscriptionTools({ providers: [github], ...(polling === undefined ? {} : { poll: polling }) });
+function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, isolated: boolean) {
+  const tools = workerRoutineVerbs(installation);
+  // A worker's turn on a model: one with the routines capability, one without.
+  const chat = generator({ name: "follower-chat", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, uses: [createRoutinesCapability(installation)], user: (input) => input.message, itemVisibility: { client: true, history: true } });
+  const chatPlain = generator({ name: "follower-chat-plain", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, user: (input) => input.message, itemVisibility: { client: true, history: true } });
   // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, `[hold]` waits on the
   // host's hold, then `[fail]` fails the task.
   const door = handler({
@@ -121,14 +129,16 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
   });
   return defineFlow({
     kind: "follower",
-    ...(isolateUserState ? { isolateUserState: true } : {}),
+    ...(isolated ? { isolateUserState: true } : {}),
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources, ...(polling?.resources ?? {}) },
+    resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
     actions: {
       respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
-      subscribe: { inputSchema: tools.subscribe.inputSchema, block: tools.subscribe },
-      unsubscribe: { inputSchema: tools.unsubscribe.inputSchema, block: tools.unsubscribe }
+      // Not doors: `respond` is the flow's one door; these are a test's way onto a model turn.
+      chat: { inputSchema: doorInput, block: chat },
+      chatPlain: { inputSchema: doorInput, block: chatPlain },
+      ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
     },
     // No turn: a message lands as its items and nothing runs, so no model is asked.
     internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "follower" }) } },
@@ -141,40 +151,50 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   service?: Partial<Omit<SubscriptionServiceOptions, "provider" | "installation" | "kind">>;
   /** What a `[hold]` task turn waits on. */
   hold?: Promise<void>;
-  /** Poll (FIX-2536): an in-memory schedule index, the scheduled dispatch endpoint, and `tick`. */
-  poll?: { everyMinutes?: number; declared?: () => readonly { readonly id: string }[]; isolateFollower?: boolean };
+  /** Polling: an in-memory schedule index, given to `hireWorkforce` as `routines.poll`, the scheduled dispatch endpoint, and `tick`. */
+  poll?: { everyMinutes?: number };
+  /** The app's own screens on the GitHub provider: its custom functions and its interest model. */
+  screens?: SubscriptionScreens;
+  /** The follower flow isolates its users' state (`isolateUserState`). */
+  isolatedFollower?: boolean;
+  /** The service flow itself, in place of the one built from `service` (GitHub's own flow); its kind must be `github-service`. */
+  serviceFlow?: (installation: WorkerInstallation) => FlowInstance;
 };
 
 /** A board host with followers and a GitHub service flow. */
 export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   let host: InboundTransportHost | undefined;
   const index = options.poll === undefined ? undefined : memoryScheduleIndex();
-  const polling =
-    index === undefined ? undefined : subscriptionPolling({ index, ...(options.poll?.everyMinutes === undefined ? {} : { everyMinutes: options.poll.everyMinutes }) });
+  const poll = index === undefined ? undefined : { index, ...(options.poll?.everyMinutes === undefined ? {} : { everyMinutes: options.poll.everyMinutes }) };
+  const provider: SubscriptionProvider = options.screens === undefined ? github : { ...github, screens: options.screens };
   const standard: WorkerManifest[] = [
     ...boardWorkers({ lead: { delegates: ["eng.tasker", "eng.follower"] } }),
-    { id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] }
+    { id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] },
+    { id: "eng.watcher", declared: { flow: "follower", description: "Watches threads." }, body: "", skills: [] },
+    ...(options.standard ?? [])
   ];
   const board = bootBoardHost({
     ...options,
+    hire: { ...options.hire, routines: { providers: [provider], ...(poll === undefined ? {} : { poll }), ...options.hire?.routines } },
     standard,
-    flows: (installation) => ({
-      follower: { flow: followerFlow(installation, options.hold, polling, options.poll?.isolateFollower === true), roles: ["contributor"] },
-      ...(options.flows?.(installation) ?? {})
-    }),
+    // A coordinator's conversation keeps event routines too (its routine actions).
+    coordinatorRoutines: options.coordinatorRoutines ?? true,
+    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, options.isolatedFollower === true), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
     plainFlowsOf: (installation): Record<string, FlowInstance> => ({
-      "github-service": defineSubscriptionServiceFlow({
-        kind: "github-service",
-        provider: github,
-        installation,
-        trustedBots: ["codex"],
-        ...(polling === undefined ? {} : { poll: { ...polling, ...(options.poll?.declared === undefined ? {} : { declared: options.poll.declared }) } }),
-        ...(options.service ?? {})
-      })
+      "github-service":
+        options.serviceFlow?.(installation) ??
+        defineSubscriptionServiceFlow({
+          kind: "github-service",
+          provider,
+          installation,
+          trustedBots: ["codex"],
+          ...(poll === undefined ? {} : { poll: true }),
+          ...(options.service ?? {})
+        })
     }),
     adapters: [
       { source: "subscriptions-test", createBindings: (h: InboundTransportHost) => ((host = h), {}) },
-      ...(polling === undefined ? [] : [createScheduledTransportAdapter()]),
+      ...(poll === undefined ? [] : [createScheduledTransportAdapter()]),
       ...(options.adapters ?? [])
     ]
   });
@@ -199,19 +219,6 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     await board.settled();
   };
 
-  /**
-   * Store a copy of `userId`'s subscription `from` under `key`, as the
-   * declared-routine seed writes one (`cfg_…`): a stand-in for that seed, which
-   * is the routines' own.
-   */
-  const storeAs = async (userId: string, from: string, key: string) => {
-    const runtime = await board.state.getRuntime();
-    const cell = `${userId}:~org:${ORG}`;
-    const prefix = SUBSCRIPTIONS_PATTERN.replace("*", "");
-    const stored = await runtime.stores.resourceState.get("user", cell, `${prefix}${from}`);
-    await runtime.stores.resourceState.set("user", cell, `${prefix}${key}`, { ...(stored!.state as object), id: key } as never, "any" as never);
-  };
-
   /** `userId`'s poll schedules, from the store. */
   const pollSchedules = async (userId: string) => {
     const runtime = await board.state.getRuntime();
@@ -224,9 +231,9 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     return host!;
   };
 
-  /** A follower conversation for `userId`. */
-  const follower = async (userId: string) => {
-    const created = await board.create(userId, "follower", { state: { workerId: "eng.follower" } });
+  /** A follower conversation for `userId`, run by `worker`. */
+  const follower = async (userId: string, worker = "eng.follower") => {
+    const created = await board.create(userId, "follower", { state: { workerId: worker } });
     if (created.status !== 201 && created.status !== 200) throw new Error(`creating a follower failed (${created.status}): ${JSON.stringify(created.body)}`);
     return created.body.session!.id;
   };
@@ -244,14 +251,20 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     return body.session.id;
   };
 
-  /** Call the subscribe tool as `userId` in `sessionId`, as a model would; under `tenantId` when given. */
-  const subscribe = async (userId: string, sessionId: string, input: Record<string, unknown>, tenantId?: string) => {
-    const tool = { provider: "github", interest: "what happens on it", ...input };
-    if (tenantId === undefined) return (await board.act(userId, sessionId, "subscribe", tool, "follower")).output as { id: string } | { refused: string };
+  /** A routine tool's answer, as the subscription it wrote: its id, or why it was refused. */
+  const asSubscription = (output: unknown): { id: string } | { refused: string } => {
+    const answer = output as { ok: true; routine: { id: string } } | { ok: false; error: string };
+    return answer.ok ? { id: answer.routine.id.replace(/^event:/, "") } : { refused: answer.error };
+  };
+
+  /** Save an event routine as `userId` in `sessionId`, as a model would; under `tenantId` when given; on `flow` (a follower's by default). */
+  const subscribe = async (userId: string, sessionId: string, input: Record<string, unknown>, tenantId?: string, flow = "follower") => {
+    const tool = { trigger: { event: { provider: "github", interest: "what happens on it", ...input } } };
+    if (tenantId === undefined) return asSubscription((await board.act(userId, sessionId, "saveRoutine", tool, flow)).output);
     const runtime = await board.state.getRuntime();
     const ran = (await runAction({
       flow: board.instances.follower!,
-      actionName: "subscribe",
+      actionName: "saveRoutine",
       input: tool,
       userId,
       orgId: ORG,
@@ -260,11 +273,14 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
       stores: runtime.stores,
       runtimeConfig: { ...runtime.runtimeConfig }
     })) as { output?: unknown };
-    return ran.output as { id: string } | { refused: string };
+    return asSubscription(ran.output);
   };
 
-  const unsubscribe = async (userId: string, sessionId: string, id: string) =>
-    (await board.act(userId, sessionId, "unsubscribe", { id }, "follower")).output as { ended: string } | { refused: string };
+  /** Delete an event routine as `userId` in `sessionId`, by its subscription id. */
+  const unsubscribe = async (userId: string, sessionId: string, id: string) => {
+    const answer = (await board.act(userId, sessionId, "deleteRoutine", { id: `event:${id}` }, "follower")).output as { ok: true } | { ok: false; error: string };
+    return answer.ok ? { ended: id } : { refused: answer.error };
+  };
 
   /** Route one event as an ingestion would, and wait for everything it started. */
   const route = async (event: SubscriptionEvent) => {
@@ -395,7 +411,6 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     index,
     tick,
     fires,
-    storeAs,
     pollSchedules
   };
 }

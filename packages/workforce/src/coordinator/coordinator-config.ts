@@ -21,12 +21,18 @@
  *   delegates. Default `false`: only the user changes them.
  * - `rounds`: how many times an answer goes back out. Zero by default, at most
  *   {@link MAX_ROUNDS}.
+ * - `inferredWork`: what the coordinator may do with an event nobody asked it
+ *   about (one no other subscription heard). `off` lands it as a line and
+ *   runs no model; `observe` (the default) runs its turn, and every task it
+ *   files waits on the user's yes in the Inbox; `auto` runs the turn as any
+ *   other. An event that asks the app's agent runs in every mode. Read at the
+ *   turn, so a change applies to the next one.
  * - `model`, `tools`, `skills` and the rest: the agent turn's own, read the
  *   same way an `agent` worker's are.
  */
 import { z } from "zod";
 import { workerConfigSchema } from "../worker-config";
-import { MAX_ROUNDS } from "./coordinator-keys";
+import { INFERRED_WORK_MODES, MAX_ROUNDS } from "./coordinator-keys";
 
 /** How a `minConfidence:` out of range is refused. */
 const MIN_CONFIDENCE_RANGE = "minConfidence must be a number from 0 to 1";
@@ -73,7 +79,8 @@ function coordinatorShape() {
       .int()
       .min(0)
       .max(MAX_ROUNDS, { message: `rounds can be at most ${MAX_ROUNDS}` })
-      .default(0)
+      .default(0),
+    inferredWork: z.enum(INFERRED_WORK_MODES).default("observe")
   };
 }
 

@@ -1,7 +1,7 @@
 // FIX-2534.
 /**
- * Subscriptions' pinned names: where the rows live, the tools, and
- * the service flow's two entries. A leaf module.
+ * Subscriptions' pinned names: where they are stored, and the service
+ * flow's two entries. A leaf module.
  */
 
 /** A session's subscriptions, one row each, at user scope. **Pinned**: persisted. */
@@ -40,8 +40,6 @@ export const SUBSCRIPTION_POLLS_RESOURCE = "workforceSubscriptionPolls";
 /** The schedule handler a poll schedule's `kind` names. **Pinned**: persisted. */
 export const SUBSCRIPTION_POLL_HANDLER = "subscription-poll";
 
-/** The two tools a session subscribes and unsubscribes with. */
-export const SUBSCRIPTION_TOOLS = { subscribe: "subscribe", unsubscribe: "unsubscribe" } as const;
 
 /** The service flow's routing entry: one normalized event in, run as the service. **Pinned**: an ingestion names it by this string; not on the root. */
 export const SUBSCRIPTION_ROUTE_ENTRY = "routeSubscriptionEvent";

@@ -6,7 +6,7 @@
 - **leg 1** polled only, webhook off.
 - **leg 2** polled, with each of 15 sessions' last expected delivery lost: 10 dispatches the store never records once, 4 takes that fail once (accepted, never taken), 1 dispatch lost every time. Each is a session's last event on its thread, so no later event on that thread can carry its retry.
 - **leg 3** pushed (every event routed through `routeServiceEvent` at its time) and polled.
-- **leg 4** alice follows the repository every 15 minutes and a PR at the default; a copy of the PR subscription stands in as a declared routine's subscription (`cfg_…`, as the routines' seed writes it, which is FIX-2614's); a restart over the same file; then the declared entry leaves config.
+- **leg 4** alice follows the repository every 15 minutes and a PR at the default; the app declares an event routine on that PR, which the routines' own seed writes (`cfg_…`) on a roster run; a restart over the same file, with config that no longer declares it.
 
 Held-out: the expected set per session is the oracle FIX-2534's run restates, written again here and importing no screen or delivery code. For a subscription that unsubscribes (b7, at event 150), polled legs expect only what its user's poll had fetched by then: polling hears an event within one period, so a subscription that ends inside the period misses the rest of it, as the goal allows.
 **Signal:** All of them, on one run:
@@ -17,7 +17,7 @@ Held-out: the expected set per session is the oracle FIX-2534's run restates, wr
 - **(e)** each lost or never-taken-once delivery lands exactly once, on a later poll;
 - **(f)** no poll ran as a user who can't read its thread;
 - **(i)** the delivery lost every time is given up after three polls: nothing owed at the end, the mark past it;
-- **(j)** a restart adds no poll and the polls keep firing; the removed declared entry's subscription ends `config_removed` at its next fire, while the session's own subscription on that thread stays on (the seed itself is FIX-2614's goal);
+- **(j)** a restart adds no poll and the polls keep firing; the removed declared entry's subscription ends `config_removed` at its next fire, with no roster run in between, while the session's own subscription on that thread stays on;
 - **(k)** the 15-minute poll fires 15 minutes apart, and a cadence of 3 is refused;
 - **(l)** no user fetches a thread twice within a cadence, alice's two sessions on #412 included.
 

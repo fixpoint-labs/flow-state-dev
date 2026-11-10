@@ -469,7 +469,7 @@ the gateway principal during dispatch. The runtime resolves
 the effective principal.
 
 Source and metadata propagate through to `RequestRecord` so DevTool
-and the trace channel can distinguish scheduled work: `source =
+and the trace channel can distinguish a scheduled run: `source =
 "scheduled"` plus the namespaced `metadata.schedule = { scheduleId,
 origin, cron, nominalFireTime, dispatchedAt, timezone }`. Each transport
 namespaces its provenance the same way — `metadata.webhook`,
