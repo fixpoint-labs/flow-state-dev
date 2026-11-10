@@ -18,9 +18,17 @@
  * 3. Control (`--control`). A planted refusal-shaped line no entry owns, and
  *    one entry with its expectation flipped, must each be reported. If the
  *    control passes, the census proves nothing.
+ * 4. After (`--after [ref]`), the spec's goal check (2): the end state in source,
+ *    read from the working tree or a git ref, with no npm. Every refusal-shaped
+ *    line under `packages/<pkg>/src`, and every line naming either helper, fails
+ *    unless EXCLUDED (not a retired name) or KEPT (a refusal the owner kept). Each
+ *    KEPT row must match exactly its count of lines: one more is the exemption
+ *    widening, one fewer is a kept site gone and the row stale. Its control is
+ *    `--after ebec5326`, the epic's start, which must FAIL on every listed site.
  *
  * Run from the repository root:
  *   node specs/issues/FIX-2454/poc/retired-census/census.mjs [--control] [--cache <dir>]
+ *   node specs/issues/FIX-2454/poc/retired-census/census.mjs --after [ref]
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -29,6 +37,9 @@ import { join } from "node:path";
 
 const args = process.argv.slice(2);
 const CONTROL = args.includes("--control");
+const afterAt = args.indexOf("--after");
+const AFTER = afterAt >= 0;
+const AFTER_REF = AFTER && args[afterAt + 1] && !args[afterAt + 1].startsWith("--") ? args[afterAt + 1] : null;
 const cacheAt = args.indexOf("--cache");
 const CACHE = cacheAt >= 0 ? args[cacheAt + 1] : join(tmpdir(), "retired-census-tarballs");
 
@@ -58,7 +69,7 @@ const ENTRIES = [
   { id: "gateway-model-form", pkg: "core", ext: ".js", live: /gateway\/provider\/model/, expect: "published",
     sites: [["core/src/models/providerDetection.ts", "gateway/provider/model"]] },
   { id: "scheduled-idempotency", pkg: "scheduled", ext: ".d.ts", live: /idempotency(WindowMs|Options)\?:/, expect: "published",
-    sites: [["scheduled/src/createScheduledTransportAdapter.ts", "idempotency"]] },
+    sites: [["scheduled/src/createScheduledTransportAdapter.ts", "idempotency"], ["scheduled/src/routes.ts", "the removed key"]] },
   { id: "hm-announce", pkg: "harness-manager", ext: ".d.ts", live: /\bannounce\?:/, expect: "published",
     sites: [["harness-manager/src/manager.ts", "announce"]] },
   { id: "board-on-review", pkg: "orchestration", ext: ".d.ts", live: /onReview: "exit"/, expect: "published",
@@ -120,10 +131,38 @@ const EXCLUDED = [
   ["orchestration/src/task-board/blocks/worker-step.ts", "BlockDefinition.run", "history in a comment"],
   ["orchestration/src/task-board/task-entry.ts", "removed or renamed", "a runtime assignee that disappeared, not a retired name"],
   ["workforce/src/manifest-sources.ts", "was removed", "history in a comment"],
-  ["scheduled/src/routes.ts", "the removed key", "the route half of scheduled-idempotency"],
   ["harness-manager/src/session-flow.ts", "removed", "a worktree that was deleted at run time, not a retired name"],
   ["workspace/src/", "removed", "a checkout or branch removed at run time, not a retired name"],
 ];
+
+/**
+ * The retired-name refusals the owner kept, by file and the text that names them, with how many
+ * lines each holds. Epic D4's amendment (PR #4830, as merged) keeps the refusals whose absence
+ * would fail silently: the `human_*` reasons and the `dispatcher` option. `--after` exempts these
+ * lines and no others. The kept stored-`blocked` reader (`retired-shapes.ts`) has no
+ * refusal-shaped line, so it needs no row.
+ */
+const KEPT = [
+  // A `human_*` stop core 0.2.0 stored, read as its `user_*` reason.
+  { file: "contracts/src/types/suspension.ts", needle: "retired-name-refusal: a stop core 0.2.0 stored", lines: 2 },
+  { file: "core/src/errors/resolve-allowed-actions.ts", needle: 'reason === "human_input"', lines: 1 },
+  { file: "react/src/hooks/useSuspensionForm.ts", needle: 'item.reason !== "human_input"', lines: 1 },
+  // A new `human_*` reason refused, naming its `user_*` reason.
+  { file: "engine/src/context/createExecutionContext.ts", needle: 'suspendOpts.reason === "human_approval"', lines: 2 },
+  { file: "engine/src/context/createExecutionContext.ts", needle: 'ctx.suspend: reason "${suspendOpts.reason}" was renamed', lines: 1 },
+  { file: "react/src/hooks/useSuspensions.ts", needle: "human_", lines: 3 },
+  { file: "react/src/hooks/useSuspensions.ts", needle: 'useSuspensions: reason "${reason}" was renamed', lines: 1 },
+  // The `dispatcher` option refused, naming `runner`: the helper, and its four callers' import and call.
+  { file: "engine/src/transports/runner.ts", needle: "Refuse the `dispatcher` option key", lines: 1 },
+  { file: "engine/src/transports/runner.ts", needle: "function refuseRetiredDispatcherOption(", lines: 1 },
+  { file: "engine/src/flowstate/createFlowState.ts", needle: "refuseRetiredDispatcherOption", lines: 2 },
+  { file: "engine/src/routes/createFlowApiRouter.ts", needle: "refuseRetiredDispatcherOption", lines: 2 },
+  { file: "engine/src/routes/http-handlers.ts", needle: "refuseRetiredDispatcherOption", lines: 2 },
+  { file: "engine/src/transports/host/createInboundTransportHost.ts", needle: "refuseRetiredDispatcherOption", lines: 2 },
+];
+
+/** The two ad-hoc helpers the spec names; `--after` reads every line naming one, refusal-shaped or not. */
+const HELPERS = /refuseRetiredDispatcherOption|rejectRemovedMiddleware/;
 
 function sh(cmd, argv, cwd) {
   return execFileSync(cmd, argv, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -167,13 +206,50 @@ function liveIn(pkg, probe, ext) {
   return hits;
 }
 
-function refusalLines() {
-  const out = sh("git", ["grep", "-nE", REFUSAL_SHAPE.source, "--", "packages/*/src/**"]).trim().split("\n");
-  return out.filter(Boolean).map((line) => {
-    const [file, n, ...rest] = line.split(":");
+/** Source lines under each package's `src` matching `shape`, in the working tree or at `ref`. */
+function refusalLines(shape = REFUSAL_SHAPE, ref = null) {
+  let out;
+  try {
+    out = sh("git", ["grep", "-nE", shape.source, ...(ref ? [ref] : []), "--", "packages/*/src/**"]);
+  } catch (error) {
+    if (error.status !== 1) throw error; // git grep exits 1 when nothing matches
+    out = "";
+  }
+  return out.split("\n").filter(Boolean).map((line) => {
+    const [file, n, ...rest] = (ref ? line.slice(ref.length + 1) : line).split(":");
     return { file: file.replace(/^packages\//, ""), n: Number(n), text: rest.join(":") };
   }).filter((l) => !/\.(test|spec)\.|\/test\//.test(l.file));
 }
+
+const excluded = (l) => EXCLUDED.some(([f, needle]) => l.file.startsWith(f) && l.text.includes(needle));
+
+/** `--after`: nothing refuses or reads a retired name in source but the KEPT rows, each exactly. */
+function after(ref) {
+  const seen = new Set();
+  const lines = [...refusalLines(REFUSAL_SHAPE, ref), ...refusalLines(HELPERS, ref)]
+    .filter((l) => !seen.has(`${l.file}:${l.n}`) && seen.add(`${l.file}:${l.n}`));
+  const counts = KEPT.map(() => 0);
+  let failed = 0;
+  console.log(`census --after · ${ref ?? "working tree"} · ${lines.length} refusal-shaped or helper-named src lines`);
+  for (const l of lines) {
+    if (excluded(l)) continue;
+    const kept = KEPT.findIndex((k) => l.file === k.file && l.text.includes(k.needle));
+    if (kept >= 0) { counts[kept]++; continue; }
+    const owner = ENTRIES.find((e) => e.sites.some(([f, needle]) => l.file === f && l.text.includes(needle)));
+    const helper = l.text.match(HELPERS)?.[0];
+    failed++;
+    console.log(`FAIL ${helper ?? owner?.id ?? "unowned"} ${l.file}:${l.n} ${l.text.trim().slice(0, 100)}`);
+  }
+  KEPT.forEach((k, i) => {
+    const ok = counts[i] === k.lines;
+    if (!ok) failed++;
+    console.log(`${ok ? "kept" : "FAIL"} ${k.file} · ${k.needle} · ${counts[i]} of ${k.lines} line(s)${ok ? "" : counts[i] > k.lines ? "  (the exemption widened)" : "  (a kept site is gone: the row is stale)"}`);
+  });
+  console.log(failed ? `\nFAIL · ${failed}` : "\nPASS");
+  process.exit(failed ? 1 : 0);
+}
+
+if (AFTER) after(AFTER_REF);
 
 const entries = CONTROL
   ? ENTRIES.map((e) => (e.id === "row-questions" ? { ...e, expect: "published" } : e))
@@ -192,8 +268,7 @@ for (const e of entries) {
 }
 
 const owned = (l) =>
-  entries.some((e) => e.sites.some(([f, needle]) => l.file === f && l.text.includes(needle))) ||
-  EXCLUDED.some(([f, needle]) => l.file.startsWith(f) && l.text.includes(needle));
+  entries.some((e) => e.sites.some(([f, needle]) => l.file === f && l.text.includes(needle))) || excluded(l);
 const orphans = lines.filter((l) => !owned(l));
 console.log(`\ntotality · ${lines.length} refusal-shaped source lines · ${orphans.length} owned by no entry`);
 for (const l of orphans) { failed++; console.log(`FAIL unowned ${l.file}:${l.n} ${l.text.trim().slice(0, 100)}`); }

@@ -10,7 +10,14 @@ of its package accept or write the old name?
 ```bash
 node specs/issues/FIX-2454/poc/retired-census/census.mjs            # PASS
 node specs/issues/FIX-2454/poc/retired-census/census.mjs --control  # must FAIL
+node specs/issues/FIX-2454/poc/retired-census/census.mjs --after          # the end state in source: PASS
+node specs/issues/FIX-2454/poc/retired-census/census.mjs --after ebec5326 # the epic's start: must FAIL
+node --test specs/issues/FIX-2454/poc/retired-census/census.test.mjs      # the exemption cannot widen
 ```
+
+`--after` reads `git grep`, so it needs no npm and no worktree for the control. It exempts only
+the refusals the owner kept ([DECISIONS.md](../../DECISIONS.md#kept-refusals)), each with its
+exact line count.
 
 **Result, 2026-11-05, on `origin/main` d6a38c09.** PASS: 29 entries, 10 published and 19 never
 (by kind: values 3 published; keys 6 published, 10 never; stored shapes 1 published, 9 never).

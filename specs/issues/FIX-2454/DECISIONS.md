@@ -77,6 +77,15 @@ BP-030 and BP-034 rewrites) are in the retained Nov 5 revision of this file, mer
   and `refuseRetiredDispatcherOption` and `rejectRemovedMiddleware` with them. A typed caller
   fails to compile; the changeset names the replacement (ER-7). `human_approval` has no refusal
   today and gets none.
+
+  <a name="kept-refusals"></a>
+  > **Amended (Nov 10).** The owner merged #4830 as it was, which keeps four refusals whose absence
+  > would leave a system silently wrong: the `human_*` reasons (refused on `ctx.suspend` and
+  > `useSuspensions`, and read as `user_*` when core 0.2.0 stored them), engine's `dispatcher`
+  > refusal through `refuseRetiredDispatcherOption`, the task board's `dispatcher` refusal, and
+  > the stored `blocked` read. So `refuseRetiredDispatcherOption` stays, and the goal check's
+  > "appears nowhere" holds for `rejectRemovedMiddleware` only. The census's `--after` exempts
+  > the kept lines by file and text, each with its exact line count, and nothing wider (FIX-2639).
 - **The guard.** A reader of a stored record whose absence would *silently corrupt data*, not
   merely fail, is raised to the coordinator before it is removed. The census's one published
   stored shape is `blocked` read as `held` (`retired-shapes.ts`); the implementer checks what a
