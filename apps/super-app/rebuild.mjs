@@ -15,11 +15,27 @@
  */
 import { watch } from "node:fs";
 import { dirname, join } from "node:path";
-import { recordedInputPaths, staleBuildInputs } from "../../scripts/build-inputs.mjs";
+import { BUILD_INPUTS_FILE, recordedInputPaths, staleBuildInputs } from "../../scripts/build-inputs.mjs";
 
 /** One line on stderr for a folder that can't be watched, so edits there not rebuilding has a cause. */
 const warnUnwatched = (dir, error) =>
   process.stderr.write(`[rebuild] can't watch ${dir}, so saves there won't rebuild: ${error?.message ?? error}\n`);
+
+/**
+ * Why the build in `outDir` is behind its source, or `undefined` when it isn't. A record that can't be read
+ * (a build writing it right now) counts as behind: the build that follows rewrites it.
+ *
+ * @param {string} outDir
+ * @param {string} repoRoot
+ * @returns {string | undefined}
+ */
+function changeOf(outDir, repoRoot) {
+  try {
+    return staleBuildInputs(outDir, repoRoot);
+  } catch (error) {
+    return `its ${BUILD_INPUTS_FILE} can't be read: ${error?.message ?? error}`;
+  }
+}
 
 /**
  * Keep the build in `outDir` current: build now when it is missing or older
@@ -114,6 +130,10 @@ export function rebuildOnChange({ outDir, repoRoot, build, debounceMs = 200 }) {
       again = true;
       return;
     }
+    // A write that left every recorded file's content as it was isn't a change: an editor's rewrite, or a
+    // late watch event from an earlier save (macOS delivers them after the watcher starts). Each would
+    // otherwise start a build of 20 seconds or so that bundles exactly what the last one did.
+    if (changeOf(outDir, repoRoot) === undefined) return;
     running = true;
     try {
       await build();
