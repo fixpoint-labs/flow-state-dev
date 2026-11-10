@@ -24,7 +24,8 @@ export function withCoder(text: string, coder: CoderChoice): string {
 /**
  * The only place you type to the main session. Enter or Cmd+Enter (Ctrl+Enter)
  * sends, Shift+Enter is a new line. While a
- * turn runs, Send becomes Stop; a line you send then waits for the turn. Esc
+ * turn runs, Stop sits beside Send; a line you send then gets its own answer at
+ * once, beside the running turn, as the main session's door starts every line. Esc
  * here is the text box's: the stop keys are the thread's (Esc Esc, Cmd/Ctrl+.).
  * The *Coder* chip picks who makes a code change you ask for: it holds for the
  * session while it is open, and rides on each line as {@link withCoder} writes it.

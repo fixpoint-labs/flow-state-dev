@@ -30,7 +30,7 @@ turn uses the new name and instructions.**
 - **Smaller, and rejected:** renaming hired teammates only. Chief of Staff is the one Jake talks to.
 - **Bigger, and not this issue's:** showing a teammate's current instructions in the panel (they
   stay on the server; the form still sets them whole). The lab's form edits name and instructions
-  only, though `edit` on a standard worker's copy takes any field, like any row of your own.
+  only, though `edit` on a standard worker's copy takes any field but its flow, which stays the file's because board tasks are routed by it.
 - **Not done if:** a rename changes an id or loses a conversation; a name shows in one place and
   not another; an edit reaches a turn already running; one user's edit reaches another user;
   Reset leaves the copy behind; the roster lists Chief of Staff twice.

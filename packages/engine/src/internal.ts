@@ -33,3 +33,9 @@ export {
   type ResourceOwnerFlow,
   type ResourcePersistenceContext
 } from "./resources/internal";
+export {
+  AttachmentUnavailableError,
+  type ResolvedAttachment,
+  resolveAttachment,
+  sessionBlobOwner
+} from "./blobs/attachments";

@@ -215,6 +215,7 @@ A hired worker doesn't show in the rail and doesn't join `support.help`'s routin
 - **Workers**: Open a specialist in the rail to see its kind and what it handles, under its row. The **+** on its row starts a conversation with it; your message and its reply stay in that conversation. See [Talking to one specialist](#talking-to-one-specialist).
 - **Roster**: The team panel's roster lists workers [hired while the app runs](#hiring-while-the-app-runs), not the four declared in files. Until you hire one, it says no workers have been hired in this organization yet, while the rail lists the four specialists.
 - **Session management**: Open the assistant in the rail and press the **+** on its row (New session) to start a session. Its sessions are listed under it; pick one to switch to it.
+- **Sending while it answers**: While the assistant answers, you can keep typing, and change mode, thinking style and features. Stop and Send are two buttons. A line you send then shows under the conversation, marked *runs when this turn ends*, and the answer you're watching keeps streaming. When the turn ends, the waiting lines run in the order you typed them, however long the turn took. The model and the thinking toggle stay locked until the turn ends, since each saves to the server at once. The page keeps one waiting line on the server and the rest in the page, so a reload loses all but the first (`useHarnessLines` from `@flow-state-dev/react`).
 - **The page's address** names the open conversation, the assistant's or one picked in the rail (`/flow-state?session=<id>`), so a reload or a link reopens it, and Back returns to the one you had open before. A link to a session that is gone opens the assistant's latest.
 - **AI Elements**: Conversation, Message (with Streamdown markdown), Reasoning, Tool, Suggestion, Shimmer, PromptInput
 - **Bridge components**: Map flow-state item types (`MessageItem`, `ReasoningItem`, `BlockOutputItem`, `StatusItem`, `ErrorItem`) to AI Element visuals
@@ -307,6 +308,7 @@ A multi-modal AI assistant — the flagship flow. Showcases:
 - Session resources (`artifacts`) with typed resource reads/writes
 - clientData on `session` and `user` scopes
 - Action-level `userMessage` for automatic user message emission
+- `concurrency: "defer"` on `run`: a turn sent while one runs waits for it, with no time limit
 - Lifecycle handling via `onCompleted`
 
 Exported as `chatAgentFlow` (`kind: "chat-agent"`). Mounted at `/`.

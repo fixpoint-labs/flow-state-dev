@@ -79,7 +79,6 @@ export function Entry({
           <div className="max-w-[80%] rounded-xl border border-border/40 bg-accent/50 px-4 py-3 text-sm" data-entry="user">
             {/* A task's first line is its brief, which can run to paragraphs: held to a few lines. */}
             <Clamp lines={6}>{entry.text}</Clamp>
-            {entry.queued ? <span className="mt-1 block text-xs text-muted-foreground">queued · runs when this turn ends</span> : null}
           </div>
           {entry.sentToThread ? <span className="text-xs text-muted-foreground">↳ Sent to a task</span> : null}
         </div>

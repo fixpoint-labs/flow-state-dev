@@ -24,8 +24,10 @@
  * task's failure or cancel ends the subscriptions its session made, and a
  * thread's closing ends the ones on it (ER-7 as amended by #4675).
  */
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext, SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { ROUTINE_CADENCES } from "../routines/keys";
+import { ensurePollSchedule, type SubscriptionPolling } from "./poll";
 import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
 import { retryOnConflict } from "../projects/cas-retry";
 import type { RoutineMaker } from "../routines/listed-routine";
@@ -42,6 +44,7 @@ import {
   type SubscriptionResourceState
 } from "./rows";
 import { requestHostOf } from "@flow-state-dev/core/internal";
+import type { SubscriptionScreens } from "./screens";
 
 /**
  * A provider a session can subscribe on: its key, who may read a thread, and
@@ -55,7 +58,38 @@ export interface SubscriptionProvider {
   canRead(thread: string, ctx: BlockContext): boolean | Promise<boolean>;
   /** The running user's own id at the provider, so their own actions are dropped (`own`). */
   self?(ctx: BlockContext): string | undefined | Promise<string | undefined>;
+  /** The app's own screens on this provider, declared once: its custom functions, and the model `interest` asks. */
+  readonly screens?: SubscriptionScreens;
+  // FIX-2536.
+  /**
+   * Fetch what happened on `thread` since the cursor, as the running request's
+   * own user, on that user's credentials (ER-4): normalized events, each named
+   * by the same object and version a webhook delivery of it names. With
+   * `etags`, a provider may answer `unchanged` when nothing moved. Absent, the
+   * provider's subscriptions are never polled.
+   */
+  poll?(thread: string, cursor: SubscriptionPollCursor, ctx: BlockContext): Promise<SubscriptionPollResult>;
 }
+
+/** Where a poll fetches from: the poll's mark, and its validators while no delivery is owed. */
+export interface SubscriptionPollCursor {
+  /** Fetch events whose time is at or after this one, in ms. Absent, from the provider's own start. */
+  readonly since?: number;
+  /** The validators the last poll returned, by endpoint: a provider sends them as conditional requests. */
+  readonly etags?: Readonly<Record<string, string>>;
+}
+
+/** What a poll fetched: nothing new, or the events and how far it read. */
+export type SubscriptionPollResult =
+  | { readonly unchanged: true }
+  | {
+      readonly events: readonly SubscriptionEvent[];
+      /** The time it read up to, in ms: the next poll's mark when nothing is owed. */
+      readonly through: number;
+      readonly etags?: Readonly<Record<string, string>>;
+      /** The provider read less than everything since the mark (a list busier than it reads in one poll): the fire says so in each session. */
+      readonly incomplete?: true;
+    };
 
 /** What `subscribe` takes: the tool's input. */
 export const subscribeInputSchema = z
@@ -68,14 +102,25 @@ export const subscribeInputSchema = z
       .optional()
       .describe(
         'Narrow what passes: { screen: "labels", any: [...] }, { screen: "words", any: [...] } (title or text, any case), ' +
-          '{ screen: "allow", ids: [...] } (only these senders). Every listed screen must pass.'
+          '{ screen: "allow", ids: [...] } (only these senders), { screen: "custom", name } (one of the app\'s own screens, listed in the tool\'s description), ' +
+          '{ screen: "interest" } (a model reads what the other screens passed against your interest sentence). Every listed screen must pass.'
       ),
     outsiders: z.literal(true).optional().describe("Also hear people outside the project (not members, collaborators or listed bots). Off by default."),
+    interest: z
+      .string()
+      .min(1)
+      .max(500)
+      .describe('In one sentence, what you want to hear about, kept with the subscription. Only the "interest" screen reads it.'),
     unmatched: z
       .literal(true)
       .optional()
       .describe("Hear only the events on this thread that no other subscription heard, of the kinds the app forwards. A coordinator's only."),
-    interest: z.string().min(1).max(500).describe("In one sentence, what you want to hear about, kept with the subscription.")
+    // FIX-2536: checked in code against the one list (`invalid_cadence`), not left to the description.
+    everyMinutes: z
+      .number()
+      .int()
+      .optional()
+      .describe(`How often a polled provider looks, in minutes: one of ${ROUTINE_CADENCES.join(", ")}. A pushed provider ignores it.`)
   })
   .strict();
 
@@ -113,6 +158,9 @@ export interface SubscribeWrite {
   readonly id?: string;
   /** Who made it, kept with the subscription. */
   readonly madeBy?: RoutineMaker;
+  // FIX-2536.
+  /** The app's polling, when it polls: an enabled subscription under no tenant makes, or speeds up, the user's poll for its thread. */
+  readonly polling?: SubscriptionPolling;
 }
 
 /**
@@ -183,7 +231,7 @@ const tenantOf = (ctx: BlockContext): string | undefined => {
   return tenantId === undefined || tenantId.length === 0 ? undefined : tenantId;
 };
 
-const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
+export const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   provider: row.provider,
   thread: row.thread,
   ...(row.kinds === undefined ? {} : { kinds: row.kinds }),
@@ -193,8 +241,32 @@ const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   ...(row.unmatched === true ? { unmatched: true as const } : {}),
   userId: row.userId,
   orgId: row.orgId,
-  ...(row.tenantId === undefined ? {} : { tenantId: row.tenantId })
+  ...(row.tenantId === undefined ? {} : { tenantId: row.tenantId }),
+  // The sentence leaves the user's cell only when the `interest` screen will read it.
+  ...(row.screens.some((listed) => listed.screen === "interest") ? { interest: row.interest } : {})
 });
+
+/** Why `provider` can't run a screen `screens` lists, or `undefined` when it can run them all. */
+function unrunnableScreen(provider: SubscriptionProvider, screens: SubscribeInput["screens"]): string | undefined {
+  const custom = Object.keys(provider.screens?.custom ?? {});
+  for (const listed of screens ?? []) {
+    if (listed.screen === "custom" && !custom.includes(listed.name)) {
+      return `no_screen: "${listed.name}" isn't a screen on ${provider.provider}. Its screens: ${custom.join(", ") || "none"}.`;
+    }
+    if (listed.screen === "interest" && provider.screens?.interestModel === undefined) {
+      return `no_interest_model: ${provider.provider} has no model to judge an interest; list code screens only.`;
+    }
+  }
+  return undefined;
+}
+
+/** The custom screens each provider declares, as `saveRoutine`'s description lists them, so a model knows it may list one. */
+export function customScreensLine(providers: readonly SubscriptionProvider[]): string {
+  const lines = providers.flatMap((p) =>
+    Object.entries(p.screens?.custom ?? {}).map(([name, custom]) => `${p.provider} "${name}": ${custom.describe}`)
+  );
+  return lines.length === 0 ? "" : ` Custom screens: ${lines.join("; ")}.`;
+}
 
 /** A refusal, or the session `subscribe` writes for. */
 function hearer(ctx: BlockContext, target: SubscribeTarget | undefined): { refused: string } | { sessionId: string; worker: string; taskId?: string } {
@@ -271,6 +343,11 @@ async function writeSubscription(
   if (!thread.startsWith(`${provider.provider}:`)) {
     return { refused: `wrong_provider: a ${provider.provider} thread key starts with "${provider.provider}:".` };
   }
+  const unrunnable = unrunnableScreen(provider, input.screens);
+  if (unrunnable !== undefined) return { refused: unrunnable };
+  if (input.everyMinutes !== undefined && !(ROUTINE_CADENCES as readonly number[]).includes(input.everyMinutes)) {
+    return { refused: `invalid_cadence: every ${input.everyMinutes} minutes isn't a cadence. Use one of ${ROUTINE_CADENCES.join(", ")}.` };
+  }
   if (!(await provider.canRead(thread, ctx))) return { refused: `not_readable: you can't read "${thread}", so you can't follow it.` };
 
   const identity = ctx.session.identity as { id: string; userId?: string; orgId?: string; tenantId?: string };
@@ -300,6 +377,7 @@ async function writeSubscription(
     ...(input.outsiders === true ? { outsiders: true as const } : {}),
     ...(self === undefined ? {} : { self }),
     ...(input.unmatched === true ? { unmatched: true as const } : {}),
+    ...(input.everyMinutes === undefined ? {} : { everyMinutes: input.everyMinutes }),
     interest: input.interest,
     sessionId: hears.sessionId,
     flow: flowKind ?? "",
@@ -335,6 +413,10 @@ async function writeSubscription(
   // loses its entry, or its stale screen settings keep nominating it there.
   if (moved.prior.thread !== moved.now.thread) await dropFromIndex(ctx, moved.prior.thread, id);
   await syncIndex(ctx, moved.now);
+  // FIX-2536: the user's poll for the thread, when the app polls and the committed subscription is on. Tenants aren't polled in v1.
+  if (write.polling !== undefined && moved.now.enabled && moved.now.tenantId === undefined) {
+    await ensurePollSchedule(ctx, moved.now.provider, moved.now.thread, moved.now.everyMinutes ?? write.polling.everyMinutes);
+  }
   return { id };
 }
 

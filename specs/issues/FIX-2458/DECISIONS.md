@@ -50,6 +50,12 @@ no readiness check in its path. Then `sdk-not-installed` earns its kind.
 It comes down to a gate and a cadence: an exact pin loses claude-code's cadence, any version
 loses the gate.
 
+> **Amended (Nov 10).** Slice 3 ([#4884](https://github.com/fixpoint-labs/flow-state-dev/pull/4884))
+> built the gate with a second name the spec didn't plan: `sdkVersionReadiness` on `core/internal`,
+> which the readiness checks call so a host learns of a mismatch before it builds the block. It is
+> the same range match, not a second gate. Core's installed-version reader uses
+> `process.getBuiltinModule`, so `engines.node` is now `>=22.3` on core and the three harnesses.
+
 **What would change my mind:** the Claude Agent SDK changing its message shape inside a patch.
 Then claude-code's range is one version wide, under the same policy.
 

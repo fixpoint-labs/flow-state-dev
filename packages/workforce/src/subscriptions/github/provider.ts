@@ -1,14 +1,15 @@
 // FIX-2535; epic FIX-2471 ER-4.
 /**
- * GitHub as a subscription provider: who may read a thread, and who the running
- * user is on GitHub. Both ask GitHub's API as the running request's own user,
- * on a token the app supplies for that user (ER-4): a repository the user
- * can't read is refused at subscribe, and a private event is read again as its
- * subscriber before it is delivered.
+ * GitHub as a subscription provider: who may read a thread, who the running
+ * user is on GitHub, and what happened on a thread since its poll last looked. Each asks GitHub's API as the running request's own user, on a
+ * token the app supplies for that user (ER-4): a repository the user can't
+ * read is refused at subscribe, a private event is read again as its
+ * subscriber before it is delivered, and a poll reads only what its user can.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { SubscriptionProvider } from "../subscribe";
 import { GITHUB_PROVIDER, githubLoginId } from "./normalize";
+import { pollGitHubThread } from "./poll";
 
 /** What {@link githubSubscriptionProvider} is built with. */
 export interface GitHubSubscriptionProviderOptions {
@@ -40,14 +41,22 @@ export function githubRepositoryOf(thread: string): string | undefined {
 /** Build GitHub's subscription provider. */
 export function githubSubscriptionProvider(options: GitHubSubscriptionProviderOptions): GitHubSubscriptionProvider {
   const api = (options.apiUrl ?? "https://api.github.com").replace(/\/+$/, "");
-  const call = async (ctx: BlockContext, path: string): Promise<Response | undefined> => {
+  const call = async (ctx: BlockContext, path: string, etag?: string): Promise<Response | undefined> => {
     const token = await options.token(ctx);
     if (token === undefined || token.length === 0) return undefined;
     return (options.fetch ?? fetch)(`${api}${path}`, {
-      headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" }
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
+        ...(etag === undefined ? {} : { "if-none-match": etag })
+      }
     });
   };
+  const agentHandles = options.appBotLogin === undefined ? [] : [githubLoginId(options.appBotLogin)];
   return {
+    // FIX-2536: as the polling user, since the poll schedule's mark.
+    poll: (thread, cursor, ctx) => pollGitHubThread(call, thread, cursor, ctx, { agentHandles }),
     provider: GITHUB_PROVIDER,
     ...(options.appBotLogin === undefined ? {} : { agentHandle: githubLoginId(options.appBotLogin) }),
     async canRead(thread, ctx) {

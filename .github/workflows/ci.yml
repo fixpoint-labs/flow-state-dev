@@ -590,6 +590,11 @@ jobs:
         timeout-minutes: 6
         run: pnpm --filter @flow-state-dev/kitchen-sink test:e2e
 
+      # The labs' layout tests need the same browser, so they run here.
+      - name: Claude Code-style lab layout tests
+        timeout-minutes: 3
+        run: pnpm --filter @flow-state-dev/claude-code-style test:layout
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4

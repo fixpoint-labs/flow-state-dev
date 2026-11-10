@@ -64,7 +64,7 @@ Every worker on the flow runs on that one copy.
 ## Running it
 
 ```bash
-fsdev gen
+pnpm fsdev gen
 ```
 
 The command runs the generator `@flow-state-dev/workforce` ships, and finds it because your app depends on that package, so it has to be in your app's `package.json` dependencies. It writes `workforce/workforce.gen.ts` beside the tree:

@@ -4,24 +4,22 @@
  * Given the active profile (a `CapabilitySlotMap`), this realizes each
  * declared adapter and projects the capability slots onto the flat
  * `StoreRegistry` the runtime consumes. `primary` covers all
- * sub-stores; `blobs` is reserved and maps to no sub-store today (declaring
- * it is a no-op). `bus` projects onto
+ * sub-stores; `blobs` projects onto `StoreRegistry.blobs`, defaulting to where
+ * the sessions live. `bus` projects onto
  * `StoreRegistry.bus`, backed by the primary when the profile names no bus
  * and the primary declares it. Any sub-store left uncovered falls back to an
  * in-memory store, preserving the historical `resolveStores()` behavior; the
  * bus too.
  */
+import path from "node:path";
 import type { StoreRegistry } from "../stores/types";
 import type { CapabilitySlot, CapabilitySlotMap, StoreAdapter } from "../stores/store-adapter";
 import { resolveStores } from "../routes/http-handlers";
 import { FlowStateConfigError } from "../errors/flow-error";
-
-/**
- * Capability slots that have no `StoreRegistry` projection yet: `blobs`,
- * reserved for the attachment store that will back it. Declaring it backs no
- * sub-store until that store ships.
- */
-const FORWARD_COMPATIBLE_SLOTS: ReadonlySet<CapabilitySlot> = new Set(["blobs"]);
+import { storesPersist } from "../durability/default-durability";
+import { createLocalBlobStore } from "../blobs/local-blob-store";
+import { createMemoryBlobStore } from "../blobs/memory-blob-store";
+import type { BlobStore } from "../blobs/types";
 
 /** The `StoreRegistry` sub-stores the `primary` capability backs. */
 export const PRIMARY_REGISTRY_SLOTS: ReadonlyArray<keyof StoreRegistry> = [
@@ -69,6 +67,11 @@ export async function resolveProfileStores(options: {
   if (profile.bus === undefined && profile.primary?.capabilities.includes("bus") === true) {
     slots.push(["bus", profile.primary]);
   }
+  // The blobs: the profile's `blobs` slot, else the primary when it
+  // declares `blobs` (a filesystem primary keeps them under its own root).
+  if (profile.blobs === undefined && profile.primary?.capabilities.includes("blobs") === true) {
+    slots.push(["blobs", profile.primary]);
+  }
 
   for (const [slot, adapter] of slots) {
     if (adapter === undefined) continue;
@@ -86,11 +89,16 @@ export async function resolveProfileStores(options: {
       adapters.push(adapter);
     }
 
-    // Forward-compatible slots back no StoreRegistry sub-store today; the
-    // adapter is recorded (so dispose runs) but not resolved into the registry.
-    if (FORWARD_COMPATIBLE_SLOTS.has(slot)) continue;
-
     const resolved = await adapter.resolve([slot]);
+    if (slot === "blobs") {
+      if (resolved.blobs === undefined) {
+        throw new FlowStateConfigError(
+          `Profile "${profileName}" slot "blobs": the adapter declares the "blobs" capability but resolved no blob store.`
+        );
+      }
+      partials.push({ blobs: resolved.blobs });
+      continue;
+    }
     if (slot === "bus") {
       if (resolved.bus === undefined) {
         throw new FlowStateConfigError(
@@ -102,7 +110,7 @@ export async function resolveProfileStores(options: {
     }
     // Only the adapter backing `bus` supplies it: a primary that doesn't
     // declare the slot backs no bus, whatever its registry carries.
-    const { bus: _undeclared, ...rest } = resolved;
+    const { bus: _undeclared, blobs: _undeclaredBlobs, ...rest } = resolved;
     partials.push(rest);
   }
 
@@ -116,5 +124,21 @@ export async function resolveProfileStores(options: {
 
   // Fill any uncovered sub-store from in-memory (historical `resolveStores`
   // behavior). With a `primary` adapter present this is a no-op.
-  return { stores: resolveStores(merged), adapters };
+  const stores = resolveStores(merged);
+  stores.blobs ??= defaultBlobStore(stores, profileName);
+  return { stores, adapters };
+}
+
+/**
+ * Where a profile that names no `blobs` keeps its attachments: wherever its
+ * sessions live. On disk under `.fsdev/blobs/<profile>` in the working
+ * directory when the sessions persist, in memory when they don't, so a
+ * restart never leaves bytes that no session points at. The folder is the
+ * profile's own: two durable profiles run from one directory can share
+ * session ids, and one's session cleanup must not reach the other's files.
+ */
+function defaultBlobStore(stores: StoreRegistry, profileName: string): BlobStore {
+  return storesPersist(stores)
+    ? createLocalBlobStore({ rootDir: path.join(process.cwd(), ".fsdev", "blobs", encodeURIComponent(profileName)) })
+    : createMemoryBlobStore();
 }

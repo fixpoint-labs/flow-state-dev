@@ -28,6 +28,7 @@ const worker = (id: string): RosterEntry => ({
   name: null,
   teamName: null,
   forkedFrom: null,
+  edited: false,
   settings: {},
 });
 

@@ -61,7 +61,8 @@
 import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type SessionSummary } from "@flow-state-dev/client";
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { isUserSuspension, suspendForUserKindOf, type ResumeAction } from "@flow-state-dev/core/types";
-import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
+import { suspensionShape } from "@flow-state-dev/react";
+import { deriveSuspensions } from "@flow-state-dev/react/internal";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";

@@ -43,6 +43,7 @@ function stub(task: BoardTask) {
     },
     watchReview: () => () => {},
     taskActions: () => ({}),
+    recordedWork: async () => ({ plan: null, files: null, pullRequests: null }),
     watchWorking: (run: { sessionId: string; requestId?: string }, onChange: (now: WorkingNow) => void) => {
       watched.push(`${run.sessionId}/${run.requestId}`);
       showNow = onChange;

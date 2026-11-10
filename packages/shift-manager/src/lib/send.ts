@@ -43,7 +43,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { ClientHttpError, type Client, type FlowHandle, type RequestResult } from "@flow-state-dev/client";
 import { pause } from "@flow-state-dev/client/internal";
 import { isUserSuspension } from "@flow-state-dev/core/types";
-import { deriveSuspensions } from "@flow-state-dev/react";
+import { deriveSuspensions } from "@flow-state-dev/react/internal";
 import { describeFailure } from "./reads";
 
 /**

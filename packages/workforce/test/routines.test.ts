@@ -667,6 +667,24 @@ describe("the app's declared routines", () => {
     expect(await declaredRoutineKey("api-pr")).toBe("cfg_05562bf34a380505896ae059");
   });
 
+  // A coordinator that stops hearing what nobody else heard must stop at the next deploy, not keep the old setting.
+  it("rewrites a declared event routine whose unmatched setting changed", async () => {
+    const stores = inMemoryStores();
+    const triage = (unmatched: boolean): DeclaredRoutine[] => [
+      { id: "repo-triage", trigger: { event: { provider: "github", thread: "github:acme/api", interest: "new issues", ...(unmatched ? { unmatched: true } : {}) } }, worker: "lead" }
+    ];
+    const first = boot({ declared: triage(true), stores });
+    await list(first);
+    expect((await first.subscriptionRows("alice")).find((r) => r.id.startsWith("cfg_"))).toMatchObject({ unmatched: true, enabled: true });
+    await first.dispose();
+    host = undefined;
+    const second = boot({ declared: triage(false), stores });
+    await list(second);
+    const now = (await second.subscriptionRows("alice")).find((r) => r.id.startsWith("cfg_"));
+    expect(now).toMatchObject({ enabled: true });
+    expect(now).not.toHaveProperty("unmatched");
+  });
+
   it("drops the old trigger's routine when a declared entry switches from a clock to an event, and back", async () => {
     const stores = inMemoryStores();
     const clock = declared()[0]!;

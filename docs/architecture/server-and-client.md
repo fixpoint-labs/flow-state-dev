@@ -89,6 +89,9 @@ custom) mount alongside it via the `adapters` option — see
 | GET | `/api/flows/sessions/:sessionId/stream` | SSE session stream (every request's finished items, unfinished runs) |
 | POST | `/api/flows/:flowId/sessions` | Create session |
 | DELETE | `/api/flows/sessions/:sessionId` | Delete session |
+| POST | `/api/flows/blobs` | Upload one attachment as the raw body (`content-type` is its type, `filename` query optional); `201 { attachment }` with `data: "fsd-blob:<id>"`. Checked by the host's resolver |
+| POST | `/api/flows/:flowId/blobs` | The same upload, checked by that flow's own resolver, so the file is held for the user its sends resolve |
+| GET | `/api/flows/blobs/:blobId` | The file's bytes, to a caller who can read the session that owns it; any other caller gets 404. Images inline, other types as a download, always `nosniff` |
 
 Every route that answers with a session record (detail, listing, create, metadata edit) sends it projected the same way. Scope state is private by default, so a client receives only the fields the flow exposes, plus its readonly fields: those are the session's identity, set at create and already a listing filter. Server-side code that needs the whole record reads the session store.
 
@@ -184,6 +187,23 @@ const sent = await fsd.flow<typeof helloChat>("hello-chat").send("chat", { messa
 // result() is wait()'s polls by id, each asking for the stored answer; the settling read is returned.
 const { status, output, error } = await sent.result({ timeoutMs: 30_000 });
 for (const lost of await fsd.requests.interrupted()) await lost.continue();
+```
+
+### Attachments
+
+A file is uploaded once and sent by reference. `upload` resolves to a
+`FileContent` whose `data` is `fsd-blob:<id>`; put that in a message, never the
+bytes. An action request names its files in a top-level `attachments` array
+beside `input`, and the action route claims them into the turn's session before
+any block runs: all or nothing, refused by name when a file is not the caller's
+or was already sent with another conversation, and handed back if the send is
+then refused. Until a send claims it, a file is held for its uploader, and an
+unclaimed upload is swept after 24 hours. Use the flow's own `upload` when the
+flow authenticates its callers, so the uploader is the user its sends resolve.
+
+```ts
+const file = await fsd.flow("hello-chat").upload({ data: blob, filename: "plan.pdf" });
+// file.data === "fsd-blob:<id>"
 ```
 
 ### Sessions

@@ -9,3 +9,5 @@ export { githubRepositoryOf } from "./github/provider";
 export { GITHUB_SERVICE_FLOW } from "./github/service-flow";
 export { FOLLOWED_PULL_REQUEST_KINDS, pullRequestThread } from "./github/follow-pull-request";
 export { DEFAULT_MAX_OWNER_RUNS } from "./service-flow";
+// FIX-2536: polling's mechanics, for goals.
+export { SUBSCRIPTION_POLLS_PATTERN } from "./keys";

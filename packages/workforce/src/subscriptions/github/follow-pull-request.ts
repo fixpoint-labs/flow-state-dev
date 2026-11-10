@@ -16,6 +16,8 @@
  */
 import type { PullRequestFollower, RecordedPullRequest } from "@flow-state-dev/core/harness";
 import type { BlockContext } from "@flow-state-dev/core/types";
+import type { WorkerInstallation } from "../../workers/installation";
+import { installationPolling, pollingOn } from "../poll";
 import { subscriptionResources } from "../rows";
 import { subscribe, type SubscribeOutcome, type SubscriptionProvider } from "../subscribe";
 import { GITHUB_PROVIDER, githubThreadKey } from "./normalize";
@@ -29,6 +31,11 @@ export interface FollowPullRequestOptions {
   readonly providers: readonly SubscriptionProvider[];
   /** Called with what each subscribe came to, for a host that records it. */
   readonly onFollowed?: (pr: RecordedPullRequest, outcome: SubscribeOutcome, ctx: BlockContext) => void | Promise<void>;
+  /**
+   * The app's installation, when the app polls: following a pull request makes
+   * the user's poll for it once `hireWorkforce` was given `routines.poll`.
+   */
+  readonly installation?: WorkerInstallation;
 }
 
 /** The thread a recorded pull request is followed on, or `undefined` when it isn't GitHub's. */
@@ -43,14 +50,23 @@ export function followPullRequest(options: FollowPullRequestOptions): PullReques
     // Recorded already closed or merged (the branch check found it late): its closing event has
     // passed, so nothing would end a subscription made now.
     if (thread === undefined || pr.state === "closed" || pr.state === "merged") return;
-    const outcome = await subscribe(ctx, options.providers, {
-      provider: GITHUB_PROVIDER,
-      thread,
-      kinds: [...FOLLOWED_PULL_REQUEST_KINDS],
-      interest: `Reviews, comments and CI on pull request #${pr.number}, which this session opened.`
-    });
+    const polling = options.installation === undefined ? undefined : pollingOn(options.installation);
+    const outcome = await subscribe(
+      ctx,
+      options.providers,
+      {
+        provider: GITHUB_PROVIDER,
+        thread,
+        kinds: [...FOLLOWED_PULL_REQUEST_KINDS],
+        interest: `Reviews, comments and CI on pull request #${pr.number}, which this session opened.`
+      },
+      undefined,
+      polling === undefined ? {} : { polling }
+    );
     await options.onFollowed?.(pr, outcome, ctx);
     if ("refused" in outcome) throw new Error(outcome.refused);
   };
-  return Object.assign(follower, { resources: subscriptionResources });
+  return Object.assign(follower, {
+    resources: options.installation === undefined ? subscriptionResources : { ...subscriptionResources, ...installationPolling(options.installation).resources }
+  });
 }

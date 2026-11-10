@@ -605,6 +605,10 @@ export interface ManagerOptions {
    * too, with a status note, and never settles the task. A run that opened no
    * pull request settles as without it.
    *
+   * A judge's confident `not-done` doesn't fail a run that opened a pull
+   * request: the task waits on it as above, the judge's reason said in a
+   * status note. The person reviewing the pull request is its check.
+   *
    * Only a host with a way to wake a waiting task should turn it on: until
    * one does, the task stays open.
    */
@@ -3651,7 +3655,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * nothing left to settle. A run that passed its check completes, unless a
    * judge read it and, at or over its floor, said `not-done` (the attempt fails
    * with its reason, which is the next attempt's feedback) or `ask` (the task
-   * is held on its reason, through the ask step every question takes).
+   * is held on its reason, through the ask step every question takes). With
+   * `awaitPullRequests`, a run that opened a pull request settles on it
+   * instead, a `not-done` included.
    */
   const settle = handler({
     name: "harness-manager-settle",
@@ -3674,20 +3680,27 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       }
       const read = input?.verdict ?? null;
       const identity = identityOf(ctx, state);
+      // **A task whose work is a pull request is done when it merges** (FIX-2578), read
+      // before the judge: a run that opened one settles on it, not on a reading of its last message (FIX-2579).
+      const prs = awaitPullRequests
+        ? await taskPullRequests(ctx, (await readRunRecord(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id])
+        : [];
       if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) {
         if (read.verdict === "not-done") {
-          throw new HarnessAttemptFailed(`the judge found the task not done: ${read.reason}`);
+          if (prs.length === 0) throw new HarnessAttemptFailed(`the judge found the task not done: ${read.reason}`);
+          // The person reviews the pull request; the judge's reading goes with it, as information.
+          ctx.emit.status(`The judge found the task not done (${read.confidence.toFixed(2)}): ${read.reason}. It waits on its pull request.`, {
+            transient: false,
+          });
+          const output: ManagerOutput = { ...decision.output, judged: true, review: null, landed: decision.landed ?? null };
+          return settleOnPullRequests(ctx, prs, output);
         }
         await holdOnQuestion(ctx, read.reason);
         return { ...decision.output, judged: true };
       }
       const review = decision.reviewed === "accepted" || decision.reviewed === "deadline" ? decision.reviewed : null;
       const output: ManagerOutput = { ...decision.output, judged: read !== null, review, landed: decision.landed ?? null };
-      // **A task whose work is a pull request is done when it merges** (FIX-2578).
-      if (awaitPullRequests) {
-        const prs = await taskPullRequests(ctx, (await readRunRecord(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id]);
-        if (prs.length > 0) return settleOnPullRequests(ctx, prs, output);
-      }
+      if (prs.length > 0) return settleOnPullRequests(ctx, prs, output);
       await fenced(
         writeRunRecord(ctx, identity, { outcome: "succeeded", reason: null }),
         "the run record was completed",

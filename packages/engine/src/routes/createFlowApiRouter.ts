@@ -8,6 +8,7 @@
  * shape and behavior is unchanged for callers that don't pass `adapters`.
  */
 import { attachPushState } from "../push/push-delivery";
+import { attachHostDiskState } from "../blobs/host-disk";
 import type {
   FlowStateSettings,
   ModelResolver,
@@ -767,6 +768,8 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // Push delivery's state (FIX-2428), for a host that serves the socket to
   // turn on with `enablePushDelivery`.
   attachPushState(router, handlers.push);
+  // Whether its host keeps its disk (FIX-824), for a host adapter to declare.
+  attachHostDiskState(router, handlers.hostDisk);
   return router;
 }
 

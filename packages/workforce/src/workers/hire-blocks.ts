@@ -8,8 +8,10 @@
  * standard workers, and the configuration must pass the flow's own schema
  * with every name it gives resolved. A refused write changes nothing.
  *
- * Standard workers are read-only: every block here refuses a standard
- * worker's id, and suggests a fork.
+ * A standard worker's file is never written. Hire, fork and fire refuse a
+ * standard worker's id. Edit on one makes the caller's own copy of it under
+ * the same id, the copy a fork makes, which the turn and the
+ * roster then read before the file; reset deletes that copy.
  */
 import { handler, type JsonObject } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
@@ -18,7 +20,7 @@ import { AGENT_FLOW } from "../agent-worker-flow";
 import type { WorkerManifest } from "../manifest";
 import type { WorkerInstallation } from "./installation";
 import { WORKERS_RESOURCE } from "./keys";
-import { standardWorkerFlow } from "./standard-workers";
+import { standardWorkerFlow, workerDisplayName } from "./standard-workers";
 import { parseWorkerResourceState, workerResourceStateSchema, type WorkerResourceState } from "./worker-row";
 
 const workerId = z.string().min(1).regex(/^[^/~][^/]*$/, "a worker id is one path segment and can't start with ~");
@@ -27,6 +29,8 @@ const hireInput = z
   .object({
     /** The new worker's id on the caller's roster. */
     id: workerId,
+    /** The name a user reads it by. Not an address: the id stays its address. */
+    name: z.string().optional(),
     /** The worker flow it runs on. Omitted, `agent`. */
     flow: z.string().min(1).optional(),
     description: z.string().optional(),
@@ -50,6 +54,9 @@ const forkInput = z
 const editInput = z
   .object({
     id: z.string().min(1),
+    /** A new display name; `null` clears it. The id never changes. */
+    name: z.string().nullable().optional(),
+    /** A new flow. A standard worker keeps its file's: naming another is refused. */
     flow: z.string().min(1).optional(),
     description: z.string().nullable().optional(),
     instructions: z.string().nullable().optional(),
@@ -61,18 +68,26 @@ const editInput = z
 
 const fireInput = z.object({ id: z.string().min(1) }).strict();
 
+const resetInput = z.object({ id: z.string().min(1) }).strict();
+
 const writtenOutput = z.object({ id: z.string(), flow: z.string() });
 
-/** The four blocks, ready to mount as actions. */
+/** The five blocks, ready to mount as actions. */
 export interface WorkerHireBlocks {
   /** Hire a new worker of the caller's own: `{ id, flow?, description?, instructions?, skills?, settings? }`. */
   hire: BlockDefinition<typeof hireInput, typeof writtenOutput>;
   /** Fork a standard worker, or one of the caller's own, under a new id: `{ from, id }`. */
   fork: BlockDefinition<typeof forkInput, typeof writtenOutput>;
-  /** Change one of the caller's own workers: `{ id, ...fields to replace }`. */
+  /**
+   * Change one of the caller's own workers: `{ id, ...fields to replace }`.
+   * On a standard worker's id, it first copies that worker onto the caller's
+   * roster under the same id, unless the caller already has the copy.
+   */
   edit: BlockDefinition<typeof editInput, typeof writtenOutput>;
   /** Delete one of the caller's own workers: `{ id }`. */
   fire: BlockDefinition<typeof fireInput, z.ZodObject<{ id: z.ZodString }>>;
+  /** Delete the caller's copy of a standard worker, so the file is read again: `{ id }`. */
+  reset: BlockDefinition<typeof resetInput, z.ZodObject<{ id: z.ZodString }>>;
 }
 
 /** Whitespace is not instructions. */
@@ -80,14 +95,20 @@ function textOrNull(value: string | null | undefined): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
-/** A standard worker's configuration as a row of the caller's own, copied (D3). */
-function rowFromStandard(manifest: WorkerManifest): WorkerResourceState {
+/**
+ * A standard worker's configuration as a row of the caller's own, copied (D3).
+ * Its file's `name:` becomes the row's name only for the copy under the same
+ * id (`keepName`); a fork under a new id starts with none.
+ */
+function rowFromStandard(manifest: WorkerManifest, keepName = false): WorkerResourceState {
   const settings: Record<string, unknown> = { ...manifest.declared };
   delete settings.flow;
   delete settings.description;
+  delete settings.name;
   const description = manifest.declared.description;
   return workerResourceStateSchema.parse({
     flow: standardWorkerFlow(manifest, AGENT_FLOW),
+    name: keepName ? workerDisplayName(manifest) : null,
     description: typeof description === "string" ? description : null,
     instructions: textOrNull(manifest.body),
     teamInstructions: textOrNull(manifest.teamInstructions),
@@ -98,7 +119,7 @@ function rowFromStandard(manifest: WorkerManifest): WorkerResourceState {
 }
 
 /**
- * Build the hire, fork, edit and fire blocks over `installation`.
+ * Build the hire, fork, edit, fire and reset blocks over `installation`.
  *
  * Mount them on a flow that declares `installation.resources` (the roster
  * flow does): each reads and writes the caller's own roster through it.
@@ -157,6 +178,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
       refuseStandard(input.id, "hire over");
       const row = workerResourceStateSchema.parse({
         flow: input.flow ?? AGENT_FLOW,
+        name: textOrNull(input.name),
         description: input.description ?? null,
         instructions: textOrNull(input.instructions),
         skills: input.skills ?? [],
@@ -175,11 +197,13 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
       refuseStandard(input.id, "replace");
+      // The caller's own row first: an edited standard worker forks as they edited it.
       const file = installation.standardWorker(input.from);
+      const own = file === undefined ? undefined : await roster(ctx).getOptional(input.from);
       const row =
-        file !== undefined
+        file !== undefined && own === undefined
           ? rowFromStandard(file)
-          : { ...(await readOwn(ctx, input.from)), forkedFrom: input.from };
+          : { ...(await readOwn(ctx, input.from)), forkedFrom: input.from, name: null };
       check(input.id, row);
       await write(ctx, input.id, row);
       return { id: input.id, flow: row.flow };
@@ -192,10 +216,22 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     outputSchema: writtenOutput,
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
-      refuseStandard(input.id, "edit");
-      const current = await readOwn(ctx, input.id);
+      // A standard worker's first edit starts from the copy a fork makes, under its own id.
+      const file = installation.standardWorker(input.id);
+      const stored = file === undefined ? undefined : await roster(ctx).getOptional(input.id);
+      const copying = file !== undefined && stored === undefined;
+      const current = copying ? { ...rowFromStandard(file, true), forkedFrom: input.id } : await readOwn(ctx, input.id);
+      // The file's worker as it stands, before the edit: a flow kept for standard
+      // workers stays read-only even when the edit names another flow.
+      if (copying) check(input.id, current);
+      // Board tasks reach a standard worker on its file's flow, so its copy stays there.
+      const fileFlow = file === undefined ? undefined : rowFromStandard(file).flow;
+      if (fileFlow !== undefined && input.flow !== undefined && input.flow !== fileFlow) {
+        throw new Error(`"${input.id}" runs on "${fileFlow}", as its file declares, so its flow can't be changed. Nothing was written.`);
+      }
       const next: WorkerResourceState = {
         ...current,
+        ...(input.name !== undefined ? { name: textOrNull(input.name) } : {}),
         ...(input.flow !== undefined ? { flow: input.flow } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.instructions !== undefined ? { instructions: textOrNull(input.instructions) } : {}),
@@ -223,5 +259,22 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     }
   });
 
-  return { hire, fork, edit, fire } as unknown as WorkerHireBlocks;
+  const reset = handler({
+    name: "workforce-reset",
+    inputSchema: resetInput,
+    outputSchema: z.object({ id: z.string() }),
+    resources: { ...installation.resources },
+    execute: async (input, ctx) => {
+      if (installation.standardWorker(input.id) === undefined) {
+        throw new Error(`"${input.id}" isn't a standard worker, so there is no default to reset it to. Nothing was written.`);
+      }
+      if ((await roster(ctx).getOptional(input.id)) === undefined) {
+        throw new Error(`You haven't edited "${input.id}", so it already matches its file. Nothing was written.`);
+      }
+      await roster(ctx).delete(input.id);
+      return { id: input.id };
+    }
+  });
+
+  return { hire, fork, edit, fire, reset } as unknown as WorkerHireBlocks;
 }

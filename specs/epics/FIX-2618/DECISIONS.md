@@ -46,16 +46,17 @@ It comes down to the kit: designed last in its own epic, it inherits a model it 
 |---|---|
 | **Instead of** | One spec set for all twelve children, written as soon as this spec merges (the standard [spec-set](../../../docs/contributing/orchestration.md#the-spec-set-one-pr-for-the-epics-issue-specs) path) · or stage 2 as a follow-up epic |
 | **Because** | Three of the build children rest on claims nobody has checked: a view can run with no session (`runRead.ts:33` takes a `sessionId`), declared dependencies can be checked, and a kit removes the host's wiring. A refuted premise after approval redraws up to six approved specs, the kit spec most of all |
-| **Locks in** | **Stage 1:** FIX-2619 to FIX-2622 and the closure's QA plan, in the one spec-set PR. **Stage 2:** FIX-2551 and FIX-2623 to FIX-2628, specced after FIX-2620 to FIX-2622 merge, each on its own spec PR, with each proof's result recorded below |
+| **Locks in** | **Stage 1:** FIX-2619 to FIX-2622, in the one spec-set PR. **Stage 2:** FIX-2551 and FIX-2623 to FIX-2628, specced after FIX-2620 to FIX-2622 merge, each on its own spec PR, with each proof's result recorded below. **The closure** (FIX-2629): its QA plan is this spec's goal check; its issue spec is written with stage 2, once the proofs say which legs it runs |
 
 **How the hold works, with no script change.** The wake has one grouped spec dispatch and no
 second one: once the spec-set PR exists, a child still at `NEEDS_SPEC` gets its own `spec`
 dispatch (`epic-wake.js`, `awaitsSpecSet`), and blocked-by gates implementation only. So:
 
-1. The stage-1 spec-set dispatch leaves the seven stage-2 children out of `specSetMembers`,
-   naming D2, the path a set already has for a child it shouldn't spec.
-2. When the coordinator records that PR, before the next wake, it parks each stage-2 row with a
-   `blocker`: "held until stage 1's proofs merge, D2". A row with a `blocker` is not dispatched.
+1. The stage-1 spec-set dispatch leaves the seven stage-2 children and the closure out of
+   `specSetMembers`, naming D2, the path a set already has for a child it shouldn't spec.
+2. When the coordinator records that PR, before the next wake, it parks each stage-2 row and the
+   closure's with a `blocker`: "held until stage 1's proofs merge, D2". A row with a `blocker` is
+   not dispatched, and the closure's blocked-by relations don't hold its spec.
    Parked any earlier, the rows would pause the stage-1 set itself (`specSetPaused`).
 3. When FIX-2620 to FIX-2622 have merged, the coordinator records that as the resolution and
    clears the blockers (FIX-2625's stays until [O4](#o4) is answered). Stage 2 then takes the
@@ -311,7 +312,7 @@ the stage-2 specs.
 | ER-6 | Data the server computes is typed by its view's output schema (`ViewOutput`). An app hand-writes only what its screen computes | FIX-2623 builds · FIX-2627, FIX-2628 use | FIX-2628's spec review; closure leg a |
 | ER-7 | One live read in the client: the coalescer and the path rule live in one place, and `useView` and every package watch sit on it | FIX-2551 builds · FIX-2623, FIX-2627 use | The stage-2 reuse review |
 | ER-8 | No lab adapter grows once the sibling amendments merge. A screen's new need is then a package read or view, never a new adapter verb or hand-written row type. Until FIX-2592, FIX-2616 and FIX-2369's amendments merge it is advisory, and FIX-2628 deletes what was added ([D3](#d3)) | The coordinator (it asks for the amendments) · FIX-2628 uses | FIX-2592, FIX-2616 and FIX-2369's spec reviews, after the amendments |
-| ER-9 | Every public name the set fixes is in the glossary in the PR that coins it; "read" retires as the hook's name; the unit's name waits for [O5](#o5) | FIX-2619 builds · FIX-2623, FIX-2626 use | Each child's PR checks |
+| ER-9 | Every public name the set fixes is in the glossary in the PR that coins it, and an entry lands only once the hold that fixes its name is answered ("view" [O2](#o2), the unit [O5](#o5), "slot" [O1](#o1)). "Read" retires as the hook's name: FIX-2619's entry says so, and the check that refuses it lands in FIX-2623's PR, the one that removes `reads` | FIX-2619 builds · FIX-2623, FIX-2626 use | Each child's PR checks |
 | ER-10 | Ids on notices are hints. No ids means read everything; a full read runs on connect, reconnect, resync, a poll tick and wherever the bus doesn't cross processes; a notice that drops the resource name carries no ids | FIX-2625 builds · FIX-2623 uses (keys) | FIX-2625's spec review; the closure |
 
 ## Coordination seams
@@ -412,5 +413,9 @@ objective or the division.
 - **Review round 2 (2026-11-09)** — the owner decided [O3](#o3): every write through a flow, with
   a default write flow and one-line client helpers ([6742479932](https://github.com/fixpoint-labs/flow-state-dev/pull/4964#issuecomment-6742479932)); the architect asked for
   the goal check to fail on any direct write path ([6742490134](https://github.com/fixpoint-labs/flow-state-dev/pull/4964#issuecomment-6742490134)). The write rule is gone.
+- **Stage-1 spec set (2026-11-09)** — two amendments from the set's review. [ER-9](#who-owns-what):
+  a glossary entry lands once its hold is answered, and the "read" retire's check lands with
+  FIX-2623, which removes `reads` (found by FIX-2619). [D2](#d2): the closure is out of stage 1
+  and parked with stage 2, since its blocked-by relations don't hold a spec dispatch.
 
 **Open:** [O1](#o1) · [O2](#o2) · [O4](#o4) · [O5](#o5). **Decided in review:** [O3](#o3).

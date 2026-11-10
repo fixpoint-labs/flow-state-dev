@@ -192,7 +192,7 @@ export interface RosterWorker {
   flow: string;
   /** Its description, or `null`. */
   description: string | null;
-  /** Its display name, its file's `name:`, or `null` when it has none (a user's own worker never does). */
+  /** Its display name: its row's `name`, or its file's `name:`; `null` when it has none. */
   name: string | null;
   /** Its team's display name, its `TEAM.md` `name:`, or `null` when it has none or no team. */
   teamName: string | null;
@@ -536,7 +536,12 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     id: string,
     row: WorkerResourceState
   ): { ok: true; manifest: WorkerManifest } | { ok: false; problems: string[] } => {
-    const missing = row.skills.filter((name) => !skillCatalog.has(name));
+    // The user's copy of a standard worker keeps its file's reach: its own
+    // skills by name, where two workers' skills share one, and its packages.
+    const file = row.forkedFrom === id ? standard.get(id) : undefined;
+    const ownSkills = new Map((file?.skills ?? []).map((skill) => [skill.name, skill]));
+    const skillOf = (name: string) => ownSkills.get(name) ?? skillCatalog.get(name);
+    const missing = row.skills.filter((name) => skillOf(name) === undefined);
     if (missing.length > 0) {
       const registered = [...skillCatalog.keys()].sort().map((name) => `"${name}"`);
       const known = registered.length === 0 ? "It registers no skills" : `Skills it registers: ${registered.join(", ")}`;
@@ -555,9 +560,9 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         id,
         declared: declaredOf(row),
         body: row.instructions ?? "",
-        skills: row.skills.map((name) => skillCatalog.get(name)!),
+        skills: row.skills.map((name) => skillOf(name)!),
         ...(row.teamInstructions !== null ? { teamInstructions: row.teamInstructions } : {}),
-        packages: [...(options.packages ?? [])]
+        packages: [...(file?.packages ?? options.packages ?? [])]
       }
     };
   };
@@ -878,13 +883,16 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       return { id: workerId, standard: false, flow: "", description: null, name: null, teamName: null, delegates: [], problem: found.problem };
     }
     if (found.found === "own") {
+      // A row under a standard worker's id is the user's copy of it (FIX-2526):
+      // still that standard worker, on its team, as the user edited it.
+      const file = standard.get(workerId);
       return {
         id: workerId,
-        standard: false,
+        standard: file !== undefined,
         flow: found.flow,
         description: found.row.description,
-        name: null,
-        teamName: null,
+        name: found.row.name,
+        teamName: file?.teamName ?? null,
         delegates: declaredDelegates(found.row.settings),
         ...(found.standardOnly ? { problem: standardOnlyReason(found.flow, false) } : {})
       };

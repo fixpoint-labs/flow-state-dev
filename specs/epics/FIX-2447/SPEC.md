@@ -10,7 +10,7 @@
 | **autocompletes a package root** | 549 names in core and 367 in engine, with harness, wait-gate and PR-parsing vocabulary. Core 0.4.0's `.d.ts` hovers carry 272 `FIX-`/`LAB-` ids | The names an app author needs, and no tracker ids. Framework seams sit behind subpaths that say who they are for |
 | **answers a user's stop from React** | React calls `resume`, which refuses a stop raised in a task-board run | One call, in React and the client |
 | **reads an action's output, or unit-tests an approval step** | Polls, then lists session requests and searches the pages. `testFlow` has no durability, so it can't test `ctx.suspendForUser` | One client call returns the output. `testFlow` runs a suspension |
-| **upgrades across a rename** | Three migration policies. Old code that passes `human_approval` compiles and silently loses its Inbox item | One policy: the old name is gone, and the changeset names its new home. No alias, refusal or reader of an old shape ([D4](DECISIONS.md#d4), the owner's, Nov 6). A retired runtime value such as `human_approval` is still not stopped: that is D4's price |
+| **upgrades across a rename** | Three migration policies. Old code that passes `human_approval` compiles and silently loses its Inbox item | One policy: the old name is gone, and the changeset names its new home. No alias, refusal or reader of an old shape ([D4](DECISIONS.md#d4), the owner's, Nov 6), except four kept where removing them is silently wrong ([amended Nov 10](DECISIONS.md#kept-refusals)). `human_approval` is one: it throws, naming `user_approval` |
 
 **Why now.** 0.4.0 of core, engine, client and react went to npm on Nov 3 with this debt on it,
 and orchestration is already at 0.5.0. Each minor that ships it turns more internal names into
@@ -92,7 +92,7 @@ PR after this one merges.
 | FIX-2451 | One runtime file in the quick start, the bare route, first snippets that compute something | *First hour* | Backlog · **direct** (Bug) |
 | FIX-2452 | Stores shorthand, no no-op slots, a warning for a silent generator, one store factory family | *First hour*: the ceremony comes from defaults | Backlog · spec route |
 | FIX-2453 | A lint that keeps tracker ids out of exported JSDoc, error strings and conformance titles, and the sweep | *Leakage* | Backlog · spec route |
-| FIX-2454 | The never-published shims deleted (the census's 19), and, under [D4](DECISIONS.md#d4), the published names' refusals with them. No helper, rule or removal version (amended Nov 6) | *Shims* | Backlog · spec route |
+| FIX-2454 | The never-published shims deleted (the census's 19), and, under [D4](DECISIONS.md#d4), the published names' refusals with them, but [four](DECISIONS.md#kept-refusals). No helper, rule or removal version (amended Nov 6, Nov 10) | *Shims* | Backlog · spec route |
 | **P2** | | | |
 | FIX-2455 | `sent.result()` returns an action's output, and the server read by request id behind it; the polling copies go, workforce's `runIn` among them; a React read | *One path* for output. Overlaps FIX-2043 ([noted](DECISIONS.md#decided-not-asked)) | Backlog · spec route |
 | FIX-2456 | The registry Conversation on FIX-2360's scroll rule, one jump button, UI chrome out of the hooks root | *One path*, and *Surface* for react | Backlog · spec route |
@@ -169,7 +169,7 @@ blocks the closure in Linear.
 | `scripts/mechanism-exports.mjs`'s `packageExports` (public exports, read from source), and FIX-2162's caller census | **Extended** by FIX-2448 (consumer or README, through an import census) and FIX-2449 (collisions). No third walker; Fallow keeps its dead-code jobs ([ER-4](DECISIONS.md#who-owns-what)) |
 | `eslint.config.mjs`, with no custom rules yet | **Extended**: one custom rule (tracker ids) and one `no-restricted-syntax` entry (`ctx as never`) |
 | `client/./internal` (published, read by our packages) and orchestration's `./inbox/check` (hidden by `publishConfig`) | **Named** by [D2](DECISIONS.md#d2) as the two kinds of hidden surface |
-| Ad-hoc refusal helpers (`defineFlow.ts`, `runner.ts`), the `retired-name-refusal` sites (`core/src/blocks/generator.ts`), FIX-2151's planned `RETIRED` set, and BP-030 | **Removed, not replaced** ([D4](DECISIONS.md#d4), amending [D3](DECISIONS.md#d3)): FIX-2454 deletes the refusals with their names; BP-030 is waived for this epic. Code whose absence would silently corrupt data is raised first. The `RETIRED` vocabulary list stays. The retired-enum coercion in `normalize-resource-state.ts` is untouched unless a child removes it under that guard |
+| Ad-hoc refusal helpers (`defineFlow.ts`, `runner.ts`), the `retired-name-refusal` sites (`core/src/blocks/generator.ts`), FIX-2151's planned `RETIRED` set, and BP-030 | **Removed, not replaced** ([D4](DECISIONS.md#d4), amending [D3](DECISIONS.md#d3)): FIX-2454 deletes the refusals with their names, but [four kept](DECISIONS.md#kept-refusals) (Nov 10); BP-030 is waived for this epic. Code whose absence would silently corrupt data is raised first. The `RETIRED` vocabulary list stays. The retired-enum coercion in `normalize-resource-state.ts` is untouched unless a child removes it under that guard |
 | BP-034: re-export a moved type from every documented path | **Kept as written**: the documented paths are the ones after the move. The old path goes, with no re-export ([Q1](DECISIONS.md#q1), answered break) |
 | [FIX-2129 D2](../../issues/FIX-2129/DECISIONS.md): an answer route beside resume | **Kept** for the routes. A user's stop is answered through `answer` in React and the client ([decided](DECISIONS.md#decided-not-asked)) |
 | [FIX-2360 D1](../../issues/FIX-2360/DECISIONS.md): the conversation scroll rule | **Kept.** FIX-2456 brings the registry Conversation to it |
@@ -190,7 +190,7 @@ blocks the closure in Linear.
 | The debt | |
 |---|---|
 | **Removes** | The harness vertical and seams on core's root, engine's `export *`, four output-polling copies, the hand-copied jump buttons, two claim orders, a second copy of 38 collection methods, 196 casts, about 20 default fallbacks and 5 helpers, the never-published shims, four package markers, the hand sync of Kitchen Sink's 43 registry copies, which stay and gain one refresh command (FIX-2461; an adopter's installed components are owned copies by design), the ad-hoc refusal helpers |
-| **Adds** | Seven public subpaths (`core/harness`, `engine/host`, `testing/benchmark`, `patterns/benchmark`, `react/workforce`, two stores' `./host`) and four `/internal` ones, each an entry to keep; one export check and one lint rule; three packed-install legs and their manifest, until the wrap; `sent.result()`. No deprecated aliases or refusals ([D4](DECISIONS.md#d4)) |
+| **Adds** | Seven public subpaths (`core/harness`, `engine/host`, `testing/benchmark`, `patterns/benchmark`, `react/workforce`, two stores' `./host`) and four `/internal` ones, each an entry to keep; one export check and one lint rule; three packed-install legs and their manifest, until the wrap; `sent.result()`. No deprecated aliases, and refusals only where [D4 keeps them](DECISIONS.md#kept-refusals) |
 | **Leaves** | The unfiled review items above, and the eleven published roots outside the set, held at their ratchet baseline |
 
 **Net: down.** The adopter surface shrinks and four duplicated mechanisms become one each. The
@@ -211,8 +211,9 @@ wrong: adopters pay a breaking minor for names they never used.
 3. [D3](DECISIONS.md#d3) · A retired value fails loudly with a removal version. **Amended Nov 6
    by D4.**
 4. [D4](DECISIONS.md#d4) · No backward-compat code: no alias, refusal, reader of an old shape or
-   shim; what would silently corrupt data is raised first. The owner's call, Nov 6. If wrong: an
-   adopter's code silently misbehaves after an upgrade, as `human_approval` does today.
+   shim; what would silently corrupt data is raised first, and four such pieces stay
+   ([amended Nov 10](DECISIONS.md#kept-refusals)). The owner's call, Nov 6. If wrong: an
+   adopter's code silently misbehaves after an upgrade.
 
 **Open:** none. [Q1](DECISIONS.md#q1) was answered on Nov 6: break, no alias.
 

@@ -766,6 +766,12 @@ const EXEMPTIONS = [
     why: "FIX-2535: GitHub's own `reopened` webhook action, which normalize matches by name; not the task entry's reopened shape",
   },
   {
+    path: /^packages\/workforce\/src\/subscriptions\/github\/poll\.ts$/,
+    line: /^const TIMELINE_ACTIONS = new Set\(\[/,
+    rules: ["reopened-shape"],
+    why: "FIX-2536: GitHub's own `reopened` timeline event, which the poll rebuilds by name; not a task's reopened shape",
+  },
+  {
     path: /^packages\/orchestration\/README\.md$/,
     line: /^`reopened: true` reads unmarked; while it is still open/,
     rules: ["reopened-shape"],

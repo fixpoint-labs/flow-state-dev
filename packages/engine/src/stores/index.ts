@@ -1,6 +1,8 @@
 import path from "node:path";
 import type { CASOptions } from "@flow-state-dev/core/types";
 import { ConcurrentModificationError } from "./cas";
+import { createLocalBlobStore } from "../blobs/local-blob-store";
+import type { BlobStore } from "../blobs/types";
 import { createFilesystemActiveRequestRegistry } from "./filesystem/active-request-registry";
 import { createFilesystemCheckpointStore } from "./filesystem/checkpoint-store";
 import { createFilesystemContentStore } from "./filesystem/content-store";
@@ -275,15 +277,22 @@ export function inMemoryStores(options: CreateStoreOptions = {}): StoreAdapter {
 
 /**
  * Filesystem store adapter for `createFlowState`. Backs the `primary`
- * capability slot with `.fsdev/data`-style on-disk persistence.
+ * capability slot with `.fsdev/data`-style on-disk persistence, and the
+ * `blobs` slot with attachment files under `<rootDir>/blobs`, so
+ * everything this store keeps sits under one folder.
  */
 export function filesystemStores(
   options: FilesystemStoreRegistryOptions
 ): StoreAdapter {
   let registry: StoreRegistry | undefined;
+  let blobs: BlobStore | undefined;
   return {
-    capabilities: ["primary"],
-    resolve() {
+    capabilities: ["primary", "blobs"],
+    resolve(slots) {
+      if (slots.includes("blobs")) {
+        blobs ??= createLocalBlobStore({ rootDir: path.join(options.rootDir, "blobs") });
+        return Promise.resolve({ blobs });
+      }
       registry ??= createFilesystemStores(options);
       return Promise.resolve(registry);
     }

@@ -3,8 +3,8 @@
  * Read the pending side-chain count off a status item, in either spelling.
  *
  * The sequencer emits structural `status` items carrying only a count of
- * side-chain tasks still draining. That field was renamed
- * `backgroundTasks` → `sideChainTasks`, and the field is **persisted**: it
+ * side-chain tasks still draining. The field is `sideChainTasks`, spelled
+ * `backgroundTasks` before, and it is **persisted**: it
  * rides on a `StatusItem`, which is stored in the request's durable item log
  * whenever the emit is not transient. So a reader that knows only the new name
  * sees `undefined` for

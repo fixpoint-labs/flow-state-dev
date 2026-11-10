@@ -16,9 +16,11 @@
  * the judge's verdict.
  *
  * In either mode, a request that says "stop" or "cancel" while a task runs makes
- * the main session cancel it. `failTurn` fails the running turn, as an
- * engine `error` item would; Retry runs that turn's line again. A line sent while a turn runs waits, and runs
- * when the turn ends.
+ * the main session cancel it. A line sent while a turn runs starts its own
+ * turn at once, beside the running one, as the main session's door (`hold`)
+ * starts it on the server; that turn only notes the line. `failTurn` fails the
+ * newest running turn, as an engine `error` item would; Retry runs that turn's
+ * line again.
  */
 import type {
   ConnectionState,
@@ -33,7 +35,7 @@ import type {
   Unsubscribe,
 } from "../src/adapter";
 import { taskView } from "@flow-state-dev/orchestration/inbox";
-import { waitingOnYou } from "../src/lib/columns";
+import { dismissalKey, waitingOnYou } from "../src/lib/columns";
 import { toolRun } from "../src/lib/tool-steps";
 import { modeById, modeOfWorker, type ModeId } from "../src/modes";
 
@@ -67,17 +69,24 @@ interface FixtureTask extends LabTask {
   reviewDetail?: ReviewDetail;
 }
 
+/** One running turn: when it started, its steps still due, and its last entry so far. */
+interface FixtureTurn {
+  startedAt: number;
+  /** The line it answers: Retry runs it again. */
+  origin: string;
+  /** The turn's steps: Stop clears these. */
+  timers: ReturnType<typeof setTimeout>[];
+  /** Its latest entry's id: a stopped line goes after it, as the real adapter places one. */
+  last?: string;
+}
+
 interface FixtureSession {
   row: LabSession;
   entries: ThreadEntry[];
-  running: boolean;
+  /** The turns running now, oldest first: a line sent mid-turn starts one beside the others. */
+  turns: FixtureTurn[];
   /** A Stop is under way: from the press until the turn has ended, as the real adapter reads it. */
   stopping?: boolean;
-  turnStartedAt?: number;
-  /** Lines sent while a turn ran, by their entry id. */
-  queue: { id: string; text: string }[];
-  /** The running turn's steps: Stop clears these. */
-  timers: ReturnType<typeof setTimeout>[];
   /** Background tasks' steps: they outlive the turn; a step skips a task that is no longer running. */
   taskTimers: ReturnType<typeof setTimeout>[];
   tasks: FixtureTask[];
@@ -150,12 +159,18 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     return found;
   };
 
+  const isRunning = (s: FixtureSession) => s.turns.length > 0;
+
   const touch = (s: FixtureSession) => {
-    s.row = { ...s.row, updatedAt: now(), running: s.running };
+    s.row = { ...s.row, updatedAt: now(), running: isRunning(s) };
   };
+
+  /** The turn whose step is running now, so an entry it pushes is counted as its. */
+  let active: FixtureTurn | undefined;
 
   const push = (s: FixtureSession, entry: ThreadEntry) => {
     s.entries = [...s.entries, entry];
+    if (active !== undefined) active.last = entry.id;
     touch(s);
     notify();
   };
@@ -166,33 +181,43 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     notify();
   };
 
-  const play = (s: FixtureSession, steps: Step[]) => {
+  /** Plays `steps` on their timers: a turn's steps under turn `t`, a task's in the background. */
+  const play = (s: FixtureSession, t: FixtureTurn | undefined, steps: Step[]) => {
     let at = 0;
     for (const [delay, run, background] of steps) {
       at += delay;
-      (background ? s.taskTimers : s.timers).push(setTimeout(run, at * speed));
+      if (background || t === undefined) {
+        s.taskTimers.push(setTimeout(run, at * speed));
+        continue;
+      }
+      t.timers.push(
+        setTimeout(() => {
+          active = t;
+          try {
+            run();
+          } finally {
+            active = undefined;
+          }
+        }, at * speed),
+      );
     }
   };
 
-  const startTurn = (s: FixtureSession) => {
-    s.running = true;
-    s.turnStartedAt = now();
+  /** A turn starts for the line `origin`, beside any already running. */
+  const startTurn = (s: FixtureSession, origin: string): FixtureTurn => {
+    const t: FixtureTurn = { startedAt: now(), origin, timers: [], last: origin };
+    s.turns = [...s.turns, t];
     touch(s);
     notify();
+    return t;
   };
 
-  const endTurn = (s: FixtureSession) => {
-    s.running = false;
-    s.turnStartedAt = undefined;
+  const endTurn = (s: FixtureSession, t: FixtureTurn) => {
     // The turn's steps have all run; background steps stay in `taskTimers`.
-    s.timers = [];
+    for (const timer of t.timers) clearTimeout(timer);
+    s.turns = s.turns.filter((other) => other !== t);
     touch(s);
     notify();
-    const next = s.queue.shift();
-    if (next !== undefined) {
-      s.entries = s.entries.map((e) => (e.id === next.id && e.kind === "user" ? { ...e, queued: false } : e));
-      turn(s, next.text, next.id);
-    }
   };
 
   const say = (s: FixtureSession, text: string): Step[1] => () => push(s, { kind: "assistant", id: nextId("a"), text });
@@ -246,11 +271,11 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       title,
       status: "completed",
       summary,
-      duringTurn: s.running,
+      duringTurn: isRunning(s),
     });
   };
 
-  const vendorScript = (s: FixtureSession): Step[] => [
+  const vendorScript = (s: FixtureSession, t: FixtureTurn): Step[] => [
     [800, say(s, "I'll write the outline myself and research both vendors in the background.")],
     [600, file(s, "Research Acme", "Find Acme's price, support hours and certifications.", "searching")],
     [400, file(s, "Research Globex", "Read Globex's pricing pages, support terms and audits.", "reading pricing pages")],
@@ -259,12 +284,12 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     [1000, settle(s, "Research Acme", "Acme: $40 per user, 24-hour support, SOC 2 since 2024."), "background"],
     [800, say(s, "Acme's research is in. Section 1 now reads: Acme costs $40 per user, with 24-hour support.")],
     [1200, say(s, "Globex is still running in the background. I'll fold it in when it lands.")],
-    [200, () => endTurn(s)],
+    [200, () => endTurn(s, t)],
     [2800, progress(s, "Research Globex", "reading support terms"), "background"],
     [3000, progress(s, "Research Globex", "checking audit reports"), "background"],
   ];
 
-  const stopScript = (s: FixtureSession, task: FixtureTask): Step[] => [
+  const stopScript = (s: FixtureSession, t: FixtureTurn, task: FixtureTask): Step[] => [
     [700, () => {
       // The task may have settled since the turn began; a finished task stays finished.
       const current = s.tasks.find((t) => t.id === task.id)?.status;
@@ -276,7 +301,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       setTask(s, task.id, { status: "cancelled", statusNote: undefined, openHold: undefined });
       push(s, { kind: "assistant", id: nextId("a"), text: `Stopped "${task.title}". The summary covers what is done so far.` });
     }],
-    [200, () => endTurn(s)],
+    [200, () => endTurn(s, t)],
   ];
 
   /** A filed thread's id, set when the lead files it, so later steps find that thread and no other. */
@@ -306,14 +331,14 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   const ask = (prompt: string): Partial<FixtureTask> => ({ status: "held", openHold: { kind: "question", prompt }, statusNote: prompt });
   const review = (prompt: string): Partial<FixtureTask> => ({ status: "in_progress", openHold: { kind: "review", prompt }, statusNote: prompt });
 
-  const threadsScript = (s: FixtureSession, origin: string): Step[] => {
+  const threadsScript = (s: FixtureSession, t: FixtureTurn, origin: string): Step[] => {
     const [a, b, c]: Ref[] = [{}, {}, {}];
     return [
       [600, fileThread(s, origin, a, "Vendor A · pricing and uptime", "Compare Vendor A's price and uptime record.", "Reading pricing pages", { steps: { done: 0, total: 7 } })],
       [300, fileThread(s, origin, b, "Vendor B · regions", "Find where Vendor B hosts, for the region that matters.", "Listing regions")],
       [300, fileThread(s, origin, c, "Vendor C · summary", "Draft a summary of Vendor C for review.", "Gathering notes")],
       [500, say(s, "I've started three threads, one per vendor. Each comes back to you when it needs you.")],
-      [200, () => endTurn(s)],
+      [200, () => endTurn(s, t)],
       [600, advance(s, a, { steps: { done: 1, total: 7 }, statusNote: "Comparing plans" }, "Comparing plans"), "background"],
       [400, advance(s, b, ask("Which region matters, EU or US?"), "Which region matters, EU or US?"), "background"],
       [600, advance(s, a, { steps: { done: 2, total: 7 }, statusNote: "Comparing SLA tiers" }, "Comparing SLA tiers"), "background"],
@@ -321,23 +346,25 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     ];
   };
 
-  const codeScript = (s: FixtureSession, text: string, origin: string): Step[] => {
+  const codeScript = (s: FixtureSession, t: FixtureTurn, text: string, origin: string): Step[] => {
     const ref: Ref = {};
     return [
       [600, fileThread(s, origin, ref, text.split("\n")[0].slice(0, 60), text, "Editing CHANGELOG.md", { assignee: "desk.coder", harness: "claude-code", spend: spent(CODE_MODEL, null, null, true, "claude-code") })],
       [400, say(s, "I've started a Claude Code thread for it, in this session's project.")],
-      [200, () => endTurn(s)],
+      [200, () => endTurn(s, t)],
       [1200, advance(s, ref, { statusNote: "Committing", spend: spent(CODE_MODEL, 8200, 1100, true, "claude-code") }, "Committing: docs: note the vendor pick"), "background"],
       [800, advance(s, ref, { ...review(CODE_REVIEW_PROMPT), reviewDetail: CODE_REVIEW, spend: spent(CODE_MODEL, 12000, 1600, true, "claude-code") }, CODE_ANSWER), "background"],
     ];
   };
 
   const turn = (s: FixtureSession, text: string, origin: string) => {
-    startTurn(s);
+    // Another turn already running: this line's turn starts beside it.
+    const beside = isRunning(s);
+    const t = startTurn(s, origin);
     if (failNext !== undefined) {
       const reason = failNext;
       failNext = undefined;
-      play(s, [[300, () => fake.failTurn(s.row.id, reason)]]);
+      play(s, t, [[300, () => failTurnOf(s, t, reason)]]);
       return;
     }
     const threads = modeOfWorker(s.row.worker)?.id === "threads";
@@ -352,15 +379,15 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     const named = s.tasks.reduce<FixtureTask | undefined>((best, t) => (score(t) > (best ? score(best) : 0) ? t : best), undefined);
     const running = named ?? runningTasks[0];
     if (/\b(stop|cancel)\b/i.test(text) && running) {
-      play(s, stopScript(s, running));
+      play(s, t, stopScript(s, t, running));
     } else if (threads && /\b(changelog|code)\b/i.test(text)) {
-      play(s, codeScript(s, text, origin));
-    } else if (threads && !s.tasks.some((t) => t.assignee === "desk.thread")) {
-      play(s, threadsScript(s, origin));
-    } else if (!threads && s.tasks.length === 0) {
-      play(s, vendorScript(s));
+      play(s, t, codeScript(s, t, text, origin));
+    } else if (!beside && threads && !s.tasks.some((task) => task.assignee === "desk.thread")) {
+      play(s, t, threadsScript(s, t, origin));
+    } else if (!beside && !threads && s.tasks.length === 0) {
+      play(s, t, vendorScript(s, t));
     } else {
-      play(s, [[800, say(s, "Noted. I'll keep that in mind as the background work comes in.")], [200, () => endTurn(s)]]);
+      play(s, t, [[800, say(s, "Noted. I'll keep that in mind as the background work comes in.")], [200, () => endTurn(s, t)]]);
     }
   };
 
@@ -384,9 +411,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
         { kind: "user", id: nextId("u"), text: lines[0] },
         { kind: "assistant", id: nextId("a"), text: lines[1] },
       ],
-      running: false,
-      queue: [],
-      timers: [],
+      turns: [],
       taskTimers: [],
       tasks: [],
     });
@@ -397,6 +422,8 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
 
   // fake: your pinned task ids, which the lab's pins flow keeps at wiring.
   const pins = new Set<string>();
+  // fake: the failed attempts you dismissed, which the lab's dismissals flow keeps at wiring.
+  const dismissed = new Set<string>();
 
   // fake: an older threads-mode session, with a pinned thread, a failed one and two resolved.
   const seedThreads = () => {
@@ -406,7 +433,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       startTask(title, title, note, { status, updatedAt: now() - ago });
     const tasks = [
       thread("Weekly uptime digest", "in_progress", "Collecting this week's incidents"),
-      { ...thread("Export failed invoices", "errored", "The export timed out"), error: "The export timed out after 30s." },
+      { ...thread("Export failed invoices", "errored", "The export timed out"), error: "The export timed out after 30s.", attempts: 1 },
       thread("Refund report", "completed"),
       thread("Dunning emails", "completed"),
       // A harness run nobody reviewed by the person-stop deadline: it completed, marked so.
@@ -420,9 +447,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
         ...tasks.map((t): ThreadEntry => ({ kind: "thread", id: nextId("card"), taskId: t.id })),
         { kind: "assistant", id: nextId("a"), text: "I've started four threads." },
       ],
-      running: false,
-      queue: [],
-      timers: [],
+      turns: [],
       taskTimers: [],
       tasks,
     });
@@ -439,20 +464,22 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
 
   const retries: { sessionId: string; requestId: string }[] = [];
 
+  /** Turn `t` fails with `reason`: its reply under way is left incomplete, and its failed line is the one Retry is offered on. */
+  const failTurnOf = (s: FixtureSession, t: FixtureTurn, reason: string) => {
+    // The turn's line names it, so Retry can run it again; an older failure is no longer the newest turn.
+    const requestId = `turn-${t.origin}`;
+    const last = s.entries.find((e) => e.id === t.last);
+    s.entries = s.entries.map((e) => (e.kind === "failed" ? { ...e, retryable: false } : e === last && e.kind === "assistant" ? { ...e, incomplete: true } : e));
+    push(s, { kind: "failed", id: nextId("f"), reason, retryable: true, requestId });
+    endTurn(s, t);
+  };
+
   const fake: FakeLab = {
     retries,
     failTurn(sessionId, reason) {
       const s = session(sessionId);
-      if (!s.running) return;
-      for (const t of s.timers) clearTimeout(t);
-      s.timers = [];
-      // The turn's line names it, so Retry can run it again; an older failure is no longer the newest turn.
-      const line = [...s.entries].reverse().find((e) => e.kind === "user");
-      const requestId = `turn-${line?.id ?? nextId("r")}`;
-      const last = s.entries[s.entries.length - 1];
-      s.entries = s.entries.map((e) => (e.kind === "failed" ? { ...e, retryable: false } : e === last && e.kind === "assistant" ? { ...e, incomplete: true } : e));
-      push(s, { kind: "failed", id: nextId("f"), reason, retryable: true, requestId });
-      endTurn(s);
+      const t = s.turns.at(-1);
+      if (t !== undefined) failTurnOf(s, t, reason);
     },
     setConnection(state) {
       connection = state;
@@ -472,7 +499,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     },
     modes: ["session", "threads"],
     watchSessions(onChange) {
-      return watch(() => onChange([...sessions.values()].map((s) => ({ ...s.row, waiting: waitingOnYou(s.tasks) })).sort((a, b) => b.updatedAt - a.updatedAt)));
+      return watch(() => onChange([...sessions.values()].map((s) => ({ ...s.row, waiting: waitingOnYou(s.tasks, dismissed) })).sort((a, b) => b.updatedAt - a.updatedAt)));
     },
 
     async listProjects() {
@@ -503,7 +530,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       if (!mayWorkIn.some((p) => p.id === projectId)) throw new Error(`not-a-member: ${projectId}`);
       const id = nextId("session");
       const row: LabSession = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, waiting: 0, projectId };
-      sessions.set(id, { row, entries: [], running: false, queue: [], timers: [], taskTimers: [], tasks: [] });
+      sessions.set(id, { row, entries: [], turns: [], taskTimers: [], tasks: [] });
       notify();
       return row;
     },
@@ -511,12 +538,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     async send(sessionId, text) {
       const s = session(sessionId);
       if (s.entries.length === 0) s.row = { ...s.row, title: text.split("\n")[0].slice(0, 120) };
-      if (s.running) {
-        const id = nextId("u");
-        s.queue.push({ id, text });
-        push(s, { kind: "user", id, text, queued: true });
-        return;
-      }
+      // A line sent while a turn runs starts its own turn at once, as the server's `hold` starts it.
       const id = nextId("u");
       push(s, { kind: "user", id, text });
       turn(s, text, id);
@@ -524,20 +546,25 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
 
     async interrupt(sessionId) {
       const s = session(sessionId);
-      if (!s.running) return;
+      if (!isRunning(s)) return;
       if (refuseStop) {
         refuseStop = false;
         throw new Error("The turn went on before the stop reached it. Press Stop again.");
       }
-      for (const t of s.timers) clearTimeout(t);
-      s.timers = [];
-      // Stopping until the server says the turn ended, then its stopped line after its last entry.
+      // The turns running at the press; a line sent after it is its own turn, and runs on.
+      const pressed = [...s.turns];
+      for (const t of pressed) for (const timer of t.timers) clearTimeout(timer);
+      // Stopping until the server says the turns ended, then each one's stopped line after its last entry.
       s.stopping = true;
       notify();
       setTimeout(() => {
         s.stopping = false;
-        push(s, { kind: "stopped", id: nextId("i") });
-        endTurn(s);
+        for (const t of pressed) {
+          const at = s.entries.findIndex((e) => e.id === t.last);
+          const line: ThreadEntry = { kind: "stopped", id: nextId("i") };
+          s.entries = at < 0 ? [...s.entries, line] : [...s.entries.slice(0, at + 1), line, ...s.entries.slice(at + 1)];
+          endTurn(s, t);
+        }
       }, 50 * speed);
     },
 
@@ -556,7 +583,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
         if (!s) return;
         // The real adapter's count is the session's unfinished runs: here, its tasks still going.
         const backgroundRunning = s.tasks.filter((task) => task.status === "in_progress" || task.status === "pending").length;
-        const view: ThreadView = { entries: s.entries, running: s.running, stopping: s.stopping === true, backgroundRunning, turnStartedAt: s.turnStartedAt, connection };
+        const view: ThreadView = { entries: s.entries, running: isRunning(s), stopping: s.stopping === true, backgroundRunning, turnStartedAt: s.turns[0]?.startedAt, connection };
         onChange(view);
       });
     },
@@ -579,7 +606,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
         return;
       }
       setTask(s, taskId, { status: "in_progress", openHold: undefined, statusNote: "Working with your answer", work });
-      play(s, [[1200, advance(s, { id: taskId }, review(`Summary for ${line} ready`), `Done, going by your answer: ${line}.`), "background"]]);
+      play(s, undefined, [[1200, advance(s, { id: taskId }, review(`Summary for ${line} ready`), `Done, going by your answer: ${line}.`), "background"]]);
     },
 
     // fake: stands in for the board's own calls (`inbox.board(at)`); a refusal rejects with words as the board's do.
@@ -604,7 +631,8 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
           const s = session(sessionId);
           const task = s.tasks.find((t) => t.id === id);
           if (task?.status !== "errored" && task?.status !== "cancelled") throw new Error(`Task "${id}" hasn't failed or been cancelled.`);
-          setTask(s, id, { status: "in_progress", error: undefined, statusNote: "Running again" });
+          // A retry is a new attempt, as the board counts it.
+          setTask(s, id, { status: "in_progress", error: undefined, statusNote: "Running again", attempts: (task.attempts ?? 0) + 1 });
         },
       };
     },
@@ -632,7 +660,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
         statusNote: "Revising",
         work: [...task.work, { kind: "user", id: nextId("w"), text: words }],
       });
-      play(s, [[1500, advance(s, { id: taskId }, review("Revised draft attached"), "Revised with your notes."), "background"]]);
+      play(s, undefined, [[1500, advance(s, { id: taskId }, review("Revised draft attached"), "Revised with your notes."), "background"]]);
     },
 
     watchPins(onChange) {
@@ -646,6 +674,15 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
 
     async unpin(taskId) {
       pins.delete(taskId);
+      notify();
+    },
+
+    watchDismissed(onChange) {
+      return watch(() => onChange([...dismissed]));
+    },
+
+    async dismiss(task) {
+      dismissed.add(dismissalKey(task));
       notify();
     },
 

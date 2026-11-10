@@ -16,6 +16,7 @@ export default defineConfig({
       "@flow-state-dev/core/harness": resolve(root, "packages/core/src/harness/index.ts"),
       "@flow-state-dev/core/internal": resolve(root, "packages/core/src/internal/index.ts"),
       "@flow-state-dev/core/items": resolve(root, "packages/core/src/items/index.ts"),
+      "@flow-state-dev/core/attachments": resolve(root, "packages/core/src/attachments.ts"),
       "@flow-state-dev/core/graph": resolve(root, "packages/core/src/graph/index.ts"),
       "@flow-state-dev/core/helpers": resolve(root, "packages/core/src/helpers/index.ts"),
       "@flow-state-dev/core/models": resolve(root, "packages/core/src/models/index.ts"),
