@@ -194,6 +194,7 @@ import {
   releaseCheckout,
   runBoardSegment,
   worktreeNameFor,
+  runIdentityKey,
   taskIssueSegment,
   type RunLocation,
   type RunPrincipal,
@@ -2329,6 +2330,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const before = recordedHost ?? (holding ? host.hostId() : null);
     if (holding) await recordPlace(ctx, before!, "provisioning");
     const worktrees = worktreesOf(ctx);
+    const name = worktreeNameFor(location);
     try {
       const place = await host.provision(answer, {
         ...(worktrees !== undefined
@@ -2337,7 +2339,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
                 collection: worktrees,
                 owner: { kind: "run" as const, id: state.taskId ?? placeFor(location).join("/") },
                 // Its entry in the worktrees resource reads as the branch and folder do (FIX-2657).
-                ...(worktreeNameFor(location) !== undefined ? { name: worktreeNameFor(location)! } : {}),
+                ...(name !== undefined ? { name } : {}),
               },
             }
           : {}),
@@ -2609,7 +2611,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       if (answer.kind === "refused") throw runRefused(ctx, refusedMessage("source", answer));
       // The run is named from the task's title (FIX-2657). A run its record
       // names a branch for keeps that branch and its tree; a new one takes the
-      // first spelling no other worktree or branch here already has.
+      // first spelling the host reserves for it: one no other run holds and no
+      // worktree or branch here already has. A host without `reserve` takes the
+      // derived name as it is.
       let location = locationFor(
         {
           principal: runPrincipal(ctx),
@@ -2621,10 +2625,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         },
         recorded?.branch,
       );
-      if (recorded?.branch == null && host.taken !== undefined) {
-        const taken = host.taken;
+      if (recorded?.branch == null && host.reserve !== undefined) {
+        const reserve = host.reserve;
+        const holder = runIdentityKey(location);
         location = await freeRunLocation(location, (candidate) =>
-          taken(answer, { place: placeFor(candidate), branch: branchFor(candidate) }),
+          reserve(answer, { place: placeFor(candidate), branch: branchFor(candidate), holder }),
         );
       }
       const branch = branchFor(location);
