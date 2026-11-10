@@ -44,7 +44,7 @@ removes the drift instead of catching it.
 - ~~**The recorder is the read-only wrapper's twin**, not a second interception layer: one proxy
   shape over the stores, so FIX-2623 can merge the two if it builds both.~~ Superseded by the
   POC ([Settled](#settled)): a store-level recorder sees what the read's context loads, not
-  what the view reads. The recorder belongs where the engine builds a block's context.
+  what the view reads. The recorder belongs inside the engine's context.
 
 ## Considered and dropped
 
@@ -56,22 +56,28 @@ removes the drift instead of catching it.
 <a name="settled"></a>
 ## Settled
 
-**The POC: `dependsOn` is checkable, at the context, cheaply. CONFIRMED, with one unseen path
-named.** [`poc/dependency-check/`](poc/dependency-check/README.md), run with
-`bash specs/issues/FIX-2621/poc/dependency-check/run.sh`. Resolved; don't reopen without a
-new run.
+**The POC: `dependsOn` is checkable, cheaply, but only from inside the engine's context.
+CONFIRMED on that condition, with the gaps named.** [`poc/dependency-check/`](poc/dependency-check/README.md),
+run with `bash specs/issues/FIX-2621/poc/dependency-check/run.sh`. Resolved; don't reopen
+without a new run.
 
 - **Caught.** On the board's `listTasks_tasks`, the lab's `listPins` and a `taskBoard()`
   handle's `listTasks`, every control with one dependency left out fails, naming it. The
-  board's obvious declaration, `[tasks]`, fails too: the read also reaches the roster and the
-  session's state, through the board's resolver.
-- **Where it records.** At the block's context. The store-level twin of the read-only wrapper
-  reports everything the read's context loads (scope records, the request list, the flow's
-  eager resources), so it can't tell a view's reads from its flow's loading.
-- **Unseen.** A read one block down: the engine builds each block's context, so a recorder on
-  the view's own block misses a composed step. FIX-2623 records where the engine builds a
-  block's context. Not exercised: projected collections and handles held outside `ctx`.
-- **Cost.** Inside run-to-run noise (±10%) on a 9–10 ms read, for both recorders.
+  board's obvious declaration, `[tasks]`, fails too: the read also reaches the plan ledger,
+  the roster and the session's state, through the board's resolver.
+- **Not at the store.** The store-level twin of the read-only wrapper reports everything the
+  read's context loads (scope records, the request list, the flow's eager resources), so it
+  can't tell a view's reads from its flow's loading.
+- **Not from outside the engine.** A scope's `state` is a non-configurable getter, so a
+  recorder that keeps the context's identity can't see it. A proxy can, but code keys state
+  by the session object's identity, and behind a proxy the board skips its plan ledger: it
+  misses a dependency and changes the run. A read one block down is unseen by both, because
+  the engine builds each block's context. FIX-2623 records inside the engine's context: the
+  state getter, the resource registry, and wherever each block's context is built. Not
+  exercised: projected collections, and handles held outside `ctx`.
+- **Cost.** At most 0.3 ms per run (under 1% of the read) for the identity-safe recorders,
+  measured as the median of paired differences in a rotated order. An earlier fixed-order run read the proxy's
+  skipped branch as the recorder being 9–12% faster.
 
 ## Analysis
 
@@ -92,7 +98,8 @@ whole set by the spec-set author; see the set PR.
 
 - **Draft (2026-11-09)** — written in the stage-1 spec set. The verdict table gained the
   "cheap enough for production" row from the epic's analysis finding on Convex.
-- **POC** — the recorder moved from the stores to the block's context, because the run showed
-  the store-level twin reports what the context loads, not what the view reads.
+- **POC** — the recorder moved from the stores to inside the engine's context, because the run
+  showed the store-level twin reports what the context loads, and a recorder outside the engine
+  either can't see a scope's state or, as a proxy, changes the run.
 
 **Open: none.**
