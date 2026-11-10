@@ -33,9 +33,10 @@ const message = z.object({ message: z.string() });
  * `auth: "host"` authenticates every route through the host's resolver;
  * `"flow"` only through the flow's own (`authentication.resolvePrincipal`),
  * the host keeping the framework default, so a route that addresses no flow
- * has no resolver of its own to pick.
+ * has no resolver of its own to pick. `"open"` authenticates nothing: the
+ * caller names themselves, in the default organization.
  */
-function setup(withBlobs = true, auth: "host" | "flow" = "host") {
+function setup(withBlobs = true, auth: "host" | "flow" | "open" = "host") {
   /** What `keep` kept last, as a server-held record would (a task). */
   const kept: { files: FileContent[]; error?: unknown } = { files: [] };
   /** What `run` read of the kept files, as a harness adapter reads them. */
@@ -90,14 +91,19 @@ function setup(withBlobs = true, auth: "host" | "flow" = "host") {
     });
   };
   const upload = async (user: string): Promise<FileContent> => {
-    const response = await call("POST", `${auth === "flow" ? "board/" : ""}blobs?filename=shot.png`, user, { headers: { "content-type": "image/png" }, body: PNG as Uint8Array<ArrayBuffer> });
+    const who = auth === "open" ? `&userId=${user}` : "";
+    const response = await call("POST", `${auth === "flow" ? "board/" : ""}blobs?filename=shot.png${who}`, user, { headers: { "content-type": "image/png" }, body: PNG as Uint8Array<ArrayBuffer> });
     expect(response.status).toBe(201);
     return ((await response.json()) as { attachment: FileContent }).attachment;
   };
   const send = async (user: string, session: string, action: "keep" | "run", attachments?: FileContent[]) => {
     const response = await call("POST", `board/${session}/actions/${action}`, user, {
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ input: { message: action }, ...(attachments !== undefined ? { attachments } : {}) }),
+      body: JSON.stringify({
+        input: { message: action },
+        ...(auth === "open" ? { userId: user } : {}),
+        ...(attachments !== undefined ? { attachments } : {}),
+      }),
     });
     expect(response.status).toBe(202);
     const id = ((await response.json()) as { request: { id: string } }).request.id;
@@ -212,5 +218,37 @@ describe("a kept file's read, where the host authenticates", () => {
     const { kept, call, upload, send } = setup();
     await send("alice", "s_chat", "keep", [await upload("alice")]);
     expect((await call("GET", `blobs/${parseBlobRef(kept.files[0]!.data)!}`, null)).status).toBe(404);
+  });
+});
+
+// The flow that kept a file names the sign-in its read is checked under. An
+// app that no longer runs that flow, while another flow authenticates, has
+// nobody it can show is the file's user: its default resolver would let any
+// caller through, so the file is answered as no file at all.
+describe("a kept file whose keeping flow is gone", () => {
+  it("is no file at all, where another flow authenticates", async () => {
+    const { kept, stores, upload, send } = setup(true, "open");
+    await send("alice", "s_chat", "keep", [await upload("alice")]);
+    expect(kept.error).toBeUndefined();
+    const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "desk",
+        authentication: { resolvePrincipal: byHeader },
+        actions: { noop: { inputSchema: message, block: handler({ name: "noop", inputSchema: message, outputSchema: message, execute: (value) => value }) } },
+      })(),
+    );
+    const router = createFlowApiRouter({ registry, stores });
+    const read = (blobId: string, user: string | null) =>
+      router.GET(
+        new Request(`http://localhost/api/flows/blobs/${blobId}`, { headers: user === null ? {} : { "x-user": user } }),
+        { params: { path: ["blobs", blobId] } },
+      );
+    const unknown = await (await read("b_nobodyuploadedthis", null)).json();
+    for (const caller of ["alice", null]) {
+      const response = await read(parseBlobRef(kept.files[0]!.data)!, caller);
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual(unknown);
+    }
   });
 });
