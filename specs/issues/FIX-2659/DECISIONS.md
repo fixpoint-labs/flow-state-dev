@@ -66,8 +66,8 @@ flowchart TD
 - **Rejected, stamping in orchestration's follow-up placement:** it would write a coding fact
   onto every follow-up, chat ones included, and orchestration would need to know what a
   worktree is.
-- **Locks in:** a follow-up of a coding task carries its root as `worktreeOf` from the moment
-  it is filed. If the root's worktree is removed or lost before the follow-up runs, the run
+- **Locks in:** a follow-up of a coding task carries its owner as `worktreeOf` from the moment
+  it is filed. If the owner's worktree is removed or lost before the follow-up runs, the run
   refuses by name rather than silently starting over. When FIX-2583's coding flow exists, this
   default is one of the editable defaults it can carry; the manager is unaffected by that move.
 
@@ -129,7 +129,7 @@ flowchart TD
   - Use one attach path. Factor session attach (`host.attach`, the lease, the base pin) so
     that the manager's open step calls it with `by: { kind: "run", id }`. Don't write a second
     copy in `manager.ts`.
-  - `attachedTo` on the run record can be dropped if the card can derive "reused from" from
-    the entry's `owner` and `attached[]` without reading the record first. Implementer's call.
+  - Where it can, the card should derive "reused from" from the entry's `owner` and
+    `attached[]`. `attachedTo` on the run record stays, as D3 locks in.
   - The `worktrees` capability stays: CLAUDE.md prefers a capability over wiring the resource
     and the context line by hand, and both the labs and Shift Manager take it.
