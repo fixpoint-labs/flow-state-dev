@@ -2,7 +2,7 @@ import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistr
 import { createRequestSpendLedger, isInterruptedEndingHeld, loggedSpendOf, sumSpend } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { createBoardNoticeSeam } from "../bus/board-notice";
-import { AsyncLocalStorage } from "node:async_hooks";
+import { createScopedAsyncStorage } from "./scoped-async-storage";
 import type {
   AnyResourceRef,
   JournalEntry,
@@ -1246,12 +1246,12 @@ export async function createExecutionContext<
   // each took, and which wave/accessor triggered it — drained onto the block's
   // `block_trace` item for DevTool observability. All recording is gated by
   // `isTraceObservabilityEnabled()` so it adds zero work when observability is
-  // off. Attribution is concurrency-safe via an AsyncLocalStorage carrying the
+  // off. Attribution is concurrency-safe via a scoped async storage carrying the
   // dispatching block's instance id: wave-3 eager preloads and lazy reads fire
   // inside the block's `.run()` ALS frame and attribute to it; waves 1 & 2 run
   // before any block and land in the orphan bucket, flushed onto the request's
   // entry block.
-  const loadAttributionStorage = new AsyncLocalStorage<string>();
+  const loadAttributionStorage = createScopedAsyncStorage<string>();
   const ORPHAN_BUCKET = "__request__";
   const resourceLoadBuffer = new Map<string, ResourceLoadRecord[]>();
   // Per-target dedupe index for cache-hit collapsing: target → `source|key|
@@ -2911,7 +2911,7 @@ export async function createExecutionContext<
 
   const modelResolver = options.modelResolver ?? createModelResolver();
   const tokenCounter: TokenCounter = flow.tokenCounter ?? estimateTokenCounter;
-  const resolvedModelStorage = new AsyncLocalStorage<string>();
+  const resolvedModelStorage = createScopedAsyncStorage<string>();
   const resolveModel = ((modelId: string, blockName?: string) => {
     resolvedModelStorage.enterWith(modelId);
     return modelResolver(modelId, blockName);
