@@ -303,6 +303,33 @@ describe("attaching in PromptInput", () => {
     expect(opened).toHaveLength(1);
   });
 
+  // The responsive case under a provider: two drawings of one composer, and the layout hides the one
+  // drawn last. The + beside them must still open the picker of the drawing that's left.
+  it("opens the remaining composer's picker from a + beside them after the other is unmounted", async () => {
+    function Twice({ both }: { both: boolean }) {
+      return (
+        <PromptInputProvider client={uploader()}>
+          {(both ? [0, 1] : [0]).map((i) => (
+            <PromptInput data-testid={`composer-${i}`} key={i} onSubmit={() => undefined}>
+              <PromptInputTextarea />
+            </PromptInput>
+          ))}
+          <PromptInputAttachButton />
+        </PromptInputProvider>
+      );
+    }
+    const { rerender } = render(<Twice both />);
+    rerender(<Twice both={false} />);
+    const opened: HTMLInputElement[] = [];
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(function (this: HTMLInputElement) {
+      opened.push(this);
+    });
+    onTestFinished(() => click.mockRestore());
+    fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
+    expect(opened).toEqual([...document.querySelectorAll('input[type="file"]')]);
+    expect(opened).toHaveLength(1);
+  });
+
   // A provider lifts the state out of the composer, so an app may put its + beside the composer
   // rather than in it. That + must still open the composer's picker.
   it("opens the composer's picker from a + beside it inside a PromptInputProvider", async () => {

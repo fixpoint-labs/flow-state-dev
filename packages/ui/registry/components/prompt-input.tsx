@@ -409,6 +409,9 @@ type PromptInputFormProps = Omit<
   "attachments" | "client" | "sessionId" | "accept" | "maxFiles" | "maxFileSize" | "onError" | "syncHiddenInput"
 >;
 
+/** The pickers mounted against each shared attachment state's picker ref, so one can take over the ref. */
+const mountedPickers = new WeakMap<RefObject<HTMLInputElement | null>, Set<HTMLInputElement>>();
+
 /** A PromptInput outside any provider: the attachment state is its own. */
 const PromptInputOwnAttachments = ({
   options,
@@ -439,7 +442,7 @@ const PromptInputForm = ({
   // This composer's own picker. The attachment state may be shared by two composers (two drawings of
   // one), and a shared ref would hold one picker, nulled when its composer unmounts. The picker is
   // also lent to the shared state while mounted, so a + outside the composer (beside it, inside a
-  // PromptInputProvider) still opens one; it takes the loan back only if no other picker has since.
+  // PromptInputProvider) still opens one. On unmount the loan passes to a picker still mounted.
   const pickerRef = useRef<HTMLInputElement | null>(null);
   const shared = attachments.fileInputRef;
   const fileInputRef = useMemo<RefObject<HTMLInputElement | null>>(
@@ -448,8 +451,15 @@ const PromptInputForm = ({
         return pickerRef.current;
       },
       set current(el) {
-        if (el) shared.current = el;
-        else if (shared.current === pickerRef.current) shared.current = null;
+        let mounted = mountedPickers.get(shared);
+        if (!mounted) mountedPickers.set(shared, (mounted = new Set()));
+        if (el) {
+          mounted.add(el);
+          shared.current = el;
+        } else if (pickerRef.current) {
+          mounted.delete(pickerRef.current);
+          if (shared.current === pickerRef.current) shared.current = [...mounted].at(-1) ?? null;
+        }
         pickerRef.current = el;
       },
     }),
