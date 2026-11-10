@@ -1,6 +1,7 @@
 import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ConversationEntry, LabHarness, LabAdapter, LabContext, LabWorker } from "../adapter";
+import { chatActivity } from "../lib/chat-activity";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { Look } from "../lib/looks";
 import { useStatusLine } from "../lib/status";
@@ -122,6 +123,7 @@ export function Conversation({
   const last = entries[entries.length - 1];
   // An answer on screen, written or being written, is the sign it is answering; the line shows only before one starts.
   const answering = running && last?.kind !== "assistant";
+  const activity = chatActivity(entries, running, stale);
   const feed = useJumpToLatest({ resetKey: sessionId });
   const stopping = view?.stopping ?? false;
   // Why the server refused the last Stop, shown beside the button until the next one.
@@ -256,8 +258,8 @@ export function Conversation({
             </Fragment>
           ))}
           {answering ? (
-            <div role="status" className="w-fit rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-              {worker.name} is answering…
+            <div role="status" data-chat-activity className={cn("w-fit rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground", stale && STALE_CLASS)}>
+              {activity === undefined ? `${worker.name} is answering…` : `${worker.name} · ${activity}`}
             </div>
           ) : null}
           {pending.map((m) => (
