@@ -188,9 +188,10 @@
   // copies of the registry's tool-grouping carry `toolRunOpen`, the open-while-running
   // rule the labs follow (specs/issues/FIX-2393/SPEC.md, "One step-run state"); the
   // registry's own ToolGroup keeps its `defaultOpen` prop, so neither app calls it.
+  // They also carry `knownToolVerbs`, the one tool lookup the Teammates lab's answering line reads.
   "ignoreExports": [
-    { "file": "apps/kitchen-sink/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] },
-    { "file": "packages/shift-manager/src/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] },
+    { "file": "apps/kitchen-sink/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen", "knownToolVerbs"] },
+    { "file": "packages/shift-manager/src/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen", "knownToolVerbs"] },
     // The Teammates lab's copy of the registry's task-actions, with its Re-run buttons:
     // the confirm words and the cancel outcome are exported for tests and goals that read them off the page.
     { "file": "labs/teammates/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] },
