@@ -122,3 +122,14 @@ flowchart TD
 
 - Codex (spec PR): a follow-up of a task that itself attached must resolve to the real owner,
   not to the attached task, which owns no entry. D2 now normalizes the owner as D1 does.
+- Cursor (spec PR), for the implementer:
+  - Check `worktreeOf` at filing with a keyed lookup (owner task, its run record and place,
+    `worktreeKey`, then one get), not a scan of the list (BP-033). This is the same derivation
+    the manager uses to attach.
+  - Use one attach path. Factor session attach (`host.attach`, the lease, the base pin) so
+    that the manager's open step calls it with `by: { kind: "run", id }`. Don't write a second
+    copy in `manager.ts`.
+  - `attachedTo` on the run record can be dropped if the card can derive "reused from" from
+    the entry's `owner` and `attached[]` without reading the record first. Implementer's call.
+  - The `worktrees` capability stays: CLAUDE.md prefers a capability over wiring the resource
+    and the context line by hand, and both the labs and Shift Manager take it.
