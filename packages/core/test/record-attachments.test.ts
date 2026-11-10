@@ -66,6 +66,24 @@ describe("recordAttachments", () => {
     expect(list.entries.get(ID_A)).toEqual({ ref: toBlobRef(ID_A), requestId: "req_0" });
   });
 
+  // The same file re-sent in two turns at once: the second create loses the race, and its turn must not fail for it.
+  it("treats a create that lost the race to another turn's entry as done, and still fails on any other error", async () => {
+    const shot: FileContent = { type: "file", mediaType: "image/png", data: toBlobRef(ID_A) };
+    const raced = memoryList();
+    raced.create = async (key: string) => {
+      raced.entries.set(key, { ref: toBlobRef(key), requestId: "req_other" });
+      throw new Error(`${key} exists`);
+    };
+    await expect(recordAttachments.config.execute?.(undefined, ctxWith([shot], raced).ctx)).resolves.toBeUndefined();
+    expect(raced.entries.get(ID_A)).toMatchObject({ requestId: "req_other" });
+
+    const broken = memoryList();
+    broken.create = async () => {
+      throw new Error("store unavailable");
+    };
+    await expect(recordAttachments.config.execute?.(undefined, ctxWith([shot], broken).ctx)).rejects.toThrow("store unavailable");
+  });
+
   // Only a stored file is listed: inline data is never copied into a resource (epic ER-2).
   it("skips a file part that is not a reference", async () => {
     const { list, ctx } = ctxWith([{ type: "file", mediaType: "image/png", data: "aGk=" }]);

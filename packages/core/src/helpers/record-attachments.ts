@@ -91,13 +91,18 @@ export const recordAttachments = handler({
       const blobId = parseBlobRef(file.data);
       if (blobId === undefined) continue;
       if ((await list.getOptional(blobId)) !== undefined) continue;
-      await list.create(blobId, {
-        ref: file.data,
-        filename: file.filename ?? null,
-        mediaType: file.mediaType,
-        requestId,
-        recordedAt: Date.now(),
-      });
+      try {
+        await list.create(blobId, {
+          ref: file.data,
+          filename: file.filename ?? null,
+          mediaType: file.mediaType,
+          requestId,
+          recordedAt: Date.now(),
+        });
+      } catch (err) {
+        // A concurrent turn that re-sent the same file listed it first: the entry is there, which is all this write was for.
+        if ((await list.getOptional(blobId)) === undefined) throw err;
+      }
     }
   },
 });
