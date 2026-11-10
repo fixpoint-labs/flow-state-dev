@@ -633,7 +633,7 @@ export const ENTRIES = [
   // build them ship (FIX-2623 views, FIX-2626 kits and slots).
   {
     term: "View",
-    means: "The one hook that computes an answer for a screen: a read with a scope (no session at user or org), declared dependencies and keyed rows, storing nothing and refusing writes.",
+    means: "The one hook that computes an answer for a screen: it has a scope (no session at user or org), declared dependencies and keyed rows, storing nothing and refusing writes.",
     decision: "Owner, 2026-11-10 (epic FIX-2618 O2, ER-1); FIX-2619",
     // "Read" retires as the hook's name. Its matcher lands with FIX-2623, the PR that removes
     // `reads`, so no check refuses what is still on main (epic ER-9). "View" is not retired in

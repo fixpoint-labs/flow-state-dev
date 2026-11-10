@@ -530,7 +530,7 @@ read); the worker flows callback (say slot).
 | Dependency | A resource a view declares it reads | |
 | Key | What names one row of a view's answer | |
 | Direct read | A client reading a user or org resource by scope and name, with no session | The caller's user or org |
-| Resource's flow | The flow a resource names to run its writes: the default write flow or the app's own | One session per resource (per collection entry) per writer |
+| Resource's flow | The flow a resource names to run its writes: the default write flow or the app's own | One session per resource per writer, shared by a collection's entries |
 | Default write flow | The framework's flow for plain writes: set, change and delete fields, with the schema, owner check and write rule | |
 | Write rule | A resource's own optional check on a write | |
 | Notice | A message that something a client watches changed, maybe with keys | Stored nowhere |
