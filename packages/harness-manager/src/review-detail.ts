@@ -31,6 +31,12 @@ export interface ReviewDetail {
   /** The last landing that failed, when the review is asked again for a retry; `null` otherwise. */
   landFailed?: { land: ReviewLand; message: string } | null;
   /**
+   * Every try of the last landing, oldest first: the person's, and each one
+   * after a step of the coding session fixing what stopped it. Empty when
+   * none failed. Optional, as `lands` is.
+   */
+  landAttempts?: Array<{ land: ReviewLand; message: string }>;
+  /**
    * The checks the phase ran before stopping for review (`commandCheck`), in
    * order: each command, how it ended and the end of its output. `null` when
    * none ran.
@@ -55,6 +61,11 @@ const isLand = (value: unknown): value is ReviewLand => value === "pull-request"
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** One landing's try, or `null` when the value isn't one. */
+function landAttemptOf(value: unknown): { land: ReviewLand; message: string } | null {
+  return isRecord(value) && isLand(value.land) && typeof value.message === "string" ? { land: value.land, message: value.message } : null;
+}
 
 /** The judge's verdict, or `null` when it isn't one. */
 function judgeOf(value: unknown): ReviewDetail["judge"] {
@@ -93,10 +104,10 @@ export function reviewDetail(data: unknown): ReviewDetail | null {
     subjects: Array.isArray(data.subjects) ? data.subjects.filter((s): s is string => typeof s === "string") : [],
     judge: judgeOf(data.judge),
     lands: Array.isArray(data.lands) ? data.lands.filter(isLand) : [],
-    landFailed:
-      isRecord(data.landFailed) && isLand(data.landFailed.land) && typeof data.landFailed.message === "string"
-        ? { land: data.landFailed.land, message: data.landFailed.message }
-        : null,
+    landFailed: landAttemptOf(data.landFailed),
+    landAttempts: Array.isArray(data.landAttempts)
+      ? data.landAttempts.map(landAttemptOf).filter((attempt): attempt is { land: ReviewLand; message: string } => attempt !== null)
+      : [],
     checks: checksOf(data.checks),
   };
   // Nothing readable is no review: the card then shows the stop's prompt instead.
