@@ -112,4 +112,3 @@ export type {
   RunSourceAnswer,
   RunSourceRefusal,
 } from "./run-source";
-export { privateTempRoot } from "./private-temp";

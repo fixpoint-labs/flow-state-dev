@@ -19,7 +19,7 @@
  */
 import { createHash } from "node:crypto";
 import { readlink, symlink, unlink } from "node:fs/promises";
-import { privateTempRoot } from "@flow-state-dev/workspace";
+import { privateTempRoot } from "@flow-state-dev/workspace/internal";
 import { join, resolve } from "node:path";
 
 /** The longest directory name the filesystems Cursor runs on accept, in bytes. */

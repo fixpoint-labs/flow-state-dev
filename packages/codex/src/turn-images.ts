@@ -14,7 +14,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ATTACHMENT_IMAGE_TYPES, normalizeMediaType, type AttachmentAccepts } from "@flow-state-dev/core/attachments";
 import type { HarnessAttachmentBytes } from "@flow-state-dev/core/harness";
-import { privateTempRoot } from "@flow-state-dev/workspace";
+import { privateTempRoot } from "@flow-state-dev/workspace/internal";
 
 /** What Codex takes as a turn's files: images. */
 export const CODEX_ACCEPTS: AttachmentAccepts = ATTACHMENT_IMAGE_TYPES;

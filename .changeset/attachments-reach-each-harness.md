@@ -6,7 +6,6 @@
 "@flow-state-dev/cursor": minor
 "@flow-state-dev/harness-manager": minor
 "@flow-state-dev/react": minor
-"@flow-state-dev/workspace": minor
 ---
 
 A turn's images reach Claude Code, Codex and Cursor (FIX-2519).
@@ -19,6 +18,5 @@ A turn's images reach Claude Code, Codex and Cursor (FIX-2519).
 - **every harness:** a file of a type the harness doesn't take refuses the turn before it starts, naming the file and the harness. A file that can't be read refuses it too. A turn never runs without a file the person sent.
 - **harness-manager:** `harnessSessionFlow`'s `turn` hands the harness the request's files. A harness that declares no `accepts` is never handed one: the turn fails on its record, naming the file.
 - **react:** `useHarnessLines().send(prompt, { attachments })` sends a line with files. A line with files never steers: while a turn runs it waits as the next turn, files and all.
-- **workspace:** `privateTempRoot(name, purpose)` returns a temp folder private to this OS user, made `0700`, and refuses one another account owns or can enter.
 
 Docs: the harness table in the attachments guide (what each harness takes, how a file reaches it, what it refuses); a line in packages/claude-code/README.md, packages/codex/README.md and packages/cursor/README.md on images; packages/react/README.md (`attachments` on `useHarnessLines().send`); packages/core/README.md (`attachments` on `HarnessRunInput`, `accepts`).

@@ -1,7 +1,7 @@
 {
   "name": "@flow-state-dev/workspace",
   "version": "0.4.0",
-  "description": "File projection between resource collections and a place an agent works in — mounts, hydrate, flush, and the baseline that makes a contested write loud instead of silent.",
+  "description": "File projection between resource collections and a place an agent works in \u2014 mounts, hydrate, flush, and the baseline that makes a contested write loud instead of silent.",
   "keywords": [
     "ai",
     "agents",
@@ -29,6 +29,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "default": "./src/internal.ts"
     }
   },
   "license": "MIT",
@@ -44,6 +48,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./internal": {
+        "types": "./dist/internal.d.ts",
+        "default": "./dist/internal.js"
       }
     }
   },

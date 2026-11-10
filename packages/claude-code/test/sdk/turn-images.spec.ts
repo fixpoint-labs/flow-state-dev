@@ -52,7 +52,7 @@ async function contextWith(files: Record<string, { mediaType: string; bytes: Uin
     const found = files[file.data]!;
     return { mediaType: found.mediaType, bytes: found.bytes, base64: () => Buffer.from(found.bytes).toString("base64") };
   };
-  (runtime.ctx as Record<symbol, unknown>)[HARNESS_ATTACHMENT_SEAM] = read;
+  (runtime.ctx as unknown as Record<symbol, unknown>)[HARNESS_ATTACHMENT_SEAM] = read;
   return runtime.ctx as never;
 }
 
