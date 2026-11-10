@@ -30,8 +30,10 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 It comes down to a question two turns later: this-turn-only shows the model a filename.
 
-**What would change my mind:** providers keeping files across calls (FIX-891's upload-once).
-Then re-sending is free and the cap only bounds the request.
+**What would change my mind:** re-sent files costing little per call. FIX-891's upload-once does
+not make them free: a provider file id is still billed as input tokens on every call. Prompt
+caching (`packages/core/src/models/caching.ts`, on by default) is what cuts the cost of a repeated
+prefix, and a summary in place of an older file (FIX-2636) is what would shrink it.
 
 ## Decided, not asked
 

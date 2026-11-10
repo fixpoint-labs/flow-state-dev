@@ -53,12 +53,12 @@ flowchart LR
 | | |
 |---|---|
 | **Lead measure** | Children whose goal check passed. **None today** |
-| **Not doing** | Files in replies · audio, video · a file library · drive pickers · Word and Excel · a hosted blob adapter · folding [FIX-137](https://linear.app/fixpoint-labs/issue/FIX-137) |
+| **Not doing** | Files in replies · audio, video · a file library across sessions (a session's own list is [FIX-2634](https://linear.app/fixpoint-labs/issue/FIX-2634)) · drive pickers · Word and Excel · a hosted blob adapter · folding [FIX-137](https://linear.app/fixpoint-labs/issue/FIX-137) |
 | **Kill line** · *the owner's, 2026-11-05* | "If FIX-824's goal check can't send 10 images and a 20 MB PDF by reference through a running local server, and show them all after a restart, with no new required dependency and no change to the existing store adapters, stop the app children and amend this epic." [How FIX-824 runs it](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them) |
 
 ## What's in the box
 
-![In the box: a blob storage adapter with a local-disk default, attachments as references, one limits set, file parts to a generator and each harness, a task brief that keeps its files, the composer pieces. Fence: a message carries only references. Not built: hosted adapters, files in replies, a file library](figures/end-state.svg)
+![In the box: a blob storage adapter with a local-disk default, attachments as references, one limits set, file parts to a generator and each harness, a task brief that keeps its files, the composer pieces. Fence: a message carries only references. Not built: hosted adapters, files in replies, a file library across sessions](figures/end-state.svg)
 
 The fence is [D2](DECISIONS.md#d2): messages, session reads and harness hand-offs carry
 references, so no host's request or response limit caps an attachment.
@@ -68,9 +68,10 @@ FIX-824 adds where bytes live and what a serverless deploy configures, and says 
 backup misses the bytes on disk. FIX-2519 adds the harness table, FIX-2520 documents, FIX-2518
 the registry page.
 
-## The set · as of 2026-11-08
+## The set · as of 2026-11-09
 
-A dated snapshot; live state is Linear. Every child is specced in one spec-set PR.
+A dated snapshot; live state is Linear. Every child but FIX-2634 is specced in one spec-set PR;
+FIX-2634 joined on Nov 9 and is specced in its own PR, which carries this amendment.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
@@ -83,10 +84,12 @@ A dated snapshot; live state is Linear. Every child is specced in one spec-set P
 | [FIX-2522](https://linear.app/fixpoint-labs/issue/FIX-2522) · Shift Manager | Every composer; a new task's files join its brief | Where a file outlives its turn | Backlog · blocked by 2517–2519 |
 | [FIX-2523](https://linear.app/fixpoint-labs/issue/FIX-2523) · both labs | The Claude Code-style and Teammates composers, to Claude Code runs and to generator and coding teammates | Two chats | Backlog · blocked by 2517–2519 |
 | [FIX-2524](https://linear.app/fixpoint-labs/issue/FIX-2524) · Teammates lab | **Merged into FIX-2523** by D1's collapse trigger; closed as a duplicate when the spec set is approved | — | — |
+| [FIX-2634](https://linear.app/fixpoint-labs/issue/FIX-2634) · attachments block | A block a flow includes to decide what to do with a turn's files; v1 keeps a session list of them, references only | The owner's call, Nov 9: where a flow decides per file, and the list [FIX-2636](https://linear.app/fixpoint-labs/issue/FIX-2636) reads | Backlog · blocked by 824, 2517 |
 | [FIX-2565](https://linear.app/fixpoint-labs/issue/FIX-2565) · closure · **required** | Three legs per app, each team's journey, the seams | Proves the whole | Backlog · blocked by every child |
 
-Eight children and a closure. Nine at the gate; **the spec set found neither lab spec had a
-decision of its own**, D1's collapse trigger, so the labs are one issue.
+Nine children and a closure. **The spec set found neither lab spec had a decision of its own**,
+D1's collapse trigger, so the labs are one issue. The owner added FIX-2634 on Nov 9, after the set
+merged.
 
 ## How the issues flow into each other
 
@@ -106,11 +109,13 @@ flowchart LR
     SM["FIX-2522 · Shift Manager"]
     CC["FIX-2523 · both labs"]
   end
+  A -->|"a turn's claimed files on the block context"| AB["FIX-2634 · attachments block"]
   APPS --> Z["FIX-2565 · closure · required"]
   D --> Z
+  AB --> Z
 ```
 
-An edge is what one issue hands the next. FIX-824 goes first; the closure waits on all eight.
+An edge is what one issue hands the next. FIX-824 goes first; the closure waits on all nine.
 
 ## What stays as it is
 
@@ -118,7 +123,7 @@ An edge is what one issue hands the next. FIX-824 goes first; the closure waits 
 - **The existing store adapters**, `ContentStore`'s strings, and the published `FileContent` type ([D4](DECISIONS.md#d4)).
 - **The worker door's `{ message }`** and each flow's input schema ([D3](DECISIONS.md#d3)).
 - **Steering stays text.** A line with files waits for the next turn.
-- **Related, not children:** FIX-137, FIX-891, FIX-367, FIX-2152, FIX-2467, FIX-2371.
+- **Related, not children:** FIX-137, FIX-891, FIX-367, FIX-2152, FIX-2467, FIX-2371, FIX-2636.
 
 ## What's already here, and the debt
 
@@ -155,7 +160,7 @@ named refusals, proved through a restart. If wrong: the harnesses stay blind.
 **[The set's debt](#whats-already-here-and-the-debt), net up:** one capability, one local
 adapter. If wrong: a hosted deploy waits on an adapter.
 
-1. **[D1](DECISIONS.md#d1) · Eight children and a closure: storage, images, then documents; the labs merged in the spec set.**
+1. **[D1](DECISIONS.md#d1) · Nine children and a closure: storage, images, then documents; the labs merged in the spec set; the attachments block added Nov 9.**
    If wrong: one issue holding two apps a reviewer checks separately.
 2. **[D2](DECISIONS.md#d2) · Bytes go through a blob storage adapter, local disk by default.**
    The owner's call. If wrong: a store we needn't have built.
@@ -166,4 +171,4 @@ adapter. If wrong: a hosted deploy waits on an adapter.
 
 **Open: none.**
 
-Epic · 8 children and a closure · Workforce: Shift Manager · Goal 1, validate through real usage
+Epic · 9 children and a closure · Workforce: Shift Manager · Goal 1, validate through real usage
