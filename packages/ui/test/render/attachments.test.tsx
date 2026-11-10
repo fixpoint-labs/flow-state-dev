@@ -9,7 +9,7 @@
  * state looks right while Send ships data URLs must fail here.
  */
 import type { FileContent } from "@flow-state-dev/core/items";
-import { act, cleanup, renderHook, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
@@ -108,6 +108,31 @@ describe("attaching in PromptInput", () => {
     expect(client.upload).toHaveBeenCalledOnce();
     // Sent, so the strip is empty again.
     expect(screen.queryByRole("img", { name: "shot.png" })).toBeNull();
+  });
+
+  // A switch of conversation while Send waits on an upload drops the draft's files. The line must
+  // not then go out without them, to the conversation left: nothing is sent, and the page keeps its draft.
+  it("sends nothing when the conversation changes while Send waits on an upload", async () => {
+    let open!: () => void;
+    const client = uploader({ gate: new Promise<void>((done) => (open = done)) });
+    const onSubmit = vi.fn<(message: PromptInputMessage) => void>();
+    const composer = (sessionId: string) => (
+      <PromptInput client={client} onSubmit={onSubmit} sessionId={sessionId}>
+        <PromptInputAttachments />
+        <PromptInputTextarea />
+      </PromptInput>
+    );
+    const { rerender } = render(composer("s1"));
+    const box = screen.getByTestId("message-input");
+    await act(async () => paste(box, [file("shot.png", "image/png")]));
+    await act(async () => {
+      fireEvent.change(box, { target: { value: "look" } });
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    rerender(composer("s2"));
+    await act(async () => open());
+    await act(async () => undefined);
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("uploads on attach, and Send waits only for an upload still in flight", async () => {
@@ -241,6 +266,36 @@ describe("attaching in PromptInput", () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
     expect(onSubmit.mock.calls[0]![0].attachments.map((f) => f.filename)).toEqual(["shot.png"]);
     expect(screen.queryAllByRole("img", { name: "shot.png" })).toHaveLength(0);
+  });
+
+  // One drawing goes when the layout hides it; the other's + must still open a picker, its own.
+  it("opens the remaining composer's own picker after the other is unmounted", async () => {
+    const client = uploader();
+    function Twice({ both }: { both: boolean }) {
+      const attachments = useAttachments({ client });
+      return (
+        <>
+          {(both ? [0, 1] : [1]).map((i) => (
+            <PromptInput attachments={attachments} data-testid={`composer-${i}`} key={i} onSubmit={() => undefined}>
+              <PromptInputTextarea />
+              <PromptInputAttachButton />
+            </PromptInput>
+          ))}
+        </>
+      );
+    }
+    const { rerender } = render(<Twice both />);
+    rerender(<Twice both={false} />);
+    const remaining = screen.getByTestId("composer-1");
+    const opened: HTMLInputElement[] = [];
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(function (this: HTMLInputElement) {
+      opened.push(this);
+    });
+    onTestFinished(() => click.mockRestore());
+    fireEvent.click(within(remaining).getByRole("button", { name: "Attach files" }));
+    // Its own picker, the one left on the page, and nothing else.
+    expect(opened).toEqual([...document.querySelectorAll('input[type="file"]')]);
+    expect(opened).toHaveLength(1);
   });
 });
 

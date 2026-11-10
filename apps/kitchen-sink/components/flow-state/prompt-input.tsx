@@ -435,6 +435,13 @@ const PromptInputForm = ({
   controller: PromptInputControllerProps | null;
 }) => {
   const formRef = useRef<HTMLFormElement | null>(null);
+  // This composer's own picker. The attachment state may be shared by two composers (two drawings of
+  // one), and a shared ref would hold one picker, nulled when its composer unmounts.
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const own = useMemo<Attachments>(
+    () => ({ ...attachments, fileInputRef, openFileDialog: () => fileInputRef.current?.click() }),
+    [attachments]
+  );
   // Set while a Send waits on uploads and onSubmit, so a second Enter doesn't send the same files again.
   const submittingRef = useRef(false);
 
@@ -561,7 +568,7 @@ const PromptInputForm = ({
   const { dropTarget } = attachments;
   const inner = (
     <>
-      <AttachmentFileInput attachments={attachments} multiple={multiple} />
+      <AttachmentFileInput attachments={own} multiple={multiple} />
       <form
         className={cn("w-full", className)}
         data-dragging={attachments.dragging || undefined}
@@ -604,7 +611,7 @@ const PromptInputForm = ({
   );
 
   return (
-    <LocalAttachmentsContext.Provider value={attachments}>
+    <LocalAttachmentsContext.Provider value={own}>
       {withReferencedSources}
     </LocalAttachmentsContext.Provider>
   );
