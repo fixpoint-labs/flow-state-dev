@@ -13,7 +13,7 @@ To look at it by hand:
 pnpm --filter @flow-state-dev/devtool build        # once per checkout
 pnpm --filter @flow-state-dev/devtool build:assets
 # from a scratch directory, with the intent overrides unset (see below):
-pnpm tsx <repo>/packages/cli/bin/fsdev.ts dev --config <repo>/packages/shift-manager/test/fixtures/multi-worker-collab/fsdev.config.mts
+pnpm tsx <repo>/packages/fsdev/bin/fsdev.ts dev --config <repo>/packages/shift-manager/test/fixtures/multi-worker-collab/fsdev.config.mts
 ```
 
 ## How it is wired

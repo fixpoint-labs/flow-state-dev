@@ -72,7 +72,7 @@ core ─────────────────────────
 - `engine` never depends on `react` or `client` — the execution engine knows nothing about transport consumers
 - `client` never depends on `engine` or `react` — works in any JavaScript environment
 - `react` has no transport logic — it wraps `client` with hooks and renderers
-- `cli` uses `engine` + `testing`, never `react` or `client`
+- `fsdev` uses `engine` + `testing`, never `react` or `client`
 - `apps/devtool` uses only public APIs from `client` and `react`
 
 ## Core abstractions

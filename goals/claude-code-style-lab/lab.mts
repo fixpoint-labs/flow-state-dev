@@ -36,7 +36,7 @@ export async function startLab(
   let log = "";
   const child = spawn(
     repoPath("node_modules", ".bin", "tsx"),
-    ["packages/cli/src/bin.ts", "dev", "--config", join(LAB, "fsdev.config.mts"), "--app", app, "--port", String(port), "--no-open"],
+    ["packages/fsdev/src/bin.ts", "dev", "--config", join(LAB, "fsdev.config.mts"), "--app", app, "--port", String(port), "--no-open"],
     {
       cwd: REPO_ROOT,
       detached: true,

@@ -9,9 +9,9 @@
     ".": "./cli/index.ts"
   },
   "scripts": {
-    "dev": "vite build && tsx ../../packages/cli/bin/fsdev.ts dev --app @flow-state-dev/teammates",
+    "dev": "vite build && tsx ../../packages/fsdev/bin/fsdev.ts dev --app @flow-state-dev/teammates",
     "build": "vite build",
-    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
+    "fsdev": "tsx ../../packages/fsdev/bin/fsdev.ts",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run --root ."
   },

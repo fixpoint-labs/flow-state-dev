@@ -129,7 +129,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 | `client` | Transport + session/request APIs | No dependency on engine or react |
 | `react` | Hooks/renderers only | Wraps client; no transport logic |
 | `testing` | Deterministic harnesses + mocks | Uses core + engine |
-| `cli` | Run/inspect/scaffold flows | Uses core + engine + testing |
+| `fsdev` | Run/inspect/scaffold flows | Uses core + engine + testing |
 | `apps/devtool` | Inspector app | Public APIs only (client + react) |
 
 → [Architecture Overview](../architecture/overview.md)

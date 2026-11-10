@@ -9,7 +9,7 @@
     { "path": "./packages/testing" },
     { "path": "./packages/mcp" },
     { "path": "./packages/scheduled" },
-    { "path": "./packages/cli" },
+    { "path": "./packages/fsdev" },
     { "path": "./packages/devtool" },
     { "path": "./packages/patterns" },
     { "path": "./packages/store-sqlite" },

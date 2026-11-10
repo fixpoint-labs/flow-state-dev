@@ -260,7 +260,7 @@ async function main() {
     server = spawn(
       join(REPO_ROOT, "node_modules", ".bin", "tsx"),
       [
-        join(REPO_ROOT, "packages", "cli", "bin", "fsdev.ts"),
+        join(REPO_ROOT, "packages", "fsdev", "bin", "fsdev.ts"),
         "dev",
         "--flow-dir",
         FLOW_DIR,

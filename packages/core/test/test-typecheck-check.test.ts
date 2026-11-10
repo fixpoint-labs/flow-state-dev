@@ -142,7 +142,7 @@ describe("the DEFERRED list", () => {
       "memory",
       "thought-fabric-core",
       "claude-code",
-      "cli",
+      "fsdev",
       "codex",
       "cursor",
       "devtool",

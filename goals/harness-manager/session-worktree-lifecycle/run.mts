@@ -206,7 +206,7 @@ const branchExists = (branch: string) => git(repo, "branch", "--list", branch) !
 function listedByCli(): Array<{ cwd: string; branch: string | null }> {
   const stdout = execFileSync(
     join(REPO_ROOT, "node_modules", ".bin", "tsx"),
-    [join(REPO_ROOT, "packages", "cli", "src", "bin.ts"), "worktrees", root, "--json"],
+    [join(REPO_ROOT, "packages", "fsdev", "src", "bin.ts"), "worktrees", root, "--json"],
     { encoding: "utf8", env: intentFreeEnv(process.env), timeout: 120_000 },
   );
   return JSON.parse(stdout) as Array<{ cwd: string; branch: string | null }>;

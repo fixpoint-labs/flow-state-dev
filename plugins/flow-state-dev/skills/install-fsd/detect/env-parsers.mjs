@@ -4,7 +4,7 @@
  * A single parser was the structural defect behind three separate findings. The module claimed to
  * model two runtimes with opposite tie-breaks, and then parsed both of them with one function
  * that mirrored neither faithfully. `parseAsCli` is now an **asserted twin** of
- * `packages/cli/src/load-env.ts` (see `test/twins.test.mjs`), and `parseAsNextDev` mirrors the
+ * `packages/fsdev/src/load-env.ts` (see `test/twins.test.mjs`), and `parseAsNextDev` mirrors the
  * dotenv grammar `@next/env` actually ships.
  *
  * Where they differ, measured against `@next+env@16.1.6`'s bundled dotenv:
@@ -22,7 +22,7 @@
  */
 
 /**
- * Parse the way `packages/cli/src/load-env.ts` does. **Twin — keep in step, and the test asserts
+ * Parse the way `packages/fsdev/src/load-env.ts` does. **Twin — keep in step, and the test asserts
  * it.** Last assignment within a file wins, which is `Map.set` overwriting.
  */
 export function parseAsCli(content) {

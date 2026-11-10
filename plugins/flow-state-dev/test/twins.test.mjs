@@ -22,11 +22,11 @@ const repoRoot = join(import.meta.dirname, "../../..");
 const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf-8");
 
 describe("the config precedence order is the CLI's own", () => {
-  it("matches CONFIG_FILENAMES in packages/cli/src/load-config.ts", () => {
+  it("matches CONFIG_FILENAMES in packages/fsdev/src/load-config.ts", () => {
     // Acting on a config the loader is not loading describes nothing that runs, so the order this
     // module reports has to be the order the loader applies. Reordering the loader moves this
     // check with it rather than leaving a stale copy behind.
-    const source = read("packages/cli/src/load-config.ts");
+    const source = read("packages/fsdev/src/load-config.ts");
     const raw = /const CONFIG_FILENAMES = \[([\s\S]*?)\]/.exec(source);
     expect(raw, "CONFIG_FILENAMES is no longer where this check looks for it").not.toBeNull();
     const names = [...raw[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
@@ -45,7 +45,7 @@ describe("parseAsCli is a twin of the CLI's own parser, asserted rather than des
    * in review lived in the one parser it did not cover.
    */
   const cliParser = (() => {
-    const source = read("packages/cli/src/load-env.ts");
+    const source = read("packages/fsdev/src/load-env.ts");
     const body = /function parseEnvFile\(content: string\): Map<string, string> \{([\s\S]*?)\n\}/.exec(source);
     expect(body, "parseEnvFile is no longer where this check looks for it").not.toBeNull();
     const js = body[1].replace(/: Map<string, string>|: string/g, "").replace(/new Map<[^>]*>\(\)/g, "new Map()");
@@ -120,8 +120,8 @@ describe("the Node floor never admits a Node the CLI refuses", () => {
     // A wired-up project runs the `fsdev` CLI, so the floor this report enforces must never fall
     // below what that package declares it runs on. The CLI loads a TypeScript config itself on
     // any Node its `engines` allows, so `engines.node` is the requirement the floor tracks.
-    const engines = JSON.parse(read("packages/cli/package.json")).engines?.node;
-    expect(engines, "packages/cli/package.json no longer declares engines.node").toBeDefined();
+    const engines = JSON.parse(read("packages/fsdev/package.json")).engines?.node;
+    expect(engines, "packages/fsdev/package.json no longer declares engines.node").toBeDefined();
     const minimum = /^>=\s*(\d+(?:\.\d+){0,2})$/.exec(engines.trim());
     expect(minimum, `engines.node "${engines}" is not a plain >= range this check reads`).not.toBeNull();
     // `>=22` names only a major; pad it to the x.y.z the comparison reads.

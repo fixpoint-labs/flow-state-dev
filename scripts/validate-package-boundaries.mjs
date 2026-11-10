@@ -4,7 +4,7 @@ import { compilerDeclarationErrors } from "./compiler-declarations.mjs";
 import { workspaceManifests } from "./workspace-members.mjs";
 
 const rootDir = process.cwd();
-const packages = ["contracts", "core", "engine", "client", "react", "testing", "cli", "store-sqlite", "store-postgres", "orchestration", "patterns", "workforce"];
+const packages = ["contracts", "core", "engine", "client", "react", "testing", "fsdev", "store-sqlite", "store-postgres", "orchestration", "patterns", "workforce"];
 
 const packageRules = {
   // The zero-dependency shared layer: imports no workspace package. Its
@@ -12,7 +12,7 @@ const packageRules = {
   contracts: {
     allow: new Set([]),
     typeOnly: new Set([]),
-    deny: new Set(["core", "engine", "client", "react", "testing", "cli", "store-sqlite", "store-postgres"])
+    deny: new Set(["core", "engine", "client", "react", "testing", "fsdev", "store-sqlite", "store-postgres"])
   },
   core: {
     allow: new Set(["contracts"]),
@@ -41,11 +41,11 @@ const packageRules = {
     deny: new Set(["client", "react"])
   },
   // A leaf consumer of published surfaces: the terminal interface reaches for
-  // whatever a command needs to drive. Nothing imports `cli`, so this list has
+  // whatever a command needs to drive. Nothing imports `fsdev`, so this list has
   // no cycle to create and no layer to invert — it is an enumeration of what
   // the CLI ships, and it grows as commands do. Contrast the entries above and
   // below, whose `deny` sets encode a refusal; this one encodes none.
-  cli: {
+  fsdev: {
     allow: new Set(["contracts", "core", "engine", "testing", "store-sqlite", "workforce"]),
     typeOnly: new Set([])
   },
@@ -119,36 +119,8 @@ function walkTsFiles(dirPath, files = []) {
   return files;
 }
 
-/**
- * Packages whose published name is not `@flow-state-dev/<directory>`, mapped to
- * the internal key `packageRules` uses — which is the DIRECTORY name.
- *
- * Matched on the exact full package name, never by scope prefix. That is the
- * whole point, and it survived the CLI's name changing twice (FIX-1191):
- *
- *   - As unscoped `fsdev`, a scope-prefix rule skipped the package outright.
- *   - As `@flow-state-dev/fsdev` it matches the scope again, which looks like
- *     the prefix rule would now work. It does not: the rule takes the segment
- *     after the scope (`fsdev`) and looks it up in `packages`, which holds
- *     `cli`. It resolves to nothing and every import is skipped, exactly as
- *     before.
- *
- * Both times the failure is silent, because a guard that recognises nothing
- * reports success: restricted packages could import the CLI with no allow/deny
- * check and no cycle detection while typecheck and the full suite stayed green.
- * Do not "simplify" this back to a prefix test.
- */
-const PACKAGE_NAME_TO_KEY = new Map([["@flow-state-dev/fsdev", "cli"]]);
-
 function resolveWorkspacePackage(specifier) {
   const [scope, name] = specifier.split("/");
-  const packageName = scope.startsWith("@") ? `${scope}/${name ?? ""}` : scope;
-
-  const mapped = PACKAGE_NAME_TO_KEY.get(packageName);
-  if (mapped !== undefined) {
-    return packages.includes(mapped) ? mapped : undefined;
-  }
-
   if (scope !== "@flow-state-dev") {
     return undefined;
   }
@@ -158,9 +130,6 @@ function resolveWorkspacePackage(specifier) {
 
 /** How a package is spelled in an import, for error messages. */
 function specifierFor(pkg) {
-  for (const [name, key] of PACKAGE_NAME_TO_KEY) {
-    if (key === pkg) return name;
-  }
   return `@flow-state-dev/${pkg}`;
 }
 
@@ -204,6 +173,16 @@ const graph = new Map();
 
 for (const pkg of packages) {
   graph.set(pkg, new Set());
+
+  // Each key is both a directory under packages/ and the name after the scope.
+  // If the two drift apart, imports of the package resolve to nothing and the
+  // checks below pass without checking it, so the drift itself is the error.
+  const manifestPath = path.join(rootDir, "packages", pkg, "package.json");
+  const name = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, "utf8")).name : undefined;
+  if (name !== specifierFor(pkg)) {
+    errors.push(`packages/${pkg}: expected package name ${specifierFor(pkg)}, found ${name ?? "no package.json"}`);
+  }
+
   const srcDir = path.join(rootDir, "packages", pkg, "src");
   const files = walkTsFiles(srcDir);
   const rules = packageRules[pkg];
