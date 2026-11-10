@@ -75,22 +75,22 @@ flowchart LR
   end
 ```
 
-The task names a worktree, or workforce writes its root's at filing; the manager carries it out. Nothing new is
+The task names a worktree, or workforce writes the owner of its root's at filing; the manager carries it out. Nothing new is
 provisioned for an attached run.
 
 - **A typed `worktreeOf` on the task** ([D1](DECISIONS.md#d1)): orchestration's `Task` and
   `TaskInit` gain `worktreeOf?: string`, a task id, top-level, written once at filing, never
   patched. The `createTask` tool takes it. A filer can't name one on a follow-up
   (`follow_up_takes_no_worktree`), like its other placement settings; workforce writes the
-  root's (D2).
+  owner (D2).
 - **Workforce checks it at filing** ([D1](DECISIONS.md#d1)): the named task is on the same board
   and finished, and its worktree entry is the user's own and `ready`. It names the owner, never a
   task that itself attached (resolved one hop, as `followUpOf` is to its root).
 - **A follow-up joins its root's worktree on its own** ([D2](DECISIONS.md#d2), Jake's call):
-  workforce's filing path writes `worktreeOf: <owner>` onto a follow-up whose root owns a
-  `ready` entry, or whose root itself attached (then the owner is the root's own
-  `worktreeOf`). A follow-up whose root has no entry (a chat task, a files-only run) gets none
-  and provisions as today. The manager reads only `worktreeOf`, never `followUpOf`.
+  workforce's filing path finds the owner, which is the root, or the root's own `worktreeOf`
+  when the root attached. If the owner has a `ready` entry for this user, it writes
+  `worktreeOf: <owner>` onto the follow-up. A follow-up whose root neither owns an entry nor
+  carries `worktreeOf` (a chat task, a files-only run) gets none and provisions as today. The manager reads only `worktreeOf`, never `followUpOf`.
 - **The manager attaches instead of provisioning** ([D3](DECISIONS.md#d3)): when the task
   carries `worktreeOf`, it reads the owner
   task's run record, derives the owner's location from the owner's identity and recorded branch
