@@ -34,6 +34,8 @@ theme so it reads as the app it copies.
   line is drawn the moment it is filed and fills in where it is. Enter sends; Cmd+Enter
   (Ctrl+Enter) sends from every box, including a teammate's instructions, where plain Enter is a
   new line.
+- **Files:** paste an image, pick files with **+**, or drop them on the box; each shows above the
+  text with a remove button, and your line keeps them, after a reload too. The teammate sees them.
 - **Stopping:** while a teammate answers, *Stop* sits beside *Send* and stops every turn it is
   answering; Esc twice or Cmd+. (Ctrl+.) does the same from anywhere on the page, and one Esc
   never does. The button reads *Stopping…* until the turn has ended. The conversation then shows

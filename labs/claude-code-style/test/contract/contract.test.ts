@@ -65,7 +65,15 @@ const ASK = {
   beside: ["Meanwhile, add a risks section.", "Meanwhile, list the open questions."],
   /** A line sent as a turn ends. */
   next: "Add a risks section.",
+  /** A line sent with a screenshot. */
+  shot: "What does this screenshot show?",
 };
+
+/** What the main session says when its model was handed the line's image: only a turn that got it can say it. */
+const SAW_IMAGE = "I see the screenshot.";
+
+/** A tiny PNG, as the composer would upload it. */
+const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
 /** A research task's goal carries this while the stop scenario holds it running. */
 const HELD = "[held]";
 
@@ -109,6 +117,8 @@ function labScript(failing: { next: boolean }, held: Promise<void>): ModelResolv
           failing.next = false;
           throw new Error(FAILURE);
         }
+        // The line's image, as the model is handed it: a file part of its type.
+        if (lastUserLine(said).includes(ASK.shot)) return { text: lastUserLine(said).includes("image/png") ? SAW_IMAGE : "I see no image." };
         if (lastUserLine(said).includes(ASK.stopWithTasks)) {
           if (step < 2) {
             const vendor = step === 0 ? "Acme" : "Globex";
@@ -175,7 +185,7 @@ async function realTarget(): Promise<Target> {
     return inProcess(input, init);
   });
   const client = createClient({ userId: "u_lab", baseUrl: "", fetcher: plug.fetcher as never });
-  const lab = createWiredLab(client);
+  const lab = createWiredLab(client, { fetcher: plug.fetcher as never });
   const project = await lab.createProject("vendor-notes", `file://${repo}`);
   return {
     lab,
@@ -492,6 +502,28 @@ describe.each([
       const at = later.entries.indexOf(stopped[0]!);
       expect(later.entries.findIndex((e) => e.kind === "user" && e.text === ASK.after)).toBeGreaterThan(at);
       if (target.aborts !== undefined) expect(later.entries[at - 1]!.requestId).toBe(turn);
+    });
+  });
+
+  describe("a line with files", () => {
+    check("carries the file to the main session, draws it on your line, and reads its bytes back", async () => {
+      target = await make();
+      const { lab } = target;
+      const id = await target.open("session");
+      const view = thread(lab, id);
+      const shot = await lab.upload({ data: new Blob([PNG], { type: "image/png" }), mediaType: "image/png", filename: "bug.png" });
+      expect(shot.data).toMatch(/^fsd-blob:/);
+      await lab.send(id, ASK.shot, [shot]);
+      const sent = await view.until((v) => v.entries.some((e) => e.kind === "user" && e.text === ASK.shot), 30_000);
+      const line = sent.entries.find((e) => e.kind === "user" && e.text === ASK.shot) as Extract<ThreadEntry, { kind: "user" }>;
+      // A reference on the line, never the bytes.
+      expect(line.files).toEqual([{ type: "file", data: shot.data, mediaType: "image/png", filename: "bug.png" }]);
+      expect(new Uint8Array(await (await lab.readFile(line.files![0])).arrayBuffer())).toEqual(PNG);
+      // Only the real column has a model: its answer says the turn was handed the image.
+      if (column === "real") {
+        const answered = await view.until((v) => !v.running && v.entries.some((e) => e.kind === "assistant" && e.text === SAW_IMAGE), 30_000);
+        expect(answered.entries.some((e) => e.kind === "assistant" && e.text === SAW_IMAGE)).toBe(true);
+      }
     });
   });
 

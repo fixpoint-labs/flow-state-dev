@@ -1,9 +1,11 @@
+import type { FileContent } from "@flow-state-dev/core/items";
 import { memo } from "react";
 import type { ConversationEntry } from "../adapter";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import type { AnswerStatus } from "./Popups";
 import { useSubmit } from "@flow-state-dev/react";
+import { MessageFiles } from "./flow-state/message";
 import { MarkdownText } from "./flow-state/message-response";
 import { RequestRecovery } from "./flow-state/request-recovery";
 import { ToolRun } from "./ToolRun";
@@ -15,7 +17,9 @@ import { ToolRun } from "./ToolRun";
  * received lands under the sender's name. A task it filed coming back is one
  * line, "researcher finished: …", that opens the task's popup, where its
  * result is; a routed answer, which names no task, is shown as said. A worker's text is
- * Markdown; your own lines are shown as typed. A worker that waits for your
+ * Markdown; your own lines are shown as typed, with the files they carry
+ * above them, a thumbnail per image and a chip for anything else (the
+ * registry's `MessageFiles`, its bytes read by `readFile`). A worker that waits for your
  * yes (`suspendForUser` with an approval) is a card with Approve and Deny until
  * you answer. The tool calls a turn makes show inline as it makes them, a run
  * of them as one line that is open while it runs and folds once it is done.
@@ -40,6 +44,7 @@ export const Entry = memo(function Entry({
   onRetry,
   stillRunning,
   onViewTasks,
+  readFile,
 }: {
   entry: ConversationEntry;
   workerName: string;
@@ -61,6 +66,8 @@ export const Entry = memo(function Entry({
   stillRunning?: number;
   /** Show where the conversation's tasks are listed. */
   onViewTasks?: () => void;
+  /** Reads the bytes of a file your line carries, for its thumbnail. */
+  readFile?: (file: FileContent) => Promise<Blob>;
 }) {
   switch (entry.kind) {
     case "stopped":
@@ -71,10 +78,14 @@ export const Entry = memo(function Entry({
       );
     case "user":
       return (
-        <div className="flex justify-end">
-          <div className="max-w-[80%] rounded-lg bg-accent px-4 py-2.5 text-sm whitespace-pre-wrap" data-entry="user">
-            {entry.text}
-          </div>
+        <div className="flex flex-col items-end gap-1.5">
+          {entry.files !== undefined ? <MessageFiles files={entry.files} readFile={readFile} /> : null}
+          {/* A line of files alone has no words to box. */}
+          {entry.text !== "" || entry.files === undefined ? (
+            <div className="max-w-[80%] rounded-lg bg-accent px-4 py-2.5 text-sm whitespace-pre-wrap" data-entry="user">
+              {entry.text}
+            </div>
+          ) : null}
         </div>
       );
     case "assistant":

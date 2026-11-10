@@ -172,6 +172,13 @@
     // their install lists ship with message; a composer draws the strip once a client is passed.
     "apps/kitchen-sink/components/flow-state/attachments.tsx",
     "packages/shift-manager/src/components/flow-state/attachments.tsx",
+    // The labs' byte copies of the registry's attachments: their composers draw the
+    // strip and the + button; the downscaling and size helpers are the hook's own.
+    "labs/claude-code-style/src/components/flow-state/attachments.tsx",
+    "labs/teammates/src/components/flow-state/attachments.tsx",
+    // The Teammates lab's byte copy of the registry's message: a line of yours draws
+    // its files with MessageFiles; its own markdown answer draws the rest.
+    "labs/teammates/src/components/flow-state/message.tsx",
     // Kitchen Sink's and Shift Manager's byte copies of the registry's review card:
     // their suspension cards import ReviewSuspension; the card's other exports are
     // for apps that draw holds.
