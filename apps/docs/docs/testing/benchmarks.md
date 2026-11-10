@@ -128,7 +128,7 @@ Cost is tracked best-effort across the sweep. Pass `maxCostUsd` (or `--max-cost`
 To run on a free-tier model instead, override the executor with an OpenRouter model id. It's opt-in by design, since free-tier models rate-limit and the point of the default is a reproducible paid baseline.
 
 ```bash
-fsdev benchmark ./benchmark.ts \
+pnpm fsdev benchmark ./benchmark.ts \
   --model openrouter:meta-llama/llama-3.1-70b-instruct
 ```
 
@@ -137,7 +137,7 @@ fsdev benchmark ./benchmark.ts \
 Holding the model fixed answers "do the patterns beat the naive call on the same model". A different and useful question is whether coordination on a cheap model beats a more expensive model used alone — "does a Haiku swarm beat raw Sonnet?". Add pure-model baselines for that:
 
 ```bash
-fsdev benchmark ./benchmark.ts \
+pnpm fsdev benchmark ./benchmark.ts \
   --model anthropic/claude-haiku-5-5 \
   --baseline-model anthropic/claude-sonnet-5-5
 ```

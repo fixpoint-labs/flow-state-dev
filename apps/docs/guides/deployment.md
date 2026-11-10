@@ -90,7 +90,7 @@ What changes per platform is how you connect this runtime to incoming HTTP reque
 If your app already default-exports a FlowState from a committed `fsdev.config.*`, you can skip the entry file. `fsdev serve` starts a long-lived server straight from that config: it binds `0.0.0.0:$PORT`, shuts down gracefully on `SIGTERM`, mounts no DevTool, and runs the loopback-bind guard that refuses a network bind when a flow has no authentication configured. The tradeoff is control. Reach for `fsdev serve` when the built-in server does what you need. Write your own `serve(flowstate)` entry file when you need custom middleware or extra routes, since the CLI command has no hook for either.
 
 ```bash
-PORT=3000 fsdev serve
+PORT=3000 pnpm fsdev serve
 ```
 
 See the [CLI API](/docs/api/cli) for the full flag set and guard behavior, and [Host adapters](/docs/server/host-adapters) for the `serve()` wrapper underneath.

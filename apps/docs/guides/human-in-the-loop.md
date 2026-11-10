@@ -114,7 +114,7 @@ That's the entire server side. The sequencer is `durable: true` (the default), s
 The fastest path uses `@flow-state-dev/ui`. Its pre-wired renderer registry, `chatAssistantRenderers`, maps every item type to a default component, including a polished `Approval` card for `suspension` items. Install it:
 
 ```bash
-fsdev ui add chat-assistant
+pnpm fsdev ui add chat-assistant
 ```
 
 That pulls in `chat-assistant`, the `Approval` card, and their dependencies into your project under `components/flow-state/`. Now wire a surface:
