@@ -583,12 +583,17 @@ async function pushAndOpen(
   // **The work may already be in a pull request**: an earlier try that opened
   // it, or the run itself pushing its branch and opening one. That one is the
   // landing, and no second one is opened. The branch is still pushed, so a
-  // commit made since reaches it; a push that fails then (the run pushed
-  // something else there) fails nothing, since the work is already up. A
-  // failed ask is no answer: the push and the list after it go on as before.
+  // commit made since reaches it. A refused push is let go only when the
+  // remote's branch already holds the checkout's tip; otherwise the pull
+  // request lacks the work, and the refusal stands. A failed ask is no
+  // answer: the push and the list after it go on as before.
   const already = await openPullRequestOf(gh, target.branch, left()).catch(() => undefined);
   if (already !== undefined && pullRequestRefFromUrl(already) !== null) {
-    await push(git, host, target, remote, judged, left).catch(() => undefined);
+    try {
+      await push(git, host, target, remote, judged, left);
+    } catch (error) {
+      if (!(await remoteHolds(git, host, target, judged, left))) throw error;
+    }
     return landedAt(already);
   }
   await push(git, host, target, remote, judged, left);
@@ -619,6 +624,51 @@ async function pushAndOpen(
 }
 
 /** Push the branch's tip to the pinned remote, never forced. */
+/** The `-c` settings every remote call runs under: no hooks, no askpass, only the judged protocol, the host's pinned credentials. */
+function remoteConfig(host: LandHost, judged: AllowedRemote): string[] {
+  return [
+    "-c", "core.sshCommand=ssh",
+    "-c", "core.askPass=",
+    ...NO_HOOKS,
+    "-c", "core.fsmonitor=false",
+    "-c", "protocol.allow=never",
+    "-c", `protocol.${judged.scheme}.allow=always`,
+    "-c", "credential.helper=",
+    ...(host.pins?.credentialHelpers ?? []).flatMap(([key, value]) => ["-c", `${key}=${value}`]),
+  ];
+}
+
+/**
+ * Whether the remote's `target.branch` already holds the checkout's tip: its
+ * tip is that commit, or one the checkout knows that descends from it. Any
+ * failure to tell answers no.
+ */
+async function remoteHolds(git: Git, host: LandHost, target: LandTarget, judged: AllowedRemote, left: () => number): Promise<boolean> {
+  // Asked from an empty repository of its own, as `push` is: the run's config is never read.
+  let scratch: string | undefined;
+  try {
+    const local = await git(target.cwd, ["rev-parse", "--verify", `refs/heads/${target.branch}^{commit}`]);
+    scratch = scratchDir();
+    await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env: host.env });
+    const { stdout } = await run(
+      "git",
+      [...remoteConfig(host, judged), "ls-remote", "--", judged.url, `refs/heads/${target.branch}`],
+      { cwd: scratch, timeoutMs: left(), env: { ...host.env, GIT_DIR: scratch, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" } },
+    );
+    const remoteTip = stdout.trim().split(/\s+/)[0];
+    if (!remoteTip) return false;
+    if (remoteTip === local) return true;
+    await git(target.cwd, ["merge-base", "--is-ancestor", local, remoteTip]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    try {
+      if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
+    } catch {}
+  }
+}
+
 async function push(
   git: Git,
   host: LandHost,
@@ -639,14 +689,7 @@ async function push(
     await run(
       "git",
       [
-        "-c", "core.sshCommand=ssh",
-        "-c", "core.askPass=",
-        ...NO_HOOKS,
-        "-c", "core.fsmonitor=false",
-        "-c", "protocol.allow=never",
-        "-c", `protocol.${judged.scheme}.allow=always`,
-        "-c", "credential.helper=",
-        ...(host.pins?.credentialHelpers ?? []).flatMap(([key, value]) => ["-c", `${key}=${value}`]),
+        ...remoteConfig(host, judged),
         "push",
         "--receive-pack=git-receive-pack",
         "--quiet",

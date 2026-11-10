@@ -457,15 +457,15 @@ describe("landing a run whose work moved off its branch", () => {
     expect(upstream.rev("refs/heads/teammates/tidy-task-list")).toBe(commit);
   });
 
-  it("takes that pull request even when the branch on the remote moved on and the push is refused", async () => {
-    const { h, place } = await runWithCommit();
+  it("takes that pull request when the push is refused but the remote's branch already holds the run's commit", async () => {
+    const { h, place, commit } = await runWithCommit();
     git(place.cwd, "branch", "-m", "fsd/run-1", "teammates/tidy-task-list");
-    // The remote's branch holds a commit the checkout doesn't: a push would not fast-forward.
-    git(repo, "checkout", "-q", "-b", "elsewhere");
+    // The run pushed its commit and one more on top: a push of the checkout's tip would not fast-forward.
+    git(repo, "checkout", "-q", "-b", "ahead", commit);
     writeFileSync(join(repo, "other.txt"), "pushed by the run\n");
     git(repo, "add", "other.txt");
-    git(repo, "commit", "-q", "-m", "Elsewhere");
-    git(repo, "push", "-q", "origin", "elsewhere:refs/heads/teammates/tidy-task-list");
+    git(repo, "commit", "-q", "-m", "Ahead");
+    git(repo, "push", "-q", "origin", "ahead:refs/heads/teammates/tidy-task-list");
     const remoteTip = upstream.rev("refs/heads/teammates/tidy-task-list");
     writeFileSync(
       gh,
@@ -478,6 +478,28 @@ describe("landing a run whose work moved off its branch", () => {
     );
 
     expect(landed).toMatchObject({ kind: "pull-request", number: 5027 });
+    expect(upstream.rev("refs/heads/teammates/tidy-task-list")).toBe(remoteTip);
+    expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
+  });
+
+  // The open pull request lacks the reviewed commit, so it is not the landing.
+  it("refuses with push-failed when the push is refused and the remote's branch lacks the run's commit", async () => {
+    const { h, place } = await runWithCommit();
+    git(place.cwd, "branch", "-m", "fsd/run-1", "teammates/tidy-task-list");
+    git(repo, "checkout", "-q", "-b", "elsewhere");
+    writeFileSync(join(repo, "other.txt"), "pushed by the run\n");
+    git(repo, "add", "other.txt");
+    git(repo, "commit", "-q", "-m", "Elsewhere");
+    git(repo, "push", "-q", "origin", "elsewhere:refs/heads/teammates/tidy-task-list");
+    const remoteTip = upstream.rev("refs/heads/teammates/tidy-task-list");
+    writeFileSync(
+      gh,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$2" = "list" ]; then echo '[{"number":5027,"url":"https://github.com/acme/widgets/pull/5027"}]'; else echo '${PR_URL}'; fi\n`,
+    );
+
+    await expect(
+      h.land!({ cwd: place.cwd, branch: "fsd/run-1", baseCommit: place.repo!.baseCommit }, { kind: "pull-request", title: "t", body: "b", gh }),
+    ).rejects.toMatchObject({ reason: "push-failed" });
     expect(upstream.rev("refs/heads/teammates/tidy-task-list")).toBe(remoteTip);
     expect(ghCalls().filter((call) => call.startsWith("pr create"))).toEqual([]);
   });
