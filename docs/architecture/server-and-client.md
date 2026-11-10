@@ -81,6 +81,7 @@ custom) mount alongside it via the `adapters` option — see
 | GET | `/api/flows/users/:userId/stream` | The push socket, taken as an upgrade by the host; a plain GET answers 426 |
 | POST | `/api/flows/:flowId/actions/:action` | Execute action (new session) |
 | POST | `/api/flows/:flowId/:sessionId/actions/:action` | Execute action (existing session) |
+| POST | `/api/flows/:flowId/:sessionId/reads/:readName` | Run a flow read on an existing session: `200 { output }`, stored nowhere. Fenced as the action route; it never creates a session ([Reads](./flows-and-actions.md#reads)) |
 | GET | `/api/flows/:flowId/requests/:requestId/stream` | SSE request stream |
 | GET | `/api/flows/sessions` | List sessions (`flowKind` and exact `flowId` filters) |
 | GET | `/api/flows/sessions/:sessionId` | Session detail (projected: `state` holds only `session.client.expose` and readonly fields; no journal or stored resources) |
