@@ -3906,6 +3906,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             if (attempts.length < landAttempts && !UNFIXABLE_LANDINGS.has(outcome.reason ?? "")) {
               const handed = await handLandingToRun(ctx, state, answer.land!, answer.words ?? null, attempts);
               if (handed !== null) {
+                // "revise" because the run takes one more step through the steer
+                // loop; the pending `landing` it carries lands again when that step stops.
                 await reviewed("revise", null, handed);
                 return input;
               }

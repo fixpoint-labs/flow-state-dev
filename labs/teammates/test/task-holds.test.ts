@@ -7,7 +7,7 @@
  * sends the answer somewhere that refuses it, and the task waits forever.
  */
 import { describe, expect, it } from "vitest";
-import { holdsOfTasks, reviewOf, toBoardTask } from "../src/adapter";
+import { holdsOfTasks, inboxAnswerOf, reviewOf, toBoardTask } from "../src/adapter";
 
 const CONVERSATION = "sess-lead";
 const RUN = "sess-run";
@@ -75,5 +75,19 @@ describe("a run's review is read from its latest review stop", () => {
   it("is undefined before the run stops for review, or for a stop that isn't a review", () => {
     expect(reviewOf([{ type: "message" }])).toBeUndefined();
     expect(reviewOf([{ type: "suspension", kind: "approval", data: { branch: "b" } }])).toBeUndefined();
+  });
+});
+
+// The note typed on Open a PR or Retry is what a failed landing hands the
+// coding session; dropped here, the run retries blind.
+describe("an accept carries its note to the run", () => {
+  it("keeps the words and the landing on an accept", () => {
+    expect(inboxAnswerOf({ verdict: "accepted", land: "pull-request", words: "Keep trying until it's pushed." })).toEqual({
+      value: { verdict: "accepted", land: "pull-request", words: "Keep trying until it's pushed." },
+    });
+  });
+
+  it("sends a bare accept as before", () => {
+    expect(inboxAnswerOf({ verdict: "accepted" })).toEqual({ value: { verdict: "accepted" } });
   });
 });
