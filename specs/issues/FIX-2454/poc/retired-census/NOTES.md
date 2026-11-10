@@ -16,8 +16,8 @@ node --test specs/issues/FIX-2454/poc/retired-census/census.test.mjs      # the 
 ```
 
 `--after` reads `git grep`, so it needs no npm and no worktree for the control. It exempts only
-the refusals the owner kept ([DECISIONS.md](../../DECISIONS.md#kept-refusals)), each with its
-exact line count.
+the refusals the owner kept ([DECISIONS.md](../../DECISIONS.md#kept-refusals)), each line by its
+file and exact text.
 
 **Result, 2026-11-05, on `origin/main` d6a38c09.** PASS: 29 entries, 10 published and 19 never
 (by kind: values 3 published; keys 6 published, 10 never; stored shapes 1 published, 9 never).

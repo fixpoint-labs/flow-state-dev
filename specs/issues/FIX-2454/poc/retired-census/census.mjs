@@ -21,9 +21,10 @@
  * 4. After (`--after [ref]`), the spec's goal check (2): the end state in source,
  *    read from the working tree or a git ref, with no npm. Every refusal-shaped
  *    line under `packages/<pkg>/src`, and every line naming either helper, fails
- *    unless EXCLUDED (not a retired name) or KEPT (a refusal the owner kept). Each
- *    KEPT row must match exactly its count of lines: one more is the exemption
- *    widening, one fewer is a kept site gone and the row stale. Its control is
+ *    unless EXCLUDED (not a retired name) or KEPT (a line of a refusal the owner
+ *    kept, by file and exact text). Each KEPT row must match exactly one line:
+ *    two is the exemption widening, none is a kept line gone or changed and the
+ *    row stale. Its control is
  *    `--after ebec5326`, the epic's start, which must FAIL on every listed site.
  *
  * Run from the repository root:
@@ -136,29 +137,38 @@ const EXCLUDED = [
 ];
 
 /**
- * The retired-name refusals the owner kept, by file and the text that names them, with how many
- * lines each holds. Epic D4's amendment (PR #4830, as merged) keeps the refusals whose absence
- * would fail silently: the `human_*` reasons and the `dispatcher` option. `--after` exempts these
- * lines and no others. The kept stored-`blocked` reader (`retired-shapes.ts`) has no
- * refusal-shaped line, so it needs no row.
+ * The retired-name refusals the owner kept: one row per line, as [file, the line's text with its
+ * whitespace collapsed]. Epic D4's amendment (PR #4830, as merged) keeps the refusals whose
+ * absence would fail silently: the `human_*` reasons and the `dispatcher` option. `--after`
+ * exempts these exact lines and no others, so a new refusal cannot stand in for a kept line that
+ * was reworded. The kept stored-`blocked` reader (`retired-shapes.ts`) has no refusal-shaped
+ * line, so it needs no row.
  */
 const KEPT = [
   // A `human_*` stop core 0.2.0 stored, read as its `user_*` reason.
-  { file: "contracts/src/types/suspension.ts", needle: "retired-name-refusal: a stop core 0.2.0 stored", lines: 2 },
-  { file: "core/src/errors/resolve-allowed-actions.ts", needle: 'reason === "human_input"', lines: 1 },
-  { file: "react/src/hooks/useSuspensionForm.ts", needle: 'item.reason !== "human_input"', lines: 1 },
+  ["contracts/src/types/suspension.ts", "if (reason === \"human_approval\") return \"user_approval\"; // retired-name-refusal: a stop core 0.2.0 stored"],
+  ["contracts/src/types/suspension.ts", "if (reason === \"human_input\") return \"user_input\"; // retired-name-refusal: a stop core 0.2.0 stored"],
+  ["core/src/errors/resolve-allowed-actions.ts", "return reason === \"user_input\" || reason === \"human_input\" ? [\"submit\"] : [\"approve\", \"reject\"]; // retired-name-refusal: a stop core 0.2.0 stored"],
+  ["react/src/hooks/useSuspensionForm.ts", "if (item.reason !== \"user_input\" && item.reason !== \"human_input\") return \"approval\"; // retired-name-refusal: a stop core 0.2.0 stored"],
   // A new `human_*` reason refused, naming its `user_*` reason.
-  { file: "engine/src/context/createExecutionContext.ts", needle: 'suspendOpts.reason === "human_approval"', lines: 2 },
-  { file: "engine/src/context/createExecutionContext.ts", needle: 'ctx.suspend: reason "${suspendOpts.reason}" was renamed', lines: 1 },
-  { file: "react/src/hooks/useSuspensions.ts", needle: "human_", lines: 3 },
-  { file: "react/src/hooks/useSuspensions.ts", needle: 'useSuspensions: reason "${reason}" was renamed', lines: 1 },
+  ["engine/src/context/createExecutionContext.ts", "if (suspendOpts.reason === \"human_approval\" || suspendOpts.reason === \"human_input\") { // retired-name-refusal: the old reasons"],
+  ["engine/src/context/createExecutionContext.ts", "const renamed = suspendOpts.reason === \"human_approval\" ? \"user_approval\" : \"user_input\"; // retired-name-refusal: the old reasons"],
+  ["engine/src/context/createExecutionContext.ts", "throw new Error(`ctx.suspend: reason \"${suspendOpts.reason}\" was renamed. Use \"${renamed}\".`);"],
+  ["react/src/hooks/useSuspensions.ts", "/** The `user_*` reason each old `human_*` one was renamed to. */"],
+  ["react/src/hooks/useSuspensions.ts", "human_approval: \"user_approval\", // retired-name-refusal: the old reason, refused or read as its new one"],
+  ["react/src/hooks/useSuspensions.ts", "human_input: \"user_input\" // retired-name-refusal: the old reason, refused or read as its new one"],
+  ["react/src/hooks/useSuspensions.ts", "if (renamed !== undefined) throw new Error(`useSuspensions: reason \"${reason}\" was renamed. Use \"${renamed}\".`);"],
   // The `dispatcher` option refused, naming `runner`: the helper, and its four callers' import and call.
-  { file: "engine/src/transports/runner.ts", needle: "Refuse the `dispatcher` option key", lines: 1 },
-  { file: "engine/src/transports/runner.ts", needle: "function refuseRetiredDispatcherOption(", lines: 1 },
-  { file: "engine/src/flowstate/createFlowState.ts", needle: "refuseRetiredDispatcherOption", lines: 2 },
-  { file: "engine/src/routes/createFlowApiRouter.ts", needle: "refuseRetiredDispatcherOption", lines: 2 },
-  { file: "engine/src/routes/http-handlers.ts", needle: "refuseRetiredDispatcherOption", lines: 2 },
-  { file: "engine/src/transports/host/createInboundTransportHost.ts", needle: "refuseRetiredDispatcherOption", lines: 2 },
+  ["engine/src/transports/runner.ts", "* Refuse the `dispatcher` option key, which is now `runner`. A caller that is"],
+  ["engine/src/transports/runner.ts", "export function refuseRetiredDispatcherOption(options: object, where: string): void {"],
+  ["engine/src/flowstate/createFlowState.ts", "import { refuseRetiredDispatcherOption } from \"../transports/runner\";"],
+  ["engine/src/flowstate/createFlowState.ts", "refuseRetiredDispatcherOption(options, \"createFlowState\");"],
+  ["engine/src/routes/createFlowApiRouter.ts", "import { refuseRetiredDispatcherOption } from \"../transports/runner\";"],
+  ["engine/src/routes/createFlowApiRouter.ts", "refuseRetiredDispatcherOption(options, \"createFlowApiRouter\");"],
+  ["engine/src/routes/http-handlers.ts", "import { refuseRetiredDispatcherOption } from \"../transports/runner\";"],
+  ["engine/src/routes/http-handlers.ts", "refuseRetiredDispatcherOption(options, \"createFlowRouteHandlers\");"],
+  ["engine/src/transports/host/createInboundTransportHost.ts", "import { refuseRetiredDispatcherOption } from \"../runner\";"],
+  ["engine/src/transports/host/createInboundTransportHost.ts", "refuseRetiredDispatcherOption(options, \"createInboundTransportHost\");"],
 ];
 
 /** The two ad-hoc helpers the spec names; `--after` reads every line naming one, refusal-shaped or not. */
@@ -221,6 +231,9 @@ function refusalLines(shape = REFUSAL_SHAPE, ref = null) {
   }).filter((l) => !/\.(test|spec)\.|\/test\//.test(l.file));
 }
 
+/** A line's text with its whitespace collapsed, as KEPT records it. */
+const normalise = (text) => text.trim().split(/\s+/).join(" ");
+
 const excluded = (l) => EXCLUDED.some(([f, needle]) => l.file.startsWith(f) && l.text.includes(needle));
 
 /** `--after`: nothing refuses or reads a retired name in source but the KEPT rows, each exactly. */
@@ -233,17 +246,17 @@ function after(ref) {
   console.log(`census --after · ${ref ?? "working tree"} · ${lines.length} refusal-shaped or helper-named src lines`);
   for (const l of lines) {
     if (excluded(l)) continue;
-    const kept = KEPT.findIndex((k) => l.file === k.file && l.text.includes(k.needle));
+    const kept = KEPT.findIndex(([file, text]) => l.file === file && normalise(l.text) === text);
     if (kept >= 0) { counts[kept]++; continue; }
     const owner = ENTRIES.find((e) => e.sites.some(([f, needle]) => l.file === f && l.text.includes(needle)));
     const helper = l.text.match(HELPERS)?.[0];
     failed++;
     console.log(`FAIL ${helper ?? owner?.id ?? "unowned"} ${l.file}:${l.n} ${l.text.trim().slice(0, 100)}`);
   }
-  KEPT.forEach((k, i) => {
-    const ok = counts[i] === k.lines;
+  KEPT.forEach(([file, text], i) => {
+    const ok = counts[i] === 1;
     if (!ok) failed++;
-    console.log(`${ok ? "kept" : "FAIL"} ${k.file} · ${k.needle} · ${counts[i]} of ${k.lines} line(s)${ok ? "" : counts[i] > k.lines ? "  (the exemption widened)" : "  (a kept site is gone: the row is stale)"}`);
+    console.log(`${ok ? "kept" : "FAIL"} ${file} · ${text.slice(0, 80)}${ok ? "" : counts[i] > 1 ? `  (found ${counts[i]} times: the exemption widened)` : "  (not found: the kept line is gone or changed, so the row is stale)"}`);
   });
   console.log(failed ? `\nFAIL · ${failed}` : "\nPASS");
   process.exit(failed ? 1 : 0);

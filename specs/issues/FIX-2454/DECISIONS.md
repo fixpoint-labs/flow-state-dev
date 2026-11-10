@@ -85,7 +85,7 @@ BP-030 and BP-034 rewrites) are in the retained Nov 5 revision of this file, mer
   > refusal through `refuseRetiredDispatcherOption`, the task board's `dispatcher` refusal, and
   > the stored `blocked` read. So `refuseRetiredDispatcherOption` stays, and the goal check's
   > "appears nowhere" holds for `rejectRemovedMiddleware` only. The census's `--after` exempts
-  > the kept lines by file and text, each with its exact line count, and nothing wider (FIX-2639).
+  > each kept line by its file and exact text, and nothing wider (FIX-2639).
 - **The guard.** A reader of a stored record whose absence would *silently corrupt data*, not
   merely fail, is raised to the coordinator before it is removed. The census's one published
   stored shape is `blocked` read as `held` (`retired-shapes.ts`); the implementer checks what a

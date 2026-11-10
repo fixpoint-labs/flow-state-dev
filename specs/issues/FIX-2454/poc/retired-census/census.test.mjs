@@ -118,6 +118,32 @@ describe("retired-name census --after", () => {
     assert.match(r.stdout, /FAIL\b.*rejectRemovedMiddleware/);
   });
 
+  /** Rewords the kept comment in useSuspensions.ts so it no longer reads as a refusal, freeing its slot. */
+  function freeCommentSlot(dir, append) {
+    const path = join(dir, "packages/react/src/hooks/useSuspensions.ts");
+    const before = readFileSync(path, "utf8");
+    const reworded = before.replace("each old `human_*` one was renamed to.", "each old `human_*` one is the equivalent of.");
+    assert.notEqual(reworded, before, "the kept comment is where the test expects it");
+    writeFileSync(path, reworded + append);
+    git(dir, "add", "-A");
+  }
+
+  it("fails when a new refusal takes a reworded kept line's place, keeping the count", () => {
+    const dir = tree();
+    freeCommentSlot(dir, 'export const r = (x: string) => { if (x === "human_review") throw new Error("human_review was renamed"); };\n');
+    const r = run(dir);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /FAIL\b.*react\/src\/hooks\/useSuspensions\.ts:\d+ .*human_review/);
+  });
+
+  it("fails on rejectRemovedMiddleware even where it keeps a kept file's count", () => {
+    const dir = tree();
+    freeCommentSlot(dir, "function rejectRemovedMiddleware(): void {} // human_ was renamed\n");
+    const r = run(dir);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /FAIL\b.*rejectRemovedMiddleware/);
+  });
+
   it("reads a git ref when one is given, not the working tree", () => {
     const dir = tree();
     plant(dir, "core/src/planted.ts", 'throw new Error("`plantedKey` was removed");\n');
