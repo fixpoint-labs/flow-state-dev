@@ -55,7 +55,15 @@ export async function claimAttachments(
   }
   const held: string[] = [];
   for (const [index, id] of ids.entries()) {
-    const result = await blobs.claim(id, claim);
+    let result: Awaited<ReturnType<BlobStore["claim"]>>;
+    try {
+      result = await blobs.claim(id, claim);
+    } catch (error) {
+      // The store failed: hand back this send's claims, the one in flight
+      // included (releasing a file this send never claimed changes nothing).
+      await releaseAttachments(blobs, [...held, id], claim.owner, claim.send).catch(() => undefined);
+      throw error;
+    }
     if (result === "claimed" || result === "already-owned") held.push(id);
     else {
       await releaseAttachments(blobs, held, claim.owner, claim.send);

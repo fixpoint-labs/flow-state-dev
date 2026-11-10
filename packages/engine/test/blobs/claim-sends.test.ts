@@ -77,4 +77,19 @@ describe.each(stores)("%s: sends sharing a file", (_name, make) => {
     await second.refuse();
     expect((await store.head(id))?.owner).toBeUndefined();
   });
+
+  it("hands back what a send already claimed when the store fails on a later file", async () => {
+    const store = make();
+    const first = await uploaded(store);
+    const second = await uploaded(store);
+    const failing: BlobStore = {
+      ...store,
+      claim: (id, claim) => (id === second.id ? Promise.reject(new Error("store down")) : store.claim(id, claim))
+    };
+    await expect(
+      claimAttachments(failing, [first.file, second.file], { uploader: ALICE, owner: OWNER, send: "send-a" })
+    ).rejects.toThrow("store down");
+    expect((await store.head(first.id))?.owner).toBeUndefined();
+    await send(store, [first.file], "send-b");
+  });
 });
