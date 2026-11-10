@@ -101,6 +101,8 @@ describe("attaching in PromptInput", () => {
     const sent = onSubmit.mock.calls[0]![0];
     expect(sent.files).toHaveLength(1);
     expect(sent.files[0]!.url).toMatch(/^fsd-blob:b_/);
+    // The same file as a send takes it: what `upload` returned, so a page hands it on untouched.
+    expect(sent.attachments).toEqual([{ type: "file", mediaType: "image/png", filename: "shot.png", data: sent.files[0]!.url }]);
     // No bytes, and no local preview address: a data URL, base64, or a `blob:` URL.
     expect(JSON.stringify(sent)).not.toMatch(/"(data|blob):|base64/);
     expect(client.upload).toHaveBeenCalledOnce();
@@ -208,6 +210,37 @@ describe("attaching in PromptInput", () => {
     await act(async () => fireEvent.drop(form, { dataTransfer: { types: ["Files"], files } }));
     expect(form.getAttribute("data-dragging")).toBeNull();
     expect(screen.getByRole("img", { name: "dropped.png" })).toBeTruthy();
+  });
+
+  // A page that draws one composer twice (one per responsive layout) holds one draft for both:
+  // a file attached in one is sent from the other, and cleared from both, never sent twice.
+  it("shares one attachment state between two composers given the same one", async () => {
+    const client = uploader();
+    const onSubmit = vi.fn<(message: PromptInputMessage) => void>();
+    function Twice() {
+      const attachments = useAttachments({ client });
+      return (
+        <>
+          {[0, 1].map((i) => (
+            <PromptInput attachments={attachments} key={i} onSubmit={onSubmit}>
+              <PromptInputAttachments />
+              <PromptInputTextarea />
+              <PromptInputSubmit />
+            </PromptInput>
+          ))}
+        </>
+      );
+    }
+    render(<Twice />);
+    const [first, second] = screen.getAllByTestId("message-input");
+    await act(async () => paste(first!, [file("shot.png", "image/png")]));
+    expect(screen.getAllByRole("img", { name: "shot.png" })).toHaveLength(2);
+    await act(async () => {
+      fireEvent.keyDown(second!, { key: "Enter" });
+    });
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0]![0].attachments.map((f) => f.filename)).toEqual(["shot.png"]);
+    expect(screen.queryAllByRole("img", { name: "shot.png" })).toHaveLength(0);
   });
 });
 

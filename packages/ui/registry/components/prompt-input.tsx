@@ -59,6 +59,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
+import type { FileContent } from "@flow-state-dev/core/items";
 import { isSendKey } from "@flow-state-dev/react";
 import {
   AttachmentFileInput,
@@ -316,12 +317,25 @@ export interface PromptInputMessage {
   text: string;
   /** The message's files, each by reference. */
   files: FileAttachment[];
+  /**
+   * The same files as `upload` returned them, in the order attached: what a
+   * send takes as its `attachments` (`sendAction`, `useHarnessLines().send`).
+   */
+  attachments: FileContent[];
 }
 
 export type PromptInputProps = Omit<
   HTMLAttributes<HTMLFormElement>,
   "onSubmit" | "onError"
 > & {
+  /**
+   * The attachment state, from `useAttachments`, when it is held above the
+   * composer: two drawings of one composer pass the same one, so a file
+   * attached in either is sent, and cleared, once. Its own options then apply,
+   * and `client`, `sessionId`, `accept`, the limits and `onError` here are
+   * ignored. Ignored inside a PromptInputProvider, whose own applies.
+   */
+  attachments?: Attachments;
   /** Where attached files are uploaded. With none, an attached file is refused by name. Ignored inside a PromptInputProvider, whose own applies. */
   client?: AttachmentUploader | null;
   /** The open conversation: a switch drops the draft's files. */
@@ -356,6 +370,7 @@ const ERROR_CODES = {
 } as const;
 
 export const PromptInput = ({
+  attachments,
   client,
   sessionId,
   accept,
@@ -368,6 +383,9 @@ export const PromptInput = ({
   const controller = useOptionalPromptInputController();
   if (controller) {
     return <PromptInputForm attachments={controller.attachments} controller={controller} {...props} />;
+  }
+  if (attachments) {
+    return <PromptInputForm attachments={attachments} controller={null} {...props} />;
   }
   return (
     <PromptInputOwnAttachments
@@ -387,7 +405,7 @@ export const PromptInput = ({
 
 type PromptInputFormProps = Omit<
   PromptInputProps,
-  "client" | "sessionId" | "accept" | "maxFiles" | "maxFileSize" | "onError" | "syncHiddenInput"
+  "attachments" | "client" | "sessionId" | "accept" | "maxFiles" | "maxFileSize" | "onError" | "syncHiddenInput"
 >;
 
 /** A PromptInput outside any provider: the attachment state is its own. */
@@ -519,7 +537,7 @@ const PromptInputForm = ({
           ...(file.filename === undefined ? {} : { filename: file.filename }),
         }));
 
-        const result = onSubmit({ files, text }, event);
+        const result = onSubmit({ files, attachments: uploaded, text }, event);
 
         if (result instanceof Promise) {
           try {
