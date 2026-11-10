@@ -24,6 +24,7 @@ import {
   PromptInput,
   PromptInputAttachButton,
   PromptInputAttachments,
+  PromptInputProvider,
   PromptInputSubmit,
   PromptInputTextarea,
   type PromptInputMessage,
@@ -111,16 +112,19 @@ describe("attaching in PromptInput", () => {
   });
 
   // A switch of conversation while Send waits on an upload drops the draft's files. The line must
-  // not then go out without them, to the conversation left: nothing is sent, and the page keeps its draft.
+  // not then go out without them, to the conversation left: nothing is sent, and a composer that
+  // holds its text (as the apps' do, through a provider) keeps it for the person to send again.
   it("sends nothing when the conversation changes while Send waits on an upload", async () => {
     let open!: () => void;
     const client = uploader({ gate: new Promise<void>((done) => (open = done)) });
     const onSubmit = vi.fn<(message: PromptInputMessage) => void>();
     const composer = (sessionId: string) => (
-      <PromptInput client={client} onSubmit={onSubmit} sessionId={sessionId}>
-        <PromptInputAttachments />
-        <PromptInputTextarea />
-      </PromptInput>
+      <PromptInputProvider client={client} sessionId={sessionId}>
+        <PromptInput onSubmit={onSubmit}>
+          <PromptInputAttachments />
+          <PromptInputTextarea />
+        </PromptInput>
+      </PromptInputProvider>
     );
     const { rerender } = render(composer("s1"));
     const box = screen.getByTestId("message-input");
@@ -133,6 +137,7 @@ describe("attaching in PromptInput", () => {
     await act(async () => open());
     await act(async () => undefined);
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByTestId("message-input")).toHaveProperty("value", "look");
   });
 
   it("uploads on attach, and Send waits only for an upload still in flight", async () => {
@@ -294,6 +299,27 @@ describe("attaching in PromptInput", () => {
     onTestFinished(() => click.mockRestore());
     fireEvent.click(within(remaining).getByRole("button", { name: "Attach files" }));
     // Its own picker, the one left on the page, and nothing else.
+    expect(opened).toEqual([...document.querySelectorAll('input[type="file"]')]);
+    expect(opened).toHaveLength(1);
+  });
+
+  // A provider lifts the state out of the composer, so an app may put its + beside the composer
+  // rather than in it. That + must still open the composer's picker.
+  it("opens the composer's picker from a + beside it inside a PromptInputProvider", async () => {
+    render(
+      <PromptInputProvider client={uploader()}>
+        <PromptInput onSubmit={() => undefined}>
+          <PromptInputTextarea />
+        </PromptInput>
+        <PromptInputAttachButton />
+      </PromptInputProvider>,
+    );
+    const opened: HTMLInputElement[] = [];
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(function (this: HTMLInputElement) {
+      opened.push(this);
+    });
+    onTestFinished(() => click.mockRestore());
+    fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
     expect(opened).toEqual([...document.querySelectorAll('input[type="file"]')]);
     expect(opened).toHaveLength(1);
   });

@@ -9,6 +9,7 @@ import type {
   KeyboardEventHandler,
   PropsWithChildren,
   ReactNode,
+  RefObject,
 } from "react";
 
 import {
@@ -436,11 +437,27 @@ const PromptInputForm = ({
 }) => {
   const formRef = useRef<HTMLFormElement | null>(null);
   // This composer's own picker. The attachment state may be shared by two composers (two drawings of
-  // one), and a shared ref would hold one picker, nulled when its composer unmounts.
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // one), and a shared ref would hold one picker, nulled when its composer unmounts. The picker is
+  // also lent to the shared state while mounted, so a + outside the composer (beside it, inside a
+  // PromptInputProvider) still opens one; it takes the loan back only if no other picker has since.
+  const pickerRef = useRef<HTMLInputElement | null>(null);
+  const shared = attachments.fileInputRef;
+  const fileInputRef = useMemo<RefObject<HTMLInputElement | null>>(
+    () => ({
+      get current() {
+        return pickerRef.current;
+      },
+      set current(el) {
+        if (el) shared.current = el;
+        else if (shared.current === pickerRef.current) shared.current = null;
+        pickerRef.current = el;
+      },
+    }),
+    [shared]
+  );
   const own = useMemo<Attachments>(
-    () => ({ ...attachments, fileInputRef, openFileDialog: () => fileInputRef.current?.click() }),
-    [attachments]
+    () => ({ ...attachments, fileInputRef, openFileDialog: () => pickerRef.current?.click() }),
+    [attachments, fileInputRef]
   );
   // Set while a Send waits on uploads and onSubmit, so a second Enter doesn't send the same files again.
   const submittingRef = useRef(false);
