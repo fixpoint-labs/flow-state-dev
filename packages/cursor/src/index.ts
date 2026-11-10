@@ -34,6 +34,7 @@ export {
   type CursorRunUsage,
   type CursorSdkMessage,
   type CursorSendOptions,
+  type CursorUserMessage,
   type CursorWireUsage,
   type ResolveCursorClient,
   type ResolvedCursorClient,
