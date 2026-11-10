@@ -63,12 +63,38 @@ export function rebuildOnChange({ outDir, repoRoot, build, debounceMs = 200 }) {
     timer = setTimeout(() => void run(), debounceMs);
   };
 
+  // With no record yet (a page never built, or whose first build failed), the
+  // page's own folder and its `src/` are watched instead, so the save that
+  // fixes it still builds. Dropped once a build records its inputs.
+  const page = dirname(outDir);
+  /** @type {import("node:fs").FSWatcher[]} */
+  let fallback = [];
+  const watchFallback = () => {
+    if (fallback.length > 0) return;
+    for (const [dir, recursive] of [[page, false], [join(page, "src"), true]]) {
+      try {
+        const watcher = watch(dir, { recursive }, (_event, name) => {
+          if (name !== null && !join(dir, String(name)).startsWith(outDir)) schedule();
+        });
+        watcher.on("error", () => {});
+        fallback.push(watcher);
+      } catch {
+        // No `src/`: the page folder alone.
+      }
+    }
+  };
+
   // Watches the folders of the files the last build recorded. With no record
   // (a failed build empties its output), the previous set stays watched, so
   // the save that fixes the failure still rebuilds.
   const rewatch = () => {
     const inputs = recordedInputs(outDir, repoRoot);
-    if (inputs === undefined) return;
+    if (inputs === undefined) {
+      if (watchers.size === 0) watchFallback();
+      return;
+    }
+    for (const watcher of fallback) watcher.close();
+    fallback = [];
     files = new Set(inputs);
     const dirs = new Set(inputs.map((file) => dirname(file)));
     for (const [dir, watcher] of watchers) {
@@ -117,8 +143,9 @@ export function rebuildOnChange({ outDir, repoRoot, build, debounceMs = 200 }) {
     close() {
       closed = true;
       clearTimeout(timer);
-      for (const watcher of watchers.values()) watcher.close();
+      for (const watcher of [...watchers.values(), ...fallback]) watcher.close();
       watchers.clear();
+      fallback = [];
     },
   };
 }

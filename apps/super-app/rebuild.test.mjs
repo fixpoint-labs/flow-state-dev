@@ -119,4 +119,29 @@ describe("rebuildOnChange", () => {
     await sleep(200);
     assert.equal(build.runs, 2);
   });
+
+  it("builds on a source save when the page has never built successfully", async () => {
+    // No record at start and a first build that fails: nothing recorded says what to watch.
+    rmSync(join(outDir, "build-inputs.json"));
+    let fail = true;
+    const build = fakeBuild();
+    const flaky = async () => {
+      if (fail) {
+        build.runs += 1;
+        return;
+      }
+      await build();
+    };
+    watcher = rebuildOnChange({ outDir, repoRoot: repo, build: flaky, debounceMs: 20 });
+    await sleep(150);
+    assert.equal(build.runs, 1, "the missing page is built at start");
+    fail = false;
+    editA("fixed");
+    await sleep(200);
+    assert.equal(build.runs, 2);
+    // Recorded now: only recorded files rebuild it.
+    writeFileSync(join(repo, "src/unrelated.ts"), "z");
+    await sleep(200);
+    assert.equal(build.runs, 2);
+  });
 });
