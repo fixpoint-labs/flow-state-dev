@@ -102,9 +102,9 @@ export interface Attachments {
   add: (files: File[] | FileList) => void;
   remove: (id: string) => void;
   clear: () => void;
-  /** Waits for uploads in flight, then resolves to the uploaded files' references, leaving the draft as it is. */
+  /** Waits for the draft's uploads in flight, then resolves to those files' references, leaving the draft as it is. A file added meanwhile isn't included. */
   settle: () => Promise<FileContent[]>;
-  /** `settle`, then clears the draft: what Send carries. */
+  /** `settle`, then removes those files from the draft: what Send carries. A file added meanwhile stays, and a second `take` while one waits gets none of the first's files. */
   take: () => Promise<FileContent[]>;
   openFileDialog: () => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -215,6 +215,8 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
   // The source of truth, read synchronously by `add` (counts) and `settle`; state mirrors it for drawing.
   const filesRef = useRef<PendingAttachment[]>([]);
   const inFlight = useRef(new Map<string, Promise<void>>());
+  // Files a `take` in progress has claimed, so a second Send can't carry them too.
+  const reserved = useRef(new Set<string>());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // The latest options, read by callbacks that outlive a render.
   const latest = useRef({ client, prepare, onRefused });
@@ -247,7 +249,8 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
           next = { status: "ready", attachment };
         } catch (error) {
           const refusal = uploadRefusal(entry.filename, error, maxFileBytes);
-          refuse([refusal]);
+          // A file removed while it uploaded, or dropped with its conversation, isn't announced.
+          if (filesRef.current.some((f) => f.id === entry.id)) refuse([refusal]);
           next = { status: "refused", refusal: refusal.message };
         } finally {
           inFlight.current.delete(entry.id);
@@ -341,17 +344,32 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
     setRefusals([]);
   }, [update]);
 
-  const settle = useCallback(async () => {
-    const waiting = filesRef.current.map((f) => inFlight.current.get(f.id)).filter((p) => p !== undefined);
-    await Promise.all(waiting);
-    return filesRef.current.flatMap((f) => (f.status === "ready" && f.attachment ? [f.attachment] : []));
+  // The references of exactly `ids`, once their uploads finish: a file added meanwhile isn't in the batch.
+  const settleBatch = useCallback(async (ids: string[]) => {
+    await Promise.all(ids.map((id) => inFlight.current.get(id)).filter((p) => p !== undefined));
+    const batch = new Set(ids);
+    return filesRef.current.flatMap((f) => (batch.has(f.id) && f.status === "ready" && f.attachment ? [f.attachment] : []));
   }, []);
 
+  const settle = useCallback(() => settleBatch(filesRef.current.map((f) => f.id)), [settleBatch]);
+
   const take = useCallback(async () => {
-    const taken = await settle();
-    clear();
-    return taken;
-  }, [settle, clear]);
+    // Claimed before the wait, so a concurrent take gets none of these.
+    const ids = filesRef.current.map((f) => f.id).filter((id) => !reserved.current.has(id));
+    for (const id of ids) reserved.current.add(id);
+    try {
+      const taken = await settleBatch(ids);
+      const batch = new Set(ids);
+      update((prev) => {
+        for (const f of prev) if (batch.has(f.id) && f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+        return prev.filter((f) => !batch.has(f.id));
+      });
+      setRefusals([]);
+      return taken;
+    } finally {
+      for (const id of ids) reserved.current.delete(id);
+    }
+  }, [settleBatch, update]);
 
   const openFileDialog = useCallback(() => fileInputRef.current?.click(), []);
 

@@ -493,8 +493,10 @@ const PromptInputForm = ({
         form.reset();
       }
 
+      // The files on screen at Send; one attached while it uploads stays for the next message.
+      const sent = attachments.files.map((f) => f.id);
       const clear = () => {
-        attachments.clear();
+        for (const id of sent) attachments.remove(id);
         clearReferencedSources();
         controller?.textInput.clear();
       };

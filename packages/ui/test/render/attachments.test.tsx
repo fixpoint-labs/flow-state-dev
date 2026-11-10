@@ -9,7 +9,7 @@
  * state looks right while Send ships data URLs must fail here.
  */
 import type { FileContent } from "@flow-state-dev/core/items";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -211,6 +211,24 @@ describe("attaching in PromptInput", () => {
   });
 });
 
+describe("PromptInput's Send", () => {
+  it("leaves a file attached while Send waits in the draft for the next message", async () => {
+    let open!: () => void;
+    const client = uploader({ gate: new Promise<void>((done) => (open = done)) });
+    const { onSubmit, box } = composer(client);
+    await act(async () => pick([file("a.png", "image/png")]));
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    await act(async () => pick([file("b.png", "image/png")]));
+    await act(async () => open());
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0]![0].files.map((f) => f.filename)).toEqual(["a.png"]);
+    expect(screen.queryByRole("img", { name: "a.png" })).toBeNull();
+    expect(screen.getByRole("img", { name: "b.png" })).toBeTruthy();
+  });
+});
+
 describe("useAttachments in an app's own composer", () => {
   function Composer({ client, sessionId, onSend }: { client: AttachmentUploader; sessionId: string; onSend: (files: FileContent[]) => void }) {
     const attachments = useAttachments({ client, sessionId });
@@ -246,6 +264,66 @@ describe("useAttachments in an app's own composer", () => {
     expect(screen.getByRole("img", { name: "x.png" })).toBeTruthy();
     rerender(<Composer client={client} sessionId="s2" onSend={vi.fn()} />);
     expect(screen.queryByRole("img")).toBeNull();
+  });
+});
+
+describe("a send's batch", () => {
+  /** An uploader whose answer for each file waits on that file's own gate. */
+  function gated(refused: string[] = []) {
+    const gates = new Map<string, () => void>();
+    const client = {
+      upload: vi.fn(async (request: { data: Blob; mediaType?: string; filename?: string }): Promise<FileContent> => {
+        const name = request.filename ?? "";
+        await new Promise<void>((open) => gates.set(name, open));
+        if (refused.includes(name)) throw Object.assign(new Error("refused 500"), { status: 500 });
+        return { type: "file", mediaType: request.mediaType ?? "image/png", filename: name, data: `fsd-blob:b_${name.padEnd(10, "0").slice(0, 10)}` };
+      }),
+    } satisfies AttachmentUploader;
+    const open = (name: string) => act(async () => gates.get(name)!());
+    return { client, open };
+  }
+
+  it("carries only the files on screen when Send began; one attached while it waits stays for the next message", async () => {
+    const { client, open } = gated();
+    const { result } = renderHook(() => useAttachments({ client, prepare: async (f) => f }));
+    await act(async () => result.current.add([file("a.png", "image/png")]));
+    let taken!: Promise<FileContent[]>;
+    act(() => {
+      taken = result.current.take();
+    });
+    await act(async () => result.current.add([file("b.png", "image/png")]));
+    await open("b.png");
+    await open("a.png");
+    expect((await taken).map((f) => f.filename)).toEqual(["a.png"]);
+    // b was not sent, so it is still in the draft for the next Send.
+    expect(result.current.files.map((f) => f.filename)).toEqual(["b.png"]);
+  });
+
+  it("gives a second Send pressed while the first waits none of the first's files", async () => {
+    const { client, open } = gated();
+    const { result } = renderHook(() => useAttachments({ client, prepare: async (f) => f }));
+    await act(async () => result.current.add([file("a.png", "image/png")]));
+    let first!: Promise<FileContent[]>;
+    let second!: Promise<FileContent[]>;
+    act(() => {
+      first = result.current.take();
+      second = result.current.take();
+    });
+    await open("a.png");
+    expect(await first).toHaveLength(1);
+    // Sending a file twice would attach it to two messages.
+    expect(await second).toEqual([]);
+  });
+
+  it("doesn't announce a failed upload for a file already removed", async () => {
+    const { client, open } = gated(["a.png"]);
+    const onRefused = vi.fn();
+    const { result } = renderHook(() => useAttachments({ client, prepare: async (f) => f, onRefused }));
+    await act(async () => result.current.add([file("a.png", "image/png")]));
+    act(() => result.current.remove(result.current.files[0]!.id));
+    await open("a.png");
+    expect(onRefused).not.toHaveBeenCalled();
+    expect(result.current.refusals).toEqual([]);
   });
 });
 
