@@ -74,7 +74,6 @@ export const Entry = memo(function Entry({
         <div className="flex justify-end">
           <div className="max-w-[80%] rounded-lg bg-accent px-4 py-2.5 text-sm whitespace-pre-wrap" data-entry="user">
             {entry.text}
-            {entry.queued ? <span className="mt-1 block text-xs text-muted-foreground">waits for {workerName}'s answer</span> : null}
           </div>
         </div>
       );

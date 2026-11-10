@@ -8243,7 +8243,7 @@ check('a single-PR row applies an answered decision instead of parking', async (
   )
 
   // The guard bites where the decision is queued and NOT applied — a worker that died. Gates are derived
-  // from the post-worker row, so this is the reachable state in which an unapplied answer is still on it.
+  // from the post-worker entry, so this is the reachable state in which an unapplied answer is still on it.
   const died = await run('epic-wake.js', {
     args: epicArgs({
       issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, blockerResolutions: [{ for: null, answer: 'use the store adapter' }] })],

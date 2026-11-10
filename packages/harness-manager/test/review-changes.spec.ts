@@ -61,7 +61,7 @@ afterAll(() => {
 });
 
 /** What one harness step does: commit a file, commit nothing, commit without confirming a session, or fail. */
-type Step = "commits" | "no-commit" | "commits-no-session" | "throws";
+type Step = "commits" | "no-commit" | "commits-no-session" | "throws" | "commits-renames";
 
 interface SeenStep {
   prompt: string;
@@ -85,11 +85,13 @@ function stubHarness(script: Step[], seen: SeenStep[]) {
         if (step === "throws") throw new Error("the harness failed");
         const session = resume ?? `sess_${n}`;
         if (step !== "commits-no-session") await feeds.onSession(session, ctx as never);
-        if (step === "commits" || step === "commits-no-session") {
+        if (step === "commits" || step === "commits-no-session" || step === "commits-renames") {
           writeFileSync(join(cwd, `change-${n}.txt`), `change ${n}\n`);
           execFileSync("git", ["add", "."], { cwd });
           execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", `Change ${n}`], { cwd });
         }
+        // The run moves its work to a branch it names itself, as a coder did to get past a refused push.
+        if (step === "commits-renames") execFileSync("git", ["branch", "-m", "teammates/tidy-task-list"], { cwd });
         return {
           source: "stub/test",
           status: "completed" as const,
@@ -113,7 +115,15 @@ function scriptedJudge(verdict: HarnessJudgeVerdict) {
   };
 }
 
-function host(options: { script: Step[]; reviewChanges?: boolean; durable?: boolean; userDeadlineMs?: number; remote?: boolean; clone?: boolean }) {
+function host(options: {
+  script: Step[];
+  reviewChanges?: boolean;
+  durable?: boolean;
+  userDeadlineMs?: number;
+  remote?: boolean;
+  clone?: boolean;
+  landAttempts?: number;
+}) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-review-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -149,6 +159,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script, seen),
     ...(options.reviewChanges === false ? {} : { reviewChanges: true }),
+    ...(options.landAttempts === undefined ? {} : { landAttempts: options.landAttempts }),
   });
   const board = taskBoard({
     name: "review-board",
@@ -350,6 +361,7 @@ describe("a coding run that made changes waits for a person's review", () => {
         // This host can land an accept either way.
         lands: ["pull-request", "merge"],
         landFailed: null,
+        landAttempts: [],
         checks: null,
       });
       expect(hold.ask.prompt).toContain(`1 commit on ${detail!.branch}`);
@@ -713,7 +725,8 @@ process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify
   }, 60_000);
 
   it("stops a merge that conflicts, asks again with the error and nothing changed, and a pull request after it lands", async () => {
-    const h = host({ script: ["commits"], remote: true });
+    // One try: the failure goes straight back to the person.
+    const h = host({ script: ["commits"], remote: true, landAttempts: 1 });
     try {
       await h.start();
       const first = await h.until(h.waiting, "the review");
@@ -746,7 +759,7 @@ process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify
   }, 60_000);
 
   it("asks again when the push fails, keeping the run's commit, and a retry once the remote is back lands", async () => {
-    const h = host({ script: ["commits"], remote: true });
+    const h = host({ script: ["commits"], remote: true, landAttempts: 1 });
     try {
       await h.start();
       const first = await h.until(h.waiting, "the review");
@@ -766,4 +779,79 @@ process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify
       await h.dispose();
     }
   }, 60_000);
+
+  // FIX-2658: Open a PR failed once and gave up. The push was refused (GH005),
+  // and on Retry the run's branch was gone: the coder had moved the work to a
+  // branch of its own and opened the pull request from there.
+  /** Refuse the remote's first `times` pushes the way GitHub refused the long branch. */
+  const refusePushes = (remote: string, times: number) => {
+    const count = join(remote, "refused");
+    writeFileSync(
+      join(remote, "hooks", "pre-receive"),
+      `#!/bin/sh\nn=$(cat '${count}' 2>/dev/null || echo 0)\nif [ "$n" -lt ${times} ]; then echo $((n+1)) > '${count}'; echo "error: GH005: Sorry, refs longer than 255 bytes are not allowed." >&2; exit 1; fi\n`,
+    );
+    chmodSync(join(remote, "hooks", "pre-receive"), 0o755);
+  };
+
+  it("hands a refused push to the coding session with the person's note, and opens the pull request when it stops, without asking again", async () => {
+    const h = host({ script: ["commits", "no-commit"], remote: true });
+    try {
+      await h.start();
+      await h.until(h.waiting, "the review");
+      refusePushes(h.remote, 1);
+      await h.answer({ verdict: "accepted", land: "pull-request", words: "Keep trying until the PR is pushed." });
+      const done = await h.until((t) => t.status === "completed", "the landing to recover on its own");
+
+      // One more step of the same session, told the exact error and the person's words.
+      expect(h.seen).toHaveLength(2);
+      expect(h.seen[1]!.resume).toBe("sess_1");
+      expect(h.seen[1]!.prompt).toContain("GH005");
+      expect(h.seen[1]!.prompt).toContain("Keep trying until the PR is pushed.");
+      expect(done.output).toMatchObject({ review: "accepted", landed: { kind: "pull-request", url: PR_URL } });
+      expect(await h.pullRequests(done.run!.sessionId!)).toEqual([`${OBSERVED_PULL_REQUESTS}/github.com/acme/widgets/42`]);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("lands the branch the run moved its work to, when its own branch is gone", async () => {
+    const h = host({ script: ["commits-renames"], remote: true });
+    try {
+      await h.start();
+      await h.until(h.waiting, "the review");
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      const done = await h.until((t) => t.status === "completed", "the landing from the moved branch");
+
+      expect(done.output).toMatchObject({ landed: { kind: "pull-request", branch: "teammates/tidy-task-list", url: PR_URL } });
+      expect(git(h.remote, "rev-parse", "refs/heads/teammates/tidy-task-list")).toBe(git(h.seen[0]!.cwd, "rev-parse", "HEAD"));
+      expect(await h.pullRequests(done.run!.sessionId!)).toEqual([`${OBSERVED_PULL_REQUESTS}/github.com/acme/widgets/42`]);
+      // Nothing for the coder to fix: one step.
+      expect(h.seen).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("stops after its tries, and the review it asks again lists each one", async () => {
+    const h = host({ script: ["commits"], remote: true });
+    try {
+      await h.start();
+      const first = await h.until(h.waiting, "the review");
+      refusePushes(h.remote, 99);
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      const again = await h.until((t) => h.waiting(t) && h.review(t)!.id !== h.review(first)!.id, "the review asked again", 45_000);
+
+      // Three tries: the first, and two after a step of the coding session each.
+      expect(h.seen).toHaveLength(3);
+      const detail = reviewDetail((await h.stop(h.review(again)!))?.data);
+      expect(detail?.landAttempts).toHaveLength(3);
+      expect(detail?.landAttempts?.every((attempt) => attempt.land === "pull-request" && attempt.message.includes("GH005"))).toBe(true);
+      expect(detail?.landFailed).toMatchObject({ land: "pull-request" });
+      // Nothing forced, nothing lost.
+      expect(() => git(h.remote, "rev-parse", `refs/heads/${detail!.branch}`)).toThrow();
+      expect(existsSync(h.seen[0]!.cwd)).toBe(true);
+    } finally {
+      await h.dispose();
+    }
+  }, 90_000);
 });

@@ -23,6 +23,8 @@
  * <root>/<place…>.place.lock        beside it (and `<place…>.setup`, its setup
  *                                   marker), and the branch kept in that
  *                                   repository, never cloned
+ * <root>/<place…>.holder            the run a new place's name is reserved for
+ *                                   (`reserve`), written once, before the place exists
  * <root>/.fetch-pins/<key>.json     each such repository's remote URLs and branch
  *                                   upstreams, as a host start first saw them
  * ```
@@ -167,6 +169,8 @@ const LOCAL_LOCK_SUFFIX = ".place.lock";
  */
 const SETUP_MARKER = ".checkout.setup";
 const LOCAL_SETUP_SUFFIX = ".setup";
+/** Beside a place: the run its name is reserved for (`reserve`). */
+const HOLDER_SUFFIX = ".holder";
 /**
  * Written in a local repository's worktree's own directory under git's
  * (`.git/worktrees/<id>/`), which outlives the checkout: this worktree is its
@@ -446,6 +450,18 @@ export interface WorkspaceHost {
    * has to name the working directory (in a prompt, say) before provisioning.
    */
   locate(answer: RunSourceAnswer, request: Pick<PlaceRequest, "place">): { dir: string; cwd: string };
+  /**
+   * Reserve a place's and branch's names for one run, `holder`: `true` when
+   * they are now that run's, `false` when another run holds them, the place's
+   * directory exists, or the repository the answer names (a listed one, or the
+   * host's clone of its remote) has the branch. Asked before a NEW run takes a
+   * name, so it never inherits another run's tree or branch. The reservation
+   * is atomic and names its holder, so two runs asking for one name at once
+   * get one `true` between them, and the same run asking again gets `true`.
+   * Contacts no remote. Optional, as `remove` is: a host without it gives a run
+   * its derived name as it is.
+   */
+  reserve?(answer: RunSourceAnswer, request: { place: readonly string[]; branch: string; holder: string }): Promise<boolean>;
   /**
    * Make (or hand back) the place for one run.
    *
@@ -1402,6 +1418,52 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     return { dir, cwd: join(dir, CHECKOUT_DIR) };
   }
 
+  async function reserve(answer: RunSourceAnswer, request: { place: readonly string[]; branch: string; holder: string }): Promise<boolean> {
+    const dir = placeDir(request.place);
+    const holderFile = `${dir}${HOLDER_SUFFIX}`;
+    const heldBy = (): string | undefined => {
+      try {
+        return readFileSync(holderFile, "utf8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+        throw error;
+      }
+    };
+    // Reserved already: this run's, from an attempt that crashed before it
+    // recorded its branch, or another's.
+    const held = heldBy();
+    if (held !== undefined) return held === request.holder;
+    if (existsSync(dir) || (await branchExists(answer, request.branch))) return false;
+    mkdirSync(dirname(holderFile), { recursive: true });
+    try {
+      // `wx` fails when the file exists, so of two runs here at once one writes it.
+      writeFileSync(holderFile, request.holder, { flag: "wx" });
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      return heldBy() === request.holder;
+    }
+  }
+
+  /** Whether the repository the answer names (a listed one, or the host's clone of its remote) has the branch. */
+  async function branchExists(answer: RunSourceAnswer, branch: string): Promise<boolean> {
+    if (answer.kind !== "repo" || !isPlainBranch(branch)) return false;
+    let repo = localRepository(answer.repo);
+    if (repo === undefined) {
+      const remote = checkRemote(answer.repo, allow);
+      if ("reason" in remote) return false;
+      repo = join(root, CLONES_DIR, `${remote.cloneKey}.git`);
+      if (!existsSync(repo)) return false;
+    }
+    try {
+      await git(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`], GIT_TIMEOUT_MS);
+      return true;
+    } catch (error) {
+      if (gitAnsweredNo(error)) return false;
+      throw error;
+    }
+  }
+
   async function provision(answer: RunSourceAnswer, request: PlaceRequest): Promise<WorkspacePlace> {
     const recording = answer.kind === "repo" ? request.worktrees : undefined;
     if (recording === undefined) return await provisionPlace(answer, request);
@@ -2152,6 +2214,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       // With its directory gone, `remove` drops only this worktree's metadata;
       // `prune` would drop every missing worktree's, and any detached HEAD with it.
       await git(entry.repository, ["worktree", "remove", entry.cwd], left());
+      // The name is free again once its worktree is gone (`reserve`).
+      rmSync(`${entry.dir}${HOLDER_SUFFIX}`, { force: true });
       let branchDeleted = false;
       if (removeOptions.deleteBranch === true && branch !== null) {
         await git(entry.repository, ["branch", "-D", branch], left());
@@ -2364,6 +2428,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     source: options.source,
     provisionTimeoutMs,
     locate,
+    reserve,
     provision,
     checkRepository,
     save,

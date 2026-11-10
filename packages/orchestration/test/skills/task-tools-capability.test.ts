@@ -67,7 +67,7 @@ function findTool(name: string): GeneratorTool {
   return tool;
 }
 
-/** A task row as the board stores it. */
+/** A task as the board stores it. */
 type StoredTask = {
   status: string;
   goal: string;

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="O2, open: should views replace flow reads. Recommended: yes, with a development-time check that a view reads only what it declared. Instead of: keep reads and add a scope. Decides it: with a view the client knows nothing else, no topics and no session. Price: declared dependencies can drift. The rename is cheap either way today. Flips if the dependency check proves too costly."
+<svg viewBox="0 0 940 418" role="img" aria-label="O1, decided by the owner: FSD has kits, an installable unit above a flow, with a library half that is imported and a copied half: a directory the kit owns in the app, scaffolded by its init and read at install by a shared walker. Instead of: no new unit, fix workforce&#x27;s own API. Decides it: only a kit&#x27;s client half removes the adapters at the root. Price: slots are a new public contract. Locks in defineKit and slots in core, install in the engine, and workforce fully converted. Flips if FIX-2622 shows a better workforce API removes everything the kit removes and the owner reopens it."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -49,62 +49,62 @@
   <rect class="bg" x="0" y="0" width="940" height="418"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">O2 · OPEN · THE CALL</text>
-    <text class="t-q" x="32" y="52">Should views replace flow reads?</text>
+    <text class="t-lbl" x="32" y="32">O1 · DECIDED BY THE OWNER · THE CALL</text>
+    <text class="t-q" x="32" y="52">Should FSD have kits: an installable unit above a flow?</text>
   </g>
   <g id="options">
-    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">Yes, with a dependency check</text>
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Yes: library half + an owned directory</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Keep reads, add a scope</text>
+    <text class="t-h c-lost" x="592" y="112">No: fix workforce&#x27;s API</text>
   </g>
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">WHAT A CLIENT</text>
-    <text class="t-lbl" x="32" y="169">MUST KNOW</text>
+    <text class="t-lbl" x="32" y="156">THE ADAPTERS,</text>
+    <text class="t-lbl" x="32" y="169">AT THE ROOT</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="163">+</text>
-    <text class="t-b" x="248" y="162">The view, nothing else</text>
-    <text class="t-s" x="248" y="180">no topics and no session</text>
+    <text class="t-b" x="248" y="162">The client half ships with the kit</text>
+    <text class="t-s" x="248" y="180">an app maps names, nothing more</text>
     <text class="mark minus" x="592" y="163">−</text>
-    <text class="t-b" x="612" y="162">The topics to watch, still</text>
-    <text class="t-s" x="612" y="180">each app keeps a watch list</text>
+    <text class="t-b" x="612" y="162">Each app still writes its read model</text>
+    <text class="t-s" x="612" y="180">a better hireWorkforce fixes wiring only</text>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="218">DECLARED</text>
-    <text class="t-lbl" x="32" y="231">DEPENDENCIES</text>
+    <text class="t-lbl" x="32" y="218">A CONTRACT THAT</text>
+    <text class="t-lbl" x="32" y="231">IS HARD TO CHANGE</text>
     <text class="mark minus" x="228" y="225">−</text>
-    <text class="t-b" x="248" y="224">Can drift from what the view reads</text>
-    <text class="t-s" x="248" y="242">a development-time check catches it</text>
+    <text class="t-b" x="248" y="224">Slots are a new public contract</text>
+    <text class="t-s" x="248" y="242">typed, declared only by the owning kit</text>
     <text class="mark plus" x="592" y="225">+</text>
-    <text class="t-b" x="612" y="224">Nothing to drift</text>
-    <text class="t-s" x="612" y="242">nothing declared</text>
+    <text class="t-b" x="612" y="224">Nothing new to learn or freeze</text>
+    <text class="t-s" x="612" y="242">capabilities and flows as today</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
   <g id="row-3">
-    <text class="t-lbl" x="32" y="276">WHAT THE RENAME</text>
-    <text class="t-lbl" x="32" y="289">COSTS</text>
-    <text class="mark tie" x="228" y="283">=</text>
-    <text class="t-b" x="248" y="282">Four call sites, three reads</text>
-    <text class="t-s" x="248" y="300">cheap now, dearer with each app</text>
-    <text class="mark tie" x="592" y="283">=</text>
-    <text class="t-b" x="612" y="282">No rename</text>
-    <text class="t-s" x="612" y="300">read stays the word</text>
+    <text class="t-lbl" x="32" y="276">THE NEXT FEATURE</text>
+    <text class="t-lbl" x="32" y="289">AFTER WORKFORCE</text>
+    <text class="mark plus" x="228" y="283">+</text>
+    <text class="t-b" x="248" y="282">The same kind of thing</text>
+    <text class="t-s" x="248" y="300">a mission or living-artifacts kit</text>
+    <text class="mark minus" x="592" y="283">−</text>
+    <text class="t-b" x="612" y="282">Wired by hand again</text>
+    <text class="t-s" x="612" y="300">a second circular callback</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">One word, view; read retired</text>
-    <text class="t-s" x="32" y="387">the check is FIX-2621&#x27;s method</text>
+    <text class="t-b" x="32" y="369">defineKit and slots in core; install in the engine</text>
+    <text class="t-s" x="32" y="387">workforce fully a kit; its walker lifted to the engine</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
-    <text class="t-b" x="494" y="369">The dependency check proves too costly</text>
-    <text class="t-s" x="494" y="387">then views are reads with a scope; keep read</text>
+    <text class="t-b" x="494" y="369">FIX-2622 shows a better API removes it all</text>
+    <text class="t-s" x="494" y="387">and the owner reopens O1 on that table</text>
   </g>
 </svg>

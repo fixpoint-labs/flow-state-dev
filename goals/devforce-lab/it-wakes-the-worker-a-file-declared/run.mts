@@ -558,6 +558,9 @@ await runGoal(async (failures) => {
           epic,
           issue: row?.id ?? "",
           phase: PHASE,
+          // The run is named from its task: its title, led by the issue it names.
+          trackerIssue: fixture.row.issue,
+          ...(row?.title !== undefined ? { title: row.title } : {}),
         });
         if (run.cwd !== expected) {
           note(`the run's cwd was ${run.cwd}, wanted the derived checkout ${expected}`);
@@ -572,6 +575,8 @@ await runGoal(async (failures) => {
           epic,
           issue: (row?.id ?? "").slice(0, -1),
           phase: `${(row?.id ?? "").slice(-1)}-${PHASE}`,
+          trackerIssue: fixture.row.issue,
+          ...(row?.title !== undefined ? { title: row.title } : {}),
         });
         if (shifted === expected) {
           note(`two different (issue, phase) pairs derive one checkout: ${expected}`);

@@ -12,6 +12,11 @@ import type { SubscriptionProvider } from "../subscriptions/subscribe";
 export interface RoutinesReach {
   readonly index?: ScheduleIndex;
   readonly providers?: readonly SubscriptionProvider[];
+  // FIX-2536.
+  /** Polling, when the app polls: its own schedule index (one index ticks one flow) and the default cadence. */
+  readonly poll?: { readonly index: ScheduleIndex; readonly everyMinutes?: number };
+  /** The ids of the app's declared routines: a poll ends a declared event routine whose entry left config. */
+  readonly declared?: readonly { readonly id: string }[];
 }
 
 const given = new WeakMap<object, RoutinesReach>();
@@ -19,6 +24,35 @@ const given = new WeakMap<object, RoutinesReach>();
 /** Keep `options` for `installation`. `hireWorkforce`'s `routines` calls it. */
 export function setRoutinesReach(installation: object, options: RoutinesReach): void {
   given.set(installation, options);
+}
+
+/** The declared routines' ids `installation`'s `hireWorkforce` was given; none before it runs. */
+export function routineDeclaredOf(installation: object): readonly { readonly id: string }[] {
+  return given.get(installation)?.declared ?? [];
+}
+
+/** Whether `installation`'s `hireWorkforce` was given polling. */
+export function routinePollingOn(installation: object): boolean {
+  return given.get(installation)?.poll !== undefined;
+}
+
+/** `installation`'s polling index: the one its `hireWorkforce` was given in `routines.poll`, and otherwise nothing. */
+export function routinePollIndexOf(installation: object): ScheduleIndex {
+  const index = () => given.get(installation)?.poll?.index;
+  return {
+    upsert: async (entry: ScheduleIndexEntry) => {
+      await index()?.upsert(entry);
+    },
+    remove: async (id) => {
+      await index()?.remove(id);
+    },
+    claimDue: async (now, limit) => (await index()?.claimDue(now, limit)) ?? []
+  };
+}
+
+/** `installation`'s default polling cadence, in minutes: `routines.poll.everyMinutes`, else 5. */
+export function routinePollMinutesOf(installation: object): number {
+  return given.get(installation)?.poll?.everyMinutes ?? 5;
 }
 
 /** The providers `installation`'s `hireWorkforce` was given; none before it runs. */

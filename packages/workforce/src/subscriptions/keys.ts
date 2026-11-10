@@ -26,6 +26,20 @@ export const SUBSCRIPTION_INDEX_PATTERN = "workforce/subscription-index/*";
 /** The accessor a flow declares the thread index under. */
 export const SUBSCRIPTION_INDEX_RESOURCE = "workforceSubscriptionIndex";
 
+// FIX-2536 D1.
+/**
+ * The poll schedules, at user scope: one schedule resource per user and thread, keyed by
+ * the thread, firing at the user's fastest subscription's cadence. **Pinned**:
+ * persisted.
+ */
+export const SUBSCRIPTION_POLLS_PATTERN = "workforce/subscription-polls/*";
+
+/** The accessor a flow declares the poll schedules under. */
+export const SUBSCRIPTION_POLLS_RESOURCE = "workforceSubscriptionPolls";
+
+/** The schedule handler a poll schedule's `kind` names. **Pinned**: persisted. */
+export const SUBSCRIPTION_POLL_HANDLER = "subscription-poll";
+
 
 /** The service flow's routing entry: one normalized event in, run as the service. **Pinned**: an ingestion names it by this string; not on the root. */
 export const SUBSCRIPTION_ROUTE_ENTRY = "routeSubscriptionEvent";

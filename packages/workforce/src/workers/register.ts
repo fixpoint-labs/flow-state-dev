@@ -21,6 +21,7 @@ import { messageReceivedProblem } from "../messages/message-received-entry";
 import { sendWithoutPassProblem } from "../messages/delivery";
 import { checkDeclaredRoutines, defineRoutineActions, type RoutinesOptions } from "../routines/routines";
 import { setRoutinesReach } from "../routines/routines-options";
+import { assertPollCadence } from "../subscriptions/poll";
 import { defineScheduledWork } from "../schedules/scheduled-work";
 import type { WorkerInstallation } from "./installation";
 import { defineWorkerRosterFlow } from "./roster-flow";
@@ -56,7 +57,8 @@ export interface HireWorkforceOptions {
    * polling or BullMQ schedule index to mirror every clock routine into (omit
    * it and the host's own cron POSTs per schedule); `providers` are the ones an
    * event routine follows a PR, an issue or a repo on; `declared` are the app's own routines,
-   * seeded for each user.
+   * seeded for each user; `poll` turns polling on for the event routines, with a
+   * schedule index of its own and the default cadence.
    */
   routines?: RoutinesOptions;
 }
@@ -80,8 +82,14 @@ export interface HireWorkforceOptions {
 export function hireWorkforce(installation: WorkerInstallation, options: HireWorkforceOptions = {}): FlowInstance[] {
   if (options.taskChainLimit !== undefined) setTaskChainLimit(installation, options.taskChainLimit);
   if (options.messages !== undefined) setMessageLimits(installation, options.messages);
-  // The routines capability a worker flow uses reads the providers and the index from here.
-  setRoutinesReach(installation, { ...(options.routines?.index === undefined ? {} : { index: options.routines.index }), ...(options.routines?.providers === undefined ? {} : { providers: options.routines.providers }) });
+  const poll = options.routines?.poll;
+  if (poll?.everyMinutes !== undefined) assertPollCadence(poll.everyMinutes, "hireWorkforce routines.poll");
+  // One index ticks one flow: the clock routines' index dispatches to the roster, the polls' to the service flow.
+  if (poll !== undefined && poll.index === options.routines?.index) {
+    throw new Error("hireWorkforce: routines.poll.index is routines.index. Give polling a schedule index of its own: one index ticks one flow.");
+  }
+  // The routines capability a worker flow uses, and the service flow's polling, read these from here.
+  setRoutinesReach(installation, options.routines ?? {});
   checkWorkerFlows(installation.workerFlows());
   checkDeclaredRoutines(options.routines?.declared ?? []);
   const copies: FlowInstance[] = [];
@@ -116,7 +124,7 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
         problems.map((problem) => `  - ${problem}`).join("\n")
     );
   }
-  const { hire, fork, edit, fire } = createWorkerHireBlocks(installation);
+  const { hire, fork, edit, fire, reset } = createWorkerHireBlocks(installation);
   const scheduled = defineScheduledWork(installation, options.routines?.index);
   const routines = defineRoutineActions(installation, options.routines ?? {}, scheduled.resources);
   const roster = defineWorkerRosterFlow(
@@ -126,6 +134,7 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
       fork: { inputSchema: fork.inputSchema, block: fork },
       edit: { inputSchema: edit.inputSchema, block: edit },
       fire: { inputSchema: fire.inputSchema, block: fire },
+      reset: { inputSchema: reset.inputSchema, block: reset },
       ...routines.actions
     },
     { resources: routines.resources, schedules: scheduled.schedules, seed: routines.seed }

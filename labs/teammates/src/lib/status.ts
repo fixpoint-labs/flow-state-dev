@@ -9,6 +9,7 @@
  * and no open message, it is idle.
  */
 import type { Activity, BoardTask, ConversationEntry, LabAdapter, LabTalk, LabWorker } from "../adapter";
+import { knownToolVerbs } from "../components/flow-state/tool-grouping";
 import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom } from "./talk";
 import { age, useNow, useWatch } from "./use-watch";
@@ -103,6 +104,29 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
   if (waiting.length > 0) return plain(`Messaging ${waiting.map(nameOf).join(", ")}`);
   if (activity === undefined) return plain("");
   return plain(activity.lastActiveAt > 0 ? `Idle · ${age(activity.lastActiveAt, now)}` : "Idle");
+}
+
+/**
+ * How far an answer has got, for the line under the conversation while it
+ * answers: the tool step under way at the conversation's tail, in the
+ * registry's words ("reading a file"), or "waiting on you" for a call parked
+ * on your approval or answer. `undefined` when the tail is no run of steps or
+ * none of its steps is under way; the line then just says it is answering.
+ * The header's line ({@link statusOf}) says whom it answers; this says what it
+ * is doing for them. Only the registry's phrases are shown: an unknown tool
+ * name may itself carry a payload, so it reads "using a tool".
+ */
+export function answeringStep(entries: readonly ConversationEntry[]): Status | undefined {
+  // Only the tail can describe current work. Never revive a tool from an earlier turn.
+  const last = entries[entries.length - 1];
+  if (last?.kind !== "steps") return undefined;
+  for (let i = last.steps.length - 1; i >= 0; i--) {
+    const step = last.steps[i]!;
+    if (step.kind !== "tool") continue;
+    if (step.state === "waiting") return { text: "waiting on you", tone: NEEDS_OK, needsYou: true };
+    if (step.state === "running") return { text: (step.tool === undefined ? undefined : knownToolVerbs(step.tool)?.present) ?? "using a tool", tone: PLAIN, needsYou: false };
+  }
+  return undefined;
 }
 
 /** A teammate's status line, its words alone, live. Its age holds while `stale`. */

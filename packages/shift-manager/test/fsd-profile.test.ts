@@ -57,7 +57,7 @@ async function openProfile(file: "fsd.fsdev.config.mts" | "fsdev.config.mts", st
 
 const tempStore = (name: string) => join(mkdtempSync(join(tmpdir(), `sm-fsd-${name}-`)), "store.sqlite");
 
-/** The organization's project rows, by id. */
+/** The organization's project entries, by id. */
 async function projectRows(lab: Lab): Promise<Record<string, Record<string, unknown>>> {
   const runtime = await lab.state.getRuntime();
   const rows = await runtime.stores.resourceState.getByPrefix("org", LAB_ORG_ID, "");

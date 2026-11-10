@@ -30,11 +30,15 @@ import {
   harnessRunInputSchema,
   harnessRunNamespace,
   observedPullRequestsCollection,
+  readHarnessAttachments,
   recordPullRequests as startPullRequestRecorder,
+  refuseUnacceptedAttachments,
   reportHarnessActivity,
   reportHarnessSpend,
+  type HarnessAttachmentBytes,
   type HarnessBilling,
 } from "@flow-state-dev/core/harness";
+import { ATTACHMENT_IMAGE_TYPES, type AttachmentAccepts } from "@flow-state-dev/core/attachments";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessActivityHook,
@@ -109,6 +113,36 @@ const TODO_TOOLS = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"] as const;
  * `bypassPermissions` every tool is already allowed.
  */
 const SEARCH_TOOLS = ["Grep", "Glob"] as const;
+
+// FIX-2519.
+/** What Claude Code takes as a turn's files: images, as image blocks on the turn's user message. */
+const CLAUDE_CODE_ACCEPTS: AttachmentAccepts = ATTACHMENT_IMAGE_TYPES;
+
+/**
+ * The query's prompt: the text alone, or, with images, one user message on
+ * the SDK's streaming input, the text then each image as a base64 image block.
+ * The input ends after that message, so the run is one turn as with text.
+ */
+function queryPrompt(text: string, images: ReadonlyArray<HarnessAttachmentBytes>): string | AsyncIterable<unknown> {
+  if (images.length === 0) return text;
+  const message = {
+    type: "user" as const,
+    message: {
+      role: "user" as const,
+      content: [
+        { type: "text" as const, text },
+        ...images.map((image) => ({
+          type: "image" as const,
+          source: { type: "base64" as const, media_type: image.mediaType, data: image.base64() },
+        })),
+      ],
+    },
+    parent_tool_use_id: null,
+  };
+  return (async function* () {
+    yield message;
+  })();
+}
 
 /** The live status from the moment a run starts until Claude Code says anything. */
 const STARTING_STATUS = "Starting Claude Code…";
@@ -947,6 +981,11 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           "claudeCodeAgent requires a non-empty prompt.",
         );
       }
+      // A file Claude Code can't take refuses the run before anything starts,
+      // and every file is read before the query is: a file that can't be read
+      // stops the turn rather than running it without the file.
+      refuseUnacceptedAttachments("Claude Code", CLAUDE_CODE_ACCEPTS, input.attachments);
+      const images = await readHarnessAttachments(ctx, input.attachments);
       if (recordPullRequests) startPullRequestRecorder(ctx);
 
       // With conversation state off, the provider is NOT CONSULTED AT ALL —
@@ -1225,7 +1264,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               }
             }
             const running = resolved.query({
-              prompt: promptText,
+              prompt: queryPrompt(promptText, images),
               options: queryOptions,
             });
             // One `accountInfo()` answers both how the run is billed and, for
@@ -1612,7 +1651,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         await closeMcpTools(handedTools);
       }
     },
-  }), { stopsOnAbort: true as const });
+  }), { stopsOnAbort: true as const, accepts: CLAUDE_CODE_ACCEPTS });
 }
 
 /**

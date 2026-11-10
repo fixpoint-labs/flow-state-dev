@@ -338,7 +338,7 @@ describe("running it twice", () => {
 
     // A second boot over the SAME storage, from a roster that lost a worker.
     // Nothing is reconciled: a binder that dropped what its roster no longer
-    // names would take a live worker's row with it.
+    // names would take a live worker's entry with it.
     const second = await host(adapter);
     try {
       const result = await bind(second, { workers: [{ id: "eng.lead", kind: "agent", actions: {} }] });

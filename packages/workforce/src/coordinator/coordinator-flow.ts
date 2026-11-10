@@ -105,7 +105,7 @@ import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-fl
 import { markUserTurn, userTurnStateSchema } from "../standing-rules/user-turn";
 import { STANDING_RULES_ACTION, standingRulesAction } from "../standing-rules/rules-action";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
-import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
+import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
 import {
   resolveWorkstreamTarget,
   WORKSTREAM_DELEGATE_ACTION,
@@ -424,7 +424,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     }
   });
   const check = sessionBoard.delegates.check;
-  const resources = { ...installation.resources, ...PROJECT_ROW_RESOURCES };
+  const resources = { ...installation.resources, ...PROJECT_ENTRY_RESOURCES };
 
   /**
    * The worker this conversation runs as, and its defaults, with the

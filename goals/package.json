@@ -37,6 +37,7 @@
     "@flow-state-dev/workforce": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
     "@openai/codex-sdk": "0.164.0",
+    "better-sqlite3": "^11.0.0",
     "bullmq": "^5.0.0",
     "happy-dom": "^20.8.3",
     "pg": "^8.13.0",
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@octokit/webhooks-examples": "7.6.1",
+    "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.10.5",
     "@types/pg": "^8.11.0",
     "@types/react": "^19.2.14",

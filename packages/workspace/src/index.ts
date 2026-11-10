@@ -88,7 +88,6 @@ export { checkedOutBranch, occupyWorktree, worktreeLockPath } from "./occupancy"
 export type { AcquireOptions, LockBounds, LockLease } from "./lock";
 export { identityFromCommonDir, repositoryIdentity, resolvesToCommit } from "./repository";
 export { redactRemote } from "./remotes";
-export { LAND_TIMEOUT_MS } from "./land";
 export type { Landed, LandRequest, LandTarget } from "./land";
 export type {
   ListedWorktree,

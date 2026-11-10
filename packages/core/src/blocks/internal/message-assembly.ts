@@ -228,7 +228,24 @@ export function asUserMessage(value: unknown): unknown {
  */
 export function isEquivalentUserMessage(a: unknown, b: unknown): boolean {
   if (!isUserRoleMessage(a) || !isUserRoleMessage(b)) return false;
-  return userMessageContentKey(a) === userMessageContentKey(b);
+  if (userMessageContentKey(a) === userMessageContentKey(b)) return true;
+  // The person's line carries their files after the text; the `user` slot
+  // only the text. Same words, same turn: the line with the files is kept.
+  return typeof b.content === "string" && textWithFiles(a.content) === b.content;
+}
+
+/** The text of a user line made of text parts and file parts (image or file), or `undefined` for any other shape. */
+function textWithFiles(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined;
+  let text = "";
+  let files = 0;
+  for (const part of content) {
+    const type = (part as { type?: unknown } | null)?.type;
+    if (type === "text") text += String((part as { text?: unknown }).text ?? "");
+    else if (type === "image" || type === "file") files += 1;
+    else return undefined;
+  }
+  return files > 0 ? text : undefined;
 }
 
 export function isUserRoleMessage(value: unknown): value is { role: "user"; content: unknown } {

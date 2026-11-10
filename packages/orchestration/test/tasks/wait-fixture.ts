@@ -469,7 +469,7 @@ export type StoredTask = {
   attempts: number;
   metadata?: Record<string, unknown>;
 };
-export async function rows(state: ReturnType<typeof runtimeFor>, flow: FlowInstance, sessionId?: string): Promise<StoredTask[]> {
+export async function storedTasks(state: ReturnType<typeof runtimeFor>, flow: FlowInstance, sessionId?: string): Promise<StoredTask[]> {
   return (await act(state, flow, "list", {}, sessionId !== undefined ? { sessionId } : {})).output as StoredTask[];
 }
 

@@ -81,3 +81,31 @@ describe("a run opened before the organization was part of its place", () => {
     expect((await lab.record(TOPIC))?.branch).toBe(before.branch);
   }, 60_000);
 });
+
+// FIX-2657: a run opened before runs were named keeps its long place.
+describe("a run opened before its branch and folder were its short name", () => {
+  it("keeps the checkout and branch its record names", async () => {
+    const lab = claimHost({ mode: "fixed", script: [{ commits: 1 }] });
+    // Spelled, not derived: what the manager wrote for this run before the
+    // change (the values `fixed-board-parity` pinned then).
+    const nested =
+      "t0/h5deb09c2e3e2dc2442be4fa73730a5de109b88b7422214a4c0a5b86ffae490a4/hdfb6f541ef82e9100159f12a84e635d4dce04b31004d05980fc3cae9f5a19737/feature-board/fix-1--implement";
+    const before = { checkout: `checkouts/${nested}`, branch: `conductor/${nested}` };
+
+    await lab.seed({ ledgerId: FIXED_BOARD, id: TASK_ID, goal: "the feature", input: { issue: ISSUE, phase: PHASE } });
+    await lab.putRecord(TOPIC, {
+      attempt: 0,
+      taskId: TASK_ID,
+      workspacePath: join(lab.dir, before.checkout),
+      branch: before.branch,
+      outcome: "failed",
+    });
+    const { result } = await lab.runAttempt(FIXED_BOARD, TASK_ID);
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+
+    expect(relative(lab.dir, lab.seen[0]!.cwd), "the run was moved off the place its record names").toBe(
+      before.checkout,
+    );
+    expect((await lab.record(TOPIC))?.branch).toBe(before.branch);
+  }, 60_000);
+});

@@ -179,6 +179,19 @@ describe("list and remove", () => {
     expect(await h.list!()).toHaveLength(0);
   });
 
+  it("frees a reserved name once its worktree and branch are removed", async () => {
+    const h = host();
+    const answer = { kind: "repo" as const, repo };
+    const name = { place: ["run-1"], branch: "fsd/run-1" };
+    expect(await h.reserve!(answer, { ...name, holder: "run-a" })).toBe(true);
+    await h.provision(answer, name);
+    expect(await h.reserve!(answer, { ...name, holder: "run-b" })).toBe(false);
+
+    await h.remove!({ place: ["run-1"] }, { deleteBranch: true });
+
+    expect(await h.reserve!(answer, { ...name, holder: "run-b" })).toBe(true);
+  });
+
   it("refuses to delete a branch holding the only copy of a commit, unless forced", async () => {
     const { h, place } = await made();
     git(place.cwd, "commit", "-q", "--allow-empty", "-m", "only here");

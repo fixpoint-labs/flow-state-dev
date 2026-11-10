@@ -51,7 +51,7 @@ function panel(rows: Record<string, any>[], connection: SessionConnectionStatus 
   return screen.getByRole("complementary", { name: "Lead's panel" });
 }
 
-describe("a teammate's task rows and their time", () => {
+describe("a teammate's tasks and their time", () => {
   it("keeps the row's view, its run's start and its lease from the board's row", () => {
     const task = toBoardTask(listed("t1", "in_progress", { updatedAt: 5, startedAt: 3, leaseUntil: 120_005 }));
     expect(task.view?.state).toBe("running");

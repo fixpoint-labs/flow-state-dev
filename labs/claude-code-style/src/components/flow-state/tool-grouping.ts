@@ -13,9 +13,10 @@
 import { toolBaseName, toolOutcome } from "./tool-naming";
 
 /**
- * Verb-phrase entry for a tool. Two forms: a singular phrase used when a
- * group contains exactly one call of this tool, and a function that
- * produces the plural phrase for N calls.
+ * Verb-phrase entry for a tool. Three forms: a singular phrase used when a
+ * group contains exactly one call of this tool, a function that produces
+ * the plural phrase for N calls, and a present-tense phrase for a call
+ * still under way.
  *
  * Group merging keys on the `singular` string: tools that share a singular
  * phrase (e.g. `web_search` and `search` both → "ran a search") merge into
@@ -24,6 +25,8 @@ import { toolBaseName, toolOutcome } from "./tool-naming";
 export type ToolVerbs = {
   singular: string;
   plural: (n: number) => string;
+  /** The phrase while one call is under way ("reading a file"). */
+  present: string;
 };
 
 /**
@@ -38,55 +41,66 @@ export const TOOL_GROUP_DISTINCT_CAP = 4;
  * "ran <tool-name>" phrase.
  */
 export const TOOL_VERB_MAP: Record<string, ToolVerbs> = {
-  web_search: { singular: "ran a search", plural: (n) => `ran ${n} searches` },
-  search:     { singular: "ran a search", plural: (n) => `ran ${n} searches` },
-  fetch:      { singular: "fetched a page", plural: (n) => `fetched ${n} pages` },
-  web_fetch:  { singular: "fetched a page", plural: (n) => `fetched ${n} pages` },
-  read:       { singular: "read a file", plural: (n) => `read ${n} files` },
-  read_file:  { singular: "read a file", plural: (n) => `read ${n} files` },
-  write:      { singular: "wrote a file", plural: (n) => `wrote ${n} files` },
-  write_file: { singular: "wrote a file", plural: (n) => `wrote ${n} files` },
-  create_file:{ singular: "created a file", plural: (n) => `created ${n} files` },
-  edit:       { singular: "edited a file", plural: (n) => `edited ${n} files` },
-  edit_file:  { singular: "edited a file", plural: (n) => `edited ${n} files` },
-  delete:     { singular: "deleted a file", plural: (n) => `deleted ${n} files` },
-  delete_file:{ singular: "deleted a file", plural: (n) => `deleted ${n} files` },
-  bash:       { singular: "ran a command", plural: (n) => `ran ${n} commands` },
-  run_command:{ singular: "ran a command", plural: (n) => `ran ${n} commands` },
+  web_search: { singular: "ran a search", present: "running a search", plural: (n) => `ran ${n} searches` },
+  search:     { singular: "ran a search", present: "running a search", plural: (n) => `ran ${n} searches` },
+  fetch:      { singular: "fetched a page", present: "fetching a page", plural: (n) => `fetched ${n} pages` },
+  web_fetch:  { singular: "fetched a page", present: "fetching a page", plural: (n) => `fetched ${n} pages` },
+  read:       { singular: "read a file", present: "reading a file", plural: (n) => `read ${n} files` },
+  read_file:  { singular: "read a file", present: "reading a file", plural: (n) => `read ${n} files` },
+  write:      { singular: "wrote a file", present: "writing a file", plural: (n) => `wrote ${n} files` },
+  write_file: { singular: "wrote a file", present: "writing a file", plural: (n) => `wrote ${n} files` },
+  create_file:{ singular: "created a file", present: "creating a file", plural: (n) => `created ${n} files` },
+  edit:       { singular: "edited a file", present: "editing a file", plural: (n) => `edited ${n} files` },
+  edit_file:  { singular: "edited a file", present: "editing a file", plural: (n) => `edited ${n} files` },
+  delete:     { singular: "deleted a file", present: "deleting a file", plural: (n) => `deleted ${n} files` },
+  delete_file:{ singular: "deleted a file", present: "deleting a file", plural: (n) => `deleted ${n} files` },
+  bash:       { singular: "ran a command", present: "running a command", plural: (n) => `ran ${n} commands` },
+  run_command:{ singular: "ran a command", present: "running a command", plural: (n) => `ran ${n} commands` },
   // A coding harness's own tools: Claude Code's, Codex's and Cursor's.
-  shell:      { singular: "ran a command", plural: (n) => `ran ${n} commands` },
-  command_execution: { singular: "ran a command", plural: (n) => `ran ${n} commands` },
-  multiedit:  { singular: "edited a file", plural: (n) => `edited ${n} files` },
+  shell:      { singular: "ran a command", present: "running a command", plural: (n) => `ran ${n} commands` },
+  command_execution: { singular: "ran a command", present: "running a command", plural: (n) => `ran ${n} commands` },
+  multiedit:  { singular: "edited a file", present: "editing a file", plural: (n) => `edited ${n} files` },
   // Codex's one tool for changing files: an edit, as Claude Code's and Cursor's are.
-  file_change:{ singular: "edited a file", plural: (n) => `edited ${n} files` },
-  grep:       { singular: "searched the code", plural: (n) => `searched the code ${n} times` },
-  glob:       { singular: "looked for files", plural: (n) => `looked for files ${n} times` },
-  load_tools: { singular: "loaded tools", plural: () => "loaded tools" },
+  file_change:{ singular: "edited a file", present: "editing a file", plural: (n) => `edited ${n} files` },
+  grep:       { singular: "searched the code", present: "searching the code", plural: (n) => `searched the code ${n} times` },
+  glob:       { singular: "looked for files", present: "looking for files", plural: (n) => `looked for files ${n} times` },
+  load_tools: { singular: "loaded tools", present: "loading tools", plural: () => "loaded tools" },
   // Workforce's project reads, which merge with any other read, search or listing.
-  readProjectSource: { singular: "read a file", plural: (n) => `read ${n} files` },
-  grepProjectSource: { singular: "searched the code", plural: (n) => `searched the code ${n} times` },
-  globProjectSource: { singular: "looked for files", plural: (n) => `looked for files ${n} times` },
+  readProjectSource: { singular: "read a file", present: "reading a file", plural: (n) => `read ${n} files` },
+  grepProjectSource: { singular: "searched the code", present: "searching the code", plural: (n) => `searched the code ${n} times` },
+  globProjectSource: { singular: "looked for files", present: "looking for files", plural: (n) => `looked for files ${n} times` },
   // The task board's tools and a worker's own.
-  createTask: { singular: "started a task", plural: (n) => `started ${n} tasks` },
-  getTask: { singular: "checked on a task", plural: (n) => `checked on tasks ${n} times` },
-  updateTask: { singular: "updated a task", plural: (n) => `updated tasks ${n} times` },
-  listTasks: { singular: "looked over the tasks", plural: (n) => `looked over the tasks ${n} times` },
-  holdTaskForUser: { singular: "asked you a question", plural: (n) => `asked you ${n} questions` },
-  suspendForUser: { singular: "asked for your answer", plural: (n) => `asked for your answer ${n} times` },
-  sendMessage: { singular: "sent a message", plural: (n) => `sent ${n} messages` },
-  reportProgress: { singular: "noted progress", plural: (n) => `noted progress ${n} times` },
-  consultSessionHistory: { singular: "read a conversation", plural: (n) => `read ${n} conversations` },
+  createTask: { singular: "started a task", present: "starting a task", plural: (n) => `started ${n} tasks` },
+  getTask: { singular: "checked on a task", present: "checking on a task", plural: (n) => `checked on tasks ${n} times` },
+  updateTask: { singular: "updated a task", present: "updating a task", plural: (n) => `updated tasks ${n} times` },
+  listTasks: { singular: "looked over the tasks", present: "looking over the tasks", plural: (n) => `looked over the tasks ${n} times` },
+  holdTaskForUser: { singular: "asked you a question", present: "asking you a question", plural: (n) => `asked you ${n} questions` },
+  suspendForUser: { singular: "asked for your answer", present: "asking for your answer", plural: (n) => `asked for your answer ${n} times` },
+  sendMessage: { singular: "sent a message", present: "sending a message", plural: (n) => `sent ${n} messages` },
+  reportProgress: { singular: "noted progress", present: "noting progress", plural: (n) => `noted progress ${n} times` },
+  consultSessionHistory: { singular: "read a conversation", present: "reading a conversation", plural: (n) => `read ${n} conversations` },
 };
 
-/** Look up verbs for a tool name, in any case (Claude Code says `Bash`), falling back to a generic phrase. */
-function verbsFor(toolName: string): ToolVerbs {
+/**
+ * The map's entry for a tool name, in any case (Claude Code says `Bash`), or
+ * `undefined` for a tool the map doesn't know. The one lookup every caller
+ * shares. A caller that must not repeat an unknown name (it may carry a
+ * payload) reads `undefined` as "a tool" rather than echoing it.
+ */
+export function knownToolVerbs(toolName: string): ToolVerbs | undefined {
   const base = toolBaseName(toolName);
-  const entry = TOOL_VERB_MAP[base] ?? TOOL_VERB_MAP[base.toLowerCase()];
-  if (entry !== undefined) return entry;
-  return {
-    singular: `ran \`${toolName}\``,
-    plural: (n) => `ran \`${toolName}\` ${n} times`,
-  };
+  return TOOL_VERB_MAP[base] ?? TOOL_VERB_MAP[base.toLowerCase()];
+}
+
+/** Look up verbs for a tool name, falling back to a generic phrase that names it. */
+function verbsFor(toolName: string): ToolVerbs {
+  return (
+    knownToolVerbs(toolName) ?? {
+      singular: `ran \`${toolName}\``,
+      plural: (n) => `ran \`${toolName}\` ${n} times`,
+      present: `running \`${toolName}\``,
+    }
+  );
 }
 
 function capitalizeFirst(s: string): string {

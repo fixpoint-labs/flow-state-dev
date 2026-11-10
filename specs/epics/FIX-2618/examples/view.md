@@ -2,7 +2,7 @@
 
 [Spec](../SPEC.md) · [Decisions](../DECISIONS.md) · example
 
-> **PROPOSED.** A sketch from the design review, not code. None of the APIs it names exist yet (`defineView`, `defineKit`, `runBy`, `fsd.resource`, `useView`, `ViewOutput`, kit slots and the kits' views). Names follow the working name "kit", which is open hold [O5](../DECISIONS.md#o5). The child that builds each piece owns its real shape.
+> **PROPOSED.** A sketch from the design review, not code. None of the APIs it names exist yet (`defineView`, `defineKit`, `runBy`, `fsd.resource`, `useView`, `ViewOutput`, kit slots and the kits' views). The name "kit" is the owner's answer to [O5](../DECISIONS.md#o5). The child that builds each piece owns its real shape.
 
 The same rule as a flow read today (a block with input, storing nothing, refusing writes), plus `scope` (no session at user or org), `dependsOn` (the server tells the view's watchers when one changes) and `key` (a notice can name the rows that changed). It installs on its own or in a kit. Built by [FIX-2623](https://linear.app/fixpoint-labs/issue/FIX-2623); the dependency check's method is [FIX-2621](https://linear.app/fixpoint-labs/issue/FIX-2621)'s result.
 

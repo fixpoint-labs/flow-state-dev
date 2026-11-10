@@ -73,6 +73,11 @@ export type {
 export { waitOnRequest } from "../blocks/wait-on-request";
 export type { RequestWaitOutcome, WaitOnRequestInput } from "../blocks/wait-on-request";
 
+// FIX-2519.
+/** The harness attachment seam: the request's file reader, under a symbol slot. */
+export { HARNESS_ATTACHMENT_SEAM } from "../types/harness-attachment-seam";
+export type { HarnessAttachmentSeam } from "../types/harness-attachment-seam";
+
 /** The dispatch seam: the runtime's dispatch operation, under a symbol slot. */
 export { DISPATCH_SEAM, NoDispatchSeamError, dispatchThroughSeam } from "../types/dispatch";
 export type { DispatchSeam } from "../types/dispatch";

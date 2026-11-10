@@ -227,3 +227,13 @@ export {
   type LeaseOptions
 } from "./durability/types";
 export { type DurabilityRetentionConfig } from "./durability/durability-sweeper";
+export {
+  type BlobClaimResult,
+  type BlobPut,
+  type BlobRecord,
+  type BlobStore,
+  type BlobUploader
+} from "./blobs/types";
+export { decideClaim, isSweepable } from "./blobs/shared";
+export { createLocalBlobStore } from "./blobs/local-blob-store";
+export { declareEphemeralDisk } from "./blobs/host-disk";

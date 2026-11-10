@@ -22,6 +22,10 @@ export function resolveDurabilityProvider(options: {
   /** The host's `durable` setting. Absent: on wherever the stores persist. */
   durable?: boolean;
 }): DurabilityProvider | undefined {
-  const persists = options.stores.checkpoints.persists !== false && options.stores.suspensions.persists !== false;
-  return (options.durable ?? persists) ? createCheckpointDurabilityProvider(options.stores) : undefined;
+  return (options.durable ?? storesPersist(options.stores)) ? createCheckpointDurabilityProvider(options.stores) : undefined;
+}
+
+/** Whether a registry keeps its data past the process: `false` for the in-memory stores. */
+export function storesPersist(stores: Pick<StoreRegistry, "checkpoints" | "suspensions">): boolean {
+  return stores.checkpoints.persists !== false && stores.suspensions.persists !== false;
 }

@@ -6,7 +6,7 @@
  *
  * - `createWorkerInstallation`: the create check, `resolveWorker`, and the
  *   session declaration and collections a worker flow spreads in.
- * - `createWorkerHireBlocks`: hire, fork, edit and fire, as writes to the
+ * - `createWorkerHireBlocks`: hire, fork, edit, fire and reset, as writes to the
  *   caller's roster.
  * - `defineWorkerRosterFlow`: the flow a client reads a roster through.
  * - `hireWorkforce`: the copies to register, one per worker flow, and the

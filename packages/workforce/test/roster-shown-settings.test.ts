@@ -42,7 +42,7 @@ function host(showSettings?: string[]) {
 }
 
 describe("a roster row's shown settings", () => {
-  it("standard · a standard worker's row carries the settings its flow shows, and only those", async () => {
+  it("standard · a standard worker's entry carries the settings its flow shows, and only those", async () => {
     const h = host(["tone"]);
     const { entries } = await h.rawRoster("alice");
     expect(entries.find((entry) => entry.id === "researcher")?.settings).toEqual({ tone: "formal" });

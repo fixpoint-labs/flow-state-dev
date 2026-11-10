@@ -37,6 +37,7 @@ export {
   type CodexThreadItem,
   type CodexThreadLike,
   type CodexThreadOptions,
+  type CodexTurnInput,
   type CodexWireUsage,
   type ResolveCodexClient,
   type ResolvedCodexClient,

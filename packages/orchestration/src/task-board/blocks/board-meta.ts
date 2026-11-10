@@ -13,7 +13,7 @@
  *
  * - **Renderer pivot.** A future `<TaskPlan />` renderer subscribes to
  *   `task-board-meta` for board-level state (a header / status badge /
- *   completion summary) and to `task-change` for per-task rows.
+ *   completion summary) and to `task-change` for each task.
  *   Without the meta item the renderer would have to infer board state
  *   from task aggregates, which is fragile.
  *

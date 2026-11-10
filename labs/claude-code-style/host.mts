@@ -15,8 +15,8 @@
  *   session's project itself, from the host's clone at the default branch.
  * - `desk.coder` and `desk.thread-coder` are on the lab's one coding flow,
  *   `harness-thread`; only `desk.thread-coder` waits for your review.
- * - `projects` lists and creates the projects a session works in, and `pins`
- *   keeps the threads you pinned. A project's repository is checked when it is
+ * - `projects` lists and creates the projects a session works in, `pins`
+ *   keeps the threads you pinned, and `dismissals` the failures you dismissed. A project's repository is checked when it is
  *   made, by the workspace host's `checkRepository`: one no coding run could
  *   use here (no such folder, not a git repository, `.fsdev/` not ignored) is
  *   refused, and the picker asks the same check before Create.
@@ -38,6 +38,7 @@ import { consultSessionsCapability, createWorkerInstallation, defineAgentWorkerF
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { localWorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { defineHarnessThreadFlow, HARNESS_THREAD_DRAIN_MS, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
+import { defineDismissalsFlow, DISMISSALS_FLOW } from "./workforce/flows/dismissals.mts";
 import { definePinsFlow, PINS_FLOW } from "./workforce/flows/pins.mts";
 import { defineProjectsFlow, PROJECTS_FLOW } from "./workforce/flows/projects.mts";
 
@@ -127,6 +128,7 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
       : (repository: string) => workspace.checkRepository!(listed(repository) ?? repository, { ignored: ASK_MARKER_IGNORED });
   const projects = defineProjectsFlow({ checkRepository })({ id: PROJECTS_FLOW }) as { id: string };
   const pins = definePinsFlow()({ id: PINS_FLOW }) as { id: string };
+  const dismissals = defineDismissalsFlow()({ id: DISMISSALS_FLOW }) as { id: string };
 
   /** Which harnesses a coding thread can run on here, over the environment each run gets. */
   const readiness = harnessReadiness({
@@ -142,7 +144,7 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
   const goalFlows = options.goalFlows === undefined ? [] : ((await import(pathToFileURL(options.goalFlows).href)).default as { id: string }[]);
 
   const flowState = createFlowState({
-    flows: Object.fromEntries([...workers, projects, pins, readinessFlow, ...goalFlows].map((copy) => [copy.id, copy])),
+    flows: Object.fromEntries([...workers, projects, pins, dismissals, readinessFlow, ...goalFlows].map((copy) => [copy.id, copy])),
     stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
     // A coding run's review and a thread's question wait on you across a restart.
     durable: true,

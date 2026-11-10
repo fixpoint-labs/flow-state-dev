@@ -46,7 +46,7 @@ import {
   type ProjectResourceState,
   type ProjectVisibility
 } from "./collections";
-import { projectAt, projectResourcesAt, PROJECT_ROW_RESOURCES } from "./project-address";
+import { projectAt, projectResourcesAt, PROJECT_ENTRY_RESOURCES } from "./project-address";
 import { isMember } from "./membership-gate";
 import { isAlreadyExists } from "./store-errors";
 import { readProjectFiles } from "./project-files";
@@ -206,7 +206,7 @@ export type ProjectBlocks = {
 };
 
 /** One map, shared by every write: a flow refuses two declarations under one ref. */
-const WRITE_RESOURCES = { ...PROJECT_ROW_RESOURCES };
+const WRITE_RESOURCES = { ...PROJECT_ENTRY_RESOURCES };
 
 function refsOf(ctx: BlockContext) {
   return {

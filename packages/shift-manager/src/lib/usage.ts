@@ -173,7 +173,7 @@ export const USAGE_PERIODS = [
   { days: 30, label: "30 days" },
 ] as const;
 
-/** The query's worker rows, as sent. A row that isn't one is left out. */
+/** The query's worker entries, as sent. A row that isn't one is left out. */
 export function toWorkerUsage(output: unknown): WorkerUsage[] {
   const rows = (output as { workers?: unknown } | null | undefined)?.workers;
   return Array.isArray(rows) ? rows.filter((row): row is WorkerUsage => typeof (row as WorkerUsage)?.worker === "string") : [];

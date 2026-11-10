@@ -97,6 +97,25 @@ describe("a body that fails to read", () => {
 });
 
 describe("flow(address).send", () => {
+  // Files ride beside the input, never in it: the server checks them once for
+  // every flow, and the flow's input schema stays the flow's.
+  it("sends a message's files beside the input, and leaves them out when there are none", async () => {
+    const bodies: unknown[] = [];
+    const fetcher = routed({
+      "POST /actions/run": (init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return json(EXECUTE_RESPONSE);
+      }
+    });
+    const flow = createClient({ userId: "devuser", baseUrl: "", fetcher }).flow("demo");
+    const shot = { type: "file" as const, mediaType: "image/png", data: "fsd-blob:b_0123456789abcdef", filename: "shot.png" };
+    await flow.send("run", { value: "ok" }, { sessionId: "sess_1", attachments: [shot] });
+    await flow.send("run", { value: "ok" }, { sessionId: "sess_1" });
+
+    expect(bodies[0]).toEqual({ input: { value: "ok" }, userId: "devuser", sessionId: "sess_1", attachments: [shot] });
+    expect(bodies[1]).not.toHaveProperty("attachments");
+  });
+
   it("posts the action with the client's user, and returns a request handle", async () => {
     const fetcher = routed({
       "POST /actions/run": (init) => {
@@ -399,5 +418,33 @@ describe("requests.interrupted", () => {
     const [lost] = await createClient({ userId: "u1", baseUrl: "", fetcher }).requests.interrupted();
     expect(lost!.flow).toBe("support");
     await expect(lost!.continue()).rejects.toMatchObject({ status: 0 });
+  });
+});
+
+describe("upload", () => {
+  it("sends one file's bytes raw, once, and resolves to its reference", async () => {
+    const attachment = { type: "file", mediaType: "image/png", filename: "a b.png", data: "fsd-blob:b_0123456789abcdef" };
+    const fetcher = routed({ "POST /api/flows/blobs": () => json({ attachment }, 201) });
+    const client = createClient({ userId: "u1", fetcher });
+
+    const uploaded = await client.upload({ data: new Uint8Array([1, 2, 3]), mediaType: "image/png", filename: "a b.png" });
+
+    expect(uploaded).toEqual(attachment);
+    const [input, init] = fetcher.mock.calls[0]!;
+    const url = new URL(String(input), "http://x");
+    expect(url.searchParams.get("filename")).toBe("a b.png");
+    expect(new Headers(init?.headers).get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await (init?.body as Blob).arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  // A flow that signs its own callers in checks the upload too, so the file is
+  // held for the user that flow's send resolves.
+  it("uploads through a flow's own route when asked through that flow", async () => {
+    const attachment = { type: "file", mediaType: "image/png", data: "fsd-blob:b_0123456789abcdef" };
+    const fetcher = routed({ "POST /api/flows/chat/blobs": () => json({ attachment }, 201) });
+    const client = createClient({ userId: "u1", fetcher });
+
+    expect(await client.flow("chat").upload({ data: new Uint8Array([1]), mediaType: "image/png" })).toEqual(attachment);
+    expect(new URL(String(fetcher.mock.calls[0]![0]), "http://x").pathname).toBe("/api/flows/chat/blobs");
   });
 });

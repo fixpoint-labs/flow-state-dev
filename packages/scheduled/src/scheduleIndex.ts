@@ -68,7 +68,7 @@ export interface ScheduleIndexEntry {
  */
 export interface ScheduleIndex {
   /**
-   * Insert or update a schedule row. Idempotent on primary key
+   * Insert or update a schedule entry. Idempotent on primary key
    * `(cell, key)`. The caller passes the freshly-computed
    * `nextFireAt` — implementations do not parse cron themselves.
    */

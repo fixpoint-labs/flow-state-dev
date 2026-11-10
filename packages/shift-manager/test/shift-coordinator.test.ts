@@ -63,7 +63,7 @@ describe("which worker is the Shift Coordinator (V2, D2)", () => {
     });
   });
 
-  it("reads an org worker's row, which has no team, without error", () => {
+  it("reads an org worker's entry, which has no team, without error", () => {
     expect(toWorker({ id: "shift-coordinator", kind: "agent", door: "run" })).toEqual({
       id: "shift-coordinator",
       kind: "agent",

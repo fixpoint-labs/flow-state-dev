@@ -3,7 +3,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ConversationEntry, LabHarness, LabAdapter, LabContext, LabWorker } from "../adapter";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { Look } from "../lib/looks";
-import { useStatusLine } from "../lib/status";
+import { answeringStep, useStatusLine } from "../lib/status";
 import { pendingFor } from "../lib/talk";
 import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
@@ -60,6 +60,8 @@ export function Conversation({
   harnessOf,
   onFire,
   onOpen,
+  prefill,
+  onPrefilled,
   workers = [],
   context,
   harnesses,
@@ -84,6 +86,10 @@ export function Conversation({
   onFire: () => Promise<void>;
   /** Open a popup over the thread: a task this conversation filed, or a message it sent. */
   onOpen: (popup: Popup) => void;
+  /** Words a popup's follow-up adds to this conversation's composer, once per `n`. */
+  prefill?: { text: string; n: number };
+  /** Called once the composer took `prefill`'s words. */
+  onPrefilled?: () => void;
   /** Show where this conversation's tasks are listed. */
   onViewTasks?: () => void;
 }) {
@@ -116,6 +122,8 @@ export function Conversation({
   const last = entries[entries.length - 1];
   // An answer on screen, written or being written, is the sign it is answering; the line shows only before one starts.
   const answering = running && last?.kind !== "assistant";
+  // What it is doing while it answers; a stale feed can't say, so the line falls back to "is answering".
+  const step = answering && !stale ? answeringStep(entries) : undefined;
   const feed = useJumpToLatest({ resetKey: sessionId });
   const stopping = view?.stopping ?? false;
   // Why the server refused the last Stop, shown beside the button until the next one.
@@ -250,8 +258,8 @@ export function Conversation({
             </Fragment>
           ))}
           {answering ? (
-            <div role="status" className="w-fit rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-              {worker.name} is answering…
+            <div role="status" data-chat-activity className={cn("w-fit rounded-lg border border-border bg-card px-3 py-2 text-xs", step?.tone ?? "text-muted-foreground", stale && STALE_CLASS)}>
+              {step === undefined ? `${worker.name} is answering…` : `${worker.name} · ${step.text}…`}
             </div>
           ) : null}
           {pending.map((m) => (
@@ -275,6 +283,8 @@ export function Conversation({
         armed={keys.armed}
         onStop={stop}
         seed={seed}
+        prefill={prefill}
+        onPrefilled={onPrefilled}
         onSend={(text) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();

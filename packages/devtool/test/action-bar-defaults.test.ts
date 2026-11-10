@@ -3,7 +3,7 @@
  *
  * An optional choice must start empty: the board's `updateTask` refuses an
  * answer sent with a status, so a form that pre-picked the first status for
- * every optional choice could never answer a question from a task row.
+ * every optional choice could never answer a question from a task.
  */
 import { describe, expect, it } from "vitest";
 import type { ActionInputSchema } from "@flow-state-dev/client";

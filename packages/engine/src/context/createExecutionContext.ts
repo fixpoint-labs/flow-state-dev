@@ -2,7 +2,7 @@ import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistr
 import { createRequestSpendLedger, isInterruptedEndingHeld, loggedSpendOf, sumSpend } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { createBoardNoticeSeam } from "../bus/board-notice";
-import { AsyncLocalStorage } from "node:async_hooks";
+import { createScopedAsyncStorage } from "./scoped-async-storage";
 import type {
   AnyResourceRef,
   JournalEntry,
@@ -38,6 +38,7 @@ import type {
   ComponentItem,
   ContainerItem,
   Content,
+  FileContent,
   ItemProvenance,
   MessageItem,
   OutputItem,
@@ -51,6 +52,8 @@ import {
   resolveAllowedActions,
   BOARD_NOTICE_SEAM,
   DISPATCH_SEAM,
+  HARNESS_ATTACHMENT_SEAM,
+  type HarnessAttachmentSeam,
   REQUEST_RESUME_SEAM,
   REQUEST_SPEND_SEAM,
   type RequestResume,
@@ -118,7 +121,7 @@ import {
   suspendForUserOn,
   type SuspendForUser
 } from "@flow-state-dev/core/types";
-import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
+import { HarnessAttachmentUnavailableError, type HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { matchesPattern } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
@@ -168,6 +171,9 @@ import {
   LLM_AUDIENCE_TYPES,
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
+import { AttachmentUnavailableError, resolveAttachment, sessionBlobOwner, type ResolvedAttachment } from "../blobs/attachments";
+import type { BlobStore } from "../blobs/types";
+import { resolveHistoryFiles } from "./history-files";
 import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
@@ -1246,12 +1252,12 @@ export async function createExecutionContext<
   // each took, and which wave/accessor triggered it — drained onto the block's
   // `block_trace` item for DevTool observability. All recording is gated by
   // `isTraceObservabilityEnabled()` so it adds zero work when observability is
-  // off. Attribution is concurrency-safe via an AsyncLocalStorage carrying the
+  // off. Attribution is concurrency-safe via a scoped async storage carrying the
   // dispatching block's instance id: wave-3 eager preloads and lazy reads fire
   // inside the block's `.run()` ALS frame and attribute to it; waves 1 & 2 run
   // before any block and land in the orphan bucket, flushed onto the request's
   // entry block.
-  const loadAttributionStorage = new AsyncLocalStorage<string>();
+  const loadAttributionStorage = createScopedAsyncStorage<string>();
   const ORPHAN_BUCKET = "__request__";
   const resourceLoadBuffer = new Map<string, ResourceLoadRecord[]>();
   // Per-target dedupe index for cache-hit collapsing: target → `source|key|
@@ -2911,7 +2917,7 @@ export async function createExecutionContext<
 
   const modelResolver = options.modelResolver ?? createModelResolver();
   const tokenCounter: TokenCounter = flow.tokenCounter ?? estimateTokenCounter;
-  const resolvedModelStorage = new AsyncLocalStorage<string>();
+  const resolvedModelStorage = createScopedAsyncStorage<string>();
   const resolveModel = ((modelId: string, blockName?: string) => {
     resolvedModelStorage.enterWith(modelId);
     return modelResolver(modelId, blockName);
@@ -2921,6 +2927,43 @@ export async function createExecutionContext<
   if (providerOf !== undefined) {
     resolveModel.providerOf = (modelId: string) => providerOf.call(modelResolver, modelId);
   }
+  // A person's files reach the model at the call, through the one resolver,
+  // for this session and this person only. The history and everything a run
+  // records of it keep the references.
+  // Each file is read once per request, though every step of a tool loop
+  // sends it again. A failed read isn't kept, so the next step tries again.
+  const blobs = stores.blobs;
+  const reads = new Map<string, Promise<ResolvedAttachment>>();
+  const readOnce = (store: BlobStore, file: FileContent) => {
+    const cached = reads.get(file.data);
+    if (cached !== undefined) return cached;
+    const read = resolveAttachment(store, file, { owner: sessionBlobOwner(sessionKey), user: { userId, orgId: resolvedOrgId } });
+    reads.set(file.data, read);
+    read.catch(() => reads.delete(file.data));
+    return read;
+  };
+  resolveModel.prepareMessages = (messages: unknown[]) =>
+    resolveHistoryFiles(messages, blobs === undefined ? undefined : (file: FileContent) => readOnce(blobs, file));
+  // The same reader for a harness handed the turn's files (FIX-2519), named
+  // in core's terms. No blob store: no reader, and a harness refuses the files.
+  const harnessAttachmentSeam: HarnessAttachmentSeam | undefined =
+    blobs === undefined
+      ? undefined
+      : async (file: FileContent) => {
+          let resolved: ResolvedAttachment;
+          try {
+            resolved = await readOnce(blobs, file);
+          } catch (error) {
+            if (error instanceof AttachmentUnavailableError) throw new HarnessAttachmentUnavailableError(file, { cause: error });
+            throw error;
+          }
+          return {
+            mediaType: resolved.record.mediaType,
+            ...(file.filename !== undefined ? { filename: file.filename } : {}),
+            bytes: resolved.bytes,
+            base64: resolved.base64
+          };
+        };
   // Evaluator strings resolve only through the flow's own resolver. When an
   // app-supplied resolver has no `resolveEvaluationModel`, the hook stays
   // absent and the evaluator refuses the string; the default resolver is
@@ -3011,6 +3054,9 @@ export async function createExecutionContext<
       // here: a retry, a resume or a queued run is the same request only if
       // it reads the same value.
       incarnation: resolveRequestIncarnation(requestRef.current),
+      // From the record, as the incarnation is: a resumed or queued run of
+      // this request sees the files the parse step checked.
+      attachments: requestRef.current.attachments ?? [],
       get tokenUsage() {
         return computeTokenUsage();
       },
@@ -3909,6 +3955,7 @@ export async function createExecutionContext<
       // A task board's change reaches this run's bus, under the
       // request's tenant. No bus (a registry no entry wrapped): no seam.
       ...(boardNoticeSeam !== undefined ? { [BOARD_NOTICE_SEAM]: boardNoticeSeam } : {}),
+      ...(harnessAttachmentSeam !== undefined ? { [HARNESS_ATTACHMENT_SEAM]: harnessAttachmentSeam } : {}),
       settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,

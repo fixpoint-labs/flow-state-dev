@@ -337,7 +337,7 @@ describe("the session-mode screen", () => {
     await pick();
     await ask("Compare Acme and Globex for us.");
 
-    // Steps 2 and 3: the main session writes, then two task rows appear.
+    // Steps 2 and 3: the main session writes, then two tasks appear.
     await waitFor(() => expect(within(pane()).getByText(/^Background tasks · 2 running$/)).toBeTruthy());
     expect(within(thread()).getByText(/write the outline myself/)).toBeTruthy();
 
@@ -491,7 +491,7 @@ describe("the session-mode screen", () => {
     expect(row("Research Globex").getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("reads a session's task rows once, for the main thread and the pane together, in either mode", async () => {
+  it("reads a session's tasks once, for the main thread and the pane together, in either mode", async () => {
     const lab = fast();
     const reads: string[] = [];
     const counted = { ...lab, watchTasks: (sessionId: string, onChange: (rows: never[]) => void) => (reads.push(sessionId), lab.watchTasks(sessionId, onChange)) };
@@ -509,14 +509,16 @@ describe("the session-mode screen", () => {
     expect(reads).toHaveLength(2);
   });
 
-  it("queues a line sent while a turn runs, and runs it after", async () => {
+  it("answers a line sent while a turn runs at once, beside the turn, and never says it waits", async () => {
     render(<App adapter={createFakeLab({ speed: 0.2 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
     await within(thread()).findByRole("status");
     await ask("Also add a risks section.");
-    expect(within(thread()).getByText(/queued · runs when this turn ends/)).toBeTruthy();
+    // Its answer lands while the first turn still runs: the vendor script's closing line hasn't.
     await within(thread()).findByText(/Noted\./, undefined, { timeout: 4000 });
+    expect(within(thread()).queryByText(/Globex is still running in the background/)).toBeNull();
+    expect(within(thread()).queryByText(/queued|runs when this turn ends|waits/i)).toBeNull();
   });
 
   it("interrupts the running turn with Stop", async () => {

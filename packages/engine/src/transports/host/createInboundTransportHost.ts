@@ -709,7 +709,8 @@ export function createInboundTransportHost(
       tenantId: envelope.tenantId,
       source: envelope.source,
       metadata: envelope.metadata,
-      resolvedActionCore: envelope.resolvedActionCore
+      resolvedActionCore: envelope.resolvedActionCore,
+      ...(envelope.attachments !== undefined ? { attachments: envelope.attachments } : {})
     };
 
     // The config this dispatch runs under. Normally the host's own; a detached

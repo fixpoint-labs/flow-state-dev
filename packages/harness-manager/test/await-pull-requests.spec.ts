@@ -19,7 +19,10 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { pullRequestKey } from "@flow-state-dev/core/harness";
+import { handler } from "@flow-state-dev/core";
+import { OBSERVED_PULL_REQUESTS, pullRequestKey, writePullRequests, type PullRequestCollection } from "@flow-state-dev/core/harness";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import { z } from "zod";
 import { untakenSteers } from "@flow-state-dev/orchestration/internal";
 import { openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
 import { CLOSED_WITHOUT_MERGING, pullRequestWait, runTopic } from "../src";
@@ -382,5 +385,84 @@ describe("a coding task whose run opened a pull request", () => {
     expect(pullRequestWait(cancelled)).toBeNull();
     await expect(lab.runAttempt(CONVERSATIONS, "t1", "conv-a")).rejects.toThrow(/not claimable/);
     expect(lab.seen).toHaveLength(1);
+  }, 60_000);
+});
+
+// FIX-2579.
+describe("a judged run that opened a pull request", () => {
+  /** A judge that reads every run `not-done` at 0.8, over its 0.7 floor. */
+  const confidentNotDone = {
+    floor: 0.7,
+    block: handler({
+      name: "scripted-judge",
+      inputSchema: z.unknown(),
+      outputSchema: z.unknown(),
+      execute: () => ({ verdict: "not-done", confidence: 0.8, reason: "the final message is about the pull request, not the change" }),
+    }),
+  };
+
+  /**
+   * The run opens pull request 9 itself, from a branch it named after a push
+   * under the run's own branch was refused: the session's record holds it,
+   * stamped with this request, as the recorder writes an agent's own create call.
+   */
+  const opensItsOwnPullRequest = async (ctx: BlockContext) => {
+    const record = (ctx.resources as Record<string, unknown>)[OBSERVED_PULL_REQUESTS] as PullRequestCollection;
+    await writePullRequests(
+      record,
+      [{ host: "github.com", owner: "acme", name: "app", number: 9, url: "https://github.com/acme/app/pull/9", branch: "feat/renamed", state: "open" }],
+      { source: "tool", requestId: ctx.request.identity.id },
+    );
+  };
+
+  it("waits on its pull request when the judge reads it confidently not done: the pull request is the outcome, not the judge's reading", async () => {
+    // The branch check finds nothing on the run's own branch: only the run's own create call recorded it.
+    setGh({ listed: [], states: { 9: "open" } });
+    const lab = claimHost({
+      mode: "claim",
+      script: [{ commits: 1, answer: "Pushed under feat/renamed and opened PR #9.", during: opensItsOwnPullRequest }],
+      manager: { awaitPullRequests: true, judge: confidentNotDone },
+    });
+    await lab.seed({ ...AT, id: "t1", goal: "align the task info to the flyout", input: {} });
+    const result = await run(lab);
+
+    const waiting = await row(lab);
+    // Not Failed, and not on a person: the task waits on its pull request.
+    expect(waiting.status).toBe("in_progress");
+    expect(waiting.feedback ?? undefined).toBeUndefined();
+    expect(openHolds(waiting).map((hold) => [hold.actor, hold.ask.kind])).toEqual([["system", "external"]]);
+    expect(waitedOn(waiting)).toEqual([9]);
+    // The judge's reading is still said, as information.
+    expect(statusText(result)).toContain("the final message is about the pull request, not the change");
+  }, 60_000);
+
+  it("with no pull request, the same confident not-done still fails the try: the control", async () => {
+    setGh({ listed: [], states: {} });
+    const lab = claimHost({
+      mode: "claim",
+      script: [{ commits: 1, answer: "done" }],
+      manager: { awaitPullRequests: true, judge: confidentNotDone },
+    });
+    await lab.seed({ ...AT, id: "t1", goal: "align the task info to the flyout", input: {} });
+    await run(lab);
+    const failed = await row(lab);
+    // The try failed on the judge's reading, and its reason is the next try's feedback.
+    expect(failed.status).toBe("pending");
+    expect(failed.feedback).toMatch(/^the judge found the task not done: /);
+  }, 60_000);
+
+  it("with the option off, a confident not-done fails the try even with a pull request: the option's control", async () => {
+    setGh({ listed: [], states: { 9: "open" } });
+    const lab = claimHost({
+      mode: "claim",
+      script: [{ commits: 1, answer: "Opened PR #9.", during: opensItsOwnPullRequest }],
+      manager: { judge: confidentNotDone },
+    });
+    await lab.seed({ ...AT, id: "t1", goal: "align the task info to the flyout", input: {} });
+    await run(lab);
+    const failed = await row(lab);
+    // The try failed on the judge's reading, and its reason is the next try's feedback.
+    expect(failed.status).toBe("pending");
+    expect(failed.feedback).toMatch(/^the judge found the task not done: /);
   }, 60_000);
 });

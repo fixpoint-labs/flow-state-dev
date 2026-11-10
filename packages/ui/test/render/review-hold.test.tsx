@@ -153,6 +153,30 @@ describe("a review whose host can land the work offers two labelled accepts", ()
     await waitFor(() => expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "merge" }));
   });
 
+  // FIX-2658: "Keep trying until the PR is pushed" was typed into the box and
+  // Retry sent only the verdict, so the words reached nothing.
+  it("a Retry carries what is in the text box, for the coding session if the landing fails again", async () => {
+    const answer = vi.fn(async () => {});
+    const landFailed = { land: "pull-request" as const, message: "GH005: refs longer than 255 bytes." };
+    render(<ReviewHold review={{ ...DATA, lands: ["pull-request", "merge"], landFailed }} answer={answer} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "  Keep trying until the PR is pushed. " } });
+    fireEvent.click(screen.getByRole("button", { name: "Retry: Open a PR" }));
+    await waitFor(() =>
+      expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "pull-request", words: "Keep trying until the PR is pushed." }),
+    );
+  });
+
+  it("lists each try of a landing that failed more than once", () => {
+    const tries = [
+      { land: "pull-request" as const, message: "GH005: refs longer than 255 bytes." },
+      { land: "pull-request" as const, message: "remote: permission denied." },
+    ];
+    render(<ReviewHold review={{ ...DATA, lands: ["pull-request"], landFailed: tries[1], landAttempts: tries }} answer={vi.fn(async () => {})} />);
+    const listed = screen.getAllByRole("listitem").map((item) => item.textContent);
+    expect(listed).toContain(`Try 1: ${tries[0]!.message}`);
+    expect(listed).toContain(`Try 2: ${tries[1]!.message}`);
+  });
+
   it("a retry that fails with the same words is a new ask: Retry comes back, not the receipt of the last one", async () => {
     const answer = vi.fn(async () => {});
     const landFailed = { land: "merge" as const, message: "Merging conflicts in README.md, so it was stopped." };

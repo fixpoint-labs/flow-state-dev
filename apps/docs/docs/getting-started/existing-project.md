@@ -199,9 +199,6 @@ export default defineFlow({
       userMessage: (input) => input.message,
     },
   },
-  session: {
-    stateSchema: z.object({}),
-  },
 })();
 ```
 

@@ -3,9 +3,9 @@
 [Spec](SPEC.md) · **Decisions**
 
 The calls above any single issue, and what each locks in for the twelve children. D1 to D3 are
-the sign-off. O3 was decided by the owner in review. O1, O2, O4 and O5 are open holds for the
-owner: each revisits or extends an earlier sign-off, which the owner has said may be reopened,
-and each keeps the earlier decision's reason in view. The rest were decided while drafting and are recorded so no child reopens them.
+the sign-off. O1 to O5 were the owner's holds, each revisiting or extending an earlier sign-off
+with its reason kept, and all are decided: O3 in review, O1, O2, O4 and O5 in session on
+2026-11-10. The rest were decided while drafting and are recorded so no child reopens them.
 
 ## The tree
 
@@ -19,7 +19,14 @@ flowchart TD
   D3 -.->|"rejected"| X3["grow until kits land"]
   E --> O3["O3 · every client write through a flow · decided by the owner"]
   O3 -.->|"rejected"| X4["a direct write rule beside runBy"]
-  E --> O["O1, O2, O4, O5 · open for the owner"]
+  E --> O1["O1 · kits, slots and an owned directory · decided"]
+  O1 -.->|"rejected"| X5["a better workforce API, no new unit"]
+  E --> O2["O2 · views replace reads · decided"]
+  O2 -.->|"rejected"| X6["keep reads, add a scope"]
+  E --> O4["O4 · ids on notices, the hour accepted · decided"]
+  O4 -.->|"rejected"| X7["re-check every few minutes"]
+  E --> O5["O5 · the name is kit · decided"]
+  O5 -.->|"rejected"| X8["extension or pack"]
 ```
 
 <a name="d1"></a>
@@ -29,7 +36,7 @@ flowchart TD
 |---|---|
 | **Instead of** | Four epics in dependency order (views, resource addressing, notice ids, kits), as the design review first proposed · or views and resources alone, with kits never |
 | **Because** | Each change leans on the others. A kit packages views and resources, so its shape is decided by theirs; in four epics the kit epic inherits names and seams it never chose. The objective needs the adapter gone, and only the kit's client half does that at the root. The owner has put kits in scope as FSD's own composition unit |
-| **Locks in** | A large epic (twelve children) and one closure over four mechanisms. A collapse trigger: if FIX-2622 shows the wiring pain is workforce's own API, FIX-2626 and FIX-2627 leave for a follow-up epic, and FIX-2628 narrows to moving claude-code-style onto views and direct reads with no kits, so leg a still has an owner |
+| **Locks in** | A large epic (twelve children) and one closure over four mechanisms. A collapse trigger, the owner's to pull now that [O1](#o1) is decided: if FIX-2622 shows the wiring pain is workforce's own API, FIX-2626 and FIX-2627 leave for a follow-up epic, and FIX-2628 narrows to moving claude-code-style onto views and direct reads with no kits, so leg a still has an owner |
 
 **What would change my mind:** the teammates proof (FIX-2622) showing that a better
 `createWorkerInstallation` removes the wiring with no new unit. Then the objective is met by
@@ -46,19 +53,20 @@ It comes down to the kit: designed last in its own epic, it inherits a model it 
 |---|---|
 | **Instead of** | One spec set for all twelve children, written as soon as this spec merges (the standard [spec-set](../../../docs/contributing/orchestration.md#the-spec-set-one-pr-for-the-epics-issue-specs) path) · or stage 2 as a follow-up epic |
 | **Because** | Three of the build children rest on claims nobody has checked: a view can run with no session (`runRead.ts:33` takes a `sessionId`), declared dependencies can be checked, and a kit removes the host's wiring. A refuted premise after approval redraws up to six approved specs, the kit spec most of all |
-| **Locks in** | **Stage 1:** FIX-2619 to FIX-2622 and the closure's QA plan, in the one spec-set PR. **Stage 2:** FIX-2551 and FIX-2623 to FIX-2628, specced after FIX-2620 to FIX-2622 merge, each on its own spec PR, with each proof's result recorded below |
+| **Locks in** | **Stage 1:** FIX-2619 to FIX-2622, in the one spec-set PR. **Stage 2:** FIX-2551 and FIX-2623 to FIX-2628, specced after FIX-2620 to FIX-2622 merge, each on its own spec PR, with each proof's result recorded below. **The closure** (FIX-2629): its QA plan is this spec's goal check; its issue spec is written with stage 2, once the proofs say which legs it runs |
 
 **How the hold works, with no script change.** The wake has one grouped spec dispatch and no
 second one: once the spec-set PR exists, a child still at `NEEDS_SPEC` gets its own `spec`
 dispatch (`epic-wake.js`, `awaitsSpecSet`), and blocked-by gates implementation only. So:
 
-1. The stage-1 spec-set dispatch leaves the seven stage-2 children out of `specSetMembers`,
-   naming D2, the path a set already has for a child it shouldn't spec.
-2. When the coordinator records that PR, before the next wake, it parks each stage-2 row with a
-   `blocker`: "held until stage 1's proofs merge, D2". A row with a `blocker` is not dispatched.
+1. The stage-1 spec-set dispatch leaves the seven stage-2 children and the closure out of
+   `specSetMembers`, naming D2, the path a set already has for a child it shouldn't spec.
+2. When the coordinator records that PR, before the next wake, it parks each stage-2 row and the
+   closure's with a `blocker`: "held until stage 1's proofs merge, D2". A row with a `blocker` is
+   not dispatched, and the closure's blocked-by relations don't hold its spec.
    Parked any earlier, the rows would pause the stage-1 set itself (`specSetPaused`).
 3. When FIX-2620 to FIX-2622 have merged, the coordinator records that as the resolution and
-   clears the blockers (FIX-2625's stays until [O4](#o4) is answered). Stage 2 then takes the
+   clears the blockers, FIX-2625's included ([O4](#o4) is decided). Stage 2 then takes the
    out-of-set path: per-issue spec PRs, held by the cross-spec hold until one cross-spec review
    runs over them and the stage-1 members.
 
@@ -80,10 +88,15 @@ It comes down to a refuted proof: before the build specs it costs a note, after 
 
 **The release condition.** ER-8 binds only once three amendments have merged, each its own
 follow-up PR from `main`, owned by the sibling epic and approved by the owner: FIX-2592's surface
-table, FIX-2616's matching line, and FIX-2369's stack plan. The agreement is recorded at project
-scope, in Framework simplification & cleanup's project spec, and names that FIX-2592, FIX-2616
-and FIX-2369 sit in Workforce: Shift Manager. Asking for the amendments is the coordinator's task.
-Until they merge, ER-8 is advisory: a sibling may add a verb, and FIX-2628 counts it and deletes it.
+table, FIX-2616's matching line, and FIX-2369's stack plan. Asking for them is the coordinator's
+task. Until they merge, ER-8 is advisory: a sibling may add a verb, and FIX-2628 counts it and
+deletes it.
+
+**Confirmed by the owner, in session, 2026-11-10, scoped "until that adapter is deleted":**
+claude-code-style's freeze ends when FIX-2628 lands; teammates' lasts until the follow-up epic
+deletes it. The owner skipped the project spec, so this cross-epic agreement is recorded here,
+not at project scope: FIX-2592, FIX-2616 and FIX-2369 sit in Workforce: Shift Manager, and their
+amendments cite this section.
 
 **What would change my mind:** those epics landing before stage 2 starts. Then their verbs are
 counted into FIX-2628's estimate, and the amendments aren't worth asking for.
@@ -93,85 +106,78 @@ counted into FIX-2628's estimate, and the amendments aren't worth asking for.
 It comes down to the delete count: each sibling verb added now is one more to remove later.
 
 <a name="o1"></a>
-## O1 · Open · Should FSD have kits: an installable unit above a flow?
+## O1 · Decided · Kits: an installable unit above a flow, with slots and an optional owned directory
 
-**In plain terms.** A new top-level piece that bundles flows, views, resources, capabilities,
-workers and a client half, configures itself through one config object, and plugs into other
-kits through the slots they publish. Workforce becomes the first one, the coding harnesses the
-second. An app installs them with `createFlowState({ kits: [...] })`
-([example](examples/app-install.md)).
+Decided by the owner, in session, 2026-11-10: kits, yes, in the shape below. It confirms round
+1's library/copied split, now concretely the scaffolded directory.
 
-**The options.** *Kits:* the unit above, built last (FIX-2626). *No new unit:* fix workforce's own
-installation API so the host's wiring goes, and keep each app's read model.
+| | |
+|---|---|
+| **Instead of** | No new unit: fix workforce's own installation API so the host's wiring goes, and keep each app's read model |
+| **Because** | Only a kit's client half removes the adapters at the root; a better install API removes the wiring, never the read model. A capability can't do the job: it installs into one block and can't add flows or views (`define-capability.ts`) |
+| **Locks in** | A new public unit and a slot contract, built last against two kits (FIX-2626, FIX-2627). Workforce converts fully into a kit: its library half, its `workforce/` file convention and its slots (`workerFlows` among them). `createWorkerInstallation` and `hireWorkforce` become internals of its install; no app calls them |
 
-**The trade-off.** Kits turn FSD from parts an app assembles into features it installs, and they
-are the only change that removes the adapters at the root: the client half ships with the kit.
-But a kit is a new concept, slots are a contract that is hard to change later, and it touches
-every app's setup. A capability can't do this job: it installs into one block and can't add
-flows or views (`define-capability.ts`).
+**The shape** ([a kit](examples/kit.md), [an app installing kits](examples/app-install.md)):
 
-**What a kit imports and what it copies.** A kit has two halves, and never offers one flow both
-ways (a copy beside a still-importable export is two ways to do the same thing):
+- **Slots** are typed, named extension points that only the owning kit declares, each with its
+  schema and merge policy: a keyed map refuses a duplicate key, a list appends. At install the
+  framework orders kits by `requires`, collects and validates contributions, and hands them to
+  the owning kit's setup. That replaces the circular `workerFlows: () => flows` callback. A kit
+  never patches another kit's pieces and can't reach anything a kit doesn't publish. "Slot"
+  already names block config fields (`ToolsSlot`, `UsesSlot`); FIX-2619 defines it with that in mind.
+- **The library half,** imported and versioned: resources, views, blocks, capabilities, the
+  client hooks. No flow is offered both imported and copied.
+- **The copied half is a directory the kit owns in the app, optional per kit.** Its loader reads
+  it at install through shared walk primitives, under workforce's rule today: every authored file
+  is consumed or refused loudly, never skipped. The kit's `init` scaffolds starter files there,
+  Shadcn-style; from then on the app owns them and the kit only reads them. App-level flows can
+  live there (claude-code-style already keeps `workforce/flows/`). Scaffolded files never
+  auto-update: the loader tolerates old shapes (BP-030) or refuses loudly. A kit whose users
+  author content (workforce, a future mission kit) has one; an infra-only kit (harness readiness)
+  has none. It is [FIX-1477 D1](../../issues/FIX-1477/DECISIONS.md#d1)'s rule read from the other
+  side: what a user is meant to change is copied, because there drift is the point.
+- **React components follow the two halves** (the owner, in session, 2026-11-10). Components
+  bound to the kit's views and actions go in the kit's own package behind a React subpath
+  (`@flow-state-dev/workforce/react`), absorbing today's `@flow-state-dev/react/workforce`
+  panels (FIX-2456 moved them there); behavior is never copied, so it never drifts (FIX-1477
+  D1's reason). Styled, presentational pieces the app restyles are published as shadcn-style
+  registry items (the `packages/ui` `registry.json` pattern), and `init` copies them into the
+  app's components folder; the app owns them after that. **The rule:** behavior or a data
+  contract is library; look-and-feel the app will restyle is copied. React is an optional peer
+  dependency, used only behind `/react` and never at the kit's root, so a server-only app
+  doesn't pull it in; `react` still wraps `client`.
+- **Placement: no new package.** `defineKit` and the slot types go in `core`, beside the other
+  definers. Install and resolution go in the `engine`, through `createFlowState({ kits })`. The
+  generic walk primitives in `packages/workforce/src/loader` (`openRoot`, `classify`,
+  `validateSegment`, the refusal wording, `IGNORED_ENTRIES`) lift to a Node-only engine subpath;
+  workforce keeps only its own schema (`teams/`, `workers/`, `WORKER.md`, `PACKAGE.md`, `resources/`).
 
-- **The library half,** imported and versioned: resources, views, blocks, capabilities and the
-  client hooks. This is the public API.
-- **The copied half:** the app-level flows a user installs and then configures (teammates, Shift
-  Manager), copied into the project through the same registry-style copy-in the UI uses
-  (FIX-1655's registry). It is [FIX-1477 D1](../../issues/FIX-1477/DECISIONS.md#d1)'s rule read
-  from the other side: what consumers hold unchanged ships from a package, because a copy that
-  drifts is the defect there; what a user is meant to change is copied, because there drift is
-  the point.
+**What would change my mind.** FIX-2622 still builds the better-API host with equal effort. If
+it removes everything the kit removes, that goes back to the owner as a reason to reopen O1; it
+no longer fires [D1](#d1)'s collapse on its own.
 
-The split is the owner's stated direction (2026-11-04), relayed by the architect review on this
-PR and **pending the owner's confirmation**; nothing in the repository records copy-in for flows
-yet. If it isn't the direction, kits ship their flows as library imports, and the teammates and
-Shift Manager flows stay importable. The goal check holds either way: leg b checks "no flow both
-copied and importable" only under the split.
-
-**My recommendation: yes, with the split,** after the teammates proof (FIX-2622) and after views
-and resource addressing land, so a kit packages things that exist. Slots stay few, typed and
-published only by the kit that owns the concept ([ER-5](#who-owns-what)).
-
-**What would change my mind.** The proof showing the pain is mostly workforce's own API (the
-circular callback), so a better `hireWorkforce` fixes it. Then fix workforce and wait for a
-second kit.
-
-**What being wrong costs.** Building kits first, with slots designed before a second kit exists,
-freezes the wrong contract. Doing it last, against two kits, keeps that cheap.
-
-![O1: kits with a library half and a copied half, recommended after the teammates proof and views, beside fixing workforce's API. Decides it: only a kit's client half removes the adapters at the root. Price: slots are a new public contract. Flips if the proof shows the pain is workforce's own API](figures/open-kits.svg)
+![O1, decided: kits with a library half and an owned, scaffolded directory, chosen, beside fixing workforce's API. Decides it: only a kit's client half removes the adapters at the root. Price: slots are a new public contract. Locks in defineKit in core, install in the engine and workforce as the first kit. Flips if FIX-2622 shows the better API removes it all and the owner reopens O1](figures/o1-kits.svg)
 
 It comes down to the adapters: a better install API removes the wiring, never the read model.
 
 <a name="o2"></a>
-## O2 · Open · Should views replace flow reads? · revisits FIX-2286 D1
+## O2 · Decided · Views replace flow reads · revisits FIX-2286 D1
 
-**In plain terms.** Rename `reads` to views and give them a scope (no session at user or org),
-declared dependencies (the screen stays current without knowing topics) and keyed rows (a notice
-can say which rows changed) ([example](examples/view.md)). `reads` and scope `derived` go, with
-no alias (FIX-2447's rule).
+Decided by the owner, in session, 2026-11-10: views replace reads, with the development- and
+test-time `dependsOn` check FIX-2621 is proving.
 
-**The options.** *Views, with a development-time check* that a view reads only what it declared.
-*Keep reads and add a scope.*
+| | |
+|---|---|
+| **Instead of** | Keeping reads and adding a scope |
+| **Because** | With a view, a client stops knowing topics and sessions, and "view" is the word people already reach for. FIX-2286 D1's rule is kept: one hook, storing nothing, refusing writes. Its condition ("nothing that does the same job is added beside it") is why this is a rename and not a second definer |
+| **Locks in** | A view has a scope (no session at user or org), declared `dependsOn` and keyed rows ([example](examples/view.md)). `reads` and scope `derived` go, with no alias (FIX-2447's rule), and "read" retires as the hook's name ([ER-9](#who-owns-what)). Declared dependencies can drift, so a check fails any view that reads what it didn't declare |
 
-**The trade-off.** With views, a client stops knowing topics and sessions, and "view" is the word
-people already reach for. But `dependsOn` is declared by hand and can drift from what the block
-really reads, and a drifted view silently misses changes. FIX-2286 D1's rule is kept either way:
-one hook, storing nothing, refusing writes. Its condition ("nothing that does the same job is
-added beside it") is why this is a rename and not a second definer.
+**What would change my mind.** The check proving too costly to keep on: then views without
+`dependsOn` are reads with a scope. If FIX-2621 shows reads can be recorded cheaply enough for
+production, dependencies could be inferred (as Convex's queries do); that changes FIX-2623's
+design, not this answer.
 
-**My recommendation: views,** with the check FIX-2621 proves. One word, with "read" retired as
-the hook's name in the glossary.
-
-**What would change my mind.** The check proving too costly to keep on. Then views without
-`dependsOn` are reads with a scope, and the name "read" should stay. If FIX-2621 shows reads can
-be recorded cheaply enough to run in production, dependencies could be inferred rather than
-declared (as Convex's reactive queries do); that changes FIX-2623's design, not this answer.
-
-**What being wrong costs.** Moderate. Four call sites and three read declarations exist today,
-so the rename is cheap now and dearer with each app.
-
-![O2: views with a dependency check, recommended, beside keeping reads with a scope. Decides it: the client knows only the view, no topics or session. Price: declared dependencies can drift. Flips if the check proves too costly](figures/open-views.svg)
+![O2, decided: views with a dependency check, chosen, beside keeping reads with a scope. Decides it: the client knows only the view, no topics or session. Price: declared dependencies can drift, which the check catches. Flips if the check proves too costly](figures/o2-views.svg)
 
 It comes down to what the client must know: with a view, nothing but the view.
 
@@ -227,69 +233,35 @@ never a direct path. **What being wrong costs:** low, slower plain writes, tunab
 It comes down to validators: in one path they can't be skipped; in two, one path forgets them.
 
 <a name="o4"></a>
-## O4 · Open · Ids on notices: accept the one-hour window? · revisits FIX-2428 D2, extends FIX-2367 D2
+## O4 · Decided · Ids on notices, with the one-hour window accepted · amends FIX-2428 D2 and FIX-2367 D2
 
-**In plain terms.** Notices say which ids changed, never what changed. A user whose access is
-revoked could see which opaque ids change for up to an hour, but never read them.
+Decided by the owner, in session, 2026-11-10: accept the hour, with a per-scope opt-out.
 
-**The options.** *Accept the hour,* and let any scope where timing alone is sensitive turn ids
-off. *Re-check the socket every few minutes* instead of every hour (never a check per notice).
+| | |
+|---|---|
+| **Instead of** | Re-checking the socket every few minutes instead of every hour (never a check per notice) |
+| **Because** | Targeted re-reads and much less traffic, against a small leak: a user whose access is revoked could see which opaque ids change for up to an hour, but never read them. Ids are optional, so turning them off is a config change |
+| **Locks in** | A notice may say which ids changed, never what changed; a scope where timing alone is sensitive turns ids off. FIX-2428 D2 (the hour, accepted when notices were empty) and FIX-2367 D2 (no rows) are amended by this answer with their reasons kept: no rows, every byte through a checked read, no store read per notice per viewer. FIX-2625 is unblocked on the decision side and stays parked by [D2](#d2) until the proofs merge |
 
-**The trade-off.** Targeted re-reads and much less traffic, against a small leak of timing and
-ids. FIX-2428 D2 accepted the hour because notices were empty; FIX-2367 D2's rule (no rows, every
-byte through a checked read) still holds. The reason a check per notice was refused (a store read
-per notice per viewer) is kept.
+**What would change my mind.** A real tenant for whom ids or timing are themselves
+confidential: then shorten the re-check window to minutes.
 
-**My recommendation: accept,** with the per-scope opt-out. FIX-2367 D2 and FIX-2428 D2 are
-amended by this answer, before FIX-2466 builds further on no-row notices.
-
-**What would change my mind.** A real tenant for whom ids or timing are themselves confidential.
-Then shorten the re-check window to minutes.
-
-**What being wrong costs.** Small: ids are optional, so turning them off anywhere is a config
-change.
-
-![O4: accept the hour with a per-scope opt-out, recommended, beside re-checking every few minutes. Decides it: what a revoked user learns, ids for up to an hour, never a row. Price: that leak. Flips if a tenant finds ids or timing confidential](figures/open-notice-ids.svg)
+![O4, decided: accept the hour with a per-scope opt-out, chosen, beside re-checking every few minutes. Decides it: what a revoked user learns, ids for up to an hour, never a row. Price: that leak. Flips if a tenant finds ids or timing confidential](figures/o4-notice-ids.svg)
 
 It comes down to what leaks: opaque ids for an hour, and never a row.
 
 <a name="o5"></a>
-## O5 · Open · What is the installable unit called?
+## O5 · Decided · The installable unit is called "kit"
 
-**In plain terms.** Every candidate collides with something already in the repo or in readers'
-heads. The word goes into the glossary, the API (`defineX`, `createFlowState({ xs })`) and the
-published docs.
+Decided by the owner, in session, 2026-11-10.
 
-**The options, each with its collision.**
+| | |
+|---|---|
+| **Instead of** | *extension* (file extensions, every editor's word, and the objectives' "Plugin/extension ecosystem": it promises the third-party ecosystem the owner ruled out) · *pack* (`harness-manager`'s git pack, npm's `pack`) · *add-on* (reads as optional and third-party). *Plugin*, *package* and *module* were rejected outright |
+| **Because** | The cheapest word to adopt with the clearest promise: pieces that go together, no store implied. Its one collision is FIX-2246's glossary retire ("Session factory… never a kit"), whose check refuses `the kit` and `kit.x` |
+| **Locks in** | `defineKit` and `createFlowState({ kits })`. FIX-2619 adds the entry and narrows FIX-2246's retire to the session-factory sense in one PR. Once FIX-2626 merges, a rename is public, under FIX-2447's no-alias rule |
 
-- **kit.** The glossary retires it in one sense only: FIX-2246's "Session factory… never a kit",
-  whose check refuses `the kit` and `kit.x` in code and published pages. That entry narrows to the
-  session-factory sense. FIX-1651 ("Eng workstream kit") and FIX-1649 D3 (a rejected "chrome kit
-  each Lab imports") use it loosely in Linear and specs. Five files in packages, apps and labs
-  use the word today.
-- **extension.** File extensions (94 files mention the word), every editor's extension, and the
-  objectives line "Plugin/extension ecosystem". It promises the third-party ecosystem the owner
-  has ruled out.
-- **pack.** `harness-manager` already holds a git pack of a run's work ("write the pack, then
-  switch the record to it"), and npm has `pack`.
-- **add-on.** Few collisions (three files), but it reads as optional and third-party, and
-  `defineAddOn` is awkward.
-- Rejected outright: *plugin* (the repo's Claude Code plugin in `plugins/`, build-tool plugins),
-  *package* (npm, worker `PACKAGE.md`), *module* (JS modules, `resource-modules.ts`).
-
-**The trade-off.** The cheapest word to adopt against the clearest promise. *Kit* costs one
-narrowed glossary entry and promises "pieces that go together", with no store implied.
-
-**My recommendation: kit.** FIX-2619 narrows the FIX-2246 entry and adds the new one in the same
-PR, and the epic keeps "kit" as its working name until you answer.
-
-**What would change my mind.** You reading *kit* as a starter template (a "starter kit"). Then
-*pack*, whose one collision is internal.
-
-**What being wrong costs.** Near zero now: a rename before any code ships. After FIX-2626 merges
-it is a public rename under FIX-2447's no-alias rule.
-
-![O5: kit, recommended, beside extension and pack. Decides it: what the word promises; extension promises the ecosystem the epic rules out. Price: a narrowed glossary retire. Flips if kit reads as a starter template](figures/open-unit-name.svg)
+![O5, decided: kit, chosen, beside extension and pack. Decides it: what the word promises; extension promises the ecosystem the epic rules out. Price: a narrowed glossary retire. Flips if kit reads as a starter template](figures/o5-kit-name.svg)
 
 It comes down to the promise: *extension* invites the third-party ecosystem we ruled out.
 
@@ -307,11 +279,11 @@ the stage-2 specs.
 | ER-2 | A view never writes (its context refuses writes and dispatch, as a read's does today). Every byte a client sees comes through a checked read or view; a notice carries ids, never rows | FIX-2623 builds · FIX-2624, FIX-2625 use | Each child's spec review; the closure |
 | ER-3 | A session-free read or view takes user and org from the verified principal, never from the body, query or headers (BP-031) | FIX-2624 builds · FIX-2623 uses | FIX-2623's and FIX-2624's spec review |
 | ER-4 | No direct client-write path is added. A client writes a user or org resource by scope only through a flow: an action on its `runBy` session, the default write flow or the app's own; with no `runBy`, it can't. Schema, owner fence and `canWrite` run inside the flow ([O3](#o3)). `client.content.*` stays for session-scope collections. The skills drawer's user and org content writes are the one leftover, exempt by name until [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) moves them | FIX-2624 builds · FIX-2626, FIX-2628 use | The stage-2 cross-spec review |
-| ER-5 | A kit holds only existing pieces (flows, views, resources, capabilities, blocks, workers, a client half, config, slots). It reaches another kit only through slots that kit publishes, never patches one, and a host can turn off what it contributes. Slots are few, typed, and published only by the kit that owns the concept. A flow a user installs and configures is copied, never also exported ([O1](#o1)) | FIX-2626 builds · FIX-2627, FIX-2628 use | FIX-2627's spec review; closure leg b |
+| ER-5 | A kit holds only existing pieces (flows, views, resources, capabilities, blocks, workers, a client half, config, slots). It reaches another kit only through slots that kit publishes, never patches one, and a host can turn off what it contributes. Slots are few, typed, and declared only by the kit that owns the concept, each with its merge policy (a keyed map refuses duplicates, a list appends). A kit's owned directory is read through the shared walker: every file consumed or refused loudly. What a user configures is scaffolded there, never also exported ([O1](#o1)) | FIX-2626 builds · FIX-2627, FIX-2628 use | FIX-2627's spec review; closure leg b |
 | ER-6 | Data the server computes is typed by its view's output schema (`ViewOutput`). An app hand-writes only what its screen computes | FIX-2623 builds · FIX-2627, FIX-2628 use | FIX-2628's spec review; closure leg a |
 | ER-7 | One live read in the client: the coalescer and the path rule live in one place, and `useView` and every package watch sit on it | FIX-2551 builds · FIX-2623, FIX-2627 use | The stage-2 reuse review |
-| ER-8 | No lab adapter grows once the sibling amendments merge. A screen's new need is then a package read or view, never a new adapter verb or hand-written row type. Until FIX-2592, FIX-2616 and FIX-2369's amendments merge it is advisory, and FIX-2628 deletes what was added ([D3](#d3)) | The coordinator (it asks for the amendments) · FIX-2628 uses | FIX-2592, FIX-2616 and FIX-2369's spec reviews, after the amendments |
-| ER-9 | Every public name the set fixes is in the glossary in the PR that coins it; "read" retires as the hook's name; the unit's name waits for [O5](#o5) | FIX-2619 builds · FIX-2623, FIX-2626 use | Each child's PR checks |
+| ER-8 | No lab adapter grows once the sibling amendments merge. A screen's new need is then a package read or view, never a new adapter verb or hand-written row type. Until FIX-2592, FIX-2616 and FIX-2369's amendments merge it is advisory, and FIX-2628 deletes what was added. It holds until that adapter is deleted ([D3](#d3)) | The coordinator (it asks for the amendments) · FIX-2628 uses | FIX-2592, FIX-2616 and FIX-2369's spec reviews, after the amendments |
+| ER-9 | Every public name the set fixes is in the glossary in the PR that coins it. The holds that fix the names are answered ([O1](#o1), [O2](#o2), [O5](#o5)), so "view", "kit" and "slot" land with FIX-2619, with the narrowed FIX-2246 retire and the objectives non-goal line. "Read" retires as the hook's name: FIX-2619's entry says so, and the check that refuses it lands in FIX-2623's PR, the one that removes `reads` | FIX-2619 builds · FIX-2623, FIX-2626 use | Each child's PR checks |
 | ER-10 | Ids on notices are hints. No ids means read everything; a full read runs on connect, reconnect, resync, a poll tick and wherever the bus doesn't cross processes; a notice that drops the resource name carries no ids | FIX-2625 builds · FIX-2623 uses (keys) | FIX-2625's spec review; the closure |
 
 ## Coordination seams
@@ -324,6 +296,7 @@ the stage-2 specs.
 | The resource definition (`client` config, `runBy`) | FIX-2624, FIX-2626, FIX-2628 | FIX-2624 owns the fields and the default write flow; a kit and the app kit only declare them |
 | The workforce roster watch | FIX-2412, FIX-2623, FIX-2627 | FIX-2623 moves it onto a view; FIX-2627 ships that view in the workforce kit |
 | The coding worker flow | FIX-2627, FIX-1907, teammates' `coder.ts` | FIX-2627 merges the two labs' routing into one flow; FIX-1907's harness session flow factory feeds it, and lands first |
+| The loader's walk primitives (`openRoot`, `classify`, `validateSegment`, `IGNORED_ENTRIES`) | FIX-2626, FIX-2627, `packages/workforce/src/loader` | FIX-2626 lifts them to a Node-only engine subpath for every kit's owned directory; FIX-2627 leaves workforce only its own schema ([O1](#o1)) |
 | The glossary | FIX-2619, FIX-2623, FIX-2626, FIX-2600 | FIX-2619 adds the entries and narrows FIX-2246's; later children edit their own entry in their PR (FIX-2600 ER-2) |
 | `runBy` and per-service sessions | FIX-2624, FIX-2471 | FIX-2471's webhook subscriptions are a candidate consumer. Coordinate, don't fold |
 | Connectors and project scope keys | FIX-2627, FIX-2615 | A connector looks like kit config; FIX-2615 defines what a project is. FIX-2627 reads FIX-2615's answer and doesn't define one |
@@ -356,6 +329,21 @@ Engineering calls, carried from the design review where they were decided withou
 None built at create. The three proofs that the division rests on are children (FIX-2620 to
 FIX-2622), and [D2](#d2) puts them before any build spec. Each one's result is recorded here, in
 four lines, by the amendment that lands it.
+
+**FIX-2620 · a user-scoped view answers with no session (2026-11-10): CONFIRMED, past a small change.**
+
+- **Built:** one read block at user and org scope, run on `createExecutionContext` with only
+  `userId` and `orgId` and a 61-line opt-in no-session mode, against a control of today's
+  `runRead` with no session id.
+- **See it:** `bash specs/issues/FIX-2620/poc/no-session-read/run.sh` (add
+  `POC_STRICT_CONTROL=1` to see the control red); [README](../../issues/FIX-2620/poc/no-session-read/README.md).
+- **Showed:** the control dies in session birth, refused `read_only`; the no-session path reads
+  the user's pins and the org's note, a write throws `read_only`, `ctx.session` throws
+  `NoSessionError`, and the session store is never called. Only execution metadata reached for
+  the session past the context; generators in a view would too (their history), not exercised.
+- **Changed:** nothing in the division. FIX-2623 specs `scope: "user" | "org"` views on this
+  context, and its first piece of work is the no-session mode and the metadata change the patch
+  names; FIX-2624's direct reads use the same context.
 
 ## Analysis
 
@@ -408,9 +396,21 @@ objective or the division.
   parks the rows); ER-8 contradicted FIX-2592's merged surface table ([D3](#d3) now waits on
   amendments); the collapse dropped claude-code-style's migration (FIX-2628 narrows instead).
   The architect review: kits split into a library half and a copied half ([O1](#o1)), and pins
-  take a write rule, not a flow ([O3](#o3), now a two-path fork). Both are pending the owner.
+  take a write rule, not a flow ([O3](#o3), now a two-path fork). Both went to the owner.
 - **Review round 2 (2026-11-09)** — the owner decided [O3](#o3): every write through a flow, with
   a default write flow and one-line client helpers ([6742479932](https://github.com/fixpoint-labs/flow-state-dev/pull/4964#issuecomment-6742479932)); the architect asked for
   the goal check to fail on any direct write path ([6742490134](https://github.com/fixpoint-labs/flow-state-dev/pull/4964#issuecomment-6742490134)). The write rule is gone.
+- **Stage-1 spec set (2026-11-09)** — two amendments from the set's review. [ER-9](#who-owns-what):
+  a glossary entry lands once its hold is answered, and the "read" retire's check lands with
+  FIX-2623, which removes `reads` (found by FIX-2619). [D2](#d2): the closure is out of stage 1
+  and parked with stage 2, since its blocked-by relations don't hold a spec dispatch.
+- **Owner decisions (2026-11-10, in session)**, recorded in a follow-up PR from `main` (the
+  epic merged in #4964, the stage-1 specs in #4986). [O1](#o1): kits, with slots, an optional
+  owned directory read by a shared walker, React components split by the same two halves, and
+  no new package; [O2](#o2), [O4](#o4) and
+  [O5](#o5) as recommended; [ER-8](#who-owns-what) confirmed until each adapter is deleted; the
+  project spec skipped, so cross-epic agreements live here ([D3](#d3)). FIX-2619, FIX-2621 and
+  FIX-2622 are amended to match.
 
-**Open:** [O1](#o1) · [O2](#o2) · [O4](#o4) · [O5](#o5). **Decided in review:** [O3](#o3).
+**Open:** none. **Decided by the owner:** [O3](#o3) in review; [O1](#o1), [O2](#o2), [O4](#o4)
+and [O5](#o5) in session.

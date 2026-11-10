@@ -42,6 +42,10 @@
       "types": "./dist/block-instance-id.d.ts",
       "default": "./src/block-instance-id.ts"
     },
+    "./attachments": {
+      "types": "./dist/attachments.d.ts",
+      "default": "./src/attachments.ts"
+    },
     "./types/*": {
       "types": "./dist/types/*.d.ts",
       "default": "./src/types/*.ts"
@@ -80,6 +84,10 @@
       "./block-instance-id": {
         "types": "./dist/block-instance-id.d.ts",
         "default": "./dist/block-instance-id.js"
+      },
+      "./attachments": {
+        "types": "./dist/attachments.d.ts",
+        "default": "./dist/attachments.js"
       },
       "./types/*": {
         "types": "./dist/types/*.d.ts",

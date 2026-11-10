@@ -8,7 +8,9 @@ import { describe, it, expect } from "vitest";
 import {
   composeToolCallsLabel,
   composeToolGroupLabel,
+  knownToolVerbs,
   TOOL_GROUP_DISTINCT_CAP,
+  TOOL_VERB_MAP,
   TOOL_GROUP_INTENT_CAP,
   toolRunOpen,
   toolRunState,
@@ -82,6 +84,24 @@ describe("composeToolGroupLabel", () => {
     const label = composeToolGroupLabel(["web_search", "write_file"]);
     expect(label.charAt(0)).toBe(label.charAt(0).toUpperCase());
     expect(label).toBe("Ran a search and wrote a file");
+  });
+});
+
+describe("knownToolVerbs", () => {
+  it("finds a tool's entry by its exact name or in lower case, as the group labels do", () => {
+    expect(knownToolVerbs("readProjectSource")?.present).toBe("reading a file");
+    expect(knownToolVerbs("Bash")?.present).toBe("running a command");
+    expect(knownToolVerbs("Bash")).toBe(TOOL_VERB_MAP.bash);
+  });
+
+  it("knows nothing of a tool outside the map, so a caller never repeats its name", () => {
+    expect(knownToolVerbs("private-token")).toBeUndefined();
+  });
+
+  it("gives every entry a phrase for a call under way", () => {
+    for (const [tool, verbs] of Object.entries(TOOL_VERB_MAP)) {
+      expect(verbs.present, tool).toMatch(/^[a-z]+ing\b/);
+    }
   });
 });
 

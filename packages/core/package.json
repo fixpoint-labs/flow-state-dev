@@ -48,6 +48,10 @@
       "types": "./dist/items/index.d.ts",
       "default": "./src/items/index.ts"
     },
+    "./attachments": {
+      "types": "./dist/attachments.d.ts",
+      "default": "./src/attachments.ts"
+    },
     "./prompt": {
       "types": "./dist/prompt/index.d.ts",
       "default": "./src/prompt/index.ts"
@@ -122,6 +126,10 @@
       "./items": {
         "types": "./dist/items/index.d.ts",
         "default": "./dist/items/index.js"
+      },
+      "./attachments": {
+        "types": "./dist/attachments.d.ts",
+        "default": "./dist/attachments.js"
       },
       "./prompt": {
         "types": "./dist/prompt/index.d.ts",

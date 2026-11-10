@@ -18,7 +18,10 @@ import { TaskCard } from "../src/components/TaskCard";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 import { lookOf } from "../src/lib/looks";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 const NOW = Date.now();
 const MIN = 60_000;
@@ -46,8 +49,8 @@ const adapter = {
   watchConnection: () => () => {},
 } as unknown as LabAdapter;
 
-function renderPanel() {
-  render(<TeammatePanel adapter={adapter} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} isCoding={() => false} onOpen={() => {}} />);
+function renderPanel(a: LabAdapter = adapter) {
+  render(<TeammatePanel adapter={a} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} isCoding={() => false} onOpen={() => {}} />);
   return screen.getByRole("complementary", { name: "Lead's panel" });
 }
 
@@ -86,6 +89,59 @@ describe("a teammate's tasks in its panel", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "Show all 7" }));
     expect(rows(within(panel).getByRole("list", { name: "Done" }))).toHaveLength(7);
     expect(within(panel).queryByRole("button", { name: "Show all 7" })).toBeNull();
+  });
+});
+
+/** A busy conversation: six running tasks and seven failed ones. */
+const BUSY: BoardTask[] = [
+  ...Array.from({ length: 6 }, (_, i) => task(`r${i}`, {}, { startedAt: NOW - (i + 1) * MIN })),
+  ...Array.from({ length: 7 }, (_, i) =>
+    task(`f${i}`, { status: "failed", boardStatus: "errored", error: "boom" }, { completedAt: NOW - (i + 1) * MIN }),
+  ),
+];
+const busy = (tasks: BoardTask[]) =>
+  ({ watchTasks: (_: string, onChange: (t: BoardTask[]) => void) => (onChange(tasks), () => {}), watchConnection: () => () => {} }) as unknown as LabAdapter;
+
+describe("a busy panel stays short", () => {
+  // Red state: on the parent commit Failed lists all seven, with no Show all and no Clear.
+  it("never caps the running tasks: active work is always in sight", () => {
+    const panel = renderPanel(busy(BUSY));
+    expect(rows(within(panel).getByRole("list", { name: "Running" }))).toHaveLength(6);
+  });
+
+  it("shows the newest five failed, and Show all / Show fewer to reach the older ones", () => {
+    const panel = renderPanel(busy(BUSY));
+    const failedIds = () => rows(within(panel).getByRole("list", { name: "Failed" }));
+    expect(failedIds()).toEqual(["f0", "f1", "f2", "f3", "f4"].map((id) => `Asked researcher to task ${id}`));
+    fireEvent.click(within(panel).getByRole("button", { name: "Show all 7" }));
+    expect(failedIds()).toHaveLength(7);
+    fireEvent.click(within(panel).getByRole("button", { name: "Show fewer" }));
+    expect(failedIds()).toHaveLength(5);
+  });
+
+  it("clears failed rows from the panel only: the heading still counts them, and they can come back", () => {
+    const panel = renderPanel(busy(BUSY));
+    fireEvent.click(within(panel).getByRole("button", { name: "Clear failed (7)" }));
+    expect(within(panel).queryByRole("list", { name: "Failed" })).toBeNull();
+    // Not deleted: the task is still the board's, so the heading's total keeps it.
+    expect(panel.querySelector("#tasks-heading")!.textContent).toMatch(/^Tasks \(13\)/);
+    expect(rows(within(panel).getByRole("list", { name: "Running" }))).toHaveLength(6);
+    fireEvent.click(within(panel).getByRole("button", { name: "Show 7 cleared" }));
+    expect(rows(within(panel).getByRole("list", { name: "Failed" }))).toHaveLength(5);
+  });
+
+  it("remembers a clear across a reload, but shows a task again when it fails anew", () => {
+    let panel = renderPanel(busy(BUSY));
+    fireEvent.click(within(panel).getByRole("button", { name: "Clear failed (7)" }));
+    cleanup();
+    panel = renderPanel(busy(BUSY));
+    expect(within(panel).queryByRole("list", { name: "Failed" })).toBeNull();
+    cleanup();
+    // f0 was retried and failed again: it ended at a new time, so it shows.
+    const refailed = BUSY.map((t) => (t.id === "f0" ? task("f0", { status: "failed", boardStatus: "errored" }, { completedAt: NOW }) : t));
+    panel = renderPanel(busy(refailed));
+    expect(rows(within(panel).getByRole("list", { name: "Failed" }))).toEqual(["Asked researcher to task f0"]);
+    expect(within(panel).getByRole("button", { name: "Show 6 cleared" })).toBeTruthy();
   });
 });
 
