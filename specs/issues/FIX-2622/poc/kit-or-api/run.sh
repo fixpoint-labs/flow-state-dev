@@ -86,7 +86,8 @@ if step 4; then
   for v in "${variants[@]}"; do
     echo "-- $v"
     cp "$lab/host.zz-$v.mts" "$lab/host.mts"
-    node ../../scripts/typecheck.mjs && echo "typecheck passed"
+    node ../../scripts/typecheck.mjs   # standalone, so set -e stops the run on a failure
+    echo "typecheck passed"
     run_vitest "${host_tests[@]}" >/dev/null
     grep -E "Test Files|Tests " "$log"
     cp "$saved" "$lab/host.mts"
