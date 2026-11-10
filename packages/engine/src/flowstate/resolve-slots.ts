@@ -125,18 +125,20 @@ export async function resolveProfileStores(options: {
   // Fill any uncovered sub-store from in-memory (historical `resolveStores`
   // behavior). With a `primary` adapter present this is a no-op.
   const stores = resolveStores(merged);
-  stores.blobs ??= defaultBlobStore(stores);
+  stores.blobs ??= defaultBlobStore(stores, profileName);
   return { stores, adapters };
 }
 
 /**
  * Where a profile that names no `blobs` keeps its attachments: wherever its
- * sessions live. On disk under `.fsdev/blobs` in the working
+ * sessions live. On disk under `.fsdev/blobs/<profile>` in the working
  * directory when the sessions persist, in memory when they don't, so a
- * restart never leaves bytes that no session points at.
+ * restart never leaves bytes that no session points at. The folder is the
+ * profile's own: two durable profiles run from one directory can share
+ * session ids, and one's session cleanup must not reach the other's files.
  */
-function defaultBlobStore(stores: StoreRegistry): BlobStore {
+function defaultBlobStore(stores: StoreRegistry, profileName: string): BlobStore {
   return storesPersist(stores)
-    ? createLocalBlobStore({ rootDir: path.join(process.cwd(), ".fsdev", "blobs") })
+    ? createLocalBlobStore({ rootDir: path.join(process.cwd(), ".fsdev", "blobs", encodeURIComponent(profileName)) })
     : createMemoryBlobStore();
 }

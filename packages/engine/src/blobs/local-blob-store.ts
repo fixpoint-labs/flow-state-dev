@@ -237,7 +237,7 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore 
 /**
  * The local-disk blob store as a profile's `blobs` adapter. The default when a
  * profile with persistent sessions names none is this, under
- * `.fsdev/blobs` in the server's working directory; name it to choose
+ * `.fsdev/blobs/<profile>` in the server's working directory; name it to choose
  * another folder:
  *
  * ```ts

@@ -2,7 +2,7 @@
  * FIX-824 D1: attachment bytes live wherever the sessions live. The `blobs`
  * slot resolves to the profile's own adapter when it names one; otherwise to
  * the local disk when the sessions persist (under a filesystem primary's own
- * root, else `.fsdev/blobs` in the working directory), and to memory when
+ * root, else `.fsdev/blobs/<profile>` in the working directory), and to memory when
  * they don't.
  */
 import { existsSync, mkdtempSync } from "node:fs";
@@ -43,14 +43,31 @@ describe("the blobs slot", () => {
     expect(stores.blobs).toMatchObject({ local: true, persists: false });
   });
 
-  it("puts a durable primary's files on disk under .fsdev/blobs in the working directory", async () => {
+  it("puts a durable primary's files on disk under .fsdev/blobs/<profile> in the working directory", async () => {
     const cwd = scratch();
     vi.spyOn(process, "cwd").mockReturnValue(cwd);
     const { stores } = await resolveProfileStores({ profileName: "default", profile: { primary: persistentPrimary() } });
     expect(stores.blobs).toMatchObject({ local: true, persists: true });
     const id = newBlobId();
     await stores.blobs!.put({ id, bytes, mediaType: "image/png", uploader: UPLOADER });
-    expect(existsSync(path.join(cwd, ".fsdev", "blobs", `${id}.bin`))).toBe(true);
+    expect(existsSync(path.join(cwd, ".fsdev", "blobs", "default", `${id}.bin`))).toBe(true);
+  });
+
+  // Two durable profiles with their own databases can run from one working
+  // directory and share session ids; deleting a session in one must not take
+  // the other's files.
+  it("keeps each durable profile's files apart, so one profile's session cleanup can't reach another's", async () => {
+    const cwd = scratch();
+    vi.spyOn(process, "cwd").mockReturnValue(cwd);
+    const staging = (await resolveProfileStores({ profileName: "staging", profile: { primary: persistentPrimary() } })).stores.blobs!;
+    const production = (await resolveProfileStores({ profileName: "production", profile: { primary: persistentPrimary() } })).stores.blobs!;
+    const id = newBlobId();
+    await production.put({ id, bytes, mediaType: "image/png", uploader: UPLOADER });
+    const send = { uploader: UPLOADER, owner: "session:s1", send: "send-a" };
+    await production.claim(id, send);
+    await production.confirm(id, send.owner, send.send);
+    await staging.deleteOwner("session:s1");
+    expect((await production.head(id))?.owner).toBe("session:s1");
   });
 
   it("puts a filesystem primary's files under its own root", async () => {
