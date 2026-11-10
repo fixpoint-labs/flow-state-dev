@@ -25,7 +25,7 @@ import { BUILD_INPUTS_FILE, staleBuildInputs } from "../../scripts/build-inputs.
  * @param {string} repoRoot
  * @returns {string[] | undefined}
  */
-export function recordedInputs(outDir, repoRoot) {
+function recordedInputs(outDir, repoRoot) {
   const record = join(outDir, BUILD_INPUTS_FILE);
   if (!existsSync(record)) return undefined;
   try {
