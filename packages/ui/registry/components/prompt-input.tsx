@@ -497,10 +497,11 @@ const PromptInputForm = ({
         form.reset();
       }
 
-      // The files on screen at Send; one attached while it uploads stays for the next message.
+      // The files and refusal lines on screen at Send; one attached or refused while it waits stays.
       const sent = attachments.files.map((f) => f.id);
+      const shown = attachments.refusals;
       const clear = () => {
-        for (const id of sent) attachments.remove(id);
+        attachments.consume(sent, shown);
         clearReferencedSources();
         controller?.textInput.clear();
       };

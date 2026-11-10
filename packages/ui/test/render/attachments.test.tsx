@@ -228,6 +228,17 @@ describe("PromptInput's Send", () => {
     expect(screen.getByRole("img", { name: "b.png" })).toBeTruthy();
   });
 
+  it("clears the refusal lines that were on screen once Send goes out", async () => {
+    const { onSubmit, box } = composer(uploader());
+    await act(async () => pick([file("a.png", "image/png"), file("x.heic", "image/heic")]));
+    expect(screen.getByText("x.heic isn't supported")).toBeTruthy();
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(screen.queryByText("x.heic isn't supported")).toBeNull();
+  });
+
   it("sends once when Enter is pressed again while an upload is in flight", async () => {
     let open!: () => void;
     const client = uploader({ gate: new Promise<void>((done) => (open = done)) });
@@ -328,6 +339,21 @@ describe("a send's batch", () => {
     expect(await first).toHaveLength(1);
     // Sending a file twice would attach it to two messages.
     expect(await second).toEqual([]);
+  });
+
+  it("keeps a file the server refuses while Send waits, with its line, so the person sees it didn't go", async () => {
+    const { client, open } = gated(["b.png"]);
+    const { result } = renderHook(() => useAttachments({ client, prepare: async (f) => f }));
+    await act(async () => result.current.add([file("a.png", "image/png"), file("b.png", "image/png")]));
+    let taken!: Promise<FileContent[]>;
+    act(() => {
+      taken = result.current.take();
+    });
+    await open("a.png");
+    await open("b.png");
+    expect((await taken).map((f) => f.filename)).toEqual(["a.png"]);
+    expect(result.current.files.map((f) => [f.filename, f.status])).toEqual([["b.png", "refused"]]);
+    expect(result.current.refusals).toHaveLength(1);
   });
 
   it("doesn't announce a failed upload for a file already removed", async () => {

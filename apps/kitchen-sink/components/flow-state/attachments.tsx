@@ -104,8 +104,13 @@ export interface Attachments {
   clear: () => void;
   /** Waits for the draft's uploads in flight, then resolves to those files' references, leaving the draft as it is. A file added meanwhile isn't included. */
   settle: () => Promise<FileContent[]>;
-  /** `settle`, then removes those files from the draft: what Send carries. A file added meanwhile stays, and a second `take` while one waits gets none of the first's files. */
+  /** `settle`, then `consume`s them: what Send carries. A file added meanwhile stays, and a second `take` while one waits gets none of the first's files. */
   take: () => Promise<FileContent[]>;
+  /**
+   * After a Send went out: removes those of `ids` that were sent (uploaded), and the refusal lines in `shown`,
+   * the ones on screen when it began. A file refused while Send waited keeps its chip and its line.
+   */
+  consume: (ids: string[], shown: AttachmentRefusal[]) => void;
   openFileDialog: () => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
   /** For a text box: takes pasted files, leaves pasted text alone. */
@@ -210,7 +215,13 @@ const hasFiles = (event: DragEvent<HTMLElement>) => Boolean(event.dataTransfer?.
 export function useAttachments(options: UseAttachmentsOptions = {}): Attachments {
   const { client, sessionId, accept = DEFAULT_ACCEPT, limits, prepare = downscaleImage, onRefused } = options;
   const [files, setFiles] = useState<PendingAttachment[]>([]);
-  const [refusals, setRefusals] = useState<AttachmentRefusal[]>([]);
+  const [refusals, setRefusalState] = useState<AttachmentRefusal[]>([]);
+  // Mirrors `refusals` for a Send that snapshots the lines on screen when it begins.
+  const refusalsRef = useRef<AttachmentRefusal[]>([]);
+  const setRefusals = useCallback((next: (prev: AttachmentRefusal[]) => AttachmentRefusal[]) => {
+    refusalsRef.current = next(refusalsRef.current);
+    setRefusalState(refusalsRef.current);
+  }, []);
   const [dragDepth, setDragDepth] = useState(0);
   // The source of truth, read synchronously by `add` (counts) and `settle`; state mirrors it for drawing.
   const filesRef = useRef<PendingAttachment[]>([]);
@@ -235,7 +246,7 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
   const refuse = useCallback((batch: AttachmentRefusal[]) => {
     for (const refusal of batch) latest.current.onRefused?.(refusal);
     setRefusals((prev) => [...prev, ...batch]);
-  }, []);
+  }, [setRefusals]);
 
   const upload = useCallback(
     (entry: PendingAttachment, picked: File) => {
@@ -268,7 +279,7 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
       const list = [...incoming];
       if (list.length === 0) return;
       // Each batch's refusals replace the last batch's.
-      setRefusals([]);
+      setRefusals(() => []);
       if (!latest.current.client) {
         refuse([{ code: "unavailable", message: "Attachments aren't available here" }]);
         return;
@@ -341,8 +352,22 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
       for (const f of prev) if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
       return [];
     });
-    setRefusals([]);
-  }, [update]);
+    setRefusals(() => []);
+  }, [update, setRefusals]);
+
+  const consume = useCallback(
+    (ids: string[], shown: AttachmentRefusal[]) => {
+      const batch = new Set(ids);
+      const sent = (f: PendingAttachment) => batch.has(f.id) && f.status === "ready";
+      update((prev) => {
+        for (const f of prev) if (sent(f) && f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+        return prev.filter((f) => !sent(f));
+      });
+      const seen = new Set(shown);
+      setRefusals((prev) => prev.filter((r) => !seen.has(r)));
+    },
+    [update, setRefusals],
+  );
 
   // The references of exactly `ids`, once their uploads finish: a file added meanwhile isn't in the batch.
   const settleBatch = useCallback(async (ids: string[]) => {
@@ -357,19 +382,15 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
     // Claimed before the wait, so a concurrent take gets none of these.
     const ids = filesRef.current.map((f) => f.id).filter((id) => !reserved.current.has(id));
     for (const id of ids) reserved.current.add(id);
+    const shown = refusalsRef.current;
     try {
       const taken = await settleBatch(ids);
-      const batch = new Set(ids);
-      update((prev) => {
-        for (const f of prev) if (batch.has(f.id) && f.previewUrl) URL.revokeObjectURL(f.previewUrl);
-        return prev.filter((f) => !batch.has(f.id));
-      });
-      setRefusals([]);
+      consume(ids, shown);
       return taken;
     } finally {
       for (const id of ids) reserved.current.delete(id);
     }
-  }, [settleBatch, update]);
+  }, [settleBatch, consume]);
 
   const openFileDialog = useCallback(() => fileInputRef.current?.click(), []);
 
@@ -440,12 +461,13 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
       clear,
       settle,
       take,
+      consume,
       openFileDialog,
       fileInputRef,
       onPaste,
       dropTarget,
     }),
-    [files, refusals, uploading, dragDepth, accept, add, remove, clear, settle, take, openFileDialog, onPaste, dropTarget],
+    [files, refusals, uploading, dragDepth, accept, add, remove, clear, settle, take, consume, openFileDialog, onPaste, dropTarget],
   );
 }
 
