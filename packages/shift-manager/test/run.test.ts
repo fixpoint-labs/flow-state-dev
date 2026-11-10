@@ -154,7 +154,7 @@ describe("what the run recorded (V5; BR-19, BR-20)", () => {
       ["Read the task", "completed"],
       ["Write the audit note", "in_progress"],
     ]);
-    expect(recorded.files?.rows).toEqual([{ path: "notes/audit.md", kind: "created" }]);
+    expect(recorded.files?.rows).toEqual([{ path: "notes/audit.md", kind: "created", applied: 1 }]);
     // Only the pull request this run's request opened: the session's earlier one is narrowed out by requestId.
     expect(recorded.pullRequests?.rows).toEqual([
       { url: "https://github.com/acme/audit/pull/7", repository: "acme/audit", number: 7, title: "Audit note 7", state: "open", source: "tool" },

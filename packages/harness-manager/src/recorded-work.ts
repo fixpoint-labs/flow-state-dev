@@ -41,8 +41,13 @@ const RECORDED = {
 
 /** One step of the plan the run recorded. */
 export type PlanStep = { id: string; title: string; status: string | null };
-/** One path the run's file tools touched. */
-export type FileTouch = { path: string; kind: "created" | "edited" | null };
+/**
+ * One path the run's file tools touched. `applied` is how many of those
+ * operations the harness confirmed landed: `0` when every attempt failed, so
+ * a view can tell an edit from a try. `null` on a row recorded before the
+ * count was kept.
+ */
+export type FileTouch = { path: string; kind: "created" | "edited" | null; applied: number | null };
 /** One pull request the run opened, or found on its branch. */
 export type OpenedPullRequest = {
   url: string;
@@ -125,7 +130,12 @@ export async function readRecordedWork(client: RecordedWorkClient, run: Recorded
             truncated: files.truncated,
             rows: files.items.map((item) => {
               const kind = field(item.clientData, "lastKind");
-              return { path: rest(item.topic), kind: kind === "created" || kind === "edited" ? kind : null };
+              const applied = field(item.clientData, "appliedCount");
+              return {
+                path: rest(item.topic),
+                kind: kind === "created" || kind === "edited" ? kind : null,
+                applied: typeof applied === "number" ? applied : null,
+              };
             }),
           },
     pullRequests:
