@@ -21,14 +21,34 @@ export function sessionBlobOwner(sessionStorageKey: string): string {
 
 // FIX-2522; epic FIX-2516 ER-7.
 /**
- * The owner key for a person's own scope's files: what a board kept at their
- * user scope (a conversation's task board) holds as a task's brief. Keyed by
- * the tenant, the person and their organization, so no other person, org or
- * tenant reads it; the scope crosses flows, as that board does.
+ * The owner key for a user's own scope's files, kept by the flow instance
+ * `flowId`: what a board kept at their user scope (a conversation's task
+ * board) holds as a task's brief. Keyed by the tenant, the user and their
+ * organization, so no other user, org or tenant reads it. Any of the user's
+ * runs reads it, in any flow, as the board itself crosses flows; the keeping
+ * flow is named only so the read route checks the caller under that flow's
+ * sign-in ({@link userBlobKeeper}).
  */
-export function userBlobOwner(tenantId: string | undefined, user: BlobUploader): string {
+export function userBlobOwner(tenantId: string | undefined, user: BlobUploader, flowId: string): string {
+  return `user:${encodeURIComponent(flowId)}|${userScopeKey(tenantId, user)}`;
+}
+
+/**
+ * The flow instance that kept a file in `user`'s own scope, in `tenantId`'s
+ * namespace, when `owner` is such a key ({@link userBlobOwner}); `undefined`
+ * for any other owner, another user's, or another tenant's.
+ */
+export function userBlobKeeper(owner: string, tenantId: string | undefined, user: BlobUploader): string | undefined {
+  if (!owner.startsWith("user:")) return undefined;
+  const bar = owner.indexOf("|");
+  if (bar < 0 || owner.slice(bar + 1) !== userScopeKey(tenantId, user)) return undefined;
+  return decodeURIComponent(owner.slice("user:".length, bar));
+}
+
+/** The tenant, organization and user, each encoded, so no segment can pass for another. */
+function userScopeKey(tenantId: string | undefined, user: BlobUploader): string {
   const tenant = tenantId !== undefined && tenantId.length > 0 ? `${encodeURIComponent(tenantId)}:` : "";
-  return `user:${tenant}${encodeURIComponent(user.orgId)}:${encodeURIComponent(user.userId)}`;
+  return `${tenant}${encodeURIComponent(user.orgId)}:${encodeURIComponent(user.userId)}`;
 }
 
 /** The session storage key a session owner names, or `undefined` for any other owner. */
@@ -135,16 +155,27 @@ export class AttachmentUnavailableError extends Error {
 }
 
 /**
- * True when `record` may be read in the scope `owner`, whose person is `user`:
- * the scope holds it, and that person uploaded it. A file is only ever claimed
- * by its uploader into a scope they own, so a file whose uploader is not the
- * scope's person landed there by a race with the scope's rebirth under someone
- * else, and is no file of theirs. A caller working in more than one scope (a
- * run reads its session's files and its person's own) names each.
+ * Where a reader works: the owners it reads (a session's key), the user it
+ * reads for, and, for a run, `userKept`: that user's own scope too, whichever
+ * flow kept the file there.
  */
-export function readableIn(record: BlobRecord, owner: string | ReadonlyArray<string>, user: BlobUploader): boolean {
-  const owners = typeof owner === "string" ? [owner] : owner;
-  return record.owner !== undefined && owners.includes(record.owner) && uploadedBy(record, user);
+export type BlobReadScope = {
+  owner: string | ReadonlyArray<string>;
+  user: BlobUploader;
+  userKept?: { tenantId: string | undefined };
+};
+
+/**
+ * True when `record` may be read in `scope`: the scope holds it, and its user
+ * uploaded it. A file is only ever claimed by its uploader into a scope they
+ * own, so a file whose uploader is not the scope's user landed there by a
+ * race with the scope's rebirth under someone else, and is no file of theirs.
+ */
+export function readableIn(record: BlobRecord, scope: BlobReadScope): boolean {
+  if (record.owner === undefined || !uploadedBy(record, scope.user)) return false;
+  const owners = typeof scope.owner === "string" ? [scope.owner] : scope.owner;
+  if (owners.includes(record.owner)) return true;
+  return scope.userKept !== undefined && userBlobKeeper(record.owner, scope.userKept.tenantId, scope.user) !== undefined;
 }
 
 /**
@@ -158,11 +189,11 @@ export function readableIn(record: BlobRecord, owner: string | ReadonlyArray<str
 export async function resolveAttachment(
   blobs: BlobStore,
   attachment: FileContent,
-  scope: { owner: string | ReadonlyArray<string>; user: BlobUploader }
+  scope: BlobReadScope
 ): Promise<ResolvedAttachment> {
   const id = parseBlobRef(attachment.data);
   const found = id === undefined ? undefined : await blobs.read(id);
-  if (found === undefined || !readableIn(found.record, scope.owner, scope.user)) {
+  if (found === undefined || !readableIn(found.record, scope)) {
     throw new AttachmentUnavailableError(attachment);
   }
   const { record, bytes } = found;

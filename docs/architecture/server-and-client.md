@@ -248,11 +248,13 @@ A file can also outlive the turn it came with. A record kept at the user scope,
 such as a task's brief on a conversation's board, keeps copies of the turn's
 files through `keepAttachmentsForUser` (`core/internal`), which the engine
 answers under `USER_ATTACHMENT_SEAM`: each file is read through the same
-resolver, stored again under a new id, and claimed into the person's own scope
-(`userBlobOwner`). The copy and the turn's file have separate owners, so
-deleting the conversation leaves the copy. A run reads its session's files
-and its person's own scope's, so every run of a task, in whatever session,
-reads the brief's files, and nobody else's run does. An action hands such files
+resolver, stored again under a new id, and claimed into the user's own scope
+(`userBlobOwner`, whose key also names the flow instance that kept it). The
+copy and the turn's file have separate owners, so deleting the conversation
+leaves the copy. A run reads its session's files and its user's own scope's,
+whichever flow kept them, so every run of a task, in whatever session or flow,
+reads the brief's files, and nobody else's run does. The read route checks the
+caller under the keeping flow's sign-in, since its address names no flow. An action hands such files
 to the line it writes through `userMessage`'s `attachments`, read off
 server-held state; they follow the person's own files on that line.
 

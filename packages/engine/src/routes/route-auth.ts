@@ -28,7 +28,7 @@ import {
   UnattributedOrgError,
   type OrgAttributedRecord
 } from "../context/org-attribution";
-import { sessionKeyOfBlobOwner, userBlobOwner } from "../blobs/attachments";
+import { sessionKeyOfBlobOwner, userBlobKeeper } from "../blobs/attachments";
 import type { BlobUploader } from "../blobs/types";
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 import {
@@ -406,6 +406,8 @@ export async function authorizeManagementRoute(
    * authenticated or facing a route that authenticates nobody.
    */
   let pendingDenial: Response | undefined;
+  /** The route reads a file a user's own scope keeps: every refusal is an unknown file's 404. */
+  let userKept = false;
 
   // A file is read under the check of the session that owns it. A file no
   // session owns (held for its uploader, or another tenant's) has no session
@@ -413,13 +415,24 @@ export async function authorizeManagementRoute(
   let effective: RouteSubject = subject;
   if (subject.kind === "blob") {
     const owning = await blobSessionId(ctx.stores, subject.blobId, ctx.tenantId);
-    // A file a person's own scope keeps (a task's brief, FIX-2522) is read
-    // under that person's check: the caller must be them, in their org.
+    // A file a user's own scope keeps (a task's brief, FIX-2522) is read
+    // under that user's check, signed in as the flow that kept it would sign
+    // them in: the read route names no flow, and with authentication on the
+    // flow alone the host's resolver verifies nobody. The flow is the one the
+    // stored owner names, never the caller's choice (BP-031).
     const keeper = owning === undefined ? await blobUserScope(ctx.stores, subject.blobId, ctx.tenantId) : undefined;
     if (owning !== undefined) effective = { kind: "session", sessionId: owning };
     else if (keeper !== undefined) {
-      owner = keeper.userId;
-      ownerOrgId = keeper.orgId;
+      owner = keeper.user.userId;
+      ownerOrgId = keeper.user.orgId;
+      governing = ctx.registry.get(keeper.flowId);
+      userKept = true;
+      // A keeping flow this app no longer runs leaves no sign-in to check the
+      // caller under. Where something authenticates, nobody can be shown to be
+      // the file's user, so it is no file at all.
+      if (governing === undefined && isDefaultBodyUserIdPrincipalResolver(ctx.hostResolver)) {
+        return { denied: unknownBlobResponse() };
+      }
     } else return { denied: unknownBlobResponse() };
   }
 
@@ -517,6 +530,7 @@ export async function authorizeManagementRoute(
     // does not reach them. Without this, the open path is the one way around
     // BR-8.
     if (ownerOrgId !== undefined && ownerOrgId !== DEFAULT_ORG_ID) {
+      if (userKept) return { denied: unknownBlobResponse() };
       return {
         denied: jsonResponse(403, {
           error: "Caller's organization does not own the requested resource"
@@ -566,6 +580,9 @@ export async function authorizeManagementRoute(
     });
   } catch (error) {
     if (error instanceof PrincipalResolutionError) {
+      // A kept file's id travels in every brief that names it: a caller who
+      // can't sign in hears what an id nobody has used answers.
+      if (userKept) return { denied: unknownBlobResponse() };
       return { denied: jsonResponse(error.status, { error: error.message }) };
     }
     throw error;
@@ -645,18 +662,20 @@ export async function authorizeManagementRoute(
 
 // FIX-2522.
 /**
- * The person whose own scope keeps a stored file (`userBlobOwner`), in
- * `tenantId`'s namespace; `undefined` for any other file. The person is the
- * file's uploader: a scope keeps only its own person's files.
+ * The user whose own scope keeps a stored file (`userBlobOwner`), in
+ * `tenantId`'s namespace, and the flow instance that kept it; `undefined` for
+ * any other file. The user is the file's uploader: a scope keeps only its own
+ * user's files.
  */
 export async function blobUserScope(
   stores: Pick<StoreRegistry, "blobs">,
   blobId: string,
   tenantId: string | undefined
-): Promise<BlobUploader | undefined> {
+): Promise<{ user: BlobUploader; flowId: string } | undefined> {
   const record = await stores.blobs?.head(blobId);
   if (record?.owner === undefined) return undefined;
-  return record.owner === userBlobOwner(tenantId, record.uploader) ? record.uploader : undefined;
+  const flowId = userBlobKeeper(record.owner, tenantId, record.uploader);
+  return flowId === undefined ? undefined : { user: record.uploader, flowId };
 }
 
 /**

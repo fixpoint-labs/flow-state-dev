@@ -2944,12 +2944,17 @@ export async function createExecutionContext<
   const blobs = stores.blobs;
   const reads = new Map<string, Promise<ResolvedAttachment>>();
   const runUser = { userId, orgId: resolvedOrgId };
-  const userOwner = userBlobOwner(options.tenantId, runUser);
+  // A copy this run keeps names this flow instance, whose sign-in the read route checks it under.
+  const userOwner = userBlobOwner(options.tenantId, runUser, flow.id);
   const readOnce = (store: BlobStore, file: FileContent) => {
     const cached = reads.get(file.data);
     if (cached !== undefined) return cached;
-    // The session's files, and the person's own scope's: a task's brief files, kept with its row (FIX-2522).
-    const read = resolveAttachment(store, file, { owner: [sessionBlobOwner(sessionKey), userOwner], user: runUser });
+    // The session's files, and the user's own scope's, whichever flow kept them: a task's brief files (FIX-2522).
+    const read = resolveAttachment(store, file, {
+      owner: sessionBlobOwner(sessionKey),
+      user: runUser,
+      userKept: { tenantId: options.tenantId }
+    });
     reads.set(file.data, read);
     read.catch(() => reads.delete(file.data));
     return read;

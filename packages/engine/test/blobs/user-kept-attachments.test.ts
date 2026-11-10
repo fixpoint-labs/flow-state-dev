@@ -29,7 +29,13 @@ const byHeader = (context: { request?: Request }) => {
 
 const message = z.object({ message: z.string() });
 
-function setup(withBlobs = true) {
+/**
+ * `auth: "host"` authenticates every route through the host's resolver;
+ * `"flow"` only through the flow's own (`authentication.resolvePrincipal`),
+ * the host keeping the framework default, so a route that addresses no flow
+ * has no resolver of its own to pick.
+ */
+function setup(withBlobs = true, auth: "host" | "flow" = "host") {
   /** What `keep` kept last, as a server-held record would (a task). */
   const kept: { files: FileContent[]; error?: unknown } = { files: [] };
   /** What `run` read of the kept files, as a harness adapter reads them. */
@@ -64,6 +70,7 @@ function setup(withBlobs = true) {
   registry.register(
     defineFlow({
       kind: "board",
+      ...(auth === "flow" ? { authentication: { resolvePrincipal: byHeader } } : {}),
       actions: {
         keep: { inputSchema: message, block: keep, userMessage: (i) => i.message },
         // The line a run opens with carries the kept files, read off server-held state, never the input.
@@ -72,17 +79,18 @@ function setup(withBlobs = true) {
     })(),
   );
   const stores: StoreRegistry = { ...createInMemoryStores(), ...(withBlobs ? { blobs: createMemoryBlobStore() } : {}) };
-  const router = createFlowApiRouter({ registry, stores, resolvePrincipal: byHeader });
-  const call = (method: "GET" | "POST" | "DELETE", path: string, user: string, init: RequestInit = {}) => {
+  const router = createFlowApiRouter({ registry, stores, ...(auth === "host" ? { resolvePrincipal: byHeader } : {}) });
+  /** `user` `null` sends no credential: an anonymous caller. */
+  const call = (method: "GET" | "POST" | "DELETE", path: string, user: string | null, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
-    headers.set("x-user", user);
+    if (user !== null) headers.set("x-user", user);
     const url = new URL(`http://localhost/api/flows/${path}`);
     return router[method](new Request(url, { ...init, method, headers }), {
       params: { path: url.pathname.replace(/^\/api\/flows\//, "").split("/").map(decodeURIComponent) },
     });
   };
   const upload = async (user: string): Promise<FileContent> => {
-    const response = await call("POST", "blobs?filename=shot.png", user, { headers: { "content-type": "image/png" }, body: PNG as Uint8Array<ArrayBuffer> });
+    const response = await call("POST", `${auth === "flow" ? "board/" : ""}blobs?filename=shot.png`, user, { headers: { "content-type": "image/png" }, body: PNG as Uint8Array<ArrayBuffer> });
     expect(response.status).toBe(201);
     return ((await response.json()) as { attachment: FileContent }).attachment;
   };
@@ -169,5 +177,40 @@ describe("files kept in a person's own scope", () => {
     await expect(keepAttachmentsForUser({}, [{ type: "file", mediaType: "image/png", data: "fsd" }])).rejects.toBeInstanceOf(
       UserAttachmentsUnavailableError,
     );
+  });
+});
+
+// The read route has no flow in its address, so a kept file must be read
+// under the sign-in of the flow that kept it: with authentication only on the
+// flow, the host's default resolver verifies nobody.
+describe("a kept file's read, where only the flow authenticates", () => {
+  it("serves its person, in their organization", async () => {
+    const { kept, call, upload, send } = setup(true, "flow");
+    await send("alice", "s_chat", "keep", [await upload("alice")]);
+    expect(kept.error).toBeUndefined();
+    const mine = await call("GET", `blobs/${parseBlobRef(kept.files[0]!.data)!}`, "alice");
+    expect(mine.status).toBe(200);
+    expect(new Uint8Array(await mine.arrayBuffer())).toEqual(PNG);
+  });
+
+  it("is no file at all to another user, or to a caller with no credential", async () => {
+    const { kept, call, upload, send } = setup(true, "flow");
+    await send("alice", "s_chat", "keep", [await upload("alice")]);
+    const id = parseBlobRef(kept.files[0]!.data)!;
+    const unknown = await call("GET", "blobs/b_nobodyuploadedthis", null);
+    for (const caller of ["bob", null]) {
+      const response = await call("GET", `blobs/${id}`, caller);
+      expect(response.status).toBe(404);
+      // The same answer as an id nobody has used: nothing says the file exists.
+      expect(await response.json()).toEqual(await unknown.clone().json());
+    }
+  });
+});
+
+describe("a kept file's read, where the host authenticates", () => {
+  it("is no file at all to a caller with no credential", async () => {
+    const { kept, call, upload, send } = setup();
+    await send("alice", "s_chat", "keep", [await upload("alice")]);
+    expect((await call("GET", `blobs/${parseBlobRef(kept.files[0]!.data)!}`, null)).status).toBe(404);
   });
 });
