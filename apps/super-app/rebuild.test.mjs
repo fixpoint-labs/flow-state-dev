@@ -144,4 +144,31 @@ describe("rebuildOnChange", () => {
     await sleep(200);
     assert.equal(build.runs, 2);
   });
+
+  it("rebuilds when a failed build's fix is in a file no record names yet", async () => {
+    // An edit imports a new module with an error: the build fails before recording it.
+    // It sits beside a recorded file in another package's folder, outside the page's own src/.
+    mkdirSync(join(repo, "lib"));
+    writeFileSync(join(repo, "lib/b.ts"), "b");
+    writeFileSync(join(outDir, "build-inputs.json"), JSON.stringify({ inputs: { "src/a.ts": hash(a), "lib/b.ts": hash("b") } }));
+    let fail = false;
+    const build = fakeBuild();
+    const flaky = async () => {
+      if (fail) {
+        build.runs += 1;
+        rmSync(join(outDir, "build-inputs.json"), { force: true });
+        return;
+      }
+      await build();
+    };
+    watcher = rebuildOnChange({ outDir, repoRoot: repo, build: flaky, debounceMs: 20 });
+    fail = true;
+    editA("imports ./new");
+    await sleep(200);
+    assert.equal(build.runs, 1);
+    fail = false;
+    writeFileSync(join(repo, "lib/new.ts"), "fixed");
+    await sleep(200);
+    assert.equal(build.runs, 2);
+  });
 });

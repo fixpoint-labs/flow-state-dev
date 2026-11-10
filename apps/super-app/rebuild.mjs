@@ -63,9 +63,12 @@ export function rebuildOnChange({ outDir, repoRoot, build, debounceMs = 200 }) {
     timer = setTimeout(() => void run(), debounceMs);
   };
 
-  // With no record yet (a page never built, or whose first build failed), the
-  // page's own folder and its `src/` are watched instead, so the save that
-  // fixes it still builds. Dropped once a build records its inputs.
+  // With no record (a page never built, or a build that failed, perhaps on a
+  // module it newly imports that no record names), any save in a watched
+  // folder builds, and the page's own folder and its `src/` are watched too,
+  // so the save that fixes it is seen. Back to recorded files only once a
+  // build records its inputs.
+  let unrecorded = false;
   const page = dirname(outDir);
   /** @type {import("node:fs").FSWatcher[]} */
   let fallback = [];
@@ -84,13 +87,13 @@ export function rebuildOnChange({ outDir, repoRoot, build, debounceMs = 200 }) {
     }
   };
 
-  // Watches the folders of the files the last build recorded. With no record
-  // (a failed build empties its output), the previous set stays watched, so
-  // the save that fixes the failure still rebuilds.
+  // Watches the folders of the files the last build recorded. With no record,
+  // the previous set stays watched beside the fallback.
   const rewatch = () => {
     const inputs = recordedInputs(outDir, repoRoot);
+    unrecorded = inputs === undefined;
     if (inputs === undefined) {
-      if (watchers.size === 0) watchFallback();
+      watchFallback();
       return;
     }
     for (const watcher of fallback) watcher.close();
@@ -107,7 +110,7 @@ export function rebuildOnChange({ outDir, repoRoot, build, debounceMs = 200 }) {
       try {
         // A folder, not each file: editors that save by renaming a new file over the old one are seen too.
         const watcher = watch(dir, (_event, name) => {
-          if (name !== null && files.has(join(dir, String(name)))) schedule();
+          if (name !== null && (unrecorded || files.has(join(dir, String(name))))) schedule();
         });
         watcher.on("error", () => {});
         watchers.set(dir, watcher);
