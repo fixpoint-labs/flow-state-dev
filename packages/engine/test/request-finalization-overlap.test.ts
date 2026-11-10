@@ -96,6 +96,18 @@ function parkedFlow(kind: string) {
   return { flow, release, parked, signals, heldEntered, releaseHeld };
 }
 
+/**
+ * Sweep `stores` as the stale-request sweep would, once the parked run's last
+ * heartbeat is in the past. A heartbeat counts as stale only when it is older
+ * than now minus the threshold, so with a threshold of 0 a run that registered
+ * in the same millisecond as the sweep would not be marked `interrupted`.
+ */
+async function sweepAsStale(stores: ReturnType<typeof createInMemoryStores>) {
+  const parkedAt = Date.now();
+  while (Date.now() <= parkedAt) await new Promise((resolve) => setTimeout(resolve, 1));
+  await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+}
+
 async function parkOriginal(ids: OverlapIds) {
   const stores = createInMemoryStores();
   const park = parkedFlow(ids.kind);
@@ -111,7 +123,7 @@ async function parkOriginal(ids: OverlapIds) {
     runtimeConfig: {}
   });
   await park.parked[0];
-  await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+  await sweepAsStale(stores);
   return { stores, park, original, requestId: ids.requestId };
 }
 
@@ -290,7 +302,7 @@ describe("the last overlapping run ending by throwing", () => {
       runtimeConfig: {}
     });
     await originalEntered;
-    await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+    await sweepAsStale(stores);
     const { finished } = await continueRequest({
       requestId,
       stores,

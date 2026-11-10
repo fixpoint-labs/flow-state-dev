@@ -87,14 +87,44 @@ export function recordBuildInputs({ repoRoot }) {
  * @returns {string | undefined}
  */
 export function staleBuildInputs(buildDir, repoRoot) {
-  const record = join(buildDir, BUILD_INPUTS_FILE);
-  if (!existsSync(record)) return `it has no ${BUILD_INPUTS_FILE}, so nothing says which source it was built from`;
-  /** @type {{ inputs: Record<string, string> }} */
-  const { inputs } = JSON.parse(readFileSync(record, "utf8"));
+  const inputs = readInputs(buildDir);
+  if (inputs === undefined) return `it has no ${BUILD_INPUTS_FILE}, so nothing says which source it was built from`;
   for (const [path, hash] of Object.entries(inputs)) {
     const file = join(repoRoot, path);
     if (!existsSync(file)) return `${path} is gone since it was built`;
     if (hashOf(file) !== hash) return `${path} changed since it was built`;
   }
   return undefined;
+}
+
+/**
+ * The absolute paths of the files the build in `buildDir` was made from, or
+ * `undefined` when it has no readable record.
+ *
+ * @param {string} buildDir
+ * @param {string} repoRoot
+ * @returns {string[] | undefined}
+ */
+export function recordedInputPaths(buildDir, repoRoot) {
+  try {
+    const inputs = readInputs(buildDir);
+    return inputs === undefined ? undefined : Object.keys(inputs).map((path) => join(repoRoot, path));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The `inputs` map of `buildDir`'s record (repo-relative path to hash), or
+ * `undefined` when there is no record. Throws on a record that isn't JSON.
+ *
+ * @param {string} buildDir
+ * @returns {Record<string, string> | undefined}
+ */
+function readInputs(buildDir) {
+  const record = join(buildDir, BUILD_INPUTS_FILE);
+  if (!existsSync(record)) return undefined;
+  /** @type {{ inputs: Record<string, string> }} */
+  const { inputs } = JSON.parse(readFileSync(record, "utf8"));
+  return inputs;
 }

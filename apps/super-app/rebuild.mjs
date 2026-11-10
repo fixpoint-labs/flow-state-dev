@@ -13,27 +13,13 @@
  * to a recorded file runs one ordinary `vite build`, which exits when done.
  * Changes during a build queue one more build after it.
  */
-import { existsSync, readFileSync, watch } from "node:fs";
+import { watch } from "node:fs";
 import { dirname, join } from "node:path";
-import { BUILD_INPUTS_FILE, staleBuildInputs } from "../../scripts/build-inputs.mjs";
+import { recordedInputPaths, staleBuildInputs } from "../../scripts/build-inputs.mjs";
 
-/**
- * The absolute paths of the files the build in `outDir` was made from, or
- * `undefined` when it has no record.
- *
- * @param {string} outDir
- * @param {string} repoRoot
- * @returns {string[] | undefined}
- */
-function recordedInputs(outDir, repoRoot) {
-  const record = join(outDir, BUILD_INPUTS_FILE);
-  if (!existsSync(record)) return undefined;
-  try {
-    return Object.keys(JSON.parse(readFileSync(record, "utf8")).inputs).map((path) => join(repoRoot, path));
-  } catch {
-    return undefined;
-  }
-}
+/** One line on stderr for a folder that can't be watched, so edits there not rebuilding has a cause. */
+const warnUnwatched = (dir, error) =>
+  process.stderr.write(`[rebuild] can't watch ${dir}, so saves there won't rebuild: ${error?.message ?? error}\n`);
 
 /**
  * Keep the build in `outDir` current: build now when it is missing or older
@@ -79,10 +65,11 @@ export function rebuildOnChange({ outDir, repoRoot, build, debounceMs = 200 }) {
         const watcher = watch(dir, { recursive }, (_event, name) => {
           if (name !== null && !join(dir, String(name)).startsWith(outDir)) schedule();
         });
-        watcher.on("error", () => {});
+        watcher.on("error", (error) => warnUnwatched(dir, error));
         fallback.push(watcher);
-      } catch {
+      } catch (error) {
         // No `src/`: the page folder alone.
+        if (error?.code !== "ENOENT") warnUnwatched(dir, error);
       }
     }
   };
@@ -90,7 +77,7 @@ export function rebuildOnChange({ outDir, repoRoot, build, debounceMs = 200 }) {
   // Watches the folders of the files the last build recorded. With no record,
   // the previous set stays watched beside the fallback.
   const rewatch = () => {
-    const inputs = recordedInputs(outDir, repoRoot);
+    const inputs = recordedInputPaths(outDir, repoRoot);
     unrecorded = inputs === undefined;
     if (inputs === undefined) {
       watchFallback();
@@ -112,10 +99,11 @@ export function rebuildOnChange({ outDir, repoRoot, build, debounceMs = 200 }) {
         const watcher = watch(dir, (_event, name) => {
           if (name !== null && (unrecorded || files.has(join(dir, String(name))))) schedule();
         });
-        watcher.on("error", () => {});
+        watcher.on("error", (error) => warnUnwatched(dir, error));
         watchers.set(dir, watcher);
-      } catch {
+      } catch (error) {
         // A folder that is gone: the next build's record says what to watch.
+        if (error?.code !== "ENOENT") warnUnwatched(dir, error);
       }
     }
   };
