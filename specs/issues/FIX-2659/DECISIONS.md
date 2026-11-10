@@ -54,7 +54,9 @@ flowchart TD
   follow-up filed while its root is starting is a supported case (`resolveFollowUp` accepts a
   running root and queues the follow-up), and it must not fall back to a fresh checkout. In
   that case the `ready` check moves to run time: the manager attaches when the follow-up
-  opens, and refuses by name if the owner still has no ready entry. So a follow-up of B, where
+  opens, and refuses by name if the owner still has no ready entry. The default skips D1's
+  at-filing checks (finished, `ready` entry): those guard a filer's explicit choice, while this
+  value is workforce's own, so the implementer must not run it through D1's refusals. So a follow-up of B, where
   B ran in A's worktree, joins A's worktree; it never names B, which owns no entry. A root
   that is not a coding run on a repository (a chat task, a files-only run) gets nothing
   written, so the follow-up provisions as today, and orchestration's generic follow-up
@@ -130,6 +132,9 @@ flowchart TD
 - Codex (spec PR): a follow-up filed before its coding root provisions must not lose the
   default. D2 now writes the owner for an open coding root on a repository, and checks
   `ready` at run time in that case.
+- Gitar (spec PR): that pending-root path needed its own check. The goal gains leg b2
+  (`b2:joins-pending-root`, red under `no-default`), and D2 says its default skips D1's
+  at-filing refusals.
 - Cursor (spec PR), for the implementer:
   - Check `worktreeOf` at filing with a keyed lookup (owner task, its run record and place,
     `worktreeKey`, then one get), not a scan of the list (BP-033). This is the same derivation

@@ -32,6 +32,8 @@ flowchart LR
   A["leg a · task A runs<br/>stub commits a1"] --> A1["A's entry: title, task, branch, ready"]
   A --> B["leg b · follow-up of A<br/>(names no worktree)"]
   B --> B1["runs in A's folder, A's branch<br/>a1 present · b1 on top · no new entry"]
+  A --> B2["leg b2 · follow-up filed<br/>while A is starting"]
+  B2 --> B21["joins A once ready<br/>refused at open if never ready"]
   A --> C["leg c · task C, worktreeOf A"]
   C --> C1["runs in A's worktree<br/>entry lists C as attached"]
   A --> D["leg d · refusals"]
@@ -49,13 +51,16 @@ flowchart LR
   its task id as owner, its branch, and `ready`. Leg **b**: a follow-up of A, filed with no
   `worktreeOf`, runs in A's folder on A's branch; `git log` shows A's commit with the
   follow-up's on top; the worktree list has no new entry and no new `conductor/` branch; A's entry
-  lists the follow-up under `attached`. Leg **c**: an unrelated task filed with
+  lists the follow-up under `attached`. Leg **b2**: a follow-up of A filed while A is still
+  starting, before A provisions, is queued and then runs in A's folder on A's branch once A
+  settles `ready` (**`b2:joins-pending-root`**); if A ends with no ready entry, the follow-up
+  fails at open, naming why, and does not provision. Leg **c**: an unrelated task filed with
   `worktreeOf: A` does the same. Leg **d**: `worktreeOf` naming an unknown task, another user's
   task, a task whose worktree was removed, or a task still open is refused at filing, naming why;
   an attached run that leaves the worktree on another branch fails its attempt.
 - **Controls that must fail:** `GOAL_CONTROL=no-default` drops workforce's follow-up default at
-  filing (the manager is untouched); leg b fails
-  **`b:joins-root`**. `GOAL_CONTROL=no-attach` provisions instead of attaching; leg c fails
+  filing (the manager is untouched); legs b and b2 fail
+  **`b:joins-root`** and **`b2:joins-pending-root`**. `GOAL_CONTROL=no-attach` provisions instead of attaching; leg c fails
   **`c:attached`**, and leg b fails too. Each control reddens only its own legs.
 - **Unit and lab:** the filing rules in orchestration and workforce; the manager's attach path
   (lock shared, owner entry checked, a retry keeps its base); the lab contract tests show the
