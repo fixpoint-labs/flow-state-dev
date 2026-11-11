@@ -41,7 +41,7 @@ The check reads git's worktree list and what the host serves, never a hook's ret
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/claude-code-style-lab/` (11 goals today) plus one new, `works-in-its-repository`, model `n/a` (scripted coder), run with `fsdev run` at completion; and the lab's inventory script, `POC_EXPECT=gone` promoted from [the POC](poc/lab-inventory/README.md). Verdict on the implementation PR |
-| **Signal** | Every lab goal passes on the kit host. `works-in-its-repository`: two repositories registered; a work session on the second files a coding task through its lead; the run's worktree is in the second repository's `git worktree list` and not the first's. The inventory: zero project identifiers and tokens, no `adapter.ts`, no app file in `workforce/` |
+| **Signal** | Every lab goal passes on the kit host. `works-in-its-repository`: two repositories registered; a work session on the second files a coding task through its lead; the run's worktree is in the second repository's `git worktree list` and not the first's. The inventory: zero project identifiers and tokens, no `adapter.ts`, no app file in `workforce/`, and [FIX-2629 D1](../FIX-2629/DECISIONS.md#d1)'s two content rules: no UI file imports a client value (only `createClient`, in the entry) or calls `.subscribe(` or `.flow(`, and every exported object type in a non-component `src/` module is on the app's list of screen-computed types |
 | **Input** | Two repositories made per run, each dirty on a branch; a held-out coding prompt. `checks-the-repository-first` and `reads-project-files` are rewritten for repositories, legs kept |
 | **Anti-game** | Assert on git and the served answers. Never on `lab.ts`'s hooks or the app kit's unit tests: they pass while a run still finds its repository through a workforce project |
 | **Control that must fail** | `GOAL_CONTROL=first-repository`: the app's run source answers the first registered repository, so the run lands in the wrong one. Today's `main`: the inventory fails (9 imports, 54 tokens, the adapter, five files in `workforce/`) |
@@ -122,7 +122,7 @@ A screen reads; a run finds its repository from the session that opened it or fi
 | The app's run source | `projectWorkspace()`; `RunSource` | **Composed:** a `RunSource` over the host's list and `filingSessionId`. `projectWorkspace()` needs a project, which is what goes |
 | The session's repository, written at open | workforce's `workProjectId`; a user resource | **Reuse** of the server-written session field pattern; its carrier is FIX-2627's ([seams](#what-fix-2627-and-the-others-must-agree-with)) |
 | `src/lab.ts`'s hooks | The kit packages' hooks | **Thin wrappers** in the app's words, as the epic sketches; no logic |
-| The lab's inventory script | FIX-2152 ER-1's script, never built; the POC | **Reuse:** the POC's `gone` mode |
+| The lab's inventory script | FIX-2152 ER-1's script, never built; the POC; FIX-2629's end-state POC | **Reuse:** the POC's `gone` mode, plus FIX-2629 D1's two content rules and the app-types list. This issue owns the lab's one inventory test file; FIX-2629 runs it and ships no second script |
 
 | The debt | |
 |---|---|
@@ -139,7 +139,7 @@ A screen reads; a run finds its repository from the session that opened it or fi
 | **FIX-2627** | **Moves the lab's own files out of `workforce/flows/`** in the PR that turns on workforce's claim pass, unchanged, into the lab's `flows:` (assumed; if its spec says otherwise, FIX-2628's first PR does it, unblocked) · the harness kit's `workspace` takes an app `source`, and the coding worker flow needs no workforce project (`needsProject`, `projectChecks`, `projectWorkspaceCapability` are config, not built in) · a source-read capability for a non-coding worker that asks the host's source with no project resources (today's `projectSourceCapability`'s job) · an app's server-written session field on the agent and coordinator flows, through their settings slots · the views this lab reads: worker sessions, turns, the coding board (with the harness before a run reports, the 42 lines), a run's work, readiness |
 | **FIX-2594 / FIX-2592** | Own the word in the UI, Settings and the dialog. Which issue moves the storage is [Q1](DECISIONS.md#q1) |
 | **FIX-2593** | The host's list is the one list; a session whose repository was removed gets the host's refusal at run start |
-| **FIX-2629** | Leg a reads this issue's inventory script and `works-in-its-repository` |
+| **FIX-2629** | Leg a reads this issue's inventory script and `works-in-its-repository`. This issue owns that one inventory, including FIX-2629 D1's two content rules and the app-types list |
 
 ## Sign off
 
