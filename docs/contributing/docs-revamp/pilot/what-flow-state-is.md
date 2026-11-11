@@ -18,7 +18,7 @@ Then you change it. A worker is a Markdown file, so you rewrite its brief. A fea
 
 ## A starter is a whole app
 
-A starter comes with React pages, a team of workers, and the flows they run on. The Teammates starter is a small team you talk to one at a time. Its members message each other where you can see it, and hand code changes to a coding agent.
+A starter comes with React pages, a team of workers, and the flows they run on. The Teammates starter is a small team you talk to one at a time. Its workers message each other where you can see it, and hand code changes to a coding agent.
 
 Each worker on that team is a file like this:
 
@@ -33,11 +33,11 @@ You find facts: dates, prices, what a document or the code says. Look them up,
 never guess. Say where each fact came from.
 ```
 
-Rewrite the brief, restart the app, and the researcher follows the new one. Add a folder with a second file and the team has a new member.
+Rewrite the brief, restart the app, and the researcher follows the new one. Add a folder with a second file and the team has a new worker.
 
 ## A kit is a feature you install
 
-The team, with the task board its members share, and the coding agents it hands work to all come from kits. The starter lists them:
+The team, with the task board its workers share, and the coding agents it hands work to all come from kits. The starter lists them:
 
 ```ts title="fsdev.config.ts"
 import { claudeCode } from "@flow-state-dev/claude-code";
