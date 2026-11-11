@@ -15,7 +15,8 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { IGNORED_ENTRIES, classify, openKitFolder, openRoot, openStructuralDirectory } from "../../src/folder";
+import { IGNORED_ENTRIES, classify, openRoot, openStructuralDirectory } from "../../src/folder";
+import { openKitFolder } from "../../src/folder/claim";
 
 const roots: string[] = [];
 

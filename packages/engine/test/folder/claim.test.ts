@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { openKitFolder } from "../../src/folder";
+import { openKitFolder } from "../../src/folder/claim";
 
 const dirs: string[] = [];
 afterEach(() => {

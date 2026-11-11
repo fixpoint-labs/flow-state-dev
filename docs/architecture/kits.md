@@ -59,7 +59,7 @@ flowchart LR
   W -.->|"any unused entry"| X["ready() rejects · app does not start"]
 ```
 
-**At construction (synchronous).** `planKits` orders the kits so each installs after every kit it requires; ties keep the app's listed order. It then walks that order backwards, so dependents contribute first: for each kit it merges the kit's own slots (contributions in install order, then the app's `fill`, last), and only then calls the kit's `contributes({ config, slots })`. A kit's `contributes` and its `install` therefore see their own slots fully filled. Each folder-owning kit's folder is resolved: its default `directory.path` against `root` (a path, or `import.meta.url`; the working directory when omitted), a `directory` from config against the working directory.
+**At construction (synchronous).** `planKits` orders the kits so each installs after every kit it requires; ties keep the app's listed order. It then walks that order backwards, so dependents contribute first: for each kit it merges the kit's own slots (contributions in install order, then the app's `fill`, last), and only then calls the kit's `contributes({ config, slots })`. A kit's `contributes` and its `install` therefore see their own slots fully filled. Each folder-owning kit's folder is resolved: its default `directory.path` against `root` (a path, or `import.meta.url`; the working directory when omitted), a `directory` from config against the working directory. The path is kept as written for the root check, which refuses a `..` that steps back through an earlier segment; it is normalized only to compare two kits' folders. Each slot entry is stored as its schema parsed it, so defaults and coercions apply.
 
 All of these throw one `FlowStateConfigError` naming every problem, as a duplicate flow id does: a kit listed twice, a requirement that is not installed, kits that require each other, a fill of an undeclared slot, a fill by a kit that does not require the slot's owner (directly or through another kit), a keyed key given twice (naming both contributors), an entry its slot's schema refuses, and two kits on one folder.
 
@@ -76,11 +76,11 @@ Only the app (`fill`) or a kit that requires the owner can fill a slot.
 
 ## The claim pass
 
-`openKitFolder(root, what)` (in `engine/folder/claim.ts`) hands the reader a `KitFolder`: `path`, and `claim(relativePath)` for a file or a directory (claiming a directory claims everything under it). `unclaimed()` then walks the folder without following symlinks and reports, by slash path:
+`openKitFolder(root, what)` (engine-internal, `engine/folder/claim.ts`) hands the reader a `KitFolder`: `path`, and `claim(relativePath)` for a file or a directory (claiming a directory claims everything under it). `unclaimed()` then walks the folder without following symlinks and reports, by slash path:
 
 - a top-level entry with no claim at or under it, as `unclaimed` (a fully unclaimed directory is named once);
 - inside a partly claimed directory, each unclaimed entry;
-- a symlink or unreadable entry the walk would have to go through, as `symlink` / `unreadable`.
+- every symlink, claimed or not, as `symlink` (a claimed directory is still walked for links), and an unreadable entry as `unreadable`.
 
 `IGNORED_ENTRIES` (`.DS_Store`, `Thumbs.db`) is the only pass. A claim outside the folder (`..`, absolute) throws.
 

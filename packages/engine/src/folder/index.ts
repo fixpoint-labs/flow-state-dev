@@ -1,7 +1,8 @@
 /**
- * `@flow-state-dev/engine/folder`: how a kit's folder is read. The walk
- * primitives every reader shares (`./walk`) and the claim pass that makes
- * every entry used or refused (`./claim`).
+ * `@flow-state-dev/engine/folder`: the walk primitives every reader of a
+ * kit's folder shares (`./walk`). The claim pass that makes every entry used
+ * or refused (`./claim`) is the engine's own: a kit's reader meets it only as
+ * the `KitFolder` its `directory.read` is handed.
  *
  * Node-only (`node:fs`). Import it from a kit's server entry, the module that
  * names its folder reader, never from code a browser bundle reaches.
@@ -18,5 +19,3 @@ export {
   type OpenedDirectory,
   type PathReport,
 } from "./walk";
-
-export { openKitFolder, type FolderRefusalKind, type OpenedKitFolder } from "./claim";
