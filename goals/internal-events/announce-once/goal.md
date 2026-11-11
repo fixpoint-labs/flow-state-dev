@@ -33,3 +33,4 @@
 | 2026-11-11 | 888824d1 | n/a | FAIL (expected) | Ad-hoc mutation, no own-user filter on the seam's route: (c) the teammate heard 3; (a) the same rows. Nothing else. |
 | 2026-11-11 | 888824d1 | n/a | FAIL (expected) | Ad-hoc mutation, the publish answers `{ published, to }`: (f) only. |
 | 2026-11-11 | 888824d1 | n/a | PASS | 4 publishes heard as the oracle says by 5 routines; publisher, teammate and other org 0; undeclared topic refused at publish and follow; ring stopped at hop 6 after 5 passes; fan-out paid 6 places in 1 chain, 7 passes refused; 0 model calls. |
+| 2026-11-11 | e681f176 | n/a | PASS | After review: the seam stamps owner (user, tenant) and sender name; routing nominates the owner only. Same four controls FAIL as before ((e)+(g), (d), (g), (a)); fan-out 8 passes refused. |
