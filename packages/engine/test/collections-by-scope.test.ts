@@ -22,6 +22,8 @@ import {
   carol,
   disposeRoutersAfterEach,
   get,
+  post,
+  settle,
   ORG_A,
   send,
   sessionAndRequests,
@@ -425,5 +427,58 @@ describe("a user entry's change notice", () => {
     // An org entry and a session entry keep their path; a single resource's key is the same for everyone.
     expect(noticePathFor(projects, "projects/p", "org")).toBe("projects/p");
     expect(noticePathFor(undefined, "pins", "user")).toBe("pins");
+  });
+});
+
+describe("an entry write or delete aborted while its canWrite is pending", () => {
+  // Codex review 4544189602, on entries.
+  function gatedHost() {
+    const gate: { asked: boolean; release?: (ok: boolean) => void } = { asked: false };
+    const notes = defineResourceCollection({
+      pattern: "notes/*",
+      scope: "org",
+      stateSchema: z.object({ text: z.string().default("") }),
+      client: { state: { read: true } },
+      runBy: "default",
+      canWrite: () => {
+        gate.asked = true;
+        return new Promise<boolean>((resolve) => {
+          gate.release = resolve;
+        });
+      }
+    });
+    const flow = defineFlow({
+      kind: "threads",
+      resources: { notes },
+      actions: { noop: { block: noop } },
+      authentication: { resolvePrincipal: signIn }
+    } as never)();
+    return { gate, ...buildRouter([flow]) };
+  }
+
+  async function abortWhileAsked(router: Router, gate: { asked: boolean; release?: (ok: boolean) => void }, action: string, input: unknown) {
+    const res = await post(router, ["resources", "org", "notes/*", "actions", action], alice, { input });
+    expect(res.status).toBe(202);
+    const { request } = (await res.json()) as { request: { id: string } };
+    for (let i = 0; i < 200 && !gate.asked; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(gate.asked).toBe(true);
+    await post(router, ["fsd-default-write", "requests", request.id, "abort"], alice, {});
+    gate.release!(true);
+    return request.id;
+  }
+
+  it("creates nothing", async () => {
+    const { router, stores, gate } = gatedHost();
+    const id = await abortWhileAsked(router, gate, "set", { entry: "n", state: { text: "x" }, version: 0 });
+    expect((await settle(stores, id)).status).toBe("aborted");
+    expect(await entry(router, "org", "notes/*", "n", alice)).toBeNull();
+  });
+
+  it("deletes nothing", async () => {
+    const { router, stores, gate } = gatedHost();
+    await seed(stores, "org", alice, "notes/n", { text: "keep" });
+    const id = await abortWhileAsked(router, gate, "delete", { entry: "n", version: 1 });
+    expect((await settle(stores, id)).status).toBe("aborted");
+    expect((await entry(router, "org", "notes/*", "n", alice))?.value).toEqual({ text: "keep" });
   });
 });

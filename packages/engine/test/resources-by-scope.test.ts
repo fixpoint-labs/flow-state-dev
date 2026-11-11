@@ -515,12 +515,14 @@ describe("the principal comes from the flow that runs, and nothing tells a real 
     }
   });
   // `app` sorts before `billing`; neither has a resolver of its own, so both run the host's.
-  const app = defineFlow({
-    kind: "app",
-    resources: { invoice },
-    actions: { noop: { block: noop } },
-    authentication: { requireUser: false, defaultUserId: "visitor" }
-  } as never)();
+  // `guest`: app lets signed-out callers in as "visitor", which billing does not.
+  const appFlow = (guest: boolean) =>
+    defineFlow({
+      kind: "app",
+      resources: { invoice },
+      actions: { noop: { block: noop } },
+      ...(guest ? { authentication: { requireUser: false, defaultUserId: "visitor" } } : {})
+    } as never)();
   const billing = defineFlow({ kind: "billing", resources: { invoice }, actions: { refund: { block: refund } } } as never)();
   /** Signs a user in from a header, or answers the org alone. */
   const orgOnly = (context: { request?: Request; envelope?: { flowKind?: string } }) => {
@@ -532,10 +534,10 @@ describe("the principal comes from the flow that runs, and nothing tells a real 
     const user = context.request?.headers.get("x-user");
     return user == null ? { orgId: ORG_A } : { userId: `${user}@${context.envelope?.flowKind}`, orgId: ORG_A };
   };
-  const host = (resolvePrincipal: typeof orgOnly = orgOnly) => {
+  const host = (resolvePrincipal: typeof orgOnly = orgOnly, guest = false) => {
     refunds.length = 0;
     const registry = createFlowRegistry();
-    registry.register(app as never);
+    registry.register(appFlow(guest) as never);
     registry.register(billing as never);
     const stores = createInMemoryStores();
     const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, resolvePrincipal } as never);
@@ -544,7 +546,7 @@ describe("the principal comes from the flow that runs, and nothing tells a real 
   };
 
   it("an anonymous send through the resource is refused as a direct POST to the writer's action is, and runs nothing", async () => {
-    const { router, stores } = host();
+    const { router, stores } = host(orgOnly, true);
     const direct = await post(router, ["billing", "actions", "refund"], {}, { input: {} });
     expect(direct.status).not.toBe(202);
     const viaResource = await post(router, ["resources", "org", "invoice", "actions", "refund"], {}, { input: {} });
@@ -781,5 +783,87 @@ describe("a send whose writer's pin refuses a caller another declarer admits", (
     expect(refused.status).toBe(unused.status);
     expect((await refused.text()).split("ledger").join("<k>")).toBe((await unused.text()).split("nope").join("<k>"));
     expect(await stores.request.list({})).toEqual([]);
+  });
+});
+
+describe("two declarers that let signed-out callers in as different default users", () => {
+  // Gitar review 4544162626.
+  const guestFlow = (kind: string, defaultUserId: string) =>
+    defineFlow({
+      kind,
+      resources: { project },
+      actions: { noop: { block: noop } },
+      authentication: { requireUser: false, defaultUserId }
+    } as never)();
+  /** The host's resolver: a user from a header, else no user at all. */
+  const headerOnly = (context: { request?: Request }) => {
+    const user = context.request?.headers.get("x-user");
+    return user == null ? { orgId: ORG_A } : { userId: user, orgId: ORG_A };
+  };
+  const host = () => {
+    const registry = createFlowRegistry();
+    registry.register(guestFlow("lobby", "visitor") as never);
+    registry.register(guestFlow("porch", "guest") as never);
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, resolvePrincipal: headerOnly } as never);
+    routers.push(router);
+    return { router, stores };
+  };
+
+  it("answers a signed-out caller exactly as an unused key", async () => {
+    const { router } = host();
+    const unused = await get(router, ["resources", "org", "nope"], {});
+    const real = await get(router, ["resources", "org", "project"], {});
+    expect(real.status).toBe(unused.status);
+    expect((await real.text()).split("project").join("<k>")).toBe((await unused.text()).split("nope").join("<k>"));
+  });
+
+  it("refuses a signed-in caller as declarations that disagree, naming both flows", async () => {
+    const { router } = host();
+    const res = await get(router, ["resources", "org", "project"], alice);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; message: string };
+    expect(body.error).toBe("declarations_disagree");
+    expect(body.message).toContain('"lobby"');
+    expect(body.message).toContain('"porch"');
+  });
+});
+
+describe("a default write aborted while its canWrite is pending", () => {
+  // Codex review 4544189602.
+  it("writes nothing once the abort lands, though canWrite then admits it", async () => {
+    let release: ((ok: boolean) => void) | undefined;
+    let asked = false;
+    const gated = defineResource({
+      ref: "gated",
+      scope: "org",
+      stateSchema: z.object({ n: z.number().default(0) }),
+      client: { expose: ["n"] },
+      runBy: "default",
+      canWrite: () => {
+        asked = true;
+        return new Promise<boolean>((resolve) => {
+          release = resolve;
+        });
+      }
+    });
+    const flow = defineFlow({
+      kind: "gate",
+      resources: { gated },
+      actions: { noop: { block: noop } },
+      authentication: { resolvePrincipal: signIn }
+    } as never)();
+    const { router, stores } = build([flow as never]);
+    const res = await post(router, ["resources", "org", "gated", "actions", "set"], alice, { input: { state: { n: 1 }, version: 0 } });
+    expect(res.status).toBe(202);
+    const { request } = (await res.json()) as { request: { id: string } };
+    for (let i = 0; i < 200 && !asked; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(asked).toBe(true);
+    const aborted = await post(router, ["fsd-default-write", "requests", request.id, "abort"], alice, {});
+    expect([200, 202, 204]).toContain(aborted.status);
+    release!(true);
+    const done = await settle(stores, request.id);
+    expect(done.status).toBe("aborted");
+    expect(await read(router, "org", "gated", alice)).toEqual({ scope: "org", key: "gated", value: { n: 0 }, version: 0 });
   });
 });

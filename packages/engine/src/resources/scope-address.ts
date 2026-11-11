@@ -203,6 +203,19 @@ function declarationsAgree(
           `different sign-in resolvers, so there is no one caller to read or write it as. Give both flows one resolver.`
       };
     }
+    // The host fills in each flow's own default user for a caller with none:
+    // two declarations that fill in different ones answer one request as two users.
+    const settings = (flow: FlowInstance) =>
+      JSON.stringify([flow.requireUser ?? true, flow.authentication?.defaultUserId ?? null]);
+    if (settings(first.flow) !== settings(other.flow)) {
+      return {
+        status: 409,
+        code: "declarations_disagree",
+        message:
+          `Resource "${key}" at ${scope} scope is declared by flows "${first.flow.id}" and "${other.flow.id}" with ` +
+          `different requireUser or defaultUserId settings, so a caller with no user is two callers. Give both flows one.`
+      };
+    }
     if (!sameClientConfig(first.config, other.config)) {
       return {
         status: 409,
@@ -304,18 +317,25 @@ export async function admitAddress(options: {
   const callers = new Map<string, AddressCaller>();
   const principals: AddressCaller[] = [];
   let pinnedOut = false;
+  // Whether every flow answered with its own default user: a caller who signed in nowhere.
+  let signedOut = true;
   for (const flow of flows.values()) {
     const caller = await resolveFlowCaller({ ...options, flow });
+    let principal: AddressCaller;
     if (!("refused" in caller)) {
       callers.set(flow.id, caller);
-      principals.push(caller);
+      principal = caller;
     } else if (caller.refused.code === "outside_pin") {
       pinnedOut = true;
-      principals.push(caller.principal!);
+      principal = caller.principal!;
     } else return { refused: unknownRefusal(scope, key) };
+    principals.push(principal);
+    if (principal.userId !== flow.authentication?.defaultUserId) signedOut = false;
   }
   if (callers.size === 0) return { refused: unknownRefusal(scope, key) };
   const address = resolveAddress(options.registry, options.hostResolver, scope, key, (flow) => callers.has(flow.id));
+  // A signed-out caller learns nothing from a misconfiguration: the unused key's answer.
+  if ("refused" in address && signedOut) return { refused: unknownRefusal(scope, key) };
   if ("refused" in address) {
     if (address.refused.status === 404 || !pinnedOut) return address;
     return { refused: { ...address.refused, message: `Resource "${key}" at ${scope} scope can't be read or written by scope.` } };
@@ -325,6 +345,7 @@ export async function admitAddress(options: {
   // could land in two cells. Asked of the resolvers, so only a request can tell.
   const [one] = principals;
   if (principals.some((p) => p.userId !== one!.userId || p.orgId !== one!.orgId)) {
+    if (signedOut) return { refused: unknownRefusal(scope, key) };
     return {
       refused: {
         status: 500,

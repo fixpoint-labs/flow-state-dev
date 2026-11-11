@@ -29,7 +29,14 @@ import { createHash } from "node:crypto";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, JsonObject, ResourceConfig } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { FlowError } from "../errors/flow-error";
+import {
+  ConcurrentModificationError,
+  FlowError,
+  ResourceAlreadyExistsError,
+  ResourceDeletedError
+} from "../errors/flow-error";
+import { runResourceCAS } from "../stores/resource-cas";
+import { createStateContainer } from "../stores/state-container";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { PrincipalResolver } from "../transports/types";
@@ -234,6 +241,59 @@ function mergeClientWrite(
   return next;
 }
 
+/** The request's background signal: fires on an explicit abort, not on a transport's teardown. */
+function sideChainSignalOf(ctx: object): AbortSignal | undefined {
+  return (ctx as { _requestSideChainSignal?: AbortSignal })._requestSideChainSignal;
+}
+
+/**
+ * Persist the state `compute` makes from `held`, at `held`'s version, through
+ * the CAS driver every resource write in a run goes through (`runResourceCAS`):
+ * so an abort that lands while `compute` awaits (a `canWrite` that asks
+ * something) writes nothing, as it writes nothing in a run. One attempt only:
+ * the client wrote at the version it read, so a conflict is its to re-apply
+ * (`stale_version`). A create (`held` at version 0) may land over a deleted
+ * key, as the store's version-0 write does.
+ */
+async function persistAtVersion(options: {
+  stores: Pick<StoreRegistry, "resourceState">;
+  scope: AddressScope;
+  cell: string;
+  key: string;
+  held: { state: JsonObject; version: number };
+  signal: AbortSignal | undefined;
+  compute: (prev: JsonObject) => Promise<JsonObject>;
+}): Promise<{ committed: boolean; version: number }> {
+  const { stores, scope, cell, key, held } = options;
+  try {
+    const result = await runResourceCAS({
+      key,
+      container: createStateContainer<JsonObject>(held.state, held.version),
+      mutator: options.compute,
+      intent: held.version === 0 ? "create" : "mutate",
+      signal: options.signal,
+      options: { maxRetries: 0 },
+      persist: (next, expectedVersion) => stores.resourceState.set(scope, cell, key, next, expectedVersion),
+      reread: () => stores.resourceState.get(scope, cell, key)
+    });
+    return { committed: result.committed, version: result.version };
+  } catch (error) {
+    if (
+      error instanceof ResourceAlreadyExistsError ||
+      error instanceof ResourceDeletedError ||
+      error instanceof ConcurrentModificationError
+    ) {
+      const now = await stores.resourceState.get(scope, cell, key);
+      throw new ResourceWriteRefusedError(
+        "stale_version",
+        `Resource "${key}" changed while this write ran: read it again and re-apply the change.`,
+        { currentVersion: now?.version ?? 0 }
+      );
+    }
+    throw error;
+  }
+}
+
 // FIX-2624.
 /**
  * Hold the framework's own flows (the default write flow) in `registry`, over
@@ -360,7 +420,8 @@ function createDefaultWriteFlow(options: {
   const writeSingle = async (
     write: AdmittedWrite & { address: { collection: false } },
     input: z.infer<typeof setInput>,
-    requestId: string
+    requestId: string,
+    signal: AbortSignal | undefined
   ): Promise<{ version: number }> => {
     const { address, target, caller } = write;
     if (input.entry !== undefined) {
@@ -368,25 +429,35 @@ function createDefaultWriteFlow(options: {
     }
     const current = await readAddressed(stores, address, caller);
     if (input.version !== current.version) throw stale(target.key, current.version, input.version);
-    const next = parseResourceWriteState(
-      address.config.stateSchema,
-      mergeClientWrite(address.config, current.state, input.state as JsonObject),
-      target.key
-    );
-    const canWrite = address.config.canWrite;
-    if (canWrite !== undefined && !(await canWrite({ prev: current.state, next, ...caller }))) {
-      throw new ResourceWriteRefusedError("write_refused", `Resource "${target.key}" refused this write (canWrite).`);
-    }
-    const written = await stores.resourceState.set(target.scope, write.cell, target.key, next, input.version);
-    if (!written.ok) throw raced(target.key, written.conflict.currentVersion);
-    publish(write, target.key, requestId);
+    const written = await persistAtVersion({
+      stores,
+      scope: target.scope,
+      cell: write.cell,
+      key: target.key,
+      held: current,
+      signal,
+      compute: async (prev) => {
+        const next = parseResourceWriteState(
+          address.config.stateSchema,
+          mergeClientWrite(address.config, prev, input.state as JsonObject),
+          target.key
+        );
+        const canWrite = address.config.canWrite;
+        if (canWrite !== undefined && !(await canWrite({ prev, next, ...caller }))) {
+          throw new ResourceWriteRefusedError("write_refused", `Resource "${target.key}" refused this write (canWrite).`);
+        }
+        return next;
+      }
+    });
+    if (written.committed) publish(write, target.key, requestId);
     return { version: written.version };
   };
 
   const writeEntry = async (
     write: AdmittedWrite & { address: { collection: true } },
     input: z.infer<typeof setInput>,
-    requestId: string
+    requestId: string,
+    signal: AbortSignal | undefined
   ): Promise<{ version: number }> => {
     const { address, target, caller } = write;
     const config = address.config;
@@ -404,17 +475,26 @@ function createDefaultWriteFlow(options: {
         );
       }
     }
-    const merged = mergeClientWrite(config, current?.state ?? {}, input.state as JsonObject);
-    // The org is the server's to stamp: the stored one on an update, the caller's on a create.
-    if (config.stampOrgId === true) merged.orgId = (current?.state.orgId as string | undefined) ?? caller.orgId;
-    const next = parseResourceWriteState(config.stateSchema, merged, storageKey);
-    const canWrite = config.canWrite;
-    if (canWrite !== undefined && !(await canWrite({ key: storageKey, prev: current?.state, next, ...caller }))) {
-      throw new ResourceWriteRefusedError("write_refused", `Entry "${storageKey}" refused this write (canWrite).`);
-    }
-    const written = await stores.resourceState.set(target.scope, write.cell, storageKey, next, input.version);
-    if (!written.ok) throw raced(storageKey, written.conflict.currentVersion);
-    publish(write, noticePathFor(config, storageKey, write.target.scope), requestId);
+    const written = await persistAtVersion({
+      stores,
+      scope: target.scope,
+      cell: write.cell,
+      key: storageKey,
+      held: { state: current?.state ?? {}, version: currentVersion },
+      signal,
+      compute: async (prev) => {
+        const merged = mergeClientWrite(config, prev, input.state as JsonObject);
+        // The org is the server's to stamp: the stored one on an update, the caller's on a create.
+        if (config.stampOrgId === true) merged.orgId = (current?.state.orgId as string | undefined) ?? caller.orgId;
+        const next = parseResourceWriteState(config.stateSchema, merged, storageKey);
+        const canWrite = config.canWrite;
+        if (canWrite !== undefined && !(await canWrite({ key: storageKey, prev: current?.state, next, ...caller }))) {
+          throw new ResourceWriteRefusedError("write_refused", `Entry "${storageKey}" refused this write (canWrite).`);
+        }
+        return next;
+      }
+    });
+    if (written.committed) publish(write, noticePathFor(config, storageKey, write.target.scope), requestId);
     return { version: written.version };
   };
 
@@ -424,9 +504,10 @@ function createDefaultWriteFlow(options: {
     outputSchema: z.object({ version: z.number() }),
     execute: async (input, ctx) => {
       const write = admit(ctx.session.identity);
+      const signal = sideChainSignalOf(ctx);
       return write.address.collection
-        ? writeEntry(write as AdmittedWrite & { address: { collection: true } }, input, ctx.request.identity.id)
-        : writeSingle(write as AdmittedWrite & { address: { collection: false } }, input, ctx.request.identity.id);
+        ? writeEntry(write as AdmittedWrite & { address: { collection: true } }, input, ctx.request.identity.id, signal)
+        : writeSingle(write as AdmittedWrite & { address: { collection: false } }, input, ctx.request.identity.id, signal);
     }
   });
 
@@ -454,6 +535,8 @@ function createDefaultWriteFlow(options: {
       if (canWrite !== undefined && !(await canWrite({ key: storageKey, prev: current.state, next: undefined, ...write.caller }))) {
         throw new ResourceWriteRefusedError("write_refused", `Entry "${storageKey}" refused this delete (canWrite).`);
       }
+      // A delete has no CAS driver to stop it: an abort that landed while canWrite awaited stops it here.
+      sideChainSignalOf(ctx)?.throwIfAborted();
       const deleted = await stores.resourceState.delete(write.target.scope, write.cell, storageKey, input.version);
       if (!deleted.ok) throw raced(storageKey, deleted.conflict.currentVersion);
       // The entry's content goes with it, as the resource routes' and a run's deletes do,
