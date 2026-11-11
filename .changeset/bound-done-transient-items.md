@@ -6,4 +6,4 @@ A long-running request no longer holds every transient item it has emitted in me
 
 - `response.getItems()` and the entry check of `.waitForCondition` (and so `whenResourceChanged` / `whenResourceMatching`) see only those newest done transient items. A request that emits fewer than 10,000 of them sees no difference.
 
-Docs: none needed beyond the JSDoc on `ResponseEmitterHandle.getItems()`, `.waitForCondition` and the resource-change predicates.
+Docs: the JSDoc on `ResponseEmitterHandle.getItems()`, `.waitForCondition` and the resource-change predicates, and `docs/architecture/streaming.md` ("Items (the record)").

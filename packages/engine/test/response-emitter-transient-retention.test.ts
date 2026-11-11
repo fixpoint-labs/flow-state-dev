@@ -162,4 +162,39 @@ describe("ResponseEmitter done-transient retention", () => {
       expect(issued[i]).toBeGreaterThan(issued[i - 1]!);
     }
   });
+  it("does not evict a keyed item replaced while an earlier transient completion was still awaiting", async () => {
+    // The first transient `item.done` awaits its event callback; meanwhile a
+    // durable item takes the same keyed id. The stale completion must not put
+    // the durable replacement in the eviction queue.
+    let release!: () => void;
+    let holdNext = true;
+    const emitter = createResponseEmitter({
+      requestId: "req_test",
+      maxBufferSize: 1,
+      onEvent: (event) => {
+        if (holdNext && event.type === "item.done") {
+          holdNext = false;
+          return new Promise<void>((resolve) => (release = resolve));
+        }
+      }
+    });
+
+    const keyed = "item_component_keyed:status";
+    await emitter.emitItemAdded(transientItem(0, keyed));
+    const staleDone = emitter.emitItemDone(transientItem(0, keyed));
+
+    const durable: ComponentItem = { ...transientItem(1, keyed), transient: false };
+    await emitter.emitItemAdded(durable);
+    await emitter.emitItemDone(durable);
+
+    release();
+    await staleDone;
+
+    // Another transient completion fills the one-slot cap.
+    await emitter.emitItemAdded(transientItem(2));
+    await emitter.emitItemDone(transientItem(2));
+
+    const kept = emitter.getItems().find((item) => item.id === keyed);
+    expect(kept?.transient).toBe(false);
+  });
 });

@@ -984,8 +984,13 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * `maxBufferSize`, dropping the oldest. Non-transient and in-progress items
    * are never dropped. Runs after the item's events are delivered and logged,
    * so only the in-memory view is affected.
+   *
+   * `emitItemDone` awaits its event before calling this, and a newer emission
+   * may have replaced the same (keyed) id meanwhile. That newer emission owns
+   * the id's bookkeeping, so a stale completion changes nothing.
    */
   private retainDoneItem(item: RuntimeItem): void {
+    if (this.itemsById.get(item.id) !== item) return;
     this.doneTransientIds.delete(item.id);
     if (item.transient !== true) return;
     this.doneTransientIds.add(item.id);
