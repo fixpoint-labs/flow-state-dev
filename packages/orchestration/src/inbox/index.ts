@@ -17,6 +17,8 @@
  * and cancels, steers, releases, retries and re-files its tasks through the
  * board's own actions. {@link taskActionName} is the one place an
  * app gets a board action's name, for a reader that builds a row's holder.
+ * {@link taskListViewRef} names a board's task list as a view, for a screen
+ * that watches it.
  *
  * **Where an item comes from.** A task run's stop lists under its row, never
  * from the run's session on its own. A suspension the reader found in a
@@ -30,6 +32,7 @@
 export {
   createInboxClient,
   taskActionName,
+  taskListViewRef,
   type BoardActions,
   type BoardAt,
   type InboxClient,
@@ -37,6 +40,8 @@ export {
   type RefiledTask,
   type TaskActionTool,
 } from "./client";
+// A board's task-list view, as `taskListViewRef` types it (FIX-2623).
+export type { TaskListView } from "../skills/task-tools-capability";
 export { inboxItems } from "./list";
 // One task as a person sees it: the one status and waiting-on vocabulary (FIX-2379).
 export { taskView, type TaskViewStatus, type TaskView, type TaskViewInput } from "./task-view";

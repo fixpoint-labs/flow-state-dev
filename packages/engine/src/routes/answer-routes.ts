@@ -163,6 +163,9 @@ export async function handleAnswerSuspension(
           headers: { ...SSE_HEADERS, "cache-control": "no-cache, no-transform", "x-accel-buffering": "no", "x-request-id": handle.requestId }
         });
       }
+      // Nobody reads the live stream past a 202 (the caller follows the
+      // request through its GET stream): close it so it fills no further.
+      handle.liveStream?.close();
       return jsonResponse(202, { requestId: route.requestId });
     }
     if ("refusal" in resumed) {

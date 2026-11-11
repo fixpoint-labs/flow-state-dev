@@ -14,9 +14,6 @@
  */
 export const WORKERS_PATTERN = "workforce/workers/*";
 
-/** {@link WORKERS_PATTERN}'s prefix, without its wildcard. */
-export const WORKERS_PREFIX = "workforce/workers/";
-
 /**
  * The accessor a flow declares the user's worker collection under. A worker
  * flow's create check reads the creating user's row through it, and a turn
@@ -142,6 +139,10 @@ export const TASK_ID_STATE_KEY = "taskId";
  * shows a roster session.
  */
 export const ROSTER_FLOW = "workforce-roster";
+
+// FIX-2623.
+/** The roster view's name on the roster flow (`defineRosterView`). */
+export const ROSTER_VIEW = "roster";
 
 // FIX-1802.
 /**

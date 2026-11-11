@@ -14,6 +14,7 @@
  */
 import { join } from "node:path";
 import type { Client } from "@flow-state-dev/client";
+import { taskListViewRef } from "@flow-state-dev/orchestration/inbox";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { crashAndRestart, goalTmpDir, runGoal, sleep, stopProcessGroup } from "../../lib/index.mts";
 import { readConversation, readCutTurn, readTaskAfterCrash, type CrashedRow } from "../../lib/crash-reads.mts";
@@ -72,11 +73,10 @@ await runGoal(async (failures) => {
     const filedRow = (await me.sessions.requests(conversation.id, { limit: 50, includeResultOutput: true })) as Array<{ id: string; result?: { output?: { taskId?: string; ok?: boolean; error?: string } } }>;
     const taskId = filedRow.find((r) => r.id === filed.id)?.result?.output?.taskId;
     if (taskId === undefined) throw new Error(`setup: createTask_tasks filed nothing: ${JSON.stringify(filedRow.find((r) => r.id === filed.id)?.result)}`);
-    // Read, never sent: a read stores nothing and touches no board, so the row moves on its own.
+    // Viewed, never sent: a view stores nothing and touches no board, so the row moves on its own.
     const readRow = async (): Promise<CrashedRow & { run?: { sessionId?: string } | null }> => {
-      const listed = await me.flow(flow).read<{ ok: boolean; error?: string; tasks: Array<Record<string, any>> }>("listTasks_tasks", {}, { sessionId: conversation.id });
-      if (!listed.ok) throw new Error(`listTasks_tasks refused: ${listed.error}`);
-      return listed.tasks.find((t) => t.id === taskId) as never;
+      const listed = await me.view(taskListViewRef(flow, "tasks"), {}, { sessionId: conversation.id });
+      return listed.value.find((t) => t.id === taskId) as never;
     };
 
     // Kill only once the run is read as running: never on a timer.

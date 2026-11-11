@@ -245,6 +245,31 @@ const flow = defineFlow({
 
 See [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
 
+## Views
+
+A view is the one hook a screen uses to watch an answer the server computes ([FIX-2623](../../specs/issues/FIX-2623/SPEC.md); epic FIX-2618 O2). It is a block with a scope, declared with `defineView` and installed in a flow's `views`:
+
+```ts
+export const roster = defineView({
+  scope: "user",                 // "session", or "user" / "org" with no session
+  key: (row) => row.id,          // optional: the answer is a list, kept by key
+  block: rosterBlock,            // must declare an outputSchema: ViewOutput<typeof roster>
+});
+defineFlow({ kind: "workforce-roster", views: { roster } });
+```
+
+`defineView` (`packages/core/src/flow/defineView.ts`) refuses a block with no output schema (or `z.any()` / `z.unknown()`), so `ViewOutput<typeof view>` is never `unknown`. `defineFlow` refuses a `views` entry `defineView` didn't make.
+
+**How it runs.** Every view runs through the one view runner, `runView` (`packages/engine/src/execution/runView.ts`), which flow reads also run through until they are removed. It hands the run the read-only stores (below, under Reads), so a view writes nothing and a write throws `read_only`. A user or org view runs with **no session**: the context's `noSession` mode loads, makes and stores none, installs no session resource, and puts a stand-in where `ctx.session` would be that throws `NoSessionError`; the run's request record and execution metadata name no session. A session view runs on a session that exists, under the action path's binding checks, and can't make one. **A view calls no model** (D2): the run's model resolver refuses, and a generator or an evaluator (which always holds a model, sometimes inline, called without the resolver) is refused before it starts, both with `ViewModelCallError`. A view ends like a read: its side chains drain and request-end hooks run.
+
+**What it read.** The engine records each scope state and resource a view's blocks reach, where it builds their context: the scope state getters and the one `ctx.resources` registry every block's context shares, so a child block, a sequencer step or a capability's block is recorded like the view's own block (`packages/engine/src/context/view-reads.ts`). The handle a block gets back is the same object recorded or not, so recording never changes the run's branch. Nothing about a view's dependencies is declared (D1). Every read path records through one surface, `createViewDependencies` (`view-reads.ts`), which holds the topic rules: a read is heard on its scope's topic, a session read whose reach (its storage key, or a collection's prefix, rows not yet created included) touches any lineage-shared storage by the longest-prefix ownership rule also on the owner's user topic, and another session's read on that session's topic. `views-dependency-matrix.test.ts` runs each read path against each scope with another writer, and guards that the execution context hands the raw recorder to nothing else. The other read paths are recorded or refused: a `contentTemplateRef` resolved into another scope records every scope searched (found or not, since creating the template later changes the answer); in a session view, `ctx.session`'s items, metadata, window and journal record the session, and the request host's `sessions.read` / `sessions.history` record the session read; in a user or org view those refuse with `NoSessionError`; and `livenessOf`, which no topic covers, refuses in every view with `UnrecordedReadError` (`422 view_unrecorded_read`). The answer carries the bare topic of each scope it read (`{ scope: "session", id }`, `{ scope: "user" }`, `{ scope: "org" }`), deduped and sorted, so an unchanged set compares equal. No topic is added.
+
+**Publishing.** Once any flow the host registers declares a view, every resource write publishes a change notice on its scope's topic, whichever flow writes it (`requestHost.hostHasViews`, wired from the registry). A view may read any resource, so a missed notice would leave its watcher stale; an extra one is allowed. A `sharedToLineage` session resource is one resource across a lineage, but a session notice reaches only the writer's session, so its write also publishes on the owner's user topic (every lineage member belongs to one user), from a run and from the resource routes alike, through one publish surface (`publishSessionResourceChange`, `bus/scope-changes.ts`). It decides sharing from the stored key's ownership, by the rule write routing uses (`sessionKeySharesLineage`), and takes the owner from the session record the writer loaded. A view that reads one records the user topic beside its session. No topic is added.
+
+**How it is reached.** `POST /api/flows/:flowKind/views/:viewName` for a user or org view, and `POST /api/flows/:flowKind/:sessionId/views/:viewName` for a session view, each with `{ input }`, answering `200 { output, topics }` (`packages/engine/src/routes/view-routes.ts`). The caller is resolved on the `:flowKind` path through the flow's own resolver, as an action and a read are, never from the body, query or headers. A view addressed at the wrong scope answers `400`; a model call or a reach for a session answers `422` (`view_model_call`, `view_no_session`); a write `409 read_only`.
+
+**Watching it.** A screen names a view with `viewRef<typeof view>(flow, name)` (`packages/client/src/view/view.ts`), a handle with the flow's address and the view's name and no block, typed by a type import. `client.view(ref, input, { sessionId? })` runs it once and resolves to `{ value, topics, keys? }`; a keyed view's answer carries its row keys in order. `useView(ref, input, options)` (`packages/react/src/hooks/useView.ts`) returns `{ value, stale }`. Both watch through `watchView` (`client/internal`), which is the client's live read with `topicsFromResult`: the answer names the topics, the live read listens to them, re-subscribes when they change and reads once after re-subscribing. It adds no loop. Watchers of the same view, session and input in one client share one live read and its answer (keyed per client in a `WeakMap`), a late watcher gets the current value at once, and the read stops with the last watcher. A keyed view's rows that didn't change keep their object identity across answers.
+
 ## Reads
 
 A flow's `reads` are blocks an app runs on a session to watch something the flow computes, such as a conversation's task list ([FIX-2286 D1](../../specs/issues/FIX-2286/DECISIONS.md#d1)). A read is answered in the HTTP response and stored nowhere: no request record, no items, no concurrency slot, no entry in the active-request registry.
@@ -270,13 +295,13 @@ defineFlow({
 
 `ReadConfig` (`packages/core/src/types/flow.ts`) takes a `block`, an optional `inputSchema` that overrides the block's, and a `description`. A read may share a name with an action.
 
-**How it runs.** `runRead` (`packages/engine/src/execution/runRead.ts`) parses the input like an action's, then runs the block through the same execution context an action gets, with `source: "read"`, so it sees the session, its resources and its user under the same binding checks. What differs is the stores it is handed: its own request record, traces and checkpoints go to an in-memory registry dropped when the read ends, the first seed of a user or org record a fresh session lacks lands there too, and every other write throws `FlowError` with code `read_only`. Dispatch is refused the same way. "Stores nothing" holds by construction, and a store method added later is refused until it is named as a read verb. A read ends like a request: its side-chain work drains and its request-end hooks run.
+**How it runs.** `runRead` (`packages/engine/src/execution/runRead.ts`) parses the input like an action's, then runs the block through the same execution context an action gets, with `source: "read"`, so it sees the session, its resources and its user under the same binding checks. What differs is the stores it is handed: its own request record, traces and checkpoints go to an in-memory registry dropped when the read ends, the first seed of a user or org record a fresh session lacks lands there too, and every other write throws `FlowError` with code `read_only`. Dispatch is refused the same way. "Stores nothing" holds by construction, and a store method added later is refused until it is named as a read verb: a new store read method needs a line in `READ_VERBS` (`packages/engine/src/execution/runView.ts`) before a view or read can call it. A read ends like a request: its side-chain work drains and its request-end hooks run.
 
 **How it is reached.** `POST /api/flows/:flowKind/:sessionId/reads/:readName` with `{ input }`, answering `200 { output }` (`packages/engine/src/routes/read-routes.ts`). The caller is resolved and fenced as on the session's action route: a session the caller may not run in answers as an unknown one, and a session another flow instance owns answers `409`. A read can't create a session. The client calls it as `client.flow(kind).read(name, input, { sessionId })`.
 
 **Keeping a screen current.** A read has no push of its own. A screen calls it inside the client's live read, `client.live(topics, { read, hear, paths, onValue })`, which runs it again on the notices under `topics` that `hear` and `paths` let through: one read in flight and at most one waiting, a value reported only when it changed, and a failed read tried again on its own (1 s doubling to 30 s, `onStale` meanwhile). Where push can miss a change it reads on a timer (3 s by default). The live read is the one loop every watch in the framework and its apps runs on (`packages/client/src/live/`); a second coalescer anywhere else fails the `fsd/one-coalescer` lint. `client.subscribe` stays the lower-level call it rides.
 
-**`reads` beside `derived`.** Two hooks compute what a screen shows today: a flow read, run on request, and a scope's `client.derived` entries, computed into the snapshot's `clientData` ([Resources and Client Data](./resources-and-client-data.md#client-data)). Neither reads without a session. The target model, where views replace both and run at user or org scope with no session, is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
+**`reads` beside `derived` and views.** Views replace both reads and a scope's `client.derived` entries ([Resources and Client Data](./resources-and-client-data.md#client-data)); until their callers move, all three are on `main`. Reads already run through the view runner, so they refuse writes and model calls the same way. The target model is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
 
 ## Flow Discovery
 
@@ -297,6 +322,8 @@ Server routes follow a canonical pattern:
 POST /api/flows/:flowKind/actions/:action
 POST /api/flows/:flowKind/:sessionId/actions/:action
 POST /api/flows/:flowKind/:sessionId/reads/:readName
+POST /api/flows/:flowKind/views/:viewName
+POST /api/flows/:flowKind/:sessionId/views/:viewName
 GET  /api/flows/:flowKind/requests/:requestId/stream
 ```
 

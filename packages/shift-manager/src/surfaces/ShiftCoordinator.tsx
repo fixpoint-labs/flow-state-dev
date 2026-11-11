@@ -360,7 +360,7 @@ export function ShiftCoordinatorPanel({ snapshot }: { snapshot: LoadedSnapshot }
           <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
           <DelegatesPanel key={shiftCoordinator.id} worker={shiftCoordinator} sessionId={conversation} />
           <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TASKS</p>
-          <TasksPanel key={`tasks-${shiftCoordinator.id}`} worker={shiftCoordinator} sessionId={conversation} readAt={snapshot.readAt} activeOnly />
+          <TasksPanel key={`tasks-${shiftCoordinator.id}`} worker={shiftCoordinator} sessionId={conversation} activeOnly />
         </>
       ) : (
         <p className="px-1 text-xs text-muted-foreground" data-testid="shift-coordinator-panel-empty">

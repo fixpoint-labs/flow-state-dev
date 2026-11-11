@@ -1452,6 +1452,8 @@ function defineAgentFlowAround(
     },
     // On an installation: the task list, read with nothing stored (FIX-2286).
     ...(board !== undefined ? { reads: board.reads } : {}),
+    // On an installation: the task list as a session view (FIX-2623).
+    ...(board !== undefined ? { views: board.views } : {}),
     internal: {
       actions: {
         // A workstream's open: creates the lead's workstream session, linked

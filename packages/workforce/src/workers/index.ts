@@ -77,3 +77,5 @@ export {
   type WorkerUsageState
 } from "./worker-usage";
 export { workerFlow, type WorkerFlowBuilder } from "./worker-flow";
+export { rosterView } from "./roster-view-ref";
+export type { RosterView } from "./roster-view";

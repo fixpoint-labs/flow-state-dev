@@ -140,9 +140,11 @@ import { resourceStorageKeys } from "../resources/storage-keys";
 import { mergeOwnKeyRecords, ownKeyRecord } from "../resources/own-key-record";
 import {
   isSharedToLineage,
+  reachHasFlag,
   resolveOwnershipFlag,
   sessionRoutingIndex,
-  type OwnershipBuckets
+  type OwnershipBuckets,
+  type StorageReach
 } from "../resources/lineage-scope";
 import type { StorageScopeType } from "../stores/types";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
@@ -186,7 +188,7 @@ import type { BlobStore } from "../blobs/types";
 import type { AttachmentAccepts } from "@flow-state-dev/core/attachments";
 import { resolveHistoryFiles } from "./history-files";
 import { readAttachmentText } from "../blobs/attachment-text";
-import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
+import { noticePathFor, publishScopeChange, publishSessionResourceChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
   normalizeScopeResources,
@@ -205,8 +207,10 @@ import { isCollectionConfig } from "../resources/is-collection-config";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
 import { PAST_TURN_STATUSES } from "../execution/past-turns";
-import { readSettledTurns } from "./settled-turns";
+import { readSettledTurns, type SettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
+import { NoSessionError, noSessionHandle, noSessionRecord } from "./no-session";
+import { createViewDependencies, guardViewRequestHost, recordSessionReads, refusingModelResolver, ViewModelCallError } from "./view-reads";
 
 // FIX-2063.
 /**
@@ -729,6 +733,18 @@ export async function createExecutionContext<
     accessorScope[accessor] = scope;
   }
 
+  // FIX-2623: a user or org view has no session, so it installs none of the
+  // session's resources. Reaching for one refuses with `NoSessionError` (the
+  // flat registry below), never "not registered".
+  const noSession = options.noSession === true;
+  const sessionAccessorsWithoutSession = new Set<string>();
+  if (noSession) {
+    for (const accessor of Object.keys(sessionResourceConfigs)) {
+      sessionAccessorsWithoutSession.add(accessor);
+      delete sessionResourceConfigs[accessor];
+      delete accessorScope[accessor];
+    }
+  }
   resolveStringContentTemplates(sessionResourceConfigs);
   resolveStringContentTemplates(userResourceConfigs);
   resolveStringContentTemplates(orgResourceConfigs);
@@ -739,6 +755,16 @@ export async function createExecutionContext<
 
   const userId = options.userId;
   const sessionId = options.sessionId ?? `ephemeral_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  // FIX-2623: a view's dependencies, recorded as its blocks read. Absent
+  // outside a view. The only use of the raw recorder: every read path below
+  // goes through this surface, which holds the topic rules (`view-reads.ts`).
+  // Whether a session reach touches lineage-shared storage: read through the
+  // session buckets, which are built below, when a read asks.
+  const sharesLineageRef: { current: (reach: StorageReach) => boolean } = { current: () => false };
+  const viewDependencies =
+    options.recordRead !== undefined
+      ? createViewDependencies(options.recordRead, sessionId, (reach) => sharesLineageRef.current(reach))
+      : undefined;
   const requestId = options.requestId;
 
   // Tenant-namespaced session storage key (FIX-682). Bare `sessionId` for
@@ -783,7 +809,7 @@ export async function createExecutionContext<
   // recorded what it handed on, so the read below sees it (FIX-2145).
   const interruptedEndingLive = isInterruptedEndingHeld(stores.request, requestId);
   const [loadedSession, loadedRequest] = await Promise.all([
-    stores.session.get(sessionKey),
+    noSession ? undefined : stores.session.get(sessionKey),
     stores.request.get(requestId)
   ]);
   if (
@@ -841,7 +867,10 @@ export async function createExecutionContext<
     // all()/client() (via priorItems) and history() (via loadLLMHistory);
     // `historyStart` names the first turn the window holds when an earlier
     // turn is out of view (FIX-1613).
-    readSettledTurns({
+    // No session, no turns: a view's history window is empty.
+    noSession
+      ? ({ window: [], retried: new Set<string>(), parked: new Set<string>(), waiting: new Set<string>(), open: [], settled: [] } as SettledTurns)
+      : readSettledTurns({
       requests: stores.request,
       scope: turnScope,
       turns: historyWindowTurns,
@@ -965,6 +994,7 @@ export async function createExecutionContext<
   // (FIX-1068), so this request cannot overwrite a concurrent first action and
   // cannot invent a second address for the same session.
   let sessionRecord =
+    noSession ? noSessionRecord() :
     loadedSession ??
     ((await ensureSessionRecord(
       stores,
@@ -996,7 +1026,7 @@ export async function createExecutionContext<
     })
     )) as typeof loadedSession & object);
 
-  ensureJournalDefaults(sessionRecord);
+  if (!noSession) ensureJournalDefaults(sessionRecord);
 
   // The binding checks run HERE, on one path, rather than inside the
   // already-existed branch. A request that loses the create race adopts the
@@ -1005,7 +1035,8 @@ export async function createExecutionContext<
   // another principal's or another tenant's session. Running them
   // unconditionally costs a comparison on the branch that built the record
   // itself, where they pass by construction, and that is the cheaper mistake.
-  {
+  // A run with no session has none to bind to.
+  if (!noSession) {
     // Flow-instance binding. A record this request loaded was checked above;
     // this is for the create-race WINNER, which a losing creator adopts
     // without ever having loaded it — and which may belong to another instance
@@ -1058,10 +1089,12 @@ export async function createExecutionContext<
   // nobody ever recorded the right one. One of those is fixed by changing the
   // request and the other only by the offline migration, so they must not share
   // an answer (BR-14).
-  if (!isOrgAttributed(sessionRecord)) {
+  // With no session, the run's own org is the org: validated by the caller's
+  // principal, and the instance pin below still runs.
+  if (!noSession && !isOrgAttributed(sessionRecord)) {
     throw new UnattributedOrgError("executing against this session");
   }
-  const sessionOrgId = sessionRecord.orgId as string;
+  const sessionOrgId = noSession ? optionsOrgId : (sessionRecord.orgId as string);
   if (optionsOrgId !== sessionOrgId) {
     throw new OrgBindingMismatchError(sessionId, sessionOrgId, optionsOrgId);
   }
@@ -1112,7 +1145,7 @@ export async function createExecutionContext<
   // an unstamped session's lineage id were its session key the two would be
   // indistinguishable — routing unshared resources into the lineage namespace
   // along with the shared ones.
-  const lineageId = resolveLineageId({ id: sessionKey, lineageId: sessionRecord.lineageId });
+  const lineageId = resolveLineageId({ id: sessionKey, lineageId: noSession ? undefined : sessionRecord.lineageId });
 
   const resolvedOrgKey = resolveOrgStorageKey(resolvedOrgId, flow);
   let orgRecord: OrgRecord | undefined = loadedOrg;
@@ -1245,6 +1278,12 @@ export async function createExecutionContext<
           }
         })
       : undefined;
+
+  // FIX-2623 D1: the request host's reads reach stores outside `ctx.resources`
+  // and the state getters, so in a view each one is recorded or refused.
+  if (viewDependencies !== undefined && requestHostBuild !== undefined) {
+    guardViewRequestHost(requestHostBuild.host, viewDependencies, noSession);
+  }
 
   if (requestHostBuild?.livenessRefusal !== undefined) {
     // Named, not silent. An operator who never writes a capability still meets
@@ -1483,6 +1522,7 @@ export async function createExecutionContext<
   if (sessionConflict !== undefined) {
     throw conflictingPrefixError("session", sessionConflict, "sharedToLineage");
   }
+  sharesLineageRef.current = (reach) => reachHasFlag(sessionIndex.buckets, reach);
   const scopeBuckets: Record<ContentScopeType, OwnershipBuckets> = {
     session: sessionIndex.buckets,
     user: buildScopeBuckets("user", userResourceConfigs, isolationFlagOf("user"), "flowIsolation"),
@@ -1704,7 +1744,8 @@ export async function createExecutionContext<
         flowId: flow.id,
         actionName: options.actionName,
         userId,
-        sessionId,
+        // A view with no session records none: the label is not a session.
+        ...(noSession ? {} : { sessionId }),
         tenantId: options.tenantId,
         orgId: orgRecord?.orgId,
         source: options.source,
@@ -2548,7 +2589,9 @@ export async function createExecutionContext<
     readUserState(userRef.current.state),
     userRef.current.version
   );
-  const sessionContainer = createStateContainer<TSessionState>(
+  const sessionContainer = noSession
+    ? createStateContainer<TSessionState>({} as TSessionState, 0)
+    : createStateContainer<TSessionState>(
     readSessionState(sessionRef.current.state),
     sessionRef.current.version
   );
@@ -2732,6 +2775,9 @@ export async function createExecutionContext<
     });
   }
 
+  // FIX-2623 D1: read once per context, for all three scopes' handlers.
+  const hostHasViews = options.requestHost?.hostHasViews?.() === true;
+
   function makeResourceChangeHandler(scope: "session" | "user" | "org") {
     const scopeConfigs =
       scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs;
@@ -2742,8 +2788,13 @@ export async function createExecutionContext<
     // every resource with a `client` config, and every resource of a scope
     // that declares `client.derived` (a derived value may read any of them).
     // Their changes publish on the scope's topic, stream or not.
+    // FIX-2623 D1: and every resource, at every scope, once any flow the host
+    // registers declares a view, whichever flow writes it. A view's run may
+    // read any of them, and the host can't know which in advance. An extra
+    // notice is allowed; a missed one is the failure.
     const scopeClient = scope === "session" ? flow.session?.client : scope === "user" ? flow.user?.client : flow.org?.client;
-    const everyResourcePublishes = Object.keys(scopeClient?.derived ?? {}).length > 0;
+    const everyResourcePublishes =
+      Object.keys(scopeClient?.derived ?? {}).length > 0 || hostHasViews;
     const publishedSingleKeys = new Set<string>();
     const publishedCollections: ResourceCollectionConfig[] = [];
     for (const [accessor, cfg] of Object.entries(scopeConfigs)) {
@@ -2758,11 +2809,33 @@ export async function createExecutionContext<
      * path is a row only its owner may read (`noticePathFor`).
      */
     const publishChange = (resourcePath: string): void => {
-      if (publishedSingleKeys.has(resourcePath)) return publishScopeNotice(scope, "resource", resourcePath);
-      const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
-      if (holders.length === 0) return;
-      const named = holders.some((cfg) => noticePathFor(cfg, resourcePath) !== undefined);
-      publishScopeNotice(scope, "resource", named ? resourcePath : undefined);
+      // The session notice, or none, by the scope's published resources.
+      let notice: { resource?: string } | undefined;
+      if (publishedSingleKeys.has(resourcePath)) notice = { resource: resourcePath };
+      else {
+        const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
+        if (holders.length > 0) {
+          const named = holders.some((cfg) => noticePathFor(cfg, resourcePath) !== undefined);
+          notice = named ? { resource: resourcePath } : {};
+        }
+      }
+      if (scope !== "session") {
+        if (notice !== undefined) publishScopeNotice(scope, "resource", notice.resource);
+        return;
+      }
+      // FIX-2623 D1: a session write goes through the one publish surface,
+      // which adds the owner's user topic for a lineage-shared key. Sharing is
+      // the stored key's, by the ownership rule writes route by; the owner is
+      // this session record's.
+      publishSessionResourceChange(stores.bus, {
+        sessionId,
+        ownerUserId: sessionRef.current.userId,
+        tenantId: options.tenantId,
+        notice,
+        lineageShared: reachHasFlag(scopeBuckets.session, { key: resourcePath }),
+        hostHasViews,
+        requestId: requestRef.current.id
+      });
     };
 
     // Only wire a handler when there is something to do: a live emitter
@@ -2918,9 +2991,18 @@ export async function createExecutionContext<
         });
 
   // Populate the template resolver now that all registries exist.
+  // FIX-2623 D1: in a view, every scope searched is a dependency, the one the
+  // template was found in and each before it, and every scope when it is
+  // missing: a write to any of them changes what the view renders.
+  const templateScopes = [
+    ...(noSession ? [] : [{ scope: "session" as const, read: readSessionResourceContent }]),
+    { scope: "user" as const, read: readUserResourceContent },
+    { scope: "org" as const, read: readProjectResourceContent }
+  ];
   templateResolverRef.current = (ref: string): string | null => {
-    for (const contentFn of [readSessionResourceContent, readUserResourceContent, readProjectResourceContent]) {
-      const content = contentFn()[ref];
+    for (const { scope, read } of templateScopes) {
+      viewDependencies?.resource(scope, ref, { key: ref });
+      const content = read()[ref];
       if (typeof content === "string") return content;
     }
     return null;
@@ -2928,7 +3010,11 @@ export async function createExecutionContext<
 
 
 
-  const modelResolver = options.modelResolver ?? createModelResolver();
+  // FIX-2623 D2: a view calls no model. Every path to a model resolves
+  // through here, so refusing here refuses them all, by name.
+  const modelResolver = options.refuseModelCalls === true
+    ? refusingModelResolver()
+    : (options.modelResolver ?? createModelResolver());
   const tokenCounter: TokenCounter = flow.tokenCounter ?? estimateTokenCounter;
   const resolvedModelStorage = createScopedAsyncStorage<string>();
   const resolveModel = ((modelId: string, blockName?: string) => {
@@ -3125,7 +3211,10 @@ export async function createExecutionContext<
       },
       ...userOpsEmitting
     },
-    () => userContainer.read()
+    () => {
+      viewDependencies?.state("user");
+      return userContainer.read();
+    }
   ) as UserScopeHandle<TUserState>;
 
   const sessionOpsEmitting = emitWrap("session", sessionOps, sessionContainer);
@@ -3175,7 +3264,7 @@ export async function createExecutionContext<
       maxAttempts
     );
   };
-  const sessionHandle = defineStateProperty(
+  const sessionHandle = noSession ? noSessionHandle<SessionScopeHandle<TSessionState>>() : defineStateProperty(
     {
       identity: {
         type: "session" as const,
@@ -3295,8 +3384,14 @@ export async function createExecutionContext<
       },
       ...sessionOpsEmitting
     },
-    () => sessionContainer.read()
+    () => {
+      viewDependencies?.state("session");
+      return sessionContainer.read();
+    }
   ) as SessionScopeHandle<TSessionState>;
+  // FIX-2623 D1: in a session view, the session's items, metadata, window and
+  // journal are reads of the session too. Its topic covers every change to them.
+  if (viewDependencies !== undefined && !noSession) recordSessionReads(sessionHandle, () => viewDependencies.state("session"));
 
   const orgOpsEmitting =
     orgOps === undefined || orgContainer === undefined
@@ -3316,7 +3411,10 @@ export async function createExecutionContext<
             },
             ...orgOpsEmitting
           },
-          () => orgContainer.read()
+          () => {
+            viewDependencies?.state("org");
+            return orgContainer.read();
+          }
         ) as OrgScopeHandle<TOrgState>);
 
   // FIX-435: build the flat ctx.resources registry by merging the per-scope
@@ -3336,19 +3434,50 @@ export async function createExecutionContext<
     const handle = (registry as Record<string, AnyResourceRef>)[accessor];
     if (handle !== undefined) flatResourcesHandles[accessor] = handle;
   }
+  // FIX-2623: in a view, every resource reached through `ctx.resources` is
+  // recorded, by accessor, against its scope. The handle handed back is the
+  // same object either way: code that keys by a handle's identity runs the
+  // same branch recorded or not (FIX-2621). Every block's context shares this
+  // one registry, so a read by a child block, a step or a capability's block
+  // is recorded too.
+  const recordResource = (accessor: string): void => {
+    const scope = accessorScope[accessor];
+    if (viewDependencies === undefined || scope === undefined) return;
+    // What the handle can reach: its storage key, or a collection's prefix.
+    const config = scope === "session" ? sessionResourceConfigs[accessor] : scope === "user" ? userResourceConfigs[accessor] : orgResourceConfigs[accessor];
+    const reach: StorageReach =
+      config !== undefined && isCollectionConfig(config)
+        ? { prefix: getPatternPrefix(config.pattern) === "" ? "" : `${getPatternPrefix(config.pattern)}/` }
+        : { key: scopeStorageKeyMaps[scope][accessor] ?? accessor };
+    viewDependencies.resource(scope, accessor, reach);
+  };
+  const resourceHandle = (name: string): AnyResourceRef => {
+    const handle = flatResourcesHandles[name];
+    if (handle === undefined) {
+      if (sessionAccessorsWithoutSession.has(name)) throw new NoSessionError(`read the session resource "${name}"`);
+      throw new Error(`Resource "${name}" is not registered`);
+    }
+    recordResource(name);
+    return handle;
+  };
   const flatResourcesRegistry: ResourceRegistry<Record<string, AnyResourceRef>> = {
     ...flatResourcesHandles,
     get(name: string) {
-      const handle = flatResourcesHandles[String(name)];
-      if (handle === undefined) {
-        throw new Error(`Resource "${String(name)}" is not registered`);
-      }
-      return handle;
+      return resourceHandle(String(name));
     },
     list() {
+      for (const accessor of Object.keys(flatResourcesHandles)) recordResource(accessor);
       return Object.values(flatResourcesHandles);
     }
   } as ResourceRegistry<Record<string, AnyResourceRef>>;
+  if (viewDependencies !== undefined || noSession) {
+    for (const accessor of [...Object.keys(flatResourcesHandles), ...sessionAccessorsWithoutSession]) {
+      Object.defineProperty(flatResourcesRegistry, accessor, {
+        enumerable: true,
+        get: () => resourceHandle(accessor)
+      });
+    }
+  }
 
   // FIX-573: per-block lifecycle trace items are now driven by
   // `onBlockTraceCapture` phases (added → input → generator → output).
@@ -4344,6 +4473,14 @@ export async function createExecutionContext<
         });
       },
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal, sideChainSignalOverride?: AbortSignal) => {
+        // FIX-2623 D2: a generator and an evaluator are model calls. Refused
+        // before they start, so the error names the model call, not whatever
+        // it reaches first. An evaluator always holds a model (`model` is
+        // required), and one held inline is called directly, never through the
+        // resolver this context refuses.
+        if (options.refuseModelCalls === true && (parent.kind === "generator" || parent.kind === "evaluator")) {
+          throw new ViewModelCallError(parent.name);
+        }
         const resolvedParent: ExecutionParent = {
           ...parent,
           parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,

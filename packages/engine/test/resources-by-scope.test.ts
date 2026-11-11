@@ -444,3 +444,53 @@ describe("the identity read", () => {
     expect((await get(router, ["nope", "identity"], alice)).status).toBe(404);
   });
 });
+
+describe("a send through a flow of the app's own (runBy: { flow })", () => {
+  const plan = defineResource({
+    ref: "plan",
+    scope: "org",
+    stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
+    client: {},
+    runBy: { flow: "planner" }
+  });
+  const replan = handler({
+    name: "replan",
+    inputSchema: z.object({ steps: z.array(z.string()) }),
+    execute: (input, ctx) => ({ ranIn: ctx.session.identity.id, steps: input.steps })
+  });
+  const planner = (kind: string, declares: boolean) =>
+    defineFlow({
+      kind,
+      resources: declares ? { plan } : {},
+      actions: { replan: { block: replan } },
+      authentication: { resolvePrincipal: signIn }
+    } as never)();
+  const board = defineFlow({
+    kind: "board",
+    resources: { plan },
+    actions: { noop: { block: noop } },
+    authentication: { resolvePrincipal: signIn }
+  } as never)();
+
+  it("runs the named flow's action in the writer's own write session on that flow, never the default write flow", async () => {
+    const { router, stores } = build([board as never, planner("planner", true) as never]);
+    const res = await post(router, ["resources", "org", "plan", "actions", "replan"], alice, { input: { steps: ["a"] } });
+    expect(res.status, await res.clone().text()).toBe(202);
+    const { request } = (await res.json()) as { request: { id: string } };
+    const done = await settle(stores, request.id);
+    expect(done.status, JSON.stringify(done.result)).toBe("completed");
+    const expected = writeSessionId({ scope: "org", key: "plan", writer: "planner" }, { userId: "alice", orgId: ORG_A });
+    expect(done.flowKind).toBe("planner");
+    expect(done.sessionId).toBe(expected);
+    expect((await stores.session.get(expected))?.flowKind).toBe("planner");
+    expect(await stores.session.get(writeSessionId({ scope: "org", key: "plan", writer: DEFAULT_WRITE_FLOW }, { userId: "alice", orgId: ORG_A }))).toBeUndefined();
+  });
+
+  it("refuses a send when the flow runBy names doesn't declare the resource, and writes nothing", async () => {
+    const { router, stores } = build([board as never, planner("planner", false) as never]);
+    const res = await post(router, ["resources", "org", "plan", "actions", "replan"], alice, { input: { steps: ["a"] } });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe("runby_flow_missing");
+    expect(await stores.request.list({})).toEqual([]);
+  });
+});

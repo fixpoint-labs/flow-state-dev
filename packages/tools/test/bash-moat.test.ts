@@ -93,15 +93,12 @@ describe("moat builders", () => {
     ]);
   });
 
-  it("buildExecArgs: wraps in sh -c", () => {
-    expect(buildExecArgs("r1", "echo hi && ls")).toEqual([
-      "exec",
-      "r1",
-      "--",
-      "sh",
-      "-c",
-      "echo hi && ls",
-    ]);
+  it("buildExecArgs: wraps in sh -c, passing the command and exec id positionally", () => {
+    const args = buildExecArgs("r1", "echo hi && ls", "id-1");
+    expect(args.slice(0, 5)).toEqual(["exec", "r1", "--", "sh", "-c"]);
+    // The command is an argument to the wrapper, never spliced into it.
+    expect(args.slice(6)).toEqual(["fsdev-exec", "echo hi && ls", "id-1"]);
+    expect(args[5]).not.toContain("echo hi");
   });
 
   it("buildWriteFileArgs: passes path positionally so quoting is irrelevant", () => {
@@ -1007,7 +1004,10 @@ describe("createMoatAdapter", () => {
       stderr: "",
       exitCode: 0,
     });
-    expect(calls[0]!.args).toEqual(["exec", "r1", "--", "sh", "-c", "echo hello"]);
+    expect(calls[0]!.args.slice(0, 5)).toEqual(["exec", "r1", "--", "sh", "-c"]);
+    expect(calls[0]!.args[7]).toBe("echo hello");
+    // A command that finished needs no in-container stop.
+    expect(calls).toHaveLength(1);
   });
 
   it("executeCommand: surfaces non-zero exit codes", async () => {

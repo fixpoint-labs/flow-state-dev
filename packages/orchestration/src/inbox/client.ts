@@ -11,8 +11,9 @@
  * binds one board, and cancel, steer, release, retry and re-file go to that
  * board's own actions through the routine a row answer goes through.
  */
-import { ClientHttpError, type Client, type RequestResult } from "@flow-state-dev/client";
+import { ClientHttpError, viewRef, type Client, type RequestResult, type ViewRef } from "@flow-state-dev/client";
 import type { ResumeAction } from "@flow-state-dev/core/types";
+import type { TaskListView } from "../skills/task-tools-capability";
 import { taskToolSuffix } from "../skills/task-tool-suffix";
 import type { InboxAnswer, InboxAskKind, InboxHold, InboxItem, OwnHoldSource } from "./types";
 
@@ -51,6 +52,18 @@ export type TaskActionTool = "createTask" | "getTask" | "listTasks" | "updateTas
  */
 export function taskActionName(tool: TaskActionTool, board: string): string {
   return `${tool}_${taskToolSuffix(board)}`;
+}
+
+// FIX-2623.
+/**
+ * The client's handle on board `board`'s task list, the session view
+ * `listTasks_<suffix>` flow `flow` declares (orchestration's
+ * `taskToolViews`): for `useView(ref, {}, { sessionId })` or
+ * `client.view(ref, {}, { sessionId })`, on the session that holds the board.
+ * Its answer is the board's rows, keyed by task id.
+ */
+export function taskListViewRef(flow: string, board: string): ViewRef<TaskListView> {
+  return viewRef<TaskListView>(flow, taskActionName("listTasks", board));
 }
 
 /** Where a board's action is sent: its flow, the session that holds the board, and the action. */

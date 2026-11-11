@@ -91,6 +91,7 @@ import {
   settlePassWake,
   taskToolsForTurn,
   taskToolReads,
+  taskToolViews,
   afterTaskCheck,
   TaskWriteRefusedError,
   assertDepsFileable,
@@ -2071,6 +2072,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
      * stored nowhere. Spread into the flow's `reads` beside `actions`.
      */
     reads: taskToolReads(CONVERSATION_LEDGER_ID, readResolver),
+    // FIX-2623.
+    /** The task list as a session view, `listTasks_tasks`: the same rows, watched with `useView`. For the flow's `views`. */
+    views: taskToolViews(CONVERSATION_LEDGER_ID, readResolver),
     /** The ledger, the plan ledger, the chain records and the routed-session records, for the flow's `resources`. */
     resources: { ...conversationLedgerResources, ...planLedgerResources, ...taskChainResources, ...routedSessionResources }
   };

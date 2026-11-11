@@ -1,16 +1,19 @@
+// FIX-2286; FIX-2623.
 /**
- * Watching a conversation's task board stores nothing (FIX-2286).
+ * Watching a conversation's task board stores nothing.
  *
- * An app reads the board through the `listTasks_tasks` read, `client.flow(f)
- * .read(...)`, instead of running the action of the same name. The read must
- * answer exactly what the action answers, add no request however often it is
- * called, reach only a conversation its caller owns, and never run the
- * board's pass (D2): a row whose start was lost waits for an action, not a
- * look. Every assertion reads the store, not the read's own answer.
+ * An app watches the board through the `listTasks_tasks` session view,
+ * `client.view(taskListViewRef(flow, "tasks"), ...)`, instead of running the
+ * action of the same name. The view must answer the rows the action lists,
+ * keyed by task id, add no request however often it is called, reach only a
+ * conversation its caller owns, and never run the board's pass (FIX-2286 D2):
+ * a row whose start was lost waits for an action, not a look. Every
+ * assertion on what was stored reads the store, not the view's own answer.
  */
 import { describe, expect, it } from "vitest";
 import { createClient } from "@flow-state-dev/client";
 import { createInProcessFetch } from "@flow-state-dev/engine";
+import { taskListViewRef } from "@flow-state-dev/orchestration/inbox";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
@@ -38,11 +41,16 @@ const file = async (host: BoardHost, conv: string, input: Record<string, unknown
   return result.output as { ok: true; taskId: string };
 };
 
-const read = (host: BoardHost, userId: string, conv: string) =>
-  clientOf(host, userId).flow("coordinator").read<{ ok: boolean; tasks: Array<{ id: string; status: string }> }>(LIST, {}, { sessionId: conv });
+const board = taskListViewRef("coordinator", "tasks");
+const view = (host: BoardHost, userId: string, conv: string) => clientOf(host, userId).view(board, {}, { sessionId: conv });
+const read = async (host: BoardHost, userId: string, conv: string) => ({ tasks: (await view(host, userId, conv)).value });
 
-describe("the conversation board's listTasks read (FIX-2286)", () => {
-  it("answers what the action answers, and adds no request however often it's called", async () => {
+describe("the conversation board's listTasks view", () => {
+  it("is named as the action is", () => {
+    expect(board).toMatchObject({ flow: "coordinator", view: LIST });
+  });
+
+  it("answers the rows the action lists, keyed by task id, and adds no request however often it's called", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
@@ -52,16 +60,18 @@ describe("the conversation board's listTasks read (FIX-2286)", () => {
 
       const requestsBefore = (await requestCount(host));
       const rowsBefore = JSON.stringify(await host.rows("alice"));
-      const reads = [];
-      for (let i = 0; i < 10; i += 1) reads.push(await read(host, "alice", conv));
+      const answers = [];
+      for (let i = 0; i < 10; i += 1) answers.push(await view(host, "alice", conv));
       expect((await requestCount(host))).toBe(requestsBefore);
       expect(JSON.stringify(await host.rows("alice"))).toBe(rowsBefore);
 
       const acted = await host.act("alice", conv, LIST, {});
       expect(acted.error, messageOf(acted.error)).toBeUndefined();
-      expect(reads[0]).toEqual(acted.output);
-      expect(reads[0]!.tasks.map((task) => task.status).sort()).toEqual(["completed", "held"]);
-      expect(new Set(reads.map((answer) => JSON.stringify(answer))).size).toBe(1);
+      const listed = (acted.output as { ok: true; tasks: Array<{ id: string }> }).tasks;
+      expect(answers[0]!.value).toEqual(listed);
+      expect(answers[0]!.keys).toEqual(listed.map((task) => task.id));
+      expect(answers[0]!.value.map((task) => task.status).sort()).toEqual(["completed", "held"]);
+      expect(new Set(answers.map((answer) => JSON.stringify(answer.value))).size).toBe(1);
     } finally {
       await host.dispose();
     }
@@ -80,7 +90,7 @@ describe("the conversation board's listTasks read (FIX-2286)", () => {
     }
   });
 
-  it("never runs the board's pass: a row whose start was lost waits for an action, not a read (D2)", async () => {
+  it("never runs the board's pass: a row whose start was lost waits for an action, not a look (FIX-2286 D2)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");

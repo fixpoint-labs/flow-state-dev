@@ -22,7 +22,7 @@
  * |                 | is the feed's, for a thread longer than its first read; its running turn   |
  * |                 | and the turns you stopped are the session's recent requests, read on each  |
  * |                 | request notice; `backgroundRunning` is the feed's unfinished runs          |
- * | `watchTasks`    | the conversation board's `listTasks` read, and the rows' open holds        |
+ * | `watchTasks`    | the conversation board's task-list view, and the rows' open holds          |
  * |                 | again on each notice of the board, through `client.subscribe`; a failed   |
  * |                 | row's error from its `getTask`, once per attempt; a row waiting on its pull |
  * |                 | request (harness-manager's `pullRequestWait`), with each one's link from its |
@@ -50,6 +50,7 @@ import {
   createInboxClient,
   inboxItems,
   taskActionName,
+  taskListViewRef,
   type BoardActions,
   type InboxAnswer,
   type InboxHold,
@@ -382,8 +383,6 @@ export interface Item {
 
 /** How often a session's task list reads on a timer, wherever push can miss a change. */
 const TASKS_EVERY_MS = 2_000;
-/** The ledgers a session's `listTasks` read returns: its board and its planning worker's steps. */
-const BOARD_LEDGERS = ["tasks", "plan"] as const;
 
 /**
  * A write to the plan a harness records (core's `observed-plan` rows and its
@@ -895,7 +894,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
    */
   const waitingCountFor = async (sessionId: string, dismissed: ReadonlySet<string>): Promise<number | undefined> => {
     try {
-      return waitingOnYou(await listedWithWaitingOn(sessionId), dismissed);
+      return waitingOnYou((await listedWithWaitingOn(sessionId)).tasks, dismissed);
     } catch (cause) {
       console.warn(`[claude-code-style] couldn't count what session ${sessionId} waits on you for:`, cause);
       return undefined;
@@ -921,14 +920,15 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
   /** The feed of each thread open on screen, by session id, so a send there can stream its answer into it. */
   const threadFeeds = new Map<string, SessionFeed>();
 
-  /** A session's tasks, as its board's `listTasks` read answers them: a read, so a list stores no request. */
-  const tasksOf = async (sessionId: string): Promise<Listed[]> => {
-    const listed = await fsd
-      .flow(await flowOfSession(sessionId))
-      .read<{ ok: boolean; error?: string; tasks: any[] }>(taskActionName("listTasks", TASKS_BOARD), {}, { sessionId });
-    if (!listed.ok) throw new Error(listed.error);
+  /**
+   * A session's tasks, as its board's task-list view answers them (a view, so a list stores no
+   * request), and the topics a change to them publishes on, from the view's answer.
+   */
+  const tasksAndTopicsOf = async (sessionId: string): Promise<{ tasks: Listed[]; topics: WireTopic[] }> => {
+    const answer = await fsd.view(taskListViewRef(await flowOfSession(sessionId), TASKS_BOARD), {}, { sessionId });
+    const listed = answer.value as any[];
     let moved = false;
-    for (const task of listed.tasks as any[]) {
+    for (const task of listed) {
       const ranAs = runningRunOf.get(task.id)?.requestId;
       if (task.status === "in_progress" && typeof task.run?.sessionId === "string" && typeof task.run?.requestId === "string") {
         runningRunOf.set(task.id, { sessionId: task.run.sessionId, requestId: task.run.requestId });
@@ -940,7 +940,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
       moved = true;
     }
     if (moved) for (const tell of [...runLinkMoved]) tell();
-    return (listed.tasks as any[]).map((task) => ({
+    const tasks = listed.map((task): Listed => ({
       id: task.id,
       title: task.title ?? task.goal,
       goal: task.goal,
@@ -957,7 +957,10 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
       ...(typeof task.leaseUntil === "number" ? { leaseUntil: task.leaseUntil } : {}),
       view: taskView({ ...task, board: sessionId }),
     }));
+    return { tasks, topics: answer.topics };
   };
+  /** A session's tasks, as {@link tasksAndTopicsOf} reads them. */
+  const tasksOf = async (sessionId: string): Promise<Listed[]> => (await tasksAndTopicsOf(sessionId)).tasks;
 
   /** The flow that owns each run session, where a hold's answer goes. Kept, since a session's flow never changes. */
   const runFlows = new Map<string, string | null>();
@@ -986,16 +989,20 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
     return new Map(items.flatMap((item) => (item.task === null ? [] : [[item.task.taskId, [...item.holds]] as const])));
   };
 
-  /** A session's tasks, each with what its first open hold waits on you for: the one place a hold becomes a row's `openHold`. */
-  const listedWithWaitingOn = async (sessionId: string): Promise<Listed[]> => {
-    const listed = await tasksOf(sessionId);
+  /**
+   * A session's tasks, each with what its first open hold waits on you for: the one place a hold
+   * becomes a row's `openHold`. With the topics the board's view named.
+   */
+  const listedWithWaitingOn = async (sessionId: string): Promise<{ tasks: Listed[]; topics: WireTopic[] }> => {
+    const { tasks: listed, topics } = await tasksAndTopicsOf(sessionId);
     const holds = await holdsOf(sessionId, listed);
-    return listed.map((task) => {
+    const tasks = listed.map((task) => {
       const hold = holds.get(task.id)?.[0];
       return hold === undefined
         ? task
         : { ...task, openHold: { kind: hold.ask.kind === "confirm" ? "input" : hold.ask.kind, prompt: hold.ask.prompt } };
     });
+    return { tasks, topics };
   };
 
   /** The harness each coding worker runs through, asked once of a run session of it. */
@@ -1082,8 +1089,9 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
     inbox.board({ flowId: await flowOfSession(sessionId), sessionId, board: TASKS_BOARD });
 
   /** A session's board as the screen draws it: each row with what it waits on you for, its harness and its review. */
+  /** A session's board as its cards show it, and the topics the board's view named. */
   const boardOf = async (sessionId: string) => {
-    const listed = await listedWithWaitingOn(sessionId);
+    const { tasks: listed, topics } = await listedWithWaitingOn(sessionId);
     const rows = await Promise.all(
       listed.map(async (task): Promise<LabTask> => {
         const { runSessionId: _session, run: link, holds: _holds, leaseUntil, ...row } = task;
@@ -1108,7 +1116,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
         };
       }),
     );
-    return rows;
+    return { value: rows, topics };
   };
 
   /** The open hold a thread's task holds you on that asks for `asks` (a question, a review), or undefined. */
@@ -1432,11 +1440,11 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
         stopTurns();
       };
     },
-    // The board is a read, so listing it every tick while the pane is open stores nothing.
-    // The board's notices (FIX-2429): the topics are narrowed to the ledgers the read returns,
-    // so every notice on them is the board's, and a reply streaming in the session never wakes it.
+    // The board is a view, so listing it every tick while the pane is open stores nothing.
+    // Its answer names the topics a change to it publishes on, and the live read hears those.
     watchTasks: (sessionId, onChange, onStale) =>
-      fsd.live(BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), {
+      fsd.live<LabTask[]>([], {
+        topicsFromResult: true,
         read: () => boardOf(sessionId),
         onValue: onChange,
         pollIntervalMs: TASKS_EVERY_MS,

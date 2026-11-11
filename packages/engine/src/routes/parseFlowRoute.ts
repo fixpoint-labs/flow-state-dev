@@ -15,6 +15,7 @@ export type ParsedFlowRoute =
   | { kind: "read_scope_entry"; scope: string; key: string; entry: string }
   | { kind: "send_resource"; scope: string; key: string; actionName: string }
   | { kind: "flow_identity"; flowKind: string }
+  | { kind: "run_view"; flowKind: string; viewName: string; sessionId?: string }
   | { kind: "request_stream"; flowKind: string; requestId: string }
   | { kind: "list_sessions" }
   | { kind: "get_session"; sessionId: string }

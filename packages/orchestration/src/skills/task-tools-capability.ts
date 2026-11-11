@@ -51,8 +51,8 @@
  * name rather than letting the schema drop it.
  */
 
-import { defineCapability, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
-import type { ActionConfig, BlockContext, ReadConfig } from "@flow-state-dev/core/types";
+import { defineCapability, defineView, FlowError, handler, sequencer, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
+import type { ActionConfig, BlockContext, BlockDefinition, ReadConfig } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { discardAttachmentsForUser, keepAttachmentsForUser } from "@flow-state-dev/core/internal";
@@ -975,6 +975,82 @@ interface BuildTaskToolsOptions {
   readonly dispatches?: boolean;
 }
 
+// FIX-2077; FIX-2133.
+/**
+ * What a running task waits on while no worker holds it (its
+ * `keptOpenBy`), and what holds it for a person: its open holds,
+ * a question or a confirm on the row, or a task run's stop, each with what
+ * it asks and when it falls due. One shape for every stop.
+ */
+const waitingShape = {
+  keptOpenBy: z.enum(["suspended", "filed", "steer"]).optional(),
+  /** What the task waits on now, oldest first; absent when nothing does. Answer a question with `updateTask({ id, answers, message })`. */
+  holds: z.array(taskHoldSchema).optional(),
+};
+
+// FIX-2623.
+/**
+ * One task as `listTasks` lists it: its status note, never its output. The
+ * board's task-list view answers a list of these, keyed by `id`.
+ */
+const listedTaskSchema = z.object({
+  id: z.string(),
+  goal: z.string(),
+  /** The short label the task was filed under, when it has one. */
+  title: z.string().optional(),
+  status: z.string(),
+  assignee: z.string().optional(),
+  attempts: z.number(),
+  /** Its worker's last one-line progress note, when it reported one. */
+  statusNote: z.string().optional(),
+  /** The task whose request filed it, when a task did. */
+  filedByTask: z.string().optional(),
+  // The run working the task, or the one that last worked it: a
+  // reader opens it from here (FIX-1668). Absent until a run starts.
+  run: taskSchema.shape.run,
+  // FIX-2288.
+  /**
+   * What the task's runs spent: the harness and model
+   * running it and its tokens, `null` when it never ran in a request
+   * of its own. On the board's action only: a model's tool reads none.
+   */
+  spend: taskSpendViewSchema.nullable().optional(),
+  /**
+   * When the row was last written (epoch ms), so a client holding the
+   * row from another source too keeps the newer copy. Board action only.
+   */
+  updatedAt: z.number().optional(),
+  /**
+   * When the task was filed, when its run first started, and when it
+   * ended (epoch ms), as the row records them, so a reader can show
+   * how long a task has run and order tasks by when they ended. On
+   * the board's action only, like `spend`; the last two are absent
+   * until they happen.
+   */
+  createdAt: z.number().optional(),
+  startedAt: z.number().optional(),
+  completedAt: z.number().optional(),
+  /** A request is waiting on this task's ending (`getTask` with `wait`). */
+  waitedOn: z.literal(true).optional(),
+  /**
+   * A running row's lease deadline (epoch ms), as the board holds it,
+   * so a reader tells a run that stopped answering by the board's own
+   * rule, `leaseLapsed`. Absent while no claim holds the row. On the
+   * board's action only, like `spend`.
+   */
+  leaseUntil: z.number().optional(),
+  ...waitingShape,
+  // FIX-2086.
+  /** The latest completed follow-up in its chain, by id; read its output with getTask. */
+  current: z.object({ id: z.string() }).optional(),
+});
+/** What `listTasks` answers: the rows, or the board's refusal. */
+const listTasksOutputSchema = z.union([
+  z.object({ ok: z.literal(true), tasks: z.array(listedTaskSchema) }),
+  z.object({ ok: z.literal(false), error: z.string() }),
+]);
+
+
 function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskToolsOptions = {}) {
   const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false } = options;
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
@@ -1809,19 +1885,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     };
   }
 
-  // FIX-2077; FIX-2133.
-  /**
-   * What a running task waits on while no worker holds it (its
-   * `keptOpenBy`), and what holds it for a person: its open holds,
-   * a question or a confirm on the row, or a task run's stop, each with what
-   * it asks and when it falls due. One shape for every stop.
-   */
-  const waitingShape = {
-    keptOpenBy: z.enum(["suspended", "filed", "steer"]).optional(),
-    /** What the task waits on now, oldest first; absent when nothing does. Answer a question with `updateTask({ id, answers, message })`. */
-    holds: z.array(taskHoldSchema).optional(),
-  };
-
   const listTasks = defineTool({
     name: named("listTasks"),
     description:
@@ -1836,65 +1899,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       assignee: z.string().optional(),
       filedByTask: z.string().optional().describe("Only the tasks this task's request filed: its pieces."),
     }),
-    outputSchema: z.union([
-      z.object({
-        ok: z.literal(true),
-        tasks: z.array(
-          z.object({
-            id: z.string(),
-            goal: z.string(),
-            /** The short label the task was filed under, when it has one. */
-            title: z.string().optional(),
-            status: z.string(),
-            assignee: z.string().optional(),
-            attempts: z.number(),
-            /** Its worker's last one-line progress note, when it reported one. */
-            statusNote: z.string().optional(),
-            /** The task whose request filed it, when a task did. */
-            filedByTask: z.string().optional(),
-            // The run working the task, or the one that last worked it: a
-            // reader opens it from here (FIX-1668). Absent until a run starts.
-            run: taskSchema.shape.run,
-            // FIX-2288.
-            /**
-             * What the task's runs spent: the harness and model
-             * running it and its tokens, `null` when it never ran in a request
-             * of its own. On the board's action only: a model's tool reads none.
-             */
-            spend: taskSpendViewSchema.nullable().optional(),
-            /**
-             * When the row was last written (epoch ms), so a client holding the
-             * row from another source too keeps the newer copy. Board action only.
-             */
-            updatedAt: z.number().optional(),
-            /**
-             * When the task was filed, when its run first started, and when it
-             * ended (epoch ms), as the row records them, so a reader can show
-             * how long a task has run and order tasks by when they ended. On
-             * the board's action only, like `spend`; the last two are absent
-             * until they happen.
-             */
-            createdAt: z.number().optional(),
-            startedAt: z.number().optional(),
-            completedAt: z.number().optional(),
-            /** A request is waiting on this task's ending (`getTask` with `wait`). */
-            waitedOn: z.literal(true).optional(),
-            /**
-             * A running row's lease deadline (epoch ms), as the board holds it,
-             * so a reader tells a run that stopped answering by the board's own
-             * rule, `leaseLapsed`. Absent while no claim holds the row. On the
-             * board's action only, like `spend`.
-             */
-            leaseUntil: z.number().optional(),
-            ...waitingShape,
-            // FIX-2086.
-            /** The latest completed follow-up in its chain, by id; read its output with getTask. */
-            current: z.object({ id: z.string() }).optional(),
-          }),
-        ),
-      }),
-      z.object({ ok: z.literal(false), error: z.string() }),
-    ]),
+    outputSchema: listTasksOutputSchema,
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
@@ -2482,4 +2487,52 @@ export function taskToolReads(
   }).find((tool) => tool.name === `listTasks_${taskToolSuffix(collectionId)}`);
   if (listTasks === undefined) throw new Error(`taskToolReads("${collectionId}"): the task tools built no listTasks`);
   return { [listTasks.name]: { block: listTasks, description: listTasks.description } };
+}
+
+// FIX-2623.
+/** One board's task list as a session view: its rows, keyed by task id. See {@link taskToolViews}. */
+function taskListView(collectionId: string, resolve: TaskCollectionResolver) {
+  const listTasks = buildTaskTools(resolve, {
+    nameSuffix: taskToolSuffix(collectionId),
+    claimless: true,
+  }).find((tool) => tool.name === `listTasks_${taskToolSuffix(collectionId)}`) as BlockDefinition<z.ZodTypeAny, typeof listTasksOutputSchema> | undefined;
+  if (listTasks === undefined) throw new Error(`taskToolViews("${collectionId}"): the task tools built no listTasks`);
+  const listedTasks = z.array(listedTaskSchema);
+  const block = sequencer({ name: listTasks.name, inputSchema: listTasks.inputSchema, outputSchema: listedTasks })
+    .step(listTasks)
+    .step(handler, {
+      name: `${listTasks.name}-rows`,
+      outputSchema: listedTasks,
+      // The list's refusal (no board this session can file on) is the view's, by its own name.
+      execute: (listed) => {
+        if (!listed.ok) throw new FlowError(`The task list can't be read here: ${listed.error}`, { code: listed.error, retryable: false });
+        return listed.tasks;
+      },
+    });
+  block.validate();
+  // Core types a sequencer as `BlockDefinition<any, any>`; this one declares `listedTasks` as its output
+  // schema (checked by `validate` above and on every exit), so the view is typed by it, never `any`.
+  const typed = block as unknown as BlockDefinition<typeof listTasks.inputSchema, typeof listedTasks>;
+  return defineView({ scope: "session", block: typed, key: (task) => task.id, description: listTasks.description });
+}
+
+/** A board's task-list view, as {@link taskToolViews} builds it: for a client's `viewRef<TaskListView>`. */
+export type TaskListView = ReturnType<typeof taskListView>;
+
+/**
+ * A durable ledger's task list as a flow `views` map: `listTasks_<suffix>`, a
+ * session view answering the rows the `listTasks_<suffix>` action lists for
+ * the same board, from the same list code, keyed by task id. Spread it into
+ * `defineFlow`'s `views`; a screen watches it with `useView` through
+ * `taskListViewRef` and names no topic. A session with no board to list
+ * is refused by the list's own reason (`no_delegation_board`).
+ *
+ * `resolve` is the view's own resolver: it must reach the board the action's
+ * does and write nothing on the way, since a view's context refuses every
+ * write. A resolver that repairs or starts rows as it goes (a board's touch)
+ * is the action's, not this one's.
+ */
+export function taskToolViews(collectionId: string, resolve: TaskCollectionResolver): Record<string, TaskListView> {
+  const view = taskListView(collectionId, resolve);
+  return { [view.block.name]: view };
 }

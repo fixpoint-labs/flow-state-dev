@@ -578,7 +578,7 @@ export interface ManagerOptions {
    * commits, the files they changed and the judge's verdict as information.
    * The stop's `data` carries each changed file's added and removed lines
    * (`files`); a screen reads one file's patch through
-   * `harnessRunChangesRead`. The answer is
+   * `harnessRunChangesView`. The answer is
    * `{ verdict: "accepted" }`, which completes the task with no further
    * harness run, or `{ verdict: "revise", words }`, whose words become the
    * user's steer: the run goes on in the same coding session on the same

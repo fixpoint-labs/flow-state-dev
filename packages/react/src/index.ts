@@ -161,6 +161,7 @@ export {
 export { useDraft, clearDraft, readDraft, saveDraft } from "./hooks/useDraft";
 
 export { useSubscription, type UseSubscriptionOptions } from "./hooks/useSubscription";
+export { useView, type UseViewOptions, type UseViewResult } from "./hooks/useView";
 export {
   useSessionList,
   type SessionList,

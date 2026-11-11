@@ -520,8 +520,11 @@ export type RequestSSECallbacks = {
    * legally end without ever emitting a terminal `onRequestStatus` (e.g. the
    * server closes after a pre-transition failure), so a caller that only
    * clears its "in flight" state from `onRequestStatus`/`onError` would
-   * otherwise get stuck. Only implemented by `createSSEClientFromResponse`
-   * today — a request's own `stream()` does not fire this.
+   * otherwise get stuck. Only implemented by `createSSEClientFromResponse`:
+   * a request's own `stream()` does not fire this. It resumes after its last
+   * event instead, and reports with `onError` if it gives up. A caller of
+   * `createSSEClientFromResponse` resumes the same way: `request(id).stream()`
+   * with `startingAfter` set to the last `sequence_number` it applied.
    */
   onClose?: () => void;
 };

@@ -20,10 +20,11 @@ const WAITING: ConversationTask = {
   status: "in_progress",
   assignee: "dev.coder",
   attempts: 1,
-  run: { sessionId: "run-7", requestId: "r-1" },
+  run: { sessionId: "run-7", requestId: "r-1", attempt: 1 },
   holds: [
     {
       id: "wait_1",
+      actor: "system",
       openedAt: 1,
       source: { kind: "task", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
       ask: { kind: "external", prompt: "Waiting for pull request #7 to merge or close." },
@@ -32,12 +33,16 @@ const WAITING: ConversationTask = {
 };
 
 vi.mock("../src/lib/lab-data", () => {
-  const client = { userId: "alice", subscribe: () => ({ close: () => {} }) };
+  // The conversation board's view answers the two rows.
+  const view = async () => {
+    const value = [WAITING, { ...WAITING, id: "t-8", holds: undefined }];
+    return { value, topics: [], keys: value.map((task) => task.id) };
+  };
+  const client = { userId: "alice", subscribe: () => ({ close: () => {} }), view };
   return { useLab: () => ({ client, refresh: async () => {} }) };
 });
 vi.mock("../src/lib/conversation-tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/lib/conversation-tasks")>()),
-  readConversationTasks: async () => [WAITING, { ...WAITING, id: "t-8", holds: undefined }],
   readPullRequestLinks: async () => new Map([[7, URL_7]]),
 }));
 
@@ -52,7 +57,7 @@ describe("a conversation's task waiting on its pull request", () => {
 
   it("shows PR open · #7 on its line, linked, with how to wake it; a task waiting on none shows neither", async () => {
     const worker = toWorker({ id: "shift-coordinator", kind: "coordinator", door: "run" })!;
-    render(<TasksPanel worker={worker} sessionId="conv-1" readAt={0} />);
+    render(<TasksPanel worker={worker} sessionId="conv-1" />);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });

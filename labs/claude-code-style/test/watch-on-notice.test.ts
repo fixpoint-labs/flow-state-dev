@@ -68,7 +68,11 @@ function host() {
       return json({ value: { pinned }, version: 1 });
     }
     if (path === "/api/flows/resources/user/lab-dismissals") return json({ value: { dismissed }, version: 1 });
-    if (path.endsWith("/reads/listTasks_tasks")) return json({ output: { ok: true, tasks: board } });
+    // The board's task-list view: its rows, keyed, and the topic a change to them publishes on.
+    if (path.endsWith("/views/listTasks_tasks")) {
+      const session = path.split("/")[4]!;
+      return json({ output: board, topics: [{ scope: "session", id: session }], keys: (board as Array<{ id: string }>).map((task) => task.id) });
+    }
     if (path.endsWith("/requests")) return json({ requests: running });
     if (path.endsWith("/stream")) {
       const body = new ReadableStream<Uint8Array>({
@@ -186,10 +190,10 @@ describe("watchSessions", () => {
     const h = host();
     // A task that failed waits on you to retry it.
     h.list([{ id: "t1", goal: "Fix it", status: "errored" }]);
-    h.fail("POST /api/flows/f/s1/reads/listTasks_tasks");
+    h.fail("POST /api/flows/f/s1/views/listTasks_tasks");
     const seen: LabSession[][] = [];
     stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
-    await until(() => h.count("/reads/listTasks_tasks") >= 1 && seen.length >= 1);
+    await until(() => h.count("/views/listTasks_tasks") >= 1 && seen.length >= 1);
     // No notice comes: the row's own retry reads the board again.
     await until(() => seen.at(-1)!.find((row) => row.id === "s1")?.waiting === 1);
   });
@@ -213,12 +217,12 @@ describe("watchSessions", () => {
     const seen: LabSession[][] = [];
     stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
     await until(() => seen.at(-1)?.find((row) => row.id === "s1")?.waiting === 1);
-    const boards = h.count("/reads/listTasks_tasks");
+    const boards = h.count("/views/listTasks_tasks");
     const reads = h.count("/resources/user/lab-dismissals");
     h.hear({ topic: { scope: "user", resource: "lab-dismissals" }, kind: "resource" });
     await until(() => h.count("/resources/user/lab-dismissals") > reads);
     await new Promise((r) => setTimeout(r, 50));
-    expect(h.count("/reads/listTasks_tasks")).toBe(boards);
+    expect(h.count("/views/listTasks_tasks")).toBe(boards);
   });
 
   it("lists again on its own after a first listing that failed, with no notice to wake it", async () => {
@@ -320,7 +324,7 @@ describe("watchTasks' freshness", () => {
     expect(stale).toEqual([]);
 
     // The next read fails: the rows handed last stay, and the watch says they may be old.
-    const read = h.calls.find((call) => call.endsWith("/reads/listTasks_tasks"))!;
+    const read = h.calls.find((call) => call.endsWith("/views/listTasks_tasks"))!;
     h.fail(read);
     h.hear({ kind: "resource" } as WireNotice);
     await until(() => stale.length === 1);
