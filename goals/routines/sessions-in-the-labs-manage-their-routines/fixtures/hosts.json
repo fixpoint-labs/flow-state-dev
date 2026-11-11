@@ -1,0 +1,40 @@
+{
+  "reviewer": { "login": "bob-reviews", "association": "MEMBER" },
+  "operatorLogin": "the-operator",
+  "clock": { "name": "pr-sweep", "cron": "0 9 * * 1", "timezone": "UTC", "goal": "Check the open pull requests and say which wait on review." },
+  "reviews": {
+    "first": "Please keep the old handler name as an alias.",
+    "whilePaused": "Nit: the changelog line is missing.",
+    "afterResume": "The retry loop needs a ceiling.",
+    "afterDelete": "Approved once CI is green."
+  },
+  "hosts": {
+    "teammates": {
+      "worker": "teammates.chief-of-staff",
+      "flow": "agent",
+      "assignee": "teammates.researcher",
+      "operator": "you",
+      "second": "pat",
+      "pr": { "owner": "acme", "repo": "api", "number": 412, "title": "Rename the handler" }
+    },
+    "claude-code-style": {
+      "worker": "desk.main",
+      "flow": "agent",
+      "assignee": "desk.researcher",
+      "operator": "u_lab",
+      "second": "u_other",
+      "pr": { "owner": "globex", "repo": "billing", "number": 77, "title": "Split the invoice job" }
+    },
+    "devteam": {
+      "worker": "shift-coordinator",
+      "flow": "coordinator",
+      "assignee": "eng.em",
+      "pr": { "owner": "initech", "repo": "tps-reports", "number": 9, "title": "Add the cover sheet" }
+    }
+  },
+  "realModel": {
+    "follow": "Please follow {thread} for me and tell me about every review on it.",
+    "list": "What are you following for me right now? Check your routines and list them.",
+    "stop": "Stop following {thread}: delete that routine."
+  }
+}

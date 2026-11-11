@@ -68,6 +68,10 @@ import {
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { createScheduledTransportAdapter, SCHEDULED_TRANSPORT_SOURCE } from "@flow-state-dev/scheduled";
+import { createSQLiteScheduleIndex } from "@flow-state-dev/store-sqlite";
+import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
+import Database from "better-sqlite3";
 import { fetch } from "@flow-state-dev/tools/fetch";
 import { search } from "@flow-state-dev/tools/search";
 import { z } from "zod";
@@ -76,9 +80,12 @@ import {
   COORDINATOR_FLOW,
   defineCoordinatorFlow,
   createWorkerHireBlocks,
+  createRoutinesCapability,
   createWorkerInstallation,
   createWorkforceCapability,
   defineAgentWorkerFlow,
+  githubServiceFlow,
+  githubSubscriptionProvider,
   defineWorkerInventoryCollection,
   hireWorkforce,
   inventoryWorkers,
@@ -124,6 +131,8 @@ import {
 } from "@flow-state-dev/workforce/loader";
 import { defineFlow } from "@flow-state-dev/core";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
+import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
@@ -242,6 +251,16 @@ const labBearers = [...Object.values(LAB_USERS), ...LAB_CROWD].map((user) =>
  * and a request with none, is refused.
  */
 const resolveLabPrincipal: PrincipalResolver = async (context) => {
+  // `serve()`'s tick, dispatching a due clock routine or poll: its bearer is `CRON_SECRET`, and no user's is.
+  if (context.source === SCHEDULED_TRANSPORT_SOURCE) {
+    const secret = process.env.CRON_SECRET;
+    const scheduler =
+      secret === undefined || secret === ""
+        ? null
+        : await createBearerSecretPrincipalResolver({ secret, principal: { userId: "scheduler", orgId: LAB_ORG_ID } })(context);
+    if (scheduler === null) throw new PrincipalResolutionError("A scheduled dispatch needs the scheduler's secret.", { status: 401 });
+    return scheduler;
+  }
   for (const verify of labBearers) {
     try {
       const principal = await verify(context);
@@ -557,6 +576,22 @@ export interface OpenLabOptions {
    * served as `harnessReadiness` on the projects flow. Absent: no such action.
    */
   readiness?: HarnessReadinessRead;
+  /**
+   * The operator's GitHub token ({@link operatorGitHubToken}): a GitHub routine
+   * reads GitHub with it, for the Lab's owner ({@link LAB_USER_ID}) only.
+   * Absent: a GitHub routine is refused, naming `GITHUB_TOKEN`; clock routines
+   * still run.
+   */
+  githubToken?: string;
+  /** GitHub's REST API root. Absent: GitHub's own. A goal check names its stub. */
+  githubApiUrl?: string;
+  /**
+   * The SQLite files the routines' two schedule indexes keep, beside the
+   * store: `clock` for clock routines, `poll` for GitHub's polls (one index
+   * ticks one flow). `serve()` ticks both. Absent: each in memory, for a Lab
+   * opened on in-memory stores.
+   */
+  scheduleIndexes?: { clock: string; poll: string };
 
   // ---- controls, each the red state of one claim -------------------------
 
@@ -640,6 +675,47 @@ export interface OpenLabOptions {
   sweepIntervalMs?: number;
   /** The bounds on a wait on work: a call's or `getTask`'s (`createFlowState`'s `waitDeadlines`). Absent: the engine's. */
   waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number };
+}
+
+/**
+ * The operator's GitHub token: `GITHUB_TOKEN`, else what `gh auth token`
+ * answers, read once at start and never from a request. `undefined` when
+ * neither has one.
+ */
+export function operatorGitHubToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const named = env.GITHUB_TOKEN?.trim();
+  if (named !== undefined && named !== "") return named;
+  try {
+    const signedIn = execFileSync("gh", ["auth", "token"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).trim();
+    return signedIn === "" ? undefined : signedIn;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * GitHub for routines, read with the operator's token and for the operator
+ * alone: a GitHub routine another user asks for, or one asked for with no
+ * token, is refused naming `GITHUB_TOKEN`, and the token is never lent.
+ */
+function operatorGitHub(operator: string, token: string | undefined, apiUrl: string | undefined) {
+  const reads = (ctx: BlockContext) => (ctx.session.identity as { userId?: string }).userId === operator;
+  const github = githubSubscriptionProvider({ token: (ctx) => (reads(ctx) ? token : undefined), ...(apiUrl === undefined ? {} : { apiUrl }) });
+  return {
+    ...github,
+    async canRead(thread: string, ctx: BlockContext) {
+      if (token === undefined) throw new Error("GitHub routines need GITHUB_TOKEN: set it, or sign in with `gh auth login`, and start the Lab again. Nothing was saved.");
+      if (!reads(ctx)) throw new Error(`GitHub routines read GitHub with this Lab's GITHUB_TOKEN, which serves only its owner. Nothing was saved.`);
+      return github.canRead(thread, ctx);
+    },
+  };
+}
+
+/** A schedule index in a SQLite file of its own: the index has one table, and one index ticks one flow. */
+function scheduleIndexAt(filename: string) {
+  const db = new Database(filename);
+  initializeSchema(db);
+  return createSQLiteScheduleIndex(db);
 }
 
 /** What a Lab's Error Reporter is opened with (`openLab({ errorReporter })`). */
@@ -1060,6 +1136,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         roster: { workers: roster.workers.filter((worker) => servingWorkers.some((serving) => serving.id === worker.id)) },
         inventory: { workers: "workerInventory" },
       }),
+      // List, save, pause and delete routines, on the `agent` flow and the coordinator's turn alike: a
+      // worker names the four tools in its `tools:` line (each conversation worker here does).
+      createRoutinesCapability(installation),
     ],
   };
   const agentFlow = defineAgentWorkerFlow({ installation, ...agentTurn });
@@ -1126,8 +1205,21 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // One copy per worker flow, and the roster flow. Refuses the WHOLE tree when
   // a worker would be refused on its first turn, or a worker flow doesn't
   // declare the installation's session, naming each (BR-2).
-  const copies = hireWorkforce(installation);
-  const copyOf = (flow: string): FlowInstance => copies.find((copy) => copy.id === flow)!;
+  // Clock routines and GitHub's polls tick from two files beside the store (`serve()` ticks both).
+  const clockDb = options.scheduleIndexes?.clock ?? ":memory:";
+  const pollDb = options.scheduleIndexes?.poll ?? ":memory:";
+  const github = operatorGitHub(LAB_USER_ID, options.githubToken, options.githubApiUrl);
+  const copies = hireWorkforce(installation, {
+    routines: {
+      index: scheduleIndexAt(clockDb),
+      providers: [github],
+      poll: { index: scheduleIndexAt(pollDb) },
+    },
+  });
+  const service = githubServiceFlow({ provider: github, installation, poll: true }) as unknown as FlowInstance;
+  // `serve()`'s tick sends `CRON_SECRET` as its bearer: a Lab started without one makes one for this process.
+  if (process.env.CRON_SECRET === undefined || process.env.CRON_SECRET === "") process.env.CRON_SECRET = randomBytes(32).toString("hex");
+  const copyOf =(flow: string): FlowInstance => copies.find((copy) => copy.id === flow)!;
   const copiesByWorker: Record<string, FlowInstance> = Object.fromEntries(
     installation.standardWorkers().map((worker) => [worker.id, copyOf(flowOf(worker.id))]),
   );
@@ -1186,6 +1278,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         ? {}
         : { [ERROR_REPORTER_INTAKE_FLOW]: (defineErrorReporterIntakeFlow({ reporter }) as unknown as () => FlowInstance)() }),
       [PROJECTS_FLOW]: projectsFlow,
+      [service.id]: service,
     },
     copies,
   );
@@ -1216,7 +1309,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),
     // Each user's MCP keys are written through the Lab's own route, never an
     // action, whose input its request record keeps.
-    ...(options.mcpServers === undefined ? {} : { adapters: [mcpCredentialsAdapter(Object.keys(options.mcpServers))] }),
+    // and `serve()`'s tick dispatches each due clock routine and poll through the scheduled route.
+    adapters: [
+      createScheduledTransportAdapter(),
+      ...(options.mcpServers === undefined ? [] : [mcpCredentialsAdapter(Object.keys(options.mcpServers))]),
+    ],
   } as never);
 
   // The Error Reporter's runs write through these stores, and every host stops

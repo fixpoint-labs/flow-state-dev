@@ -21,7 +21,14 @@
  *   use here (no such folder, not a git repository, `.fsdev/` not ignored) is
  *   refused, and the picker asks the same check before Create.
  * - `harness-readiness` serves which coding harnesses can run on this machine.
+ * - **Routines**: every worker on `agent`, and `desk.lead`'s turn on
+ *   `coordinator`, holds the routine tools, so a session can follow a GitHub
+ *   pull request or run something on a clock, and list, pause or delete what
+ *   it follows. A pull request's events are polled (no public URL) on the
+ *   operator's own GitHub token, for the operator alone; `fsdev dev` ticks the
+ *   polls and the clock routines, each from a SQLite file of its own in `data`.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -29,12 +36,26 @@ import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/clau
 import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
 import { defineFlow, utility } from "@flow-state-dev/core";
 import { harnessEnv } from "@flow-state-dev/core/harness";
-import type { ModelResolver } from "@flow-state-dev/core/types";
+import type { BlockContext, ModelResolver } from "@flow-state-dev/core/types";
 import { checkCursorReadiness, CURSOR_PASS } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
 import { ASK_MARKER_IGNORED, harnessReadiness, harnessReadinessAction, type HarnessReadinessRead } from "@flow-state-dev/harness-manager";
-import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { consultSessionsCapability, createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
+import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
+import { createSQLiteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
+import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
+import {
+  consultSessionsCapability,
+  createRoutinesCapability,
+  createWorkerInstallation,
+  defineAgentWorkerFlow,
+  defineCoordinatorFlow,
+  githubServiceFlow,
+  githubSubscriptionProvider,
+  hireWorkforce,
+  projectSourceCapability,
+  projectWorkspace,
+} from "@flow-state-dev/workforce";
+import Database from "better-sqlite3";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { localWorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { defineHarnessThreadFlow, HARNESS_THREAD_DRAIN_MS, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
@@ -68,6 +89,55 @@ export interface LabOptions {
   goalFlows?: string;
   /** Resolves every model the host calls, in place of the gateway: tests pass a scripted one. Absent: the gateway. */
   modelResolver?: ModelResolver;
+  /**
+   * The operator's GitHub token ({@link operatorGitHubToken}): a GitHub routine
+   * reads GitHub with it, for {@link userId} only. Absent: a GitHub routine is
+   * refused, naming `GITHUB_TOKEN`; clock routines still run.
+   */
+  githubToken?: string;
+  /** GitHub's REST API root. Absent: GitHub's own. A goal check names its stub. */
+  githubApiUrl?: string;
+}
+
+/**
+ * The operator's GitHub token: `GITHUB_TOKEN`, else what `gh auth token`
+ * answers, read once at start and never from a request. `undefined` when
+ * neither has one.
+ */
+export function operatorGitHubToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const named = env.GITHUB_TOKEN?.trim();
+  if (named !== undefined && named !== "") return named;
+  try {
+    const signedIn = execFileSync("gh", ["auth", "token"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).trim();
+    return signedIn === "" ? undefined : signedIn;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * GitHub for routines, read with the operator's token and for the operator
+ * alone: a GitHub routine another user asks for, or one asked for with no
+ * token, is refused naming `GITHUB_TOKEN`, and the token is never lent.
+ */
+function operatorGitHub(operator: string, token: string | undefined, apiUrl: string | undefined) {
+  const reads = (ctx: BlockContext) => (ctx.session.identity as { userId?: string }).userId === operator;
+  const github = githubSubscriptionProvider({ token: (ctx) => (reads(ctx) ? token : undefined), ...(apiUrl === undefined ? {} : { apiUrl }) });
+  return {
+    ...github,
+    async canRead(thread: string, ctx: BlockContext) {
+      if (token === undefined) throw new Error("GitHub routines need GITHUB_TOKEN: set it, or sign in with `gh auth login`, and start the lab again. Nothing was saved.");
+      if (!reads(ctx)) throw new Error(`GitHub routines read GitHub with this lab's GITHUB_TOKEN, which serves only ${operator}. Nothing was saved.`);
+      return github.canRead(thread, ctx);
+    },
+  };
+}
+
+/** A schedule index in a SQLite file of its own: the index has one table, and one index ticks one flow. */
+function scheduleIndexAt(filename: string) {
+  const db = new Database(filename);
+  initializeSchema(db);
+  return createSQLiteScheduleIndex(db);
 }
 
 /** The lab's host, and its readiness reader so the caller can log it at start. */
@@ -110,14 +180,26 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
       model,
       ...answerAgain,
       afterAnswer: titler(),
-      uses: [projectSourceCapability({ workspace }), consultSessionsCapability(installation)],
+      // The routine tools, offered to a worker whose file picks `routines: [tools]` (each one here).
+      uses: [projectSourceCapability({ workspace }), consultSessionsCapability(installation), createRoutinesCapability(installation)],
     }),
     // Threads mode's main session is titled the same way, so its row names what the session is about.
-    coordinator: defineCoordinatorFlow({ installation, routeModel: model, agent: { model, afterAnswer: titler() } }),
+    coordinator: defineCoordinatorFlow({ installation, routeModel: model, agent: { model, afterAnswer: titler(), uses: [createRoutinesCapability(installation)] } }),
     // Its runs work in the session's project: a task filed with none is refused at filing (FIX-2333).
     [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace, ...scripted }), roles: ["contributor"], needsProject: true },
   };
-  const workers = hireWorkforce(installation) as { id: string }[];
+  // Clock routines and GitHub's polls tick from two files beside the store (`fsdev dev` ticks both).
+  const clockDb = join(data, "clock.db");
+  const pollDb = join(data, "poll.db");
+  const github = operatorGitHub(options.userId, options.githubToken, options.githubApiUrl);
+  const workers = hireWorkforce(installation, {
+    routines: {
+      index: scheduleIndexAt(clockDb),
+      providers: [github],
+      poll: { index: scheduleIndexAt(pollDb) },
+    },
+  }) as { id: string }[];
+  const service = githubServiceFlow({ provider: github, installation, poll: true }) as unknown as { id: string };
   // A project is checked when it's made, by the same rule a run's checkout passes:
   // a repository no run could use here is refused before its first task (FIX-2403).
   // It is asked about the repository a run will get: a listed one by its real path, as
@@ -144,8 +226,10 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
   const goalFlows = options.goalFlows === undefined ? [] : ((await import(pathToFileURL(options.goalFlows).href)).default as { id: string }[]);
 
   const flowState = createFlowState({
-    flows: [...workers, projects, pins, dismissals, readinessFlow, ...goalFlows],
+    flows: [...workers, service, projects, pins, dismissals, readinessFlow, ...goalFlows],
     stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
+    // The route `serve()`'s tick dispatches each due clock routine and poll to.
+    adapters: [createScheduledTransportAdapter()],
     // A coding run's review and a thread's question wait on you across a restart.
     durable: true,
     // A shutdown waits for a coding run still going, its checks and judge too (FIX-2484).
