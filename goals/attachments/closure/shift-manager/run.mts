@@ -103,12 +103,16 @@ await runGoal(async (failures, tell) => {
       if (!(await retry.waitFor({ timeout: 300_000 }).then(() => true, () => false))) failures.push("[sm:re-run] the task never ended, so it can't be run again");
       else {
         await retry.click();
-        // The re-run has started once Retry is gone, and ended once it is back.
-        await retry.waitFor({ state: "hidden", timeout: 60_000 }).catch(() => undefined);
-        await retry.waitFor({ timeout: 300_000 }).catch(() => undefined);
-        const again = await readUntilNamed(page.locator("body"), words);
-        const renamed = tell.over("sm:re-run", words).filter((w) => again.includes(w));
-        if (renamed.length !== 2) failures.push(`[sm:re-run] the re-run names ${renamed.length} of ${words.join(", ")}: its brief's images didn't reach it`);
+        // The re-run has started once Retry is gone, and ended once it is back: either wait running out fails the leg.
+        const started = await retry.waitFor({ state: "hidden", timeout: 60_000 }).then(() => true, () => false);
+        const ended = started && (await retry.waitFor({ timeout: 300_000 }).then(() => true, () => false));
+        if (!ended) failures.push(`[sm:re-run] Retry ${started ? "started a second run that never ended" : "never started a second run"}`);
+        else {
+          // Only what is drawn past the first run's report counts, so its words still on the page can't pass the re-run.
+          const again = await readUntilNamed(page.locator("body"), words, first.slice(-80));
+          const renamed = tell.over("sm:re-run", words).filter((w) => again.includes(w));
+          if (renamed.length !== 2) failures.push(`[sm:re-run] the re-run names ${renamed.length} of ${words.join(", ")}: its brief's images didn't reach it`);
+        }
       }
       evidence.push(`sm:task ${marker} ${words.join("/")}`);
     }
