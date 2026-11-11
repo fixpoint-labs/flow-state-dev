@@ -18,7 +18,7 @@ export type BuiltInHost = {
 };
 
 /** Where the execution context carries {@link BuiltInHost}. */
-export const BUILT_IN_HOST: unique symbol = Symbol.for("@flow-state-dev/engine/built-in-host");
+const BUILT_IN_HOST: unique symbol = Symbol.for("@flow-state-dev/engine/built-in-host");
 
 /** Attach `host` to an execution context. */
 export function attachBuiltInHost(ctx: object, host: BuiltInHost): void {
