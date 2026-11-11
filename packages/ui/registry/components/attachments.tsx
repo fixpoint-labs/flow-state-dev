@@ -102,7 +102,7 @@ export interface Attachments {
   add: (files: File[] | FileList) => void;
   remove: (id: string) => void;
   clear: () => void;
-  /** Waits for the draft's uploads in flight, then resolves to those files' references, leaving the draft as it is. A file added meanwhile isn't included. */
+  /** Waits for the draft's uploads in flight, then resolves to those files' references, leaving the draft as it is. A file added meanwhile isn't included. Rejects if the draft is cleared meanwhile, as a switch of conversation does. */
   settle: () => Promise<FileContent[]>;
   /** `settle`, then `consume`s them: what Send carries. A file added meanwhile stays, and a second `take` while one waits gets none of the first's files. */
   take: () => Promise<FileContent[]>;
@@ -229,6 +229,8 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
   const inFlight = useRef(new Map<string, Promise<void>>());
   // Files a `take` in progress has claimed, so a second Send can't carry them too.
   const reserved = useRef(new Set<string>());
+  // How many times the draft has been cleared, so a wait that spans a clear can tell.
+  const cleared = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // The latest options, read by callbacks that outlive a render.
   const latest = useRef({ client, prepare, onRefused });
@@ -349,6 +351,7 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
   );
 
   const clear = useCallback(() => {
+    cleared.current += 1;
     update((prev) => {
       for (const f of prev) if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
       return [];
@@ -371,8 +374,12 @@ export function useAttachments(options: UseAttachmentsOptions = {}): Attachments
   );
 
   // The references of exactly `ids`, once their uploads finish: a file added meanwhile isn't in the batch.
+  // Rejects when the draft was cleared meanwhile (a switch of conversation): a Send waiting on it must
+  // not go out without the files it was pressed with.
   const settleBatch = useCallback(async (ids: string[]) => {
+    const at = cleared.current;
     await Promise.all(ids.map((id) => inFlight.current.get(id)).filter((p) => p !== undefined));
+    if (cleared.current !== at) throw new Error("The draft's files were cleared while they uploaded");
     const batch = new Set(ids);
     return filesRef.current.flatMap((f) => (batch.has(f.id) && f.status === "ready" && f.attachment ? [f.attachment] : []));
   }, []);

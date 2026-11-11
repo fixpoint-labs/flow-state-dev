@@ -9,6 +9,7 @@ import type {
   KeyboardEventHandler,
   PropsWithChildren,
   ReactNode,
+  RefObject,
 } from "react";
 
 import {
@@ -59,6 +60,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
+import type { FileContent } from "@flow-state-dev/core/items";
 import { isSendKey } from "@flow-state-dev/react";
 import {
   AttachmentFileInput,
@@ -316,12 +318,25 @@ export interface PromptInputMessage {
   text: string;
   /** The message's files, each by reference. */
   files: FileAttachment[];
+  /**
+   * The same files as `upload` returned them, in the order attached: what a
+   * send takes as its `attachments` (`sendAction`, `useHarnessLines().send`).
+   */
+  attachments: FileContent[];
 }
 
 export type PromptInputProps = Omit<
   HTMLAttributes<HTMLFormElement>,
   "onSubmit" | "onError"
 > & {
+  /**
+   * The attachment state, from `useAttachments`, when it is held above the
+   * composer: two drawings of one composer pass the same one, so a file
+   * attached in either is sent, and cleared, once. Its own options then apply,
+   * and `client`, `sessionId`, `accept`, the limits and `onError` here are
+   * ignored. Ignored inside a PromptInputProvider, whose own applies.
+   */
+  attachments?: Attachments;
   /** Where attached files are uploaded. With none, an attached file is refused by name. Ignored inside a PromptInputProvider, whose own applies. */
   client?: AttachmentUploader | null;
   /** The open conversation: a switch drops the draft's files. */
@@ -356,6 +371,7 @@ const ERROR_CODES = {
 } as const;
 
 export const PromptInput = ({
+  attachments,
   client,
   sessionId,
   accept,
@@ -368,6 +384,9 @@ export const PromptInput = ({
   const controller = useOptionalPromptInputController();
   if (controller) {
     return <PromptInputForm attachments={controller.attachments} controller={controller} {...props} />;
+  }
+  if (attachments) {
+    return <PromptInputForm attachments={attachments} controller={null} {...props} />;
   }
   return (
     <PromptInputOwnAttachments
@@ -387,8 +406,11 @@ export const PromptInput = ({
 
 type PromptInputFormProps = Omit<
   PromptInputProps,
-  "client" | "sessionId" | "accept" | "maxFiles" | "maxFileSize" | "onError" | "syncHiddenInput"
+  "attachments" | "client" | "sessionId" | "accept" | "maxFiles" | "maxFileSize" | "onError" | "syncHiddenInput"
 >;
+
+/** The pickers mounted against each shared attachment state's picker ref, so one can take over the ref. */
+const mountedPickers = new WeakMap<RefObject<HTMLInputElement | null>, Set<HTMLInputElement>>();
 
 /** A PromptInput outside any provider: the attachment state is its own. */
 const PromptInputOwnAttachments = ({
@@ -417,6 +439,36 @@ const PromptInputForm = ({
   controller: PromptInputControllerProps | null;
 }) => {
   const formRef = useRef<HTMLFormElement | null>(null);
+  // This composer's own picker. The attachment state may be shared by two composers (two drawings of
+  // one), and a shared ref would hold one picker, nulled when its composer unmounts. The picker is
+  // also lent to the shared state while mounted, so a + outside the composer (beside it, inside a
+  // PromptInputProvider) still opens one. On unmount the loan passes to a picker still mounted.
+  const pickerRef = useRef<HTMLInputElement | null>(null);
+  const shared = attachments.fileInputRef;
+  const fileInputRef = useMemo<RefObject<HTMLInputElement | null>>(
+    () => ({
+      get current() {
+        return pickerRef.current;
+      },
+      set current(el) {
+        let mounted = mountedPickers.get(shared);
+        if (!mounted) mountedPickers.set(shared, (mounted = new Set()));
+        if (el) {
+          mounted.add(el);
+          shared.current = el;
+        } else if (pickerRef.current) {
+          mounted.delete(pickerRef.current);
+          if (shared.current === pickerRef.current) shared.current = [...mounted].at(-1) ?? null;
+        }
+        pickerRef.current = el;
+      },
+    }),
+    [shared]
+  );
+  const own = useMemo<Attachments>(
+    () => ({ ...attachments, fileInputRef, openFileDialog: () => pickerRef.current?.click() }),
+    [attachments, fileInputRef]
+  );
   // Set while a Send waits on uploads and onSubmit, so a second Enter doesn't send the same files again.
   const submittingRef = useRef(false);
 
@@ -519,7 +571,7 @@ const PromptInputForm = ({
           ...(file.filename === undefined ? {} : { filename: file.filename }),
         }));
 
-        const result = onSubmit({ files, text }, event);
+        const result = onSubmit({ files, attachments: uploaded, text }, event);
 
         if (result instanceof Promise) {
           try {
@@ -543,7 +595,7 @@ const PromptInputForm = ({
   const { dropTarget } = attachments;
   const inner = (
     <>
-      <AttachmentFileInput attachments={attachments} multiple={multiple} />
+      <AttachmentFileInput attachments={own} multiple={multiple} />
       <form
         className={cn("w-full", className)}
         data-dragging={attachments.dragging || undefined}
@@ -586,7 +638,7 @@ const PromptInputForm = ({
   );
 
   return (
-    <LocalAttachmentsContext.Provider value={attachments}>
+    <LocalAttachmentsContext.Provider value={own}>
       {withReferencedSources}
     </LocalAttachmentsContext.Provider>
   );

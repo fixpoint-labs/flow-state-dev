@@ -9,7 +9,7 @@
  * state looks right while Send ships data URLs must fail here.
  */
 import type { FileContent } from "@flow-state-dev/core/items";
-import { act, cleanup, renderHook, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
@@ -24,6 +24,7 @@ import {
   PromptInput,
   PromptInputAttachButton,
   PromptInputAttachments,
+  PromptInputProvider,
   PromptInputSubmit,
   PromptInputTextarea,
   type PromptInputMessage,
@@ -101,11 +102,42 @@ describe("attaching in PromptInput", () => {
     const sent = onSubmit.mock.calls[0]![0];
     expect(sent.files).toHaveLength(1);
     expect(sent.files[0]!.url).toMatch(/^fsd-blob:b_/);
+    // The same file as a send takes it: what `upload` returned, so a page hands it on untouched.
+    expect(sent.attachments).toEqual([{ type: "file", mediaType: "image/png", filename: "shot.png", data: sent.files[0]!.url }]);
     // No bytes, and no local preview address: a data URL, base64, or a `blob:` URL.
     expect(JSON.stringify(sent)).not.toMatch(/"(data|blob):|base64/);
     expect(client.upload).toHaveBeenCalledOnce();
     // Sent, so the strip is empty again.
     expect(screen.queryByRole("img", { name: "shot.png" })).toBeNull();
+  });
+
+  // A switch of conversation while Send waits on an upload drops the draft's files. The line must
+  // not then go out without them, to the conversation left: nothing is sent, and a composer that
+  // holds its text (as the apps' do, through a provider) keeps it for the person to send again.
+  it("sends nothing when the conversation changes while Send waits on an upload", async () => {
+    let open!: () => void;
+    const client = uploader({ gate: new Promise<void>((done) => (open = done)) });
+    const onSubmit = vi.fn<(message: PromptInputMessage) => void>();
+    const composer = (sessionId: string) => (
+      <PromptInputProvider client={client} sessionId={sessionId}>
+        <PromptInput onSubmit={onSubmit}>
+          <PromptInputAttachments />
+          <PromptInputTextarea />
+        </PromptInput>
+      </PromptInputProvider>
+    );
+    const { rerender } = render(composer("s1"));
+    const box = screen.getByTestId("message-input");
+    await act(async () => paste(box, [file("shot.png", "image/png")]));
+    await act(async () => {
+      fireEvent.change(box, { target: { value: "look" } });
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    rerender(composer("s2"));
+    await act(async () => open());
+    await act(async () => undefined);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByTestId("message-input")).toHaveProperty("value", "look");
   });
 
   it("uploads on attach, and Send waits only for an upload still in flight", async () => {
@@ -208,6 +240,115 @@ describe("attaching in PromptInput", () => {
     await act(async () => fireEvent.drop(form, { dataTransfer: { types: ["Files"], files } }));
     expect(form.getAttribute("data-dragging")).toBeNull();
     expect(screen.getByRole("img", { name: "dropped.png" })).toBeTruthy();
+  });
+
+  // A page that draws one composer twice (one per responsive layout) holds one draft for both:
+  // a file attached in one is sent from the other, and cleared from both, never sent twice.
+  it("shares one attachment state between two composers given the same one", async () => {
+    const client = uploader();
+    const onSubmit = vi.fn<(message: PromptInputMessage) => void>();
+    function Twice() {
+      const attachments = useAttachments({ client });
+      return (
+        <>
+          {[0, 1].map((i) => (
+            <PromptInput attachments={attachments} key={i} onSubmit={onSubmit}>
+              <PromptInputAttachments />
+              <PromptInputTextarea />
+              <PromptInputSubmit />
+            </PromptInput>
+          ))}
+        </>
+      );
+    }
+    render(<Twice />);
+    const [first, second] = screen.getAllByTestId("message-input");
+    await act(async () => paste(first!, [file("shot.png", "image/png")]));
+    expect(screen.getAllByRole("img", { name: "shot.png" })).toHaveLength(2);
+    await act(async () => {
+      fireEvent.keyDown(second!, { key: "Enter" });
+    });
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0]![0].attachments.map((f) => f.filename)).toEqual(["shot.png"]);
+    expect(screen.queryAllByRole("img", { name: "shot.png" })).toHaveLength(0);
+  });
+
+  // One drawing goes when the layout hides it; the other's + must still open a picker, its own.
+  it("opens the remaining composer's own picker after the other is unmounted", async () => {
+    const client = uploader();
+    function Twice({ both }: { both: boolean }) {
+      const attachments = useAttachments({ client });
+      return (
+        <>
+          {(both ? [0, 1] : [1]).map((i) => (
+            <PromptInput attachments={attachments} data-testid={`composer-${i}`} key={i} onSubmit={() => undefined}>
+              <PromptInputTextarea />
+              <PromptInputAttachButton />
+            </PromptInput>
+          ))}
+        </>
+      );
+    }
+    const { rerender } = render(<Twice both />);
+    rerender(<Twice both={false} />);
+    const remaining = screen.getByTestId("composer-1");
+    const opened: HTMLInputElement[] = [];
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(function (this: HTMLInputElement) {
+      opened.push(this);
+    });
+    onTestFinished(() => click.mockRestore());
+    fireEvent.click(within(remaining).getByRole("button", { name: "Attach files" }));
+    // Its own picker, the one left on the page, and nothing else.
+    expect(opened).toEqual([...document.querySelectorAll('input[type="file"]')]);
+    expect(opened).toHaveLength(1);
+  });
+
+  // The responsive case under a provider: two drawings of one composer, and the layout hides the one
+  // drawn last. The + beside them must still open the picker of the drawing that's left.
+  it("opens the remaining composer's picker from a + beside them after the other is unmounted", async () => {
+    function Twice({ both }: { both: boolean }) {
+      return (
+        <PromptInputProvider client={uploader()}>
+          {(both ? [0, 1] : [0]).map((i) => (
+            <PromptInput data-testid={`composer-${i}`} key={i} onSubmit={() => undefined}>
+              <PromptInputTextarea />
+            </PromptInput>
+          ))}
+          <PromptInputAttachButton />
+        </PromptInputProvider>
+      );
+    }
+    const { rerender } = render(<Twice both />);
+    rerender(<Twice both={false} />);
+    const opened: HTMLInputElement[] = [];
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(function (this: HTMLInputElement) {
+      opened.push(this);
+    });
+    onTestFinished(() => click.mockRestore());
+    fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
+    expect(opened).toEqual([...document.querySelectorAll('input[type="file"]')]);
+    expect(opened).toHaveLength(1);
+  });
+
+  // A provider lifts the state out of the composer, so an app may put its + beside the composer
+  // rather than in it. That + must still open the composer's picker.
+  it("opens the composer's picker from a + beside it inside a PromptInputProvider", async () => {
+    render(
+      <PromptInputProvider client={uploader()}>
+        <PromptInput onSubmit={() => undefined}>
+          <PromptInputTextarea />
+        </PromptInput>
+        <PromptInputAttachButton />
+      </PromptInputProvider>,
+    );
+    const opened: HTMLInputElement[] = [];
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(function (this: HTMLInputElement) {
+      opened.push(this);
+    });
+    onTestFinished(() => click.mockRestore());
+    fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
+    expect(opened).toEqual([...document.querySelectorAll('input[type="file"]')]);
+    expect(opened).toHaveLength(1);
   });
 });
 
