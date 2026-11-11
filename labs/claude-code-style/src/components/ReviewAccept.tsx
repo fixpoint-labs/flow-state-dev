@@ -2,7 +2,7 @@ import { useSubmit } from "@flow-state-dev/react";
 import { useState } from "react";
 import type { LabAdapter, LabTask, TaskWork } from "../adapter";
 import { cn } from "../lib/utils";
-import { LAND_LABEL, LandFailure, type LandedWork, orderedLands, type ReviewLand } from "./flow-state/review-hold";
+import { LAND_LABEL, type LandedWork, orderedLands, type ReviewLand } from "./flow-state/review-hold";
 
 /**
  * A thread's accept, shared by its card and its view. The accept offers the ways its review lists in
@@ -11,14 +11,16 @@ import { LAND_LABEL, LandFailure, type LandedWork, orderedLands, type ReviewLand
  * moment it is sent until the run's next review stop arrives, so it never reads as accepted while the
  * landing is still going on.
  */
-export function useReviewAccept(adapter: LabAdapter, sessionId: string, task: Pick<LabTask, "id" | "harness">, work: TaskWork | undefined) {
+export function useReviewAccept(adapter: LabAdapter, sessionId: string, task: Pick<LabTask, "id" | "harness" | "openHold">, work: TaskWork | undefined) {
   const review = work?.review;
   const lands = review?.lands ?? [];
   const failed = review?.landFailed ?? null;
   // One review round is one stop: a retry that fails again stops for review under a new id, even with the same message.
   const round = work?.reviewStop ?? "";
-  // The round this accept answered. It is cleared by the next round, so a stop that stays open after a send keeps the accept down.
+  // The round this accept answered. It holds only while the task still waits on a review: once a landing
+  // moves the task on (say, to a pull request it waits on), the answered stop is history, and the composer is free.
   const [answered, setAnswered] = useState<string | null>(null);
+  const awaitingReview = task.openHold?.kind === "review";
   const submit = useSubmit(async (land?: ReviewLand) => {
     await adapter.resolve(sessionId, task.id, land);
     setAnswered(round);
@@ -28,7 +30,7 @@ export function useReviewAccept(adapter: LabAdapter, sessionId: string, task: Pi
     failed,
     // A coding task's accept waits for its review to be read, so a plain Resolve can't go before the lands are known.
     ready: review !== undefined || task.harness === undefined,
-    waiting: submit.busy || answered === round,
+    waiting: submit.busy || (awaitingReview && answered === round),
     error: submit.error,
     accept: (land?: ReviewLand) => void submit.submit(undefined, land),
   };

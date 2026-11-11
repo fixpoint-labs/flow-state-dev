@@ -76,7 +76,7 @@ export function orderedLands(lands: readonly ReviewLand[], failed: { land: Revie
 export function LandFailure({ failed }: { failed: { land: ReviewLand; message: string } | null }) {
   if (failed === null) return null;
   return (
-    <p role="alert" data-land-failed={failed.land} className="mt-1 text-xs text-destructive">
+    <p role="alert" data-land-failed={failed.land} className="mt-1 text-xs text-destructive [overflow-wrap:anywhere]">
       {failed.land === "pull-request" ? "Opening the PR failed" : "Merging locally failed"}: {failed.message}
     </p>
   );
