@@ -122,3 +122,6 @@ process.on("message", (msg) => {
 // The parent closing the channel is the signal to close: it does so when the
 // block is done with the agent, and the channel also closes if the parent dies.
 process.on("disconnect", () => void closeAndExit());
+// A stop also sends this process's group SIGTERM, to reach the commands the
+// agent started. Here it means the same close, not an exit that skips it.
+process.on("SIGTERM", () => void closeAndExit());

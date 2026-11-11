@@ -796,7 +796,9 @@ function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: ()
  * told its conversation does not exist. Bounded so a process that never exits
  * cannot hold the block: past it, the block sends the process `SIGKILL` and
  * waits for it to exit, so the block never returns while its
- * process still runs.
+ * process still runs. Off Windows that `SIGKILL`, and the SDK's `SIGTERM`
+ * before it, go to the process's whole group, so the commands it started end
+ * with it (see `process-exit.ts`).
  *
  * Sized against the SDK's own shutdown: on abort it closes the process's input
  * and gives it 2s to exit before sending `SIGTERM`. A process that exits on
@@ -856,9 +858,11 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<voi
  * bounded, for the agent's process to exit (observed through the SDK's spawn
  * hook — the SDK's own stream can end first), so the session's transcript is
  * complete before anyone can resume it. A process still running at the bound
- * is sent `SIGKILL` and waited for. A subprocess the agent's process spawned (a
- * `Bash` tool command) can still outlive the abort — the working directory's
- * sandbox is the fence for that, not this block's deadline.
+ * is sent `SIGKILL` and waited for. Off Windows both signals reach the
+ * process's whole group, so a command the agent's process started (a `Bash`
+ * tool command) ends with the abort too; one that moved itself into a group of
+ * its own is outside that reach. On Windows the signals reach the agent's
+ * process alone, and its commands can outlive the abort.
  *
  * See {@link ClaudeCodeAgentOptions.detached} for the background-work mode.
  */

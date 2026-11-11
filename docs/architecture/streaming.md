@@ -157,7 +157,7 @@ The streaming system produces two distinct data sets, stored independently:
 
 ### Items (the record)
 
-The **items array** on `RequestRecord` is the canonical output of a request — what it *produced*. The runtime reads items back for session context, action history, and API responses. Transient items (`transient: true`) are stripped before persistence; only durable items are stored.
+The **items array** on `RequestRecord` is the canonical output of a request — what it *produced*. The runtime reads items back for session context, action history, and API responses. Transient items (`transient: true`) are stripped before persistence; only durable items are stored. While a request runs, its response emitter's in-memory item view (`getItems()`) keeps every durable item and every in-progress transient one, but only the newest `maxBufferSize` (default 10,000) done transient items, so a long-polling request's transient churn stays bounded. The events log is unaffected.
 
 Items are load-bearing. Without them, sessions cannot reconstruct history.
 

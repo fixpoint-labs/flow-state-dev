@@ -379,7 +379,10 @@ export interface SequencerDefinition<
    * returns true, or until `timeoutMs` elapses (whichever comes first).
    *
    * Evaluation: once synchronously at entry against the items already
-   * emitted on the response (no subscription if it returns true). Otherwise
+   * emitted on the response (no subscription if it returns true). That
+   * entry check sees what `getItems()` retains: every non-transient item,
+   * but only the most recent `maxBufferSize` (default 10,000) done
+   * transient ones, such as `resource_change`. Otherwise
    * the runtime subscribes to subsequent item lifecycle events and re-runs
    * the predicate on each — exactly once per event. On timeout or parent
    * abort the subscription is torn down.
