@@ -57,6 +57,44 @@ export function createReadRecorder(): ReadRecorder {
   };
 }
 
+/**
+ * The one way a view's run records a dependency. Every read path the engine
+ * offers a view calls one of these, never the raw recorder: a scope's state,
+ * a resource (reached through `ctx.resources` or resolved as a template), and
+ * another session. The rules for which topics a read is heard on live here
+ * and nowhere else:
+ *
+ * - a read is heard on its scope's topic (the running session's, the user's,
+ *   the org's);
+ * - a lineage-shared session resource is also heard on the owner's user
+ *   topic, where a write from another lineage member publishes;
+ * - another session's read is heard on that session's topic.
+ *
+ * `views-dependency-matrix.test.ts` runs every read path against every scope;
+ * a new read path is a new row there and calls in here.
+ */
+export type ViewDependencies = {
+  state(scope: "session" | "user" | "org"): void;
+  resource(scope: "session" | "user" | "org", name: string, options?: { lineageShared?: boolean }): void;
+  session(sessionId: string): void;
+};
+
+/** The dependency surface over one run's recorder, for the running session `sessionId`. */
+export function createViewDependencies(record: (read: RecordedRead) => void, sessionId: string): ViewDependencies {
+  return {
+    state(scope) {
+      record(scope === "session" ? { scope, sessionId, what: "state" } : { scope, what: "state" });
+    },
+    resource(scope, name, options) {
+      record(scope === "session" ? { scope, sessionId, what: { resource: name } } : { scope, what: { resource: name } });
+      if (scope === "session" && options?.lineageShared === true) record({ scope: "user", what: { resource: name } });
+    },
+    session(id) {
+      record({ scope: "session", sessionId: id, what: "state" });
+    }
+  };
+}
+
 /** A view tried to call a model (D2). An action computes the answer once and stores it; the view reads it. */
 export class ViewModelCallError extends Error {
   constructor(readonly blockName?: string) {
@@ -87,7 +125,7 @@ export class UnrecordedReadError extends Error {
  * The other verbs read nothing outside the run (`parentTask` has no task in a
  * view) or write, and writes already refuse.
  */
-export function guardViewRequestHost(host: RequestHost, record: (read: RecordedRead) => void, noSession: boolean): void {
+export function guardViewRequestHost(host: RequestHost, dependencies: ViewDependencies, noSession: boolean): void {
   const mutable = host as { -readonly [K in keyof RequestHost]: RequestHost[K] };
   const sessions = host.sessions;
   if (sessions !== undefined) {
@@ -102,11 +140,11 @@ export function guardViewRequestHost(host: RequestHost, record: (read: RecordedR
         }
       : {
           read: async (sessionId) => {
-            record({ scope: "session", sessionId, what: "state" });
+            dependencies.session(sessionId);
             return sessions.read(sessionId);
           },
           history: async (sessionId, query) => {
-            record({ scope: "session", sessionId, what: "state" });
+            dependencies.session(sessionId);
             return sessions.history(sessionId, query);
           }
         };

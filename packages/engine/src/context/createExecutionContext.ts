@@ -208,7 +208,7 @@ import { PAST_TURN_STATUSES } from "../execution/past-turns";
 import { readSettledTurns, type SettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
 import { NoSessionError, noSessionHandle, noSessionRecord } from "./no-session";
-import { guardViewRequestHost, recordSessionReads, refusingModelResolver, ViewModelCallError } from "./view-reads";
+import { createViewDependencies, guardViewRequestHost, recordSessionReads, refusingModelResolver, ViewModelCallError } from "./view-reads";
 
 // FIX-2063.
 /**
@@ -735,9 +735,6 @@ export async function createExecutionContext<
   // session's resources. Reaching for one refuses with `NoSessionError` (the
   // flat registry below), never "not registered".
   const noSession = options.noSession === true;
-  // FIX-2623: a view's recorder, called with each scope state and resource a
-  // block of this run reaches. Absent outside a view.
-  const recordRead = options.recordRead;
   const sessionAccessorsWithoutSession = new Set<string>();
   if (noSession) {
     for (const accessor of Object.keys(sessionResourceConfigs)) {
@@ -756,6 +753,10 @@ export async function createExecutionContext<
 
   const userId = options.userId;
   const sessionId = options.sessionId ?? `ephemeral_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  // FIX-2623: a view's dependencies, recorded as its blocks read. Absent
+  // outside a view. The only use of the raw recorder: every read path below
+  // goes through this surface, which holds the topic rules (`view-reads.ts`).
+  const viewDependencies = options.recordRead !== undefined ? createViewDependencies(options.recordRead, sessionId) : undefined;
   const requestId = options.requestId;
 
   // Tenant-namespaced session storage key (FIX-682). Bare `sessionId` for
@@ -1271,8 +1272,8 @@ export async function createExecutionContext<
 
   // FIX-2623 D1: the request host's reads reach stores outside `ctx.resources`
   // and the state getters, so in a view each one is recorded or refused.
-  if (recordRead !== undefined && requestHostBuild !== undefined) {
-    guardViewRequestHost(requestHostBuild.host, recordRead, noSession);
+  if (viewDependencies !== undefined && requestHostBuild !== undefined) {
+    guardViewRequestHost(requestHostBuild.host, viewDependencies, noSession);
   }
 
   if (requestHostBuild?.livenessRefusal !== undefined) {
@@ -2980,9 +2981,7 @@ export async function createExecutionContext<
   ];
   templateResolverRef.current = (ref: string): string | null => {
     for (const { scope, read } of templateScopes) {
-      if (recordRead !== undefined) {
-        recordRead(scope === "session" ? { scope, sessionId, what: { resource: ref } } : { scope, what: { resource: ref } });
-      }
+      viewDependencies?.resource(scope, ref, { lineageShared: scope === "session" && resolveBucketFlag("session", ref) === true });
       const content = read()[ref];
       if (typeof content === "string") return content;
     }
@@ -3193,7 +3192,7 @@ export async function createExecutionContext<
       ...userOpsEmitting
     },
     () => {
-      recordRead?.({ scope: "user", what: "state" });
+      viewDependencies?.state("user");
       return userContainer.read();
     }
   ) as UserScopeHandle<TUserState>;
@@ -3366,13 +3365,13 @@ export async function createExecutionContext<
       ...sessionOpsEmitting
     },
     () => {
-      recordRead?.({ scope: "session", sessionId, what: "state" });
+      viewDependencies?.state("session");
       return sessionContainer.read();
     }
   ) as SessionScopeHandle<TSessionState>;
   // FIX-2623 D1: in a session view, the session's items, metadata, window and
   // journal are reads of the session too. Its topic covers every change to them.
-  if (recordRead !== undefined && !noSession) recordSessionReads(sessionHandle, () => recordRead({ scope: "session", sessionId, what: "state" }));
+  if (viewDependencies !== undefined && !noSession) recordSessionReads(sessionHandle, () => viewDependencies.state("session"));
 
   const orgOpsEmitting =
     orgOps === undefined || orgContainer === undefined
@@ -3393,7 +3392,7 @@ export async function createExecutionContext<
             ...orgOpsEmitting
           },
           () => {
-            recordRead?.({ scope: "org", what: "state" });
+            viewDependencies?.state("org");
             return orgContainer.read();
           }
         ) as OrgScopeHandle<TOrgState>);
@@ -3423,14 +3422,9 @@ export async function createExecutionContext<
   // is recorded too.
   const recordResource = (accessor: string): void => {
     const scope = accessorScope[accessor];
-    if (recordRead === undefined || scope === undefined) return;
-    recordRead(scope === "session" ? { scope, sessionId, what: { resource: accessor } } : { scope, what: { resource: accessor } });
-    // A lineage-shared resource's change from another member of the lineage
-    // publishes on the user's topic (`publishChange`), so that is recorded too.
-    const config = sessionResourceConfigs[accessor];
-    if (scope === "session" && config !== undefined && isSharedToLineage(config)) {
-      recordRead({ scope: "user", what: { resource: accessor } });
-    }
+    if (viewDependencies === undefined || scope === undefined) return;
+    const config = scope === "session" ? sessionResourceConfigs[accessor] : undefined;
+    viewDependencies.resource(scope, accessor, { lineageShared: config !== undefined && isSharedToLineage(config) });
   };
   const resourceHandle = (name: string): AnyResourceRef => {
     const handle = flatResourcesHandles[name];
@@ -3451,7 +3445,7 @@ export async function createExecutionContext<
       return Object.values(flatResourcesHandles);
     }
   } as ResourceRegistry<Record<string, AnyResourceRef>>;
-  if (recordRead !== undefined || noSession) {
+  if (viewDependencies !== undefined || noSession) {
     for (const accessor of [...Object.keys(flatResourcesHandles), ...sessionAccessorsWithoutSession]) {
       Object.defineProperty(flatResourcesRegistry, accessor, {
         enumerable: true,
