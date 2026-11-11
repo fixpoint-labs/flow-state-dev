@@ -41,7 +41,7 @@ export {
   type TaskActionTool,
 } from "./client";
 // A board's task-list view, as `taskListViewRef` types it (FIX-2623).
-export type { TaskListView } from "../skills/task-tools-capability";
+export type { TaskListView } from "../skills/views/task-list-view";
 export { inboxItems } from "./list";
 // One task as a person sees it: the one status and waiting-on vocabulary (FIX-2379).
 export { taskView, type TaskViewStatus, type TaskView, type TaskViewInput } from "./task-view";
