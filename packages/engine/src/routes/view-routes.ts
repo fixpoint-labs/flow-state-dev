@@ -127,7 +127,11 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
       runtimeConfig: ctx.runtimeConfig,
       signal: request.signal
     });
-    return jsonResponse(200, { output: answer.output ?? null, topics: answer.topics });
+    return jsonResponse(200, {
+      output: answer.output ?? null,
+      topics: answer.topics,
+      ...(answer.keys !== undefined ? { keys: answer.keys } : {})
+    });
   } catch (error) {
     return viewFailureResponse(error, route);
   }

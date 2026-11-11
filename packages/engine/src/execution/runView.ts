@@ -56,6 +56,8 @@ export type ViewAnswer = {
   topics: WireTopic[];
   /** Every distinct read the run made, by scope and accessor. Not on the wire: for diagnostics and tests. */
   reads: readonly RecordedRead[];
+  /** A keyed view's row keys, in the answer's order. */
+  keys?: string[];
 };
 
 /** A view the flow doesn't declare. */
@@ -200,8 +202,8 @@ function parseInput(what: string, schema: ZodTypeAny, input: unknown): unknown {
   );
 }
 
-/** A keyed view's answer must be a list whose rows have distinct string keys. */
-function checkKeyedAnswer(viewName: string, key: (entry: never) => string, output: unknown): void {
+/** A keyed view's answer must be a list whose rows have distinct string keys. Returns the keys, in order. */
+function keysOf(viewName: string, key: (entry: never) => string, output: unknown): string[] {
   if (!Array.isArray(output)) {
     throw new FlowError(`View "${viewName}" declares a \`key\`, so its answer must be a list`, {
       code: "view_answer_not_keyed",
@@ -219,6 +221,7 @@ function checkKeyedAnswer(viewName: string, key: (entry: never) => string, outpu
     }
     seen.add(id);
   }
+  return [...seen];
 }
 
 /** What one read-only run needs. Shared by {@link runView} and `runRead`. */
@@ -343,8 +346,7 @@ export async function runView(options: RunViewOptions): Promise<ViewAnswer> {
     ...(options.signal !== undefined ? { signal: options.signal } : {}),
     source: "view"
   });
-  if (view.key !== undefined) checkKeyedAnswer(options.viewName, view.key, answer.output);
-  return answer;
+  return view.key !== undefined ? { ...answer, keys: keysOf(options.viewName, view.key, answer.output) } : answer;
 }
 
 /** Parse a read's input against its schema. Kept for `runRead` until reads are removed. */

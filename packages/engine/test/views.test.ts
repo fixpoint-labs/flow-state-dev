@@ -251,7 +251,7 @@ describe("a user or org view runs with no session", () => {
     expect(await res.json()).toEqual({ output: { texts: ["org note"] }, topics: [{ scope: "org" }] });
 
     const pinsRes = await view(router, "pins");
-    expect(await pinsRes.json()).toEqual({ output: [], topics: [{ scope: "user" }] });
+    expect(await pinsRes.json()).toEqual({ output: [], topics: [{ scope: "user" }], keys: [] });
     expect(calls).toEqual([]);
     expect((await seededStores.session.list({})).map((s) => s.id)).toEqual(sessionsBefore);
   });
@@ -263,7 +263,9 @@ describe("a user or org view runs with no session", () => {
     await act(router, stores, "b-1", "addPin", { id: "z", label: "bob z" }, "bob");
     const alice = await view(router, "pins");
     expect(alice.status, await alice.clone().text()).toBe(200);
-    expect((await alice.json()).output).toEqual([
+    const answer = await alice.json();
+    expect(answer.keys).toEqual(["a", "b"]);
+    expect(answer.output).toEqual([
       { id: "a", label: "alice a" },
       { id: "b", label: "alice b" }
     ]);
