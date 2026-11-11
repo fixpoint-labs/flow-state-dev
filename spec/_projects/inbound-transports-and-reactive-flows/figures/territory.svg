@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 430" role="img" aria-label="The territory. Owned by this project, above the fence: the entry points on one contract (HTTP, webhooks, schedules, MCP, chat), routing an outside event to the sessions that asked for it, and routines that react on their own. Assembled but owned elsewhere: messages and the coordinator, the hosts, the principal. Outside the fence: outbound transports, consuming MCP servers, durable suspend, the trust boundary, and push to screens."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .own   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .asm   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:5 3; }
+    .out   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:10 5; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-f   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="430"/>
+
+  <g id="owned">
+    <text class="t-lbl" x="16" y="24">OWNED BY THIS PROJECT</text>
+    <g id="entry">
+      <rect class="own" x="16" y="34" width="292" height="132" rx="5"/>
+      <text class="t-lbl" x="30" y="54">ENTRY POINTS</text>
+      <text class="t-b" x="30" y="76">One contract, one runtime below</text>
+      <text class="t-s" x="30" y="100">HTTP · webhooks · schedules</text>
+      <text class="t-s" x="30" y="116">MCP · chat platforms</text>
+      <text class="t-s" x="30" y="132">source on every request</text>
+      <text class="t-s" x="30" y="152">shipped before epics</text>
+    </g>
+    <g id="routing">
+      <rect class="own" x="324" y="34" width="292" height="132" rx="5"/>
+      <text class="t-lbl" x="338" y="54">ROUTING AN OUTSIDE EVENT</text>
+      <text class="t-b" x="338" y="76">To the sessions that asked</text>
+      <text class="t-s" x="338" y="100">a service flow per provider</text>
+      <text class="t-s" x="338" y="116">subscriptions · screen chain</text>
+      <text class="t-s" x="338" y="132">push or poll · one delivery</text>
+      <text class="t-s" x="338" y="152">FIX-2471, wrapped</text>
+    </g>
+    <g id="react">
+      <rect class="own" x="632" y="34" width="292" height="132" rx="5"/>
+      <text class="t-lbl" x="646" y="54">REACTING ON ITS OWN</text>
+      <text class="t-b" x="646" y="76">Work that fires as its owner</text>
+      <text class="t-s" x="646" y="100">routines · a clock or an event</text>
+      <text class="t-s" x="646" y="116">sessions publish, routines hear</text>
+      <text class="t-s" x="646" y="132">blocks on a resource change</text>
+      <text class="t-s" x="646" y="152">FIX-2471 · FIX-751</text>
+    </g>
+  </g>
+
+  <g id="assembled">
+    <text class="t-lbl" x="16" y="196">ASSEMBLED HERE, OWNED ELSEWHERE</text>
+    <rect class="asm" x="16" y="206" width="292" height="62" rx="5"/>
+    <text class="t-b" x="30" y="230">Messages and the coordinator</text>
+    <text class="t-s" x="30" y="252">sendMessage · task board · Inbox</text>
+    <rect class="asm" x="324" y="206" width="292" height="62" rx="5"/>
+    <text class="t-b" x="338" y="230">Hosts</text>
+    <text class="t-s" x="338" y="252">node · vercel · next · bullmq</text>
+    <rect class="asm" x="632" y="206" width="292" height="62" rx="5"/>
+    <text class="t-b" x="646" y="230">Who the caller is</text>
+    <text class="t-s" x="646" y="252">the principal and auth hooks</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M16 292 H924"/>
+    <text class="t-f" x="16" y="310">THE FENCE · NOT THIS PROJECT</text>
+  </g>
+
+  <g id="outside">
+    <rect class="out" x="16" y="320" width="172" height="92" rx="5"/>
+    <text class="t-b" x="28" y="344">Outbound</text>
+    <text class="t-s" x="28" y="366">how events leave</text>
+    <text class="t-s" x="28" y="382">FIX-578</text>
+    <rect class="out" x="200" y="320" width="172" height="92" rx="5"/>
+    <text class="t-b" x="212" y="344">MCP, the rest</text>
+    <text class="t-s" x="212" y="366">client side, hardening</text>
+    <text class="t-s" x="212" y="382">the MCP project</text>
+    <rect class="out" x="384" y="320" width="172" height="92" rx="5"/>
+    <text class="t-b" x="396" y="344">Durable suspend</text>
+    <text class="t-s" x="396" y="366">wait on a callback</text>
+    <text class="t-s" x="396" y="382">FIX-140 · FIX-141</text>
+    <rect class="out" x="568" y="320" width="172" height="92" rx="5"/>
+    <text class="t-b" x="580" y="344">Trust boundary</text>
+    <text class="t-s" x="580" y="366">untrusted turns, secrets</text>
+    <text class="t-s" x="580" y="382">FIX-2689</text>
+    <rect class="out" x="752" y="320" width="172" height="92" rx="5"/>
+    <text class="t-b" x="764" y="344">Push to screens</text>
+    <text class="t-s" x="764" y="366">the realtime bus</text>
+    <text class="t-s" x="764" y="382">FIX-2367</text>
+  </g>
+</svg>
