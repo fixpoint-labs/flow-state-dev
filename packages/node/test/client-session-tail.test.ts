@@ -49,7 +49,7 @@ const text = (item: unknown) => ((item as { content?: Array<{ text?: string }> }
 describe("a client's tail read of a long session", () => {
   it("holds the newest reply of a session with more than 1,000 items, and pages back on request", async () => {
     const flowState = createFlowState({
-      flows: { chat: chatFlow },
+      flows: [chatFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
     });

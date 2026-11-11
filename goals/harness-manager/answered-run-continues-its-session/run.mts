@@ -261,7 +261,7 @@ await runGoal(async (failures) => {
     }
 
     state = createFlowState({
-      flows: { [HARNESS_GOAL_FLOW_KIND]: built.flow },
+      flows: [built.flow],
       modelResolver: Object.assign(neverResolvesAModel, {
         resolveId: neverResolvesAModel,
       }) as never,

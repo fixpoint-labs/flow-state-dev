@@ -34,6 +34,6 @@ const flow = defineFlow({
 })();
 
 export default createFlowState({
-  flows: { x: flow },
+  flows: [flow],
   stores: { default: { primary: rejectingStores() } },
 });

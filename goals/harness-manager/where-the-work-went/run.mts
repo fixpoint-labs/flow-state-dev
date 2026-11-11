@@ -172,7 +172,7 @@ await runGoal(async (failures) => {
         }) as unknown as HarnessBlock,
     });
     const app = createFlowState({
-      flows: { [SESSION_KIND]: flow },
+      flows: [flow],
       modelResolver,
       stores: { prod: { primary: inMemoryStores() } },
       defaultProfile: "prod",
@@ -244,7 +244,7 @@ await runGoal(async (failures) => {
       slot: stub.slot,
     });
     const app = createFlowState({
-      flows: { [HARNESS_GOAL_FLOW_KIND]: built.flow },
+      flows: [built.flow],
       modelResolver,
       stores: { prod: { primary: inMemoryStores() } },
       defaultProfile: "prod",

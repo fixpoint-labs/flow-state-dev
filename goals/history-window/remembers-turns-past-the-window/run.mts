@@ -180,7 +180,7 @@ function startHost(db: string, calls: ModelCall[]) {
     resolveId: mapped
   });
   return createFlowState({
-    flows: { [FLOW]: flow },
+    flows: [flow],
     stores: { default: { primary: sqliteStores({ filename: db }) } },
     logger: silentLogger,
     modelResolver,

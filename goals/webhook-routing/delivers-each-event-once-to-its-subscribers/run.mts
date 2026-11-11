@@ -166,7 +166,7 @@ const modelResolver = Object.assign((modelId: string, blockName?: string) => {
 let captured: InboundTransportHost | undefined;
 const stores = inMemoryStores();
 const state = createFlowState({
-  flows: instances,
+  flows: Object.values(instances),
   stores: { default: { primary: stores } },
   modelResolver,
   logger: silentLogger,

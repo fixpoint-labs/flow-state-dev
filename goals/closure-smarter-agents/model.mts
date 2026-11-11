@@ -103,7 +103,7 @@ const HAIKU_RESOLVER = Symbol.for("fsd-goal-closure.haiku-resolver");
  */
 export async function serveOnHaiku(engine: ServedEngine, loadApp: () => Promise<FlowState>, resolver: ModelResolver): Promise<FlowState> {
   // A FlowState builds nothing until first use, so this one only hands over the class.
-  const prototype = Object.getPrototypeOf(engine.createFlowState({ flows: {}, stores: { default: { primary: engine.inMemoryStores() } } })) as FlowStatePrototype;
+  const prototype = Object.getPrototypeOf(engine.createFlowState({ flows: [], stores: { default: { primary: engine.inMemoryStores() } } })) as FlowStatePrototype;
   if (prototype[HAIKU_RESOLVER] === undefined) {
     const { getRuntime, getRouter, ready } = prototype;
     const swapped = new WeakSet<FlowState>();

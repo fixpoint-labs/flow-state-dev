@@ -46,7 +46,7 @@ function stoppingFlow() {
 
 async function runtimeOf(options: Partial<FlowStateOptions> & Pick<FlowStateOptions, "stores">) {
   const { flow } = stoppingFlow();
-  const state = createFlowState({ flows: { "durable-default": flow }, ...options } as FlowStateOptions);
+  const state = createFlowState({ flows: [flow], ...options } as FlowStateOptions);
   const runtime = await state.getRuntime();
   return { state, runtime };
 }
@@ -98,7 +98,7 @@ describe("a host without durable execution refuses at the stop", () => {
   it("names the rule and the setting, records the request failed, and holds nothing", async () => {
     const { flow, runsBefore } = stoppingFlow();
     const state = createFlowState({
-      flows: { "durable-default": flow },
+      flows: [flow],
       stores: { default: { primary: filesystemStores({ rootDir: dataDir(), developmentOnly: true }) } },
       durable: false
     } as FlowStateOptions);

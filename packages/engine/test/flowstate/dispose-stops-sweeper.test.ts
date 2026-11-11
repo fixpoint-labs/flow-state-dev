@@ -73,7 +73,7 @@ describe("FlowState.dispose() — sweeper shutdown ordering", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const adapter = closingAdapter();
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       stores: { default: { primary: adapter } },
       detectInterruptedOnStartup: false,
       staleSweepIntervalMs: SWEEP_INTERVAL_MS,

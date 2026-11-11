@@ -38,7 +38,7 @@ const openFlow = defineFlow({
 })();
 
 export default createFlowState({
-  flows: { open: openFlow },
+  flows: [openFlow],
   modelResolver: createMockModelResolver({}),
   stores: { default: { primary: memStores() } },
 });

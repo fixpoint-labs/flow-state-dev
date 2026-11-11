@@ -1191,7 +1191,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   );
 
   const state = createFlowState({
-    flows,
+    flows: Object.values(flows),
     // A goal that grades a burst sets DEVFORCE_LAB_WRITE_LATENCY_MS, so the
     // burst's writes really race (`write-latency.mts`). Unset, the store is as given.
     stores: { default: { primary: writeLatency === undefined ? options.stores : withWriteLatency(options.stores, writeLatency) } },

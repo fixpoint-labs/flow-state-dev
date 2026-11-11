@@ -292,7 +292,7 @@ function buildHost(filename: string) {
   } as never)({ id: "error-reporter-intake" });
 
   const state = createFlowState({
-    flows: { ...Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])), planner, "error-reporter-intake": intake },
+    flows: [...hireWorkforce(installation), planner, intake],
     stores: { default: { primary: sqliteStores({ filename }) } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {

@@ -35,7 +35,7 @@ afterEach(async () => {
 
 async function startServer(basePath?: string): Promise<string> {
   const flowState = createFlowState({
-    flows: { echo: echoFlow },
+    flows: [echoFlow],
     modelResolver: createMockModelResolver({}),
     stores: { default: { primary: inMemoryStores() } },
   });

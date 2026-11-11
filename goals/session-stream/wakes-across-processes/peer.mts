@@ -86,7 +86,7 @@ function chatFlow() {
 }
 
 const flowState = createFlowState({
-  flows: { chat: chatFlow() },
+  flows: [chatFlow()],
   stores: {
     default: {
       primary: postgresStores({

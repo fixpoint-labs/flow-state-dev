@@ -45,7 +45,7 @@ afterEach(async () => {
 describe("a failed request, read back without its items", () => {
   it("the state read holds what it wrote and no items; its status says when it ended", async () => {
     const flowState = createFlowState({
-      flows: { records: recordsFlow },
+      flows: [recordsFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
     });

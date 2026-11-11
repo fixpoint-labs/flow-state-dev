@@ -272,7 +272,7 @@ await runGoal(async (failures) => {
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "goal-mapped" } as never);
   const state = createFlowState({
-    flows: { "goal-mapped": flow },
+    flows: [flow],
     stores: { goal: { primary: inMemoryStores() } },
     defaultProfile: "goal",
     dispatchDrainTimeoutMs: SETTLE_MS,

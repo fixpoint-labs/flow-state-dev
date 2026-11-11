@@ -260,7 +260,7 @@ function buildHost(stores: StoreAdapter): { state: FlowState; flows: Record<stri
     if (binding.problems.length > 0) throw new Error(`setup: the inventory didn't open: ${binding.problems.join("; ")}`);
   };
   const state = createFlowState({
-    flows,
+    flows: Object.values(flows),
     stores: { default: { primary: stores } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {

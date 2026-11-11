@@ -210,7 +210,7 @@ async function world(modelUp: boolean): Promise<Measured> {
 
   let captured: InboundTransportHost | undefined;
   const state = createFlowState({
-    flows: instances,
+    flows: Object.values(instances),
     stores: { default: { primary: inMemoryStores() } },
     modelResolver,
     logger: silentLogger,

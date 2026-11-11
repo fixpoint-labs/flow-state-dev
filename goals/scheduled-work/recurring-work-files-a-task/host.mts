@@ -100,7 +100,7 @@ workerFlows = { launch: { flow: launchFlow, roles: ["manager"] }, researcher: { 
 const flows = Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy]));
 const scheduler = createBearerSecretPrincipalResolver({ secret: SECRET, principal: { userId: "scheduler", orgId: ORG } });
 const state = createFlowState({
-  flows,
+  flows: Object.values(flows),
   stores: { default: { primary: sqliteStores({ filename: DB }) } },
   adapters: [createScheduledTransportAdapter()],
   logger: silentLogger,

@@ -232,7 +232,7 @@ async function open(options: { label: string; script: Step[]; commands: string[]
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "checks-goal" } as never);
   const state = createFlowState({
-    flows: { "checks-goal": flow },
+    flows: [flow],
     stores: { goal: { primary: inMemoryStores() } },
     defaultProfile: "goal",
     dispatchDrainTimeoutMs: 60_000,

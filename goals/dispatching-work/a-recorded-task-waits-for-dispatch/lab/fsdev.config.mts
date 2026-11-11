@@ -68,7 +68,7 @@ const copies = wf.hireWorkforce(installation) as Array<{ id: string }>;
 const verify = engine.createBearerSecretPrincipalResolver({ secret: ALICE.bearer, principal: { userId: ALICE.userId, orgId: ORG } });
 
 export default engine.createFlowState({
-  flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+  flows: copies,
   stores: { default: { primary: sqliteStores({ filename: STORE }) } },
   modelResolver,
   resolvePrincipal: verify,

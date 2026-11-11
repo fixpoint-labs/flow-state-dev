@@ -44,7 +44,7 @@ async function boot() {
   await primary.content!.set("org", "acme", BOARD_KEY, "ALICE-PUBLIC-BOARD");
   await primary.content!.set("org", "acme", "templates/plain", "PLAIN-TEMPLATE");
   const state = createFlowState({
-    flows: { tpl: flow } as never,
+    flows: [flow] as never,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),
   });

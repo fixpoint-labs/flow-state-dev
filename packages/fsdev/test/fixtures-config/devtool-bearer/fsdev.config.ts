@@ -21,7 +21,7 @@ const pingFlow = defineFlow({
 })();
 
 export default createFlowState({
-  flows: { ping: pingFlow },
+  flows: [pingFlow],
   modelResolver: createMockModelResolver({}),
   stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(createInMemoryStores()) } } },
   devtool: { userId: "owner", bearerToken: "s3cret" },

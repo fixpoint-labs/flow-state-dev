@@ -92,7 +92,7 @@ function host(options: {
   const stores = inMemoryStores();
   const makeState = (forFlow: ReturnType<typeof makeFlow>) =>
     createFlowState({
-      flows: { [KIND]: forFlow },
+      flows: [forFlow],
       stores: { test: { primary: stores } },
       defaultProfile: "test",
       durable: options.durable ?? true,

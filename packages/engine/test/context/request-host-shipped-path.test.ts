@@ -354,7 +354,7 @@ describe("request-host seam on the shipped worker path", () => {
     const flow = probeFlow("worker-seam", seen, []);
 
     const state = createFlowState({
-      flows: { workerSeam: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: (() => undefined) as never
     });

@@ -190,7 +190,7 @@ async function openDesk(routing: "best-fit" | "round-robin", options: DeskOption
   const route = scriptedRoute();
   const answer = scriptedAnswer();
   const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({
       generators: { "agent-answer": answer, "research-answer": answer },

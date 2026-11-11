@@ -33,7 +33,7 @@ const root = path.join(process.cwd(), ".fsdev");
 const host = readHostOptionsFromEnv();
 
 export default createFlowState({
-  flows: { [FLOW_KIND]: createFsdCodingFlow(host) },
+  flows: [createFsdCodingFlow(host)],
   modelResolver: Object.assign(neverResolvesAModel, {
     resolveId: neverResolvesAModel,
   }) as ModelResolver,

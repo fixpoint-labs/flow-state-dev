@@ -53,7 +53,7 @@ describe("a claim on a board that hands rows out", () => {
       task: { actions: { work: { block: worker } } },
     })({ id: "lease-wake" });
     const state = createFlowState({
-      flows: { [flow.id]: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({}),
       durable: true,
@@ -114,7 +114,7 @@ describe("a claim on a board that hands rows out", () => {
       task: { actions: { work: { block: worker } } },
     })({ id: "own-wake" });
     const state = createFlowState({
-      flows: { [flow.id]: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({}),
       durable: true,

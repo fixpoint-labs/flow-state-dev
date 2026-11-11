@@ -114,7 +114,7 @@ function startHost() {
   const mapped = (id: string) => (id.startsWith("goal/") ? MODEL : id);
   const modelResolver = Object.assign((id: string, block?: string) => real(mapped(id), block), { resolveId: mapped });
   return createFlowState({
-    flows: { [FLOW]: flow },
+    flows: [flow],
     stores: { default: { primary: sqliteStores({ filename: join(SCRATCH, `store-${RUN_STAMP}.sqlite`) }) } },
     logger: silentLogger,
     modelResolver,

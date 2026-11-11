@@ -21,7 +21,7 @@ describe("a message to an agent worker", () => {
   it("is kept in the worker's conversation as the caller's turn, ahead of the reply", async () => {
     const [worker] = mintWorkers([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
     const state = createFlowState({
-      flows: { [worker!.id]: worker! },
+      flows: [worker!],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({
         generators: {

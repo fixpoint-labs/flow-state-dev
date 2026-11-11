@@ -104,7 +104,7 @@ async function host(adapter: unknown = inMemoryStores()) {
   };
   const reader = (readerFlow as any)();
   const state = createFlowState({
-    flows: { ...byFlow, [reader.kind]: reader },
+    flows: [...Object.values(byFlow), reader],
     stores: { default: { primary: adapter } }
   } as never);
   const runtime = await state.getRuntime();

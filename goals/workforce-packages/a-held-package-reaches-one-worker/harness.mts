@@ -126,7 +126,7 @@ async function main(): Promise<void> {
   out.workerIds = seats.map((s) => s.id);
 
   const flowState = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { dev: { primary: inMemoryStores() } },
     modelResolver,
   } as never);

@@ -104,7 +104,7 @@ function colocatedState(kind: string, seen: Seen): {
   let capturedRuntime: FlowStateRuntime | undefined;
 
   const state = createFlowState({
-    flows: { probe: probeFlow(kind, seen)() },
+    flows: [probeFlow(kind, seen)()],
     stores: { default: { primary: sharedInMemoryStores() } },
     modelResolver: (() => undefined) as never,
     worker: {
@@ -184,7 +184,7 @@ describe("a colocated worker sees its own process's sweeper (FIX-999)", () => {
     let startupJob: Promise<void> | undefined;
 
     const state = createFlowState({
-      flows: { probe: probeFlow("colocated-startup", seen)() },
+      flows: [probeFlow("colocated-startup", seen)()],
       stores: { default: { primary: sharedInMemoryStores() } },
       modelResolver: (() => undefined) as never,
       worker: {

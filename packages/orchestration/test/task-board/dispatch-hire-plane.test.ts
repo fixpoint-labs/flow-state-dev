@@ -100,7 +100,7 @@ async function boot() {
   const kind = assigneeKind(ran);
   const board = boardFlow();
   const state = createFlowState({
-    flows: { board },
+    flows: [board],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({}),
   });

@@ -54,7 +54,7 @@ afterEach(async () => {
 });
 
 async function start(): Promise<string> {
-  const flowState = createFlowState({ flows: { chat }, stores: { default: { primary: inMemoryStores() } } });
+  const flowState = createFlowState({ flows: [chat], stores: { default: { primary: inMemoryStores() } } });
   const handle = await serve(flowState, { port: 0, host: "127.0.0.1", handleSignals: false, shutdownGraceMs: 200 });
   handles.push(handle);
   return `http://127.0.0.1:${handle.port}`;

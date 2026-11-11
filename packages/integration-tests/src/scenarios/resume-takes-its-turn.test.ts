@@ -122,7 +122,7 @@ describe("a resumed request takes its turn in its session", () => {
   it("an approval that lands while another request runs waits for it, then completes the parked request", async () => {
     const h = harness();
     const state = createFlowState({
-      flows: { [FLOW_KIND]: h.flow },
+      flows: [h.flow],
       stores: { default: { primary: inMemoryStores() } },
       durable: true
     });

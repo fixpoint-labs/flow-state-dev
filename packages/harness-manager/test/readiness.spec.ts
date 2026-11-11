@@ -158,7 +158,7 @@ describe("harnessReadinessAction — through a real flow", () => {
     const flow = defineFlow({ kind: "readiness-flow", actions: { harnessReadiness: harnessReadinessAction(readiness) } } as never)({
       id: "readiness-flow",
     } as never);
-    const state = createFlowState({ flows: { "readiness-flow": flow }, stores: { test: { primary: inMemoryStores() } }, defaultProfile: "test" } as never);
+    const state = createFlowState({ flows: [flow], stores: { test: { primary: inMemoryStores() } }, defaultProfile: "test" } as never);
     const rt = (await (state as any).getRuntime()) as { stores: unknown; runtimeConfig: object };
     const act = async (input: unknown): Promise<HarnessReadinessView[]> => {
       const result = (await runAction({

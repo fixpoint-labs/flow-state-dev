@@ -201,7 +201,7 @@ describe("a task entry served by many ledgers", () => {
     const a = senderFlow("sender-a", LEDGER_A, "ta");
     const b = senderFlow("sender-b", LEDGER_B, "tb");
     const state = createFlowState({
-      flows: { [a.id]: a, [b.id]: b, [RECIPIENT]: recipientFlow(ran, reads) },
+      flows: [a, b, recipientFlow(ran, reads)],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({}),
     });
@@ -226,7 +226,7 @@ describe("a task entry served by many ledgers", () => {
     const ran: string[] = [];
     const x = senderFlow("sender-x", LEDGER_X, "tx");
     const state = createFlowState({
-      flows: { [x.id]: x, [RECIPIENT]: recipientFlow(ran, []) },
+      flows: [x, recipientFlow(ran, [])],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({}),
     });

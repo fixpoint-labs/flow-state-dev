@@ -193,7 +193,7 @@ async function processOf(
             (consumer = base.startWorker!(rt) as { close(): Promise<void> })
         };
   const state = createFlowState({
-    flows: { [d.kind]: flow },
+    flows: [flow],
     stores: { default: { primary: d.primary } },
     worker
   });

@@ -123,7 +123,7 @@ function host(script: Script) {
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "progress-host" } as never);
   const state = createFlowState({
-    flows: { "progress-host": flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,

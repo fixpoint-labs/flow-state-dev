@@ -245,7 +245,7 @@ async function boot(options: BootOptions) {
   let captured: InboundTransportHost | undefined;
   build();
   const state = createFlowState({
-    flows: instances,
+    flows: Object.values(instances),
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),
     logger: silentLogger,

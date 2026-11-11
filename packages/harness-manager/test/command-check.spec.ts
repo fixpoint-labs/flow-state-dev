@@ -190,7 +190,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     task: { actions: { work: { block: manager } } },
   } as never)({ id: FLOW } as never);
   const state = createFlowState({
-    flows: { [FLOW]: flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,

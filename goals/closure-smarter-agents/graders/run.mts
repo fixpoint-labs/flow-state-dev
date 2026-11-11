@@ -260,7 +260,7 @@ const probeFlow = defineFlow({
 async function routerResolvesHaiku(routerAtImport: boolean): Promise<string> {
   let app: FlowState | undefined;
   const loadApp = async () => {
-    app = createFlowState({ flows: { probe: probeFlow }, models: { default: "openai/gpt-6-luna" }, stores: { default: { primary: inMemoryStores() } } });
+    app = createFlowState({ flows: [probeFlow], models: { default: "openai/gpt-6-luna" }, stores: { default: { primary: inMemoryStores() } } });
     if (routerAtImport) await app.getRouter();
     return app;
   };

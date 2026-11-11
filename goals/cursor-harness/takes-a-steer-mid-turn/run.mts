@@ -245,7 +245,7 @@ await runGoal(async (failures) => {
       },
     } as never)({ id: "steer-goal" } as never);
     const state = createFlowState({
-      flows: { "steer-goal": flow },
+      flows: [flow],
       stores: { goal: { primary: inMemoryStores() } },
       defaultProfile: "goal",
       dispatchDrainTimeoutMs: TURN_MS,

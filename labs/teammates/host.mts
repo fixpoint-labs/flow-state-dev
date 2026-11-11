@@ -407,7 +407,7 @@ export async function openTeammates(options: TeammatesOptions) {
   } as never)({ id: LAB_CONTEXT_FLOW } as never) as { id: string };
 
   const state = createFlowState({
-    flows: Object.fromEntries([...copies, readinessFlow, contextFlow].map((copy) => [copy.id, copy])),
+    flows: [...copies, readinessFlow, contextFlow],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     dispatchDrainTimeoutMs,

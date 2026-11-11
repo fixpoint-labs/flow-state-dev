@@ -123,7 +123,7 @@ await runGoal(async (failures, tell) => {
   }
 
   const state = createFlowState({
-    flows: { [KIND]: flow },
+    flows: [flow],
     modelResolver: Object.assign(neverResolvesAModel, {
       resolveId: neverResolvesAModel,
     }) as never,

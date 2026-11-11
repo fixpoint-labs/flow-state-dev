@@ -186,7 +186,7 @@ async function boot(
   const observed: Observed = { childRuns: [], replies: [], settlements: [] };
   const flow = flowOf(kind, observed);
   const state = createFlowState({
-    flows: { [kind]: flow },
+    flows: [flow],
     stores: { default: { primary: inMemoryStores() } }
   });
   const runtime = await state.getRuntime();

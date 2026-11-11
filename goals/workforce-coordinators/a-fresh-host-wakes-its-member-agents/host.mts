@@ -130,7 +130,7 @@ export async function startFreshHost(tree: string, seams: HostSeams = {}): Promi
   const copies = hireWorkforce(installation);
 
   const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { default: { primary: inMemoryStores() } },
     // Who every request is, and the org its sessions bind to. Ignores the
     // request: one caller, and a body read would be caller-controlled identity.

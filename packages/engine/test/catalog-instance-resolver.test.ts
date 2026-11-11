@@ -61,7 +61,7 @@ function workerWith(id: string, resolver: ResolvePrincipalFn): FlowInstance {
 /** An app whose host resolver is the framework default: only the workers authenticate. */
 async function boot() {
   const state = createFlowState({
-    flows: { app: appFlow() as FlowInstance },
+    flows: [appFlow() as FlowInstance],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({ policy: "allow" }),
   });

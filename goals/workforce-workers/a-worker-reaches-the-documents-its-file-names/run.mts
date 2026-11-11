@@ -87,7 +87,7 @@ await runGoal(async (failures) => {
   const desk = desks[0] as FlowInstance;
 
   const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { default: { primary: inMemoryStores() } },
   } as never);
   try {

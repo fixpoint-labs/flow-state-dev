@@ -233,7 +233,7 @@ function buildHost(name: string, stores: StoreAdapter): FlowState {
     doer: { flow: flowOf("doer", doerBoard, doerTurn), roles: ["contributor", "manager"] }
   };
   return createFlowState({
-    flows: Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
+    flows: hireWorkforce(installation),
     stores: { default: { primary: stores } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {

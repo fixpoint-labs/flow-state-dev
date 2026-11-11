@@ -592,7 +592,7 @@ describe("wait gate on the shipped runtime, with no router (the colocated-worker
     const { model, seen } = waitingModel();
     const flow = waitFlow(model, { count: 0 });
     const state = createFlowState({
-      flows: { "wait-resume": flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       durable: true
     });
@@ -622,7 +622,7 @@ describe("wait gate on the shipped runtime, with no router (the colocated-worker
     const { model } = waitingModel();
     const flow = waitFlow(model, { count: 0 });
     const state = createFlowState({
-      flows: { "wait-resume": flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } }
     });
     try {

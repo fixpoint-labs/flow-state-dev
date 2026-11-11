@@ -55,7 +55,7 @@ const flows: Record<string, FlowInstance> = {
   [INVENTORY_WRITER_FLOW]: writer,
 };
 const flowState = createFlowState({
-  flows,
+  flows: Object.values(flows),
   stores: { default: { primary: inMemoryStores() } },
   durable: true,
   devtool: { userId: USER_ID },

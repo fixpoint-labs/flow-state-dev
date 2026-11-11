@@ -56,7 +56,7 @@ function host(scratch: string, name: string, flows: Record<string, unknown>) {
   // The engine's default local blob folder is under the working directory.
   process.chdir(scratch);
   return createFlowState({
-    flows,
+    flows: Object.values(flows),
     stores: { default: { primary: sqliteStores({ filename: join(scratch, `${name}-${RUN_STAMP}.sqlite`) }) } },
     logger: silentLogger,
     resolvePrincipal: principal,

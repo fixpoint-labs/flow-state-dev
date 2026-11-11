@@ -123,13 +123,13 @@ export const WORKER_ID = `${APP_ORG}.desk`;
 /** Assemble the app the way its `fsdev.config.ts` does. */
 export function makeApp() {
   const app = createFlowState({
-    flows: {
-      echo: echoFlow,
-      admin: adminFlow,
-      digest: digestFlow,
-      placeholder: placeholderFlow,
-      bodyorg: bodyOrgFlow,
-    },
+    flows: [
+      echoFlow,
+      adminFlow,
+      digestFlow,
+      placeholderFlow,
+      bodyOrgFlow
+    ],
     stores: { default: { primary: sharedAdapter } },
     resolvePrincipal: () => ({ userId: APP_USER, orgId: APP_ORG }),
   });

@@ -37,7 +37,7 @@ const echoFlow = defineFlow({
 
 function flowState(): FlowState {
   return createFlowState({
-    flows: { echo: echoFlow },
+    flows: [echoFlow],
     stores: { default: { primary: inMemoryStores() } }
   });
 }
