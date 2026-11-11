@@ -197,7 +197,7 @@ export function buildExecArgs(runName: string, command: string, execId: string):
 }
 
 /** Build the argv that stops the command `buildExecArgs` ran under `execId`. */
-export function buildKillExecArgs(runName: string, execId: string): string[] {
+function buildKillExecArgs(runName: string, execId: string): string[] {
   return ["exec", runName, "--", "sh", "-c", KILL_EXEC, "fsdev-kill", execId];
 }
 
@@ -293,7 +293,7 @@ export interface SpawnResult {
  * separately), the same as the local provider's. An overrun kills the
  * process and keeps what was read so far.
  */
-export const MAX_SPAWN_OUTPUT_BYTES = 10 * 1024 * 1024;
+const MAX_SPAWN_OUTPUT_BYTES = 10 * 1024 * 1024;
 
 /** Injectable spawn function used by every adapter method. */
 export type SpawnFn = (
