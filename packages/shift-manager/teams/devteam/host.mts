@@ -703,10 +703,10 @@ function operatorGitHub(operator: string, token: string | undefined, apiUrl: str
   const github = githubSubscriptionProvider({ token: (ctx) => (reads(ctx) ? token : undefined), ...(apiUrl === undefined ? {} : { apiUrl }) });
   return {
     ...github,
-    async canRead(thread: string, ctx: BlockContext) {
+    async canRead(key: string, ctx: BlockContext) {
       if (token === undefined) throw new Error("GitHub routines need GITHUB_TOKEN: set it, or sign in with `gh auth login`, and start the Lab again. Nothing was saved.");
       if (!reads(ctx)) throw new Error(`GitHub routines read GitHub with this Lab's GITHUB_TOKEN, which serves only its owner. Nothing was saved.`);
-      return github.canRead(thread, ctx);
+      return github.canRead(key, ctx);
     },
   };
 }
