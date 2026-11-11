@@ -724,9 +724,10 @@ export type InternalEntry = ActionCore & {
    * starts no request as its sender. The host routes the payload (a
    * `SubscriptionEvent`) through it as the service, `service:<provider>`, in
    * the sender's organization (`routeServiceEvent`), stamps the event's
-   * `sender` with the dispatching session, and fires only the owner runs of
-   * the sender's own user. The session target is not read. Set by a service
-   * flow factory (`internalServiceFlow`), not by hand.
+   * `sender` with the dispatching session and its `owner` with the sender's
+   * user and tenant, and fires only the owner runs of that user in that
+   * tenant. The session target is not read. Set by a service flow factory
+   * (`internalServiceFlow`), not by hand.
    */
   readonly service?: InternalServiceRoute;
 };
@@ -735,6 +736,12 @@ export type InternalEntry = ActionCore & {
 export interface InternalServiceRoute {
   /** The provider key the route runs as (`service:<provider>`) and the event's `provider`. */
   readonly provider: string;
+  /**
+   * The sender's name, read by the host from the dispatching session's own
+   * stored state (a worker's id). Absent, or answering nothing, the name is
+   * the sending flow's kind. Never the payload's.
+   */
+  senderName?(state: Readonly<Record<string, unknown>>): string | undefined;
 }
 
 /**

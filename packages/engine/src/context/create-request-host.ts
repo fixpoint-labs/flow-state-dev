@@ -647,7 +647,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
 
     // FIX-2630 D1, Q1: a service route starts no request as its sender. The
     // host routes the event as the service in this request's org, stamped
-    // with this session as its sender, and fires only this user's runs. The
+    // with this session as its sender and this user and tenant as its owner,
+    // and fires only that user's runs in that tenant. The
     // session target is not read: the routing runs in the service's session.
     const service = spec.type === "internal" ? (entry as InternalEntry).service : undefined;
     if (service !== undefined) {
@@ -657,12 +658,21 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           `this process executes requests but was not wired to route a service entry ("${spec.action}" on "${targetFlow.kind}")`
         );
       }
+      // The name is read from the sending session's own stored state, never the payload.
+      const sending = service.senderName === undefined ? undefined : await stores.session.get(resolveSessionStorageKey(identity.sessionId, identity.tenantId));
+      const named = sending === undefined ? undefined : service.senderName?.((sending.state ?? {}) as Readonly<Record<string, unknown>>);
       const routed = await inputs.serviceRoute({
         flowKind: targetFlow.id,
         entry: spec.action,
         provider: service.provider,
         input: spec.payload,
-        sender: { userId: identity.userId, orgId: identity.orgId, sessionId: identity.sessionId, flowKind: flow.kind }
+        sender: {
+          userId: identity.userId,
+          orgId: identity.orgId,
+          ...(identity.tenantId === undefined ? {} : { tenantId: identity.tenantId }),
+          sessionId: identity.sessionId,
+          name: typeof named === "string" && named.length > 0 ? named : flow.kind
+        }
       });
       if (!routed.ok) return refuse("dispatch-rejected", routed.detail);
       return { ok: true, sessionId: routed.sessionId, requestId: routed.requestId, adopted: false };

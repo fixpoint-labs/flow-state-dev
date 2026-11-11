@@ -73,6 +73,7 @@ import { sendServiceMessage } from "../messages/send-message";
 import { retryOnConflict } from "../projects/cas-retry";
 import { criteriaState, deriveWorkerSessionId } from "../workers/derive-session-id";
 import type { WorkerInstallation } from "../workers/installation";
+import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import { SUBSCRIPTION_DELIVER_ENTRY, SUBSCRIPTION_POLL_HANDLER, SUBSCRIPTION_POLLS_RESOURCE, SUBSCRIPTION_ROUTE_ENTRY, serviceSender } from "../subscriptions/keys";
 import {
   MAX_CURSOR_OBJECTS,
@@ -163,11 +164,24 @@ export interface SubscriptionServiceOptions {
   /**
    * Events are published from inside the app (`publishEvent`) and enter
    * through the dispatch seam: the routing entry is a service route, which
-   * the host runs as `service:<provider>` in the publisher's org, firing only
-   * the publisher's own user's runs. Set by `internalServiceFlow`.
+   * the host runs as `service:<provider>` in the publisher's org, stamping the
+   * event's sender (named by its session's worker) and its owner (the
+   * publisher's user and tenant), and firing only that user's runs in that
+   * tenant. Routing nominates only that owner's subscriptions. Set by
+   * `internalServiceFlow`.
    */
   readonly published?: true;
 }
+
+/** A published event's sender name, as the host reads it from the publishing session's state: its worker's id. */
+const publisherName = (state: Readonly<Record<string, unknown>>): string | undefined => {
+  const worker = state[WORKER_ID_STATE_KEY];
+  return typeof worker === "string" ? worker : undefined;
+};
+
+/** Whether `entry` is a subscription a published event may reach: its owner's, in the owner's tenant. Every one, for an event with no owner. */
+const ownedBy = (entry: { userId: string; tenantId?: string }, owner: SubscriptionEvent["owner"]): boolean =>
+  owner === undefined || (entry.userId === owner.userId && (entry.tenantId ?? undefined) === (owner.tenantId ?? undefined));
 
 /** How a forwarded event reaches a coordinator: it asks the app's agent, or nobody asked. Written by the delivery, never by a model. */
 const FORWARD_MARKS = ["addressed", "inferred"] as const;
@@ -329,6 +343,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         // declared routine share an id. Its owner run names the id alone.
         for (const [subscription, entry] of Object.entries(row?.state.subscriptions ?? {})) {
           if (named.has(subscription) || entry.provider !== event.provider || entry.thread !== thread) continue;
+          // A published event reaches its owner alone: anyone else is never screened, judged or counted against the cap.
+          if (!ownedBy(entry, event.owner)) continue;
           named.add(subscription);
           if (thread === closed) closing.push({ subscription, entry });
           if (entry.kinds !== undefined && !entry.kinds.includes(event.kind)) continue;
@@ -952,7 +968,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         [SUBSCRIPTION_ROUTE_ENTRY]: {
           inputSchema: subscriptionEventSchema,
           block: route,
-          ...(options.published === true ? { service: { provider: provider.provider } } : {})
+          ...(options.published === true ? { service: { provider: provider.provider, senderName: publisherName } } : {})
         },
         [SUBSCRIPTION_DELIVER_ENTRY]: { inputSchema: deliverInputSchema, block: deliver }
       }

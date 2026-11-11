@@ -200,7 +200,7 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
    * and a follower's `publish` action publishes. With `relay`, a follower a message wakes publishes what it answers for its session,
    * and the host's `relayed` lists each try.
    */
-  internal?: { readonly topics: InternalTopics; readonly relay?: Relay["next"] };
+  internal?: { readonly topics: InternalTopics; readonly relay?: Relay["next"]; readonly screens?: SubscriptionScreens; readonly maxOwnerRuns?: number };
 };
 
 /** A board host with followers and a GitHub service flow. */
@@ -216,7 +216,8 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const internalOf = (installation: WorkerInstallation) => {
     if (options.internal === undefined) return undefined;
     if (internal === undefined) {
-      internal = internalServiceFlow({ installation, topics: options.internal.topics });
+      const { topics, screens, maxOwnerRuns } = options.internal;
+      internal = internalServiceFlow({ installation, topics, ...(screens === undefined ? {} : { screens }), ...(maxOwnerRuns === undefined ? {} : { maxOwnerRuns }) });
       providers.push(internal.provider);
     }
     return internal;
@@ -422,8 +423,24 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   };
 
   /** Publish as `userId` from a follower's `sessionId` (FIX-2630), and wait for what it started: its answer, `{ published }` or `{ refused }`. */
-  const publish = async (userId: string, sessionId: string, input: Record<string, unknown>) => {
-    const output = (await board.act(userId, sessionId, "publish", input, "follower")).output as { published: string } | { refused: string };
+  /** Publish as `userId` from `sessionId`; under `tenantId` when given. */
+  const publish = async (userId: string, sessionId: string, input: Record<string, unknown>, tenantId?: string) => {
+    const runtime = await board.state.getRuntime();
+    const ran =
+      tenantId === undefined
+        ? await board.act(userId, sessionId, "publish", input, "follower")
+        : ((await runAction({
+            flow: board.instances.follower!,
+            actionName: "publish",
+            input,
+            userId,
+            orgId: ORG,
+            tenantId,
+            sessionId,
+            stores: runtime.stores,
+            runtimeConfig: { ...runtime.runtimeConfig }
+          })) as { output?: unknown });
+    const output = ran.output as { published: string } | { refused: string };
     await board.settled();
     return output;
   };

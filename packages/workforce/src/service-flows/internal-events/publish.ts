@@ -28,7 +28,6 @@ import { MAX_SUBSCRIPTION_EVENT_TEXT, type BlockContext, type SubscriptionEvent 
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 import type { WorkerInstallation } from "../../workers/installation";
-import { WORKER_ID_STATE_KEY } from "../../workers/keys";
 import { messageTurnStateSchema } from "../../messages/hop";
 import { workerMessagesResources } from "../../messages/message-log";
 import { payPlace } from "../../messages/send-message";
@@ -138,7 +137,6 @@ export async function publish(ctx: BlockContext, options: PublishingOptions, inp
   const place = await payPlace(ctx, options.installation, id);
   if (!place.ok) return { refused: place.error.replace("Nothing was sent.", "Nothing was published.") };
 
-  const worker = ((ctx.session.state ?? {}) as Record<string, unknown>)[WORKER_ID_STATE_KEY];
   const thread = internalThreadKey(given.topic);
   const now = Date.now();
   const event: SubscriptionEvent = {
@@ -146,8 +144,8 @@ export async function publish(ctx: BlockContext, options: PublishingOptions, inp
     threads: [thread],
     kind: given.kind,
     object: { id, version: 0 },
-    // The seam stamps the sender: this session, as a member. The name is the worker's, else the flow's kind.
-    sender: { id: ctx.session.identity.id, name: typeof worker === "string" ? worker : "", role: "member" },
+    // The seam replaces it: this session, as a member, named by its worker (else its flow's kind), and the owner beside it.
+    sender: { id: ctx.session.identity.id, name: "", role: "member" },
     audience: "private",
     title: given.title,
     text,

@@ -30,6 +30,10 @@
  *   carries them lands in that chain at `hop + 1`, where a message sent in
  *   the publish's place would; one with neither reads as hop 0 and no
  *   chain, as before.
+ * - `owner`: the one user, in the one tenant, a published event may reach,
+ *   stamped by the host from the publisher's own identity. Routing nominates
+ *   only that user's subscriptions in that tenant. Never set by a webhook's
+ *   `normalize` or a poll, whose events reach every subscriber.
  */
 import { z } from "zod";
 
@@ -73,7 +77,9 @@ export const subscriptionEventSchema = z
     /** One before the place the publish paid in `chain`: its deliveries land at `hop + 1`. With `chain`, only on a published event. */
     hop: z.number().int().min(0).optional(),
     /** The message chain the publish paid its place in. With `hop`, only on a published event. */
-    chain: z.string().min(1).optional()
+    chain: z.string().min(1).optional(),
+    /** The one user (in its tenant, when it has one) a published event may reach. Stamped by the host, only on a published event. */
+    owner: z.object({ userId: z.string().min(1), tenantId: z.string().min(1).optional() }).strict().optional()
   })
   .strict();
 

@@ -29,6 +29,7 @@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { WorkerInstallation } from "../../workers/installation";
 import type { SubscriptionProvider } from "../../subscriptions/subscribe";
+import type { SubscriptionScreens } from "../../subscriptions/screens";
 import { defineSubscriptionServiceFlow } from "../service-flow";
 import { definePublishing, type PublishOutcome } from "./publish";
 import { INTERNAL_PROVIDER, INTERNAL_SERVICE_FLOW, topicOf, undeclared, type InternalTopics } from "./topics";
@@ -45,12 +46,15 @@ export interface InternalServiceFlowOptions {
   readonly capPerHour?: number;
   /** The most subscriptions one event is delivered to. */
   readonly maxOwnerRuns?: number;
+  /** The app's own screens on its topics: its custom functions, and the model a routine's `interest` asks. */
+  readonly screens?: SubscriptionScreens;
 }
 
 /** The internal provider: declared topics only, read as a member of the org; the subscribing session is `self`. */
-function internalProvider(topics: InternalTopics): SubscriptionProvider {
+function internalProvider(topics: InternalTopics, screens: SubscriptionScreens | undefined): SubscriptionProvider {
   return {
     provider: INTERNAL_PROVIDER,
+    ...(screens === undefined ? {} : { screens }),
     canRead(thread: string, ctx: BlockContext) {
       const topic = topicOf(thread);
       const orgId = (ctx.session.identity as { orgId?: string }).orgId;
@@ -98,7 +102,7 @@ export function internalServiceFlow(options: InternalServiceFlowOptions): Intern
     if (topic.length === 0 || /[\s*]/.test(topic)) throw new Error(`internalServiceFlow: "${topic}" isn't a topic name: one word with no spaces or wildcards.`);
     if (declared.kinds.length === 0) throw new Error(`internalServiceFlow: "${topic}" declares no kinds.`);
   }
-  const provider = internalProvider(options.topics);
+  const provider = internalProvider(options.topics, options.screens);
   const flow = defineSubscriptionServiceFlow({
     kind,
     provider,

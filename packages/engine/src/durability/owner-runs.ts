@@ -40,7 +40,7 @@ export interface OwnerRun {
   readonly rowKey: string;
 }
 
-/** Why a run did not start. `other_user`: the routing fires only one user's runs, and this one names another. */
+/** Why a run did not start. `other_user`: the routing fires only one user's runs, and this one names another (`other_tenant` too, for its tenant). */
 export type OwnerRunRefusal = "no_resource" | "other_org" | "other_tenant" | "disabled" | "other_user";
 
 /** What a fire came to. */
@@ -136,6 +136,18 @@ function parseOwnerRun(value: unknown, flowKind: string, orgId: string): OwnerRu
   };
 }
 
+/** The one user, in its tenant, a routing may fire runs for. */
+export interface RouteOwner {
+  readonly userId: string;
+  readonly tenantId?: string;
+}
+
+/** Why `run` is not `owner`'s, or `undefined` when it is. */
+function otherOwner(run: OwnerRun, owner: RouteOwner): OwnerRunRefusal | undefined {
+  if (run.owner.userId !== owner.userId) return "other_user";
+  return tenantMatches(run.owner.tenantId, owner.tenantId) ? undefined : "other_tenant";
+}
+
 /** Fire one run, catching what the host throws so one bad run can't stop the rest. */
 async function fireOne(host: Pick<InboundTransportHost, "dispatch" | "stores">, run: OwnerRun): Promise<RoutedOwnerRun> {
   try {
@@ -155,8 +167,10 @@ async function fireOne(host: Pick<InboundTransportHost, "dispatch" | "stores">, 
  *
  * @param service.principal The service's own identity in the org (`service:github`). It reads no user's cell.
  * @param options.concurrency The most runs started at once: 8 by default.
- * @param options.owner Fire only the runs whose owner is this user; any other is refused `other_user` and never fired
- *   (a publish's routing, which reaches only its sender's own user).
+ * @param options.owner Fire only the runs whose owner is this user in this tenant; any other user's is refused
+ *   `other_user`, and another tenant's `other_tenant`, never fired (a publish's routing, which reaches only its
+ *   sender's own user). The routing entry is told it too (the event's `owner`), and nominates no one else; this is
+ *   the backstop.
  */
 export async function routeServiceEvent(
   host: Pick<InboundTransportHost, "dispatch" | "stores">,
@@ -166,7 +180,7 @@ export async function routeServiceEvent(
     readonly input: unknown;
     readonly principal: InternalPrincipal;
   },
-  options: { readonly concurrency?: number; readonly owner?: string } = {}
+  options: { readonly concurrency?: number; readonly owner?: RouteOwner } = {}
 ): Promise<RoutedServiceEvent> {
   const { userId, orgId } = service.principal;
   const sessionId = `service-route:${[orgId, userId, service.flowKind].map(encodeURIComponent).join(":")}`;
@@ -195,7 +209,8 @@ export async function routeServiceEvent(
   const worker = async () => {
     for (let i = next++; i < runs.length; i = next++) {
       const run = runs[i]!;
-      ownerRuns[i] = options.owner !== undefined && run.owner.userId !== options.owner ? { run, refused: "other_user" } : await fireOne(host, run);
+      const refused = options.owner === undefined ? undefined : otherOwner(run, options.owner);
+      ownerRuns[i] = refused === undefined ? await fireOne(host, run) : { run, refused };
     }
   };
   const width = Math.max(1, Math.min(options.concurrency ?? DEFAULT_OWNER_RUN_CONCURRENCY, runs.length));
@@ -211,10 +226,16 @@ export interface ServiceRouteDispatch {
   readonly entry: string;
   /** The provider the route runs as: `service:<provider>`. */
   readonly provider: string;
-  /** The event. Its `sender` is replaced with {@link sender}'s session. */
+  /** The event. Its `sender` and `owner` are replaced with {@link sender}'s. */
   readonly input: unknown;
-  /** The dispatching request's server-derived identity. */
-  readonly sender: { readonly userId: string; readonly orgId: string; readonly sessionId: string; readonly flowKind: string };
+  /** The dispatching request's server-derived identity, and the sender's name as the host read it. */
+  readonly sender: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly tenantId?: string;
+    readonly sessionId: string;
+    readonly name: string;
+  };
 }
 
 /** What a service route came to: routed (its runs fired or refused), or not, and why. */
@@ -225,22 +246,23 @@ export type ServiceRouteOperation = (route: ServiceRouteDispatch) => Promise<Ser
 
 /**
  * The seam's service route, over `host`: the event, its `sender` stamped as
- * the dispatching session (role `member`, its own name kept, else the
- * sender's flow kind), routed through
+ * the dispatching session (role `member`, the name the seam read) and its
+ * `owner` as the sender's user and tenant, routed through
  * {@link routeServiceEvent} as `service:<provider>` in the sender's org, with
- * only the sender's own user's runs fired (own-user first).
+ * only that user's runs in that tenant fired (own-user first).
  * Resolves once every run is fired or refused. A routing that failed or never
  * finished is not routed.
  */
 export function createServiceRouteOperation(host: Pick<InboundTransportHost, "dispatch" | "stores">): ServiceRouteOperation {
   return async (route) => {
     const event = typeof route.input === "object" && route.input !== null ? (route.input as Record<string, unknown>) : {};
-    const named = (event.sender as { name?: unknown } | undefined)?.name;
-    const input = { ...event, sender: { id: route.sender.sessionId, name: typeof named === "string" && named.length > 0 ? named : route.sender.flowKind, role: "member" } };
+    const { userId, tenantId, sessionId, name, orgId } = route.sender;
+    const owner: RouteOwner = { userId, ...(tenantId === undefined ? {} : { tenantId }) };
+    const input = { ...event, sender: { id: sessionId, name, role: "member" }, owner };
     const routed = await routeServiceEvent(
       host,
-      { flowKind: route.flowKind, entry: route.entry, input, principal: { userId: `service:${route.provider}`, orgId: route.sender.orgId } },
-      { owner: route.sender.userId }
+      { flowKind: route.flowKind, entry: route.entry, input, principal: { userId: `service:${route.provider}`, orgId } },
+      { owner }
     );
     if (routed.error !== undefined) {
       return { ok: false, detail: `the routing failed: ${routed.error instanceof Error ? routed.error.message : JSON.stringify(routed.error)}` };
