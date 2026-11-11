@@ -104,7 +104,6 @@ describe("createInboundTransportHost", () => {
         actions: {
           run: {
             durable: true,
-            inputSchema: z.object({ value: z.string() }),
             block: sequencer({
               name: "seq",
               durable: true,

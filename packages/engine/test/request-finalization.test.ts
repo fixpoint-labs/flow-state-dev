@@ -26,15 +26,12 @@ function makeFlow(
   return defineFlow({
     kind: "finalization-flow",
     actions: {
-      run: {
-        inputSchema: z.object({ value: z.number() }),
-        block: handler({
+      run: handler({
           name: "echo",
           inputSchema: z.object({ value: z.number() }),
           outputSchema: z.object({ value: z.number() }),
           execute: (input) => input
         })
-      }
     },
     request: {
       ...(heartbeatIntervalMs !== undefined ? { heartbeatIntervalMs } : {}),
@@ -136,15 +133,12 @@ describe("request finalization", () => {
     const flow = defineFlow({
       kind: "finalization-sidechain-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "echo",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.object({ value: z.number() }),
             execute: (input) => input
           })
-        }
       },
       request: {
         onFinished: sequencer({ name: "finished-seq" })

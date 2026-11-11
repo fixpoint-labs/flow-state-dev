@@ -16,10 +16,7 @@ describe("a Discard that lands after a Continue was admitted", () => {
     const flow = defineFlow({
       kind: "race",
       actions: {
-        respond: {
-          inputSchema: z.any(),
-          block: handler({ name: "h", inputSchema: z.any(), outputSchema: z.any(), execute: async () => { runs += 1; return "answered"; } })
-        }
+        respond: handler({ name: "h", inputSchema: z.any(), outputSchema: z.any(), execute: async () => { runs += 1; return "answered"; } })
       }
     })({ id: "race" });
     const registry = createFlowRegistry();

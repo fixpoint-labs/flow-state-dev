@@ -12,7 +12,7 @@ import {
   transientSlot,
   DEFAULT_ORG_ID
 } from "@flow-state-dev/core";
-import type { FlowInstance, ResumeAction, SuspensionRecord } from "@flow-state-dev/core/types";
+import type { ActionConfig, FlowInstance, ResumeAction, SuspensionRecord } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, runAction } from "../src";
@@ -34,7 +34,7 @@ function run(flow: FlowInstance, input: unknown = {}) {
 
 function flowOf(
   kind: string,
-  block: Parameters<typeof defineFlow>[0]["actions"][string]["block"],
+  block: ActionConfig["block"],
   id?: string
 ) {
   return defineFlow({ kind, actions: { run: { inputSchema: z.any(), block } } })(

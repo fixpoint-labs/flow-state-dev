@@ -108,7 +108,6 @@ const flow = defineFlow({
   kind: "cross-package-validation",
   actions: {
     run: {
-      inputSchema: z.object({ prompt: z.string() }),
       block: perform,
       userMessage: (input) => input.prompt
     }

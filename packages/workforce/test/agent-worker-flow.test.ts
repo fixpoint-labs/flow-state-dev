@@ -409,7 +409,6 @@ describe("replacing the built-in agent worker flow", () => {
     configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
     actions: {
       respond: {
-        inputSchema: z.object({ message: z.string() }),
         userMessage: (input: { message: string }) => input.message,
         block: handler({
           name: "their-answer",

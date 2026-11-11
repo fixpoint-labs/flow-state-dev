@@ -278,7 +278,7 @@ describe("key fence · a process that never declared an owner-private collection
         },
       },
     },
-    actions: { probe: { inputSchema: tagInput, block: probeOpen } },
+    actions: { probe: probeOpen },
     authentication: verified,
   });
 
@@ -461,7 +461,7 @@ describe("an owner-private collection serves each row only to its owner", () => 
   const privateFlow = defineFlow({
     kind: "private",
     resources: { notes, cards, probes },
-    actions: { probe: { inputSchema: tagInput, block: probePrivate } },
+    actions: { probe: probePrivate },
     authentication: verified,
   });
 
@@ -525,15 +525,12 @@ describe("an owner-private collection serves each row only to its owner", () => 
         everything: defineResourceCollection({ pattern: "[a]/[b]/[c]", scope: "org", stateSchema: passthrough }),
       },
       actions: {
-        ping: {
-          inputSchema: z.object({}),
-          block: handler({
+        ping: handler({
             name: "wide-ping",
             inputSchema: z.object({}),
             outputSchema: z.object({ ok: z.boolean() }),
             execute: () => ({ ok: true }),
           }),
-        },
       },
       authentication: verified,
     });

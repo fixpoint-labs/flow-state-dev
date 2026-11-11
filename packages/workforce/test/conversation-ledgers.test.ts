@@ -36,7 +36,7 @@ const probe = handler({
 const probeFlow = defineFlow({
   kind: "probe",
   resources: { ...conversationLedgerResources },
-  actions: { probe: { inputSchema: probeInput, block: probe } }
+  actions: { probe }
 });
 
 describe("the ledger a work entry's gate reads", () => {

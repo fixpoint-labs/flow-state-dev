@@ -31,9 +31,7 @@ describe("a running request's items", () => {
     const flow = defineFlow({
       kind: "in-flight-items",
       actions: {
-        work: {
-          inputSchema: z.object({}),
-          block: handler({
+        work: handler({
             name: "long-work",
             inputSchema: z.object({}),
             outputSchema: z.object({}),
@@ -46,7 +44,6 @@ describe("a running request's items", () => {
               return {};
             }
           })
-        }
       }
     })();
 
@@ -137,7 +134,6 @@ describe.each([
         request: { stateSchema: z.object({ phase: z.string().default("idle") }) },
         actions: {
           work: {
-            inputSchema: z.object({}),
             block: handler({
               name: "long-work",
               inputSchema: z.object({}),

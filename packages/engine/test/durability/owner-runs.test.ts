@@ -44,8 +44,8 @@ const svc = defineFlow({
   actions: {},
   internal: {
     actions: {
-      deliver: { inputSchema: z.object({ note: z.string() }), block: ownerRun },
-      route: { inputSchema: z.object({ runs: z.array(z.any()) }), block: route }
+      deliver: ownerRun,
+      route
     }
   }
 })();

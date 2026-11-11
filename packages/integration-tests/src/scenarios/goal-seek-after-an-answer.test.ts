@@ -96,7 +96,7 @@ function buildFlow() {
     kind: `${NAME}-flow`,
     actions: {
       plan: { inputSchema: z.unknown(), block: loop },
-      answer: { inputSchema: z.object({ message: z.string() }), block: answer },
+      answer,
     },
   } as never)();
   return { flow, seen };

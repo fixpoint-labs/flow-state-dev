@@ -37,7 +37,6 @@ const deskClerk = defineFlow({
   configSchema: z.object({ desk: z.string().default("front") }),
   actions: {
     answer: {
-      inputSchema: z.object({}).passthrough(),
       block: handler({
         name: "answer",
         inputSchema: z.object({}).passthrough(),
@@ -58,14 +57,11 @@ const deskClerk = defineFlow({
 const resident = defineFlow({
   kind: "resident",
   actions: {
-    ping: {
-      inputSchema: z.object({}).passthrough(),
-      block: handler({
+    ping: handler({
         name: "ping",
         inputSchema: z.object({}).passthrough(),
         execute: () => undefined,
       }),
-    },
   },
 })();
 
@@ -183,14 +179,11 @@ describe("V2 · the registry's admission contract survives unregister", () => {
       kind: "ledger-string",
       org: { stateSchema: z.object({ balance: z.string().default("") }) },
       actions: {
-        noop: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        noop: handler({
             name: "noop",
             inputSchema: z.object({}).passthrough(),
             execute: () => undefined,
           }),
-        },
       },
     })();
 
@@ -198,14 +191,11 @@ describe("V2 · the registry's admission contract survives unregister", () => {
       kind: "ledger-number",
       org: { stateSchema: z.object({ balance: z.number().default(0) }) },
       actions: {
-        noop: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        noop: handler({
             name: "noop",
             inputSchema: z.object({}).passthrough(),
             execute: () => undefined,
           }),
-        },
       },
     })();
 
@@ -245,14 +235,11 @@ describe("V2 · the registry's admission contract survives unregister", () => {
         kind: "ledger",
         org: { stateSchema: stateSchema as never },
         actions: {
-          noop: {
-            inputSchema: z.object({}).passthrough(),
-            block: handler({
+          noop: handler({
               name: "noop",
               inputSchema: z.object({}).passthrough(),
               execute: () => undefined,
             }),
-          },
         },
       })();
 
@@ -280,14 +267,11 @@ describe("V2 · the registry's admission contract survives unregister", () => {
       kind: "ledger-number",
       org: { stateSchema: balanceAsNumber },
       actions: {
-        noop: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        noop: handler({
             name: "noop",
             inputSchema: z.object({}).passthrough(),
             execute: () => undefined,
           }),
-        },
       },
     })();
     expect(() => registry.register(agreesWithLive)).toThrow(CrossFlowSchemaConflictError);
@@ -297,14 +281,11 @@ describe("V2 · the registry's admission contract survives unregister", () => {
       kind: "ledger-string",
       org: { stateSchema: z.object({ balance: z.string().default("") }) },
       actions: {
-        noop: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        noop: handler({
             name: "noop",
             inputSchema: z.object({}).passthrough(),
             execute: () => undefined,
           }),
-        },
       },
     })();
     expect(() => registry.register(contradictsLive)).not.toThrow();

@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Before and after. Today the host does five things in an order it works out: reads the workforce tree, writes its own refusal, builds the installation with a flow builder, hires the workers, and spreads every flow into createFlowState by hand; the walk primitives sit inside workforce. After, the app lists its kits in any order, and the engine orders them by requires, merges each slot, reads each kit's folder through one walker that refuses any file no reader claimed, runs each install, and registers the flows. defineKit sits in core; the walker sits on a Node-only engine subpath."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .pane  { fill:var(--surface-2); }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .eng   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .lib   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-c   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="pane" x="16" y="14" width="440" height="372" rx="6"/>
+    <text class="t-lbl" x="32" y="36">TODAY · THE HOST, IN AN ORDER IT WORKS OUT</text>
+    <rect class="gone" x="32" y="50" width="408" height="40" rx="4"/>
+    <text class="t-b" x="46" y="70">1 · read the workforce tree</text>
+    <text class="t-s" x="46" y="84">readDeclaredRoster, or readWorkforce</text>
+    <rect class="gone" x="32" y="98" width="408" height="40" rx="4"/>
+    <text class="t-b" x="46" y="118">2 · write its own refusal</text>
+    <text class="t-s" x="46" y="132">throw if any problem; each host its own wording</text>
+    <rect class="gone" x="32" y="146" width="408" height="40" rx="4"/>
+    <text class="t-b" x="46" y="166">3 · build the installation</text>
+    <text class="t-s" x="46" y="180">createWorkerInstallation, with the coder flow passed in</text>
+    <rect class="gone" x="32" y="194" width="408" height="40" rx="4"/>
+    <text class="t-b" x="46" y="214">4 · hire, then spread every flow by hand</text>
+    <text class="t-s" x="46" y="228">hireWorkforce; Object.fromEntries into createFlowState</text>
+    <rect class="lib" x="32" y="250" width="408" height="56" rx="4"/>
+    <text class="t-lbl" x="46" y="268">INSIDE WORKFORCE</text>
+    <text class="t-b" x="46" y="286">the walk primitives, workforce's own</text>
+    <text class="t-s" x="46" y="300">root entries unread; a stray file in teams/ skipped</text>
+    <text class="t-g" x="32" y="334">DASHED RED · WHAT THE HOST STOPS WRITING</text>
+    <text class="t-s" x="32" y="352">The order lives in the host; so do</text>
+    <text class="t-s" x="32" y="368">both packages' internals.</text>
+  </g>
+
+  <g id="after">
+    <rect class="pane" x="484" y="14" width="440" height="372" rx="6"/>
+    <text class="t-lbl" x="500" y="36">AFTER · ONE LIST, ANY ORDER</text>
+    <rect class="app" x="500" y="50" width="408" height="40" rx="4"/>
+    <text class="t-b" x="514" y="70">kits: [harnesses({…}), workforce({…})]</text>
+    <text class="t-s" x="514" y="84">plus the app's own flows</text>
+    <rect class="eng" x="500" y="104" width="408" height="150" rx="4"/>
+    <text class="t-lbl" x="514" y="122">THE ENGINE</text>
+    <text class="t-b" x="514" y="142">order by requires</text>
+    <text class="t-b" x="514" y="164">merge each slot · schema checked</text>
+    <text class="t-b" x="514" y="186">read each folder · used or refused</text>
+    <text class="t-b" x="514" y="208">run each install · existing pieces</text>
+    <text class="t-b" x="514" y="230">register the flows · one per id</text>
+    <text class="t-s" x="514" y="246">a refusal: ready() rejects, the app does not start</text>
+    <path class="arrow" d="M704 90 L704 100"/>
+    <path class="head" d="M700 98 L704 104 L708 98 Z"/>
+    <rect class="lib" x="500" y="270" width="196" height="56" rx="4"/>
+    <text class="t-lbl" x="514" y="288">CORE</text>
+    <text class="t-b" x="514" y="306">defineKit, slot types</text>
+    <text class="t-s" x="514" y="320">no Node import</text>
+    <rect class="lib" x="712" y="270" width="196" height="56" rx="4"/>
+    <text class="t-lbl" x="726" y="288">ENGINE · NODE-ONLY</text>
+    <text class="t-b" x="726" y="306">the folder walker</text>
+    <text class="t-s" x="726" y="320">lifted out of workforce</text>
+    <text class="t-c" x="500" y="352">GREEN · WHAT THE ENGINE NOW DOES</text>
+    <text class="t-s" x="500" y="368">The host names kits; the engine owns the order.</text>
+  </g>
+</svg>

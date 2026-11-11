@@ -25,7 +25,10 @@ import {
 import type {
   FlowCardinality,
   ActionConfig,
+  ActionEntry,
+  NormalizedActions,
   ReadConfig,
+  ReadEntry,
   FlowDefinition,
   FlowInstance,
   FlowInstanceOptions,
@@ -121,6 +124,38 @@ function validateScopeClientConfig(
 
 type AnyActions = Record<string, ActionConfig>;
 
+/**
+ * An entry in the object form: a bare block becomes `{ block }`, an object is
+ * returned as is. `normalizeFlowConfig` runs every entry map through this, so
+ * every reader after it sees only `{ block, ... }`.
+ */
+function toEntry<TEntry extends { block: BlockDefinition }>(
+  value: TEntry | BlockDefinition
+): TEntry {
+  return (isBlockDefinition(value) ? { block: value } : value) as TEntry;
+}
+
+/** Each entry of a map through {@link toEntry}. */
+function toEntries<TEntry extends { block: BlockDefinition }>(
+  entries: Record<string, TEntry | BlockDefinition>
+): Record<string, TEntry> {
+  const result: Record<string, TEntry> = {};
+  for (const [name, value] of Object.entries(entries)) result[name] = toEntry<TEntry>(value);
+  return result;
+}
+
+/**
+ * The entry with its description resolved: its own, else its block's. Resolved
+ * once here so MCP, the devtool and validation all read the same value.
+ */
+function withResolvedDescription<TEntry extends { block: BlockDefinition; description?: string }>(
+  entry: TEntry
+): TEntry {
+  if (entry.description !== undefined) return entry;
+  const description = (entry.block as BlockDefinition | undefined)?.description;
+  return description === undefined ? entry : { ...entry, description };
+}
+
 type AnySession = SessionConfig | undefined;
 type AnyRequest = RequestConfig | undefined;
 type AnyUser = UserConfig | undefined;
@@ -132,7 +167,7 @@ type AnyResources = Record<string, DeclaredResourceEntry> | undefined;
 // aliases are what the normalization functions read, and a definition whose
 // `configSchema` typed as `undefined` could not be read at all.
 type AnyFlowDefinition = FlowDefinition<
-  AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg,
+  Record<string, ActionEntry>, AnySession, AnyRequest, AnyUser, AnyOrg,
   Record<string, DeclaredResourceEntry>, ZodTypeAny
 >;
 type AnyFlowInstanceOptions = FlowInstanceOptions<
@@ -539,13 +574,13 @@ function warnSilentGeneratorActions(kind: string, actions: AnyActions): void {
 }
 
 function mergeActions(
-  baseActions: AnyActions,
+  baseActions: Record<string, ActionEntry>,
   overrideActions: AnyFlowInstanceOptions["actions"],
   flowTools: ToolsConfig | undefined
 ): AnyActions {
-  const merged: AnyActions = {
-    ...baseActions
-  };
+  // `?? {}`: a definition built without `actions` (some hosts mint one) spread
+  // to an empty map before entries were normalized, and still does.
+  const merged: AnyActions = toEntries<ActionConfig>(baseActions ?? {});
 
   if (overrideActions !== undefined) {
     for (const [actionName, overrideAction] of Object.entries(overrideActions)) {
@@ -553,22 +588,27 @@ function mergeActions(
         continue;
       }
 
+      const override = toEntry<ActionConfig>(overrideAction);
       const existing = merged[actionName];
       merged[actionName] =
         existing === undefined
-          ? overrideAction
+          ? override
           : {
               ...existing,
-              ...overrideAction
+              ...override
             };
     }
   }
 
+  // The description resolves after the merge, so an override that swaps the
+  // block takes the new block's description when no description was written.
+  // A description the definition or the override wrote stays: it is the
+  // author's wording, whichever block runs.
   for (const [actionName, action] of Object.entries(merged)) {
-    merged[actionName] = {
+    merged[actionName] = withResolvedDescription({
       ...action,
       block: withFlowTools(action.block, flowTools)
-    };
+    });
   }
 
   return merged;
@@ -795,19 +835,19 @@ function mergeFlowScopeStateSchemas(
  * maps. A flat map here would otherwise read as "no entries" and every
  * dispatch to it would be refused at run time, one row at a time.
  */
-function typedEntries<TEntry>(
+function typedEntries<TEntry extends { block: BlockDefinition }>(
   kind: string,
   type: "internal" | "task",
-  value: TypedEntries<TEntry> | undefined
+  value: TypedEntries<TEntry | BlockDefinition> | undefined
 ): Record<string, TEntry> | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "object" || value === null || typeof value.actions !== "object" || value.actions === null) {
     throw new Error(
       `Flow "${kind}" declares "${type}" without an \`actions\` map. Entries of a type are ` +
-        `nested under it: \`${type}: { actions: { name: { block } } }\`.`
+        `nested under it: \`${type}: { actions: { name: block } }\`.`
     );
   }
-  return value.actions;
+  return toEntries<TEntry>(value.actions);
 }
 
 // FIX-2286.
@@ -818,16 +858,19 @@ function typedEntries<TEntry>(
  */
 function validateReads(
   kind: string,
-  reads: Record<string, ReadConfig> | undefined
+  declared: Record<string, ReadEntry> | undefined
 ): Record<string, ReadConfig> | undefined {
-  if (reads === undefined) return undefined;
-  if (typeof reads !== "object" || reads === null) {
-    throw new Error(`Flow "${kind}" declares "reads" that is not a map of name to \`{ block }\`.`);
+  if (declared === undefined) return undefined;
+  if (typeof declared !== "object" || declared === null) {
+    throw new Error(`Flow "${kind}" declares "reads" that is not a map of name to a block.`);
   }
-  for (const [name, read] of Object.entries(reads)) {
+  const reads: Record<string, ReadConfig> = {};
+  for (const [name, value] of Object.entries(declared)) {
+    const read = toEntry<ReadConfig>(value);
     if (typeof read !== "object" || read === null || !isBlockDefinition(read.block)) {
-      throw new Error(`Flow "${kind}" read "${name}" has no block. A read is \`{ block }\`.`);
+      throw new Error(`Flow "${kind}" read "${name}" has no block. A read is a block, or \`{ block }\`.`);
     }
+    reads[name] = withResolvedDescription(read);
   }
   return reads;
 }
@@ -1286,7 +1329,7 @@ function mergeAuthentication(
 
 /**
  * When `mcp.enabled === true`, every action that will be exposed via the
- * MCP adapter must carry a non-empty `description`. The MCP package
+ * MCP adapter must carry a non-empty `description`, its own or its block's. The MCP package
  * converts actions into LLM-facing tools; an empty description ships an
  * unusable tool. Catching the omission at registration is preferable to
  * discovering it when an MCP client connects.
@@ -1304,11 +1347,13 @@ function validateMcpConfig(
   for (const [actionName, action] of Object.entries(actions)) {
     if (action.mcp?.enabled === false) continue;
 
+    // `description` is already resolved: the action's own, else its block's.
     if (typeof action.description !== "string" || action.description.trim().length === 0) {
       throw new Error(
         `Flow "${flowKind}" exposes action "${actionName}" via MCP but the action has no ` +
-        `description. Set actions.${actionName}.description to a non-empty string — it ` +
-        `becomes the LLM-facing MCP tool description.`
+        `description, and neither does its block "${action.block.name}". Give the block a ` +
+        `description, or set actions.${actionName}.description when the tool needs wording ` +
+        `of its own. It becomes the LLM-facing MCP tool description.`
       );
     }
   }
@@ -1567,7 +1612,7 @@ function normalizeFlowConfig(
 }
 
 export function defineFlow<
-  const TActions extends Record<string, ActionConfig>,
+  const TActions extends Record<string, ActionEntry>,
   const TSession extends SessionConfig | undefined = SessionConfig | undefined,
   const TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   const TUser extends UserConfig | undefined = UserConfig | undefined,
@@ -1576,14 +1621,14 @@ export function defineFlow<
   TConfigSchema extends ZodTypeAny | undefined = undefined
 >(
   definition: FlowDefinition<TActions, TSession, TRequest, TUser, TOrg, TResources, TConfigSchema>
-): FlowType<TActions, TSession, TRequest, TUser, TOrg, TResources, TConfigSchema> {
+): FlowType<NormalizedActions<TActions>, TSession, TRequest, TUser, TOrg, TResources, TConfigSchema> {
   const normalizedDefinition: AnyFlowDefinition = {
     ...definition
   };
 
   const flowFactory = ((options?: AnyFlowInstanceOptions) =>
     createFlowInstance(normalizedDefinition, options)) as FlowType<
-    TActions,
+    NormalizedActions<TActions>,
     TSession,
     TRequest,
     TUser,
@@ -1628,7 +1673,7 @@ export function defineFlow<
     config: probedConfig,
     requiresConfig,
     authentication: baseInstance.authentication,
-    actions: baseInstance.actions as TActions,
+    actions: baseInstance.actions as NormalizedActions<TActions>,
     // Mirrored for the same reason `requiresConfig` is: this blueprint is read
     // directly, and a missing map reads as an absent feature rather than as an
     // unmirrored one.

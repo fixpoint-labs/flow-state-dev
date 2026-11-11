@@ -178,9 +178,7 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
     const flow = defineFlow({
       kind: "readonly-state-retry-flow",
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({
+        run: handler({
             name: "write-readonly-state",
             inputSchema: z.object({}),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -191,7 +189,6 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
               return { ok: true };
             }
           })
-        }
       },
       resources: {
         doc: defineResource({
@@ -223,9 +220,7 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
     const flow = defineFlow({
       kind: "readonly-content-retry-flow",
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({
+        run: handler({
             name: "write-readonly-content",
             inputSchema: z.object({}),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -236,7 +231,6 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
               return { ok: true };
             }
           })
-        }
       },
       resources: {
         doc: defineResource({
@@ -272,7 +266,6 @@ describe("collection writable:false refusals are not retried", () => {
       kind: "readonly-collection-retry-flow",
       actions: {
         run: {
-          inputSchema: z.object({}),
           block: handler({
             name: "write-readonly-collection",
             inputSchema: z.object({}),

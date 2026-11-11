@@ -57,10 +57,7 @@ describe("defineFlow", () => {
     const flow = defineFlow({
       kind: "demo",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: baseAction
-        }
+        run: baseAction
       },
       session: {
         stateSchema: z.object({ mode: z.enum(["plan", "edit"]) })
@@ -71,14 +68,11 @@ describe("defineFlow", () => {
       id: "demo-custom",
       kind: "demo-custom-kind",
       actions: {
-        extra: {
-          inputSchema: z.object({ message: z.string() }),
-          block: handler({
+        extra: handler({
             name: "extra-action",
             inputSchema: z.object({ message: z.string() }),
             execute: (input) => input.message
           })
-        }
       },
       session: {
         // @ts-expect-error — source gap FIX-2025: `session` is typed as the definition's config, so a `metadata` schema the runtime accepts is refused.
@@ -100,10 +94,7 @@ describe("defineFlow", () => {
 
   describe("instance cardinality", () => {
     const actions = {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({ name: "noop", inputSchema: z.object({}), execute: () => "ok" })
-      }
+      run: handler({ name: "noop", inputSchema: z.object({}), execute: () => "ok" })
     };
 
     it("defaults a singleton's id to its effective kind and mirrors the policy", () => {

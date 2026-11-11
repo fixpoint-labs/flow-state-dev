@@ -27,14 +27,11 @@ const echoRouter: FlowApiRouter = {
 const echoFlow = defineFlow({
   kind: "echo",
   actions: {
-    say: {
-      inputSchema: z.object({ text: z.string() }),
-      block: handler({
+    say: handler({
         name: "echo-say",
         inputSchema: z.object({ text: z.string() }),
         execute: (input: { text: string }) => ({ said: input.text })
       })
-    }
   }
 })();
 

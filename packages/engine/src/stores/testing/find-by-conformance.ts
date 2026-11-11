@@ -79,7 +79,7 @@ function ledgerFlow(work: ReturnType<typeof ledger>) {
   });
   return defineFlow({
     kind: "find-by-ledger",
-    actions: { file: { inputSchema: fileInput, block: file }, find: { inputSchema: findInput, block: find } },
+    actions: { file, find },
   })();
 }
 
@@ -217,7 +217,7 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
               (row) => row.path
             ),
         });
-        const flow = defineFlow({ kind: "find-by-notes", actions: { find: { inputSchema: z.object({}), block: find } } })();
+        const flow = defineFlow({ kind: "find-by-notes", actions: { find } })();
         const state = createFlowState({
           flows: { notes: flow } as never,
           stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(raw) } } },
@@ -288,7 +288,7 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
         });
         const flow = defineFlow({
           kind: "find-by-cells",
-          actions: { file: { inputSchema: fileInput, block: file }, find: { inputSchema: findInput, block: find } },
+          actions: { file, find },
         })();
         const app = await boot(raw, flow);
         await app.file([
@@ -348,7 +348,7 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
         });
         const flow = defineFlow({
           kind: "find-by-single-cell",
-          actions: { file: { inputSchema: fileInput, block: file }, find: { inputSchema: findInput, block: find } },
+          actions: { file, find },
         })();
         const app = await boot(raw, flow);
         await app.file([{ key: "public", id: "x" }]);
@@ -389,9 +389,7 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
           const taggedFlow = defineFlow({
             kind: "find-by-tagged",
             actions: {
-              file: {
-                inputSchema: tagInput,
-                block: handler({
+              file: handler({
                   name: "file-tagged",
                   inputSchema: tagInput,
                   outputSchema: z.array(z.string()),
@@ -402,15 +400,12 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
                     return (await ref.findBy("byTag", input.tag.toLowerCase())).map((row) => row.path);
                   },
                 }),
-              },
             },
           })();
           const titledFlow = defineFlow({
             kind: "find-by-titled",
             actions: {
-              file: {
-                inputSchema: tagInput,
-                block: handler({
+              file: handler({
                   name: "file-titled",
                   inputSchema: tagInput,
                   outputSchema: z.array(z.string()),
@@ -420,7 +415,6 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
                     return [];
                   },
                 }),
-              },
             },
           })();
           const state = createFlowState({

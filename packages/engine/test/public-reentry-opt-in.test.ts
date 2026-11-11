@@ -40,14 +40,11 @@ function makeFlow() {
   return defineFlow({
     kind: "custom-transport",
     actions: {
-      run: {
-        inputSchema: z.object({ value: z.string().optional() }),
-        block: handler({
+      run: handler({
           name: "run",
           inputSchema: z.object({ value: z.string().optional() }),
           execute: () => undefined
         })
-      }
     }
   })({ id: "custom-transport" });
 }

@@ -29,7 +29,6 @@ function buildFlow(overrides: Parameters<typeof defineFlow>[0] | undefined = und
       kind: "billing",
       actions: {
         run: {
-          inputSchema: z.object({ value: z.string().optional() }),
           block: noopBlock,
           description: "Run the billing action"
         }
@@ -394,10 +393,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     const flow = defineFlow({
       kind: "billing",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string().optional() }),
-          block: noopBlock
-        }
+        run: noopBlock
       },
       schedules: {
         static: {
@@ -488,7 +484,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     const flow = defineFlow({
       kind: "billing",
       actions: {
-        run: { inputSchema: z.object({ value: z.string().optional() }), block: noopBlock }
+        run: noopBlock
       },
       schedules: {
         static: {
@@ -517,7 +513,7 @@ describe("createScheduledTransportAdapter — list", () => {
     const flow = defineFlow({
       kind: "billing",
       actions: {
-        run: { inputSchema: z.object({ value: z.string().optional() }), block: noopBlock }
+        run: noopBlock
       },
       schedules: {
         static: { "monthly-invoices": { cron: "0 0 1 * *", block: noopBlock, description: "monthly" } },
@@ -579,7 +575,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
     const flow = defineFlow({
       kind: "billing",
       actions: {
-        run: { inputSchema: z.object({ value: z.string().optional() }), block: noopBlock }
+        run: noopBlock
       },
       schedules: {
         static: {

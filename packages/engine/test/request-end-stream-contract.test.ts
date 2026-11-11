@@ -199,8 +199,6 @@ describe.each([
       kind: "request-end-stream",
       actions: {
         run: {
-          inputSchema: z.any(),
-          // The first run hangs, as a run whose process died; a continuation finishes.
           block: handler({
             name: "hang-once",
             inputSchema: z.any(),
@@ -257,7 +255,7 @@ describe.each([
       persist(requestId, events.filter((event) => event.type !== "request.completed"));
     const flow = defineFlow({
       kind: "request-end-stream",
-      actions: { run: { inputSchema: z.any(), block: handler({ name: "answer", inputSchema: z.any(), execute: () => "fine" }) } }
+      actions: { run: handler({ name: "answer", inputSchema: z.any(), execute: () => "fine" }) }
     })({ id: FLOW_ID });
     const router = hostFor(stores, flow as never);
 

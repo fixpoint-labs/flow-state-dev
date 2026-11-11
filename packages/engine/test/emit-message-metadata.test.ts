@@ -19,9 +19,7 @@ function flow() {
   return defineFlow({
     kind: "message-metadata",
     actions: {
-      say: {
-        inputSchema: z.object({}),
-        block: handler({
+      say: handler({
           name: "say",
           inputSchema: z.object({}),
           execute: async (_input, ctx) => {
@@ -31,7 +29,6 @@ function flow() {
             return {};
           }
         })
-      }
     }
   })();
 }

@@ -312,9 +312,9 @@ function partitionCoordinator(sameFlow = false, isolated = false) {
     kind: COORD,
     ...(isolated ? { isolateUserState: true } : {}),
     actions: {
-      file: { inputSchema: file.inputSchema, block: file },
+      file,
       drain: { block: board.drain },
-      read: { inputSchema: read.inputSchema, block: read },
+      read,
       // The board's task tools as public actions: `listTasks_partition-tasks`, …
       ...taskToolActions(board),
     },

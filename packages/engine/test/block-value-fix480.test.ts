@@ -140,7 +140,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     const flow = defineFlow({
       kind: "fix480-nested",
       actions: {
-        run: { inputSchema: z.unknown(), block: seq },
+        run: seq,
       },
     })();
 
@@ -206,7 +206,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
 
     const flow = defineFlow({
       kind: "fix480-recordsuccess",
-      actions: { run: { inputSchema: z.unknown(), block: seq } },
+      actions: { run: seq },
     })();
 
     await runFlow({ flow, input: {}, chunks: ["task complete"] });

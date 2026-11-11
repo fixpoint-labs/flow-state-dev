@@ -100,12 +100,9 @@ function chatFlow(seen: { attachments?: ReadonlyArray<FileContent> }, options: O
   return defineFlow({
     kind: "chat",
     actions: {
-      send: { inputSchema: input, block: sequencer({ name: "chat", inputSchema: input }).step(look).step(answer), userMessage: (i) => i.message },
+      send: { block: sequencer({ name: "chat", inputSchema: input }).step(look).step(answer), userMessage: (i) => i.message },
       // No user line, so no place for files.
-      note: {
-        inputSchema: input,
-        block: handler({ name: "note", inputSchema: input, outputSchema: input, execute: (value) => ({ message: value.message }) })
-      }
+      note: handler({ name: "note", inputSchema: input, outputSchema: input, execute: (value) => ({ message: value.message }) })
     }
   })();
 }

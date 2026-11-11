@@ -2,9 +2,9 @@
 
 [Spec](../SPEC.md) · [Decisions](../DECISIONS.md) · example
 
-> **PROPOSED.** A sketch from the design review, not code. None of the APIs it names exist yet (`defineView`, `defineKit`, `runBy`, `fsd.resource`, `useView`, `ViewOutput`, kit slots and the kits' views). The name "kit" is the owner's answer to [O5](../DECISIONS.md#o5). The child that builds each piece owns its real shape.
+> **PROPOSED.** A sketch from the design review, not code. None of the APIs it names exist yet (`defineView`, `defineKit`, `runBy`, `fsd.resource`, `useView`, `ViewOutput`, kit slots and the kit packages' views). The name "kit" is the owner's answer to [O5](../DECISIONS.md#o5). The child that builds each piece owns its real shape.
 
-Order, slot contributions, name prefixes and the client manifest are resolved once, at `createFlowState`. App-specific flows still sit beside the kits. `mission` and `livingArtifacts` are illustrative. Built by [FIX-2626](https://linear.app/fixpoint-labs/issue/FIX-2626).
+Order and slot contributions are resolved once, at `createFlowState`; no client manifest is sent ([FIX-2626 D1](../../../issues/FIX-2626/DECISIONS.md#d1)). App-specific flows still sit beside the kits. `mission` and `livingArtifacts` are illustrative. Built by [FIX-2626](https://linear.app/fixpoint-labs/issue/FIX-2626).
 
 ```ts
 export default createFlowState({
@@ -14,8 +14,8 @@ export default createFlowState({
     mission({ teamSize: 4 }),
     livingArtifacts({ refreshEvery: "1h" }),
   ],
-  flows: appFlows,                               // the app's own flows, and the copied ones it configures
+  flows: [deskFlow, triageFlow],                 // an array: the app's own flows; the keyed record is gone
   stores: { default: { primary: sqliteStores({ filename }) } },
 });
-// Order, slot contributions, name prefixes and the client manifest are resolved here, once.
+// Order and slot contributions are resolved here, once. Screens import from each kit's package.
 ```

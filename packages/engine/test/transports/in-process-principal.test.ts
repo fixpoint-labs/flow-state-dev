@@ -39,15 +39,12 @@ function flow(kind: string, authentication?: Parameters<typeof defineFlow>[0]["a
     kind,
     authentication,
     actions: {
-      respond: {
-        inputSchema: echoInput,
-        block: handler({
+      respond: handler({
           name: `${kind}-respond`,
           inputSchema: echoInput,
           outputSchema: z.object({ reply: z.string() }),
           execute: async (input) => ({ reply: input.message })
         })
-      }
     }
   })();
 }

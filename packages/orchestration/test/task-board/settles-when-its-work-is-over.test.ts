@@ -228,7 +228,7 @@ async function harness(
       implement: entry,
       notice: { inputSchema: z.object({}), block: later(true) },
       check: { inputSchema: z.object({}), block: later(false) },
-      steerTurn: { inputSchema: z.object({}), block: steerEntry },
+      steerTurn: steerEntry,
     },
     request: {
       // Background work the flow's own end hook starts: the settle waits for it too.

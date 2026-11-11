@@ -51,10 +51,7 @@ function createSequencerFlow() {
   return defineFlow({
     kind: "trace-test-flow",
     actions: {
-      run: {
-        inputSchema: z.object({ message: z.string() }),
-        block: pipeline
-      }
+      run: pipeline
     }
   })();
 }
@@ -85,10 +82,7 @@ function createRouterFlow() {
   return defineFlow({
     kind: "router-trace-flow",
     actions: {
-      run: {
-        inputSchema: z.object({ message: z.string() }),
-        block: testRouter
-      }
+      run: testRouter
     }
   })();
 }
@@ -110,10 +104,7 @@ describe("execution trace system", () => {
       const flow = defineFlow({
         kind: "kind-test-flow",
         actions: {
-          run: {
-            inputSchema: z.object({ x: z.number() }),
-            block: simpleHandler
-          }
+          run: simpleHandler
         }
       })();
 
@@ -215,10 +206,7 @@ describe("execution trace system", () => {
       const flow = defineFlow({
         kind: "fail-trace-flow",
         actions: {
-          run: {
-            inputSchema: z.object({ message: z.string() }),
-            block: pipeline
-          }
+          run: pipeline
         }
       })();
 
@@ -387,15 +375,12 @@ describe("execution trace system", () => {
       const flow = defineFlow({
         kind: "llm-filter-flow",
         actions: {
-          run: {
-            inputSchema: z.object({ value: z.string() }),
-            block: handler({
+          run: handler({
               name: "llm-filter-handler",
               inputSchema: z.object({ value: z.string() }),
               outputSchema: z.object({ ok: z.boolean() }),
               execute: () => ({ ok: true })
             })
-          }
         }
       })();
 
@@ -547,10 +532,7 @@ describe("execution trace system", () => {
       const flow = defineFlow({
         kind: "identity-flow",
         actions: {
-          run: {
-            inputSchema: z.object({ x: z.number() }),
-            block: pipeline
-          }
+          run: pipeline
         }
       })();
 

@@ -13,10 +13,7 @@ const strictHandler = handler({
 const strictFlow = defineFlow({
   kind: "strict",
   actions: {
-    run: {
-      inputSchema: z.object({ ticket: z.string() }),
-      block: strictHandler,
-    },
+    run: strictHandler,
   },
 });
 

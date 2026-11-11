@@ -80,9 +80,9 @@ function boot(seed?: (db: Database.Database) => void) {
       cardinality,
       resources: { schedules },
       actions: {
-        create: { inputSchema: z.object({ key: z.string() }), block: create },
-        disable: { inputSchema: z.object({ key: z.string() }), block: disable },
-        remove: { inputSchema: z.object({ key: z.string() }), block: remove },
+        create,
+        disable,
+        remove,
       },
     });
   const workerKind = kind("research", "collection");

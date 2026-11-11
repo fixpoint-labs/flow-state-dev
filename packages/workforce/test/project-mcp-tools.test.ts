@@ -78,7 +78,7 @@ function filerFlow(installation: WorkerInstallation) {
     configSchema: workerConfigSchema(),
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
     resources: { ...installation.resources, ...board.resources, ...PROJECT_ENTRY_RESOURCES },
-    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+    actions: { respond: { block: door, userMessage: (i: { message: string }) => i.message }, ...board.actions },
     internal: { actions: { ...board.entries(door), onWorkstreamOpened: workstreamOpenedEntry() } }
   } as never);
 }
@@ -154,7 +154,7 @@ function takerFlow(installation: WorkerInstallation, runs: Relayed[], keys: Reco
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
-    actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { block: turn, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "taker-task", turn }) } }
   } as never);
 }

@@ -15,14 +15,11 @@ import { serve, type ServeHandle, type ServeOptions } from "../src/serve";
 const chat = defineFlow({
   kind: "chat",
   actions: {
-    say: {
-      inputSchema: z.object({ text: z.string() }),
-      block: handler({
+    say: handler({
         name: "chat-say",
         inputSchema: z.object({ text: z.string() }),
         execute: () => ({})
       })
-    }
   }
 })();
 

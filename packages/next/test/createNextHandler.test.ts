@@ -51,15 +51,12 @@ describe("createNextHandler — integration", () => {
     const flow = defineFlow({
       kind: "next-test",
       actions: {
-        run: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        run: handler({
             name: "run",
             inputSchema: z.object({}).passthrough(),
             outputSchema: z.object({ ok: z.boolean() }),
             execute: () => ({ ok: true })
           })
-        }
       }
     })();
 

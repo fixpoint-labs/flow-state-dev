@@ -53,9 +53,7 @@ function parkedFlow(kind: string) {
   const flow = defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.any(),
-        block: handler({
+      run: handler({
           name: "parked",
           inputSchema: z.any(),
           outputSchema: z.object({ ok: z.boolean() }),
@@ -73,7 +71,6 @@ function parkedFlow(kind: string) {
             return { ok: true };
           }
         })
-      }
     },
     request: {
       heartbeatIntervalMs: 50,
@@ -255,9 +252,7 @@ describe("the last overlapping run ending by throwing", () => {
     const flow = defineFlow({
       kind: "overlap-throw-flow",
       actions: {
-        run: {
-          inputSchema: z.any(),
-          block: handler({
+        run: handler({
             name: "parked",
             inputSchema: z.any(),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -267,7 +262,6 @@ describe("the last overlapping run ending by throwing", () => {
               return { ok: true };
             }
           })
-        }
       },
       request: {
         heartbeatIntervalMs: 50,
@@ -342,15 +336,12 @@ describe("a single run that fails during setup", () => {
       const flow = defineFlow({
         kind: "setup-failure-flow",
         actions: {
-          run: {
-            inputSchema: z.any(),
-            block: handler({
+          run: handler({
               name: "never",
               inputSchema: z.any(),
               outputSchema: z.any(),
               execute: () => null
             })
-          }
         }
       })({ id: "setup-failure-flow" });
 

@@ -17,10 +17,7 @@ const goodHandler = handler({
 const goodFlow = defineFlow({
   kind: "good",
   actions: {
-    respond: {
-      inputSchema: z.object({ message: z.string() }),
-      block: goodHandler,
-    },
+    respond: goodHandler,
   },
 });
 

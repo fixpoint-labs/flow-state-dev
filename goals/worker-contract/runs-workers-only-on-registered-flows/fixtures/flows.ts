@@ -17,7 +17,6 @@ const message = z.object({ message: z.string() });
 /** A door that answers by saying what it heard. */
 function hearing(name: string) {
   return {
-    inputSchema: message,
     userMessage: (input: { message: string }) => input.message,
     block: handler({
       name: `${name}-hear`,
@@ -55,7 +54,6 @@ export function defineFlows(workers: WorkerInstallation) {
     resources: { ...workers.resources, ...workerMessagesResources },
     actions: {
       respond: {
-        inputSchema: message,
         userMessage: (input: { message: string }) => input.message,
         block: handler({
           name: "coordinator-route",
@@ -85,9 +83,7 @@ export function defineFlows(workers: WorkerInstallation) {
     resources: { ...workers.resources, ...workerMessagesResources },
     actions: {
       respond: hearing("sharer"),
-      share: {
-        inputSchema: noteInput,
-        block: handler({
+      share: handler({
           name: "sharer-share",
           inputSchema: noteInput,
           outputSchema: z.object({ shared: z.string() }),
@@ -98,7 +94,6 @@ export function defineFlows(workers: WorkerInstallation) {
             return { shared: input.key };
           },
         }),
-      },
     },
   });
 
@@ -111,9 +106,7 @@ export function defineFlows(workers: WorkerInstallation) {
     ...bound,
     actions: {
       respond: hearing("org-keeper"),
-      keep: {
-        inputSchema: noteInput,
-        block: handler({
+      keep: handler({
           name: "org-keeper-keep",
           inputSchema: noteInput,
           outputSchema: z.object({ kept: z.string() }),
@@ -127,7 +120,6 @@ export function defineFlows(workers: WorkerInstallation) {
             return { kept: input.key };
           },
         }),
-      },
     },
   });
 
@@ -139,10 +131,7 @@ export function defineFlows(workers: WorkerInstallation) {
     configSchema: workerConfigSchema(),
     ...bound,
     actions: {
-      work: {
-        inputSchema: note,
-        block: handler({ name: "doorless-work", inputSchema: note, outputSchema: note, execute: (input) => input }),
-      },
+      work: handler({ name: "doorless-work", inputSchema: note, outputSchema: note, execute: (input) => input }),
     },
   });
 

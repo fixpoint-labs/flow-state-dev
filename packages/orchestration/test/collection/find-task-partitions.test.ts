@@ -64,7 +64,7 @@ const find = handler({
 const flow = defineFlow({
   kind: "partitions",
   resources: taskLedgerResources(ledger),
-  actions: { file: { inputSchema: fileInput, block: file }, find: { inputSchema: findInput, block: find } },
+  actions: { file, find },
 })({ id: "partitions" });
 
 const dirs: string[] = [];
