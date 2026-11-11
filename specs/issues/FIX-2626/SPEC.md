@@ -10,7 +10,7 @@
 | **installs features into an app** | Wires each by hand, in an order they work out, with their own refusal for a bad tree | Lists one config object per kit, in any order. The framework orders them and fills each slot once |
 | **adds to another feature** (the coding harness to workforce) | Passes one package's pieces into the other's setup, knowing both. Four hosts rebuild the readiness map, three the coding flow | Contributes into a slot the other kit declares. A duplicate key is refused, naming both kits |
 | **puts a file in a kit's folder** | A file the docs don't name loads nothing and says nothing (claude-code-style's `workforce/flows/`, a stray file in `teams/`) | Every file is used or refused by path, and the app won't start until it's fixed ([D2](DECISIONS.md#d2)) |
-| **builds a screen on a kit** | Writes an adapter. Workforce's React panels take rows the app builds, so no app imports them | Imports the kit package's views, hooks and components like any export. Views remove the read model: 12 of claude-code-style's 1,642 adapter lines need a kit ([D1](DECISIONS.md#d1)) |
+| **builds a screen on a kit** | Writes an adapter. Workforce's React panels take rows the app builds, so no app imports them | Imports the kit package's views, hooks and components like any export. Views remove the read model: 42 of claude-code-style's 1,642 adapter lines need a kit ([D1](DECISIONS.md#d1)) |
 
 ## The goal, and how we'll know it's met
 
@@ -144,7 +144,7 @@ first request.
 | Issue | Must |
 |---|---|
 | **FIX-2627** | Claim every entry in workforce's folder, `workforce/flows/` included · route its readers and the `fsdev gen` walk through the claim pass · import the walk primitives from the engine, dropping them from `./loader` · declare the slots, with harnesses' keyed `harnesses` slot of `{ id, agent, readiness, pass, usage, models }` filled by two or more packages · views and hooks on a browser entry, components on `/react` · workforce's starter files · the third "slot" |
-| **FIX-2628** | Build claude-code-style's kit on this `defineKit` · credit its adapter's removal per [the POC](poc/client-half/README.md), confirming or refuting the 12 kit-only lines |
+| **FIX-2628** | Build claude-code-style's kit on this `defineKit` · credit its adapter's removal per [the POC](poc/client-half/README.md), confirming or refuting the 42 kit-only lines |
 
 ## Sign off
 

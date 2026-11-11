@@ -11,7 +11,7 @@ this spec builds them as decided.
 ```mermaid
 flowchart TD
   I["FIX-2626"] --> D1["D1 · kits are for composing features<br/>the client half is the package's own exports"]
-  D1 -.->|"rejected"| X1["a kit client runtime<br/>12 of 1,642 adapter lines need a kit"]
+  D1 -.->|"rejected"| X1["a kit client runtime<br/>42 of 1,642 adapter lines need a kit"]
   I --> D2["D2 · every folder file used or refused<br/>any refusal stops the app starting"]
   D2 -.->|"rejected"| X2["today's rule, and the host decides<br/>a skipped file is the silence the rule forbids"]
 ```
@@ -24,12 +24,12 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | A client half that is part of the kit: a `client` field on `defineKit` and a manifest sent to the browser, as the epic's sketches show (`client: missionClient`, `mission.useAction`) |
-| **Because** | O1's note, run ([the POC](poc/client-half/README.md)): of claude-code-style's 1,642 adapter lines, views and direct reads remove 690, a package export 117, and **12 need a kit**: a task's harness before its run reports one, which joins workforce and harness-manager, and neither depends on the other. At most 129 if every package row went to the kit. Views remove the read model, and packages can ship views; what only a kit does is let one package reach another through a slot. A client runtime is a public surface for 12 lines, and it would put a definition naming a Node-only folder reader into the browser bundle |
+| **Because** | O1's note, run ([the POC](poc/client-half/README.md)): of claude-code-style's 1,642 adapter lines, views and direct reads remove 690, a package export 87, and **42 need a kit**: a task's harness before its run reports one (12 lines), and the board that fills each row's harness through it (30), which join workforce and harness-manager, and neither depends on the other. At most 129 if every package row went to the kit. Views remove the read model, and packages can ship views; what only a kit does is let one package reach another through a slot. A client runtime is a public surface for 42 lines, and it would put a definition naming a Node-only folder reader into the browser bundle |
 | **Locks in** | Screens import a kit's views, hooks and components from its package's browser entry and `/react`. No `client` field. A kit's flow ids are its own constants, so a kit installs once per app. The case for kits becomes composition: O1's *Because* ("only a kit's client half removes the adapters") needs an epic amendment, and FIX-2628 credits the adapter's removal to views and direct reads |
 
-![D1: the package's own exports, chosen, beside a kit client runtime; decided by the 12 of 1,642 adapter lines only a kit removes](figures/d1-composition.svg)
+![D1: the package's own exports, chosen, beside a kit client runtime; decided by the 42 of 1,642 adapter lines only a kit removes](figures/d1-composition.svg)
 
-It comes down to the adapter: views remove the read model, so a kit runtime would carry 12 lines.
+It comes down to the adapter: views remove the read model, so a kit runtime would carry 42 lines.
 
 **What would change my mind:** FIX-2628 finds screen code that needs to know which kits an app
 installed, or with what config, and no view can answer. Then a manifest is one field. If you
@@ -87,7 +87,7 @@ author's notes. Then its schema claims them as ignored, by name; the rule stays.
 
 | Alternative | Why not |
 |---|---|
-| A kit client runtime | D1: 12 lines need it |
+| A kit client runtime | D1: 42 lines need it |
 | An async `createFlowState` | Every host's call changes; start-up is already lazy |
 | The walker stays in workforce | The kit system would depend on one kit |
 | Today's rule: refuse only what the docs name | D2 |
@@ -99,9 +99,10 @@ author's notes. Then its schema claims them as ignored, by name; the rule stays.
 - **What only a kit removes from a real adapter** (2026-11-11, `main` at `f0b34c529`;
   [`poc/client-half/`](poc/client-half/README.md), `node specs/issues/FIX-2626/poc/client-half/attribute.mjs`).
   claude-code-style's adapter, 1,642 lines and 124 declarations, each credited once: views 630,
-  direct reads 60, a package export 117, a kit 12, stays 823. The controls go red: a planted
-  declaration and a stale row each stop the table, and moving `boardOf` to the kit moves the
-  total by its 30 lines. The premise the client half rested on did not hold; D1 follows.
+  direct reads 60, a package export 87, a kit 42, stays 823. The controls go red: a planted
+  declaration and a stale row each stop the table, and moving `boardOf` back to *package* moves
+  the kit total by its 30 lines. The controls check that the table is whole and current; each
+  row's credit is a judgment, as in FIX-1183 and FIX-2622. The premise the client half rested on did not hold; D1 follows.
 
 ## Analysis
 

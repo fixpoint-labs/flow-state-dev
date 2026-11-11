@@ -56,10 +56,10 @@
     <text class="t-lbl" x="32" y="169">REMOVES</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Nothing is built for 12 lines</text>
+    <text class="t-b" x="248" y="161">Nothing is built for 42 lines</text>
     <text class="t-s" x="248" y="179">views remove 690; a package export 117</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">A public runtime for 12 lines</text>
+    <text class="t-b" x="612" y="161">A public runtime for 42 lines</text>
     <text class="t-s" x="612" y="179">of claude-code-style&#x27;s 1,642</text>
   </g>
 

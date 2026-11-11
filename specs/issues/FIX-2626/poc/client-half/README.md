@@ -40,14 +40,15 @@ a line a package view removes is not a line only a kit removes.
 labs/claude-code-style/src/adapter.ts at f0b34c529: 1642 lines, 124 declarations, every one classified
   views      630  38.4%
   direct      60  3.7%
-  package    117  7.1%
-  kit         12  0.7%
+  package     87  5.3%
+  kit         42  2.6%
   stays      823  50.1%
-  kit rows: harnesses 2, harnessOf 10
+  kit rows: harnesses 2, harnessOf 10, boardOf 30
 ```
 
-**Only 12 lines need a kit:** the harness a coding task shows before its run reports one, which
-joins workforce's worker setting to harness-manager's run. Credit every *package* row to the kit
+**42 lines need a kit:** the harness a coding task shows before its run reports one (12), and
+`boardOf` (30), which fills each board row's harness through that kit-only `harnessOf(task)`. Both
+join workforce's worker setting to harness-manager's run. Credit every *package* row to the kit
 as well and the ceiling is 129 lines (7.9%). The adapter's read model goes with views and direct
 reads (690 lines), which packages can ship without a kit.
 
@@ -62,8 +63,10 @@ that split.
    `unclassified: lab:planted`. No declaration can pass uncounted.
 2. **A stale row** (a row naming a helper the file doesn't have) stops it too, so the table can't
    rot while the file changes.
-3. **The kit row could have come out otherwise.** Reclassifying `boardOf` as *kit* moves the kit
-   total from 12 to 42, by exactly its 30 lines.
+3. **The kit row could have come out otherwise.** Reclassifying `boardOf` as *package* moves the
+   kit total from 42 to 12, by exactly its 30 lines. This guards the chosen classification against
+   drift; it is not independent evidence for it. Each row's credit is a judgment, as in FIX-1183
+   and FIX-2622; controls 1 and 2 only prove the table is whole and current.
 
 ## What it does not cover
 

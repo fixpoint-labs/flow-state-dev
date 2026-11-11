@@ -131,7 +131,7 @@ const ROWS = {
   "lab:waitOf": "package",
   "lab:pullRequestsOf": "package",
   "lab:boardAt": "package",
-  "lab:boardOf": "package", // harness-manager can ship a coding board over orchestration's board
+  "lab:boardOf": "kit", // fills each row's harness through the kit-only harnessOf(task)
   "lab:holdOn": "views",
   "lab:answerReview": "views",
   "lab:sessionOpened": "views",
@@ -254,11 +254,11 @@ if (process.argv.includes("--controls")) {
   // 2. A row naming nothing in the file must stop it too (the table can't go stale silently).
   expectRed("stale-row", () => attribute(text, { ...ROWS, "lab:noSuchHelper": "kit" }));
   // 3. The kit row is a reading that could have come out otherwise: reclassify one
-  //    package row as kit and the kit total must move by exactly that row's lines.
+  //    kit row as package and the kit total must move by exactly that row's lines.
   const base = attribute(text);
-  const moved = attribute(text, { ...ROWS, "lab:boardOf": "kit" });
-  const boardOf = Number(base.items.package.find((item) => item.startsWith("boardOf ")).split(" ")[1]);
-  if (moved.totals.kit !== base.totals.kit + boardOf) throw new Error("control reclassify: the kit total did not move by boardOf's lines");
+  const moved = attribute(text, { ...ROWS, "lab:boardOf": "package" });
+  const boardOf = Number(base.items.kit.find((item) => item.startsWith("boardOf ")).split(" ")[1]);
+  if (moved.totals.kit !== base.totals.kit - boardOf) throw new Error("control reclassify: the kit total did not move by boardOf's lines");
   console.log(`control reclassify: the kit total moves ${base.totals.kit} -> ${moved.totals.kit} (boardOf is ${boardOf} lines)`);
 } else {
   const { lines, declarations: count, totals, items } = attribute(text);
