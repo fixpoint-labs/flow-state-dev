@@ -326,10 +326,9 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
    * (the roster flow): each write runs in the writer's own write session,
    * which the server keeps; no roster session is found or made to write.
    */
-  const workers = fsd.resource({ scope: "user", pattern: WORKERS_PATTERN });
   const rosterWrite = async <TOutput>(action: string, input: unknown): Promise<TOutput> => {
     try {
-      return await workers.send<TOutput>(action, input);
+      return await fsd.resource({ scope: "user", pattern: WORKERS_PATTERN }).send<TOutput>(action, input);
     } catch (error) {
       if (error instanceof ResourceWriteError) throw new Error(error.message);
       throw error;
