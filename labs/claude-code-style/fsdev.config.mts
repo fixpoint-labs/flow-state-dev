@@ -36,13 +36,18 @@
  * such as `pnpm install --frozen-lockfile`, runs in each fresh worktree before
  * its run starts, so the checks find what they need; it runs with no shell,
  * and a command that needs one stops the lab at start. Unset, nothing runs.
+ *
+ * A session asked to follow a GitHub pull request reads GitHub with
+ * `GITHUB_TOKEN`, or what `gh auth token` answers at start, for
+ * `CLAUDE_CODE_STYLE_USER` alone. With neither, a GitHub routine is refused,
+ * naming the variable; clock routines still run.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { delimiter, resolve } from "node:path";
 import { formatHarnessReadiness } from "@flow-state-dev/harness-manager";
 import { checkoutCommandProblem, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
-import { openLab } from "./host.mts";
+import { openLab, operatorGitHubToken } from "./host.mts";
 
 const data = resolve(process.env.CLAUDE_CODE_STYLE_DATA ?? ".fsdev/claude-code-style");
 mkdirSync(data, { recursive: true });
@@ -78,6 +83,7 @@ const { flowState, readiness } = await openLab({
   checkRepository: process.env.GOAL_CONTROL !== "no-repository-check",
   // `GOAL_FLOWS` names a module of a goal check's own flows (a goal's delivered message). Never set otherwise.
   ...(process.env.GOAL_FLOWS ? { goalFlows: process.env.GOAL_FLOWS } : {}),
+  githubToken: operatorGitHubToken(),
 });
 // At start, never awaited: a missing sign-in never stops the server.
 void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));

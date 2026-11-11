@@ -59,6 +59,9 @@
     "labs/claude-code-style/fsdev.config.mts",
     // The layout tests' page: their Vite server loads it from index.html beside it.
     "labs/claude-code-style/test/layout/page.tsx",
+    // DevTeam's two profiles, loaded by `fsdev dev --config` (and Shift Manager), which no import reaches.
+    "packages/shift-manager/teams/devteam/fsdev.config.mts",
+    "packages/shift-manager/teams/devteam/fsd.fsdev.config.mts",
     // Loaded by `fsdev serve --config` when a closure pass runs on one model.
     "goals/closure-smarter-agents/haiku.config.mts",
 

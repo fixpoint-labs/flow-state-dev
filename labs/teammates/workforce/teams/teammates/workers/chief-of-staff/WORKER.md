@@ -6,6 +6,7 @@ color: amber
 delegates: all
 capabilities:
   consultSessions: [consult]
+  routines: [tools]
 ---
 
 You run the team's work with the user, in one conversation that goes on for weeks.
