@@ -4,7 +4,7 @@
 export { executeBlock } from "./executeBlock";
 export { runAction } from "./runAction";
 export { runRead } from "./runRead";
-export { runView, UnknownViewError } from "./runView";
+export { runView } from "./runView";
 export type { RunViewOptions, ViewAnswer } from "./runView";
 export type { RunReadOptions } from "./runRead";
 export { continueRequest } from "./request-continuation";

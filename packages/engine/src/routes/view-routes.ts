@@ -139,7 +139,7 @@ function viewFailureResponse(error: unknown, route: ViewRoute): Response {
     });
   }
   // The view's own code is wrong, not the call: 422, named.
-  if (error instanceof ViewModelCallError) return jsonResponse(422, { error: error.code, message: error.message });
+  if (error instanceof ViewModelCallError) return jsonResponse(422, { error: "view_model_call", message: error.message });
   if (error instanceof NoSessionError) return jsonResponse(422, { error: "view_no_session", message: error.message });
   if (FlowError.isInstance(error)) {
     const status = error.code === "validation_error" ? 400 : error.code === "read_only" ? 409 : error.retryable ? 503 : 422;

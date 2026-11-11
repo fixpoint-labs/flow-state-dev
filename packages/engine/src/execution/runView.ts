@@ -166,7 +166,7 @@ function seedingInScratch<T extends { get(id: string): Promise<unknown>; set(id:
  * org record go to a fresh in-memory registry dropped when the run ends; any
  * other write throws `read_only`.
  */
-export function readOnlyStores(stores: StoreRegistry, requestId: string): StoreRegistry {
+function readOnlyStores(stores: StoreRegistry, requestId: string): StoreRegistry {
   const scratch = createInMemoryStores();
   return {
     ...stores,

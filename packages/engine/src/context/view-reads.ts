@@ -57,7 +57,6 @@ export function createReadRecorder(): ReadRecorder {
 
 /** A view tried to call a model (D2). An action computes the answer once and stores it; the view reads it. */
 export class ViewModelCallError extends Error {
-  readonly code = "view_model_call";
   constructor(readonly blockName?: string) {
     super(
       `A view can't call a model${blockName !== undefined ? ` (block "${blockName}")` : ""}: it runs for every ` +
