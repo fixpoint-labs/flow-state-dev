@@ -1,5 +1,6 @@
+// FIX-2630 D1, Q1.
 /**
- * The dispatch seam's service route (FIX-2630 D1, Q1): a dispatch to an
+ * The dispatch seam's service route: a dispatch to an
  * internal entry its flow marks `service` doesn't start a request as its
  * sender. The host routes it as the service (`service:<provider>`) in the
  * sender's organization, and fires only the owner runs of the sender's own

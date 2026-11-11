@@ -1,5 +1,6 @@
+// FIX-2630 D2.
 /**
- * Internal events (FIX-2630): a session publishes once on a declared topic,
+ * Internal events: a session publishes once on a declared topic,
  * and the routines that follow the topic hear it once, as information, from
  * `service:internal`, through the subscriptions' own routing.
  *
@@ -7,7 +8,7 @@
  * heard, so the topic list, the sender and the budget are the only guards.
  * A misspelt topic must be refused rather than wait forever; the sender must
  * be the server's; a ring of routines announcing to each other must stop at
- * the message budget, and a fan-out's branches must share it (D2).
+ * the message budget, and a fan-out's branches must share it.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -30,7 +31,7 @@ describe("a delivery lands where the event's chain is", () => {
     expect(entries.map((entry) => [entry.hop, entry.chain])).toEqual([[3, "chain_publisher"]]);
   });
 
-  it("delivers an event with neither as before: one hop past the owner run's, in its own chain (BP-030)", async () => {
+  it("delivers an event with neither as before: one hop past the owner run's, in its own chain", async () => {
     host = bootSubscriptionsHost();
     const session = await host.follower("alice");
     await host.subscribe("alice", session, { thread: "github:acme/api#412" });
@@ -157,7 +158,7 @@ describe("who a publish is routed to, at the source", () => {
   });
 });
 
-describe("the loop guard is the message budget (D2)", () => {
+describe("the loop guard is the message budget", () => {
   it("stops a ring of two routines announcing to each other at the budget, refusing with the budget's reason", async () => {
     const sessions: { a?: string; b?: string } = {};
     host = bootSubscriptionsHost({

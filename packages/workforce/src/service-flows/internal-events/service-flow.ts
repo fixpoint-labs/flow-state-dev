@@ -20,7 +20,7 @@
  *   run never leaves it. Events are private, so it is asked again per
  *   delivery. **`self`** is the subscribing session, so a session never hears
  *   its own events.
- * - **The loop guard is the message budget** (D2): a publish pays one place
+ * - **The loop guard is the message budget**: a publish pays one place
  *   in its turn's message chain however many hear it, carries that chain and
  *   its hop, and each delivery lands in that chain one hop on, so everything
  *   the woken sessions send next pays into the same budget.

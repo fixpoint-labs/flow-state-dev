@@ -195,8 +195,9 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   isolatedFollower?: boolean;
   /** The service flow itself, in place of the one built from `service` (GitHub's own flow); its kind must be `github-service`. */
   serviceFlow?: (installation: WorkerInstallation) => FlowInstance;
+  // FIX-2630.
   /**
-   * Internal events (FIX-2630): the declared topics; the internal service flow is `internal-service`, its provider beside GitHub's,
+   * Internal events: the declared topics; the internal service flow is `internal-service`, its provider beside GitHub's,
    * and a follower's `publish` action publishes. With `relay`, a follower a message wakes publishes what it answers for its session,
    * and the host's `relayed` lists each try.
    */
@@ -422,8 +423,8 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     };
   };
 
-  /** Publish as `userId` from a follower's `sessionId` (FIX-2630), and wait for what it started: its answer, `{ published }` or `{ refused }`. */
-  /** Publish as `userId` from `sessionId`; under `tenantId` when given. */
+  // FIX-2630.
+  /** Publish as `userId` from `sessionId`, under `tenantId` when given, and wait for what it started: its answer, `{ published }` or `{ refused }`. */
   const publish = async (userId: string, sessionId: string, input: Record<string, unknown>, tenantId?: string) => {
     const runtime = await board.state.getRuntime();
     const ran =

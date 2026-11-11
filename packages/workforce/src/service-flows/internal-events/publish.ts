@@ -9,7 +9,7 @@
  *
  * - the topic and kind are declared, else refused, naming the declared topics;
  * - `data` passes the topic's schema, and is rendered into the text (an event
- *   carries no `data` field, ER-6), which holds at most 4,000 characters;
+ *   carries no `data` field), which holds at most 4,000 characters;
  * - the publish pays one place in its turn's message chain (`payPlace`), however
  *   many will hear it, so past the budget it is refused with the budget's reason.
  *
@@ -19,7 +19,7 @@
  * one object at version 0, its id kept in request state, so a repeat after a
  * crash is one event. It carries the chain it paid into and the hop one
  * before its place, so each delivery lands where a message sent in its place
- * would (D2). It files no task and asks no reply (ER-2), and the answer is
+ * would. It files no task and asks no reply, and the answer is
  * `{ published }` or `{ refused }`, never who heard.
  */
 import { defineCapability, handler, markDispatcher } from "@flow-state-dev/core";
