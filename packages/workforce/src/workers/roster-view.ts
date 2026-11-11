@@ -36,7 +36,7 @@ const rosterSchema = z.array(rosterEntrySchema);
 /** The roster view, as {@link defineRosterView} builds it. Import as a type in client code. */
 export type RosterView = ViewDefinition<BlockDefinition<z.ZodObject<Record<string, never>>, typeof rosterSchema>, "user">;
 
-type Row = { path: string; state: Record<string, unknown> };
+type StoredEntry = { path: string; state: Record<string, unknown> };
 
 const textOrNull = (value: unknown): string | null => (typeof value === "string" ? value : null);
 const recordOf = (value: unknown): Record<string, unknown> =>
@@ -50,7 +50,7 @@ export function defineRosterView(installation: WorkerInstallation): RosterView {
   const own = installation.resources[WORKERS_RESOURCE];
   const standard = installation.resources[STANDARD_WORKERS_RESOURCE];
   // What a browser reads of an own row: the collection's client projection.
-  const project = (own as { client?: { data?: (row: unknown) => unknown } }).client?.data ?? ((row: unknown) => row);
+  const project = (own as { client?: { data?: (state: unknown) => unknown } }).client?.data ?? ((state: unknown) => state);
   return defineView({
     scope: "user",
     key: (entry) => entry.id,
@@ -61,12 +61,12 @@ export function defineRosterView(installation: WorkerInstallation): RosterView {
       resources: { [WORKERS_RESOURCE]: own, [STANDARD_WORKERS_RESOURCE]: standard },
       execute: async (_input, ctx) => {
         const resources = ctx.resources as unknown as {
-          [WORKERS_RESOURCE]: { list(): Promise<Row[]> };
-          [STANDARD_WORKERS_RESOURCE]: { list(query?: { cursor?: string }): Promise<{ items: Row[]; nextCursor?: string }> };
+          [WORKERS_RESOURCE]: { list(): Promise<StoredEntry[]> };
+          [STANDARD_WORKERS_RESOURCE]: { list(query?: { cursor?: string }): Promise<{ items: StoredEntry[]; nextCursor?: string }> };
         };
         // The standard projection answers in pages: read every one.
-        const everyStandard = async (): Promise<Row[]> => {
-          const all: Row[] = [];
+        const everyStandard = async (): Promise<StoredEntry[]> => {
+          const all: StoredEntry[] = [];
           for (let cursor: string | undefined, first = true; first || cursor !== undefined; first = false) {
             const page = await resources[STANDARD_WORKERS_RESOURCE].list(cursor !== undefined ? { cursor } : undefined);
             all.push(...page.items);
@@ -74,10 +74,10 @@ export function defineRosterView(installation: WorkerInstallation): RosterView {
           }
           return all;
         };
-        const byPath = (a: Row, b: Row) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-        const [ownRows, standardRows] = (await Promise.all([resources[WORKERS_RESOURCE].list(), everyStandard()])).map((rows) => [...rows].sort(byPath));
-        const entryOf = (row: Row, data: Record<string, unknown>, isStandard: boolean): z.infer<typeof rosterEntrySchema> => ({
-          id: row.path.slice(row.path.lastIndexOf("/") + 1),
+        const byPath = (a: StoredEntry, b: StoredEntry) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+        const [ownEntriesStored, standardStored] = (await Promise.all([resources[WORKERS_RESOURCE].list(), everyStandard()])).map((rows) => [...rows].sort(byPath));
+        const entryOf = (stored: StoredEntry, data: Record<string, unknown>, isStandard: boolean): z.infer<typeof rosterEntrySchema> => ({
+          id: stored.path.slice(stored.path.lastIndexOf("/") + 1),
           flow: String(data.flow),
           standard: isStandard,
           description: textOrNull(data.description),
@@ -87,12 +87,12 @@ export function defineRosterView(installation: WorkerInstallation): RosterView {
           edited: false,
           settings: recordOf(data.settings)
         });
-        const ownEntries = ownRows.map((row) => entryOf(row, recordOf(project(row.state)), false));
+        const ownEntries = ownEntriesStored.map((stored) => entryOf(stored, recordOf(project(stored.state)), false));
         const copies = new Map(ownEntries.map((entry) => [entry.id, entry]));
         // A standard worker the user edited is listed once, as their copy:
-        // still standard, on its file's team, read from their own row.
-        const standardEntries = standardRows.map((row) => {
-          const file = entryOf(row, row.state, true);
+        // still standard, on its file's team, read from their own stored.
+        const standardEntries = standardStored.map((stored) => {
+          const file = entryOf(stored, stored.state, true);
           const copy = copies.get(file.id);
           if (copy === undefined) return file;
           copies.delete(file.id);
