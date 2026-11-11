@@ -13,7 +13,7 @@ const pinsSchema = z.object({ pinned: z.array(z.string()).default([]) });
 
 describe("runBy on a resource", () => {
   it("lets a user resource take the default write flow with no write rule: it is its owner's", () => {
-    const pins = defineResource({ ref: "pins", scope: "user", stateSchema: pinsSchema, client: {}, runBy: "default" });
+    const pins = defineResource({ ref: "pins", scope: "user", stateSchema: pinsSchema, client: { expose: ["pinned"] }, runBy: "default" });
     expect(pins.runBy).toBe("default");
     expect(pins.canWrite).toBeUndefined();
   });
@@ -21,7 +21,7 @@ describe("runBy on a resource", () => {
   it("refuses to define an org resource on the default write flow with no canWrite, naming it and the fix", () => {
     // Without the rule, every member of the org could write it, and nobody chose that.
     expect(() =>
-      defineResource({ ref: "projects", scope: "org", stateSchema: pinsSchema, client: {}, runBy: "default" })
+      defineResource({ ref: "projects", scope: "org", stateSchema: pinsSchema, client: { expose: ["pinned"] }, runBy: "default" })
     ).toThrow(/org resource "projects".*canWrite.*canWrite: \(\) => true/s);
   });
 
@@ -30,7 +30,7 @@ describe("runBy on a resource", () => {
       ref: "board",
       scope: "org",
       stateSchema: pinsSchema,
-      client: {},
+      client: { expose: ["pinned"] },
       runBy: "default",
       canWrite: () => true
     });
@@ -92,5 +92,14 @@ describe("runBy: \"default\" on a read-only resource", () => {
     expect(() =>
       defineResource({ ref: "locked", scope: "user", stateSchema: pinsSchema, client: {}, writable: false, runBy: "default" })
     ).toThrow(/"locked".*writable: false/);
+  });
+});
+
+describe("runBy: \"default\" needs a state projection", () => {
+  it("refuses a client config that projects no state: the client reads none of it, so it can write none of it", () => {
+    // Codex review 4543628804: with no expose or exclude, a client sees no state at all.
+    expect(() => defineResource({ ref: "blind", scope: "user", stateSchema: pinsSchema, client: {}, runBy: "default" })).toThrow(
+      /"blind".*expose or exclude/
+    );
   });
 });

@@ -16,14 +16,13 @@
  * later change.
  */
 import type { FlowInstance, JsonObject, JsonValue, ResourceConfig } from "@flow-state-dev/core/types";
-import { resolveClientData } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { PrincipalResolutionError } from "../transports/errors";
 import { pickPrincipalResolver } from "../transports/auth/pickPrincipalResolver";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { pinRejectsCaller } from "../context/instance-pin";
-import { isResourceConfig } from "../routes/route-utils";
+import { buildResourceSnapshot, isResourceConfig } from "../routes/route-utils";
 import { isCollectionConfig } from "./is-collection-config";
 import { resourceStorageKeys } from "./storage-keys";
 import { normalizeResourceState } from "./normalize-resource-state";
@@ -299,7 +298,17 @@ export async function readAddressed(
   };
 }
 
-/** What a client may see of `state`: the resource's client projection, secrets dropped. */
-export async function projectForClient(config: ResourceConfig, state: JsonObject): Promise<JsonValue> {
-  return await resolveClientData(config, state);
+/**
+ * What a client may see of a single resource's `state`: its entry in the
+ * session snapshot, built by the snapshot's own builder (`buildResourceSnapshot`),
+ * so a direct read and the session's snapshot project one resource one way.
+ * `undefined` when the snapshot carries no state for it (a resource with no
+ * state projection, such as a content-only one).
+ */
+export async function projectForClient(address: ResolvedAddress, state: JsonObject): Promise<JsonValue | undefined> {
+  const snapshot = await buildResourceSnapshot({
+    configs: { [address.key]: { ...address.config, ref: address.key } },
+    persisted: { [address.key]: state }
+  });
+  return (snapshot?.[address.key] as { clientData?: JsonValue } | undefined)?.clientData;
 }

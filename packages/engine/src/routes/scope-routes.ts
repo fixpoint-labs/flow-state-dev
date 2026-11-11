@@ -70,10 +70,12 @@ export async function handleReadScopeResource(
   if ("refused" in admitted) return refusedResponse(admitted.refused);
   const { address, caller } = admitted;
   const { state, version } = await readAddressed(ctx.stores, address, caller);
+  const value = await projectForClient(address, state);
   return jsonResponse(200, {
     scope: address.scope,
     key: address.key,
-    value: await projectForClient(address.config, state),
+    // Absent when the session's snapshot carries no state for it either.
+    ...(value !== undefined ? { value } : {}),
     version
   });
 }

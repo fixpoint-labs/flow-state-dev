@@ -16,7 +16,7 @@ export const labPins = defineResource({
   ref: "lab-pins",
   scope: "user",
   stateSchema: z.object({ pinned: z.array(z.string()).default([]) }),
-  client: {},
+  client: { expose: ["pinned"] },
   runBy: "default",
   canWrite: ({ next }) => new Set(next.pinned).size === next.pinned.length,
 });
@@ -29,6 +29,6 @@ export const labDismissals = defineResource({
   ref: "lab-dismissals",
   scope: "user",
   stateSchema: z.object({ dismissed: z.array(z.string()).default([]) }),
-  client: {},
+  client: { expose: ["dismissed"] },
   runBy: "default",
 });

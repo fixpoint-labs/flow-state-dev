@@ -661,3 +661,35 @@ describe("instances pinned to different users declaring one shared resource", ()
     expect((await pinned.text()).split("pins").join("<k>")).toBe((await unused.text()).split("nope").join("<k>"));
   });
 });
+
+describe("what a direct read projects: the session snapshot's own builder", () => {
+  // Codex review 4543628804.
+  it("gives a content-only resource no state, exactly as the session's snapshot does", async () => {
+    const doc = defineResource({
+      ref: "doc",
+      scope: "org",
+      stateSchema: z.object({ apiKey: z.string().default(""), title: z.string().default("") }),
+      client: { content: { read: true } }
+    });
+    const flow = defineFlow({
+      kind: "docs",
+      resources: { doc },
+      actions: { noop: { block: noop } },
+      authentication: { resolvePrincipal: signIn }
+    } as never)();
+    const { router, stores } = build([flow as never]);
+    const { resolveResourceScopeId } = await import("../src/stores/scope-keys");
+    const cell = resolveResourceScopeId({ userId: "alice", orgId: ORG_A }, { id: "docs" }, "org", false);
+    await stores.resourceState.set("org", cell, "doc", { apiKey: "sk-secret", title: "Plan" }, "any");
+
+    const created = await post(router, ["docs", "sessions"], alice, {});
+    const sessionId = ((await created.json()) as { session: { id: string } }).session.id;
+    const snapshot = (await (await get(router, ["sessions", sessionId, "state"], alice)).json()) as {
+      resources?: { org?: Record<string, { clientData?: unknown }> };
+    };
+    const direct = await get(router, ["resources", "org", "doc"], alice);
+    const text = await direct.text();
+    expect(text).not.toContain("sk-secret");
+    expect((JSON.parse(text) as { value?: unknown }).value).toEqual(snapshot.resources?.org?.doc?.clientData);
+  });
+});

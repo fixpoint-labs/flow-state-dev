@@ -21,7 +21,7 @@ const pins = defineResource({
   ref: "pins",
   scope: "user",
   stateSchema: z.object({ pinned: z.array(z.string()).default([]) }),
-  client: {},
+  client: { expose: ["pinned"] },
   runBy: "default"
 });
 
