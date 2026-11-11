@@ -17,6 +17,7 @@ import type { Client } from "@flow-state-dev/client";
 import { createLabAdapter, toBoardTask, type BoardTask, type LabAdapter } from "../src/adapter";
 import { PopupView } from "../src/components/Popups";
 import { lookOf } from "../src/lib/looks";
+import { liveOver } from "./live-over";
 
 afterEach(cleanup);
 
@@ -67,6 +68,9 @@ describe("a teammate's finished task reads its answer", () => {
     };
     const history: Record<string, unknown[]> = { wks_cos: [copy] };
     const client = {
+      get live() {
+        return liveOver(this as never);
+      },
       subscribe: () => ({ close() {} }),
       sessions: {
         state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: history[id] ?? [], pagination: { hasMore: false, nextOffset: (history[id] ?? []).length } }),

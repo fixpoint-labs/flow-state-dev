@@ -141,18 +141,24 @@ describe("a refresh that can't reach the Lab after a good read", () => {
     expect(time().textContent).toBe("10m");
   });
 
-  it("reads again on its own, 2s after the failure and then 4s after the next, without a click", async () => {
+  it("reads again on its own on the client's backoff, 1s after a failure and then 2s after the next, without a click", async () => {
     await openTasks();
     answer = down;
+    const before = reads;
     await retryBoards();
+    // The click's read fails, and the live read takes the failure over: it reads at once, which fails too.
+    await waitFor(() => expect(reads).toBe(before + 2));
     const after = reads;
-    await sleep(1_500);
+    await sleep(700);
     expect(reads).toBe(after);
-    await waitFor(() => expect(reads).toBe(after + 1), { timeout: 1_500 });
+    await waitFor(() => expect(reads).toBe(after + 1), { timeout: 800 });
     answer = lab;
-    await sleep(3_000);
+    await sleep(1_500);
     expect(reads).toBe(after + 1);
-    await waitFor(() => expect(screen.queryByTestId("connection-banner")).toBeNull(), { timeout: 2_000 });
+    await waitFor(() => expect(screen.queryByTestId("connection-banner")).toBeNull(), { timeout: 1_500 });
+    expect(reads).toBe(after + 2);
+    // Back: nothing reads again on its own.
+    await sleep(2_500);
     expect(reads).toBe(after + 2);
   }, 15_000);
 

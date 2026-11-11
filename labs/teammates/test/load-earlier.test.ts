@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { createLabAdapter, type ConversationView } from "../src/adapter";
+import { liveOver } from "./live-over";
 
 const line = (n: number) => ({
   id: `msg_${n}`,
@@ -30,6 +31,9 @@ function clientOver(count: number): Client {
       },
       stream: () => ({ close() {} }),
       requests: async () => [],
+    },
+    get live() {
+      return liveOver(this as never);
     },
     subscribe: () => ({ close() {} }),
   } as unknown as Client;

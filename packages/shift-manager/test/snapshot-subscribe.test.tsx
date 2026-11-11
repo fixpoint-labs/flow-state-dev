@@ -20,7 +20,8 @@ import { App } from "../src/App";
 import { LabProvider, useLab } from "../src/lib/lab-data";
 import { inboxSection, PROJECT_READER_FLOW, readerSessionId, type LabSnapshot } from "../src/lib/reads";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import { heard, heardSessionIds, SNAPSHOT_POLL_MS } from "../src/lib/snapshot-subscribe";
+import { liveRead } from "@flow-state-dev/client/internal";
+import { heard, heardSessionIds, SNAPSHOT_POLL_MS, snapshotPaths } from "../src/lib/snapshot-subscribe";
 import { clockTime } from "../src/lib/shell";
 
 const USER = "u_test";
@@ -35,10 +36,18 @@ const subscribe = vi.fn((topics: readonly WireTopic[], options: { onChange: (not
 /** The subscription open now. */
 const live = () => opened.filter((o) => !o.closed);
 
-vi.mock("../src/lib/connection", () => ({
-  connect: (connection: { userId: string }) => ({ userId: connection.userId, subscribe }),
-  readConnection: () => ({ userId: USER }),
-}));
+vi.mock("../src/lib/connection", async () => {
+  const { liveRead } = await import("@flow-state-dev/client/internal");
+  return {
+    // The client's own live read, over the subscription the test drives.
+    connect: (connection: { userId: string }) => ({
+      userId: connection.userId,
+      subscribe,
+      live: (topics: readonly WireTopic[], options: Parameters<typeof liveRead>[2]) => liveRead(subscribe as never, topics, options),
+    }),
+    readConnection: () => ({ userId: USER }),
+  };
+});
 const workforce = { watchRoster: () => () => {} };
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
 
@@ -99,35 +108,55 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
+/**
+ * Whether the snapshot's live read reads on `notice`: its `hear` and `paths`,
+ * through the client's own filter, counted as reads.
+ */
+function snapshotHears(notice: WireNotice): boolean {
+  let onChange: ((n: WireNotice | null) => void) | undefined;
+  let count = 0;
+  const watching = liveRead(
+    (_topics, options) => {
+      onChange = options.onChange;
+      return { close: () => {} };
+    },
+    [],
+    { read: () => void (count += 1), hear: heard, paths: snapshotPaths, readNow: false, pollIntervalMs: null },
+  );
+  onChange!(notice);
+  watching.close();
+  return count === 1;
+}
+
 describe("what the snapshot hears", () => {
   it("reads on a session's request or run, never on its streamed items", () => {
     const conv = { scope: "session", id: "conv-1" } as const;
-    expect(heard(notice(conv, "request"))).toBe(true);
-    expect(heard(notice(conv, "run"))).toBe(true);
-    expect(heard(notice(conv, "items"))).toBe(false);
-    expect(heard(notice(conv, "state"))).toBe(false);
-    expect(heard(notice({ ...conv, resource: "tasks" }, "board"))).toBe(false);
+    expect(snapshotHears(notice(conv, "request"))).toBe(true);
+    expect(snapshotHears(notice(conv, "run"))).toBe(true);
+    expect(snapshotHears(notice(conv, "items"))).toBe(false);
+    expect(snapshotHears(notice(conv, "state"))).toBe(false);
+    expect(snapshotHears(notice({ ...conv, resource: "tasks" }, "board"))).toBe(false);
   });
 
   it("reads on a resource in a collection the snapshot reads, and on no other under the user or the org", () => {
     const user = (resource?: string) => notice({ scope: "user", ...(resource === undefined ? {} : { resource }) }, "resource");
     const org = (resource: string) => notice({ scope: "org", resource }, "resource");
     // A task filed or moved, a private project, a hire, a standard worker.
-    expect(heard(user("tasks/s%5Fconv%7Eab/task_1"))).toBe(true);
-    expect(heard(user("projects/p1"))).toBe(true);
-    expect(heard(user("workforce/workers/pm"))).toBe(true);
-    expect(heard(user("workforce/standard-workers/eng.pm"))).toBe(true);
+    expect(snapshotHears(user("tasks/s%5Fconv%7Eab/task_1"))).toBe(true);
+    expect(snapshotHears(user("projects/p1"))).toBe(true);
+    expect(snapshotHears(user("workforce/workers/pm"))).toBe(true);
+    expect(snapshotHears(user("workforce/standard-workers/eng.pm"))).toBe(true);
     // Usage's readings and the messages between workers: the snapshot reads neither.
-    expect(heard(user("worker-usage/codex/2026-11"))).toBe(false);
-    expect(heard(user("workforce/messages/m1"))).toBe(false);
-    expect(heard(user("tasks__ids/t1"))).toBe(false);
+    expect(snapshotHears(user("worker-usage/codex/2026-11"))).toBe(false);
+    expect(snapshotHears(user("workforce/messages/m1"))).toBe(false);
+    expect(snapshotHears(user("tasks__ids/t1"))).toBe(false);
     // A row whose path a notice can't name may be one the snapshot reads.
-    expect(heard(user())).toBe(true);
-    expect(heard(org("inventory/workers/eng.pm"))).toBe(true);
-    expect(heard(org("projects/p1"))).toBe(true);
-    expect(heard(org("licenses/l1"))).toBe(false);
-    expect(heard(notice({ scope: "user" }, "state"))).toBe(false);
-    expect(heard(notice({ scope: "org" }, "resync"))).toBe(true);
+    expect(snapshotHears(user())).toBe(true);
+    expect(snapshotHears(org("inventory/workers/eng.pm"))).toBe(true);
+    expect(snapshotHears(org("projects/p1"))).toBe(true);
+    expect(snapshotHears(org("licenses/l1"))).toBe(false);
+    expect(snapshotHears(notice({ scope: "user" }, "state"))).toBe(false);
+    expect(snapshotHears(notice({ scope: "org" }, "resync"))).toBe(true);
   });
 
   it("subscribes every listed session but Shift Manager's own, and leaves out a run whose parent it hears", () => {

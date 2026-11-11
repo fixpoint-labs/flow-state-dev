@@ -203,6 +203,9 @@
   // registry's own ToolGroup keeps its `defaultOpen` prop, so neither app calls it.
   // They also carry `knownToolVerbs`, the one tool lookup the Teammates lab's answering line reads.
   "ignoreExports": [
+    // Shift Manager's byte copy of the registry's connection screen: `retryDelayMs` is exported for
+    // the registry's own test, and the copy stays byte-equal to its source (static.test.ts V8).
+    { "file": "packages/shift-manager/src/components/flow-state/connection-screen.tsx", "exports": ["retryDelayMs"] },
     { "file": "apps/kitchen-sink/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen", "knownToolVerbs"] },
     { "file": "packages/shift-manager/src/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen", "knownToolVerbs"] },
     // Kitchen Sink's copies of the registry's composer and message: the attach button,

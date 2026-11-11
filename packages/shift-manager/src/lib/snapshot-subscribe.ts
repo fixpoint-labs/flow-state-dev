@@ -1,6 +1,7 @@
 /**
  * What the snapshot hears: the topics its provider subscribes, and which of
- * their notices read the Lab again.
+ * their notices read the Lab again, as its live read's `hear` and `paths`
+ * (`client.live`), which test a notice before it merges with another.
  *
  * A notice says *that* something changed, never what, so the snapshot hears
  * only what its read covers:
@@ -34,7 +35,7 @@ import { PROJECT_READER_FLOW, readerSessionId } from "./reads";
 export const SNAPSHOT_POLL_MS = 30_000;
 
 /**
- * The storage prefixes of the collections the snapshot reads, per scope: the
+ * The storage roots of the collections the snapshot reads, per scope: the
  * board ledger (`tasks/**`), projects (`projects/*`), the roster's own
  * (`workforce/workers/*`) and standard (`workforce/standard-workers/*`)
  * workers, and the org's worker inventory (`inventory/workers/*`).
@@ -87,17 +88,21 @@ export function snapshotTopics(sessionIds: readonly string[]): WireTopic[] {
   return [topic.user(), topic.org(), ...sessionIds.map((id) => topic.session(id))];
 }
 
-/** Whether a change at storage path `path` is under `root`. */
-const under = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
-
 /**
- * Whether `notice` changes what the snapshot shows. A resource notice that
- * names no path (an owner-private row) may be one the read covers, so it is heard.
+ * Whether a notice of this kind, on this topic, may change what the snapshot
+ * shows. Which resource paths it hears is {@link snapshotPaths}.
  */
 export function heard(notice: WireNotice): boolean {
   if (notice.kind === "resync") return true;
   if (notice.topic.scope === "session") return notice.kind === "request" || notice.kind === "run";
-  if (notice.kind !== "resource") return false;
-  const path = notice.topic.resource;
-  return path === undefined || READ_PREFIXES[notice.topic.scope].some((root) => under(path, root));
+  return notice.kind === "resource";
+}
+
+/**
+ * The resource paths the snapshot hears, per scope. A resource notice that
+ * names no path (an owner-private row) may be one the read covers, so the
+ * live read hears it whatever these say.
+ */
+export function snapshotPaths(scope: WireTopic["scope"]): readonly string[] {
+  return scope === "session" ? [] : READ_PREFIXES[scope];
 }

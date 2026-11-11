@@ -7,8 +7,7 @@
 import { useMemo } from "react";
 import { topic, type Client, type SessionSummary } from "@flow-state-dev/client";
 import type { SessionList, SessionListClient } from "../hooks/useSessionList";
-import { coalescedReads } from "./coalescedReads";
-import { LIVE_POLL_MS } from "./scopeNotices";
+import { liveRead } from "@flow-state-dev/client/internal";
 import { useFencedRead, type ReadDriver } from "./useFencedRead";
 
 const EMPTY_SESSIONS: SessionSummary[] = [];
@@ -20,22 +19,17 @@ const EMPTY_SESSIONS: SessionSummary[] = [];
  */
 function liveListDriver(client: Pick<Client, "subscribe">): ReadDriver {
   return (read) => {
-    const reads = coalescedReads(read);
-    const subscription = client.subscribe([topic.user()], {
-      onChange: (notice) => {
-        if (notice === null || notice.kind === "resync" || notice.kind === "run") reads.request();
-      },
-      pollIntervalMs: LIVE_POLL_MS
+    const live = liveRead((topics, options) => client.subscribe(topics, options), [topic.user()], {
+      read,
+      hear: (notice) => notice.kind === "run"
     });
     const doc = typeof document === "undefined" ? undefined : document;
     const onVisible = (): void => {
-      if (doc?.visibilityState === "visible") reads.request();
+      if (doc?.visibilityState === "visible") live.refresh();
     };
     doc?.addEventListener("visibilitychange", onVisible);
-    reads.request();
     return () => {
-      reads.close();
-      subscription.close();
+      live.close();
       doc?.removeEventListener("visibilitychange", onVisible);
     };
   };
