@@ -33,7 +33,7 @@ export function useThread(sessionId: string, threads: boolean) {
   };
 }
 
-export const usePins = () => useResource(claudeCodeStyle.resources.pins);   // { value, update }
+export const usePins = () => useResource(claudeCodeStyle.resources.pins);   // { value, stale, update }; kit-level resources pending FIX-2626 D1
 // A pin, in a component, is one line through the default write flow (O3):
 //   pins.update((s) => ({ pinned: toggle(s.pinned, taskId) }))   // pin or unpin, at the version read
 
@@ -88,6 +88,6 @@ stay.
 | `watchTasks` | 3, over `boardOf` (~380 behind it) | `useView(harness.views.codingBoard, { sessionId })` | orchestration's board view + harness fields |
 | `watchTaskWork` | 96: run feed, request stream, plan watch, merging | `useView(harness.views.runWork, { taskId })` + `useSessionFeed(run)` | harness kit |
 | `sayInThread` · `taskActions` · `resolve` · `requestChanges` | ~20, looking up the open hold first | the board's steer/cancel calls, an answer to `row.openHold` | orchestration; the board view row already carries its hold |
-| `watchPins` · `pin` · `unpin` | 9, plus the own session | `useResource(app.resources.pins)` and its `update`, through the default write flow | app kit: a direct read, a write through a flow |
+| `watchPins` · `pin` · `unpin` | 9, plus the own session | `useResource(app.resources.pins)` and its `update`, through the default write flow (`app.resources` pending FIX-2626 D1) | app kit: a direct read, a write through a flow |
 
 Line counts are from reading `src/adapter.ts` today; what each verb becomes is proposed.

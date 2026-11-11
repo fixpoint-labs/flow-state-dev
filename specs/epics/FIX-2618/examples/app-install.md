@@ -14,7 +14,7 @@ export default createFlowState({
     mission({ teamSize: 4 }),
     livingArtifacts({ refreshEvery: "1h" }),
   ],
-  flows: appFlows,                               // the app's own flows, and the copied ones it configures
+  flows: [deskFlow, triageFlow],                 // an array: the app's own flows; the keyed record is gone
   stores: { default: { primary: sqliteStores({ filename }) } },
 });
 // Order, slot contributions, name prefixes and the client manifest are resolved here, once.

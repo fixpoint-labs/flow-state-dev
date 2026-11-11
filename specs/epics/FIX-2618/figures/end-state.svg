@@ -52,7 +52,7 @@
     <text class="t-tag c-code" x="32" y="38">IN THE BOX · WHAT AN APP ON WORKFORCE GETS</text>
     <rect class="chip" x="32" y="52" width="284" height="44" rx="4"/>
     <text class="t-b" x="44" y="71">Views · FIX-2623</text>
-    <text class="t-s" x="44" y="87">scope, dependsOn, key · replace reads</text>
+    <text class="t-s" x="44" y="87">scope, key, recorded reads · replace reads</text>
     <rect class="chip" x="328" y="52" width="284" height="44" rx="4"/>
     <text class="t-b" x="340" y="71">One live read · FIX-2551</text>
     <text class="t-s" x="340" y="87">useView and every watch sit on it</text>

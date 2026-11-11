@@ -14,9 +14,9 @@ export const mission = defineKit({
   requires: [workforce],
   config: z.object({ planner: z.string().default("planner"), teamSize: z.number().default(3) }),
 
-  resources: { missions, objectives },             // user-scoped collections, runBy their flows
+  resources: { missions, objectives },             // user-scoped collections, runBy their flows; kit-level field pending FIX-2626 D1
   directory: { path: "mission", load: loadMissionDir },  // the copied half: scaffolded by init, owned by the app, read at install
-  views: { missionBoard, objectiveProgress },
+  views: { missionBoard, objectiveProgress },      // kit-level field pending FIX-2626 D1
 
   // Reach into workforce only through the slots it publishes.
   contributes: ({ config }) => ({
@@ -25,6 +25,6 @@ export const mission = defineKit({
     [workforce.slots.boardFields]: [objectiveOfTask],
   }),
 
-  client: missionClient,                            // typed calls + hooks; no app adapter
+  client: missionClient,                            // typed calls + hooks; pending FIX-2626 D1, which may make this plain package exports
 });
 ```

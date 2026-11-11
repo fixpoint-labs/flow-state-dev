@@ -25,8 +25,8 @@ await fsd.resource(pins).update((s) => ({ pinned: toggle(s.pinned, threadId) }))
 
 // toggle(list, id): drop id if present, append it if not. A plain helper, not framework API.
 
-// React: the value and the same setters.
-const { value, update } = useResource(pins);
+// React: the value, whether it is stale, and the same setters; the same names as useView.
+const { value, stale, update } = useResource(pins);
 ```
 
 **Real work: a dashboard, on its own flow.** The same route and the same send; only the flow differs.
@@ -41,6 +41,6 @@ export const artifacts = defineResourceCollection({
 });
 
 // Client
-const q3 = await fsd.resources.user("artifacts/q3").state();     // direct read, no session
-await fsd.resource("artifacts/q3").send("refresh", { data });      // data in; the flow builds the resource
+const all = await fsd.resource(artifacts).state();                    // direct read, no session; entry addressing is FIX-2624's
+await fsd.resource(artifacts).send("refresh", { key: "q3", data });  // data in; the flow builds the entry
 ```

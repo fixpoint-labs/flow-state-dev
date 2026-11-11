@@ -11,7 +11,7 @@ export const claudeCodeStyle = defineKit({
   name: "ccs",
   requires: [workforce, harnesses],
 
-  resources: {
+  resources: {                                                    // kit-level field pending FIX-2626 D1
     pins: defineResource({
       scope: "user",
       stateSchema: z.object({ pinned: z.array(z.string()).default([]) }),
