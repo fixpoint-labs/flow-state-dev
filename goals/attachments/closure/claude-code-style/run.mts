@@ -63,7 +63,8 @@ await runGoal(async (failures, tell) => {
           const card = p.getByRole("complementary", { name: "Background tasks" }).locator("button[data-task-status]").first();
           if (!(await card.waitFor({ timeout }).then(() => true, () => false))) return null;
           await card.click();
-          return p.getByRole("dialog", { name: /^Work: / }).locator("header ~ div");
+          const sheet = p.getByRole("dialog", { name: /^Work: / });
+          return { work: sheet.locator("header ~ div"), brief: sheet.locator("header") };
         },
         async restart() {
           stopProcessGroup(lab.child);

@@ -58,7 +58,8 @@ await runGoal(async (failures, tell) => {
         const card = p.getByRole("main", { name: "Conversation" }).locator("button:has([data-task-status])").last();
         if (!(await card.waitFor({ timeout }).then(() => true, () => false))) return null;
         await card.click();
-        return p.getByRole("dialog").last().locator('[data-step="result"]');
+        const popup = p.getByRole("dialog").last();
+        return { work: popup.locator('[data-step="result"]'), brief: popup.locator("header") };
       },
       origin: () => lab.origin,
       async open(p) {

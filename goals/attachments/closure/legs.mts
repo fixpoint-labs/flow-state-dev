@@ -177,12 +177,12 @@ export interface Surface {
   /** The page path that reopens the conversation leg a sent into, after a restart. Default: the page's own URL. */
   reopenPath?(page: Page): string;
   /**
-   * Open the coding task the hand-off filed and return the part of its view the
-   * coding run writes (its work or result, never the title or goal the filer
-   * wrote); null when no task shows within `timeout`.
+   * Open the coding task the hand-off filed and return two parts of its view:
+   * `work`, what the coding run writes (its work or result), and `brief`, the
+   * title and goal the filer wrote. Null when no task shows within `timeout`.
    * Without it, the hand-off has nothing of the coding run's to read: a FAIL.
    */
-  openCodingTask?(page: Page, timeout: number): Promise<Locator | null>;
+  openCodingTask?(page: Page, timeout: number): Promise<{ work: Locator; brief: Locator } | null>;
 }
 
 const visible = (page: Page, selector: string) => page.locator(`${selector}:visible`);
@@ -438,7 +438,14 @@ export async function walkCodingHandOff(page: Page, surface: Surface, worker: st
     failures.push(`[${surface.tag}:coding] no coding task was filed from the line`);
     return words;
   }
-  const text = await readUntilNamed(view, words);
+  // The filer saw the images: a word it copied into the brief proves nothing of the run.
+  const brief = (await view.brief.innerText().catch(() => "")).toUpperCase();
+  const leaked = words.filter((w) => brief.includes(w));
+  if (leaked.length > 0) {
+    failures.push(`[${surface.tag}:coding] the task's brief itself names ${leaked.join(", ")}: its run can't show it read the images`);
+    return words;
+  }
+  const text = await readUntilNamed(view.work, words);
   const named = tell.over(`${surface.tag}:coding`, words).filter((w) => text.includes(w));
   if (named.length !== 2) failures.push(`[${surface.tag}:coding] the coding run's report names ${named.length} of ${words.join(", ")}: ${JSON.stringify(text.slice(-400))}`);
   return words;

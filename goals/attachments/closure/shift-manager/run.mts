@@ -111,14 +111,25 @@ await runGoal(async (failures, tell) => {
       return true;
     };
     const status = page.getByTestId("task-action-row");
+    const session = page.getByTestId("task-slot");
+    // The brief is the Shift Coordinator's own writing, and it saw the images: a word it copied there proves nothing of the run.
+    const briefNames = async (words: readonly string[]) => {
+      await page.locator('[role="tab"][data-tab="brief"]').click();
+      await page.getByTestId("task-brief").waitFor({ timeout: 30_000 }).catch(() => undefined);
+      const brief = (await page.getByTestId("task-brief").innerText().catch(() => "")).toUpperCase();
+      await page.locator('[role="tab"][data-tab="session"]').click();
+      return words.filter((w) => brief.includes(w));
+    };
     const reaches = (state: string, timeout: number) =>
       page.locator(`[data-testid="task-action-row"][data-status="${state}"]`).waitFor({ timeout }).then(() => true, () => false);
 
     const words = drawWords(d.words);
     const marker = `closure-${randomBytes(3).toString("hex")}`;
-    if (!(await fileTask(marker, words))) failures.push(`[sm:task-run] no task "${marker}" was filed from the line`);
+    const leakedFirst = (await fileTask(marker, words)) ? await briefNames(words) : undefined;
+    if (leakedFirst === undefined) failures.push(`[sm:task-run] no task "${marker}" was filed from the line`);
+    else if (leakedFirst.length > 0) failures.push(`[sm:task-run] the brief itself names ${leakedFirst.join(", ")}: its run can't show it read the images`);
     else {
-      const first = await readUntilNamed(page.locator("body"), words);
+      const first = await readUntilNamed(session, words);
       const named = tell.over("sm:task-run", words).filter((w) => first.includes(w));
       if (named.length !== 2) failures.push(`[sm:task-run] the task's run names ${named.length} of ${words.join(", ")}: ${JSON.stringify(first.slice(-300))}`);
       evidence.push(`sm:task ${marker} ${words.join("/")}`);
@@ -126,7 +137,9 @@ await runGoal(async (failures, tell) => {
 
     const again = drawWords(d.words);
     const second = `closure-${randomBytes(3).toString("hex")}`;
-    if (!(await fileTask(second, again))) failures.push(`[sm:re-run] no task "${second}" was filed from the line`);
+    const leakedAgain = (await fileTask(second, again)) ? await briefNames(again) : undefined;
+    if (leakedAgain === undefined) failures.push(`[sm:re-run] no task "${second}" was filed from the line`);
+    else if (leakedAgain.length > 0) failures.push(`[sm:re-run] the brief itself names ${leakedAgain.join(", ")}: its Retry can't show it read the images`);
     else if (!(await reaches("in_progress", 300_000))) failures.push(`[sm:re-run] "${second}" never started running (status ${await status.getAttribute("data-status").catch(() => "none")})`);
     else {
       await page.getByTestId("task-action-cancel").click();
@@ -135,7 +148,6 @@ await runGoal(async (failures, tell) => {
       else {
         // Each word must be drawn in the task's session more times than before Retry, so what the cancelled
         // run already wrote can't pass the re-run, wherever the page draws it.
-        const session = page.getByTestId("task-slot");
         const before = (await session.innerText()).toUpperCase();
         await page.getByTestId("task-action-retry").click();
         if (!(await reaches("in_progress", 60_000))) failures.push("[sm:re-run] Retry never started a second run");
