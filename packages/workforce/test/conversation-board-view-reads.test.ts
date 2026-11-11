@@ -1,13 +1,15 @@
+// FIX-2623 (D1, FIX-2621).
 /**
- * The view recorder on the conversation board (FIX-2623 D1's precondition).
+ * The view recorder on the conversation board: the precondition the spec set
+ * before views build on it.
  *
- * FIX-2621 ran the board's list through recorders outside the engine and
+ * The dependency-check proof ran the board's list through recorders outside the engine and
  * found each one blind somewhere: in place missed the session's state, a
  * proxy changed the run's branch and missed the plan ledger, and both missed
  * a child block. Its finding that a recorder inside the engine sees all of
  * it was reasoned, not run. This runs the board's real list block as a
  * session view, under the production recorder, and requires every
- * dependency FIX-2621 found: the task ledger, the plan ledger, the roster and
+ * dependency that proof found: the task ledger, the plan ledger, the roster and
  * the session's own state. A miss here sends D1 back to the owner.
  */
 import { describe, expect, it } from "vitest";

@@ -1,5 +1,6 @@
+// FIX-2623.
 /**
- * `defineView` (FIX-2623): a view is refused at definition time when a
+ * `defineView`: a view is refused at definition time when a
  * screen would otherwise meet the mistake at run time: an untyped answer, a
  * scope that doesn't exist, a key that isn't a function, or a flow `views`
  * entry that isn't a view.

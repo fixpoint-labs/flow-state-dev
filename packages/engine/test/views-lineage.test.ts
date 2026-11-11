@@ -1,5 +1,6 @@
+// FIX-2623.
 /**
- * Views over a lineage-shared resource (FIX-2623 D1): a `sharedToLineage`
+ * Views over a lineage-shared resource: a `sharedToLineage`
  * session resource has one identity across a session lineage, so a sibling's
  * write changes what a session view in another member shows. The view's
  * answer must name a topic that write publishes on, or its watcher never

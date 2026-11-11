@@ -1,5 +1,6 @@
+// FIX-2623.
 /**
- * Views (FIX-2623): a block a screen watches, at the scope its data lives
+ * Views: a block a screen watches, at the scope its data lives
  * in. The checks that matter are the ones a screen would feel: a user or org
  * view answers a user who never had a session without making one; the answer
  * names the topics of what the run read, a child block's reads included, so a

@@ -1,5 +1,6 @@
+// FIX-2623.
 /**
- * The view routes refuse the way every other door does (FIX-2623):
+ * The view routes refuse the way every other door does:
  *
  * - A caller outside a flow instance's owner pin gets the 404 an address the
  *   registry doesn't hold gets, byte for byte, whatever it asks: a view the

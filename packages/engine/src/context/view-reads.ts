@@ -19,6 +19,7 @@ import { wireTopicKey } from "@flow-state-dev/core/internal";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import type { RequestHost } from "@flow-state-dev/core/internal";
 import { NoSessionError } from "./no-session";
+import type { StorageReach } from "../resources/lineage-scope";
 
 /** One read a view's run made: a scope's state, or one of its resources by accessor. */
 export type RecordedRead =
@@ -75,19 +76,32 @@ export function createReadRecorder(): ReadRecorder {
  */
 export type ViewDependencies = {
   state(scope: "session" | "user" | "org"): void;
-  resource(scope: "session" | "user" | "org", name: string, options?: { lineageShared?: boolean }): void;
+  /**
+   * A resource read, by name, and the storage it can reach: one key, or every
+   * key under a prefix. Whether any of that storage is lineage-shared is
+   * worked out here, from storage ownership, never from the handle that read it.
+   */
+  resource(scope: "session" | "user" | "org", name: string, reach: StorageReach): void;
   session(sessionId: string): void;
 };
 
-/** The dependency surface over one run's recorder, for the running session `sessionId`. */
-export function createViewDependencies(record: (read: RecordedRead) => void, sessionId: string): ViewDependencies {
+/**
+ * The dependency surface over one run's recorder, for the running session
+ * `sessionId`. `sharesLineage` says whether a session reach touches any
+ * lineage-shared storage (`reachHasFlag` over the session buckets).
+ */
+export function createViewDependencies(
+  record: (read: RecordedRead) => void,
+  sessionId: string,
+  sharesLineage: (reach: StorageReach) => boolean
+): ViewDependencies {
   return {
     state(scope) {
       record(scope === "session" ? { scope, sessionId, what: "state" } : { scope, what: "state" });
     },
-    resource(scope, name, options) {
+    resource(scope, name, reach) {
       record(scope === "session" ? { scope, sessionId, what: { resource: name } } : { scope, what: { resource: name } });
-      if (scope === "session" && options?.lineageShared === true) record({ scope: "user", what: { resource: name } });
+      if (scope === "session" && sharesLineage(reach)) record({ scope: "user", what: { resource: name } });
     },
     session(id) {
       record({ scope: "session", sessionId: id, what: "state" });

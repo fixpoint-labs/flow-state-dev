@@ -140,9 +140,11 @@ import { resourceStorageKeys } from "../resources/storage-keys";
 import { mergeOwnKeyRecords, ownKeyRecord } from "../resources/own-key-record";
 import {
   isSharedToLineage,
+  reachHasFlag,
   resolveOwnershipFlag,
   sessionRoutingIndex,
-  type OwnershipBuckets
+  type OwnershipBuckets,
+  type StorageReach
 } from "../resources/lineage-scope";
 import type { StorageScopeType } from "../stores/types";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
@@ -756,7 +758,13 @@ export async function createExecutionContext<
   // FIX-2623: a view's dependencies, recorded as its blocks read. Absent
   // outside a view. The only use of the raw recorder: every read path below
   // goes through this surface, which holds the topic rules (`view-reads.ts`).
-  const viewDependencies = options.recordRead !== undefined ? createViewDependencies(options.recordRead, sessionId) : undefined;
+  // Whether a session reach touches lineage-shared storage: read through the
+  // session buckets, which are built below, when a read asks.
+  const sharesLineageRef: { current: (reach: StorageReach) => boolean } = { current: () => false };
+  const viewDependencies =
+    options.recordRead !== undefined
+      ? createViewDependencies(options.recordRead, sessionId, (reach) => sharesLineageRef.current(reach))
+      : undefined;
   const requestId = options.requestId;
 
   // Tenant-namespaced session storage key (FIX-682). Bare `sessionId` for
@@ -1513,6 +1521,7 @@ export async function createExecutionContext<
   if (sessionConflict !== undefined) {
     throw conflictingPrefixError("session", sessionConflict, "sharedToLineage");
   }
+  sharesLineageRef.current = (reach) => reachHasFlag(sessionIndex.buckets, reach);
   const scopeBuckets: Record<ContentScopeType, OwnershipBuckets> = {
     session: sessionIndex.buckets,
     user: buildScopeBuckets("user", userResourceConfigs, isolationFlagOf("user"), "flowIsolation"),
@@ -2981,7 +2990,7 @@ export async function createExecutionContext<
   ];
   templateResolverRef.current = (ref: string): string | null => {
     for (const { scope, read } of templateScopes) {
-      viewDependencies?.resource(scope, ref, { lineageShared: scope === "session" && resolveBucketFlag("session", ref) === true });
+      viewDependencies?.resource(scope, ref, { key: ref });
       const content = read()[ref];
       if (typeof content === "string") return content;
     }
@@ -3423,8 +3432,13 @@ export async function createExecutionContext<
   const recordResource = (accessor: string): void => {
     const scope = accessorScope[accessor];
     if (viewDependencies === undefined || scope === undefined) return;
-    const config = scope === "session" ? sessionResourceConfigs[accessor] : undefined;
-    viewDependencies.resource(scope, accessor, { lineageShared: config !== undefined && isSharedToLineage(config) });
+    // What the handle can reach: its storage key, or a collection's prefix.
+    const config = scope === "session" ? sessionResourceConfigs[accessor] : scope === "user" ? userResourceConfigs[accessor] : orgResourceConfigs[accessor];
+    const reach: StorageReach =
+      config !== undefined && isCollectionConfig(config)
+        ? { prefix: getPatternPrefix(config.pattern) === "" ? "" : `${getPatternPrefix(config.pattern)}/` }
+        : { key: scopeStorageKeyMaps[scope][accessor] ?? accessor };
+    viewDependencies.resource(scope, accessor, reach);
   };
   const resourceHandle = (name: string): AnyResourceRef => {
     const handle = flatResourcesHandles[name];
@@ -4448,9 +4462,12 @@ export async function createExecutionContext<
         });
       },
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal, sideChainSignalOverride?: AbortSignal) => {
-        // FIX-2623 D2: a generator is a model call. Refused before it starts,
-        // so the error names the model call, not whatever it reaches first.
-        if (options.refuseModelCalls === true && parent.kind === "generator") {
+        // FIX-2623 D2: a generator and an evaluator are model calls. Refused
+        // before they start, so the error names the model call, not whatever
+        // it reaches first. An evaluator always holds a model (`model` is
+        // required), and one held inline is called directly, never through the
+        // resolver this context refuses.
+        if (options.refuseModelCalls === true && (parent.kind === "generator" || parent.kind === "evaluator")) {
           throw new ViewModelCallError(parent.name);
         }
         const resolvedParent: ExecutionParent = {

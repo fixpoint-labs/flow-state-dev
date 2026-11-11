@@ -1,5 +1,6 @@
+// FIX-2623.
 /**
- * Every way a view can read, against every place data lives (FIX-2623 D1).
+ * Every way a view can read, against every place data lives.
  *
  * One cell per pair of read path {a resource through `ctx.resources`, a
  * template resolved for a resource, the session handle, the request host}
@@ -12,7 +13,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { DEFAULT_ORG_ID, defineFlow, defineResource, defineView, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, defineResource, defineResourceCollection, defineView, handler } from "@flow-state-dev/core";
 import { requestHostOf } from "@flow-state-dev/core/internal";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { runAction } from "../src";
@@ -44,11 +45,24 @@ const rendered = {
   lineage: defineResource({ scope: "session", ref: "rLineage", stateSchema: open, contentTemplateRef: "tLineage" })
 } as const;
 
+/**
+ * An unshared collection whose pattern also covers a lineage-shared one's
+ * rows: a list through the unshared handle returns the shared rows, which a
+ * sibling writes.
+ */
+const overlap = {
+  notes: defineResourceCollection({ scope: "session", pattern: "notes/**", stateSchema: value }),
+  sharedNotes: defineResourceCollection({ scope: "session", sharedToLineage: true, pattern: "notes/shared/*", stateSchema: value })
+} as const;
+
 type Scope = keyof typeof direct;
 const SCOPES: Scope[] = ["session", "user", "org", "lineage"];
-const resources = Object.fromEntries(
-  [...Object.values(direct), ...Object.values(template), ...Object.values(rendered)].map((r) => [(r as { ref: string }).ref, r])
-) as Record<string, (typeof direct)[Scope]>;
+const resources = {
+  ...Object.fromEntries(
+    [...Object.values(direct), ...Object.values(template), ...Object.values(rendered)].map((r) => [(r as { ref: string }).ref, r])
+  ),
+  ...overlap
+} as unknown as Record<string, (typeof direct)[Scope]>;
 const out = z.object({ v: z.string().nullable() });
 
 const views: Record<string, ReturnType<typeof defineView>> = {};
@@ -112,6 +126,33 @@ views.host_session = defineView({
     resources,
     execute: async (_input, ctx) => ({ v: (await requestHostOf(ctx)?.sessions?.read("c")) === undefined ? "absent" : "present" })
   })
+});
+views.overlap_lineage = defineView({
+  scope: "session",
+  block: handler({
+    name: "read-overlap",
+    inputSchema: z.object({}),
+    outputSchema: out,
+    resources,
+    execute: async (_input, ctx) => ({
+      v: ((await (ctx.resources as any).notes.list()) as Array<{ path: string; state: { v: string } }>)
+        .map((row) => `${row.path}=${row.state.v}`)
+        .sort()
+        .join(",")
+    })
+  })
+});
+actions.overlap_lineage = handler({
+  name: "write-overlap",
+  inputSchema: z.object({ v: z.string() }),
+  resources,
+  execute: async (input, ctx) => {
+    const ref = (ctx.resources as any).sharedNotes;
+    const existing = await ref.getOptional("n1");
+    if (existing === undefined) await ref.create("n1", { v: (input as { v: string }).v });
+    else await existing.patchState({ v: (input as { v: string }).v });
+    return { ok: true };
+  }
 });
 actions.say = handler({ name: "say", inputSchema: z.object({ v: z.string() }), resources, execute: (input) => ({ said: (input as { v: string }).v }) });
 
@@ -194,6 +235,12 @@ describe("a view hears a change through every read path, at every scope", () => 
     }
   }
 
+  it("overlapping collections × lineage", async () => {
+    const { before, after, heard } = await cell("overlap_lineage", "overlap_lineage", "b");
+    expect(after.output).not.toEqual(before.output);
+    expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+  });
+
   it("session handle × session", async () => {
     const { before, after, heard } = await cell("handle_session", "say", "a");
     expect(after.output).not.toEqual(before.output);
@@ -213,8 +260,9 @@ describe("one way to record a view's dependency", () => {
     // A read path that records by hand can forget a topic rule (the lineage
     // one, a template's scope); one that goes through the surface can't.
     const source = readFileSync(new URL("../src/context/createExecutionContext.ts", import.meta.url), "utf8");
-    const lines = source.split("\n").filter((line) => /\brecordRead\b/.test(line));
-    expect(lines).toHaveLength(1);
-    expect(source).toMatch(/createViewDependencies\(options\.recordRead, sessionId\)/);
+    // The recorder is read off `options` twice (the presence check and the
+    // hand-off) and named nowhere else.
+    expect(source.match(/[\w.]*\brecordRead\b/g)).toEqual(["options.recordRead", "options.recordRead"]);
+    expect(source).toMatch(/createViewDependencies\(options\.recordRead, sessionId,/);
   });
 });

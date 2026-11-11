@@ -1,5 +1,6 @@
+// FIX-2623.
 /**
- * Views (FIX-2623): every path a view's run can read through is either
+ * Views: every path a view's run can read through is either
  * recorded, so its watchers hear a change to it, or refused. A read the
  * engine can't record would leave a watcher stale with no error.
  *
@@ -15,7 +16,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, defineResource, defineView, handler } from "@flow-state-dev/core";
+import { defineFlow, defineResource, defineView, evaluator, handler, sequencer } from "@flow-state-dev/core";
+import { mockEvaluationModel } from "@flow-state-dev/testing";
 import { requestHostOf } from "@flow-state-dev/core/internal";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { runAction } from "../src";
@@ -76,6 +78,18 @@ const readsItems = handler({
   execute: (_input, ctx) => ({ n: ctx.session.items.all().length })
 });
 
+/** An evaluator with its model held inline: it calls the model directly, not through the resolver. */
+const triage = evaluator({
+  name: "triage",
+  model: mockEvaluationModel({ answers: { urgent: { type: "boolean", value: true } } as never }),
+  inputSchema: z.object({}),
+  state: () => "anything",
+  questions: { urgent: { type: "boolean", prompt: "Urgent?" } } as never
+});
+const triageThenAnswer = sequencer({ name: "triage-then-answer", inputSchema: z.object({}) })
+  .step(triage)
+  .step(handler({ name: "answer", inputSchema: z.unknown(), outputSchema: z.object({ ok: z.boolean() }), execute: () => ({ ok: true }) }));
+
 const touch = handler({ name: "touch", inputSchema: z.object({}), execute: () => ({ ok: true }) });
 
 function app(): FlowInstance {
@@ -88,7 +102,8 @@ function app(): FlowInstance {
       peekUser: defineView({ scope: "user", block: readsSession }),
       peekSession: defineView({ scope: "session", block: readsSession }),
       liveness: defineView({ scope: "session", block: readsLiveness }),
-      items: defineView({ scope: "session", block: readsItems })
+      items: defineView({ scope: "session", block: readsItems }),
+      triage: defineView({ scope: "user", block: triageThenAnswer })
     }
   })() as unknown as FlowInstance;
 }
@@ -151,6 +166,11 @@ describe("the request host's reads in a view", () => {
     const flow = app();
     await act(stores, flow, "mine", "touch", {});
     await expect(view(stores, flow, "liveness", {}, "mine")).rejects.toMatchObject({ name: "UnrecordedReadError" });
+  });
+
+  it("refuses an evaluator, whose model is held inline and never resolved", async () => {
+    const stores = createInMemoryStores();
+    await expect(view(stores, app(), "triage", {})).rejects.toMatchObject({ name: "ViewModelCallError" });
   });
 
   it("records the session when a session view reads its items", async () => {

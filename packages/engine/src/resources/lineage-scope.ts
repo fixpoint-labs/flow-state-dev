@@ -167,6 +167,27 @@ export function resolveOwnershipFlag(
   return flag;
 }
 
+// FIX-2623.
+/**
+ * What a read can reach: one storage key, or every key under a prefix
+ * (a collection's), including keys no row holds yet.
+ */
+export type StorageReach = { key: string } | { prefix: string };
+
+/**
+ * Whether any key `reach` can reach is owned by a declaration flagged in
+ * `buckets`: the exact owner of a key, or, for a prefix, any flagged single or
+ * prefix inside it, or the owner of the prefix itself. Ownership is the same
+ * longest-prefix rule {@link resolveOwnershipFlag} applies.
+ */
+export function reachHasFlag(buckets: OwnershipBuckets, reach: StorageReach): boolean {
+  if ("key" in reach) return resolveOwnershipFlag(buckets, reach.key) === true;
+  const { prefix } = reach;
+  for (const [key, flag] of buckets.singles) if (flag && key.startsWith(prefix)) return true;
+  for (const p of buckets.prefixes) if (p.flag && p.prefix.startsWith(prefix)) return true;
+  return resolveOwnershipFlag(buckets, prefix) === true;
+}
+
 /** Where a flow's session-scoped keys route, walked once from its declarations. */
 export type SessionRoutingIndex = {
   /** Every session declaration's routing flag: singles by storage key, collections by prefix. */
