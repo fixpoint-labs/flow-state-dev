@@ -18,10 +18,14 @@
  * Lifecycle: a single long-lived `moat run -d` per scope (started lazily by
  * `resolveMoatSandbox`), one `moat exec` per command. Tear down via
  * `sandbox.stop()` — typically wired through the bash capability's
- * `cleanupBlock` into `defineFlow({ request: { onFinished } })`.
+ * `cleanupBlock` into `defineFlow({ request: { onFinished } })`. A
+ * persisting run survives `stop()`; the bash blocks stop it with
+ * `stopMoatRun` once it has gone idle. A command that times out or
+ * overruns its output cap is stopped inside the container as well.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { constants as fsConstants, existsSync, readFileSync } from "node:fs";
 import { lstat, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -159,9 +163,42 @@ export function buildRunArgs(input: BuildRunArgsInput): string[] {
   return args;
 }
 
-/** Build the argv for `moat exec <run> -- sh -c <command>`. */
-export function buildExecArgs(runName: string, command: string): string[] {
-  return ["exec", runName, "--", "sh", "-c", command];
+/**
+ * In-container wrapper for every command: record this shell's pid under
+ * `execId`, run the command as a child, and pass its exit code through.
+ * The pid is what `buildKillExecArgs` stops when the host gives up on the
+ * command — killing the host `moat` process alone leaves it running.
+ */
+const EXEC_WRAPPER =
+  'f=/tmp/fsdev-exec-$2.pid; { echo $$ > "$f"; } 2>/dev/null; sh -c "$1"; rc=$?; rm -f "$f"; exit $rc';
+
+/**
+ * Stop the process tree of the command recorded under `execId`. Walks
+ * `/proc` (MOAT containers are Linux) rather than relying on `pkill` or
+ * `setsid`, which a minimal image may not ship. Each process is stopped as
+ * it is found so nothing can fork past the walk, then all are killed.
+ */
+const KILL_EXEC =
+  'f=/tmp/fsdev-exec-$1.pid; [ -f "$f" ] || exit 0; root=$(cat "$f"); rm -f "$f"; ' +
+  '[ -n "$root" ] || exit 0; kill -STOP "$root" 2>/dev/null; all=$root; frontier=$root; ' +
+  'while [ -n "$frontier" ]; do next=""; ' +
+  'for s in /proc/[0-9]*/stat; do read -r line < "$s" 2>/dev/null || continue; ' +
+  'rest=${line##*) }; set -- $rest; ' +
+  'for q in $frontier; do if [ "$2" = "$q" ]; then p=${s#/proc/}; p=${p%/stat}; ' +
+  'kill -STOP "$p" 2>/dev/null; next="$next $p"; fi; done; done; ' +
+  'all="$all $next"; frontier=$next; done; kill -KILL $all 2>/dev/null; exit 0';
+
+/**
+ * Build the argv for `moat exec <run> -- sh -c <wrapper> <command> <execId>`.
+ * The command and id are positional, so neither is re-quoted.
+ */
+export function buildExecArgs(runName: string, command: string, execId: string): string[] {
+  return ["exec", runName, "--", "sh", "-c", EXEC_WRAPPER, "fsdev-exec", command, execId];
+}
+
+/** Build the argv that stops the command `buildExecArgs` ran under `execId`. */
+export function buildKillExecArgs(runName: string, execId: string): string[] {
+  return ["exec", runName, "--", "sh", "-c", KILL_EXEC, "fsdev-kill", execId];
 }
 
 /**
@@ -247,7 +284,16 @@ export interface SpawnResult {
   stdoutBytes: Buffer;
   /** True when the timeout fired before the child exited. */
   timedOut: boolean;
+  /** True when one stream passed `MAX_SPAWN_OUTPUT_BYTES` and the child was killed. */
+  outputExceeded?: boolean;
 }
+
+/**
+ * Per-stream output cap for a MOAT subprocess (stdout and stderr counted
+ * separately), the same as the local provider's. An overrun kills the
+ * process and keeps what was read so far.
+ */
+export const MAX_SPAWN_OUTPUT_BYTES = 10 * 1024 * 1024;
 
 /** Injectable spawn function used by every adapter method. */
 export type SpawnFn = (
@@ -283,18 +329,13 @@ const realSpawn: SpawnFn = (command, args, options) => {
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let timedOut = false;
+    let outputExceeded = false;
+    let settled = false;
     let timer: NodeJS.Timeout | undefined;
 
-    child.stdout?.on("data", (c: Buffer) => stdoutChunks.push(c));
-    child.stderr?.on("data", (c: Buffer) => stderrChunks.push(c));
-    child.on("error", (err: NodeJS.ErrnoException) => {
-      if (err.code === "ENOENT") {
-        reject(Object.assign(err, { code: "ENOENT" }));
-        return;
-      }
-      reject(err);
-    });
-    child.on("close", (code, signal) => {
+    const settle = (code: number | null, signal: NodeJS.Signals | null) => {
+      if (settled) return;
+      settled = true;
       if (timer) clearTimeout(timer);
       const stdoutBytes = Buffer.concat(stdoutChunks);
       resolve({
@@ -304,17 +345,53 @@ const realSpawn: SpawnFn = (command, args, options) => {
         stderr: Buffer.concat(stderrChunks).toString("utf-8"),
         stdoutBytes,
         timedOut,
+        ...(outputExceeded ? { outputExceeded } : {}),
       });
+    };
+
+    // Kill the child and settle now, with the output so far — not on
+    // `close`, which a child of the killed process holding the pipes open
+    // would hold off for as long as it runs.
+    const abort = () => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // Process already exited.
+      }
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      settle(null, "SIGKILL");
+    };
+
+    const collect = (sink: Buffer[]) => {
+      let streamBytes = 0;
+      return (chunk: Buffer) => {
+        if (settled) return;
+        streamBytes += chunk.length;
+        if (streamBytes > MAX_SPAWN_OUTPUT_BYTES) {
+          outputExceeded = true;
+          abort();
+          return;
+        }
+        sink.push(chunk);
+      };
+    };
+    child.stdout?.on("data", collect(stdoutChunks));
+    child.stderr?.on("data", collect(stderrChunks));
+    child.on("error", (err: NodeJS.ErrnoException) => {
+      if (settled) return;
+      if (err.code === "ENOENT") {
+        reject(Object.assign(err, { code: "ENOENT" }));
+        return;
+      }
+      reject(err);
     });
+    child.on("close", (code, signal) => settle(code, signal));
 
     if (options.timeoutMs && options.timeoutMs > 0) {
       timer = setTimeout(() => {
         timedOut = true;
-        try {
-          child.kill("SIGKILL");
-        } catch {
-          // Process already exited.
-        }
+        abort();
       }, options.timeoutMs);
     }
 
@@ -772,23 +849,57 @@ export async function purgeOldRuns(opts: {
   const toDestroy = ours.slice(0, ours.length - keep);
   const destroyed: string[] = [];
   for (const r of toDestroy) {
-    try {
-      await spawnFn(bin, ["stop", r.name], {
-        timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
-        cwd: workspace,
-        env,
-      });
-      await spawnFn(bin, ["destroy", r.name], {
-        timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
-        cwd: workspace,
-        env,
-      });
-      destroyed.push(r.name);
-    } catch {
-      // Best-effort; a failed purge is not a request-blocking error.
-    }
+    // Best-effort; a failed purge is not a request-blocking error.
+    if (await teardownRun(spawnFn, bin, r.name, workspace, env)) destroyed.push(r.name);
   }
   return { destroyed };
+}
+
+/**
+ * `moat stop` then `moat destroy` one run. Each step is best-effort and
+ * logged on failure; `destroy` runs even when `stop` failed. Returns
+ * whether both succeeded.
+ */
+async function teardownRun(
+  spawnFn: SpawnFn,
+  bin: string,
+  runName: string,
+  cwd: string | undefined,
+  env: NodeJS.ProcessEnv | undefined,
+): Promise<boolean> {
+  let ok = true;
+  for (const step of ["stop", "destroy"] as const) {
+    try {
+      await spawnFn(bin, [step, runName], { timeoutMs: CONTROL_PLANE_TIMEOUT_MS, cwd, env });
+    } catch (err) {
+      ok = false;
+      console.warn(`[moat] ${step} failed for ${runName}:`, (err as Error).message);
+    }
+  }
+  return ok;
+}
+
+/**
+ * Stop and destroy a run by name, whether or not this process holds a
+ * sandbox for it. The bash blocks call it when a persisting container has
+ * gone idle: `persist` makes `sandbox.stop()` leave the container running,
+ * so the idle release stops it here. Best-effort, never throws.
+ */
+export async function stopMoatRun(opts: {
+  runName: string;
+  bin?: string;
+  workspace?: string;
+  runtime?: "auto" | "docker" | "apple";
+  spawnFn?: SpawnFn;
+}): Promise<void> {
+  const workspace = opts.workspace ?? process.cwd();
+  await teardownRun(
+    opts.spawnFn ?? realSpawn,
+    opts.bin ?? "moat",
+    opts.runName,
+    workspace,
+    buildSubprocessEnv(workspace, opts.runtime),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -963,17 +1074,32 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
 
     async executeCommand(command: string): Promise<CommandResult> {
       ensureLive();
-      const args = buildExecArgs(handle.runName, command);
+      const execId = randomUUID();
+      const args = buildExecArgs(handle.runName, command, execId);
       const res = await handle.spawnFn(handle.bin, args, {
         timeoutMs: handle.execTimeoutMs,
         cwd: handle.workspace,
         env: handle.env,
       });
-      if (res.timedOut) {
+      if (res.timedOut || res.outputExceeded) {
+        // The host `moat` process is gone; the command inside the container
+        // is not, until this stops it.
+        try {
+          await handle.spawnFn(handle.bin, buildKillExecArgs(handle.runName, execId), {
+            timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
+            cwd: handle.workspace,
+            env: handle.env,
+          });
+        } catch (err) {
+          console.warn(`[moat] could not stop timed-out command in ${handle.runName}:`, (err as Error).message);
+        }
+        const why = res.timedOut
+          ? `exec timed out after ${handle.execTimeoutMs}ms`
+          : `output exceeded ${MAX_SPAWN_OUTPUT_BYTES} bytes on one stream; command killed`;
         return {
           stdout: res.stdout,
-          stderr: (res.stderr ? res.stderr + "\n" : "") + `exec timed out after ${handle.execTimeoutMs}ms`,
-          exitCode: 124,
+          stderr: (res.stderr ? res.stderr + "\n" : "") + why,
+          exitCode: res.timedOut ? 124 : 1,
         };
       }
       return {
@@ -1010,6 +1136,9 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
         cwd: handle.workspace,
         env: handle.env,
       });
+      if (res.outputExceeded) {
+        throw new MoatError(`readFile(${filePath}) failed: file exceeds ${MAX_SPAWN_OUTPUT_BYTES} bytes`);
+      }
       if ((res.exitCode ?? 0) !== 0) {
         // Only stderr pattern reliably identifies a missing file — `cat` also
         // exits 1 for permission denied, I/O errors, etc., which should
@@ -1055,24 +1184,7 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
       // `moat.yaml` + tempDir in place so the reconnect path on the next
       // resolve finds the live run and accepts the generated config.
       if (handle.persist) return;
-      try {
-        await handle.spawnFn(handle.bin, ["stop", handle.runName], {
-          timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
-          cwd: handle.workspace,
-          env: handle.env,
-        });
-      } catch (err) {
-        console.warn(`[moat] stop failed for ${handle.runName}:`, (err as Error).message);
-      }
-      try {
-        await handle.spawnFn(handle.bin, ["destroy", handle.runName], {
-          timeoutMs: CONTROL_PLANE_TIMEOUT_MS,
-          cwd: handle.workspace,
-          env: handle.env,
-        });
-      } catch (err) {
-        console.warn(`[moat] destroy failed for ${handle.runName}:`, (err as Error).message);
-      }
+      await teardownRun(handle.spawnFn, handle.bin, handle.runName, handle.workspace, handle.env);
       if (handle.tempDir) {
         try {
           await rm(handle.tempDir, { recursive: true, force: true });

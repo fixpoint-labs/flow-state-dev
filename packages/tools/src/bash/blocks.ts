@@ -64,7 +64,7 @@ import {
 import path from "node:path";
 import fs from "node:fs/promises";
 import { quote as shellQuote } from "shell-quote";
-import { purgeOldRuns, writeFileWithinMoatMount } from "./adapters/moat";
+import { purgeOldRuns, stopMoatRun, writeFileWithinMoatMount } from "./adapters/moat";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -201,11 +201,53 @@ interface SandboxEntry {
  */
 type RegistryValue = SandboxEntry | { pending: Promise<SandboxEntry> };
 
-// Module-level registry keyed by scope+scopeId. Entries are lightweight and
-// cleaned up implicitly when the process ends — or eagerly via
-// `releaseBashSandbox`, typically wired through the bash capability's
-// `cleanupBlock` into `defineFlow({ request: { onFinished } })`.
+// Module-level registry keyed by scope+scopeId. Entries are released eagerly
+// via `releaseBashSandbox`, typically wired through the bash capability's
+// `cleanupBlock` into `defineFlow({ request: { onFinished } })`, and otherwise
+// once no command has used them for `SANDBOX_IDLE_RELEASE_MS`.
 const registry = new Map<string, RegistryValue>();
+
+/**
+ * How long a sandbox may go without a command before it is released on its
+ * own. Releasing stops what the sandbox left running (a local sandbox's
+ * background jobs, a MOAT container), so a flow that never wires cleanup
+ * does not keep them forever.
+ */
+export const SANDBOX_IDLE_RELEASE_MS = 30 * 60 * 1000;
+
+/**
+ * One idle timer per registry key, re-armed on every use. `finalStop` is set
+ * when the sandbox's runtime outlives a release (a persisting MOAT container):
+ * the timer then stays armed past an explicit release, and stops the runtime
+ * itself when it fires.
+ */
+const idleTimers = new Map<
+  string,
+  { timer: ReturnType<typeof setTimeout>; finalStop: (() => Promise<void>) | null }
+>();
+
+/** (Re)start the idle clock for `key`. Unref'd, so it never holds the process open. */
+function armIdleRelease(key: string, finalStop: (() => Promise<void>) | null): void {
+  const previous = idleTimers.get(key);
+  if (previous) clearTimeout(previous.timer);
+  const timer = setTimeout(() => {
+    idleTimers.delete(key);
+    void (async () => {
+      await releaseEntry(key);
+      // A command that arrived while the entry was being released re-armed
+      // the clock and is about to use the runtime: leave it running.
+      if (finalStop && !idleTimers.has(key)) {
+        try {
+          await finalStop();
+        } catch (err) {
+          console.warn(`[bash] idle stop failed for ${key}:`, (err as Error).message);
+        }
+      }
+    })();
+  }, SANDBOX_IDLE_RELEASE_MS);
+  timer.unref?.();
+  idleTimers.set(key, { timer, finalStop });
+}
 
 function isPending(value: RegistryValue): value is { pending: Promise<SandboxEntry> } {
   return (value as { pending?: Promise<SandboxEntry> }).pending !== undefined;
@@ -662,7 +704,33 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
 
   assertScopeIsAchievable(provider);
 
+  // A persisting MOAT container survives `stop()` (createScopedSandbox
+  // defaults `persist` on), so releasing the entry alone would leave it
+  // running; the idle release stops it by name.
+  const outlivesRelease = provider.type === "moat" && provider.persist !== false;
+  const stopPersistentMoatRun = (identity: ScopeIdentity): Promise<void> => {
+    if (provider.type !== "moat") return Promise.resolve();
+    return stopMoatRun({
+      runName: provider.runName ?? defaultMoatRunName(identity),
+      bin: provider.bin,
+      workspace: provider.workspace ?? defaultMoatWorkspace(identity),
+      runtime: provider.runtime,
+    });
+  };
+
+  /** Restart the idle clock for the context's sandbox. */
+  function markUsed(ctx: BlockContext): void {
+    const identity = getIdentity(ctx);
+    armIdleRelease(
+      resolveScopeKey(effectiveScope(provider), identity).key,
+      outlivesRelease ? () => stopPersistentMoatRun(identity) : null,
+    );
+  }
+
   async function getOrCreate(ctx: BlockContext): Promise<SandboxEntry> {
+    // Before any await, so an idle release cannot fire while this call is
+    // still setting the sandbox up.
+    markUsed(ctx);
     const identity = getIdentity(ctx);
     const scope = effectiveScope(provider);
     const { key: registryKey } = resolveScopeKey(scope, identity);
@@ -816,6 +884,8 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       const entry = await getOrCreate(ctx);
       const result = await entry.sandbox.executeCommand(cdPrefix + input.command);
       await flush(entry);
+      // Idle counts from when the command finished, not when it started.
+      markUsed(ctx);
       return result;
     },
   });
@@ -1043,6 +1113,22 @@ export async function releaseBashSandbox(
   const scope = effectiveScope(provider);
   const { key: registryKey } = resolveScopeKey(scope, identity);
 
+  // The idle clock goes with the entry, unless the runtime outlives the
+  // release — then it is still the only thing that will stop it.
+  const idle = idleTimers.get(registryKey);
+  if (idle && !idle.finalStop) {
+    clearTimeout(idle.timer);
+    idleTimers.delete(registryKey);
+  }
+  await releaseEntry(registryKey);
+}
+
+/**
+ * Remove `registryKey`'s entry and stop its sandbox — the one release path,
+ * shared by `releaseBashSandbox` and the idle timer. Best-effort: errors are
+ * logged, never thrown.
+ */
+async function releaseEntry(registryKey: string): Promise<void> {
   const value = registry.get(registryKey);
   if (!value) return;
 
