@@ -59,19 +59,21 @@ var p=document.createElement("button");
 p.id="fsd-super-changed";p.type="button";p.textContent="Server code changed · Restart";
 p.title="Restart "+r.title+"'s server to run the edited code";
 p.style.cssText="all:initial;position:fixed;right:60px;bottom:20px;z-index:2147483647;box-sizing:border-box;height:28px;padding:0 12px;display:none;align-items:center;border-radius:14px;background:#d97706;color:#1c1b15;font:600 12px system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer";
-var busy=false;
+var busy=false,sent=false;
+function reset(){busy=false;sent=false;p.textContent="Server code changed · Restart"}
 p.onclick=function(){
 if(busy||!confirm("Restart "+r.title+"? Work in progress there (a coding run, a turn) stops."))return;
 busy=true;p.textContent="Restarting…";
 fetch(r.url,{method:"POST",headers:(function(h){h[r.header]="1";return h})({})}).then(function(res){
-if(res.ok)return;busy=false;p.textContent="Server code changed · Restart";return res.text().then(function(t){alert(t)});
-});
+if(res.ok){sent=true;return}reset();return res.text().then(function(t){alert(t)});
+},function(){reset();alert("The restart request didn't reach the super app.")});
 };
 document.documentElement.appendChild(p);
 function poll(){
 fetch(r.list,{cache:"no-store"}).then(function(res){return res.ok?res.json():[]}).then(function(list){
 var me=list.filter(function(x){return x.id===r.id})[0];
-if(busy&&me&&me.status==="running"&&!me.changed){busy=false;p.textContent="Server code changed · Restart"}
+// Done once it answers again, or failed if the new server stopped (a bad edit): either way the pill can be used again.
+if(sent&&me&&((me.status==="running"&&!me.changed)||me.status==="stopped"))reset();
 p.style.display=(me&&me.changed)||busy?"flex":"none";
 },function(){}).then(function(){setTimeout(poll,r.every)});
 }
