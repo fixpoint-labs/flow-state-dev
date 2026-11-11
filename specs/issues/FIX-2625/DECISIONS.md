@@ -104,7 +104,7 @@ that entry keys already reach org members today. Then the push edge strips `ids`
   places them; no ids, or an entry it can't find, reads the collection.
 - **The board view opts in here.** Its partial answer re-runs the rows the ids name and every row that shows one of them (a subtask showing its parent's title); the goal check's control is the identity-only version. Other framework views (the roster, harness readiness) may opt in
   where they are built (FIX-2627); app views opt in per view.
-- **Changeset:** `minor` for `contracts`, `core`, `engine`, `client`, `react`; the glossary's
+- **Changeset:** `minor` for `contracts`, `core`, `engine`, `store-postgres`, `client`, `react`, `orchestration` (the notice payload, the view option, the bus payload and the board's opt-in all ship); the glossary's
   *View* entry gains the partial answer in the implementation PR (ER-9). No new public term.
 
 ## Considered and dropped

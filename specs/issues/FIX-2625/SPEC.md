@@ -164,6 +164,6 @@ the four on the live read.
 
 **Open: none.**
 
-Feature · `contracts`, `engine`, `store-postgres`, `client`, `react`, `orchestration` · medium (one
+Feature · `contracts`, `core` (the view option), `engine`, `store-postgres`, `client`, `react`, `orchestration` · medium (one
 wire field, three convergence points, one view option, the board opting in) · epic
 [FIX-2618](../../epics/FIX-2618/SPEC.md), stage 2
