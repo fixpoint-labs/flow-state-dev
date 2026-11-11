@@ -117,7 +117,7 @@ function boot(gates: Gates = {}) {
     };
   }
   const state = createFlowState({
-    flows: { svc, pub },
+    flows: [svc, pub],
     stores: { default: { primary: stores } },
     resolvePrincipal: () => null,
     ...(gates.drainMs === undefined ? {} : { dispatchDrainTimeoutMs: gates.drainMs })

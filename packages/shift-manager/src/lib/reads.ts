@@ -348,9 +348,9 @@ const ASK_PAGE_SIZE = 200;
 const ASK_READ_BATCH = 6;
 
 /**
- * What the Lab answers a session open on a flow it doesn't serve, for the
- * roster flow: the engine's unknown-flow message. Matched exactly, so any
- * other 404 (the roster session's own reads) is a failure, not "no roster".
+ * What the Lab answers a call on a flow it doesn't serve, for the roster
+ * flow's view: the engine's unknown-flow message. Matched exactly, so any
+ * other 404 (the roster flow answering for its view) is a failure, not "no roster".
  */
 const NO_ROSTER_FLOW = `Unknown flow "${ROSTER_FLOW}"`;
 
@@ -719,9 +719,9 @@ export function createLabReader(client: Client): LabReader {
 
   /**
    * The user's own workers, off their roster: each id with the flow it runs
-   * on. A Lab that serves no roster flow, so refuses to open a session on it,
-   * has nobody's own workers. Any other failure, a 404 from the roster's own
-   * reads included, is the roster not loading.
+   * on. A Lab that serves no roster flow, so refuses the roster view as an
+   * unknown flow, has nobody's own workers. Any other failure, a 404 the
+   * roster flow answers included, is the roster not loading.
    */
   const readOwnWorkers = async (): Promise<Section<Map<string, string>>> => {
     try {

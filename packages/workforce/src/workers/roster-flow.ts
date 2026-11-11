@@ -1,9 +1,10 @@
 // FIX-2085.
 /**
- * The roster flow: a flow that runs no worker, through which a client reads a
- * user's roster. It declares the two worker collections, so a session of it
- * reads the user's own workers and the standard ones over the collection-state
- * routes, and it adds no endpoint. It declares the projects at both scopes and
+ * The roster flow: a flow that runs no worker, which answers a user's roster
+ * and changes it. Its `roster` view joins the user's own workers and the
+ * standard ones at user scope, with no session (`roster-view.ts`); its roster
+ * actions (hire, fork, edit, fire, reset) run in a session of it, and it adds
+ * no endpoint. It declares the projects at both scopes and
  * the workstream entries too, so the same session reads the projects its user
  * may, private ones included, and a project's entries by its prefix. It
  * declares the organization's worker inventory (`inventory/workers/*`), so the
@@ -26,7 +27,8 @@ import { defineWorkerInventoryCollection } from "../inventory/collections";
 import { workerMessagesResources } from "../messages/message-log";
 import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
-import { ROSTER_FLOW } from "./keys";
+import { ROSTER_FLOW, ROSTER_VIEW } from "./keys";
+import { defineRosterView } from "./roster-view";
 
 /**
  * Define the roster flow over `installation`. Register what it returns.
@@ -54,6 +56,8 @@ export function defineWorkerRosterFlow(
     },
     ...(routines === undefined ? {} : { schedules: routines.schedules }),
     ...(routines?.seed === undefined ? {} : { request: { onStarted: routines.seed } }),
-    actions
+    actions,
+    // FIX-2623: the roster, answered at user scope with no session.
+    views: { [ROSTER_VIEW]: defineRosterView(installation) }
   });
 }

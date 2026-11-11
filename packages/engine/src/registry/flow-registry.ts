@@ -85,6 +85,12 @@ import { admitIndexedCollections, type IndexedCollection } from "../resources/re
 /**
  * Registry contract used by server routing/execution layers.
  */
+// FIX-2623.
+/** Whether any flow `registry` holds declares a view. */
+export function registryHasViews(registry: Pick<FlowRegistry, "list">): boolean {
+  return registry.list().some((flow) => flow.views !== undefined && Object.keys(flow.views).length > 0);
+}
+
 export interface FlowRegistry {
   /**
    * Admit one instance. Throws {@link FlowIdentityConflictError} for a

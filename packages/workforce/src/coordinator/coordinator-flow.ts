@@ -1762,6 +1762,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     },
     // The task list, read with nothing stored (FIX-2286).
     reads: sessionBoard.reads,
+    // The task list as a session view, watched with `useView` (FIX-2623).
+    views: sessionBoard.views,
     internal: {
       actions: {
         // The round-deadline wake (D2), or a host's in-process timer, with

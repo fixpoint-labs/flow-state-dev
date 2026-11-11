@@ -92,7 +92,7 @@ import {
   tagAbortController,
   wasFiredOnlyFenced
 } from "./abort-registry";
-import { beginRequestAttempt, type RequestAttempt } from "./request-attempts";
+import { beginRequestAttempt, hasLiveRequestAttempt, type RequestAttempt } from "./request-attempts";
 import {
   assertSessionAdmitted,
   FlowInstanceBindingMismatchError,
@@ -1076,6 +1076,17 @@ export async function runActionInternal<
     // is never evicted.
     if (attempt.end() && attempt.leftToStamp() !== undefined) {
       await finalizeAfterLastAttempt(options, requestId, attempt.leftToStamp());
+    }
+    // However the run ended, once no attempt of the request is live here
+    // nothing more is written under the id from this process: the store
+    // drops what it kept to make the request's item writes incremental.
+    if (!hasLiveRequestAttempt(options.stores.request, requestId)) {
+      try {
+        await options.stores.request.releaseItemTracking?.(requestId);
+      } catch (err) {
+        logRuntimeEvent(options.runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER, "warn",
+          "[flow-state] releasing the request's item tracking failed", { requestId, error: String(err) });
+      }
     }
   }
 }

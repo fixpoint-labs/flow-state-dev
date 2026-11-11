@@ -8,8 +8,8 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Client } from "@flow-state-dev/client";
-import { taskActionName } from "@flow-state-dev/orchestration/inbox";
+import { ClientHttpError, type Client } from "@flow-state-dev/client";
+import { taskActionName, taskListViewRef } from "@flow-state-dev/orchestration/inbox";
 import type { Page } from "playwright";
 import { intentFreeEnv, onClosed, refuseIfAnswering, repoPath, REPO_ROOT, sleep, stopProcessGroup } from "../lib/index.mts";
 
@@ -122,11 +122,18 @@ export async function until<T>(check: () => Promise<T | undefined>, forMs: numbe
 const MAIN_FLOW = "agent";
 const BOARD = "tasks";
 
-/** A session's board through the public client: its rows (`listTasks`), one task whole, a filing, and any other board action. */
+/**
+ * A session's board through the public client: its rows (its task-list view), one task whole, a
+ * filing, and any other board action. A board the view refuses (none yet) has no rows.
+ */
 export function boardOf(fsd: Client) {
   const rows = async (sessionId: string): Promise<any[]> => {
-    const listed = await fsd.flow(MAIN_FLOW).read<{ ok: boolean; tasks: any[] }>(taskActionName("listTasks", BOARD), {}, { sessionId });
-    return listed.ok ? listed.tasks : [];
+    try {
+      return (await fsd.view(taskListViewRef(MAIN_FLOW, BOARD), {}, { sessionId })).value;
+    } catch (error) {
+      if (error instanceof ClientHttpError && error.status === 422) return [];
+      throw error;
+    }
   };
   const send = async (sessionId: string, tool: "getTask" | "createTask" | "updateTask" | "retryTask", input: Record<string, unknown>): Promise<any> => {
     const sent = await fsd.flow(MAIN_FLOW).send(taskActionName(tool, BOARD), input, { sessionId });

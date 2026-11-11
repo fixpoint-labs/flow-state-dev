@@ -3,22 +3,18 @@
  * user's conversations with one, from an app.
  *
  * Built on the one client (`createClient`), with no endpoint of its own. The
- * user's roster is read through a session of the roster flow (one per user),
- * which declares the two worker collections; a worker's sessions are listed by
- * their readonly `workerId` and created with it as initial state, which the
- * worker flow's create check confirms.
- *
- * `watchRoster` follows the roster through the one client's live read
- * (`client.live`): a notice under either worker collection's path on the
- * user's topic reads it again, and the client's fallback timer reads it where
- * push can miss one.
+ * user's roster is the roster flow's roster view, read at user scope with no
+ * session. `watchRoster` follows it through the client's shared view watch
+ * (`watchView`, on `client.live`): the view's answer names the topics it read.
+ * A session of the roster flow (one per user) is still made for what writes
+ * through it and for the organization it was created in. A worker's sessions
+ * are listed by their readonly `workerId` and created with it as initial
+ * state, which the worker flow's create check confirms.
  *
  * Isomorphic: no Node built-ins, so the browser entry exports it too.
  */
 import {
   ClientHttpError,
-  readEveryCollectionPage,
-  topic,
   type Client,
   type SessionSummary
 } from "@flow-state-dev/client";
@@ -34,12 +30,10 @@ import {
   FILING_SESSION_STATE_KEY,
   ROSTER_FLOW,
   SET_WORK_PROJECT_ACTION,
-  STANDARD_WORKERS_PATTERN,
-  STANDARD_WORKERS_RESOURCE,
-  WORKER_ID_STATE_KEY,
-  WORKERS_PREFIX,
-  WORKERS_RESOURCE
+  WORKER_ID_STATE_KEY
 } from "./keys";
+import { watchView } from "@flow-state-dev/client/internal";
+import { rosterView } from "./roster-view-ref";
 import { STANDING_RULES_ACTION } from "../standing-rules/keys";
 import type { StandingRulesActionInput, StandingRulesActionOutput } from "../standing-rules/rules-action";
 import type { SetWorkProjectOutput } from "../projects/work-project";
@@ -49,7 +43,7 @@ import type { SetWorkProjectOutput } from "../projects/work-project";
  * Its user is the one whose roster and sessions are read: with
  * authentication, the signed-in user.
  */
-export type WorkforceClientSource = Pick<Client, "userId" | "flow" | "sessions" | "resources" | "live">;
+export type WorkforceClientSource = Pick<Client, "userId" | "flow" | "sessions" | "resources" | "view" | "subscribe">;
 
 /** One worker on a user's roster. */
 export type RosterEntry = {
@@ -134,11 +128,11 @@ export interface WorkforceClient {
   /**
    * Follow the user's roster: `onRoster` gets it once read, and again each
    * time a hire, fork, edit or fire, from any tab or any worker's turn,
-   * changes it. Only a change is reported. Reads ride the client's live
-   * read on the user's topic: a notice under either worker collection, or
-   * one naming no path, reads again, as do a connect, a reconnect and a
-   * `resync`; where push can miss a change the client's timer reads every
-   * three seconds. One read runs at a time. A failed read goes to `onError`
+   * changes it. Only a change is reported. It watches the roster view: each
+   * answer names the topics its run read, and a notice on one reads again,
+   * as do a connect, a reconnect and a `resync`; where push can miss a change
+   * the client's timer reads every three seconds. Every watcher of the roster
+   * in one client shares one read. A failed read goes to `onError`
    * and is tried again on its own (1 s, doubling to 30 s); the next read that
    * lands is reported even if the roster didn't change. Returns the stop
    * function; nothing is reported after it.
@@ -270,9 +264,6 @@ const WORKER_ONLY: ReadonlySet<string> = new Set([WORKER_ID_STATE_KEY]);
 const ACTION_POLL_MS = 100;
 const ACTION_TIMEOUT_MS = 30_000;
 
-/** The storage roots of the two collections a roster is read from. */
-const ROSTER_ROOTS = [WORKERS_PREFIX, STANDARD_WORKERS_PATTERN.slice(0, -1)] as const;
-
 /**
  * Build a workforce client over the one client, as that client's user.
  *
@@ -286,7 +277,7 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
    * by listing, and created without an id when there is none: the client
    * can't derive an id that includes the organization before it knows which
    * one the server binds it to. Two first calls at once may create two; either
-   * reads the same roster.
+   * writes the same roster.
    */
   let rosterSession: Promise<{ id: string; orgId: string }> | undefined;
   const roster = (): Promise<{ id: string; orgId: string }> =>
@@ -300,49 +291,8 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
       throw error;
     }));
 
-  const listAll = (sessionId: string, ref: string) => readEveryCollectionPage(resources, sessionId, ref);
-
-  /** The roster as it is now: read on every call, since a hire changes it. */
-  const readRoster = async (id: string): Promise<RosterEntry[]> => {
-    const [own, standard] = await Promise.all([listAll(id, WORKERS_RESOURCE), listAll(id, STANDARD_WORKERS_RESOURCE)]);
-    const entry = (item: { topic: string; clientData?: unknown }, isStandard: boolean): RosterEntry => {
-      const data = (item.clientData ?? {}) as {
-        flow?: unknown;
-        description?: unknown;
-        forkedFrom?: unknown;
-        name?: unknown;
-        teamName?: unknown;
-        settings?: unknown;
-      };
-      const topic = item.topic.slice(item.topic.lastIndexOf("/") + 1);
-      return {
-        id: topic,
-        flow: String(data.flow),
-        standard: isStandard,
-        description: typeof data.description === "string" ? data.description : null,
-        name: typeof data.name === "string" ? data.name : null,
-        teamName: isStandard && typeof data.teamName === "string" ? data.teamName : null,
-        forkedFrom: !isStandard && typeof data.forkedFrom === "string" ? data.forkedFrom : null,
-        edited: false,
-        settings:
-          typeof data.settings === "object" && data.settings !== null && !Array.isArray(data.settings)
-            ? (data.settings as Record<string, unknown>)
-            : {}
-      };
-    };
-    const ownEntries = own.map((item) => entry(item, false));
-    const copies = new Map(ownEntries.map((row) => [row.id, row]));
-    // A standard worker the user edited is listed once, as their copy (FIX-2526):
-    // still standard, on its file's team, read from their row.
-    const standardEntries = standard.map((item) => {
-      const file = entry(item, true);
-      const copy = copies.get(file.id);
-      if (copy === undefined) return file;
-      copies.delete(file.id);
-      return { ...copy, standard: true, teamName: file.teamName, forkedFrom: null, edited: true };
-    });
-    return [...ownEntries.filter((row) => copies.has(row.id)), ...standardEntries];
-  };
+  /** The roster as it is now, through the roster view: read on every call, since a hire changes it. */
+  const readRoster = async (): Promise<RosterEntry[]> => (await fsd.view(rosterView)).value;
 
   /** The worker's flow on the roster: the user's own worker first, since a hire can't take a standard id. */
   const flowOf = (entries: readonly RosterEntry[], worker: string): string => {
@@ -435,27 +385,22 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
   };
 
   const client: WorkforceClient = {
-    roster: async () => readRoster((await roster()).id),
-    // A connect, reconnect or tick, a `resync`, or a `resource` notice under
-    // either collection or naming no path (a row only its owner may read
-    // publishes bare). A false yes costs one read; a false no leaves a view stale.
+    roster: readRoster,
+    // The roster view names the topics it read; the shared watch listens to them.
     watchRoster: (onRoster, watchOptions) =>
-      fsd.live([topic.user()], {
-        read: () => client.roster(),
-        hear: (notice) => notice.kind === "resource",
-        paths: ROSTER_ROOTS,
+      watchView<RosterEntry[]>(fsd, rosterView, undefined, {
         onValue: onRoster,
         ...(watchOptions?.onError !== undefined ? { onError: watchOptions.onError } : {})
-      }).close,
+      }),
     findWorkerSession: async (criteria) => {
       const { id, orgId } = await roster();
-      return find(criteria, flowOf(await readRoster(id), criteria.worker), id, orgId);
+      return find(criteria, flowOf(await readRoster(), criteria.worker), id, orgId);
     },
     ensureWorkerSession: async (criteria) => {
       // One roster read per call, and the roster session's organization from
       // the same lookup.
       const { id, orgId } = await roster();
-      const flow = flowOf(await readRoster(id), criteria.worker);
+      const flow = flowOf(await readRoster(), criteria.worker);
       const existing = await find(criteria, flow, id, orgId);
       if (existing !== undefined) return existing;
       if (criteria.taskId !== undefined) {
@@ -501,7 +446,7 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
     },
     listWorkerSessions: async (worker) => {
       const { id, orgId } = await roster();
-      const flow = flowOf(await readRoster(id), worker);
+      const flow = flowOf(await readRoster(), worker);
       const criteria = { worker };
       const [defaultId, rows] = await Promise.all([
         deriveWorkerSessionId({ userId, orgId, flow, criteria }),
@@ -516,12 +461,12 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
     },
     standingRules: async (worker, input) => {
       const session = await client.ensureWorkerSession({ worker });
-      const flow = flowOf(await readRoster((await roster()).id), worker);
+      const flow = flowOf(await readRoster(), worker);
       return (await runIn(flow, session.id, STANDING_RULES_ACTION, input)) as StandingRulesActionOutput;
     },
     setWorkProject: async (worker, project, setOptions) => {
       const sessionId = setOptions?.sessionId ?? (await client.ensureWorkerSession({ worker })).id;
-      const flow = flowOf(await readRoster((await roster()).id), worker);
+      const flow = flowOf(await readRoster(), worker);
       return (await runIn(flow, sessionId, SET_WORK_PROJECT_ACTION, { project, worker })) as SetWorkProjectOutput;
     },
     hire: async (input) => (await runIn(ROSTER_FLOW, (await roster()).id, "hire", input)) as { id: string; flow: string },

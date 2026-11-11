@@ -85,13 +85,18 @@ A view is built from four things:
 | -- | -- | -- |
 | Scope | Where it runs: in a session, or at user or org scope with no session | User scope: Alice asks for her board without opening any session |
 | Input | What the caller passes, checked against a schema | Nothing, or a filter such as "only open tasks" |
-| Dependencies | Every resource the view reads | The task records, and pins |
+| Dependencies | Every state and resource the view's run read, recorded by the engine | The task records, and pins |
 | Key | What names one row of its answer | A task's id |
 
-**Dependencies are declared, and checked.** A view lists what it reads, so the server knows
-which views a change affects. A declared list can drift from what the code really reads, so a
-check runs during development and tests: a view that reads something it did not declare fails.
-The check doesn't run in production.
+**Dependencies are recorded, not declared** ([FIX-2623 D1](../../../specs/issues/FIX-2623/DECISIONS.md#d1)).
+The engine records what each run of a view reads, child blocks included, and the answer names the
+change topics those reads fall under, so a watcher hears a change to anything the view read. A
+list written in advance would be a second copy that drifts; recorded per run, it is right on
+whatever branch the run took. Once any flow declares a view, every resource write publishes a
+notice, since a view may read any of them.
+
+**A view calls no model** ([FIX-2623 D2](../../../specs/issues/FIX-2623/DECISIONS.md#d2)). It runs
+for every watcher on every change; a model's answer is an action's to compute and store.
 
 **A key names a row.** Because each row of board has a key, the server can later say "row 42
 changed" instead of "something changed".
@@ -104,8 +109,8 @@ Bob's board are two calls to the same view, each computed as its caller and seen
 a sort or a filter, uses a view. A screen that shows one resource as it is stored uses a direct
 read (below).
 
-**In code** (proposed): `defineView`, with `scope`, `input`, `dependsOn` and `key`; on the
-client, `useView(view, input)`, and the answer's type is `ViewOutput<typeof view>`.
+**In code:** `defineView`, with `scope`, `block`, an optional `inputSchema` and `key`; on the
+client (proposed), `useView(view, input)`, and the answer's type is `ViewOutput<typeof view>`.
 
 ### What this replaces
 
@@ -119,8 +124,8 @@ computes every answer a screen sees.
 
 What it costs, and how each cost is handled:
 
-- **Declared dependencies can drift.** The development-time check catches a view that reads
-  what it didn't declare.
+- **Recording runs on every view, and more writes publish.** Measured at under 1% of a read
+  (FIX-2621); an extra notice is allowed, a missed one is the failure.
 - **Every flow read is renamed.** The rename has no alias, so nothing old lingers beside it.
 
 ## Direct reads
@@ -484,8 +489,8 @@ A behavior none of these rules explains is a bug in the model.
 4. Every byte a client sees comes through a checked read: a view, or a direct read of what a
    resource lets a client read. The current state a refused write sends back is the same state, under the same check.
 5. A view at user or org scope needs no session. A session-scope view runs in its session.
-6. A view declares every resource it reads. During development and tests, a view that reads
-   something it didn't declare fails.
+6. The engine records every state and resource a view's run reads, and the answer names the
+   topics a change to them publishes on. A view never calls a model.
 7. A client writes a user or org resource only by sending an action to the flow the resource
    names. A resource that names no flow can't be written from a client.
 8. The schema, the owner check and the resource's own write rule run inside that flow, never as
@@ -528,8 +533,8 @@ read); the worker flows callback (say slot).
 | Host | The server program that runs the app's flows and verifies who is signed in | |
 | Snapshot | The session record a client loads, with the values a scope chose to show | One session |
 | Client | The app's code, acting as the signed-in user | One user |
-| View | A computed answer for a screen, with a scope, dependencies and keyed rows. Stores nothing, writes nothing | Defined by a flow or kit; each answer is its caller's |
-| Dependency | A resource a view declares it reads | |
+| View | A computed answer for a screen, with a scope and keyed rows. Stores nothing, writes nothing, calls no model | Defined by a flow or kit; each answer is its caller's |
+| Dependency | A state or resource a view's run read, recorded by the engine | One run |
 | Key | What names one row of a view's answer | |
 | Direct read | A client reading a user or org resource by scope and name, with no session | The caller's user or org |
 | Resource's flow | The flow a resource names to run its writes: the default write flow or the app's own | One session per resource per writer, shared by a collection's entries |
@@ -579,10 +584,8 @@ the English word, not the hook.
 - [ ] **What a refused file does to the app's start.** Open, owned by FIX-2626. Today workforce's
   reader collects every refusal and the host decides. Recommend refusing to start, so a refusal is
   never only a log line.
-- [ ] **Whether dependencies can be inferred instead of declared.** Open, owned by FIX-2621 and
-  FIX-2623. If recording what a view reads is cheap enough to run in production, the list could be
-  worked out instead of written. That changes how views are built, not what they are. Recommend
-  declaring until FIX-2621 measures the cost.
+- [x] **Whether dependencies can be inferred instead of declared.** Decided by FIX-2623 D1:
+  recorded per run, in production. FIX-2621 measured the cost at under 1% of a read.
 - [ ] **How a view answers for just some of its keys.** Open, owned by FIX-2623 and FIX-2625.
   Recommend the client asks the same view with the keys it heard and places the rows it gets back;
   a change that moves other rows (a new pin reorders the board) is the view's to report as more
@@ -594,10 +597,10 @@ the English word, not the hook.
 
 | Target | Today |
 | -- | -- |
-| A view at user or org scope runs with no session | A flow read runs on a session the caller must already have: the read route is `POST /api/flows/:flowKind/:sessionId/reads/:readName` and `runRead` takes a `sessionId` (`packages/engine/src/routes/read-routes.ts`, `packages/engine/src/execution/runRead.ts`) |
-| A view never writes and stores nothing | Already true of a read: its stores refuse every write with `read_only`, and its own request record lives in memory and is dropped (`runRead.ts`, `readOnlyStores`) |
-| A view declares its dependencies, and a check fails one that drifts | A read declares only its block, input schema and description (`ReadConfig`, `packages/core/src/types/flow.ts`) |
-| Rows of a view's answer have keys | A read answers whatever its block returns |
+| A view at user or org scope runs with no session | Built (FIX-2623): `defineView` and flow `views`, run by `runView` (`packages/engine/src/execution/runView.ts`) at `POST /api/flows/:flowKind/views/:viewName`. Flow reads still run on a session the caller must already have, until their callers move |
+| A view never writes and stores nothing | Built, for views and reads alike: one runner, whose stores refuse every write with `read_only` (`runView.ts`, `readOnlyStores`) |
+| A view's answer names the topics of what it read | Built: the engine's recorder (`packages/engine/src/context/view-reads.ts`). No client hook uses it yet (`useView`, FIX-2623's next PR) |
+| Rows of a view's answer have keys | Built: a view's `key`; a keyed answer whose keys repeat is refused |
 | One hook computes every answer a screen sees | Two: a flow's `reads` and a scope's `client.derived`, which projects state into the snapshot (`packages/core/src/types/flow.ts`; `apps/kitchen-sink/flows/chat-agent/flow.ts` declares `derived`) |
 | A client reads a user resource by scope and name, with no session | Every resource route names a session (`packages/engine/src/routes/parseFlowRoute.ts`; `ResourcesApi` in `packages/client/src/client.ts` takes a `sessionId` on every call). The claude-code-style lab finds or makes a session per flow to read through (`ownSession`, `labs/claude-code-style/src/adapter.ts`) |
 | Pins are a user resource on the default write flow | Pins are a hand-written flow with `pin` and `unpin` actions and a `listPins` read, over user state (`labs/claude-code-style/workforce/flows/pins.mts`), reached through `ownSession("pins")` (`adapter.ts`) |

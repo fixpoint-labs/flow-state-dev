@@ -14,7 +14,7 @@ import {
   createInMemoryStores
 } from "../src/host";
 import { createScopeStateOps, createStateContainer } from "../src/stores/state-container";
-import { detectInterruptedRequests } from "../src/execution/request-recovery";
+import { sweepAsStale } from "./sweep-as-stale";
 import { ScopeMutationTimeoutError } from "../src/stores/scope-lock";
 import type { CASPersist } from "../src/stores/cas";
 import { withScopeLock } from "../src/stores/scope-lock";
@@ -682,7 +682,7 @@ describe("request-scope writes under a recovery continuation", () => {
     // record's version through untouched. Both containers therefore hold the
     // SAME expected version — the conflict below comes from the two workers,
     // not from the sweep bumping the record underneath them.
-    const swept = await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+    const swept = await sweepAsStale(stores);
     expect(swept.map((s) => s.entry.requestId)).toContain(requestId);
     expect((await stores.request.get(requestId))?.status).toBe("interrupted");
 
