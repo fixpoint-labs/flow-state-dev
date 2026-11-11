@@ -85,18 +85,30 @@ function liveScopeDriver(
  */
 export function useResource<TDef extends ScopeResourceDef>(
   def: TDef,
-  options: { session?: SessionView } = {}
+  options: {
+    session?: SessionView;
+    /**
+     * At session scope, the name the session's flow declares the resource
+     * under (its key in the snapshot), when it is not the definition's `ref`,
+     * `pattern` or the pattern's static prefix. A definition with no `ref`
+     * needs it. At user or org scope, the resource's key, as `client.resource`'s.
+     */
+    key?: string;
+  } = {}
 ): UseResourceResult<TDef> {
   type TValue = ClientValue<TDef>;
   const client = useClient();
   const atSession = def.scope === "session";
-  const key = def.ref ?? def.pattern ?? "";
+  const key = options.key ?? def.ref ?? def.pattern ?? "";
   const collection = def.pattern !== undefined;
   const scope = def.scope === "org" ? "org" : "user";
 
   // The handle reads nothing until called; held per definition.
   const handle = useMemo(
-    () => (atSession ? undefined : (client.resource(def) as unknown as ScopeHandle<TValue>)),
+    () =>
+      atSession
+        ? undefined
+        : (client.resource(def, options.key === undefined ? undefined : { key: options.key }) as unknown as ScopeHandle<TValue>),
     // `def` is a module-level definition: its scope and key are what name it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [client, atSession, def.scope, key]
@@ -131,7 +143,13 @@ export function useResource<TDef extends ScopeResourceDef>(
     [refresh]
   );
 
-  const snapshot = findSnapshotResource(options.session?.snapshot?.resources, key, collection ? "collection" : "single");
+  // The snapshot is keyed by the name the flow declares the resource under: the given key, else
+  // the ref or pattern, else (the common case for a collection) the pattern's static prefix.
+  const snapshotNames = [options.key, def.ref, def.pattern, def.pattern === undefined ? undefined : getPatternPrefix(def.pattern)];
+  const snapshot = snapshotNames
+    .filter((name): name is string => name !== undefined && name.length > 0)
+    .map((name) => findSnapshotResource(options.session?.snapshot?.resources, name, collection ? "collection" : "single"))
+    .find((found) => found !== undefined);
   if (atSession) {
     const value = (collection ? (snapshot ?? null) : (snapshot?.clientData ?? null)) as TValue | null;
     return { value, stale: false } as UseResourceResult<TDef>;

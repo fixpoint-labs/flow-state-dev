@@ -115,4 +115,18 @@ describe("useResource at session scope", () => {
     expect(result.current.value).toEqual({ mood: "calm" });
     expect(subscriptions).toHaveLength(0);
   });
+
+  it("finds a collection under the name its flow declares it, and a resource with no ref by its key", () => {
+    // Codex review 4544281315: the snapshot is keyed by the accessor, not the ref or pattern.
+    const notes = { scope: "session" as const, pattern: "notes/*", ClientType: { text: "" } };
+    const soul = { scope: "session" as const, ClientType: { mood: "" } };
+    const session = {
+      sessionId: "s1",
+      snapshot: { resources: { session: { notes: { count: 2 }, soul: { clientData: { mood: "calm" } } } } }
+    };
+    const collection = renderHook(() => useResource(notes, { session: session as never }), { wrapper });
+    expect(collection.result.current.value).toEqual({ count: 2 });
+    const single = renderHook(() => useResource(soul, { session: session as never, key: "soul" }), { wrapper });
+    expect(single.result.current.value).toEqual({ mood: "calm" });
+  });
 });
