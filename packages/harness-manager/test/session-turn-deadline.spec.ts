@@ -52,7 +52,7 @@ function host(options: { turnTimeoutMs?: number; approveTools?: boolean; finishe
   });
   const stores = inMemoryStores();
   const state = createFlowState({
-    flows: { [KIND]: flow },
+    flows: [flow],
     stores: { test: { primary: stores } },
     defaultProfile: "test",
     durable: true,
