@@ -189,7 +189,8 @@ describe("MOAT: idle containers", () => {
 
   it("keeps a persisting container across requests, then stops it once idle for 30 minutes", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const provider: SandboxProvider = { type: "moat", bin, workspace, runName: "fsdev-idle" };
+    // No runName: the container is named per session, so the idle stop owns it.
+    const provider: SandboxProvider = { type: "moat", bin, workspace };
     const { bashCommand } = createBashBlocks({ provider, destination: "/workspace" });
     const ctx = ctxFor("moat-idle");
 
@@ -208,8 +209,8 @@ describe("MOAT: idle containers", () => {
     }
 
     const log = await calls();
-    expect(log).toContain("stop fsdev-idle");
-    expect(log).toContain("destroy fsdev-idle");
+    expect(log.some((c) => c.startsWith("stop fsdev-moat-idle-"))).toBe(true);
+    expect(log.some((c) => c.startsWith("destroy fsdev-moat-idle-"))).toBe(true);
 
     // The next command in the session starts a fresh container.
     const runsBefore = log.filter((c) => c.startsWith("run ")).length;
@@ -220,7 +221,7 @@ describe("MOAT: idle containers", () => {
 
   it("does not stop a persisting container that is still in use", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const provider: SandboxProvider = { type: "moat", bin, workspace, runName: "fsdev-busy" };
+    const provider: SandboxProvider = { type: "moat", bin, workspace };
     const { bashCommand } = createBashBlocks({ provider, destination: "/workspace" });
     const ctx = ctxFor("moat-busy");
 
@@ -238,5 +239,22 @@ describe("MOAT: idle containers", () => {
     await new Promise((r) => setTimeout(r, 1_500));
 
     expect((await calls()).filter((c) => c.startsWith("stop"))).toEqual([]);
+  });
+  it("leaves a container shared under an explicit runName to its operator", async () => {
+    // Every session resolves an explicit runName to the same container, so
+    // one session going idle must not stop it under another.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const provider: SandboxProvider = { type: "moat", bin, workspace, runName: "fsdev-shared" };
+    const { bashCommand } = createBashBlocks({ provider, destination: "/workspace" });
+    const idle = ctxFor("moat-shared-a");
+
+    await runForTest(bashCommand, { command: "true" }, idle);
+    await releaseBashSandbox(provider, idle);
+    await vi.advanceTimersByTimeAsync(SANDBOX_IDLE_RELEASE_MS + 1_000);
+    vi.useRealTimers();
+    await new Promise((r) => setTimeout(r, 1_500));
+
+    expect((await calls()).filter((c) => c.startsWith("stop fsdev-shared"))).toEqual([]);
+    await releaseBashSandbox({ ...provider, persist: false }, idle);
   });
 });

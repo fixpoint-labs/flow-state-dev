@@ -226,12 +226,21 @@ const idleTimers = new Map<
   { timer: ReturnType<typeof setTimeout>; finalStop: (() => Promise<void>) | null }
 >();
 
+/**
+ * Commands running right now, per registry key. A command may run longer than
+ * the idle window (`execTimeoutMs` is not capped by it), so while any runs the
+ * idle timer does nothing; the command re-arms the clock when it finishes.
+ */
+const runningCommands = new Map<string, number>();
+
 /** (Re)start the idle clock for `key`. Unref'd, so it never holds the process open. */
 function armIdleRelease(key: string, finalStop: (() => Promise<void>) | null): void {
   const previous = idleTimers.get(key);
   if (previous) clearTimeout(previous.timer);
   const timer = setTimeout(() => {
     idleTimers.delete(key);
+    // In use: the running command re-arms the clock when it finishes.
+    if ((runningCommands.get(key) ?? 0) > 0) return;
     void (async () => {
       await releaseEntry(key);
       // A command that arrived while the entry was being released re-armed
@@ -706,8 +715,12 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
 
   // A persisting MOAT container survives `stop()` (createScopedSandbox
   // defaults `persist` on), so releasing the entry alone would leave it
-  // running; the idle release stops it by name.
-  const outlivesRelease = provider.type === "moat" && provider.persist !== false;
+  // running; the idle release stops it by name. Only a container named per
+  // session, though: an explicit `runName` is one container every session
+  // shares, and one session going idle must not stop it under another. That
+  // container is left to its operator.
+  const outlivesRelease =
+    provider.type === "moat" && provider.persist !== false && provider.runName === undefined;
   const stopPersistentMoatRun = (identity: ScopeIdentity): Promise<void> => {
     if (provider.type !== "moat") return Promise.resolve();
     return stopMoatRun({
@@ -725,6 +738,24 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       resolveScopeKey(effectiveScope(provider), identity).key,
       outlivesRelease ? () => stopPersistentMoatRun(identity) : null,
     );
+  }
+
+  /**
+   * Run `command` on the context's sandbox, counted as running for the idle
+   * clock, which restarts when it finishes (or fails).
+   */
+  async function runCommand<T>(ctx: BlockContext, command: () => Promise<T>): Promise<T> {
+    const { key } = resolveScopeKey(effectiveScope(provider), getIdentity(ctx));
+    runningCommands.set(key, (runningCommands.get(key) ?? 0) + 1);
+    try {
+      return await command();
+    } finally {
+      const left = (runningCommands.get(key) ?? 1) - 1;
+      if (left > 0) runningCommands.set(key, left);
+      else runningCommands.delete(key);
+      // Idle counts from when the command finished, not when it started.
+      markUsed(ctx);
+    }
   }
 
   async function getOrCreate(ctx: BlockContext): Promise<SandboxEntry> {
@@ -881,12 +912,12 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     inputSchema: bashCommandInputSchema,
     outputSchema: bashCommandOutputSchema,
     execute: async (input: z.infer<typeof bashCommandInputSchema>, ctx) => {
-      const entry = await getOrCreate(ctx);
-      const result = await entry.sandbox.executeCommand(cdPrefix + input.command);
-      await flush(entry);
-      // Idle counts from when the command finished, not when it started.
-      markUsed(ctx);
-      return result;
+      return runCommand(ctx, async () => {
+        const entry = await getOrCreate(ctx);
+        const result = await entry.sandbox.executeCommand(cdPrefix + input.command);
+        await flush(entry);
+        return result;
+      });
     },
   });
 

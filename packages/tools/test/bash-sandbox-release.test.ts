@@ -146,6 +146,7 @@ describe("local bash sandbox: background jobs", () => {
 
 describe("bash sandbox registry: idle release", () => {
   const LONG_COMMAND_MS = 20 * 60 * 1000;
+  const LONGER_THAN_IDLE_MS = 45 * 60 * 1000;
 
   /** A custom provider that hands out a fresh, stop-counting sandbox per resolve. */
   function countingProvider() {
@@ -158,7 +159,9 @@ describe("bash sandbox registry: idle release", () => {
         return {
           // Non-zero `find` makes the flush walk bail out early.
           executeCommand: async (command: string) => {
-            if (command.includes("slow-build")) {
+            if (command.includes("very-slow-build")) {
+              await new Promise((r) => setTimeout(r, LONGER_THAN_IDLE_MS));
+            } else if (command.includes("slow-build")) {
               await new Promise((r) => setTimeout(r, LONG_COMMAND_MS));
             }
             return { stdout: "", stderr: "", exitCode: 1 };
@@ -222,6 +225,27 @@ describe("bash sandbox registry: idle release", () => {
 
     expect(made[0]!.stop).not.toHaveBeenCalled();
     await releaseBashSandbox(provider, ctx);
+  });
+
+  it("never releases a sandbox while a command longer than the idle window is still running", async () => {
+    vi.useFakeTimers();
+    const { provider, made } = countingProvider();
+    const { bashCommand } = createBashBlocks({ provider, destination: "/workspace" });
+    const ctx = sessionCtx("idle-running-command");
+
+    const running = runForTest(bashCommand, { command: "very-slow-build" }, ctx);
+    // Past the idle window while the command still runs: nothing is stopped.
+    await vi.advanceTimersByTimeAsync(SANDBOX_IDLE_RELEASE_MS + 60_000);
+    expect(made[0]!.stop).not.toHaveBeenCalled();
+
+    // On to the command's end (45 minutes from its start).
+    await vi.advanceTimersByTimeAsync(LONGER_THAN_IDLE_MS - (SANDBOX_IDLE_RELEASE_MS + 60_000));
+    await running;
+    // Idle then counts from when it finished.
+    await vi.advanceTimersByTimeAsync(SANDBOX_IDLE_RELEASE_MS - 1_000);
+    expect(made[0]!.stop).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(made[0]!.stop).toHaveBeenCalledTimes(1);
   });
 
   it("drops the idle timer on an explicit release, so it never fires on a released sandbox", async () => {
