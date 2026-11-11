@@ -36,4 +36,15 @@ describe("the no-session routes' caller", () => {
     const owner = auth.slice(auth.indexOf("function ownerFlowOf("), auth.indexOf("function ownerFlowOf(") + 1200);
     expect(owner).toContain("writeRecordGovernor(ctx.registry, ctx.hostResolver, record)");
   });
+
+  it("projects a direct read through the session snapshot's builder, never a second projection", () => {
+    // A direct call to resolveClientData defaults to the whole state, where the snapshot gates it.
+    for (const file of ["routes/scope-routes.ts", "resources/scope-address.ts"]) {
+      expect(read(file)).not.toMatch(/resolveClientData\(/);
+    }
+    const address = read("resources/scope-address.ts");
+    const project = address.slice(address.indexOf("export async function projectForClient"));
+    expect(project.slice(0, project.indexOf("\n}\n"))).toContain("buildResourceSnapshot(");
+    expect(read("routes/scope-routes.ts")).toContain("projectForClient(address, state)");
+  });
 });
