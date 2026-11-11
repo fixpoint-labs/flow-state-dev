@@ -34,6 +34,7 @@ import { describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import { readSessionItems, RunReadError } from "../lib/run";
+import { flowUploader } from "../lib/files";
 import { sendTurn, TurnNotDelivered } from "../lib/send";
 import { emptyInboxSentence } from "../lib/tasks";
 import { cn } from "../lib/utils";
@@ -517,7 +518,8 @@ function Reply({
         label={`Reply to ${workerLabel(ask.workerId ?? "this worker")}`}
         placeholder={`Reply to ${workerLabel(ask.workerId ?? "this worker")}…`}
         blocked={route.blocked}
-        uploader={client}
+        // Through the flow the reply goes to, whose sign-in its send runs.
+        uploader={flowUploader(client, route.blocked === null ? route.flowId : null)}
         send={async (message, held, attachments) => {
           // The box is disabled while blocked; a send that got here anyway
           // must not read as delivered.

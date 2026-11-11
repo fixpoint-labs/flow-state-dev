@@ -23,12 +23,34 @@ import { createFakeSequencerState } from "../helpers";
 
 const shot: FileContent = { type: "file", mediaType: "image/png", filename: "bug.png", data: toBlobRef("b_turnshot0001") };
 
-/** A turn's context: its files, and a keeper that copies each under a new id (or fails, or is absent). */
-function turnCtx(attachments: FileContent[], keeper: "copies" | "fails" | "none" = "copies") {
+/**
+ * A turn's context: its files, and a keeper that copies each under a new id
+ * (or fails, or is absent). `replay` makes it one generator tool call, `callId`,
+ * whose `runOnce` record is `memo`: share the memo to replay the call.
+ */
+function turnCtx(
+  attachments: FileContent[],
+  keeper: "copies" | "fails" | "none" = "copies",
+  replay?: { memo: Map<string, unknown>; callId: string },
+) {
   const kept: FileContent[][] = [];
   /** What the keeper was asked to drop again, call by call. */
   const discarded: FileContent[][] = [];
   const ctx = {
+    ...(replay === undefined
+      ? {}
+      : {
+          _blockIdentity: {
+            blockName: "createTask",
+            blockInstanceId: `req_1:root/step[0]/tool[createTask][0%3A${replay.callId}]:0`,
+          },
+          runOnce: async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+            if (replay.memo.has(key)) return replay.memo.get(key) as T;
+            const value = await fn();
+            replay.memo.set(key, value);
+            return value;
+          },
+        }),
     emit: { component: () => undefined },
     session: { identity: { type: "session", id: "s_1", userId: "alice" } },
     request: { identity: { type: "request", id: "r_1" }, attachments },
@@ -51,13 +73,13 @@ function turnCtx(attachments: FileContent[], keeper: "copies" | "fails" | "none"
   return { ctx, kept, discarded };
 }
 
-const board = (maxTotalTasks?: number) =>
+const board = (caps: { maxTotalTasks?: number; maxEnqueuedTasks?: number } = {}) =>
   getOrCreateTaskCollection({
     ctx: turnCtx([]).ctx,
     backing: "state",
     state: createFakeSequencerState<Record<string, unknown>>({ tasks: {} }),
     collectionId: "desk",
-    ...(maxTotalTasks !== undefined ? { maxTotalTasks } : {}),
+    ...caps,
   });
 
 const roster: AssigneeRoster = { has: (name) => name === "writer", describe: () => "writer" };
@@ -112,7 +134,7 @@ describe("a task filed during a turn", () => {
   // A kept copy is owned, so nothing sweeps it: a filing the board refuses
   // must drop the copies it kept, or each refusal leaves files nobody reads.
   it("drops the copies it kept when the board refuses the filing, and keeps a filed task's", async () => {
-    const collection = await board(1);
+    const collection = await board({ maxTotalTasks: 1 });
     const first = turnCtx([shot]);
     const filed = (await runForTest(createTask(collection) as never, { goal: "Fix it", assignee: "writer" } as never, first.ctx)) as Result;
     expect(filed.ok).toBe(true);
@@ -124,6 +146,26 @@ describe("a task filed during a turn", () => {
     expect(collection.list()).toHaveLength(1);
     expect(second.discarded).toEqual(second.kept);
     expect(collection.get(filed.taskId!)!.attachments).toEqual(first.kept[0]);
+  });
+
+  // A replay of a refused call (a retried block, a resumed request) must not
+  // file the copies the refusal dropped: it answers as the first call did.
+  it("refuses a replay of a refused filing the same way, after a slot frees, and names no dropped copy", async () => {
+    const collection = await board({ maxEnqueuedTasks: 1 });
+    const first = (await runForTest(createTask(collection) as never, { goal: "Fill the slot", assignee: "writer" } as never, turnCtx([]).ctx)) as Result;
+    expect(first.ok).toBe(true);
+    const memo = new Map<string, unknown>();
+    const call = turnCtx([shot], "copies", { memo, callId: "c1" });
+    const refused = (await runForTest(createTask(collection) as never, { goal: "Fix it", assignee: "writer" } as never, call.ctx)) as Result;
+    expect(refused.ok).toBe(false);
+    expect(call.discarded).toEqual(call.kept);
+
+    await collection.cancel(first.taskId!);
+    const replay = turnCtx([shot], "copies", { memo, callId: "c1" });
+    const again = (await runForTest(createTask(collection) as never, { goal: "Fix it", assignee: "writer" } as never, replay.ctx)) as Result;
+    expect(again).toEqual(refused);
+    const dropped = call.kept.flat().map((file) => file.data);
+    for (const task of collection.list()) expect(task.attachments?.map((file) => file.data) ?? []).not.toEqual(expect.arrayContaining(dropped));
   });
 
   it("takes no files from the model's input", async () => {

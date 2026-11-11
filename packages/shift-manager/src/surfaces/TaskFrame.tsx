@@ -34,7 +34,7 @@ import { cn } from "../lib/utils";
 import { STALE_CLASS } from "../components/flow-state/connection-banner";
 import { ErrorBody } from "../components/flow-state/error";
 import { MessageFiles } from "../components/flow-state/message";
-import { fileReadBase, readStoredFile } from "../lib/files";
+import { fileReadBase, flowUploader, readStoredFile } from "../lib/files";
 import { TaskActions } from "../components/flow-state/task-actions";
 
 export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
@@ -345,7 +345,8 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       label={`Message ${worker ?? "this worker"}`}
       placeholder={`Message ${worker ?? "this worker"}…`}
       blocked={blocked}
-      uploader={client}
+      // Through the run's own flow, whose sign-in its send runs.
+      uploader={flowUploader(client, flowId)}
       // No `held`: the draft stays until the door turn ends. The Session follows the request from `onStarted`.
       // A file found after the task started goes here, as a line to its run, not into its brief (FIX-2522 D1).
       send={async (message, _held, attachments) => {

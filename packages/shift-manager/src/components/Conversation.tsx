@@ -36,6 +36,7 @@ import { useLab } from "../lib/lab-data";
 import { cn } from "../lib/utils";
 import { STALE_CLASS } from "./flow-state/connection-banner";
 import type { Worker } from "../lib/reads";
+import { flowUploader } from "../lib/files";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
 
@@ -188,7 +189,8 @@ export function Conversation({
       autoSend={autoSend}
       onAutoSend={onAutoSend}
       seed={seed}
-      uploader={client}
+      // Through the worker's own flow, whose sign-in its send runs.
+      uploader={flowUploader(client, worker.kind)}
       send={async (message, held, attachments) => {
         const settled = startWork?.();
         feed.sent();

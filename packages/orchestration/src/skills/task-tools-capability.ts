@@ -1325,14 +1325,23 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         const kept = await keepTurnFiles(ctx);
         if ("error" in kept) return kept;
         const init = kept.files.length === 0 ? checked.init : { ...checked.init, attachments: kept.files };
-        const result = await fileNewTask(checked.followUp, async () => {
-          // On a board that starts a ready row at once, a filing starts work:
-          // once per call, so a replay finds its own row (BR-15).
-          const filed = dispatches
-            ? await fileReady(ctx, collection, init)
-            : { ok: true as const, taskId: (await collection.createTask(init)).id };
-          return input.held === true ? { ...filed, status: "held" as const } : filed;
-        });
+        const write = () =>
+          fileNewTask(checked.followUp, async () => {
+            // On a board that starts a ready row at once, a filing starts work:
+            // once per call, so a replay finds its own row (BR-15).
+            const filed = dispatches
+              ? await fileReady(ctx, collection, init)
+              : { ok: true as const, taskId: (await collection.createTask(init)).id };
+            return input.held === true ? { ...filed, status: "held" as const } : filed;
+          });
+        // A call that kept files records its outcome, a refusal included: the refusal below drops the
+        // copies, and the keep is recorded too, so a replay that filed this time would name deleted
+        // files. It answers as the first call did instead.
+        const call = toolCallOf(ctx);
+        const result =
+          kept.files.length > 0 && call !== undefined && ctx.runOnce !== undefined
+            ? await ctx.runOnce(`fsd.briefFiles.filing:${call.logicalId}`, write)
+            : await write();
         // A refusal the write answered filed no task, so its copies have no row to name them, and an
         // owned copy is never swept: drop them. A throw leaves them, as it may have filed the task.
         if (!result.ok) await discardAttachmentsForUser(ctx, kept.files);
