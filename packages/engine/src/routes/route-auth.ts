@@ -190,6 +190,8 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     // flow's own resolver (`scope-address.ts`), never the body, query or
     // headers (BP-031); a send then runs as an action does.
     case "read_scope_resource":
+    case "list_scope_entries":
+    case "read_scope_entry":
     case "send_resource":
     case "flow_identity":
       return { kind: "exempt" };

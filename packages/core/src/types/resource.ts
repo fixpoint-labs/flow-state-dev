@@ -692,7 +692,7 @@ export function defineResource<
  * the rule stops at start instead of giving every member of the org write access
  * (the owner's decision, 2026-11-11). A user resource is its owner's either way.
  */
-function validateRunBy(
+export function validateRunBy(
   definer: string,
   config: {
     ref?: string;

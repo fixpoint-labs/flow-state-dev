@@ -12,11 +12,19 @@
  * read or write is refused, naming both flows. Registration still succeeds:
  * a host that runs today keeps starting.
  *
- * Only single resources here; collections are addressed by their entries in a
- * later change.
+ * A collection is addressed by its pattern, and read and written by its
+ * entries: one address, the cell its entries share.
  */
-import type { FlowInstance, JsonObject, JsonValue, ResourceConfig } from "@flow-state-dev/core/types";
+import type {
+  FlowInstance,
+  JsonObject,
+  JsonValue,
+  ResourceCollectionConfig,
+  ResourceConfig
+} from "@flow-state-dev/core/types";
 import { resolveClientData } from "@flow-state-dev/core/helpers";
+import { getPatternPrefix, matchesPattern } from "@flow-state-dev/core/types";
+import { ownerKeyAdmits } from "./owner-private";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { PrincipalResolutionError } from "../transports/errors";
@@ -33,21 +41,26 @@ import type { StoreRegistry } from "../stores/types";
 /** The two scopes a resource is addressed by without a session. */
 export type AddressScope = "user" | "org";
 
-/** One flow's declaration of the addressed resource. */
+/** One flow's declaration of the addressed resource or collection. */
 type ScopeDeclaration = {
   flow: FlowInstance;
   accessor: string;
-  config: ResourceConfig;
+  config: ResourceConfig | ResourceCollectionConfig;
 };
 
-/** The declarations of one address, once they agree. */
-export type ResolvedAddress = {
+/** What every declaration of one address shares, once they agree. */
+type AddressBase = {
   scope: AddressScope;
+  /** A single resource's storage key, or a collection's pattern. */
   key: string;
   /** The first declaring flow: its resolver and pin govern the caller. */
   flow: FlowInstance;
-  config: ResourceConfig;
 };
+
+/** The declarations of one address, once they agree: a single resource, or a collection read by its entries. */
+export type ResolvedAddress =
+  | (AddressBase & { collection: false; config: ResourceConfig })
+  | (AddressBase & { collection: true; config: ResourceCollectionConfig });
 
 /** Why an address has no one answer. `status` is the HTTP answer to give. */
 export type AddressRefusal = { status: number; code: string; message: string };
@@ -58,8 +71,9 @@ export function isAddressScope(value: string): value is AddressScope {
 }
 
 /**
- * The flows that declare the single resource stored at `key` in `scope`,
- * shared (not flow-isolated), in registration order.
+ * The flows that declare the address `key` in `scope`: the single resource
+ * stored at that key, or the collection with that pattern. Shared (not
+ * flow-isolated) and isolated apart, each in registration order.
  */
 function declarationsOf(registry: FlowRegistry, scope: AddressScope, key: string): {
   shared: ScopeDeclaration[];
@@ -72,8 +86,10 @@ function declarationsOf(registry: FlowRegistry, scope: AddressScope, key: string
     if (resources === undefined) continue;
     const storageKeys = resourceStorageKeys(resources);
     for (const [accessor, config] of Object.entries(resources)) {
-      if (isCollectionConfig(config) || !isResourceConfig(config)) continue;
-      if (config.scope !== scope || (storageKeys[accessor] ?? accessor) !== key) continue;
+      const collection = isCollectionConfig(config);
+      if (!collection && !isResourceConfig(config)) continue;
+      const address = collection ? config.pattern : (storageKeys[accessor] ?? accessor);
+      if (config.scope !== scope || address !== key) continue;
       const entry = { flow, accessor, config };
       if (resolveResourceIsolation(config.flowIsolation, flow, scope)) isolated.push(entry);
       else shared.push(entry);
@@ -82,19 +98,29 @@ function declarationsOf(registry: FlowRegistry, scope: AddressScope, key: string
   return { shared, isolated };
 }
 
-/** Whether `flow` declares the shared single resource stored at `key` in `scope`. */
+/** Whether `flow` declares the shared resource or collection addressed `key` in `scope`. */
 export function flowDeclares(registry: FlowRegistry, flow: FlowInstance, scope: AddressScope, key: string): boolean {
   return declarationsOf(registry, scope, key).shared.some((entry) => entry.flow.id === flow.id);
 }
 
-/** Whether two client configs project the same fields for a client. */
-function sameClientConfig(a: ResourceConfig, b: ResourceConfig): boolean {
+/** Whether two declarations of one address project the same fields for a client and take the same writes. */
+function sameClientConfig(
+  a: ResourceConfig | ResourceCollectionConfig,
+  b: ResourceConfig | ResourceCollectionConfig
+): boolean {
   if (a === b) return true;
-  const ca = a.client;
-  const cb = b.client;
+  if (isCollectionConfig(a) !== isCollectionConfig(b)) return false;
+  const ca = a.client as (ResourceConfig["client"] & ResourceCollectionConfig["client"]) | undefined;
+  const cb = b.client as (ResourceConfig["client"] & ResourceCollectionConfig["client"]) | undefined;
   if (ca === undefined || cb === undefined) return ca === cb;
+  const owner = (config: object) => {
+    const { ownerPrivate, ownerWrites } = config as Pick<ResourceCollectionConfig, "ownerPrivate" | "ownerWrites">;
+    return JSON.stringify([ownerPrivate ?? null, ownerWrites ?? null]);
+  };
   return (
     ca.data === cb.data &&
+    JSON.stringify(ca.state ?? null) === JSON.stringify(cb.state ?? null) &&
+    owner(a) === owner(b) &&
     JSON.stringify(ca.expose ?? null) === JSON.stringify(cb.expose ?? null) &&
     JSON.stringify(ca.exclude ?? null) === JSON.stringify(cb.exclude ?? null) &&
     JSON.stringify(a.secret ?? null) === JSON.stringify(b.secret ?? null) &&
@@ -135,7 +161,9 @@ export function resolveAddress(
   if (first.config.client === undefined) {
     return { refused: { status: 404, code: "unknown_resource", message: `Unknown resource "${key}" at ${scope} scope` } };
   }
-  return { scope, key, flow: first.flow, config: first.config };
+  return isCollectionConfig(first.config)
+    ? { scope, key, flow: first.flow, collection: true, config: first.config }
+    : { scope, key, flow: first.flow, collection: false, config: first.config as ResourceConfig };
 }
 
 /**
@@ -230,10 +258,10 @@ export function addressCellId(address: ResolvedAddress, caller: AddressCaller): 
   return resolveResourceScopeId(caller, address.flow, address.scope, false);
 }
 
-/** The stored state of the caller's copy, the schema's default when none, and its version (0: none). */
+/** The stored state of the caller's copy of a single resource, the schema's default when none, and its version (0: none). */
 export async function readAddressed(
   stores: Pick<StoreRegistry, "resourceState">,
-  address: ResolvedAddress,
+  address: ResolvedAddress & { collection: false },
   caller: AddressCaller
 ): Promise<{ state: JsonObject; version: number }> {
   const stored = await stores.resourceState.get(address.scope, addressCellId(address, caller), address.key);
@@ -244,6 +272,59 @@ export async function readAddressed(
 }
 
 /** What a client may see of `state`: the resource's client projection, secrets dropped. */
-export async function projectForClient(config: ResourceConfig, state: JsonObject): Promise<JsonValue> {
-  return await resolveClientData(config, state);
+export async function projectForClient(
+  config: ResourceConfig | ResourceCollectionConfig,
+  state: JsonObject
+): Promise<JsonValue> {
+  return await resolveClientData(config as ResourceConfig, state);
+}
+
+/**
+ * The storage key of `entry` in an addressed collection: a full storage key is
+ * taken as it is, a bare topic (the key past the pattern's literal prefix, as
+ * the list answers it) gets the prefix. `undefined` when neither matches the
+ * pattern.
+ */
+export function entryStorageKey(config: ResourceCollectionConfig, entry: string): string | undefined {
+  if (matchesPattern(config.pattern, entry)) return entry;
+  const prefix = getPatternPrefix(config.pattern);
+  const resolved = prefix ? `${prefix}/${entry}` : entry;
+  return matchesPattern(config.pattern, resolved) ? resolved : undefined;
+}
+
+/**
+ * One stored entry of the caller's cell, if the owner fence admits it to them
+ * (`ownerKeyAdmits`), and its version. `undefined` when absent or not theirs
+ * to read: the two answers look the same.
+ */
+export async function readEntry(
+  stores: Pick<StoreRegistry, "resourceState">,
+  address: ResolvedAddress & { collection: true },
+  caller: AddressCaller,
+  storageKey: string
+): Promise<{ state: JsonObject; version: number } | undefined> {
+  if (!ownerKeyAdmits(address.config, storageKey, caller.userId)) return undefined;
+  const stored = await stores.resourceState.get(address.scope, addressCellId(address, caller), storageKey);
+  return stored === undefined ? undefined : { state: stored.state, version: stored.version };
+}
+
+/**
+ * Every stored entry of the caller's cell the owner fence admits to them,
+ * sorted by storage key, each with its version.
+ */
+export async function readEntries(
+  stores: Pick<StoreRegistry, "resourceState">,
+  address: ResolvedAddress & { collection: true },
+  caller: AddressCaller
+): Promise<Array<{ storageKey: string; state: JsonObject; version: number }>> {
+  const cell = addressCellId(address, caller);
+  const prefix = getPatternPrefix(address.config.pattern);
+  const stored = prefix
+    ? await stores.resourceState.getByPrefix(address.scope, cell, `${prefix}/`)
+    : await stores.resourceState.getAll(address.scope, cell);
+  return Object.entries(stored)
+    .filter(([key]) => matchesPattern(address.config.pattern, key))
+    .filter(([key]) => ownerKeyAdmits(address.config, key, caller.userId))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([storageKey, value]) => ({ storageKey, state: value.state, version: value.version }));
 }
