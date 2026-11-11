@@ -166,6 +166,24 @@ describe("files in a teammate's composer", () => {
     expect(within(other).queryByRole("img")).toBeNull();
   });
 
+  it("takes a PDF beside the text, and sends it by reference as a document", async () => {
+    const { adapter, sends } = recording();
+    render(<App adapter={adapter} />);
+    const box = await open();
+    pick(new File([new TextEncoder().encode("%PDF-1.4\n")], "spec.pdf", { type: "application/pdf" }));
+    await within(composer()).findByText("spec.pdf");
+    await waitFor(() => expect(within(composer()).queryByLabelText("Uploading")).toBeNull());
+    // A document is no refusal: nothing in the notices.
+    expect(within(composer()).queryByRole("status", { name: "Attachment notices" })?.textContent ?? "").toBe("");
+    fireEvent.change(box, { target: { value: "What does it say?" } });
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0].attachments.map((file) => [file.filename, file.mediaType])).toEqual([["spec.pdf", "application/pdf"]]);
+    expect(sends[0].attachments[0].data).toMatch(/^fsd-blob:/);
+  });
+
   it("puts + in the Tab order, and Backspace in an empty box takes the last file off", async () => {
     render(<App adapter={recording().adapter} />);
     const box = await open();
