@@ -482,7 +482,9 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           to: { sessionId: row.sessionId, flow: row.flow, worker: row.worker, ...opens },
           text: deliveryText(event, row.thread, slot.held, forward),
           id,
-          ...(forward === undefined ? {} : { forward: { as: forward, url: event.url } })
+          ...(forward === undefined ? {} : { forward: { as: forward, url: event.url } }),
+          // A published event lands in its publisher's chain, one hop on (FIX-2630 D2); one with neither as before.
+          ...(event.hop === undefined || event.chain === undefined ? {} : { after: { hop: event.hop, chain: event.chain } })
         },
         "subscription-deliver"
       );
