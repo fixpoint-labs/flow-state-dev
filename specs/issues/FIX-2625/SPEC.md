@@ -32,9 +32,9 @@ off sends a browser no ids and no entry keys.**
 
 ```mermaid
 flowchart LR
-  H["one host · board of 200 tasks · org collection of 200 entries · a second org with ids off"] --> W["a real client watches the board view and the collection · poll off"]
+  H["one host · board of 200 tasks · org collection of 200 entries · a second run with org ids off"] --> W["a real client watches the board view and the collection · poll off"]
   W --> X["another client edits one task, one entry, then a burst of 300"]
-  X -->|"one row per single edit · screen equals store after every step · no ids or entry keys in the ids-off org"| P["PASS · goal met"]
+  X -->|"one row per single edit · screen equals store after every step · no ids or entry keys in the ids-off run"| P["PASS · goal met"]
   C["control · the board answers only the rows keyed by the ids"] -.-> W
   X -.->|"under the control"| F["must FAIL · screen differs from the store"]
 ```
@@ -45,8 +45,8 @@ reads the bus. One control breaks correctness, one breaks narrowing, and each mu
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/notices/one-change-re-reads-one-row/`, shaped like `goals/realtime/app-views-read-on-notice/` · model n/a · real `serve()` host with push · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | `a:one-row`: one task edit makes the board view answer exactly 1 row; one entry edit makes the direct read fetch exactly 1 entry. `b:equals-store`: after each edit, the burst of 300 and a deleted task, the screen equals a fresh whole read. `c:ids-off`: in the org with ids off, no socket frame carries `ids` and no scope-wide frame names an entry key, while its screens stay equal to the store. `d:old-client`: a client built from today's `main` against the new host passes `b` |
-| **Input** | One host, two orgs (one with ids off), a session board of 200 tasks, an org collection of 200 entries. Some board rows show their parent task's title. A change that reorders rows, a parent's rename, and a second view that reads the board but does not opt in must pass `b` too |
+| **Signal** | `a:one-row`: one task edit makes the board view answer exactly 1 row; one entry edit makes the direct read fetch exactly 1 entry. `b:equals-store`: after each edit, the burst of 300 and a deleted task, the screen equals a fresh whole read. `c:ids-off`: on the run with org ids off, no socket frame carries `ids` and no scope-wide frame names an entry key, while its screens stay equal to the store. `d:old-client`: a client built from today's `main` against the new host passes `b` |
+| **Input** | Two runs of one `serve()` host: ids on, then org ids off (D2 is per scope, not per org, so one host can't hold both). A session board of 200 tasks, an org collection of 200 entries. Some board rows show their parent task's title. A change that reorders rows, a parent's rename, and a second view that reads the board but does not opt in must pass `b` too |
 | **Anti-game** | Don't assert on the merge function or on `publish` calls. Count rows in the answers the server sent, compare with the store, and keep the poll off, or a timer hides a missed row |
 | **Control that must fail** | `GOAL_CONTROL=identity-only`: the board's partial answer re-runs only the rows whose keys equal the ids, so a parent's rename leaves its children stale and FAILS `b:equals-store`. `GOAL_CONTROL=drop-ids`: publishers send no ids; FAILS `a:one-row`. Today's `main` FAILS `a` and `c` |
 
