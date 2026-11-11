@@ -1322,32 +1322,40 @@ export function useSession(
   /**
    * Re-read the session's state and detail, and no items: one state read
    * with `includeItems: false`, merged into the snapshot on screen through
-   * the same state half a full read uses. Best effort, like
-   * `refreshLatestRequest`: a failed read leaves state as it was, and the
-   * next read of either kind brings it current.
+   * the same state half a full read uses. Rejects when the read fails, so the
+   * live read can try again on its own; a failed read leaves state as it was.
    */
-  const refreshState = useCallback(async () => {
+  const readState = useCallback(async () => {
     if (sessionId === undefined) return;
     const read = beginStateRead();
+    const [nextDetail, next] = await Promise.all([
+      sessionsApi.get(sessionId),
+      sessionsApi.state(sessionId, { includeItems: false })
+    ]);
+    const superseded = read.sequence <= stateAppliedSequenceRef.current;
+    const state = takeState(next, read);
+    if (!superseded && snapshotLandedRef.current) setDetail(nextDetail);
+    if (state === null) return;
+    if (!snapshotLandedRef.current) {
+      // The mount read is still out and holds older state: it loads this.
+      heldStateRef.current = { state, detail: nextDetail, changesAt: liveChangeCountRef.current };
+      return;
+    }
+    setSnapshot((prev) => (prev === null ? prev : { ...prev, ...state }));
+  }, [sessionId, sessionsApi, beginStateRead, takeState]);
+
+  /**
+   * {@link readState}, best effort, like `refreshLatestRequest`: a failed
+   * read leaves state as it was, and the next read of either kind brings it
+   * current.
+   */
+  const refreshState = useCallback(async () => {
     try {
-      const [nextDetail, next] = await Promise.all([
-        sessionsApi.get(sessionId),
-        sessionsApi.state(sessionId, { includeItems: false })
-      ]);
-      const superseded = read.sequence <= stateAppliedSequenceRef.current;
-      const state = takeState(next, read);
-      if (!superseded && snapshotLandedRef.current) setDetail(nextDetail);
-      if (state === null) return;
-      if (!snapshotLandedRef.current) {
-        // The mount read is still out and holds older state: it loads this.
-        heldStateRef.current = { state, detail: nextDetail, changesAt: liveChangeCountRef.current };
-        return;
-      }
-      setSnapshot((prev) => (prev === null ? prev : { ...prev, ...state }));
+      await readState();
     } catch {
       // Best effort: see above.
     }
-  }, [sessionId, sessionsApi, beginStateRead, takeState]);
+  }, [readState]);
 
   /**
    * Attach to an existing request's stream, optionally resuming from a cursor.
@@ -1966,8 +1974,8 @@ export function useSession(
   // own request made is skipped. Each resource change is handed to the
   // resource hooks as it arrives; the scope's state is read again through the
   // client's live read: one in flight, one waiting, a failed one tried again.
-  const refreshStateRef = useRef(refreshState);
-  refreshStateRef.current = refreshState;
+  const readStateRef = useRef(readState);
+  readStateRef.current = readState;
   const snapshotNowRef = useRef(snapshot);
   snapshotNowRef.current = snapshot;
 
@@ -2045,7 +2053,7 @@ export function useSession(
         }),
       [topic.session(sessionId), topic.user(), topic.org()],
       {
-        read: () => refreshStateRef.current(),
+        read: () => readStateRef.current(),
         readNow: false,
         hear: (notice) => {
           if (!fromElsewhere(notice)) return false;
