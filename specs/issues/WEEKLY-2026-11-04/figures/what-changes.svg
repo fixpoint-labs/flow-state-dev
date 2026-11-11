@@ -1,0 +1,70 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Six rows, today beside after. The composer offers two file shapes, then one reference. Attachment helpers count as harness steering, then have their own row. The Claude Code-style lab draws its own working line, then uses the shared indicator. Its review card is a private copy, then the registry card. Each coding lab keeps a send hook, then both use one. Test titles name tickets, then they say the behaviour."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .gone { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; }
+    .kept { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.08em; }
+    .t-b { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .h { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:700; font-size:12px; letter-spacing:.12em; }
+  </style>
+  <text class="h" x="180" y="28">TODAY</text>
+  <text class="h" x="680" y="28">AFTER</text>
+  <g id="composer">
+    <rect class="gone" x="16" y="44" width="448" height="52" rx="5"/>
+    <text class="t-lbl" x="28" y="62">COMPOSER</text>
+    <text class="t-b" x="28" y="80">Two shapes for one file</text>
+    <rect class="kept" x="476" y="44" width="448" height="52" rx="5"/>
+    <text class="t-lbl" x="488" y="62">COMPOSER</text>
+    <text class="t-b" x="488" y="80">One reference, the one send already uses</text>
+  </g>
+  <g id="row">
+    <rect class="gone" x="16" y="104" width="448" height="52" rx="5"/>
+    <text class="t-lbl" x="28" y="122">MECHANISM LIST</text>
+    <text class="t-b" x="28" y="140">Attachment helpers count as harness steering</text>
+    <rect class="kept" x="476" y="104" width="448" height="52" rx="5"/>
+    <text class="t-lbl" x="488" y="122">MECHANISM LIST</text>
+    <text class="t-b" x="488" y="140">One attachment row, anchored on the scheme helper</text>
+  </g>
+  <g id="working">
+    <rect class="gone" x="16" y="164" width="448" height="52" rx="5"/>
+    <text class="t-lbl" x="28" y="182">WORKING LINE</text>
+    <text class="t-b" x="28" y="200">Claude Code-style draws its own</text>
+    <rect class="kept" x="476" y="164" width="448" height="52" rx="5"/>
+    <text class="t-lbl" x="488" y="182">WORKING LINE</text>
+    <text class="t-b" x="488" y="200">The same indicator Teammates already uses</text>
+  </g>
+  <g id="review">
+    <rect class="gone" x="16" y="224" width="448" height="52" rx="5"/>
+    <text class="t-lbl" x="28" y="242">REVIEW CARD</text>
+    <text class="t-b" x="28" y="260">A private copy a refresh would wipe</text>
+    <rect class="kept" x="476" y="224" width="448" height="52" rx="5"/>
+    <text class="t-lbl" x="488" y="242">REVIEW CARD</text>
+    <text class="t-b" x="488" y="260">The registry card, including the land order</text>
+  </g>
+  <g id="send">
+    <rect class="gone" x="16" y="284" width="448" height="52" rx="5"/>
+    <text class="t-lbl" x="28" y="302">SEND</text>
+    <text class="t-b" x="28" y="320">Each coding lab keeps its own hook</text>
+    <rect class="kept" x="476" y="284" width="448" height="52" rx="5"/>
+    <text class="t-lbl" x="488" y="302">SEND</text>
+    <text class="t-b" x="488" y="320">One hook, beside the draft and the submit</text>
+  </g>
+  <g id="lint">
+    <rect class="gone" x="16" y="344" width="448" height="52" rx="5"/>
+    <text class="t-lbl" x="28" y="362">TESTS</text>
+    <text class="t-b" x="28" y="380">Titles and test docs name tickets</text>
+    <rect class="kept" x="476" y="344" width="448" height="52" rx="5"/>
+    <text class="t-lbl" x="488" y="362">TESTS</text>
+    <text class="t-b" x="488" y="380">They say the behaviour, as FIX-2453 required</text>
+  </g>
+</svg>
