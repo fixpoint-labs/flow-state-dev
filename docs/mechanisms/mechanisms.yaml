@@ -308,7 +308,7 @@ mechanisms:
     doc: packages/engine/README.md
 
   - id: push-delivery
-    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change.
+    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change. `client.live`, the live read, is the one loop every screen runs on it: filter the notices it hears (the path rule), merge, one read in flight and at most one waiting, report on change, and retry a failed read on the client's backoff.
     package: "@flow-state-dev/engine"
     anchor: enablePushDelivery
     file: packages/engine/src/push/push-delivery.ts

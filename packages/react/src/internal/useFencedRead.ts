@@ -26,9 +26,10 @@ type FencedRead<T> = {
 
 /**
  * What starts an identity's reads, when reading once on mount is not all it
- * does. Handed the read (which settles however it went); returns what stops
- * everything it started. Held stable by the caller: a new one restarts the
- * reads. A re-read under rows already drawn shows no loading note: every
+ * does. Handed the read, which rejects when it failed and is still the
+ * newest (so a live read can try again) and resolves otherwise; returns what
+ * stops everything it started. Held stable by the caller: a new one restarts
+ * the reads. A re-read under rows already drawn shows no loading note: every
  * panel draws that only while it has no rows.
  */
 export type ReadDriver = (read: () => Promise<void>) => () => void;
@@ -92,6 +93,7 @@ export function useFencedRead<T>(
     } catch (err) {
       if (!stillCurrent()) return;
       setError(describe(err, failureMessage));
+      throw err;
     } finally {
       if (stillCurrent()) setIsLoading(false);
     }
@@ -99,7 +101,8 @@ export function useFencedRead<T>(
 
   useEffect(() => {
     if (driver === undefined) {
-      void read();
+      // The error is drawn; a read on mount has nothing to try again on.
+      read().catch(() => undefined);
       return;
     }
     return driver(read);
@@ -109,6 +112,6 @@ export function useFencedRead<T>(
     data: holdsCurrent ? data : empty,
     isLoading: holdsCurrent ? isLoading : true,
     error: holdsCurrent ? error : null,
-    refresh: () => void read()
+    refresh: () => void read().catch(() => undefined)
   };
 }

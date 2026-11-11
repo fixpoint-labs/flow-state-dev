@@ -653,6 +653,14 @@ export const ENTRIES = [
     decision: "Owner, 2026-11-10 (epic FIX-2618 O1, ER-5); FIX-2619",
     retires: [],
   },
+  {
+    term: "Live read",
+    means: "`client.live`: keep a screen current on change notices. It filters the notices a screen hears, merges them, runs one read at a time with at most one waiting, reports a value only when it changed, and retries a failed read on its own. Every watch in the framework and its apps is one; a view's hook builds on it.",
+    decision: "Owner, 2026-11-11 (FIX-2551 D1, epic FIX-2618 ER-7)",
+    // Not published until the release that ships `client.live`. Nothing is retired: `subscribe`
+    // stays the lower-level call a live read rides, and "coalesced read" was never a public name.
+    retires: [],
+  },
 
   // Execution tiers ---------------------------------------------------------------------------
   {

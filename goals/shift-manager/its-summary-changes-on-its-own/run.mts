@@ -82,9 +82,9 @@ const JITTER_READS = 1;
 const LAB_DATA = "packages/shift-manager/src/lib/lab-data.tsx";
 const SUBSCRIBE = "packages/shift-manager/src/lib/snapshot-subscribe.ts";
 const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string; mustFail: string }> = {
-  // The provider opens no subscription: the snapshot reads only on boot and the person's own reads, as on `main`.
+  // The provider opens no live read: the snapshot reads only on boot and the person's own reads.
   "no-subscribe": {
-    patches: [{ module: LAB_DATA, from: String.raw`enabled: listed !== undefined \}`, to: "enabled: false }" }],
+    patches: [{ module: LAB_DATA, from: String.raw`if \(topicsKey === null\) return;`, to: "return;" }],
     legs: "a",
     mustFail: "a:ask-within-1s",
   },
@@ -96,7 +96,7 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string; mustFail:
   },
   // The subscription keeps no fallback timer: where push can miss a change, nothing reads.
   "no-poll": {
-    patches: [{ module: LAB_DATA, from: String.raw`pollIntervalMs: SNAPSHOT_POLL_MS, `, to: "" }],
+    patches: [{ module: LAB_DATA, from: String.raw`pollIntervalMs: SNAPSHOT_POLL_MS,`, to: "pollIntervalMs: null," }],
     legs: "d",
     mustFail: "d:ask-within-poll",
   },

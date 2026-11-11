@@ -15,11 +15,13 @@
  * - notices that land during a read queue one more read, not one each;
  * - a failed read reaches `onError`, and the next read that lands reports
  *   even an unchanged roster, so the view leaves its failure;
+ * - a failed read is tried again on its own, with no notice;
  * - after stop, nothing reports and the subscription is closed.
  */
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createClient, type SubscribeOptions, type WireNotice, type WireTopic } from "@flow-state-dev/client";
+import { liveRead } from "@flow-state-dev/client/internal";
 import { createWorkforceClient, type RosterEntry } from "../src/workers/client";
 import { bootHost, FIXTURE } from "./worker-model-harness";
 
@@ -39,14 +41,13 @@ function harness(options: { failReads?: () => boolean } = {}) {
     return h.fetcherFor("alice")(input, init);
   };
   const client = createClient({ userId: "alice", fetcher });
-  const source = {
-    ...client,
-    subscribe: (topics: readonly WireTopic[], subscribeOptions: SubscribeOptions) => {
-      const held: Subscribed = { topics, options: subscribeOptions, closed: false };
-      subscriptions.push(held);
-      return { close: () => (held.closed = true) };
-    }
+  const subscribe = (topics: readonly WireTopic[], subscribeOptions: SubscribeOptions) => {
+    const held: Subscribed = { topics, options: subscribeOptions, closed: false };
+    subscriptions.push(held);
+    return { close: () => (held.closed = true) };
   };
+  // The client's own live read, over the recording subscription.
+  const source = { ...client, live: ((topics, liveOptions) => liveRead(subscribe, topics, liveOptions)) as typeof client.live };
   const workforce = createWorkforceClient(source);
   const shown: RosterEntry[][] = [];
   const errors: unknown[] = [];
@@ -122,6 +123,22 @@ describe("watchRoster", () => {
     t.notify(null);
     await settle();
     expect(t.shown.map(ids)).toEqual([[], []]);
+  });
+
+  it("recovers from a failed read on its own, with no notice: while push is up nothing else would read again", async () => {
+    let failing = false;
+    const t = harness({ failReads: () => failing });
+    t.workforce.watchRoster((entries) => t.shown.push(entries), { onError: (error) => t.errors.push(error) });
+    await settle();
+    failing = true;
+    t.notify(null);
+    await settle();
+    expect(t.errors).toHaveLength(1);
+    failing = false;
+    await t.h.rosterAction("alice", "hire", { id: "scribe", flow: FIXTURE });
+    // No notice: the retry, 1 s after the failure, is what reads.
+    await settle(1_500);
+    expect(t.shown.map(ids)).toEqual([[], ["scribe"]]);
   });
 
   it("reports nothing after stop, and closes its subscription", async () => {

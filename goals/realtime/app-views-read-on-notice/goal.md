@@ -13,8 +13,8 @@
 **Model:** n/a
 **Run:** `pnpm tsx goals/realtime/app-views-read-on-notice/run.mts`
 **Controls:**
-- `GOAL_CONTROL=timer` — each lab view keeps a fixed timer beside its subscription (a scratch patch to both lab adapters' `onNotice`). Must FAIL `a:idle-0-reads`.
-- `GOAL_CONTROL=every-kind` — the lab views read on every notice on their topic, `items` included (a scratch patch to both adapters). Must FAIL `b:as-short`.
+- `GOAL_CONTROL=timer` — each lab view keeps a fixed timer beside its subscription (a scratch patch to the client's live read, `packages/client/src/live/live-read.ts`, which both labs' watches are; no other view here uses it). Must FAIL `a:idle-0-reads`.
+- `GOAL_CONTROL=every-kind` — the lab views read on every notice on their topic, `items` included (a scratch patch to the live read's filter). Must FAIL `b:as-short`.
 
 Not covered yet: Shift Manager's message log and project entries, the Teammates Talk panel, and Shift Manager's task-view run link, which this change leaves on their timers (see the PR).
 

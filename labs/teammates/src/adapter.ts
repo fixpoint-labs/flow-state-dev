@@ -693,102 +693,8 @@ function poll<T>(read: () => Promise<T>, onValue: (value: T) => void, everyMs = 
   };
 }
 
-/**
- * A read again after a failed one, 1 s and doubling to 30 s, the shape of the
- * client's own reconnects. A view that reads on a notice has no clock to try
- * again on where push covers it, so a failed read would otherwise wait for a
- * change that may never come. `succeeded` resets the delay; `stop` drops a
- * waiting try.
- */
-function retryAfterFailure(again: () => void): { failed(): void; succeeded(): void; stop(): void } {
-  let attempt = 0;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  return {
-    failed() {
-      clearTimeout(timer);
-      timer = setTimeout(again, Math.min(30_000, 1_000 * 2 ** attempt));
-      attempt += 1;
-    },
-    succeeded() {
-      attempt = 0;
-    },
-    stop() {
-      clearTimeout(timer);
-    },
-  };
-}
-
-/**
- * Read `read` now, and again whenever a notice under `topics` passes `hears`
- * reporting a value only when it changed, as {@link poll} does.
- * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
- * and one waiting for any number of notices. Wherever push can miss a change,
- * `client.subscribe` reads every `everyMs` instead, so the view keeps no timer
- * of its own. A failed read tries again on its own ({@link retryAfterFailure}).
- * A read still out when the watch stops reports nothing. `onStale` hears `true`
- * when a read fails and `false` when one succeeds after it.
- */
-function onNotice<T>(
-  client: Client,
-  topics: readonly WireTopic[],
-  hears: (notice: WireNotice) => boolean,
-  read: () => Promise<T>,
-  onValue: (value: T) => void,
-  everyMs = POLL_MS,
-  onStale?: (stale: boolean) => void,
-): Unsubscribe {
-  let live = true;
-  let last = "";
-  let stale = false;
-  let running = false;
-  let queued = false;
-  const retry = retryAfterFailure(() => void run());
-  const run = async (): Promise<void> => {
-    if (!live) return;
-    if (running) {
-      queued = true;
-      return;
-    }
-    running = true;
-    try {
-      const value = await read();
-      retry.succeeded();
-      const seen = JSON.stringify(value);
-      if (live && seen !== last) {
-        last = seen;
-        onValue(value);
-      }
-      if (live && stale) {
-        stale = false;
-        onStale?.(false);
-      }
-    } catch (error) {
-      console.error("teammates: a read failed", error);
-      if (live) retry.failed();
-      if (live && !stale) {
-        stale = true;
-        onStale?.(true);
-      }
-    }
-    running = false;
-    if (queued) {
-      queued = false;
-      void run();
-    }
-  };
-  const subscription = client.subscribe(topics, {
-    onChange: (notice) => {
-      if (notice === null || notice.kind === "resync" || hears(notice)) void run();
-    },
-    pollIntervalMs: everyMs,
-  });
-  void run();
-  return () => {
-    live = false;
-    retry.stop();
-    subscription.close();
-  };
-}
+/** A live read's failure, logged; the read tries again on its own (`client.live`). */
+const logFailedRead = (error: unknown): void => console.error("teammates: a read failed", error);
 
 /**
  * The tool calls of one request as its own stream sends them: each one as it
@@ -856,14 +762,14 @@ const isRequest = (notice: WireNotice): boolean => notice.kind === "request";
 
 /**
  * A write to the plan a harness records (core's `observed-plan` rows and its
- * `observed-plan-list` markers). A row only its owner may read is published
- * unnamed, so an unnamed resource notice reads too.
+ * `observed-plan-list` markers), as a live read hears it. A row only its owner
+ * may read is published unnamed, and the live read hears an unnamed resource
+ * notice whatever its paths say.
  */
-const isPlanWrite = (notice: WireNotice): boolean =>
-  notice.kind === "resource" &&
-  (notice.topic.resource === undefined ||
-    notice.topic.resource.startsWith(`${OBSERVED_PLAN}/`) ||
-    notice.topic.resource.startsWith(`${OBSERVED_PLAN_LIST}/`));
+const PLAN_WRITES = {
+  hear: (notice: WireNotice) => notice.kind === "resource",
+  paths: [OBSERVED_PLAN, OBSERVED_PLAN_LIST],
+};
 
 /** Whether `copy` of a row is of the same attempt (try count and run) as `row`: a retry's copies speak only for it. */
 function sameAttempt(copy: Record<string, any> | undefined, row: Record<string, any>): boolean {
@@ -1530,12 +1436,9 @@ export function createLabAdapter(client: Client = connect(), connection: LabConn
       });
       const watchers = stopWatchers.get(sessionId) ?? new Set<() => void>();
       stopWatchers.set(sessionId, watchers.add(emit));
-      const stopPoll = onNotice(
-        client,
-        [topic.session(sessionId)],
-        isRequest,
-        () => client.sessions.requests(sessionId, { limit: 20 }),
-        (requests) => {
+      const stopPoll = client.live([topic.session(sessionId)], {
+        read: () => client.sessions.requests(sessionId, { limit: 20 }),
+        onValue: (requests) => {
           const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName));
           inProgress = answering.filter((r) => r.status === "in_progress").map((r) => r.id);
           quiet = requests.filter((r) => QUIET_ACTIONS.has(r.actionName)).map((r) => r.id);
@@ -1548,7 +1451,10 @@ export function createLabAdapter(client: Client = connect(), connection: LabConn
           reuse(toEntries(items, workerIds, ended, retryable, stopped));
           emit();
         },
-      );
+        hear: isRequest,
+        pollIntervalMs: POLL_MS,
+        onError: logFailedRead,
+      }).close;
       return () => {
         watchers.delete(emit);
         if (watchers.size === 0) runningNow.delete(sessionId);
@@ -1591,7 +1497,13 @@ export function createLabAdapter(client: Client = connect(), connection: LabConn
       const follow = () => {
         const known = conversations.get(worker);
         if (!live || known === undefined || stopRead !== undefined) return;
-        stopRead = onNotice(client, [topic.session(known.sessionId)], isRequest, async () => activityOf(await client.sessions.requests(known.sessionId, { limit: 20 })), onChange);
+        stopRead = client.live([topic.session(known.sessionId)], {
+          read: async () => activityOf(await client.sessions.requests(known.sessionId, { limit: 20 })),
+          onValue: onChange,
+          hear: isRequest,
+          pollIntervalMs: POLL_MS,
+          onError: logFailedRead,
+        }).close;
       };
       if (conversations.has(worker)) follow();
       else onChange({ running: false, lastActiveAt: 0 });
@@ -1618,22 +1530,22 @@ export function createLabAdapter(client: Client = connect(), connection: LabConn
         emit();
       });
       // The window moves with a turn (a request notice), and the summary's mark with its resource.
-      const stopPoll = onNotice(
-        client,
-        [topic.session(sessionId)],
-        (notice) => isRequest(notice) || (notice.kind === "resource" && notice.topic.resource === HISTORY_SUMMARY),
-        async (): Promise<WindowRead> => {
+      const stopPoll = client.live([topic.session(sessionId)], {
+        read: async (): Promise<WindowRead> => {
           const requests = await client.sessions.requests(sessionId, { limit: 20 });
           const summary = (await client.sessions.state(sessionId, { includeItems: false })).resources?.session?.[HISTORY_SUMMARY] as
             | HistorySummaryFace
             | undefined;
           return windowReadOf(requests, summary);
         },
-        (next) => {
+        onValue: (next) => {
           read = next;
           emit();
         },
-      );
+        hear: (notice) => isRequest(notice) || (notice.kind === "resource" && notice.topic.resource === HISTORY_SUMMARY),
+        pollIntervalMs: POLL_MS,
+        onError: logFailedRead,
+      }).close;
       return () => {
         stopFeed();
         stopPoll();
@@ -1752,26 +1664,24 @@ export function createLabAdapter(client: Client = connect(), connection: LabConn
       };
       // Topics narrowed to the ledgers the read returns: every notice on them is the board's,
       // so a reply streaming in the conversation never wakes the read.
-      const stopBoard = onNotice(
-        client,
-        BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })),
-        () => true,
-        async () => {
+      const stopBoard = client.live(BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), {
+        read: async () => {
           const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
           const read = await client.flow(flow).read<{ ok: boolean; error?: string; tasks: Array<Record<string, any>> }>(LIST_TASKS, {}, { sessionId });
           if (!read.ok) throw new Error(read.error);
           return read.tasks;
         },
-        (tasks) => {
+        onValue: (tasks) => {
           if (stopped) return;
           listed = new Map(tasks.map((task) => [task.id as string, task]));
           publish();
         },
-        POLL_MS,
-        (stale) => {
+        pollIntervalMs: POLL_MS,
+        onStale: (stale) => {
           if (!stopped) onStale?.(stale);
         },
-      );
+        onError: logFailedRead,
+      }).close;
       const stopFeed = watchFeed(sessionId, boardRows, (read) => {
         rows = read;
         publish();
@@ -1897,16 +1807,16 @@ export function createLabAdapter(client: Client = connect(), connection: LabConn
       const stopPlan =
         requestId === undefined
           ? () => {}
-          : onNotice(
-              client,
-              [topic.session(run.sessionId)],
-              isPlanWrite,
-              () => readRecordedWork(client, { sessionId: run.sessionId, requestId }),
-              (work) => {
-                const { plan: _, ...rest } = now;
-                tell(work.plan === null ? rest : { ...rest, plan: work.plan.rows.map(({ title, status }) => ({ title, status })) });
-              },
-            );
+          : client.live([topic.session(run.sessionId)], {
+            read: () => readRecordedWork(client, { sessionId: run.sessionId, requestId }),
+            onValue: (work) => {
+              const { plan: _, ...rest } = now;
+              tell(work.plan === null ? rest : { ...rest, plan: work.plan.rows.map(({ title, status }) => ({ title, status })) });
+            },
+            ...PLAN_WRITES,
+            pollIntervalMs: POLL_MS,
+            onError: logFailedRead,
+          }).close;
       return () => {
         stopFeed();
         stopCalls();

@@ -467,7 +467,9 @@ Client-facing data reaches a client three ways today, each through a session:
 
 1. **Scope-level `client`** — `expose` for verbatim state fields, `derived` for projections computed from one scope's state and resources, carried in the snapshot. Suits a small value a screen shows beside the conversation.
 2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Suits exposing resource data directly without manual projection.
-3. **Flow `reads`** — a block run on request, answered in the response and stored nowhere, refusing every write ([Reads](./flows-and-actions.md#reads)). Suits an answer computed across resources, such as a task list, that a screen re-reads when `client.subscribe` reports a change.
+3. **Flow `reads`** — a block run on request, answered in the response and stored nowhere, refusing every write ([Reads](./flows-and-actions.md#reads)). Suits an answer computed across resources, such as a task list, that a screen re-reads through the client's live read (`client.live`) when a notice says it changed.
+
+A notice about a resource names its storage path, which a resource's key need not name (`roster` stores under `workforce/workers/…`). Whether a path may belong to what a screen holds is the client's one path rule (`mayHold`, with `storageRootsOf` reading a resource's roots off the flow's manifest): a path at or under one of the roots reads, and an unknown manifest or a pattern with no static prefix rules nothing out, since a false yes costs one read and a false no leaves a screen stale. `client.live` applies it to the `paths` it is given; React's resource hooks apply the same rule to the session stream's `resource_change` items.
 
 `derived` and a read do overlapping jobs: both compute an answer for a screen. A `derived` entry sees only its own scope and is computed each time the snapshot is served (`computeClientData`, `packages/engine/src/routes/route-utils.ts`); a read takes input, sees whatever an action in that session sees, and runs only when called.
 
