@@ -4,10 +4,14 @@
  * and key, a write sent through the flow the resource's `runBy` names, and the
  * identity read of one flow.
  *
- * Each resolves the caller in its handler, through the declaring flow's own
- * resolver (`scope-address.ts`), so route-auth classifies them `exempt`, as it
- * does the action route. None reads the user or org from the body, the query
- * or a header, except the open mode's development resolver, which takes the
+ * Each resolves the caller in its handler, through `resolveFlowCaller`
+ * (`scope-address.ts`) at the flow whose rules apply, so route-auth classifies
+ * them `exempt`, as it does the action route: every declaring flow for a read
+ * or a default write (each must sign the caller in, and one's pin admit them,
+ * before anything but an unused key's answer is given), the writer for a send
+ * to `runBy: { flow }`, as a direct POST to it would, and the path's flow for
+ * the identity read. None reads the user or org from the body, the query or a
+ * header, except the open mode's development resolver, which takes the
  * request's `userId` as every route does in that mode.
  *
  * A direct read runs no block and touches no session: it is a store read and
@@ -18,17 +22,16 @@
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
-import { PrincipalResolutionError } from "../transports/errors";
-import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
+import { unknownFlowMessage } from "../context/instance-pin";
 import { getString, jsonResponse, parseJsonBody, extractTenantId } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
+  admitAddress,
   flowDeclares,
   isAddressScope,
   projectForClient,
   readAddressed,
-  resolveAddress,
-  resolveAddressCaller
+  resolveFlowCaller
 } from "../resources/scope-address";
 import { DEFAULT_WRITE_FLOW, writeSessionId } from "../resources/default-write-flow";
 
@@ -56,16 +59,16 @@ export async function handleReadScopeResource(
   if (!isAddressScope(route.scope)) {
     return jsonResponse(400, { error: "invalid_scope", message: `Scope "${route.scope}" is not "user" or "org"` });
   }
-  const address = resolveAddress(ctx.registry, ctx.hostResolver, route.scope, route.key);
-  if ("refused" in address) return refusedResponse(address.refused);
-  const caller = await resolveAddressCaller({
+  const admitted = await admitAddress({
     ...ctx,
     request,
-    address,
+    scope: route.scope,
+    key: route.key,
     action: route.kind,
     claimedUserId: getString(new URL(request.url).searchParams.get("userId"))
   });
-  if ("refused" in caller) return refusedResponse(caller.refused);
+  if ("refused" in admitted) return refusedResponse(admitted.refused);
+  const { address, caller } = admitted;
   const { state, version } = await readAddressed(ctx.stores, address, caller);
   return jsonResponse(200, {
     scope: address.scope,
@@ -88,28 +91,17 @@ export async function handleFlowIdentity(
   if (flow === undefined || flow.id === DEFAULT_WRITE_FLOW) {
     return jsonResponse(404, { error: unknownFlowMessage(route.flowKind) });
   }
-  const claimed = getString(new URL(request.url).searchParams.get("userId"));
-  let principal;
-  try {
-    principal = await ctx.host.resolvePrincipal({
-      source: "http",
-      request,
-      envelope: {
-        flowKind: flow.id,
-        action: route.kind,
-        // Only the development resolver reads a body; a configured one never sees this.
-        metadata: claimed === undefined ? {} : { body: { userId: claimed } },
-        input: undefined
-      }
-    });
-  } catch (error) {
-    if (error instanceof PrincipalResolutionError) {
-      return jsonResponse(error.status, { error: "unauthenticated", message: error.message });
-    }
-    throw error;
-  }
-  if (pinRejectsCaller(flow.ownerPin, principal)) {
-    return jsonResponse(404, { error: unknownFlowMessage(route.flowKind) });
+  const principal = await resolveFlowCaller({
+    ...ctx,
+    request,
+    flow,
+    action: route.kind,
+    claimedUserId: getString(new URL(request.url).searchParams.get("userId"))
+  });
+  if ("refused" in principal) {
+    return principal.refused.code === "outside_pin"
+      ? jsonResponse(404, { error: unknownFlowMessage(route.flowKind) })
+      : jsonResponse(principal.refused.status, { error: "unauthenticated", message: principal.refused.message });
   }
   return jsonResponse(200, { userId: principal.userId, orgId: principal.orgId });
 }
@@ -137,8 +129,12 @@ export async function resolveResourceSend(
   if (!isAddressScope(route.scope)) {
     return jsonResponse(400, { error: "invalid_scope", message: `Scope "${route.scope}" is not "user" or "org"` });
   }
-  const address = resolveAddress(ctx.registry, ctx.hostResolver, route.scope, route.key);
-  if ("refused" in address) return refusedResponse(address.refused);
+  // The open mode's development resolver takes the body's userId, as the action route does.
+  const claimedUserId = getString((await parseJsonBody(request.clone())).userId);
+  // Nothing about the resource is said until the caller passes every declaring flow.
+  const admitted = await admitAddress({ ...ctx, request, scope: route.scope, key: route.key, action: route.actionName, claimedUserId });
+  if ("refused" in admitted) return refusedResponse(admitted.refused);
+  const { address } = admitted;
   const runBy = address.config.runBy;
   if (runBy === undefined) {
     return jsonResponse(403, {
@@ -149,6 +145,7 @@ export async function resolveResourceSend(
     });
   }
   let writer: string;
+  let caller = admitted.caller;
   if (runBy === "default") {
     // Held by every host from the start (`registerBuiltIn`); a hand-built registry may lack it.
     if (ctx.registry.get(DEFAULT_WRITE_FLOW) === undefined) {
@@ -166,18 +163,13 @@ export async function resolveResourceSend(
           `here or does not declare it.`
       });
     }
+    // The writer's action runs, so the writer's door decides who the caller is:
+    // its resolver, requireUser and defaultUserId, as a direct POST to it would.
+    const writerCaller = await resolveFlowCaller({ ...ctx, request, flow, action: route.actionName, claimedUserId });
+    if ("refused" in writerCaller) return refusedResponse(writerCaller.refused);
     writer = flow.id;
+    caller = writerCaller;
   }
-  // The open mode's development resolver takes the body's userId, as the action route does.
-  const body = await parseJsonBody(request.clone());
-  const caller = await resolveAddressCaller({
-    ...ctx,
-    request,
-    address,
-    action: route.actionName,
-    claimedUserId: getString(body.userId)
-  });
-  if ("refused" in caller) return refusedResponse(caller.refused);
   const tenantId = extractTenantId(request, ctx.tenantIdHeader);
   return {
     flowKind: writer,

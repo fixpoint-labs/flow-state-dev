@@ -31,6 +31,7 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { PrincipalResolver } from "../transports/types";
 import { publishScopeChange } from "../bus/scope-changes";
+import { pinRejectsCaller } from "../context/instance-pin";
 import { parseResourceWriteState } from "./normalize-resource-state";
 import { addressCellId, readAddressed, resolveAddress, type AddressScope } from "./scope-address";
 
@@ -67,7 +68,14 @@ export class ReservedSessionIdError extends Error {
 }
 
 /** A stored session, request or in-flight entry, as far as its writer goes. */
-type RecordFields = { flowKind?: string; flowId?: string | null; sessionId?: string | null; id?: string };
+type RecordFields = {
+  flowKind?: string;
+  flowId?: string | null;
+  sessionId?: string | null;
+  id?: string;
+  userId?: string | null;
+  orgId?: string | null;
+};
 
 /**
  * Whether a stored record belongs to a write: the default write flow's, or one
@@ -95,7 +103,7 @@ export function writeRecordGovernor(
 ): { flow: FlowInstance | undefined } | undefined {
   if (!isWriteRecord(record)) return undefined;
   const sessionId = "sessionId" in record ? record.sessionId ?? undefined : record.id;
-  return { flow: writeSessionGoverningFlow(registry, hostResolver, sessionId) };
+  return { flow: writeSessionGoverningFlow(registry, hostResolver, sessionId, record) };
 }
 
 /** What a write session is for. Every part is an address, not an identity. */
@@ -145,13 +153,18 @@ function writeTargetOf(sessionId: string): WriteTarget | undefined {
 function writeSessionGoverningFlow(
   registry: FlowRegistry,
   hostResolver: PrincipalResolver,
-  sessionId: string | undefined
+  sessionId: string | undefined,
+  owner: { userId?: string | null; orgId?: string | null }
 ): FlowInstance | undefined {
   if (sessionId === undefined) return undefined;
   const at = sessionId.indexOf(WRITE_SESSION_PREFIX);
   const target = at < 0 ? undefined : writeTargetOf(sessionId.slice(at));
   if (target === undefined) return undefined;
-  const address = resolveAddress(registry, hostResolver, target.scope, target.key);
+  // The declaring instance whose pin admits the record's owner: instances
+  // pinned to different users each govern their own writers' records.
+  const address = resolveAddress(registry, hostResolver, target.scope, target.key, (flow) =>
+    !pinRejectsCaller(flow.ownerPin, { userId: owner.userId ?? "", orgId: owner.orgId ?? "" })
+  );
   return "refused" in address ? undefined : address.flow;
 }
 
@@ -233,7 +246,9 @@ function createDefaultWriteFlow(options: {
       if (writeSessionId(target, { userId, orgId, tenantId }) !== sessionId) {
         throw new ResourceWriteRefusedError("not_writable", "This write session is not the caller's.");
       }
-      const address = resolveAddress(registry, hostResolver, target.scope, target.key);
+      const address = resolveAddress(registry, hostResolver, target.scope, target.key, (flow) =>
+        !pinRejectsCaller(flow.ownerPin, { userId, orgId })
+      );
       if ("refused" in address) throw new ResourceWriteRefusedError("not_writable", address.refused.message);
       if (address.config.runBy !== "default") {
         throw new ResourceWriteRefusedError(

@@ -106,13 +106,16 @@ function sameClientConfig(a: ResourceConfig, b: ResourceConfig): boolean {
 /**
  * The one declaration an address resolves to, or why there is none: no flow
  * declares it (404), only isolated copies do (400), or two declarations
- * disagree on their resolver or client config (409, naming both flows).
+ * disagree on their resolver or client config (409, naming both flows). Among
+ * agreeing declarations, the governing flow is the first `governs` admits:
+ * pinned instances of one flow each govern their own callers. None: 404.
  */
 export function resolveAddress(
   registry: FlowRegistry,
   hostResolver: PrincipalResolver,
   scope: AddressScope,
-  key: string
+  key: string,
+  governs: (flow: FlowInstance) => boolean = () => true
 ): ResolvedAddress | { refused: AddressRefusal } {
   const { shared, isolated } = declarationsOf(registry, scope, key);
   const first = shared[0];
@@ -123,8 +126,8 @@ export function resolveAddress(
           status: 400,
           code: "isolated_resource",
           message:
-            `Resource "${key}" at ${scope} scope is flow-isolated (flow "${isolated[0]!.flow.id}"): it lives per flow ` +
-            `instance, so a scope and key don't name it. Read it through a session of its flow.`
+            `Resource "${key}" at ${scope} scope is flow-isolated: it lives per flow instance, so a scope and key ` +
+            `don't name it. Read it through a session of its flow.`
         }
       };
     }
@@ -132,10 +135,13 @@ export function resolveAddress(
   }
   const disagreement = declarationsAgree(registry, hostResolver, shared, scope, key);
   if (disagreement !== undefined) return { refused: disagreement };
-  if (first.config.client === undefined) {
+  // The declarations agree, so any of them answers; the one that governs is
+  // the first `governs` admits (the caller's or the record owner's instance).
+  const governing = shared.find((entry) => governs(entry.flow));
+  if (first.config.client === undefined || governing === undefined) {
     return { refused: { status: 404, code: "unknown_resource", message: `Unknown resource "${key}" at ${scope} scope` } };
   }
-  return { scope, key, flow: first.flow, config: first.config };
+  return { scope, key, flow: governing.flow, config: first.config };
 }
 
 /**
@@ -181,23 +187,33 @@ function declarationsAgree(
 /** The verified caller of an addressed resource. */
 export type AddressCaller = { userId: string; orgId: string };
 
+/** The answer an unused key gets: no flow named, nothing about why. */
+function unknownRefusal(scope: string, key: string): AddressRefusal {
+  return { status: 404, code: "unknown_resource", message: `Unknown resource "${key}" at ${scope} scope` };
+}
+
 /**
- * Resolve the caller through the declaring flow's own resolver. Only the open
- * mode's development resolver reads `claimedUserId` (the request's `userId`, as
- * every route takes it in that mode); a configured resolver never sees it.
- * A pinned instance the caller is outside of answers as an unknown resource.
+ * The caller as `flow`'s own door resolves them: the one place a no-session
+ * route asks who the caller is, always at the address of the flow whose rules
+ * apply (the declaring flow for a read or a default write, the writer for a
+ * send to `runBy: { flow }`, the path's flow for the identity read), so that
+ * flow's resolver, `requireUser` and `defaultUserId` see the request. Only the
+ * open mode's development resolver reads `claimedUserId` (the request's
+ * `userId`, as every route takes it in that mode); a configured resolver never
+ * sees it. `unauthenticated` when the resolver refuses, `outside_pin` when a
+ * pinned instance's pin does.
  */
-export async function resolveAddressCaller(options: {
+export async function resolveFlowCaller(options: {
   host: InboundTransportHost;
   registry: FlowRegistry;
   hostResolver: PrincipalResolver;
   request: Request;
-  address: ResolvedAddress;
+  flow: FlowInstance;
   action: string;
   claimedUserId: string | undefined;
 }): Promise<AddressCaller | { refused: AddressRefusal }> {
-  const { address } = options;
-  const resolver = pickPrincipalResolver(options.registry, address.flow.id, options.hostResolver);
+  const { flow } = options;
+  const resolver = pickPrincipalResolver(options.registry, flow.id, options.hostResolver);
   const open = isDefaultBodyUserIdPrincipalResolver(resolver);
   let caller: AddressCaller;
   try {
@@ -205,7 +221,7 @@ export async function resolveAddressCaller(options: {
       source: "http",
       request: options.request,
       envelope: {
-        flowKind: address.flow.id,
+        flowKind: flow.id,
         action: options.action,
         metadata: open && options.claimedUserId !== undefined ? { body: { userId: options.claimedUserId } } : {},
         input: undefined
@@ -217,12 +233,52 @@ export async function resolveAddressCaller(options: {
     }
     throw error;
   }
-  if (pinRejectsCaller(address.flow.ownerPin, caller)) {
-    return {
-      refused: { status: 404, code: "unknown_resource", message: `Unknown resource "${address.key}" at ${address.scope} scope` }
-    };
+  if (pinRejectsCaller(flow.ownerPin, caller)) {
+    return { refused: { status: 404, code: "outside_pin", message: `Unknown flow "${flow.id}"` } };
   }
   return { userId: caller.userId, orgId: caller.orgId };
+}
+
+/**
+ * The address `key` in `scope` names and its verified caller, or the refusal
+ * to give. The caller must pass every declaring flow's resolver (isolated
+ * declarations included; agreeing ones share one) and the pin of at least one
+ * declaring instance before any answer but an unused key's is given: until
+ * then a real key, one only isolated copies hold, and one whose declarations
+ * disagree all answer as an unused key does. The instance that governs is the
+ * first shared declarer whose pin admits the caller, so instances pinned to
+ * different users each serve their own; a refusal after that names a flow only
+ * when every declaring instance admits the caller.
+ */
+export async function admitAddress(options: {
+  host: InboundTransportHost;
+  registry: FlowRegistry;
+  hostResolver: PrincipalResolver;
+  request: Request;
+  scope: AddressScope;
+  key: string;
+  action: string;
+  claimedUserId: string | undefined;
+}): Promise<{ address: ResolvedAddress; caller: AddressCaller } | { refused: AddressRefusal }> {
+  const { scope, key } = options;
+  const { shared, isolated } = declarationsOf(options.registry, scope, key);
+  const flows = new Map<string, FlowInstance>();
+  for (const entry of [...shared, ...isolated]) flows.set(entry.flow.id, entry.flow);
+  const callers = new Map<string, AddressCaller>();
+  let pinnedOut = false;
+  for (const flow of flows.values()) {
+    const caller = await resolveFlowCaller({ ...options, flow });
+    if (!("refused" in caller)) callers.set(flow.id, caller);
+    else if (caller.refused.code === "outside_pin") pinnedOut = true;
+    else return { refused: unknownRefusal(scope, key) };
+  }
+  if (callers.size === 0) return { refused: unknownRefusal(scope, key) };
+  const address = resolveAddress(options.registry, options.hostResolver, scope, key, (flow) => callers.has(flow.id));
+  if ("refused" in address) {
+    if (address.refused.status === 404 || !pinnedOut) return address;
+    return { refused: { ...address.refused, message: `Resource "${key}" at ${scope} scope can't be read or written by scope.` } };
+  }
+  return { address, caller: callers.get(address.flow.id)! };
 }
 
 /** The storage cell of the caller's copy: their user cell in their org, or their org. */

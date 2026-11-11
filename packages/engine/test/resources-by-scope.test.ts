@@ -150,7 +150,8 @@ describe("a direct read by scope and key", () => {
   it("refuses a caller the declaring flow's resolver doesn't sign in, rather than falling back to the host's", async () => {
     const { router } = build([threadsFlow({ authenticated: true })]);
     const res = await get(router, ["resources", "user", "pins"], {}, "?userId=alice");
-    expect(res.status).toBe(401);
+    // Answered as an unused key (Cursor 4543357949): an unsigned caller learns nothing about which keys exist.
+    expect(res.status).toBe(404);
   });
 
   it("answers an unknown key, and one no client may read, as unknown", async () => {
@@ -492,5 +493,151 @@ describe("a send through a flow of the app's own (runBy: { flow })", () => {
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: string }).error).toBe("runby_flow_missing");
     expect(await stores.request.list({})).toEqual([]);
+  });
+});
+
+describe("security review (Cursor 5865490275): the principal comes from the flow that runs, and nothing tells a real key from an unused one", () => {
+  const invoice = defineResource({
+    ref: "invoice",
+    scope: "org",
+    stateSchema: z.object({ refunded: z.boolean().default(false) }),
+    client: {},
+    runBy: { flow: "billing" }
+  });
+  const refunds: string[] = [];
+  const refund = handler({
+    name: "refund",
+    inputSchema: z.object({}).passthrough(),
+    execute: (_input, ctx) => {
+      refunds.push(ctx.session.identity.userId ?? "?");
+      return { by: ctx.session.identity.userId };
+    }
+  });
+  // `app` sorts before `billing`; neither has a resolver of its own, so both run the host's.
+  const app = defineFlow({
+    kind: "app",
+    resources: { invoice },
+    actions: { noop: { block: noop } },
+    authentication: { requireUser: false, defaultUserId: "visitor" }
+  } as never)();
+  const billing = defineFlow({ kind: "billing", resources: { invoice }, actions: { refund: { block: refund } } } as never)();
+  /** Signs a user in from a header, or answers the org alone; names the flow it resolved for. */
+  const orgOnly = (context: { request?: Request; envelope?: { flowKind?: string } }) => {
+    const user = context.request?.headers.get("x-user");
+    return user == null ? { orgId: ORG_A } : { userId: `${user}@${context.envelope?.flowKind}`, orgId: ORG_A };
+  };
+  const host = () => {
+    refunds.length = 0;
+    const registry = createFlowRegistry();
+    registry.register(app as never);
+    registry.register(billing as never);
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, resolvePrincipal: orgOnly } as never);
+    routers.push(router);
+    return { router, stores };
+  };
+
+  it("HIGH: an anonymous send through the resource is refused as a direct POST to the writer's action is, and runs nothing", async () => {
+    const { router, stores } = host();
+    const direct = await post(router, ["billing", "actions", "refund"], {}, { input: {} });
+    expect(direct.status).not.toBe(202);
+    const viaResource = await post(router, ["resources", "org", "invoice", "actions", "refund"], {}, { input: {} });
+    expect(viaResource.status).not.toBe(202);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(refunds).toEqual([]);
+    expect(await stores.request.list({})).toEqual([]);
+  });
+
+  it("HIGH: a signed-in send runs as the principal the writer flow resolves, not the first declarer's", async () => {
+    const { router, stores } = host();
+    const res = await post(router, ["resources", "org", "invoice", "actions", "refund"], alice, { input: {} });
+    expect(res.status, await res.clone().text()).toBe(202);
+    const { request } = (await res.json()) as { request: { id: string } };
+    const done = await settle(stores, request.id);
+    expect(done.status, JSON.stringify(done.result)).toBe("completed");
+    expect(done.userId).toBe("alice@billing");
+    expect(refunds).toEqual(["alice@billing"]);
+  });
+
+  /** Status and body, with the probed key in the body replaced, so two probes compare. */
+  async function probe(res: Response, key: string) {
+    return { status: res.status, body: (await res.text()).split(key).join("<key>") };
+  }
+
+  it("MEDIUM: an anonymous probe of a real key answers exactly as an unused key, on the read and the send", async () => {
+    const { router } = build([threadsFlow({ authenticated: true })]);
+    const unusedRead = await probe(await get(router, ["resources", "user", "nope"], {}), "nope");
+    const unusedSend = await probe(await post(router, ["resources", "user", "nope", "actions", "set"], {}, { input: {} }), "nope");
+    for (const key of ["pins", "notes"]) {
+      expect(await probe(await get(router, ["resources", "user", key], {}), key)).toEqual(unusedRead);
+      expect(await probe(await post(router, ["resources", "user", key, "actions", "set"], {}, { input: {} }), key)).toEqual(unusedSend);
+    }
+  });
+
+  it("MEDIUM: an anonymous probe of a key two flows declare in disagreement, or only isolated, names no flow", async () => {
+    const other = (context: { request?: Request }) => ({ userId: context.request?.headers.get("x-other") ?? "x", orgId: ORG_A });
+    const disagree = build([threadsFlow({ authenticated: true }), threadsFlow({ authenticated: true, kind: "digest", resolver: other as typeof signIn })]);
+    const unused = await probe(await get(disagree.router, ["resources", "user", "nope"], {}), "nope");
+    expect(await probe(await get(disagree.router, ["resources", "user", "pins"], {}), "pins")).toEqual(unused);
+    const isoPins = defineResource({ ref: "iso", scope: "user", stateSchema: z.object({}), client: {}, flowIsolation: true });
+    const iso = build([defineFlow({ kind: "iso-flow", resources: { isoPins }, actions: { noop: { block: noop } }, authentication: { resolvePrincipal: signIn } } as never)() as never]);
+    const unusedIso = await probe(await get(iso.router, ["resources", "user", "nope"], {}), "nope");
+    expect(await probe(await get(iso.router, ["resources", "user", "iso"], {}), "iso")).toEqual(unusedIso);
+  });
+
+  it("MEDIUM: a write request whose session no longer resolves gets the route's ordinary unused-id answer", async () => {
+    const first = build([threadsFlow({ authenticated: true })]);
+    const done = await write(first.router, first.stores, "user", "pins", alice, { input: { state: { pinned: ["x"] }, version: 0 } });
+    // A mixed host (one flow signs callers in, the host resolver is the development default)
+    // where nothing declares `pins` any more.
+    const registry = createFlowRegistry();
+    registry.register(defineFlow({ kind: "other", actions: { noop: { block: noop } }, authentication: { resolvePrincipal: signIn } } as never)() as never);
+    const fresh = createFlowApiRouter({ registry, stores: first.stores, staleSweepIntervalMs: 0 });
+    routers.push(fresh);
+    for (const caller of [{}, bob]) {
+      const unused = await probe(await get(fresh, ["fsd-default-write", "requests", "req_unused", "status"], caller), "req_unused");
+      expect(await probe(await get(fresh, ["fsd-default-write", "requests", done.id, "status"], caller), done.id)).toEqual(unused);
+    }
+  });
+
+  it("LOW: the identity read never hands a configured resolver the query's userId", async () => {
+    // A resolver that trusts its cookie, else falls back to the body's userId.
+    const lenient = (context: { request?: Request; envelope?: { metadata?: { body?: { userId?: string } } } }) => {
+      const user = context.request?.headers.get("x-user") ?? context.envelope?.metadata?.body?.userId;
+      return user == null ? null : { userId: user, orgId: ORG_A };
+    };
+    const { router } = build([threadsFlow({ authenticated: true, resolver: lenient as typeof signIn })]);
+    const res = await get(router, ["threads", "identity"], {}, "?userId=admin");
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("instances pinned to different users declaring one shared resource (Codex 4543388753)", () => {
+  it("lets each user read and write through the instance pinned to them, whatever the registry's order", async () => {
+    const kind = defineFlow({
+      kind: "threads",
+      cardinality: "collection",
+      resources: { pins, project, notes },
+      actions: { noop: { block: noop } },
+      authentication: { resolvePrincipal: signIn }
+    } as never);
+    const registry = createFlowRegistry();
+    registry.register(kind({ id: "threads.alice" } as never) as never, { pin: { orgId: ORG_A, userId: "alice" } } as never);
+    registry.register(kind({ id: "threads.bob" } as never) as never, { pin: { orgId: ORG_A, userId: "bob" } } as never);
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    routers.push(router);
+    for (const caller of [alice, bob]) {
+      const done = await write(router, stores, "user", "pins", caller, { input: { state: { pinned: [caller.user!] }, version: 0 } });
+      expect(done.status, JSON.stringify(done.result)).toBe("completed");
+      expect((await read(router, "user", "pins", caller)).value).toEqual({ pinned: [caller.user] });
+      // Each writer hears their own write settle, through the instance pinned to them.
+      expect((await get(router, ["fsd-default-write", "requests", done.id, "status"], caller)).status).toBe(200);
+    }
+    // Carol is in neither pin: the key answers as an unused one.
+    const unused = await get(router, ["resources", "user", "nope"], carol);
+    const pinned = await get(router, ["resources", "user", "pins"], carol);
+    expect(pinned.status).toBe(unused.status);
+    expect((await pinned.text()).split("pins").join("<k>")).toBe((await unused.text()).split("nope").join("<k>"));
   });
 });
