@@ -12,7 +12,7 @@
  * module is the only place `source: "cli"` can be produced.
  */
 import {
-  createDefaultWriteFlow,
+  installBuiltIns,
   DEFAULT_WRITE_FLOW,
   isServerResourceSend,
   isWriteSessionId,
@@ -463,7 +463,7 @@ export function createInboundTransportHost(
   // FIX-2624: the default write flow is the framework's, held from the start
   // on every host, so a write record never depends on a first write having
   // registered it in this process.
-  registry.registerBuiltIn?.(createDefaultWriteFlow({ registry, stores, hostResolver: resolvePrincipal }));
+  installBuiltIns(registry, stores);
   const { onBackgroundWork, maxResponseBufferSize, maxRecordedValueBytes, defaultSseHeartbeatMs } =
     runtimeConfig;
 

@@ -45,6 +45,37 @@ describe("write-record authorization", () => {
     }
   });
 
+  it("installs the built-in flows at every runtime entry that resolves flows from a registry", () => {
+    // The host does; so must anything else that runs actions on a registry it resolves itself
+    // (a queue worker), or a job addressed to the default write flow is an unknown flow there.
+    const host = readFileSync(join(__dirname, "../src/transports/host/createInboundTransportHost.ts"), "utf8");
+    expect(host).toContain("installBuiltIns(registry, stores)");
+    const packages = join(__dirname, "../..");
+    const entries: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (/\.tsx?$/.test(entry.name)) {
+          const source = readFileSync(path, "utf8");
+          // Resolves a flow on a registry it holds (not a host's or a runtime's), then runs it.
+          if (/(?<![.\w])registry\.get\(/.test(source) && /\brunAction\(/.test(source)) entries.push(path);
+        }
+      }
+    };
+    for (const name of readdirSync(packages)) {
+      if (name === "engine") continue;
+      try {
+        walk(join(packages, name, "src"));
+      } catch {
+        // a package with no src
+      }
+    }
+    expect(entries.length, "no runtime entry found: the scan has stopped seeing the worker").toBeGreaterThan(0);
+    const missing = entries.filter((path) => !readFileSync(path, "utf8").includes("installBuiltIns("));
+    expect(missing, "a runtime entry resolves flows without the framework's built-ins").toEqual([]);
+  });
+
   it("guards every parsed route before authorization", () => {
     const handlers = readFileSync(join(ROUTES, "http-handlers.ts"), "utf8");
     const guard = handlers.indexOf("reservedAddressRefusal(route)");

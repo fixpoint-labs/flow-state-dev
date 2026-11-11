@@ -32,7 +32,7 @@ import {
 import { DelayedError, Worker, UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
 import { runAction } from "@flow-state-dev/engine";
-import { withChangeBus } from "@flow-state-dev/engine/host";
+import { installBuiltIns, withChangeBus } from "@flow-state-dev/engine/host";
 import type {
   FlowRegistry,
   LeasePlace,
@@ -95,6 +95,9 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
   // A raw registry's writes publish on the bus (FIX-2426), including the
   // settles this processor writes itself, beside runAction.
   const stores = withChangeBus(deps.stores);
+  // The framework's own flows (the default write flow), which a host holds
+  // too: a job addressed to one resolves here whether or not a host was built.
+  installBuiltIns(registry, stores);
 
   /**
    * Give a place back, best effort: a place that cannot be given back lapses

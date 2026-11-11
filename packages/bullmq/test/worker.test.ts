@@ -21,6 +21,7 @@ vi.mock("@flow-state-dev/engine/host", () => ({
   // The registry as the processor received it: these cases stub only the
   // store methods they read. What the wrap does is the engine's to test.
   withChangeBus: vi.fn((stores: unknown) => stores),
+  installBuiltIns: vi.fn(),
   holdLeasePlace: vi.fn(() => ({ stop: vi.fn() })),
   planQueueWait: vi.fn(() => ({ kind: "wait", delayMs: 10 })),
   settleUnstartedRequest: vi.fn().mockResolvedValue(undefined),

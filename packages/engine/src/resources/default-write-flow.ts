@@ -19,8 +19,8 @@
  *
  * Limits, stated: the write goes to the store directly, as the resource routes'
  * writes do, so it publishes the scope's change notice but runs no `reactTo`
- * binding and streams no live delta. Every host holds the flow from the start
- * as a built-in instance (`registerBuiltIn`), never listed.
+ * binding and streams no live delta. Every host and queue worker holds the flow
+ * from the start as a built-in instance ({@link installBuiltIns}), never listed.
  */
 import { createHash } from "node:crypto";
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -182,6 +182,21 @@ function mergeClientWrite(config: ResourceConfig, stored: JsonObject, incoming: 
   return next;
 }
 
+/** Stands in for the host's resolver in the agreement check; never called. */
+const HOST_RESOLVER_STANDIN: PrincipalResolver = () => null;
+
+// FIX-2624.
+/**
+ * Hold the framework's own flows (the default write flow) in `registry`, over
+ * `stores`. Every runtime entry that resolves flows from a registry calls it:
+ * the inbound host and a queue worker, so a write never depends on which
+ * process runs it. Idempotent.
+ */
+export function installBuiltIns(registry: FlowRegistry, stores: StoreRegistry): void {
+  if (registry.registerBuiltIn === undefined || registry.get(DEFAULT_WRITE_FLOW) !== undefined) return;
+  registry.registerBuiltIn(createDefaultWriteFlow({ registry, stores }));
+}
+
 const setInput = z.object({
   /** The whole state the client wants stored, as it reads it. */
   state: z.record(z.string(), z.unknown()),
@@ -193,12 +208,12 @@ const setInput = z.object({
  * Build the default write flow's instance over a host's registry and stores.
  * The host holds it as a built-in (`createInboundTransportHost`).
  */
-export function createDefaultWriteFlow(options: {
-  registry: FlowRegistry;
-  stores: StoreRegistry;
-  hostResolver: PrincipalResolver;
-}): FlowInstance {
-  const { registry, stores, hostResolver } = options;
+function createDefaultWriteFlow(options: { registry: FlowRegistry; stores: StoreRegistry }): FlowInstance {
+  const { registry, stores } = options;
+  // The resolver only decides whether two declarations agree, and every flow
+  // without its own falls to the same one, so any fixed stand-in answers as the
+  // host's would. That keeps this flow buildable where no host is (a worker).
+  const hostResolver = HOST_RESOLVER_STANDIN;
   const set = handler({
     name: "fsd-default-write-set",
     inputSchema: setInput,
