@@ -21,7 +21,7 @@ import {
 } from "./stream-client/streams";
 import { createPushHub, type SubscribeOptions, type Subscription } from "./subscribe/push-hub";
 import { liveRead, type LiveRead, type LiveReadOptions, type LiveReadWithTopicsOptions } from "./live/live-read";
-import type { ViewCallOptions, ViewInputOf, ViewRef, ViewResult, ViewValueOf } from "./view/view";
+import { viewInputOnWire, type ViewCallOptions, type ViewInputOf, type ViewRef, type ViewResult, type ViewValueOf } from "./view/view";
 import type {
   ChildSessionSummary,
   ClientFetch,
@@ -776,7 +776,7 @@ export function createClient(options: CreateClientOptions): Client {
       const answer = await t.json<{ output: ViewValueOf<TRef>; topics: WireTopic[]; keys?: string[] }>(path, {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ input: input ?? {}, userId })
+        body: JSON.stringify({ input: viewInputOnWire(input), userId })
       });
       return { value: answer.output, topics: answer.topics ?? [], ...(answer.keys !== undefined ? { keys: answer.keys } : {}) };
     },

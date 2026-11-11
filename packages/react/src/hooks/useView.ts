@@ -15,7 +15,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { ViewCallOptions, ViewInputOf, ViewRef, ViewValueOf } from "@flow-state-dev/client";
-import { watchView, type ViewWatchClient } from "@flow-state-dev/client/internal";
+import { canonicalViewInput, watchView, type ViewWatchClient } from "@flow-state-dev/client/internal";
 import { useClient } from "../internal/useClient";
 
 /** Options for {@link useView}. */
@@ -45,9 +45,10 @@ export function useView<TRef extends ViewRef>(
   const built = useClient();
   const client = options.client ?? (built as unknown as ViewWatchClient);
   const { sessionId, enabled = true, pollIntervalMs } = options;
-  const inputKey = JSON.stringify(input ?? {});
+  // The input as the request sends it: an omitted input is `{}`, `null` stays `null`.
+  const inputKey = canonicalViewInput(input);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const stableInput = useMemo(() => input ?? {}, [inputKey]);
+  const stableInput = useMemo(() => input, [inputKey]);
   // What was heard is tagged with the watch it belongs to, and the answer is
   // derived from it: a disabled hook, or one watching another view, input or
   // session, answers nothing rather than the last value as if current.

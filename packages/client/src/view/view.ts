@@ -85,21 +85,27 @@ type Shared = {
 
 const sharedByClient = new WeakMap<object, Map<string, Shared>>();
 
-/** One key per view, session and input: inputs equal by value share a read. */
-function watchKey(ref: ViewRef, input: unknown, sessionId: string | undefined): string {
-  return JSON.stringify([ref.flow, ref.view, sessionId ?? null, stableJson(input)]);
+/** The input a view call sends: an omitted input is `{}`; anything else, `null` included, as given. */
+export function viewInputOnWire(input: unknown): unknown {
+  return input === undefined ? {} : input;
 }
 
-function stableJson(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stableJson);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.keys(value as Record<string, unknown>)
-        .sort()
-        .map((k) => [k, stableJson((value as Record<string, unknown>)[k])])
-    );
-  }
-  return value;
+/**
+ * The input as the request sends it, in JSON with object keys sorted: two
+ * inputs share a read exactly when they send the same request. `toJSON`
+ * runs first, as it does on the wire, so two dates differ by their value.
+ */
+export function canonicalViewInput(input: unknown): string {
+  return JSON.stringify(viewInputOnWire(input), (_key, value: unknown) =>
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? Object.fromEntries(Object.keys(value as Record<string, unknown>).sort().map((k) => [k, (value as Record<string, unknown>)[k]]))
+      : value
+  );
+}
+
+/** One key per view, session and input as sent: inputs that send the same request share a read. */
+function watchKey(ref: ViewRef, input: unknown, sessionId: string | undefined): string {
+  return JSON.stringify([ref.flow, ref.view, sessionId ?? null, canonicalViewInput(input)]);
 }
 
 /** A keyed answer with each row that didn't change kept as the object watchers already hold. */

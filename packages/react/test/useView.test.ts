@@ -97,6 +97,19 @@ describe("useView", () => {
     hook.unmount();
   });
 
+  it("watches a null input as null, apart from an omitted one", async () => {
+    const inputs: unknown[] = [];
+    const fake = fakeClient(() => ({ value: "v", topics: [] }));
+    const recording = { ...fake.client, view: (ref: never, input: unknown, options?: never) => (inputs.push(input), fake.client.view(ref, input, options)) };
+    const asNull = renderHook(() => useView(BOARD, null as never, { client: recording, pollIntervalMs: null }));
+    const omitted = renderHook(() => useView(BOARD, undefined, { client: recording, pollIntervalMs: null }));
+    await flush();
+    // Two reads, one per input: null is not shared with an omitted input.
+    expect(new Set(inputs.map((input) => (input === undefined ? "omitted" : JSON.stringify(input))))).toEqual(new Set(["null", "omitted"]));
+    asNull.unmount();
+    omitted.unmount();
+  });
+
   it("is stale while a read fails, and not once one lands", async () => {
     let fail = true;
     const fake = fakeClient(() => {

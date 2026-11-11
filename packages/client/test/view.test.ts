@@ -32,6 +32,13 @@ describe("client.view", () => {
     expect(result).toEqual({ value: [{ id: "a" }], topics: [{ scope: "user" }], keys: ["a"] });
   });
 
+  it("sends an explicit null input as null, and only an omitted one as {}", async () => {
+    const { client, calls } = jsonClient({ output: null, topics: [] });
+    await client.view(viewRef("desk", "maybe"), null as never);
+    await client.view(viewRef("desk", "maybe"));
+    expect(calls.map((call) => (call.body as { input: unknown }).input)).toEqual([null, {}]);
+  });
+
   it("calls a session view on the session it names", async () => {
     const { client, calls } = jsonClient({ output: { ok: true }, topics: [] });
     await client.view(viewRef("desk", "board"), undefined, { sessionId: "s 1" });
@@ -101,6 +108,25 @@ describe("watchView", () => {
     watchView(fake.client, ROSTER, {}, { onValue: (v) => late.push(v) }, { pollIntervalMs: null });
     expect(late).toEqual(["v"]);
     expect(fake.views()).toBe(before);
+  });
+
+  it("reads separately for inputs that differ on the wire, as two dates do", async () => {
+    const fake = fakeViewClient(() => ({ value: 1, topics: [] }));
+    watchView(fake.client, ROSTER, { since: new Date("2026-01-01T00:00:00Z") }, {}, { pollIntervalMs: null });
+    watchView(fake.client, ROSTER, { since: new Date("2026-02-01T00:00:00Z") }, {}, { pollIntervalMs: null });
+    // The same input with its keys in another order is the same request, and shares.
+    watchView(fake.client, ROSTER, { b: 1, a: 2 }, {}, { pollIntervalMs: null });
+    watchView(fake.client, ROSTER, { a: 2, b: 1 }, {}, { pollIntervalMs: null });
+    await flush();
+    expect(fake.views()).toBe(3);
+  });
+
+  it("keeps a null input apart from an omitted one", async () => {
+    const fake = fakeViewClient(() => ({ value: 1, topics: [] }));
+    watchView(fake.client, ROSTER, null, {}, { pollIntervalMs: null });
+    watchView(fake.client, ROSTER, undefined, {}, { pollIntervalMs: null });
+    await flush();
+    expect(fake.views()).toBe(2);
   });
 
   it("reads separately for another input or another session", async () => {

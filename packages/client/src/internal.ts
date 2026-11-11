@@ -11,5 +11,5 @@ export { pause } from "./internal/pause";
 export { followSession, type FollowSessionOptions } from "./session-client/follow-session";
 export { mayReplaceItem, readSessionHistory, type ReadSessionHistoryOptions } from "./session-client/session-history";
 export { liveRead } from "./live/live-read";
-export { watchView, type ViewWatchClient, type ViewWatcher, type WatchViewOptions } from "./view/view";
+export { canonicalViewInput, watchView, type ViewWatchClient, type ViewWatcher, type WatchViewOptions } from "./view/view";
 export { mayHold, storageRootsOf } from "./live/paths";
