@@ -17,9 +17,9 @@
 import type { PullRequestFollower, RecordedPullRequest } from "@flow-state-dev/core/harness";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { WorkerInstallation } from "../../workers/installation";
-import { installationPolling, pollingOn } from "../poll";
-import { subscriptionResources } from "../rows";
-import { subscribe, type SubscribeOutcome, type SubscriptionProvider } from "../subscribe";
+import { installationPolling, pollingOn } from "../../subscriptions/poll";
+import { subscriptionResources } from "../../subscriptions/rows";
+import { subscribe, type SubscribeOutcome, type SubscriptionProvider } from "../../subscriptions/subscribe";
 import { GITHUB_PROVIDER, githubThreadKey } from "./normalize";
 
 /** The kinds a followed pull request is heard for. **Pinned.** */

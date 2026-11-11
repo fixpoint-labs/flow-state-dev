@@ -50,7 +50,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   // An object's version read from the delivery's arrival, not from GitHub's own time.
   "version-from-delivery": [
     {
-      module: "packages/workforce/src/subscriptions/github/normalize.ts",
+      module: "packages/workforce/src/service-flows/github/normalize.ts",
       from: String.raw`object: \{ id: parts\.id, version: parts\.version \},`,
       to: "object: { id: parts.id, version: input.received },"
     }

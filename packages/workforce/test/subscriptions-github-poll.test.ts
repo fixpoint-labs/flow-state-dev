@@ -10,9 +10,10 @@
  */
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { githubSubscriptionProvider } from "../src/subscriptions";
+import { githubSubscriptionProvider, normalizeGitHubEvent } from "../src/service-flows";
 
 const PR = "github:acme/api#412";
+const REPO = "github:acme/api";
 const SINCE = Date.parse("2026-11-09T10:00:00Z");
 const at = (minutes: number) => new Date(SINCE + minutes * 60_000).toISOString();
 const ctx = { session: { identity: { id: "s", userId: "alice", orgId: "acme" } } } as unknown as BlockContext;
@@ -40,14 +41,31 @@ const API: Record<string, unknown> = {
   }
 };
 
-function fakeGitHub() {
+/** The repository's lists a repo-wide poll reads: PR 412 moved after the mark, and it has no new issue comments. */
+const REPO_API: Record<string, unknown> = {
+  "/repos/acme/api/issues": [API["/repos/acme/api/issues/412"]],
+  "/repos/acme/api/issues/comments": [],
+  "/repos/acme/api/pulls/comments": [
+    { id: 33, body: "Nit: rename", user: user("bob"), author_association: "MEMBER", pull_request_url: "https://api.github.com/repos/acme/api/pulls/412", created_at: at(2), updated_at: at(2) }
+  ]
+};
+
+/** A path the fake answers with a bare status (a token without that permission: `403`). */
+const FORBIDDEN = Symbol("forbidden");
+/** A path the fake answers `403` with GitHub's rate-limit header: out of requests, not of permission. */
+const RATE_LIMITED = Symbol("rate-limited");
+
+function fakeGitHub(extra: Record<string, unknown> = {}) {
+  const api = { ...API, ...extra };
   const asked: Array<{ path: string; ifNoneMatch: string | null }> = [];
   const fetch = (async (url: string, init: { headers: Record<string, string> }) => {
     const path = new URL(url).pathname;
     asked.push({ path, ifNoneMatch: init.headers["if-none-match"] ?? null });
     if (init.headers["if-none-match"] === `"${path}"`) return new Response(null, { status: 304 });
-    if (!(path in API)) return new Response("{}", { status: 404 });
-    return new Response(JSON.stringify(API[path]), { status: 200, headers: { etag: `"${path}"` } });
+    if (!(path in api)) return new Response("{}", { status: 404 });
+    if (api[path] === FORBIDDEN) return new Response("{}", { status: 403 });
+    if (api[path] === RATE_LIMITED) return new Response("{}", { status: 403, headers: { "x-ratelimit-remaining": "0" } });
+    return new Response(JSON.stringify(api[path]), { status: 200, headers: { etag: `"${path}"` } });
   }) as unknown as typeof globalThis.fetch;
   return { asked, provider: githubSubscriptionProvider({ token: () => "t", fetch }) };
 }
@@ -78,5 +96,54 @@ describe("GitHub's poll", () => {
     const second = await provider.poll!(PR, { since: SINCE, etags: first.etags! }, ctx);
     expect(second).toEqual({ unchanged: true });
     expect(asked.every((a) => a.ifNoneMatch !== null)).toBe(true);
+  });
+
+  // A webhook puts a PR's review on the repository thread too: a repo-wide subscription with no webhook must hear it.
+  it("rebuilds a repo-wide thread's PR reviews and review comments since the mark, named and threaded as push names them", async () => {
+    const { provider } = fakeGitHub(REPO_API);
+    const result = await provider.poll!(REPO, { since: SINCE }, ctx);
+    if ("unchanged" in result) throw new Error("expected events");
+    const polled = result.events.filter((e) => e.kind === "review" || e.kind === "comment");
+    const repository = API["/repos/acme/api"];
+    const pr = API["/repos/acme/api/issues/412"];
+    const reviews = API["/repos/acme/api/pulls/412/reviews"] as Array<Record<string, unknown>>;
+    const pushed = [
+      ...normalizeGitHubEvent({ eventType: "pull_request_review", payload: { action: "submitted", review: reviews[0], pull_request: pr, repository, sender: user("bob") }, received: 0 }),
+      ...normalizeGitHubEvent({
+        eventType: "pull_request_review_comment",
+        payload: { action: "created", comment: (REPO_API["/repos/acme/api/pulls/comments"] as unknown[])[0], pull_request: pr, repository, sender: user("bob") },
+        received: 0
+      })
+    ];
+    const named = (events: typeof polled) => events.map((e) => ({ kind: e.kind, object: e.object, threads: [...e.threads].sort() })).sort((a, b) => a.object.id.localeCompare(b.object.id));
+    // The review before the mark (id 80) is not delivered again.
+    expect(named(polled)).toEqual(named(pushed));
+    expect(polled.every((e) => e.threads.includes(REPO) && e.threads.includes(PR))).toBe(true);
+  });
+
+  // A fine-grained token can read issues and not pull requests: the repository poll still hears its issues.
+  it("still delivers a repo-wide thread's issue events when the token can't read pull requests", async () => {
+    const issue = { number: 9, title: "Deploy is blocked", labels: [], user: user("alice"), author_association: "MEMBER", created_at: at(1), updated_at: at(1), state: "open" };
+    const { provider } = fakeGitHub({
+      "/repos/acme/api/issues": [issue, API["/repos/acme/api/issues/412"]],
+      "/repos/acme/api/issues/comments": [],
+      "/repos/acme/api/pulls/comments": FORBIDDEN,
+      "/repos/acme/api/pulls/412/reviews": FORBIDDEN
+    });
+    const result = await provider.poll!(REPO, { since: SINCE }, ctx);
+    if ("unchanged" in result) throw new Error("expected the issue");
+    expect(result.events.map((e) => e.kind)).toContain("issue");
+    expect(result.events.some((e) => e.kind === "review" || e.kind === "comment")).toBe(false);
+  });
+
+  // A rate-limited 403 is not a missing permission: read as nothing new, the mark would move past reviews never read.
+  it("fails a repo-wide poll whose pull-request read is rate limited, so the mark stays put", async () => {
+    const { provider } = fakeGitHub({
+      "/repos/acme/api/issues": [API["/repos/acme/api/issues/412"]],
+      "/repos/acme/api/issues/comments": [],
+      "/repos/acme/api/pulls/comments": [],
+      "/repos/acme/api/pulls/412/reviews": RATE_LIMITED
+    });
+    await expect(provider.poll!(REPO, { since: SINCE }, ctx)).rejects.toThrow(/answered 403/);
   });
 });

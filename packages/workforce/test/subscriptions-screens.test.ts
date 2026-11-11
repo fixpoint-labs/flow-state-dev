@@ -11,12 +11,8 @@
  */
 import { mockEvaluationModel } from "@flow-state-dev/testing";
 import { describe, expect, it } from "vitest";
-import {
-  SUBSCRIPTION_INDEX_PATTERN,
-  unheard,
-  type Routed,
-  type SubscriptionScreens
-} from "../src/subscriptions";
+import { SUBSCRIPTION_INDEX_PATTERN, type SubscriptionScreens } from "../src/subscriptions";
+import { unheard, type Routed } from "../src/service-flows";
 import { indexSlotOf } from "../src/subscriptions/rows";
 import { INTEREST_UNJUDGED } from "../src/subscriptions/screens";
 import { ORG } from "./conversation-board-harness";

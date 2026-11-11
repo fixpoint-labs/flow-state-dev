@@ -73,7 +73,7 @@ import { sendServiceMessage } from "../messages/send-message";
 import { retryOnConflict } from "../projects/cas-retry";
 import { criteriaState, deriveWorkerSessionId } from "../workers/derive-session-id";
 import type { WorkerInstallation } from "../workers/installation";
-import { SUBSCRIPTION_DELIVER_ENTRY, SUBSCRIPTION_POLL_HANDLER, SUBSCRIPTION_POLLS_RESOURCE, SUBSCRIPTION_ROUTE_ENTRY, serviceSender } from "./keys";
+import { SUBSCRIPTION_DELIVER_ENTRY, SUBSCRIPTION_POLL_HANDLER, SUBSCRIPTION_POLLS_RESOURCE, SUBSCRIPTION_ROUTE_ENTRY, serviceSender } from "../subscriptions/keys";
 import {
   MAX_CURSOR_OBJECTS,
   MAX_SCREENED,
@@ -87,11 +87,11 @@ import {
   subscriptionsOf,
   type SubscriptionCursor,
   type SubscriptionResourceState
-} from "./rows";
-import { screenChain } from "./chain";
-import { customScreensRefusal, refusedOnContent, screenRefusal, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
-import { SCREEN_KINDS } from "./rows";
-import { dropFromIndex, indexEntryOf, syncIndex, unsubscribe, type SubscriptionProvider } from "./subscribe";
+} from "../subscriptions/rows";
+import { screenChain } from "../subscriptions/chain";
+import { customScreensRefusal, refusedOnContent, screenRefusal, screenVerdictSchema, screeningSchema, type Screening } from "../subscriptions/screens";
+import { SCREEN_KINDS } from "../subscriptions/rows";
+import { dropFromIndex, indexEntryOf, syncIndex, unsubscribe, type SubscriptionProvider } from "../subscriptions/subscribe";
 import { declaredRoutineKey } from "../routines/routines";
 import { DECLARED_ROUTINE_KEY_PREFIX } from "../routines/keys";
 import {
@@ -102,7 +102,7 @@ import {
   pollSchedulesOf,
   installationPolling,
   type PollScheduleInput
-} from "./poll";
+} from "../subscriptions/poll";
 import { routineDeclaredOf } from "../routines/routines-options";
 import { createResourceCollectionScheduleResolver } from "@flow-state-dev/scheduled/collection";
 
@@ -128,7 +128,11 @@ export interface SubscriptionServiceOptions {
   readonly trustedBots?: readonly string[];
   /** The most messages one subscription sends in an hour; past it, events are held and counted. */
   readonly capPerHour?: number;
-  /** The most subscriptions one event is delivered to; past it, refused with the cap as the reason. Default {@link DEFAULT_MAX_OWNER_RUNS}. */
+  /**
+   * The most subscriptions one event is delivered to; past it, refused with the cap as the reason. Default {@link DEFAULT_MAX_OWNER_RUNS}.
+   * On push it counts every subscription the event reaches; on a poll, which runs per user and thread, it counts that user's
+   * subscriptions on that thread, so N users polling one thread can each reach the cap.
+   */
   readonly maxOwnerRuns?: number;
   // FIX-2535 D1.
   /**
@@ -756,6 +760,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           const verdict = verdictOf(c);
           return verdict === undefined || (!verdict.pass && !refusedOnContent(verdict));
         });
+        /** Subscriptions this fire sent the event to, ordinary and unmatched together, as routing's finish step counts them. */
+        let runs = 0;
         const take = async (candidate: Candidate, forward: ForwardMark | undefined) => {
           const id = idOf(candidate);
           const sub = subs.get(id);
@@ -766,10 +772,12 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
             oweNow(id);
             return;
           }
-          if (!verdict.pass) {
+          // Refused, or past the owner-run cap: refused for good, as routing refuses past `maxOwnerRuns` on push.
+          if (!verdict.pass || runs >= maxOwnerRuns) {
             screen(id, event);
             return;
           }
+          runs += 1;
           const delivered = await deliverToRow(ctx, id, sub, event, forward);
           if (delivered.act === "refused") screen(id, event);
           else if (delivered.act === "unsent" || delivered.act === "inflight") oweNow(id);

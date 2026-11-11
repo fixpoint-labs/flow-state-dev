@@ -26,13 +26,12 @@ import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import {
   SUBSCRIPTION_CURSORS_PATTERN,
   SUBSCRIPTIONS_PATTERN,
-  defineSubscriptionServiceFlow,
   subscribe,
   subscriptionResources,
   type SubscriptionProvider,
-  type SubscriptionScreens,
-  type SubscriptionServiceOptions
+  type SubscriptionScreens
 } from "../src/subscriptions";
+import { defineSubscriptionServiceFlow, type SubscriptionServiceOptions } from "../src/service-flows";
 import { createRoutinesCapability } from "../src/routines";
 import { workerRoutineVerbs } from "../src/routines/routines";
 import type { WorkerManifest } from "../src/manifest";
