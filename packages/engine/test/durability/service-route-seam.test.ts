@@ -25,14 +25,22 @@ const ORG = "acme";
 
 type Seen = { routedAs: string[]; routedSender: unknown[]; routedOwner: unknown[]; delivered: Array<{ as: string; note: string }> };
 
-function boot(gates: { route?: Promise<void>; deliver?: Promise<void> } = {}) {
-  const seen: Seen = { routedAs: [], routedSender: [], routedOwner: [], delivered: [] };
+type Gates = { route?: Promise<void>; deliver?: Promise<void>; routeThrows?: boolean; deliverHangs?: boolean; drainMs?: number };
+
+function boot(gates: Gates = {}) {
+  const seen: Seen & { aborted: string[] } = { routedAs: [], routedSender: [], routedOwner: [], delivered: [], aborted: [] };
   const deliver = handler({
     name: "svc-deliver",
     inputSchema: z.object({ note: z.string() }),
     outputSchema: z.object({}),
     execute: async (input, ctx) => {
       await gates.deliver;
+      if (gates.deliverHangs === true) {
+        // Runs until it is aborted, as a delivery a drain gives up on.
+        await new Promise<void>((resolve) => ctx.signal.addEventListener("abort", () => resolve()));
+        seen.aborted.push(input.note);
+        return {};
+      }
       seen.delivered.push({ as: (ctx.session.identity as { userId: string }).userId, note: input.note });
       return {};
     }
@@ -43,6 +51,7 @@ function boot(gates: { route?: Promise<void>; deliver?: Promise<void> } = {}) {
     outputSchema: z.object({ ownerRuns: z.array(z.any()) }),
     execute: async (input, ctx) => {
       await gates.route;
+      if (gates.routeThrows === true) throw new Error("the routing entry broke");
       seen.routedAs.push((ctx.session.identity as { userId: string }).userId);
       seen.routedSender.push(input.sender);
       seen.routedOwner.push(input.owner);
@@ -78,7 +87,12 @@ function boot(gates: { route?: Promise<void>; deliver?: Promise<void> } = {}) {
   markDispatcher(publish, { type: "internal", action: "route", flowKind: "svc" });
   const pub = defineFlow({ kind: "pub", actions: { publish: { inputSchema: z.object({ runs: z.array(z.any()) }), block: publish } } })();
   const stores = inMemoryStores();
-  const state = createFlowState({ flows: { svc, pub }, stores: { default: { primary: stores } }, resolvePrincipal: () => null } as never);
+  const state = createFlowState({
+    flows: { svc, pub },
+    stores: { default: { primary: stores } },
+    resolvePrincipal: () => null,
+    ...(gates.drainMs === undefined ? {} : { dispatchDrainTimeoutMs: gates.drainMs })
+  } as never);
   return { seen, state, pub };
 }
 
@@ -189,5 +203,37 @@ describe("the dispatch seam's service route", () => {
     deliver.open();
     await disposing;
     expect(seen.delivered).toEqual([{ as: "alice", note: "own" }]);
+  });
+
+  // Answered on acceptance, a routing that breaks later is not the publisher's to hear, so it must reach the log.
+  it("logs a routing that fails after it was accepted", async () => {
+    const { state, pub } = boot({ routeThrows: true });
+    const errors: Array<{ message: string; context: unknown }> = [];
+    try {
+      const runtime = await state.getRuntime();
+      runtime.runtimeConfig.logger = { error: (message: string, context?: unknown) => void errors.push({ message, context }) } as never;
+      await aliceSubscription(state);
+      const result = await publishAs(state, pub, [run("alice", ORG, "own", "t1")]);
+      expect(result.output?.outcome.ok).toBe(true);
+      await vi.waitFor(() => expect(errors.map((e) => e.message)).toContain("service routing failed"));
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  // A drain that gives up must stop each delivery it fired, not only the routing that fired them.
+  it("aborts each run the routing fired when the drain gives up", async () => {
+    const { seen, state, pub } = boot({ deliverHangs: true, drainMs: 300 });
+    await aliceSubscription(state);
+    const result = await publishAs(state, pub, [run("alice", ORG, "own", "t1")]);
+    expect(result.output?.outcome.ok).toBe(true);
+    const restore = console.error;
+    console.error = () => undefined;
+    try {
+      await state.dispose();
+    } finally {
+      console.error = restore;
+    }
+    expect(seen.aborted).toEqual(["own"]);
   });
 });

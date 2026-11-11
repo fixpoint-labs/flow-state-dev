@@ -88,6 +88,8 @@ export type RoutedOwnerRun = {
   readonly refused?: OwnerRunRefusal;
   /** The host threw or refused while starting it; the other runs still fire. */
   readonly failed?: string;
+  /** The fired run's request, and when it finishes. */
+  readonly requestId?: string;
   readonly finished?: Promise<ExecutionResult>;
 };
 
@@ -152,7 +154,7 @@ function otherOwner(run: OwnerRun, owner: RouteOwner): OwnerRunRefusal | undefin
 async function fireOne(host: Pick<InboundTransportHost, "dispatch" | "stores">, run: OwnerRun): Promise<RoutedOwnerRun> {
   try {
     const fired = await fireOwnerRunThrough(host, run);
-    return fired.fired ? { run, finished: fired.finished } : { run, refused: fired.refused };
+    return fired.fired ? { run, requestId: fired.requestId, finished: fired.finished } : { run, refused: fired.refused };
   } catch (error) {
     return { run, failed: error instanceof Error ? error.message : String(error) };
   }
@@ -288,11 +290,14 @@ export interface ServiceRouting {
  * Resolves once the routing request is accepted, not when it finishes: the
  * publisher may itself hold a queue's worker slot, and the routing may need
  * that slot to run. The routing and the runs it fires go on detached, handed
- * to `onRouting` so the host's shutdown drain waits for them. A routing that
- * was never accepted is not routed.
+ * to `onRouting` so the host's shutdown drain waits for them: the routing
+ * first, then each run it fires, so a drain that gives up aborts each run by
+ * its own request. What the routing came to is not the publisher's to hear;
+ * a routing that failed, stopped, named malformed runs or failed to fire one
+ * is logged. A routing that was never accepted is not routed.
  */
 export function createServiceRouteOperation(
-  host: Pick<InboundTransportHost, "dispatch" | "stores">,
+  host: Pick<InboundTransportHost, "dispatch" | "stores" | "logger">,
   options: { readonly onRouting?: (routing: ServiceRouting) => void } = {}
 ): ServiceRouteOperation {
   return async (route) => {
@@ -308,10 +313,36 @@ export function createServiceRouteOperation(
     } catch (error) {
       return { ok: false, detail: `the routing was not accepted: ${error instanceof Error ? error.message : String(error)}` };
     }
+    const requestId = started.handle.requestId;
     const finished = fireRouted(host, service, started, { owner })
-      .then((routed) => Promise.allSettled(routed.ownerRuns.map((run) => run.finished)))
-      .catch(() => undefined);
-    options.onRouting?.({ requestId: started.handle.requestId, sessionId: started.sessionId, finished });
+      .then((routed) => {
+        reportRouting(host, route.provider, routed);
+        for (const fired of routed.ownerRuns) {
+          if (fired.requestId === undefined || fired.finished === undefined) continue;
+          options.onRouting?.({ requestId: fired.requestId, sessionId: ownerRunSessionId(fired.run), finished: fired.finished.catch(() => undefined) });
+        }
+        return Promise.allSettled(routed.ownerRuns.map((run) => run.finished));
+      })
+      .catch((error: unknown) => {
+        host.logger?.error?.("service routing failed", { provider: route.provider, requestId, error: error instanceof Error ? error.message : String(error) });
+      });
+    options.onRouting?.({ requestId, sessionId: started.sessionId, finished });
     return { ok: true, requestId: started.handle.requestId, sessionId: started.sessionId };
   };
+}
+
+/** Log what a detached routing came to when it was not every run fired or refused by its row. */
+function reportRouting(host: Pick<InboundTransportHost, "logger">, provider: string, routed: RoutedServiceEvent): void {
+  const context = { provider, requestId: routed.requestId };
+  if (routed.error !== undefined) {
+    host.logger?.error?.("service routing failed", { ...context, error: routed.error instanceof Error ? routed.error.message : String(routed.error) });
+    return;
+  }
+  if (routed.incomplete === true) {
+    host.logger?.error?.("service routing did not finish", context);
+    return;
+  }
+  const failed = routed.ownerRuns.filter((run) => run.failed !== undefined).length;
+  if (failed > 0) host.logger?.error?.("service routing failed to fire owner runs", { ...context, failed });
+  if (routed.malformed.length > 0) host.logger?.warn?.("service routing named malformed owner runs", { ...context, malformed: routed.malformed.length });
 }

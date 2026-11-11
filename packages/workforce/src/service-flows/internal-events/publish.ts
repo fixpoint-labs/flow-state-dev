@@ -178,24 +178,25 @@ export function definePublishing(options: PublishingOptions) {
     `Topics:\n${Object.keys(options.topics)
       .map((name) => topicLine(name, options.topics))
       .join("\n")}`;
+  const resources = { ...workerMessagesResources };
   const tool = handler({
     name: PUBLISH_EVENT_TOOL,
     description,
     inputSchema: publishEventInputSchema,
     outputSchema: publishOutcomeSchema,
     requestStateSchema: publishTurnStateSchema,
-    resources: { ...workerMessagesResources },
+    resources,
     execute: (input, ctx) => publish(ctx, options, input)
   });
   markDispatcher(tool, { type: "internal", action: SUBSCRIPTION_ROUTE_ENTRY, flowKind: options.kind });
   const capability = defineCapability({
     name: "internalEvents",
-    resources: { ...workerMessagesResources },
+    resources,
     presets: { tools: { tools: [tool] }, default: ["tools"] }
   });
   return {
     publishEvent: (ctx: BlockContext, input: unknown) => publish(ctx, options, input),
     capability,
-    resources: { ...workerMessagesResources }
+    resources
   };
 }
