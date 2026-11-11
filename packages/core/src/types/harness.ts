@@ -61,7 +61,7 @@ import type { BlockContext, BlockDefinition, InternalBlockContext } from "./bloc
 import type { AnyResourceRef } from "./resource";
 import { REQUEST_SPEND_SEAM } from "./request-end";
 import type { FileContent } from "../items/content";
-import { parseBlobRef, type AttachmentAccepts } from "../attachments";
+import { attachmentReferenceSchema, type AttachmentAccepts } from "../attachments";
 
 /**
  * Which harness, and which of its doors, produced a handle.
@@ -139,16 +139,7 @@ export interface HarnessRunInput {
 export const harnessRunInputSchema = z.object({
   prompt: z.string(),
   // A stored file's reference only: bytes never ride on a run's input.
-  attachments: z
-    .array(
-      z.object({
-        type: z.literal("file"),
-        mediaType: z.string(),
-        data: z.string().refine((data) => parseBlobRef(data) !== undefined, "a stored file's reference"),
-        filename: z.string().optional(),
-      }),
-    )
-    .optional(),
+  attachments: z.array(attachmentReferenceSchema).optional(),
 });
 
 /**

@@ -215,8 +215,12 @@ describe("the threads-mode screen", () => {
     // The model and tokens its Claude Code run reported, read off the board's row.
     expect(within(coder).getByText("claude-sonnet-4-5 · 13.6k tokens")).toBeTruthy();
     expect(rowsIn("Ready for review").join()).toMatch(/Claude Code/);
-    fireEvent.click(within(coder).getByRole("button", { name: "Resolve" }));
+    // A coding review lists its lands: the accept is Open a PR or Merge locally, never a plain Resolve.
+    expect(within(coder).queryByRole("button", { name: "Resolve" })).toBeNull();
+    fireEvent.click(within(coder).getByRole("button", { name: "Merge locally" }));
     await waitFor(() => expect(coder.dataset.column).toBe("resolved"));
+    // The landed outcome stays on the thread: the branch its work went into.
+    expect(coder.querySelector("[data-landed='merge']")!.textContent).toBe("merged into main");
   });
 
   it("turns a thread's composer off once it is finished", async () => {
@@ -249,7 +253,9 @@ describe("the threads-mode screen", () => {
     expect(review.querySelector("[data-review-judge]")!.textContent).toMatch(/^Judge: done, 0\.91The CHANGELOG gains one line/);
     // The stop's boilerplate is for the prompt, not the card.
     expect(view.textContent).not.toMatch(/information, not approval/);
-    expect(within(view).getByRole("button", { name: "Resolve" })).toBeTruthy();
+    expect(within(view).getByRole("button", { name: "Open a PR" })).toBeTruthy();
+    expect(within(view).getByRole("button", { name: "Merge locally" })).toBeTruthy();
+    expect(within(view).queryByRole("button", { name: "Resolve" })).toBeNull();
   });
 
   it("opens a thread as a sheet over the main thread, with the board still in the pane, as session mode's tasks open", async () => {

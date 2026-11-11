@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { SquareIcon } from "lucide-react";
+import { createClient } from "@flow-state-dev/client";
 import {
   FlowProvider,
   useResourceCollectionList,
@@ -30,8 +31,10 @@ import {
   useJumpToLatest,
   useSession,
   SuspensionResolverProvider,
+  type RendererRegistry,
   type SessionView,
 } from "@flow-state-dev/react";
+import type { MessageItem } from "@flow-state-dev/core/items";
 import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
@@ -41,6 +44,7 @@ import {
 } from "@flow-state-dev/core/harness";
 
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
+import { Message } from "@/components/flow-state/message";
 import {
   Conversation,
   ConversationContent,
@@ -49,6 +53,8 @@ import {
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
+  PromptInputAttachButton,
+  PromptInputAttachments,
   PromptInputButton,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -98,28 +104,39 @@ export interface HarnessSessionViewProps {
 /** How the page sends one line: the framework's rule, with Kitchen Sink's goal controls on it. */
 const sendLineOnce = (prompt: string, running: boolean, sender: LineSender) => sendLine(prompt, running, sender);
 
+/** The registry's renderers, with a line's files read from this app's server, under its base path. */
+const harnessRenderers: RendererRegistry = {
+  ...chatAssistantRenderers,
+  message: ({ item }: { item: MessageItem }) => <Message item={item} readBase={BASE_PATH} />,
+};
+
 /** One harness session's conversation and plan. */
 export function HarnessSessionView({ label, flowKind, sessionId, models, repoLine }: HarnessSessionViewProps) {
   return (
-    <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl={BASE_PATH} renderers={chatAssistantRenderers}>
-      <SessionBody label={label} sessionId={sessionId} models={models} repoLine={repoLine} />
+    <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl={BASE_PATH} renderers={harnessRenderers}>
+      <SessionBody label={label} flowKind={flowKind} sessionId={sessionId} models={models} repoLine={repoLine} />
     </FlowProvider>
   );
 }
 
 function SessionBody({
   label,
+  flowKind,
   sessionId,
   models,
   repoLine,
 }: {
   label: string;
+  flowKind: string;
   sessionId: string;
   models: ModelChoices;
   repoLine?: RepoLine;
 }) {
   const session = useSession(sessionId, { items: true, autoResume: true });
   const [message, setMessage] = useDraft(SESSION_DRAFT, sessionId);
+  // Where the composer uploads a file as it is attached: the session's own flow, so its route's checks apply.
+  // A client of its own, as the frame's rail has: no public hook hands out the provider's.
+  const uploads = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: BASE_PATH }).flow(flowKind), [flowKind]);
   const messageRef = useRef(message);
   messageRef.current = message;
 
@@ -171,28 +188,28 @@ function SessionBody({
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
       const prompt = msg.text.trim();
-      if (prompt.length === 0) return;
+      // Not sent, so this rejects: the composer clears its files only on a send that resolves.
+      // A turn takes a prompt, so files with no line wait for one.
+      if (prompt.length === 0) throw new Error("nothing to send");
       if (heldBy !== null) {
         // Not sent: the message stays in the composer, and the card it waits on comes into view.
         setHeld(true);
         document.querySelector('[data-testid="conversation"] [data-suspension]:not([data-resolved])')?.scrollIntoView({ block: "center" });
         // In case the record this read is stale, re-read it, so the next send sees the turn as it stands.
         void refresh({ items: false });
-        return;
+        // Refused, so the composer keeps the line's files too: it clears them only on a send that resolves.
+        throw new Error("held for an answer");
       }
-      try {
-        const outcome = await lines.send(prompt);
-        setLastLine(outcome);
-        // The view may have closed (a session switch) while it ran: the stored draft goes only if it is still this line.
-        clearDraft(SESSION_DRAFT, sessionId, prompt);
-        if (messageRef.current.trim() === prompt) setMessage("");
-        // The steer request records a taken line in session state, and this
-        // view follows only the turn's stream: re-read state (not the
-        // history) so the line shows now.
-        if (outcome === "taken") void refresh({ items: false });
-      } catch {
-        // Keep the persisted draft so a failed send can be retried.
-      }
+      // A failed send throws here, so the persisted draft and the files stay for a retry.
+      const outcome = await lines.send(prompt, { attachments: msg.attachments });
+      setLastLine(outcome);
+      // The view may have closed (a session switch) while it ran: the stored draft goes only if it is still this line.
+      clearDraft(SESSION_DRAFT, sessionId, prompt);
+      if (messageRef.current.trim() === prompt) setMessage("");
+      // The steer request records a taken line in session state, and this
+      // view follows only the turn's stream: re-read state (not the
+      // history) so the line shows now.
+      if (outcome === "taken") void refresh({ items: false });
     },
     [heldBy, lines, refresh, setMessage, sessionId],
   );
@@ -249,13 +266,16 @@ function SessionBody({
           {turnRecord !== null && <TurnSpend record={turnRecord} />}
           {turn !== null && <TurnWork record={state.turns?.[turn.requestId] ?? null} label={label} />}
           <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
-            <PromptInput onSubmit={handleSubmit}>
+            {/* The harness refuses, by name and before its run, a type it doesn't take. */}
+            <PromptInput onSubmit={handleSubmit} client={uploads} sessionId={sessionId}>
+              <PromptInputAttachments />
               <PromptInputTextarea
                 name="message"
                 placeholder={`Ask ${label}…`}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
               />
+              <PromptInputAttachButton />
               {/* While a turn runs, Stop and Send are two buttons: one that did both would stop the turn when a line was meant. */}
               {(session.isStreaming || waiting) && (
                 <PromptInputButton aria-label="Stop" data-testid="turn-stop" onClick={() => void stopTurn()}>

@@ -249,6 +249,7 @@ export function Conversation({
                     onOpenTask={openTask}
                     stillRunning={stillRunningFor(entry)}
                     onViewTasks={onViewTasks}
+                    readFile={adapter.readFile}
                     {...(entry.kind === "approval" ? { onAnswer: (approve: boolean) => adapter.answerApproval(sessionId, entry, approve) } : {})}
                     // Retry only the newest turn, and not while one runs: the engine runs a failed request again as a new one.
                     {...(entry.kind === "failed" && entry.retryable && !running ? { onRetry: () => adapter.retry(sessionId, entry.requestId) } : {})}
@@ -285,10 +286,11 @@ export function Conversation({
         seed={seed}
         prefill={prefill}
         onPrefilled={onPrefilled}
-        onSend={(text) => {
+        uploader={adapter}
+        onSend={(text, attachments) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
-          return adapter.send(sessionId, text);
+          return adapter.send(sessionId, text, attachments);
         }}
       />
     </main>

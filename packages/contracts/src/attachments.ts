@@ -36,20 +36,140 @@ export function parseBlobRef(data: string): string | undefined {
 /** Image types an attachment may have in v1. */
 export const ATTACHMENT_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 
-/** Document types an attachment may have in v1. */
+/** Document types a target may read as a file in v1: a target that doesn't gets a PDF's text instead. */
 export const ATTACHMENT_DOCUMENT_TYPES = ["application/pdf"] as const;
+
+/**
+ * Text-like types an attachment may have in v1. Every target gets one as
+ * text, headed by its name ({@link formatAttachmentText}), never as a file.
+ * Source files are `text/plain`: the name says the language.
+ */
+export const ATTACHMENT_TEXT_TYPES = [
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "application/json",
+  "application/yaml",
+  "text/html",
+  "application/xml"
+] as const;
 
 /** A media type an attachment may have. */
 export type AttachmentMediaType =
   | (typeof ATTACHMENT_IMAGE_TYPES)[number]
-  | (typeof ATTACHMENT_DOCUMENT_TYPES)[number];
+  | (typeof ATTACHMENT_DOCUMENT_TYPES)[number]
+  | (typeof ATTACHMENT_TEXT_TYPES)[number];
 
 /**
- * The media types one target (a model provider, a coding harness) can take as
- * a file. Each target fills its own; the engine refuses a type it lacks, in
- * the conversation, rather than sending text in its place.
+ * The type a text-like file is uploaded as, by its extension. A browser's own
+ * type for these is unreliable (`.ts` is video, `.md` often nothing), so the
+ * name decides, in the composer and for anyone building an upload by hand.
+ */
+const TEXT_EXTENSIONS: Readonly<Record<string, (typeof ATTACHMENT_TEXT_TYPES)[number]>> = {
+  txt: "text/plain",
+  log: "text/plain",
+  md: "text/markdown",
+  markdown: "text/markdown",
+  csv: "text/csv",
+  json: "application/json",
+  yaml: "application/yaml",
+  yml: "application/yaml",
+  html: "text/html",
+  htm: "text/html",
+  xml: "application/xml",
+  ...Object.fromEntries(
+    [
+      "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "rb", "go", "rs", "java", "kt", "swift", "c", "h", "cc", "cpp",
+      "hpp", "cs", "php", "sh", "bash", "zsh", "sql", "css", "scss", "toml", "ini", "env", "graphql", "proto", "vue",
+      "svelte", "lua", "r", "scala", "dart", "ex", "exs", "tf"
+    ].map((extension) => [extension, "text/plain" as const])
+  )
+};
+
+/**
+ * The type to upload a picked file as: by its extension for a text-like
+ * file, otherwise the type it came with, normalized. The result may be off
+ * the list (`.docx`, HEIC); {@link isAttachmentMediaType} says whether it is.
+ */
+export function attachmentMediaType(file: { name: string; type: string }): string {
+  const dot = file.name.lastIndexOf(".");
+  const extension = dot === -1 ? "" : file.name.slice(dot + 1).toLowerCase();
+  return TEXT_EXTENSIONS[extension] ?? normalizeMediaType(file.type);
+}
+
+/** The `<input accept>` list for every file the list takes: its types, and the text extensions a browser may not type. */
+export const ATTACHMENT_ACCEPT = [
+  ...ATTACHMENT_IMAGE_TYPES,
+  ...ATTACHMENT_DOCUMENT_TYPES,
+  ...ATTACHMENT_TEXT_TYPES,
+  ...Object.keys(TEXT_EXTENSIONS).map((extension) => `.${extension}`)
+].join(",");
+
+/**
+ * The media types one target (a model provider, a coding harness) reads as a
+ * file: images, and PDFs where it reads them. Each target fills its own. A
+ * text-like file goes to every target as text, and a PDF goes as its text to
+ * a target that lacks it ({@link attachmentSentAs}); an image a target lacks
+ * is refused in the conversation, never replaced by text.
  */
 export type AttachmentAccepts = ReadonlyArray<AttachmentMediaType>;
+
+/**
+ * How a file of `mediaType` reaches a target that reads `accepts` as files:
+ * `file` as the file itself, `text` as its text headed by its name (every
+ * text-like file; a PDF the target can't read), or `undefined` when the
+ * target can't take it at all.
+ */
+export function attachmentSentAs(mediaType: string, accepts: AttachmentAccepts): "file" | "text" | undefined {
+  const type = normalizeMediaType(mediaType);
+  if (isTextAttachmentType(type)) return "text";
+  if ((accepts as readonly string[]).includes(type)) return "file";
+  if ((ATTACHMENT_DOCUMENT_TYPES as readonly string[]).includes(type)) return "text";
+  return undefined;
+}
+
+/** True when `mediaType` is a text-like type, which reaches every target as text. */
+export function isTextAttachmentType(mediaType: string): boolean {
+  return (ATTACHMENT_TEXT_TYPES as readonly string[]).includes(normalizeMediaType(mediaType));
+}
+
+/** A file's text as a target receives it: `### <filename>`, then the text as is. */
+export function formatAttachmentText(filename: string | undefined, text: string): string {
+  return `### ${filename ?? "attachment"}\n${text}`;
+}
+
+/**
+ * Thrown before a target that gets a PDF's text is called, when that text is
+ * over `ATTACHMENT_LIMITS.maxTextBytes`. The text is never cut: the turn does
+ * not run. The same PDF still goes whole to a target that reads PDFs.
+ * `kind: "text"` is a text-like file over the cap: upload refuses one, so
+ * this is the send's own check on a file stored some other way.
+ */
+export class AttachmentTextTooLargeError extends Error {
+  readonly code: "pdf_text_too_large" | "text_too_large";
+  constructor(
+    readonly filename: string | undefined,
+    /** Bytes of the file's text. */
+    readonly size: number,
+    kind: "pdf" | "text" = "pdf"
+  ) {
+    const cap = formatKilobytes(ATTACHMENT_LIMITS.maxTextBytes);
+    const name = filename === undefined ? undefined : `"${filename}"`;
+    super(
+      kind === "pdf"
+        ? `${name ?? "A PDF"} holds ${formatKilobytes(size)} of text, and a PDF's text can be at most ${cap} here. ` +
+            "The turn did not run; send a shorter PDF, or ask where the whole PDF can be read."
+        : `${name ?? "A text file"} is ${formatKilobytes(size)}, and a text file can be at most ${cap}. The turn did not run; send a shorter file.`
+    );
+    this.code = kind === "pdf" ? "pdf_text_too_large" : "text_too_large";
+    this.name = "AttachmentTextTooLargeError";
+  }
+}
+
+/** A size as the composer and the server both name it: KB, rounded up, so a file one byte over a cap never reads as the cap. */
+export function formatKilobytes(bytes: number): string {
+  return `${Math.ceil(bytes / 1024)} KB`;
+}
 
 /** The limits on what one message may carry. The composer refuses over them before send; the server refuses by name. */
 export const ATTACHMENT_LIMITS = {
@@ -72,6 +192,7 @@ export function attachmentKind(mediaType: string): "image" | "document" | undefi
   const type = normalizeMediaType(mediaType);
   if ((ATTACHMENT_IMAGE_TYPES as readonly string[]).includes(type)) return "image";
   if ((ATTACHMENT_DOCUMENT_TYPES as readonly string[]).includes(type)) return "document";
+  if ((ATTACHMENT_TEXT_TYPES as readonly string[]).includes(type)) return "document";
   return undefined;
 }
 

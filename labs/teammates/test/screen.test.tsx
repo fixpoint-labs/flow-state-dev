@@ -27,6 +27,8 @@ afterEach(() => {
 
 const workers = () => screen.getByRole("navigation", { name: "Workers" });
 const conversation = () => screen.getByRole("main", { name: "Conversation" });
+/** A status line of the conversation itself: the composer's attachment notices are a status region too. */
+const OUTSIDE_COMPOSER = { name: (_name: string, element: Element) => element.closest("form") === null };
 const panel = (name: string) => screen.getByRole("complementary", { name: `${name}'s panel` });
 const teammates = () => within(workers()).getAllByRole("list")[0];
 const workerRow = (name: string) => workers().querySelector<HTMLElement>(`[data-worker="${name}"]`)!;
@@ -214,7 +216,7 @@ describe("the teammates screen", () => {
       interval: 5,
       timeout: 2000,
     });
-    expect(within(conversation()).getByRole("status").textContent).toMatch(/Lead is answering/);
+    expect(within(conversation()).getByRole("status", OUTSIDE_COMPOSER).textContent).toMatch(/Lead is answering/);
     expect(entries("received")).toHaveLength(2); // only writer's two older replies so far
 
     // The reply lands as its own line after Lead's answer to you, and Lead's next line uses it.
@@ -228,7 +230,7 @@ describe("the teammates screen", () => {
   it("answers a line you send while Lead answers at once, beside that answer, and never says it waits", async () => {
     render(<App adapter={fast()} />);
     await tell("Lead", "Meanwhile, draft the release note.");
-    await within(conversation()).findByRole("status");
+    await within(conversation()).findByRole("status", OUTSIDE_COMPOSER);
     // The composer says what a line sent now does.
     expect(screen.getByText(/Lead is answering · a line you send now gets its own answer at once/)).toBeTruthy();
     await tell("Lead", "Ask researcher for our launch date.");
@@ -581,7 +583,7 @@ describe("the teammates screen", () => {
       { interval: 5 },
     );
     // While its text is being written, the text is the sign it is answering: no second line under it.
-    expect(within(conversation()).queryByRole("status")).toBeNull();
+    expect(within(conversation()).queryByRole("status", OUTSIDE_COMPOSER)).toBeNull();
     const scrolled = feeds.scrolls.length;
     const top = scroller.scrollTop;
     await within(conversation()).findByText(/its card shows here\./, {}, { timeout: 4000 });

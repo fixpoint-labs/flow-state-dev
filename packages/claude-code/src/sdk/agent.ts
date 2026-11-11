@@ -30,15 +30,20 @@ import {
   harnessRunInputSchema,
   harnessRunNamespace,
   observedPullRequestsCollection,
-  readHarnessAttachments,
+  promptWithTurnText,
+  readHarnessTurnFiles,
   recordPullRequests as startPullRequestRecorder,
-  refuseUnacceptedAttachments,
   reportHarnessActivity,
   reportHarnessSpend,
   type HarnessAttachmentBytes,
   type HarnessBilling,
 } from "@flow-state-dev/core/harness";
-import { ATTACHMENT_IMAGE_TYPES, type AttachmentAccepts } from "@flow-state-dev/core/attachments";
+import {
+  ATTACHMENT_DOCUMENT_TYPES,
+  ATTACHMENT_IMAGE_TYPES,
+  attachmentKind,
+  type AttachmentAccepts,
+} from "@flow-state-dev/core/attachments";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessActivityHook,
@@ -114,26 +119,31 @@ const TODO_TOOLS = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"] as const;
  */
 const SEARCH_TOOLS = ["Grep", "Glob"] as const;
 
-// FIX-2519.
-/** What Claude Code takes as a turn's files: images, as image blocks on the turn's user message. */
-const CLAUDE_CODE_ACCEPTS: AttachmentAccepts = ATTACHMENT_IMAGE_TYPES;
+// FIX-2519, FIX-2520.
+/**
+ * What Claude Code reads as a turn's files: images, as image blocks, and
+ * PDFs, as document blocks, on the turn's user message. A text-like file
+ * reaches it as text after the prompt.
+ */
+const CLAUDE_CODE_ACCEPTS: AttachmentAccepts = [...ATTACHMENT_IMAGE_TYPES, ...ATTACHMENT_DOCUMENT_TYPES];
 
 /**
- * The query's prompt: the text alone, or, with images, one user message on
- * the SDK's streaming input, the text then each image as a base64 image block.
- * The input ends after that message, so the run is one turn as with text.
+ * The query's prompt: the text alone, or, with files, one user message on
+ * the SDK's streaming input, the text then each file as a base64 block (an
+ * image block, or a document block for a PDF). The input ends after that
+ * message, so the run is one turn as with text.
  */
-function queryPrompt(text: string, images: ReadonlyArray<HarnessAttachmentBytes>): string | AsyncIterable<unknown> {
-  if (images.length === 0) return text;
+function queryPrompt(text: string, files: ReadonlyArray<HarnessAttachmentBytes>): string | AsyncIterable<unknown> {
+  if (files.length === 0) return text;
   const message = {
     type: "user" as const,
     message: {
       role: "user" as const,
       content: [
         { type: "text" as const, text },
-        ...images.map((image) => ({
-          type: "image" as const,
-          source: { type: "base64" as const, media_type: image.mediaType, data: image.base64() },
+        ...files.map((file) => ({
+          type: attachmentKind(file.mediaType) === "image" ? ("image" as const) : ("document" as const),
+          source: { type: "base64" as const, media_type: file.mediaType, data: file.base64() },
         })),
       ],
     },
@@ -984,8 +994,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // A file Claude Code can't take refuses the run before anything starts,
       // and every file is read before the query is: a file that can't be read
       // stops the turn rather than running it without the file.
-      refuseUnacceptedAttachments("Claude Code", CLAUDE_CODE_ACCEPTS, input.attachments);
-      const images = await readHarnessAttachments(ctx, input.attachments);
+      const turnFiles = await readHarnessTurnFiles("Claude Code", ctx, CLAUDE_CODE_ACCEPTS, input.attachments);
       if (recordPullRequests) startPullRequestRecorder(ctx);
 
       // With conversation state off, the provider is NOT CONSULTED AT ALL —
@@ -1264,7 +1273,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               }
             }
             const running = resolved.query({
-              prompt: queryPrompt(promptText, images),
+              prompt: queryPrompt(promptWithTurnText(promptText, turnFiles), turnFiles.files),
               options: queryOptions,
             });
             // One `accountInfo()` answers both how the run is billed and, for

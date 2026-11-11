@@ -17,6 +17,7 @@ import { DISPATCH_SEAM } from "./dispatch";
 import type { RequestEndSeam, RequestSpendSeam } from "./request-end";
 import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM } from "./request-end";
 import { HARNESS_ATTACHMENT_SEAM, type HarnessAttachmentSeam } from "./harness-attachment-seam";
+import { USER_ATTACHMENT_SEAM, type UserAttachmentSeam } from "./user-attachment-seam";
 import { REQUEST_RESUME_SEAM, type RequestResume } from "./request-resume";
 import { BOARD_NOTICE_SEAM, type BoardNoticeSeam } from "./board-notice";
 import type { TracingLevel } from "../helpers/tracing-level";
@@ -968,6 +969,14 @@ export interface InternalBlockContext extends BlockContext {
    * `readHarnessAttachments`. See `types/harness-attachments.ts`.
    */
   [HARNESS_ATTACHMENT_SEAM]?: HarnessAttachmentSeam;
+
+  // FIX-2522.
+  /**
+   * The request's file keeper: copies of files into the running person's own
+   * scope, under a symbol key. Read only by `keepAttachmentsForUser`. See
+   * `types/user-attachment-seam.ts`.
+   */
+  [USER_ATTACHMENT_SEAM]?: UserAttachmentSeam;
 
   /**
    * The running request's board-notice seam, under a

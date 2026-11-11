@@ -18,6 +18,9 @@ import type { ClaudeCodeSdkMessage, ResolveClaudeCodeAgent } from "../../src/sdk
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2]);
 const WEBP = new Uint8Array([0x52, 0x49, 0x46, 0x46, 5]);
 const shot: FileContent = { type: "file", mediaType: "image/png", data: toBlobRef("b_shot0001"), filename: "shot.png" };
+const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 7]);
+const report: FileContent = { type: "file", mediaType: "application/pdf", data: toBlobRef("b_report01"), filename: "report.pdf" };
+const notes: FileContent = { type: "file", mediaType: "text/markdown", data: toBlobRef("b_notes0001"), filename: "notes.md" };
 const still: FileContent = { type: "file", mediaType: "image/webp", data: toBlobRef("b_still001"), filename: "still.webp" };
 
 const RESULT_OK: ClaudeCodeSdkMessage = {
@@ -46,23 +49,29 @@ function scripted() {
   return { resolve, prompts };
 }
 
-async function contextWith(files: Record<string, { mediaType: string; bytes: Uint8Array }>) {
+async function contextWith(files: Record<string, { mediaType: string; bytes: Uint8Array; text?: string }>) {
   const runtime = await createTestContext({});
   const read: HarnessAttachmentSeam = async (file) => {
     const found = files[file.data]!;
-    return { mediaType: found.mediaType, bytes: found.bytes, base64: () => Buffer.from(found.bytes).toString("base64") };
+    return {
+      mediaType: found.mediaType,
+      bytes: found.bytes,
+      base64: () => Buffer.from(found.bytes).toString("base64"),
+      ...(found.text !== undefined ? { text: async () => found.text! } : {}),
+    };
   };
   (runtime.ctx as unknown as Record<symbol, unknown>)[HARNESS_ATTACHMENT_SEAM] = read;
   return runtime.ctx as never;
 }
 
 describe("a turn's images, to Claude Code", () => {
-  it("declares the image types it takes", () => {
+  it("declares the image types and PDF as what it reads as files", () => {
     expect(claudeCodeAgent({ resolveClaudeAgent: scripted().resolve }).accepts).toEqual([
       "image/png",
       "image/jpeg",
       "image/webp",
       "image/gif",
+      "application/pdf",
     ]);
   });
 
@@ -99,15 +108,49 @@ describe("a turn's images, to Claude Code", () => {
     expect(query.prompts).toEqual(["just text"]);
   });
 
+  // FIX-2520: Claude Code reads a PDF itself, figures and layout included.
+  it("sends a PDF as a document block, and a text-like file as text after the prompt", async () => {
+    const query = scripted();
+    const block = claudeCodeAgent({ resolveClaudeAgent: query.resolve, detached: true });
+    const ctx = await contextWith({
+      [report.data]: { mediaType: "application/pdf", bytes: PDF, text: "### report.pdf\nnot sent" },
+      [notes.data]: { mediaType: "text/markdown", bytes: new Uint8Array([1]), text: "### notes.md\ncode word PLUM" },
+    });
+    await block.config.execute?.({ prompt: "read these", attachments: [report, notes] }, ctx);
+    expect(query.prompts).toEqual([
+      [
+        {
+          type: "user",
+          message: {
+            role: "user",
+            content: [
+              { type: "text", text: "read these\n\n### notes.md\ncode word PLUM" },
+              { type: "document", source: { type: "base64", media_type: "application/pdf", data: Buffer.from(PDF).toString("base64") } },
+            ],
+          },
+          parent_tool_use_id: null,
+        },
+      ],
+    ]);
+  });
+
+  it("sends a turn of text-like files only as one text prompt", async () => {
+    const query = scripted();
+    const block = claudeCodeAgent({ resolveClaudeAgent: query.resolve, detached: true });
+    const ctx = await contextWith({ [notes.data]: { mediaType: "text/markdown", bytes: new Uint8Array([1]), text: "### notes.md\nPLUM" } });
+    await block.config.execute?.({ prompt: "read", attachments: [notes] }, ctx);
+    expect(query.prompts).toEqual(["read\n\n### notes.md\nPLUM"]);
+  });
+
   it("refuses a type it can't take, by name, before the query", async () => {
     const query = scripted();
     const block = claudeCodeAgent({ resolveClaudeAgent: query.resolve, detached: true });
-    const pdf: FileContent = { type: "file", mediaType: "application/pdf", data: toBlobRef("b_report01"), filename: "report.pdf" };
+    const photo: FileContent = { type: "file", mediaType: "image/heic", data: toBlobRef("b_photo001"), filename: "photo.heic" };
     const thrown = await Promise.resolve(
-      block.config.execute?.({ prompt: "read this", attachments: [pdf] }, await contextWith({})),
+      block.config.execute?.({ prompt: "read this", attachments: [photo] }, await contextWith({})),
     ).catch((error: unknown) => error);
     expect(thrown).toBeInstanceOf(HarnessAttachmentRefusedError);
-    expect((thrown as Error).message).toContain('Claude Code can\'t take "report.pdf"');
+    expect((thrown as Error).message).toContain('Claude Code can\'t take "photo.heic"');
     expect(query.prompts).toEqual([]);
   });
 });

@@ -58,7 +58,7 @@ describe("`> ` in Jump to messages the Shift Coordinator", () => {
     cleanup();
     const send = vi.fn(async () => undefined);
     render(<Composer send={send} />);
-    expect(send).toHaveBeenCalledWith("ship the release", expect.any(Function));
+    expect(send).toHaveBeenCalledWith("ship the release", expect.any(Function), []);
   });
 
   it("stays open with the reason when there is no Coordinator, and hands nothing over", () => {
@@ -91,7 +91,7 @@ describe("the Coordinator's composer sends a handed line like a typed one", () =
     view.rerender(<Composer send={send} />);
     await act(async () => undefined);
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledWith("later", expect.any(Function));
+    expect(send).toHaveBeenCalledWith("later", expect.any(Function), []);
   });
 
   it("keeps the line in the draft, with the composer's own error, when it is refused", async () => {

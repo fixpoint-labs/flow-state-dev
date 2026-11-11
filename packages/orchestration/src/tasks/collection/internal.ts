@@ -108,6 +108,7 @@ export function buildInitialTask<TInput, TOutput>(
     goal: init.goal,
     title: init.title,
     context: init.context,
+    ...(init.attachments !== undefined && init.attachments.length > 0 ? { attachments: [...init.attachments] } : {}),
     status,
     attempts: 0,
     // A conversation-result task has one attempt: unset reads as 1. Any other

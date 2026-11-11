@@ -8,6 +8,7 @@
  * `TaskFilter` is the predicate shape accepted by `list` / `count`.
  * Filters are AND'd; an unset field is unconstrained.
  */
+import type { FileContent } from "@flow-state-dev/core/items";
 import type { Task, TaskStatus } from "./task";
 import type { QuestionInit } from "./hold";
 
@@ -25,6 +26,14 @@ export type TaskInit<TInput = unknown> = {
   title?: string;
   /** Readable per-task support text handed to the worker. See `Task.context`. */
   context?: string;
+  // FIX-2522.
+  /**
+   * The brief's files, in reference form. See `Task.attachments`. Set by the
+   * filing path from files it kept for the task (`createTask` keeps the
+   * turn's), never from model input; a caller filing directly through a ref
+   * is trusted with it.
+   */
+  attachments?: FileContent[];
   status?: TaskStatus;
   assignee?: string;
   deps?: string[];

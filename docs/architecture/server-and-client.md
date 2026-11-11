@@ -81,6 +81,7 @@ custom) mount alongside it via the `adapters` option — see
 | GET | `/api/flows/users/:userId/stream` | The push socket, taken as an upgrade by the host; a plain GET answers 426 |
 | POST | `/api/flows/:flowId/actions/:action` | Execute action (new session) |
 | POST | `/api/flows/:flowId/:sessionId/actions/:action` | Execute action (existing session) |
+| POST | `/api/flows/:flowId/:sessionId/reads/:readName` | Run a flow read on an existing session: `200 { output }`, stored nowhere. Fenced as the action route; it never creates a session ([Reads](./flows-and-actions.md#reads)) |
 | GET | `/api/flows/:flowId/requests/:requestId/stream` | SSE request stream |
 | GET | `/api/flows/sessions` | List sessions (`flowKind` and exact `flowId` filters) |
 | GET | `/api/flows/sessions/:sessionId` | Session detail (projected: `state` holds only `session.client.expose` and readonly fields; no journal or stored resources) |
@@ -91,7 +92,7 @@ custom) mount alongside it via the `adapters` option — see
 | DELETE | `/api/flows/sessions/:sessionId` | Delete session |
 | POST | `/api/flows/blobs` | Upload one attachment as the raw body (`content-type` is its type, `filename` query optional); `201 { attachment }` with `data: "fsd-blob:<id>"`. Checked by the host's resolver |
 | POST | `/api/flows/:flowId/blobs` | The same upload, checked by that flow's own resolver, so the file is held for the user its sends resolve |
-| GET | `/api/flows/blobs/:blobId` | The file's bytes, to a caller who can read the session that owns it; any other caller gets 404. Images inline, other types as a download, always `nosniff` |
+| GET | `/api/flows/blobs/:blobId` | The file's bytes, to a caller who can read the session that owns it, or, for a file a person's own scope keeps (a task's brief), to that person; any other caller gets 404. Images inline, other types as a download, always `nosniff` |
 
 Every route that answers with a session record (detail, listing, create, metadata edit) sends it projected the same way. Scope state is private by default, so a client receives only the fields the flow exposes, plus its readonly fields: those are the session's identity, set at create and already a listing filter. Server-side code that needs the whole record reads the session store.
 
@@ -234,7 +235,8 @@ files as references only, and its schema refuses bytes. The engine fills
 resolver, bound to the request's session and person. A harness reads
 through `readHarnessAttachments`, so it can read only that session's files.
 Before it starts anything, a harness refuses a turn whose file is a type its
-`accepts` doesn't list, or whose file can't be read. A server with no blob
+`accepts` doesn't list and that has no text to send in its place, or whose
+file can't be read. A server with no blob
 store has no reader, so every turn with files is refused there. Everything a
 run records of its conversation (a generator's trace of its history, a tool
 loop's prelude, a harness turn's input) therefore holds references, never
@@ -243,6 +245,44 @@ named on its turn as `[image: shot.png, not re-sent]`, and one
 that can no longer be read as `no longer available`; a reference never reaches
 a provider. Re-sent files are billed as input on every call; prompt caching is
 what keeps that cheap.
+
+A document reaches each target as that target reads it
+(`attachmentSentAs` in `@flow-state-dev/contracts/attachments`). A text-like
+file (text, Markdown, CSV, JSON, YAML, HTML, XML, source) always goes as text
+headed `### <filename>`. A PDF goes as a file part where the target's
+`accepts` lists `application/pdf` (a generator's comes from its model's
+provider, `core/src/models/attachment-accepts.ts`; Claude Code's lists it),
+and as its extracted text everywhere else (Codex, Cursor, a provider not in the
+table). The provider is `ModelResolver.providerOf`'s answer for the model
+string, else `extractProviderName`'s guess, so an app resolver that maps its
+own aliases sends PDFs as text unless it also maps `providerOf`; a
+`GeneratorModel` instance names no target and gets PDFs as files, as before.
+The upload route checks a document before it stores it: a text-like
+file is UTF-8 with no NUL bytes and at most `maxTextBytes` (`attachment_text_too_large`,
+`attachment_not_text`); a PDF opens and has at most `maxPdfPages` pages,
+counted from its page tree (`pdf_too_many_pages`, `pdf_unreadable`). The same
+pass extracts the PDF's text page by page, a page with no text layer saying
+so, and stores it beside the PDF under `pdfTextBlobId`
+(`engine/src/blobs/pdf-text.ts`); a claim takes it with the PDF into the same
+owner, so it is read where the PDF is and deleted with it. Both readers get a
+document's text through `readAttachmentText` (`engine/src/blobs/attachment-text.ts`),
+which refuses a PDF's text over `maxTextBytes` with `pdf_text_too_large`
+before the target is called; a harness splits its turn with
+`readHarnessTurnFiles`. Text is never cut.
+
+A file can also outlive the turn it came with. A record kept at the user scope,
+such as a task's brief on a conversation's board, keeps copies of the turn's
+files through `keepAttachmentsForUser` (`core/internal`), which the engine
+answers under `USER_ATTACHMENT_SEAM`: each file is read through the same
+resolver, stored again under a new id, and claimed into the user's own scope
+(`userBlobOwner`, whose key also names the flow instance that kept it). The
+copy and the turn's file have separate owners, so deleting the conversation
+leaves the copy. A run reads its session's files and its user's own scope's,
+whichever flow kept them, so every run of a task, in whatever session or flow,
+reads the brief's files, and nobody else's run does. The read route checks the
+caller under the keeping flow's sign-in, since its address names no flow. An action hands such files
+to the line it writes through `userMessage`'s `attachments`, read off
+server-held state; they follow the person's own files on that line.
 
 ### Sessions
 

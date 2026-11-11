@@ -18,6 +18,7 @@
  */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { attachmentReferenceSchema } from "@flow-state-dev/core/attachments";
 
 // FIX-1288.
 /**
@@ -47,6 +48,12 @@ export const taskWorkerInputSchema = z.object({
    * the worker renders into its prompt, not a typed directive.
    */
   context: z.string().optional(),
+  // FIX-2522.
+  /**
+   * The brief's files (`Task.attachments`), in reference form, for every
+   * run of the task. Absent on a task filed with none.
+   */
+  attachments: z.array(attachmentReferenceSchema).optional(),
   input: z.unknown().optional(),
   // FIX-447.
   /**

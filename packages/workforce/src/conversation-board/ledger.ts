@@ -87,6 +87,8 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   "goal",
   // The rest of the brief, beside the goal: a re-file from a browser's row copies it (FIX-2381 D3).
   "context",
+  // The brief's files, as references (FIX-2522): a task screen draws them through the read route.
+  "attachments",
   "status",
   "assignee",
   "run",
