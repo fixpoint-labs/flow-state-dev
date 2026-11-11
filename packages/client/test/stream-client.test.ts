@@ -703,6 +703,30 @@ describe("request.stream — a stream that ends before the request does", () => 
     handle.close();
   });
 
+  it("resumes a continuation cut off after a replayed suspension, once the request is running again", async () => {
+    // Following a continuation, the stream replays the earlier suspension,
+    // then the request runs again. A cut-off after that must still reconnect.
+    const bodies = [
+      frame(1, "request.created", { status: "in_progress" }) +
+        frame(2, "request.suspended", { status: "suspended" }) +
+        frame(3, "request.created", { status: "in_progress" }) +
+        frame(4, "item.done", { item: item("m1", 4) }),
+      frame(5, "request.completed", { status: "completed" })
+    ];
+    const fetcher = vi.fn<ClientFetch>(async () => sse(bodies.shift() ?? ""));
+    const onRequestStatus = vi.fn();
+    const onError = vi.fn();
+
+    const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", fetcher, onRequestStatus, onError });
+    await vi.waitFor(() => expect(onRequestStatus).toHaveBeenCalledWith(expect.objectContaining({ type: "request.completed" })));
+    await flushSSE();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[1]?.[0]).toBe("/api/flows/demo/requests/req_1/stream?starting_after=4");
+    expect(onError).not.toHaveBeenCalled();
+    handle.close();
+  });
+
   it("does not reconnect once closed locally", async () => {
     const fetcher = vi.fn<ClientFetch>(async () => sse(frame(1, "request.created", { status: "in_progress" })));
     const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", fetcher });

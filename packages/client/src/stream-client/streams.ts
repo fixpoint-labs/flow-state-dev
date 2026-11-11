@@ -259,7 +259,16 @@ export function openRequestStream(
             delivered = true;
             startingAfter = parsed.sequence_number;
           }
-          if (endsRequestStream(parsed)) ended = true;
+          if (endsRequestStream(parsed)) {
+            ended = true;
+          } else if (
+            parsed.type.startsWith("request.") &&
+            (parsed as { status?: string }).status === "in_progress"
+          ) {
+            // Running again: a continuation's stream replays the earlier
+            // suspension before it, so that status no longer ends the stream.
+            ended = false;
+          }
           dispatchRequestEvent(parsed, options);
         } catch (error) {
           options.onError?.(toError(error, "Unknown SSE client error"));
