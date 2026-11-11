@@ -326,9 +326,10 @@ function landing(res, apps, { status, changed, restartable }, signOut) {
       const state = status(a.id);
       const card = `<a class="card" href="${a.prefix}/"><span class="state ${state}">${state}</span><h2>${escapeHtml(a.title)}</h2><p>${escapeHtml(a.blurb)}</p><code>${a.prefix}/</code></a>`;
       // A button can't sit inside the card's link, so it goes under it.
+      const stale = restartable(a.id) && changed(a.id);
       const restart = !restartable(a.id)
         ? ""
-        : `<div class="changed${changed(a.id) ? "" : " quiet"}"><span>${changed(a.id) ? "Server code changed since it started." : ""}</span><button type="button" data-restart="${escapeHtml(a.id)}" data-title="${escapeHtml(a.title)}">Restart</button></div>`;
+        : `<div class="changed${stale ? "" : " quiet"}"><span>${stale ? "Server code changed since it started." : ""}</span><button type="button" data-restart="${escapeHtml(a.id)}" data-title="${escapeHtml(a.title)}">Restart</button></div>`;
       return `<div class="slot">${card}${restart}</div>`;
     })
     .join("");

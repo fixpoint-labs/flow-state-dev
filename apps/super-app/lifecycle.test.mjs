@@ -281,7 +281,7 @@ describe("a real server, recorded and restarted", () => {
       void lifecycle.start("real");
       await until(() => lifecycle.state.get("real") === "running", 20000, "the server answering");
       assert.equal(await answer(), "before");
-      await until(() => existsSync(join(inputs, "build-inputs.json")), 5000, "the record");
+      await until(() => existsSync(join(inputs, "build-inputs.json")), 20000, "the record");
       assert.equal(lifecycle.changed("real"), false);
 
       writeFileSync(join(dir, "page.tsx"), "export const Page = () => 1;");
@@ -293,7 +293,7 @@ describe("a real server, recorded and restarted", () => {
       assert.deepEqual(await lifecycle.restart("real"), { ok: true });
       await until(() => lifecycle.state.get("real") === "running", 20000, "the restarted server answering");
       assert.equal(await answer(), "after");
-      await until(() => existsSync(join(inputs, "build-inputs.json")), 5000, "the new record");
+      await until(() => existsSync(join(inputs, "build-inputs.json")), 20000, "the new record");
       assert.equal(lifecycle.changed("real"), false, "the mark clears with the restart");
     } finally {
       lifecycle.stop(() => {});

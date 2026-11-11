@@ -22,12 +22,11 @@
  * The variable is removed from the environment once read, so a process the
  * lab starts (a coding agent, say) doesn't record into the same file.
  */
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { createRequire, registerHooks } from "node:module";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BUILD_INPUTS_FILE } from "../../scripts/build-inputs.mjs";
+import { BUILD_INPUTS_FILE, hashOf } from "../../scripts/build-inputs.mjs";
 
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
 const outDir = process.env.SUPER_APP_SERVER_INPUTS;
@@ -47,7 +46,7 @@ if (outDir !== undefined && outDir !== "") {
     const key = path.split(sep).join("/");
     if (key in inputs) return false;
     try {
-      inputs[key] = createHash("sha256").update(readFileSync(file)).digest("hex");
+      inputs[key] = hashOf(file);
       return true;
     } catch {
       // Not a file on disk (a virtual module): nothing to compare later.

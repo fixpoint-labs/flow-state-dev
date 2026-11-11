@@ -24,7 +24,7 @@ export const RESTART_PATH = "/__super/restart/";
 /** The header a restart request must carry: a form can't send it, and another site can't without a preflight. */
 export const RESTART_HEADER = "x-super-app-restart";
 
-/** How often an app's pages ask whether its server code changed. */
+/** How often an app's pages ask whether its server code changed. Under `changedTtlMs` in `lifecycle.mjs`, which reuses one answer across polls. */
 const POLL_MS = 3000;
 
 const CLOSE_BODY = /<\/body>/i;

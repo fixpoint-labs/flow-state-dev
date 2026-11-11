@@ -58,7 +58,7 @@ function prefixLines(stream, label, out) {
  * @param {{ write(s: string): unknown }} [options.stderr]
  * @param {number} [options.probeMs]   How often a starting app's port is tried.
  * @param {number} [options.graceMs]   How long a stopped server has to exit before SIGKILL.
- * @param {number} [options.changedTtlMs]  How long one answer to `changed` is reused (it re-hashes every recorded file).
+ * @param {number} [options.changedTtlMs]  How long one answer to `changed` is reused (it re-hashes every recorded file). Longer than the pages' poll (`button.mjs`), so polls from open tabs share one answer.
  */
 export function createLifecycle({
   apps,
@@ -73,7 +73,7 @@ export function createLifecycle({
   stderr = process.stderr,
   probeMs = 1000,
   graceMs = 5000,
-  changedTtlMs = 2000,
+  changedTtlMs = 5000,
 }) {
   /** Every process running, so a shutdown reaches each one's whole group. */
   const children = new Set();
