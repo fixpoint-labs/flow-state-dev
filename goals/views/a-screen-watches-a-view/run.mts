@@ -210,22 +210,26 @@ await runGoal(async (failures, tell) => {
       await quiet([watcher.views]);
       if (roster.length === 0 || board.length === 0 || probe.length === 0) failures.push("b:within-1s: a watch never answered at start");
 
+      // Each clock starts before its write is sent and the search runs from
+      // there, so a value that lands while the write's call is still
+      // returning is found, and the latency is an upper bound that includes
+      // the write itself: it can't read below 0, and a slow one fails.
       const lat: Record<string, number | undefined> = {};
       // A hire, from another client.
+      const hireFrom = Date.now();
       await createWorkforceClient(writer).hire({ id: "scribe", flow: "tasker", description: "Takes notes." });
-      const hiredAt = Date.now();
-      const hire = await firstAt(roster, (v) => v.some((e) => e.id === "scribe"), hiredAt - 50, 3_000);
-      lat.hire = hire === undefined ? undefined : hire - hiredAt;
+      const hire = await firstAt(roster, (v) => v.some((e) => e.id === "scribe"), hireFrom, 3_000);
+      lat.hire = hire === undefined ? undefined : hire - hireFrom;
       // A filed task, from another client, into the watched conversation.
+      const fileFrom = Date.now();
       await (await writer.flow("coordinator").send("createTask_tasks", { goal: "Audit licenses", assignee: "eng.tasker", held: true }, { sessionId: conversation })).wait();
-      const filedAt = Date.now();
-      const filed = await firstAt(board, (v) => (v.tasks ?? []).length > 0, filedAt - 50, 3_000);
-      lat["filed task"] = filed === undefined ? undefined : filed - filedAt;
+      const filed = await firstAt(board, (v) => (v.tasks ?? []).length > 0, fileFrom, 3_000);
+      lat["filed task"] = filed === undefined ? undefined : filed - fileFrom;
       // A probe write, from another client.
+      const writeFrom = Date.now();
       await (await writer.flow("probe").send("write", { label: "first" })).wait();
-      const wroteAt = Date.now();
-      const wrote = await firstAt(probe, (v) => v.count > 0, wroteAt - 50, 3_000);
-      lat["probe write"] = wrote === undefined ? undefined : wrote - wroteAt;
+      const wrote = await firstAt(probe, (v) => v.count > 0, writeFrom, 3_000);
+      lat["probe write"] = wrote === undefined ? undefined : wrote - writeFrom;
 
       tell.over("b:within-1s · latency per change", Object.values(lat).filter((v): v is number => v !== undefined));
       for (const [what, ms] of Object.entries(lat)) {
@@ -233,7 +237,7 @@ await runGoal(async (failures, tell) => {
         else if (ms >= BOUND_MS) failures.push(`b:within-1s: the ${what} reached it ${ms} ms after the write (bound ${BOUND_MS})`);
       }
       if (Object.values(lat).every((ms) => ms !== undefined && ms < BOUND_MS)) {
-        evidence.push(`b: ${Object.entries(lat).map(([what, ms]) => `${what} ${Math.max(0, ms!)} ms`).join(", ")}`);
+        evidence.push(`b: from each write's start, ${Object.entries(lat).map(([what, ms]) => `${what} ${ms} ms`).join(", ")}`);
       }
 
       // A second user's change reaches no one watching the first.
@@ -266,7 +270,7 @@ await runGoal(async (failures, tell) => {
         ["flow reads", /\breads\?: Record<string, ReadEntry>/.test(read("packages/core/src/types/flow.ts"))],
         ["scope derived", /\bderived\?: Record<string, ClientDataComputeFn/.test(read("packages/core/src/types/flow.ts"))]
       ].filter(([, present]) => present).map(([name]) => name as string);
-      tell.over("c:inventory · removed names still exported", remaining);
+      tell.over("c:inventory · removed names still exported", remaining, { emptyIs: "the claim: no removed name remains on a root" });
       if (remaining.length > 0) failures.push(`c:inventory: still exported: ${remaining.join(", ")} (removed by FIX-2623's PR 4 and PR 5)`);
       else evidence.push("c: no removed name on any root");
     }
