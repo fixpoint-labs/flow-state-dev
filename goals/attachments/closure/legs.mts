@@ -239,7 +239,9 @@ async function drawn(page: Page, scope: string, name: string): Promise<boolean> 
 }
 
 /** A send: a POST to an action whose body carries `line`. */
-const isSendOf = (line: string) => (request: Request) => request.method() === "POST" && /\/actions\/[^/]+$/.test(new URL(request.url()).pathname) && (request.postData() ?? "").includes(line.slice(0, 40));
+// The body is JSON, so a quote in the line is escaped there: match the line as JSON writes it.
+const isSendOf = (line: string) => (request: Request) =>
+  request.method() === "POST" && /\/actions\/[^/]+$/.test(new URL(request.url()).pathname) && (request.postData() ?? "").includes(JSON.stringify(line.slice(0, 40)).slice(1, -1));
 /** Any POST to an action: what leg c must not see while files are only attached. */
 const isAnyAction = (request: Request) => request.method() === "POST" && /\/actions\/[^/]+$/.test(new URL(request.url()).pathname);
 
