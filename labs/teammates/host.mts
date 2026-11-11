@@ -1,3 +1,4 @@
+// fallow-ignore-file duplicate-export -- each lab is its own app, and its host exposes the same openLab and operatorGitHubToken as the others on purpose.
 /**
  * The lab's server, put together from package pieces: the workers in
  * `workforce/`, the built-in agent flow with memory composed in, the lab's one

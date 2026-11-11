@@ -1,3 +1,4 @@
+// fallow-ignore-file duplicate-export -- each lab is its own app, and its host exposes the same openLab and operatorGitHubToken as the others on purpose.
 /**
  * The Claude Code-style lab's server, put together from package pieces:
  * the workers in `workforce/`, their flows, the lab's small flows, and a
