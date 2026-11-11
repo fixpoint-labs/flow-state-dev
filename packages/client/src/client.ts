@@ -21,6 +21,7 @@ import {
 } from "./stream-client/streams";
 import { createPushHub, type SubscribeOptions, type Subscription } from "./subscribe/push-hub";
 import { liveRead, type LiveRead, type LiveReadOptions, type LiveReadWithTopicsOptions } from "./live/live-read";
+import type { ViewCallOptions, ViewInputOf, ViewRef, ViewResult, ViewValueOf } from "./view/view";
 import type {
   ChildSessionSummary,
   ClientFetch,
@@ -563,6 +564,17 @@ export interface Client {
    */
   live<T>(topics: readonly WireTopic[], options: LiveReadOptions<T>): LiveRead;
   live<T>(topics: readonly WireTopic[], options: LiveReadWithTopicsOptions<T>): LiveRead;
+  /**
+   * Run a view once, as the client's user, and resolve to its value, the
+   * change topics of what its run read, and a keyed view's row keys. A user
+   * or org view needs no session; a session view takes `sessionId`. Nothing
+   * is stored. To keep a screen current, watch it (`useView` in React).
+   * Rejects with a `ClientHttpError`: 404 for an unknown view or a session
+   * the user can't run in, 400 for input its schema refuses or a view called
+   * at the wrong scope, 422 for a view that called a model or reached for a
+   * session it doesn't have.
+   */
+  view<TRef extends ViewRef>(ref: TRef, input?: ViewInputOf<TRef>, options?: ViewCallOptions): Promise<ViewResult<ViewValueOf<TRef>>>;
   /** Transcribe audio on the server. */
   transcribe(request: TranscribeRequest): Promise<TranscribeResponse>;
   /**
@@ -754,6 +766,20 @@ export function createClient(options: CreateClientOptions): Client {
     subscribe: (topics, subscribeOptions) => push.subscribe(topics, subscribeOptions),
     live: <T>(topics: readonly WireTopic[], liveOptions: LiveReadOptions<T> | LiveReadWithTopicsOptions<T>) =>
       liveRead<T>(push.subscribe, topics, liveOptions as LiveReadOptions<T>),
+    view: async <TRef extends ViewRef>(ref: TRef, input?: ViewInputOf<TRef>, viewOptions?: ViewCallOptions) => {
+      const flow = requireValue(ref?.flow, "view flow");
+      const name = requireValue(ref?.view, "view name");
+      const path =
+        viewOptions?.sessionId !== undefined
+          ? `/api/flows/${seg(flow)}/${seg(requireValue(viewOptions.sessionId, "sessionId"))}/views/${seg(name)}`
+          : `/api/flows/${seg(flow)}/views/${seg(name)}`;
+      const answer = await t.json<{ output: ViewValueOf<TRef>; topics: WireTopic[]; keys?: string[] }>(path, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ input: input ?? {}, userId })
+      });
+      return { value: answer.output, topics: answer.topics ?? [], ...(answer.keys !== undefined ? { keys: answer.keys } : {}) };
+    },
     transcribe: (request) => {
       const mediaType = request.mediaType ?? "audio/webm";
       const body =
