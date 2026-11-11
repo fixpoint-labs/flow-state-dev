@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/engine": patch
+"@flow-state-dev/engine": minor
 ---
 
 A long-running request no longer holds every transient item it has emitted in memory (FIX-2672). The response emitter keeps every durable item and every in-progress transient item, but only the newest `maxBufferSize` (default 10,000) done transient items, such as `resource_change`, transient `block_trace` and `state_snapshot`. Their `item.added` / `item.done` events still reach clients and the events log, and `itemIndex` values never repeat.
