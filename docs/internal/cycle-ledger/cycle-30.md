@@ -105,10 +105,10 @@ work shipped inside #5108.
 | [#4687](https://github.com/fixpoint-labs/flow-state-dev/pull/4687) 2534 | 4 (Codex) | 7 | Delivery reservation: dedupe in flight, reserve atomically; closure past filters; every listed screen; an accepted, untaken delivery; tenant in the keys | no |
 | [#4969](https://github.com/fixpoint-labs/flow-state-dev/pull/4969) 2535 | 5 (3 Codex, 2 Gitar) | 6 | 4 on the mention scanner's code spans (b); an interrupted routing answers 503; a PR closed before it is followed | no |
 | [#4973](https://github.com/fixpoint-labs/flow-state-dev/pull/4973) 2536 | **8** (6 Codex, 2 Gitar) | 21 | (a). Three open at merge, filed at wrap (FIX-2647, FIX-2648, FIX-2649). A paging helper named at pass 3, the close invariant at pass 5 | yes |
-| [#4971](https://github.com/fixpoint-labs/flow-state-dev/pull/4971) 2537 | 5 (3 Codex, 2 Gitar) + code scanning | 7 | Nested fence tags in a quoted interest; a refusal read from a reason's words; a rejected async screen. **2 P2s after merge, open on `main`** (d) | no |
-| [#4972](https://github.com/fixpoint-labs/flow-state-dev/pull/4972) 2538 | 3 (2 Codex, 1 Gitar) + code scanning | 6 | An `observe` confirm must not expire into a yes; the inferred marker safe from caller metadata; retry after a yes. 2 unused variables | no |
-| [#4970](https://github.com/fixpoint-labs/flow-state-dev/pull/4970) 2614 | **8** (5 Codex, 3 Gitar) + Cursor security | 19 | (b): about 12 on transitions, primitive at pass 3. Security High: two users' copies of a declared routine shared one index key (fixed, test first). User docs edited (f). One P2 at merge minus 7 min | no |
-| [#5087](https://github.com/fixpoint-labs/flow-state-dev/pull/5087) 2630 | 4 (2 Codex, 1 Cursor, 2 Gitar) | 11 | 6 on one structure: a service routing's lifecycle at dispose (three fixes in 8 min). Cursor ×4 recorded. Merged red against FIX-2626 (c) | no |
+| [#4971](https://github.com/fixpoint-labs/flow-state-dev/pull/4971) 2537 | 6 (3 Codex, 2 Gitar, 1 code scanning) | 7 | Nested fence tags in a quoted interest; a refusal read from a reason's words; a rejected async screen. **2 P2s after merge, open on `main`** (d) | no |
+| [#4972](https://github.com/fixpoint-labs/flow-state-dev/pull/4972) 2538 | 4 (2 Codex, 1 Gitar, 1 code scanning) | 6 | An `observe` confirm must not expire into a yes; the inferred marker safe from caller metadata; retry after a yes. 2 unused variables | no |
+| [#4970](https://github.com/fixpoint-labs/flow-state-dev/pull/4970) 2614 | **9** (5 Codex, 3 Gitar, 1 Cursor security) | 19 | (b): about 12 on transitions, primitive at pass 3. Security High: two users' copies of a declared routine shared one index key (fixed, test first). User docs edited (f). One P2 at merge minus 7 min | no |
+| [#5087](https://github.com/fixpoint-labs/flow-state-dev/pull/5087) 2630 | 5 (2 Codex, 1 Cursor, 2 Gitar) | 11 | 6 on one structure: a service routing's lifecycle at dispose (three fixes in 8 min). Cursor ×4 recorded. Merged red against FIX-2626 (c) | no |
 | [#5108](https://github.com/fixpoint-labs/flow-state-dev/pull/5108) 2539 | 5 (1 Codex, 2 Cursor, 2 Gitar) | 13 | Gitar: the operator's token gated on a userId the caller supplies (BP-031, `philosophy-drift`), fixed. Cursor security ×2 High filed by the owner's call (FIX-2686, FIX-2687). The Engineering Manager lacked the routine tools | no |
 | [#5070](https://github.com/fixpoint-labs/flow-state-dev/pull/5070) 2647/2648/2651 | 4 (Gitar ×2, Codex, Cursor) | 6 | A rate-limited 403 read as nothing new; issues kept when pulls are forbidden. 3 declined | no |
 | [#5093](https://github.com/fixpoint-labs/flow-state-dev/pull/5093) 2674 | 1 (Cursor) | 2 nits | One line, found by the closure's wiring | no |
@@ -120,8 +120,9 @@ findings on #5108 are a class the labs exposed (a turn woken by outside text hol
 whole tool set) and are owned by FIX-2686 and FIX-2687.
 
 **Load.** Direction: 19 rounds over 14 artifacts (1.4 each; cycle 29: about 35 over 19, 1.8). One
-artifact past two rounds (cycle 29: two). Implementation: 47 passes over 11 PRs, 98 inline findings; #4973
-and #4970 are 16 passes and 40 findings of it.
+artifact past two rounds (cycle 29: two). Implementation: 51 passes over 11 PRs, 98 inline findings; #4973
+and #4970 are 17 passes and 40 findings of it. A pass is a distinct (reviewer, commit) pair
+that carried an inline finding, code scanning and Cursor's security pass included.
 
 **Classes.** Direction (63 inline findings, plus the second-look comments): `nit` and
 `over-engineered` lead (Cursor's simplify notes, recorded below the bar). Then `stale-restatement`,
