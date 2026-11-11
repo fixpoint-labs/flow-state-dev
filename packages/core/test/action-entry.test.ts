@@ -82,6 +82,11 @@ describe("action description falls back to the block's", () => {
     expect(flow({ actions: { run: { block: chat } } }).actions.run.description).toBe("Answer a message.");
   });
 
+  it("keeps a written description when an override swaps the block", () => {
+    const flow = defineFlow({ kind: "desc-kept", actions: { run: { block: plain, description: "Run it." } } });
+    expect(flow({ actions: { run: { block: chat } } as never }).actions.run.description).toBe("Run it.");
+  });
+
   it("resolves a read's description the same way", () => {
     const flow = defineFlow({ kind: "read-desc", actions: {}, reads: { view: chat } });
     expect(flow().reads?.view.description).toBe("Answer a message.");

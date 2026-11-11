@@ -125,9 +125,9 @@ function validateScopeClientConfig(
 type AnyActions = Record<string, ActionConfig>;
 
 /**
- * An entry as its author wrote it — a bare block — or in the object form, as
- * the object form. The one place a bare block becomes `{ block }`, so every
- * reader past `normalizeFlowConfig` sees one shape.
+ * An entry in the object form: a bare block becomes `{ block }`, an object is
+ * returned as is. `normalizeFlowConfig` runs every entry map through this, so
+ * every reader after it sees only `{ block, ... }`.
  */
 function toEntry<TEntry extends { block: BlockDefinition }>(
   value: TEntry | BlockDefinition
@@ -601,7 +601,9 @@ function mergeActions(
   }
 
   // The description resolves after the merge, so an override that swaps the
-  // block takes the new block's description.
+  // block takes the new block's description when no description was written.
+  // A description the definition or the override wrote stays: it is the
+  // author's wording, whichever block runs.
   for (const [actionName, action] of Object.entries(merged)) {
     merged[actionName] = withResolvedDescription({
       ...action,

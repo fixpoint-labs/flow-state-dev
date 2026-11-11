@@ -789,7 +789,9 @@ export type FlowInstanceOptions<
   authentication?: AuthenticationConfig;
   /**
    * Per-instance action overrides, merged over the definition's. Each is a
-   * block, or `{ block, ... }`; an existing action keeps its block's type.
+   * block, or `{ block, ... }`. An existing action's override is typed off that
+   * action (`TActions[K]`), so it keeps the block's input type the client was
+   * typed with; a new name takes any entry.
    */
   actions?: { [K in keyof TActions]?: TActions[K] | TActions[K]["block"] } & Record<string, ActionEntry>;
   session?: TSession;
