@@ -15,7 +15,8 @@ import { UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
 
 vi.mock("@flow-state-dev/engine", () => ({
-  runAction: vi.fn()
+  runAction: vi.fn(),
+  defaultBodyUserIdPrincipalResolver: vi.fn()
 }));
 vi.mock("@flow-state-dev/engine/host", () => ({
   // The registry as the processor received it: these cases stub only the

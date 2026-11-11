@@ -173,6 +173,23 @@ describe("a direct read by scope and key", () => {
   });
 });
 
+describe("declarations that agree: one on the host fallback, one naming the host's own resolver", () => {
+  it("reads 200 and lands a default write, because both resolve to the same resolver", async () => {
+    // Codex: flow A falls back to the host resolver R, flow B sets R itself. The route and the
+    // default write flow must reach one verdict on whether they agree.
+    const registry = createFlowRegistry();
+    registry.register(threadsFlow({ authenticated: true }) as never);
+    registry.register(threadsFlow({ authenticated: false, kind: "digest" }) as never);
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, resolvePrincipal: signIn } as never);
+    routers.push(router);
+    expect((await get(router, ["resources", "user", "pins"], alice)).status).toBe(200);
+    const done = await write(router, stores, "user", "pins", alice, { input: { state: { pinned: ["x"] }, version: 0 } });
+    expect(done.status, JSON.stringify(done.result)).toBe("completed");
+    expect((await read(router, "user", "pins", alice)).value).toEqual({ pinned: ["x"] });
+  });
+});
+
 describe("declarations that disagree on their resolver, one on the host fallback", () => {
   it("refuses the read and the send (409) when one declaring flow has its own resolver and the other falls back to the host's", async () => {
     const { router, stores } = build([threadsFlow({ authenticated: true }), threadsFlow({ authenticated: false, kind: "digest" })]);
@@ -190,10 +207,9 @@ describe("declarations that disagree on their resolver, one on the host fallback
     expect(await stores.resourceState.get("user", `alice:~org:${ORG_A}`, "pins")).toBeUndefined();
   });
 
-  it("refuses inside the default write flow too: its stand-in for the host's resolver still tells a fallback flow from a signed-in one", async () => {
-    // The write flow compares declarations with a stand-in for the host's resolver. Dispatched
-    // straight to it as the server's own send, so only the flow's own check stands between a
-    // disagreement and a write.
+  it("refuses inside the default write flow too, with the same verdict the route reaches", async () => {
+    // Dispatched straight to the flow as the server's own send, so only its own agreement check
+    // (the route's, given the same host resolver) stands between a disagreement and a write.
     const registry = createFlowRegistry();
     registry.register(threadsFlow({ authenticated: true }) as never);
     registry.register(threadsFlow({ authenticated: false, kind: "digest" }) as never);

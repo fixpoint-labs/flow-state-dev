@@ -130,35 +130,52 @@ export function resolveAddress(
     }
     return { refused: { status: 404, code: "unknown_resource", message: `Unknown resource "${key}" at ${scope} scope` } };
   }
-  const resolver = pickPrincipalResolver(registry, first.flow.id, hostResolver);
-  for (const other of shared.slice(1)) {
-    if (pickPrincipalResolver(registry, other.flow.id, hostResolver) !== resolver) {
-      return {
-        refused: {
-          status: 409,
-          code: "declarations_disagree",
-          message:
-            `Resource "${key}" at ${scope} scope is declared by flows "${first.flow.id}" and "${other.flow.id}" with ` +
-            `different sign-in resolvers, so there is no one caller to read or write it as. Give both flows one resolver.`
-        }
-      };
-    }
-    if (!sameClientConfig(first.config, other.config)) {
-      return {
-        refused: {
-          status: 409,
-          code: "declarations_disagree",
-          message:
-            `Resource "${key}" at ${scope} scope is declared by flows "${first.flow.id}" and "${other.flow.id}" with ` +
-            `different client, runBy or canWrite settings, so there is no one answer to give. Declare it once and share it.`
-        }
-      };
-    }
-  }
+  const disagreement = declarationsAgree(registry, hostResolver, shared, scope, key);
+  if (disagreement !== undefined) return { refused: disagreement };
   if (first.config.client === undefined) {
     return { refused: { status: 404, code: "unknown_resource", message: `Unknown resource "${key}" at ${scope} scope` } };
   }
   return { scope, key, flow: first.flow, config: first.config };
+}
+
+/**
+ * Whether every declaration of one address agrees: one resolver (each flow's
+ * own, else `hostResolver`, the precedence `pickPrincipalResolver` decides) and
+ * one client, `runBy` and `canWrite` setting. `undefined` when they agree, else
+ * the 409 naming two flows that don't. The one verdict the route and the
+ * default write flow both reach, so they are given the same host resolver.
+ */
+function declarationsAgree(
+  registry: FlowRegistry,
+  hostResolver: PrincipalResolver,
+  shared: readonly ScopeDeclaration[],
+  scope: AddressScope,
+  key: string
+): AddressRefusal | undefined {
+  const first = shared[0];
+  if (first === undefined) return undefined;
+  const resolver = pickPrincipalResolver(registry, first.flow.id, hostResolver);
+  for (const other of shared.slice(1)) {
+    if (pickPrincipalResolver(registry, other.flow.id, hostResolver) !== resolver) {
+      return {
+        status: 409,
+        code: "declarations_disagree",
+        message:
+          `Resource "${key}" at ${scope} scope is declared by flows "${first.flow.id}" and "${other.flow.id}" with ` +
+          `different sign-in resolvers, so there is no one caller to read or write it as. Give both flows one resolver.`
+      };
+    }
+    if (!sameClientConfig(first.config, other.config)) {
+      return {
+        status: 409,
+        code: "declarations_disagree",
+        message:
+          `Resource "${key}" at ${scope} scope is declared by flows "${first.flow.id}" and "${other.flow.id}" with ` +
+          `different client, runBy or canWrite settings, so there is no one answer to give. Declare it once and share it.`
+      };
+    }
+  }
+  return undefined;
 }
 
 /** The verified caller of an addressed resource. */

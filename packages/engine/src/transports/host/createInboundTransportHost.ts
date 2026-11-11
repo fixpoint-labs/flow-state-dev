@@ -463,7 +463,7 @@ export function createInboundTransportHost(
   // FIX-2624: the default write flow is the framework's, held from the start
   // on every host, so a write record never depends on a first write having
   // registered it in this process.
-  installBuiltIns(registry, stores);
+  installBuiltIns(registry, stores, resolvePrincipal);
   const { onBackgroundWork, maxResponseBufferSize, maxRecordedValueBytes, defaultSseHeartbeatMs } =
     runtimeConfig;
 

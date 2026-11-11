@@ -36,16 +36,22 @@ async function aliceWriteSession(): Promise<string> {
   return `fsd-write.${target}.${digest}`;
 }
 
+/** The app's host-level resolver: the one its web host and its worker are both given. */
+const signIn = () => ({ userId: "alice", orgId: ORG });
+
+function declaring(kind: string, ownResolver: boolean) {
+  return defineFlow({
+    kind,
+    resources: { pins },
+    ...(ownResolver ? { authentication: { resolvePrincipal: signIn } } : {}),
+    actions: { noop: { block: handler({ name: `noop-${kind}`, inputSchema: z.object({}), execute: () => ({}) }) } }
+  } as never)() as never;
+}
+
 describe("a default write on a queue worker", () => {
   it("runs on the worker's own registry and lands in the writer's cell", async () => {
     const registry = createFlowRegistry();
-    registry.register(
-      defineFlow({
-        kind: "threads",
-        resources: { pins },
-        actions: { noop: { block: handler({ name: "noop", inputSchema: z.object({}), execute: () => ({}) }) } }
-      } as never)() as never
-    );
+    registry.register(declaring("threads", false));
     const stores = createInMemoryStores();
     const process = createFlowJobProcessor({ registry, stores, runtimeConfig: {} });
     const sessionId = await aliceWriteSession();
@@ -72,5 +78,33 @@ describe("a default write on a queue worker", () => {
     const cell = (await stores.resourceState.get("user", `alice:~org:${ORG}`, "pins"))!;
     expect(cell.state).toEqual({ pinned: ["t1"] });
     expect(cell.version).toBe(1);
+  });
+
+  it("lands when one declaring flow falls back to the host resolver and the other names that same resolver", async () => {
+    // The worker is given the resolver the host is given, so it reaches the route's verdict: they agree.
+    const registry = createFlowRegistry();
+    registry.register(declaring("threads", true));
+    registry.register(declaring("digest", false));
+    const stores = createInMemoryStores();
+    const process = createFlowJobProcessor({ registry, stores, runtimeConfig: {}, resolvePrincipal: signIn });
+    const job = {
+      id: "job_agree",
+      data: {
+        flowKind: "fsd-default-write",
+        actionName: "set",
+        input: { state: { pinned: ["t2"] }, version: 0 },
+        userId: "alice",
+        orgId: ORG,
+        sessionId: await aliceWriteSession(),
+        requestId: "req_agree",
+        source: "http"
+      },
+      attemptsMade: 0,
+      opts: { attempts: 1 },
+      updateData: async () => undefined
+    } as unknown as Job<FlowJobData>;
+    await process(job);
+    expect((await stores.request.get("req_agree"))?.status).toBe("completed");
+    expect((await stores.resourceState.get("user", `alice:~org:${ORG}`, "pins"))?.state).toEqual({ pinned: ["t2"] });
   });
 });

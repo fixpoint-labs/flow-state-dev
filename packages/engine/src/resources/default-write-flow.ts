@@ -182,19 +182,18 @@ function mergeClientWrite(config: ResourceConfig, stored: JsonObject, incoming: 
   return next;
 }
 
-/** Stands in for the host's resolver in the agreement check; never called. */
-const HOST_RESOLVER_STANDIN: PrincipalResolver = () => null;
-
 // FIX-2624.
 /**
  * Hold the framework's own flows (the default write flow) in `registry`, over
  * `stores`. Every runtime entry that resolves flows from a registry calls it:
  * the inbound host and a queue worker, so a write never depends on which
- * process runs it. Idempotent.
+ * process runs it. `hostResolver` is the host-level resolver that entry's host
+ * is given (the development resolver when none is): the default write flow
+ * decides whether two declarations agree with it, as the route does. Idempotent.
  */
-export function installBuiltIns(registry: FlowRegistry, stores: StoreRegistry): void {
+export function installBuiltIns(registry: FlowRegistry, stores: StoreRegistry, hostResolver: PrincipalResolver): void {
   if (registry.registerBuiltIn === undefined || registry.get(DEFAULT_WRITE_FLOW) !== undefined) return;
-  registry.registerBuiltIn(createDefaultWriteFlow({ registry, stores }));
+  registry.registerBuiltIn(createDefaultWriteFlow({ registry, stores, hostResolver }));
 }
 
 const setInput = z.object({
@@ -208,12 +207,14 @@ const setInput = z.object({
  * Build the default write flow's instance over a host's registry and stores.
  * The host holds it as a built-in (`createInboundTransportHost`).
  */
-function createDefaultWriteFlow(options: { registry: FlowRegistry; stores: StoreRegistry }): FlowInstance {
-  const { registry, stores } = options;
-  // The resolver only decides whether two declarations agree, and every flow
-  // without its own falls to the same one, so any fixed stand-in answers as the
-  // host's would. That keeps this flow buildable where no host is (a worker).
-  const hostResolver = HOST_RESOLVER_STANDIN;
+function createDefaultWriteFlow(options: {
+  registry: FlowRegistry;
+  stores: StoreRegistry;
+  hostResolver: PrincipalResolver;
+}): FlowInstance {
+  // The host resolver only decides whether the declarations agree, never who the
+  // caller is: that is the session binding the action route admitted.
+  const { registry, stores, hostResolver } = options;
   const set = handler({
     name: "fsd-default-write-set",
     inputSchema: setInput,

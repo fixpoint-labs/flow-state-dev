@@ -31,8 +31,8 @@ import {
 } from "@flow-state-dev/engine/host";
 import { DelayedError, Worker, UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
-import { runAction } from "@flow-state-dev/engine";
-import { installBuiltIns, withChangeBus } from "@flow-state-dev/engine/host";
+import { defaultBodyUserIdPrincipalResolver, runAction } from "@flow-state-dev/engine";
+import { installBuiltIns, withChangeBus, type PrincipalResolver } from "@flow-state-dev/engine/host";
 import type {
   FlowRegistry,
   LeasePlace,
@@ -52,6 +52,14 @@ export interface FlowWorkerDeps {
   registry: FlowRegistry;
   stores: StoreRegistry;
   runtimeConfig: RuntimeConfig;
+  /**
+   * The host-level principal resolver this deployment's web host is given
+   * (`createFlowState({ resolvePrincipal })`). The default write flow decides
+   * whether two flows that declare one resource agree with it, as the host's
+   * route does, so pass the same one. Default: the development resolver, as the
+   * host's own default.
+   */
+  resolvePrincipal?: PrincipalResolver;
   bridge?: StreamBridge;
   concurrency?: number;
   lockDuration?: number;
@@ -97,7 +105,7 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
   const stores = withChangeBus(deps.stores);
   // The framework's own flows (the default write flow), which a host holds
   // too: a job addressed to one resolves here whether or not a host was built.
-  installBuiltIns(registry, stores);
+  installBuiltIns(registry, stores, deps.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver);
 
   /**
    * Give a place back, best effort: a place that cannot be given back lapses

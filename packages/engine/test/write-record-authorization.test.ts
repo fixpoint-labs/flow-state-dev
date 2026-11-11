@@ -49,7 +49,7 @@ describe("write-record authorization", () => {
     // The host does; so must anything else that runs actions on a registry it resolves itself
     // (a queue worker), or a job addressed to the default write flow is an unknown flow there.
     const host = readFileSync(join(__dirname, "../src/transports/host/createInboundTransportHost.ts"), "utf8");
-    expect(host).toContain("installBuiltIns(registry, stores)");
+    expect(host).toContain("installBuiltIns(registry, stores, resolvePrincipal)");
     const packages = join(__dirname, "../..");
     const entries: string[] = [];
     const walk = (dir: string): void => {
@@ -76,23 +76,27 @@ describe("write-record authorization", () => {
     expect(missing, "a runtime entry resolves flows without the framework's built-ins").toEqual([]);
   });
 
-  it("uses the write flow's stand-in resolver only to compare declarations, never to sign anyone in", () => {
-    // The default write flow is built where no host is (a worker), so it compares declarations
-    // against a stand-in for the host's resolver. That is safe only while the stand-in is never
-    // called and never decides who owns a record: the caller comes from the session binding the
-    // action route admitted, and a write record's governor takes the route's real host resolver.
+  it("gives the default write flow the host's own resolver, and uses it only to compare declarations", () => {
+    // The route and the default write flow reach one verdict on whether declarations agree
+    // (`declarationsAgree`, through `resolveAddress`), so both are given the same host resolver:
+    // the host passes its own, the worker the one its deployment's host is given.
+    const host = readFileSync(join(__dirname, "../src/transports/host/createInboundTransportHost.ts"), "utf8");
+    expect(host).toContain("installBuiltIns(registry, stores, resolvePrincipal)");
+    const worker = readFileSync(join(__dirname, "../../bullmq/src/worker.ts"), "utf8");
+    expect(worker).toContain("installBuiltIns(registry, stores, deps.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver)");
+    // Inside the flow it reaches nothing but the agreement check: never a caller, never an owner.
     const flow = readFileSync(join(__dirname, "../src/resources/default-write-flow.ts"), "utf8");
     const body = flow.slice(flow.indexOf("function createDefaultWriteFlow("));
     const uses = body.split("\n").filter((line) => /\bhostResolver\b/.test(line)).map((line) => line.trim());
     expect(uses).toEqual([
-      "const hostResolver = HOST_RESOLVER_STANDIN;",
+      "hostResolver: PrincipalResolver;",
+      "const { registry, stores, hostResolver } = options;",
       "const address = resolveAddress(registry, hostResolver, target.scope, target.key);"
     ]);
-    expect(flow.match(/HOST_RESOLVER_STANDIN/g)).toHaveLength(2);
     // `resolveAddress` compares resolvers; it never calls one.
     const address = readFileSync(join(__dirname, "../src/resources/scope-address.ts"), "utf8");
-    const resolveBody = address.slice(address.indexOf("export function resolveAddress("), address.indexOf("export type AddressCaller"));
-    expect(resolveBody).not.toMatch(/resolver\(|hostResolver\(|resolvePrincipal\(/);
+    const compare = address.slice(address.indexOf("export function resolveAddress("), address.indexOf("export type AddressCaller"));
+    expect(compare).not.toMatch(/resolver\(|hostResolver\(|resolvePrincipal\(/);
     // The governor of a write record is handed the route's own host resolver.
     const auth = readFileSync(join(ROUTES, "route-auth.ts"), "utf8");
     expect(auth).toContain("writeRecordGovernor(ctx.registry, ctx.hostResolver, record)");
