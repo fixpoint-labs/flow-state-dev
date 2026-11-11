@@ -88,7 +88,7 @@ function boot(rule: ResourceVisibilityRule | undefined) {
     }
   });
   const instance = flow() as unknown as FlowInstance;
-  const state = createFlowState({ flows: { docs: instance }, stores: { default: { primary: inMemoryStores() } } });
+  const state = createFlowState({ flows: [instance], stores: { default: { primary: inMemoryStores() } } });
   const call = async (actionName: string, input: unknown) => {
     const runtime = await state.getRuntime();
     const result = await runAction({

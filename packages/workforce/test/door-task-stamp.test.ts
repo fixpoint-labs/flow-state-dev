@@ -32,7 +32,7 @@ const USER_ID = "u_person";
 async function turn(input: { message: string; taskId?: string }) {
   const [worker] = mintWorkers([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
   const state = createFlowState({
-    flows: { [worker!.id]: worker! },
+    flows: [worker!],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: {

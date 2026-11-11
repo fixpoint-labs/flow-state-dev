@@ -324,7 +324,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     generators: { "coordinator-judgment": judgment, "agent-answer": agentAnswer, ...(options.generators ?? {}) }
   });
   const state = createFlowState({
-    flows: instances,
+    flows: Object.values(instances),
     stores: { default: { primary: stores } },
     ...(options.durable === true ? { durable: true } : {}),
     ...(options.maxDebtAgeMs === undefined ? {} : { maxDebtAgeMs: options.maxDebtAgeMs }),

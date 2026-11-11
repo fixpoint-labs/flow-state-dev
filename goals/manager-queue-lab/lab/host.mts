@@ -344,7 +344,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const resolver = Object.assign(observing(base, judgmentCalls, probe), live ?? {});
 
   const state = createFlowState({
-    flows: instances,
+    flows: Object.values(instances),
     stores: { default: { primary: options.stores } },
     modelResolver: resolver,
     // The verified caller, as an app's auth would supply it.

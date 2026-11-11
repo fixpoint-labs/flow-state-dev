@@ -143,7 +143,7 @@ function startHost(db: string) {
     resolveId: (id: string) => (id === "goal/real" ? MODEL : id)
   });
   return createFlowState({
-    flows: Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
+    flows: hireWorkforce(installation),
     stores: { default: { primary: sqliteStores({ filename: db }) } },
     logger: silentLogger,
     modelResolver,

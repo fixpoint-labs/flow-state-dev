@@ -39,7 +39,7 @@ const flow = defineFlow({
 })();
 
 const flowState = createFlowState({
-  flows: { "packed-install": flow },
+  flows: [flow],
   stores: { default: { primary: inMemoryStores() } },
 });
 

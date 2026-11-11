@@ -103,7 +103,7 @@ function countScans(stores: StoreRegistry): { scans: number } {
 /** Boot an app over `raw` and return its actions. */
 async function boot(raw: StoreRegistry, flow: FlowInstance) {
   const state = createFlowState({
-    flows: { ledger: flow } as never,
+    flows: [flow] as never,
     stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(raw) } } },
   });
   const runtime = await state.getRuntime();
@@ -219,7 +219,7 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
         });
         const flow = defineFlow({ kind: "find-by-notes", actions: { find } })();
         const state = createFlowState({
-          flows: { notes: flow } as never,
+          flows: [flow] as never,
           stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(raw) } } },
         });
         const runtime = await state.getRuntime();
@@ -418,7 +418,7 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
             },
           })();
           const state = createFlowState({
-            flows: { tagged: taggedFlow, titled: titledFlow } as never,
+            flows: [taggedFlow, titledFlow] as never,
             stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(raw) } } },
           });
           const runtime = await state.getRuntime();

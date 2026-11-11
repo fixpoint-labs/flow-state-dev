@@ -86,7 +86,7 @@ function makeFakeAdapter(mode?: WorkerMode) {
 
 function makeFlowState(adapter: WorkerAdapter) {
   return createFlowState({
-    flows: { noop: noopFlow },
+    flows: [noopFlow],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: stubModelResolver,
     worker: adapter
@@ -195,7 +195,7 @@ describe("createFlowState — worker adapter", () => {
     const { adapter, runner } = makeFakeAdapter();
     expect(() =>
       createFlowState({
-        flows: { noop: noopFlow },
+        flows: [noopFlow],
         stores: { default: { primary: inMemoryStores() } },
         modelResolver: stubModelResolver,
         worker: adapter,
@@ -209,7 +209,7 @@ describe("createFlowState — worker adapter", () => {
     const { runner } = makeFakeAdapter();
     expect(() =>
       createFlowState({
-        flows: { noop: noopFlow },
+        flows: [noopFlow],
         stores: { default: { primary: inMemoryStores() } },
         modelResolver: stubModelResolver,
         dispatcher: runner

@@ -387,7 +387,7 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
     [INVENTORY_WRITER_FLOW]: defineFlow({ kind: INVENTORY_WRITER_FLOW, internal: { actions: { ...inventoryWriterActions() } } } as never)()
   };
   const state = createFlowState({
-    flows,
+    flows: Object.values(flows),
     stores: { default: { primary: sqliteStores({ filename }) } },
     logger: silentLogger,
     durabilityRetention: { sweepIntervalMs: SWEEP_MS },

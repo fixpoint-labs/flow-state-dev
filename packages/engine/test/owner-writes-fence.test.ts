@@ -54,7 +54,7 @@ type Router = Record<string, (request: Request, ctx: { params: { path: string[] 
 /** Boot one app over `stores`, and a caller that speaks for `user` in org acme. */
 async function bootApp(flows: Record<string, unknown>, stores: ReturnType<typeof inMemoryStores>) {
   const state = createFlowState({
-    flows: flows as never,
+    flows: Object.values(flows as never),
     resolvePrincipal: verified.resolvePrincipal,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),

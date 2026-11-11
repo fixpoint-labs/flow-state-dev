@@ -103,7 +103,7 @@ async function withRuntime(
   ) => Promise<void>
 ) {
   const state = createFlowState({
-    flows: Object.fromEntries(flows.map((flow) => [flow.id, flow])),
+    flows: flows,
     stores: { default: { primary: inMemoryStores() } }
   });
   try {
@@ -177,7 +177,7 @@ describe("a shared resource", () => {
       actions: { share }
     })({ id: "worker-id-app", config: { workerId: "research.scout" } }) as unknown as FlowInstance;
     const state = createFlowState({
-      flows: { "worker-id-app": workerIdFlow },
+      flows: [workerIdFlow],
       stores: { default: { primary: inMemoryStores() } }
     });
     try {

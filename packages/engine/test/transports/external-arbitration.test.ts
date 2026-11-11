@@ -176,7 +176,7 @@ async function processOf(
   worker: WorkerAdapter
 ) {
   const state = createFlowState({
-    flows: { [flow.kind]: flow },
+    flows: [flow],
     stores: { default: { primary: store } },
     worker
   });

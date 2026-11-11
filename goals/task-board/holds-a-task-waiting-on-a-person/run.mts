@@ -423,7 +423,7 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
   workerFlows = { desk: { flow: deskFlow, roles: ["contributor", "manager"] }, doer: { flow: doerFlow, roles: ["contributor", "manager"] } };
 
   const state = createFlowState({
-    flows: Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
+    flows: hireWorkforce(installation),
     stores: { default: { primary: sqliteStores({ filename }) } },
     logger: silentLogger,
     durabilityRetention: { sweepIntervalMs: SWEEP_MS },

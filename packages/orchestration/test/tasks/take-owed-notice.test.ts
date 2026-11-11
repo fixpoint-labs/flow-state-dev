@@ -135,7 +135,7 @@ function host(options: { turnFailsAt?: "before-ack" | "after-ack"; entryGate?: P
       }
     }
   })({ id: "take-host" });
-  const state = createFlowState({ flows: { "take-host": flow }, stores: { default: { primary: inMemoryStores() } }, durable: true });
+  const state = createFlowState({ flows: [flow], stores: { default: { primary: inMemoryStores() } }, durable: true });
   const act = async (actionName: string, input: unknown = {}, internal = false) => {
     await state.getRouter();
     const runtime = await state.getRuntime();

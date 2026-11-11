@@ -119,7 +119,7 @@ type Answer = { status: number; json: any };
 async function boot(options: { primary?: ReturnType<typeof inMemoryStores> } = {}) {
   const primary = options.primary ?? inMemoryStores();
   const state = createFlowState({
-    flows: { lab: labFlow, checked: checkedFlow },
+    flows: [labFlow, checkedFlow],
     stores: { default: { primary } },
     modelResolver: createMockModelResolver({}),
     resolvePrincipal: (context: any) => {

@@ -319,7 +319,7 @@ function buildHost(filename: string, waitDeadlines?: { defaultMs: number; minMs:
   workerFlows = { desk: { flow: flowOf("desk"), roles: ["contributor", "manager"] }, doer: { flow: flowOf("doer"), roles: ["contributor", "manager"] } };
 
   const state = createFlowState({
-    flows: Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
+    flows: hireWorkforce(installation),
     stores: { default: { primary: sqliteStores({ filename }) } },
     durabilityRetention: { sweepIntervalMs: 250 },
     ...(waitDeadlines !== undefined ? { waitDeadlines } : {}),

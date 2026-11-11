@@ -152,7 +152,7 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     )
   };
   const state = createFlowState({
-    flows: instances,
+    flows: Object.values(instances),
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver(extras.models ?? {}),
     ...(extras.durable === true ? { durable: true } : {}),

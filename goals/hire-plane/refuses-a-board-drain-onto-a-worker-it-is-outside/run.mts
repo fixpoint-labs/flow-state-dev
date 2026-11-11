@@ -146,7 +146,7 @@ await runGoal(async (failures) => {
   /** A fresh process per leg: the ledger is org-scoped, so a teammate's leg would see the owner's settled rows. */
   const boot = async () => {
     const state = createFlowState({
-      flows: { board: boardFlow() },
+      flows: [boardFlow()],
       resolvePrincipal: verified.resolvePrincipal,
       stores: { default: { primary: inMemoryStores() } },
     });

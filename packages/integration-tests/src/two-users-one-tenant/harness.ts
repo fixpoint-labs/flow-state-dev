@@ -211,7 +211,7 @@ export async function startQueueDeployment(
       worker = leases === "none" ? { ...adapter, leaseBackend: undefined } : adapter;
     }
     return createFlowState({
-      flows: Object.fromEntries(flows.map((flow) => [flow.id, flow])),
+      flows: flows,
       stores: { default: { primary: sqliteStores({ filename }) } },
       resolvePrincipal: headerPrincipal,
       worker

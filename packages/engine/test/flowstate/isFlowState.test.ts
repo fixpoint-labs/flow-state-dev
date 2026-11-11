@@ -18,7 +18,7 @@ const noopFlow = defineFlow({
 describe("isFlowState", () => {
   it("accepts a real createFlowState handle", () => {
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       stores: { default: { primary: inMemoryStores() } }
     });
     expect(isFlowState(fs)).toBe(true);

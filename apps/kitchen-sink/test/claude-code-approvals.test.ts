@@ -75,7 +75,7 @@ function host() {
   };
   const flow = claudeCodeSessionFlow({ resolveClaudeAgent: resolve });
   const state = createFlowState({
-    flows: { [CLAUDE_CODE_SESSION]: flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     durable: true,

@@ -324,7 +324,7 @@ flows = { helper: { flow: helper, roles: ["contributor"] }, agent, coordinator }
 const lab = core.defineFlow({ kind: "lab", actions: { ...wf.defineProjectBlocks().actions, ...workstreams.actions } } as never);
 const copies = wf.hireWorkforce(installation) as Array<{ id: string; task?: { actions?: object }; internal?: { actions?: object } }>;
 const state = engine.createFlowState({
-  flows: { ...Object.fromEntries(copies.map((copy) => [copy.id, copy])), lab: (lab as () => unknown)() },
+  flows: [...copies, (lab as () => unknown)()],
   stores: { default: { primary: sqliteStores({ filename: storeFile }) } },
   modelResolver,
   resolvePrincipal: (context: any) => {

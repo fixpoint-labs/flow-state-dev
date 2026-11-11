@@ -144,7 +144,7 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
   const goalFlows = options.goalFlows === undefined ? [] : ((await import(pathToFileURL(options.goalFlows).href)).default as { id: string }[]);
 
   const flowState = createFlowState({
-    flows: Object.fromEntries([...workers, projects, pins, dismissals, readinessFlow, ...goalFlows].map((copy) => [copy.id, copy])),
+    flows: [...workers, projects, pins, dismissals, readinessFlow, ...goalFlows],
     stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
     // A coding run's review and a thread's question wait on you across a restart.
     durable: true,

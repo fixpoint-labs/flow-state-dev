@@ -137,7 +137,7 @@ await runGoal(async (failures) => {
   workerFlows = { [filerKind]: { flow: filerFlow, roles: ["manager"] }, [delegateKind]: { flow: delegateFlow, roles: ["contributor"] } };
   const hired = hireWorkforce(installation);
   const state = createFlowState({
-    flows: Object.fromEntries(hired.map((copy) => [copy.id, copy])),
+    flows: hired,
     stores: { default: { primary: inMemoryStores() } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {

@@ -83,7 +83,7 @@ function host(workers: readonly string[] = ["coder", "em"], stores = inMemorySto
   });
   flows = { work };
   const copy = work() as unknown as FlowInstance;
-  return { copy, started: started.promise, state: createFlowState({ flows: { work: copy }, stores: { default: { primary: stores } }, runtimeConfig: { modelResolver } as never }) };
+  return { copy, started: started.promise, state: createFlowState({ flows: [copy], stores: { default: { primary: stores } }, runtimeConfig: { modelResolver } as never }) };
 }
 
 async function harnessOf(h: ReturnType<typeof host>) {

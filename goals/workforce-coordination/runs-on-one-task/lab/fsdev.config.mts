@@ -100,7 +100,7 @@ const resolvePrincipal = async (context: unknown) => {
 };
 
 export default engine.createFlowState({
-  flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+  flows: copies,
   stores: { default: { primary: sqliteStores({ filename: STORE }) } },
   // Durable execution keeps wakes, so a notice owed when the server dies is paid when it is back (leg b).
   durable: true,

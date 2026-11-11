@@ -31,7 +31,7 @@ describe("createServerApp — a flow kind that carries percent escapes", () => {
     ["a plain kind", "plain-helper"],
   ])("dispatches an action on %s from the raw URL", async (_label, kind) => {
     const flowstate = createFlowState({
-      flows: { worker: runFlow(kind) },
+      flows: [runFlow(kind)],
       stores: { default: { primary: inMemoryStores() } },
     });
     const server = createServerApp(flowstate);

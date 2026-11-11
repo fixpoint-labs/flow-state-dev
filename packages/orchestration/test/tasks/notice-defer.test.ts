@@ -93,7 +93,7 @@ function host(defer: () => boolean, options: HostOptions = {}) {
     }
   })({ id: "defer-host" });
   const state = createFlowState({
-    flows: { "defer-host": flow },
+    flows: [flow],
     stores: { default: { primary: inMemoryStores() } },
     ...(options.durable === true ? { durable: true } : {})
   });

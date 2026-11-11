@@ -361,8 +361,17 @@ class InternalFlowState<TSettings extends object>
 
     // Build the registry synchronously so a duplicate flow kind/id surfaces
     // at construction rather than on the first request.
+    // The keyed record this option used to take is refused by name: a caller
+    // still passing it (from JavaScript, or through a cast) would otherwise
+    // fail as "not iterable" with nothing saying what changed.
+    if (!Array.isArray(options.flows)) {
+      throw new FlowStateConfigError(
+        "createFlowState: `flows` is a list of flows, each served under its own id: " +
+          "`flows: [readiness, context]`. The keyed record form was removed."
+      );
+    }
     this.#registry = createFlowRegistry();
-    for (const flow of Object.values(options.flows)) {
+    for (const flow of options.flows) {
       this.#registry.register(flow);
     }
 
@@ -391,12 +400,8 @@ class InternalFlowState<TSettings extends object>
       // diagnostic answer to "what does this app serve", and the options map
       // stopped being that the moment `register` existed: a flow registered at
       // runtime would be served and absent from this list, and a flow that was
-      // unregistered would be listed and unreachable. Reading the registry
-      // also changes what the strings ARE — instance ids rather than the
-      // arbitrary keys of the `flows` record — which is the more useful answer
-      // of the two, because an id is what a caller puts on a URL. The two
-      // agree for every flow declared the ordinary way, since `createFlowState`
-      // keys its map by the instance it holds.
+      // unregistered would be listed and unreachable. The strings are
+      // instance ids, which is what a caller puts on a URL.
       flowKeys: this.#registry.list().map((flow) => flow.id),
       profileKeys: this.#profileKeys,
       declaredSlots: declaredSlots(this.#stores),

@@ -32,7 +32,7 @@ const computeFlow = defineFlow({
 describe("status route: the stored result, by request id", () => {
   it("returns what a real action computed when asked, and no result when not", async () => {
     const state = createFlowState({
-      flows: { compute: computeFlow },
+      flows: [computeFlow],
       stores: { default: { primary: inMemoryStores() } }
     });
     const fetcher = createInProcessFetch(state);

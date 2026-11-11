@@ -34,7 +34,7 @@ function scheduledApp() {
     },
     schedules: { index: { claimDue: async (now: number) => (claims.push(now), []) } }
   })();
-  return { claims, flowState: createFlowState({ flows: { ticked: flow }, stores: { default: { primary: inMemoryStores() } } }) };
+  return { claims, flowState: createFlowState({ flows: [flow], stores: { default: { primary: inMemoryStores() } } }) };
 }
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -59,7 +59,7 @@ describe("serve() ticks a flow's schedule index", () => {
       // A store that stopped answering: the claim never settles.
       schedules: { index: { claimDue: () => ((claims += 1), new Promise<never>(() => undefined)) } }
     })();
-    const flowState = createFlowState({ flows: { stalled: flow }, stores: { default: { primary: inMemoryStores() } } });
+    const flowState = createFlowState({ flows: [flow], stores: { default: { primary: inMemoryStores() } } });
     const handle = await serve(flowState, { port: 0, host: "127.0.0.1", handleSignals: false, shutdownGraceMs: 10 });
     await flowState.getRuntime();
     await settle();

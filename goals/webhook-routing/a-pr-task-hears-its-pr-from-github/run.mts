@@ -218,7 +218,7 @@ const webhook = createWebhookTransportAdapter({
 });
 const stores = inMemoryStores();
 const state = createFlowState({
-  flows: instances,
+  flows: Object.values(instances),
   stores: { default: { primary: stores } },
   modelResolver,
   logger: silentLogger,

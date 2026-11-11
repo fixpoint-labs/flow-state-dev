@@ -81,7 +81,7 @@ async function boot(kind: string) {
   const observed: Observed = { runs: [] };
   const flow = messagingFlow(kind, observed);
   const state = createFlowState({
-    flows: { [kind]: flow },
+    flows: [flow],
     stores: { default: { primary: inMemoryStores() } }
   });
   const runtime = await state.getRuntime();

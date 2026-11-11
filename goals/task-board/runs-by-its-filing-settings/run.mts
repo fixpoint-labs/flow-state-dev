@@ -238,7 +238,7 @@ function buildHost(filename: string) {
   };
 
   const state = createFlowState({
-    flows: Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
+    flows: hireWorkforce(installation),
     stores: { default: { primary: sqliteStores({ filename }) } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {

@@ -133,7 +133,7 @@ function host(outcome: "completed" | "throws", onPullRequestRecorded?: PullReque
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "branch-prs-host" } as never);
   const state = createFlowState({
-    flows: { "branch-prs-host": flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,

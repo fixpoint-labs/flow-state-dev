@@ -65,7 +65,7 @@ export async function startConvertedDesk(tree: string, dbFile: string): Promise<
   const copies = hireWorkforce(installation);
 
   const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { default: { primary: sqliteStores({ filename: dbFile }) } },
     // One caller; never read from the request.
     resolvePrincipal: () => ({ userId: OWNER, orgId: ORG }),

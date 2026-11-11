@@ -153,15 +153,15 @@ const harnessFlows = await availableHarnessFlows<FlowInstance<any, any>>({
 // `mergeWorkerFlows` refuses a copy at an id a flow of this app already holds
 // rather than letting it replace that flow.
 const flowstate = createFlowState({
-  flows: mergeWorkerFlows(
-    {
-      chatAgent: chatAgentFlow,
-      richTextComponent: richTextComponentFlow,
-      weeklyDigest: weeklyDigestFlow,
-      ...harnessFlows,
-    },
-    workforce.copies
-  ),
+  flows: Object.values(mergeWorkerFlows(
+        {
+          chatAgent: chatAgentFlow,
+          richTextComponent: richTextComponentFlow,
+          weeklyDigest: weeklyDigestFlow,
+          ...harnessFlows,
+        },
+        workforce.copies
+      )),
   models: {
     default: DEFAULT_KITCHEN_SINK_MODEL,
     intents: {

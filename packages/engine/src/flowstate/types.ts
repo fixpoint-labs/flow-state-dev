@@ -115,8 +115,12 @@ export interface WorkerAdapter {
 export interface CreateFlowStateOptions<
   TSettings extends object = FlowStateSettings
 > {
-  /** Flows to register. Map of stable keys to flow instances. */
-  flows: Record<string, FlowInstance<any, any>>;
+  /**
+   * Flows to register, as a list. Each is served under its own `flow.id`
+   * (its `kind` unless the instance was given another); two with one id are
+   * refused.
+   */
+  flows: readonly FlowInstance<any, any>[];
 
   /** Model resolver config. Auto-wires AI Gateway via `AI_GATEWAY_API_KEY`. */
   models?: FlowStateModelsConfig;

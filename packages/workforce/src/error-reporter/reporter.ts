@@ -11,7 +11,7 @@
  * const reporter = createErrorReporter({ worker: "error-reporter", operator, tracker: { project: "shared/storefront" } });
  * const flow = defineErrorReporterFlow({ reporter, installation, harness });
  * const intake = defineErrorReporterIntakeFlow({ reporter });
- * const flowState = createFlowState({ flows: { ..., [flow.kind]: flow, [intake.kind]: intake }, errorCapture: reporter.capture });
+ * const flowState = createFlowState({ flows: [..., flow, intake], errorCapture: reporter.capture });
  * await reporter.bind(host);
  * ```
  */
