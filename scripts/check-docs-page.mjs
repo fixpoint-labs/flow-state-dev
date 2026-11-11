@@ -3,7 +3,7 @@
  * for its `type`, the words the writing standard bans, em-dashes, long tables, and
  * TypeScript examples that do not name their file.
  *
- *   node check-page.mjs <page.md> [more.md ...]
+ *   node scripts/check-docs-page.mjs <page.md> [more.md ...]
  *
  * Exits 1 when any page fails. Frontmatter, code blocks and figure descriptions
  * are not counted as words.

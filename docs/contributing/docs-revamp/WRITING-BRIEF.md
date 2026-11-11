@@ -137,6 +137,9 @@ something is implemented.
 - **View** is what a screen reads. **Flow**, **action**, **block**, **session**, **resource** keep
   the meanings in [`../glossary.mjs`](../glossary.mjs).
 - Define a term the first time it appears on a page, in the same sentence. Every page stands alone.
+- The repo retires some everyday words. Say "user" for the signed-in human, never "person", and
+  "worker" for someone on a team, never "member". `node scripts/check-retired-terms.mjs` names any
+  retired word a page uses, and the pre-push hook runs it.
 - The product is "Flow State". Packages are written in code font.
 - Model ids in examples: `openai/gpt-6-luna`.
 
@@ -181,7 +184,8 @@ Look at every figure before committing it:
 ```bash
 S=docs/contributing/docs-revamp/pilot/figures/board.svg
 H=$(grep -oE 'viewBox="0 0 920 [0-9]+' "$S" | grep -oE '[0-9]+$')
-CH=$(ls -d /opt/pw-browsers/chromium-*/chrome-linux*/chrome | head -1)
+CH=${CHROME:-$(ls -d /opt/pw-browsers/chromium-*/chrome-linux*/chrome 2>/dev/null | head -1)}
+[ -x "$CH" ] || echo "no Chromium found: set CHROME to a Chromium or Chrome binary" >&2
 printf '<html><body style="margin:0;background:#f0ece1"><img src="%s" width="920"></body></html>' "$(realpath "$S")" > /tmp/light.html
 sed 's/@media (prefers-color-scheme:dark){/@media all{/' "$S" > /tmp/dark.svg
 printf '<html><body style="margin:0;background:#16150f"><img src="/tmp/dark.svg" width="920"></body></html>' > /tmp/dark.html
@@ -189,7 +193,7 @@ for t in light dark; do "$CH" --headless=new --no-sandbox --disable-gpu --hide-s
   --window-size=920,$((H+20)) --screenshot=/tmp/$t.png /tmp/$t.html 2>/dev/null; done
 ```
 
-Open `/tmp/light.png` and `/tmp/dark.png`. Check that no text crosses a border, no arrow crosses a
+Set `S` to the figure you are checking. Open `/tmp/light.png` and `/tmp/dark.png`. Check that no text crosses a border, no arrow crosses a
 label, and exactly one thing is highlighted.
 
 Under the image, write one italic line: a short caption, then
