@@ -27,7 +27,12 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | FIX-2152 ER-1's inventory as written: every file classed by path as config, UI or a small flow · or a reviewer reading the lab for logic the packages should own, as ER-1 leaves it |
 | **Because** | ER-1 classes every `src/**/*.ts` as UI, so its path classes pass `src/adapter.ts` (1,642 lines, 3 subscribes, 10 flow calls, 9 row types). The [POC](poc/end-state-inventory/README.md) ran it: L1 green on `main`. ER-1's caps (L2) fail today's lab, but only on flow count and size, so once the flows shrink, nothing in ER-1 refuses the adapter or a renamed one, and the epic's control "the inventory refuses `adapter.ts`" can't fail for that reason. Two content rules close it: no UI file imports a client value (only `createClient`, in the entry) or calls `.subscribe(` or `.flow(`; and every exported object type in a non-component `src/` module is on the app's list of screen-computed types ([ER-6](../../epics/FIX-2618/DECISIONS.md#who-owns-what)). The POC passes the epic's proposed lab and fails a planted `src/glue.ts` |
-| **Locks in** | claude-code-style reaches the server only through package hooks and views, checked by a test in the lab that keeps running after the wrap, so its adapter can't grow back ([ER-8](../../epics/FIX-2618/DECISIONS.md#who-owns-what)). The two content rules join FIX-2628's lab inventory: FIX-2628 owns that one test file and adds both rules and the app-types list to it, and this closure ships no second lab inventory script (the POC here is spec evidence only). A new app type goes on the list in a reviewed PR. Teammates is not held to the content rules: it keeps its adapter until the follow-up epic |
+| **Locks in** | claude-code-style reaches the server only through package hooks and views, checked by a test in the lab that keeps running after the wrap, so its adapter can't grow back ([ER-8](../../epics/FIX-2618/DECISIONS.md#who-owns-what)). The two content rules join FIX-2628's lab inventory: FIX-2628 owns that one test file and adds both rules and the app-types list to it, and this closure ships no second lab inventory script (the POC here is spec evidence only). In that
+test L1 classes a flow by the app kit's folder ([FIX-2628](../FIX-2628/DECISIONS.md#decided-not-asked)'s
+*Where the lab's files go*), not ER-1's `workforce/flows/`, which the claim pass refuses.
+`src/lab.ts` holds no client either: it reads through `useView`, `useResource` and the session
+feed, and sends an action through a package hook (`useAction`, or a kit package's own), never
+`client.flow(…)` or `.subscribe(`. A new app type goes on the list in a reviewed PR. Teammates is not held to the content rules: it keeps its adapter until the follow-up epic |
 
 ![D1: the inventory reads the code, chosen, beside ER-1's path classes alone. Decides it: whether today's adapter fails the check; under paths alone it passes. Price: an allowlist of app types a reviewer keeps. Flips if FIX-2628 moves every server call behind a path rule can see](figures/d1-content-inventory.svg)
 
@@ -64,12 +69,13 @@ real harness, and the run waits on its key.
 
 **Must be green first:** every other child merged with its goal's PASS and its controls'
 FAIL. At drafting none has: the owner has put all implementation on hold. FIX-2551, FIX-2623,
-FIX-2624 and FIX-2626 have merged specs; FIX-2625, FIX-2627 and FIX-2628 have none.
+FIX-2624 and FIX-2626 have merged specs; FIX-2625, FIX-2627 and FIX-2628 have open spec PRs
+(#5082, #5083, #5080), none approved.
 
 ## What this plan assumes of FIX-2625, FIX-2627 and FIX-2628
 
-They are specced in parallel, and none has a spec PR yet. Each line below says what the
-closure needs; where the child's in-flight draft (on its worktree branch, unreviewed) already
+They are specced in parallel, each on an open spec PR, none approved. Each line below says what the
+closure needs; where the child's in-flight draft (on its spec PR, unreviewed) already
 says the same, that is noted. The closure asserts on behaviour, not names, and re-reads each
 merged spec at run time. A merged spec that contradicts a line makes that line stale, and the
 run updates it, as the closure rule says.
@@ -80,8 +86,10 @@ run updates it, as the closure rule says.
   owner cuts FIX-2625 (the epic names it the one to cut), `j4:one-row` drops and `j4:no-rows`
   stays.
 - **FIX-2627 (workforce and harnesses kits).** Two kits: workforce, and harness-manager as the
-  harnesses kit with one keyed `harnesses` slot that Claude Code, Codex, Cursor and the
-  scripted coder fill. One shared coding worker flow, replacing teammates' `coder.ts` and
+  harnesses kit with one keyed `harnesses` slot that Claude Code, Codex and Cursor fill. The
+  scripted coder is a harness value whose `agent` is scripted, swapped in per id by the host:
+  it switches that id's entry off and fills the scripted value under the same id, so the task
+  takes the real harness's slot, coding flow and board view. One shared coding worker flow, replacing teammates' `coder.ts` and
   claude-code-style's `harness-thread.mts`. Readiness is one view, and no host builds a
   readiness flow. No file outside workforce calls `createWorkerInstallation` or
   `hireWorkforce`, Shift Manager's DevTeam host included. The teammates host moves onto both
@@ -94,8 +102,8 @@ run updates it, as the closure rule says.
   `src/` keeps hooks named in the app's words and its thread renderer; types for server rows
   come from `ViewOutput`; pins are a user resource on `runBy: "default"`; a session works in a
   repository, with no workforce project (FIX-2592's word). It ships a lab inventory. *Draft:*
-  the same, its inventory at `poc/lab-inventory/` (`POC_EXPECT=gone`). The closure needs that
-  inventory to take D1's two content rules and its list of app-computed types.
+  the same, its inventory at `poc/lab-inventory/` (`POC_EXPECT=gone`), promoted to a lab test
+  that takes D1's two content rules and its list of app-computed types.
 
 ## Decided, not asked
 
