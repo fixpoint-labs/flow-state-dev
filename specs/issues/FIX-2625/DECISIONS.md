@@ -126,9 +126,8 @@ that entry keys already reach org members today. Then the push edge strips `ids`
 
 ## Analysis
 
-2026-11-11 · watermark 2026-11-11 (the wave-A amendment) · **Right approach, one fold.** Run in
-line by the author: this dispatch has no sub-agent tool, so it is not the independent analyst the
-skill asks for. The stage-2 cross-spec review is the independent pass.
+2026-11-11 · watermark 2026-11-11 (the wave-A amendment) · **Right approach, one fold.** The author's
+own analysis; the stage-2 cross-spec review is the independent pass.
 
 1. **Reuse** — the field extends the notice, the opt-out composes the push edge, the partial
    answer extends the view. The closest entry, the entry path, is kept beside the field.

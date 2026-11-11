@@ -82,12 +82,17 @@ reader decides what they mean.
 + createFlowState({ flows, notices: { ids: { org: false } } });
 ```
 
+The D2 option's shape above is illustrative. It belongs on an existing settings seam, such as
+`EnablePushDeliveryOptions` or `FlowStateSettings`, not a new top-level tree.
+
 **Docs:** update the realtime guide (ids on a notice, turning them off per scope), the Views page
 FIX-2623 adds (answering for the rows that changed), `docs/api/client.md` (`WireNotice.ids`) and
 `docs/persistence/overview.md` (what the Postgres bus carries); update the client, engine and core
 READMEs. No new page. Contributor docs in the implementation PR: `server-and-client.md`'s notice
 section, the `change-bus` and `push-delivery` rows of `mechanisms.yaml`, and the glossary's
-*View* entry.
+*View* entry. The same PR retires "keys" for what a notice carries, where the merged FIX-2618 and
+FIX-2551 specs and the `coalesce.ts` comment still say it: a notice carries `ids`, and `key` stays a
+view row's identity.
 
 ## How a change becomes one row
 
