@@ -141,15 +141,18 @@ export type EmitMessageOptions = {
 export interface ResponseEmitterHandle {
   emit(event: unknown): void | Promise<void>;
   /**
-   * Snapshot of every item emitted to this response so far, in stream order.
+   * Snapshot of the items emitted to this response so far, in stream order.
    * Used by sequencer ops (e.g. `.waitForCondition`) to evaluate predicates
-   * over already-flushed items before subscribing for future ones.
+   * over already-flushed items before subscribing for future ones. Every
+   * non-transient and in-progress item is included; of the done transient
+   * items, only the most recent `maxBufferSize` (default 10,000) are retained.
    */
   getItems(): readonly RuntimeItem[];
   /**
-   * O(1) count of items currently tracked by this response. Equivalent to
-   * `getItems().length` but without materializing or ordering the snapshot —
-   * used on the per-emit hot path to assign sequential `itemIndex` values.
+   * O(1) next-`itemIndex` cursor for this response: its starting index plus
+   * every item it has tracked, including done transient items `getItems()`
+   * no longer retains, so it never moves backwards or reissues an index. Used on
+   * the per-emit hot path to assign sequential `itemIndex` values.
    */
   getItemCount(): number;
   /**

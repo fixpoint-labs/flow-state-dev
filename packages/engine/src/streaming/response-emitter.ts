@@ -218,6 +218,15 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly baseItemIndex: number;
   private readonly events: RequestStreamEventWithId[] = [];
   private readonly itemsById = new Map<string, RuntimeItem>();
+  // FIX-2672.
+  /**
+   * Ids of done transient items still held in `itemsById`, oldest first. Only
+   * the newest `maxBufferSize` are kept; older ones leave the map so a
+   * long-polling request's transient churn can't grow it without bound.
+   */
+  private readonly doneTransientIds = new Set<string>();
+  /** Items dropped from `itemsById`; keeps `getItemCount()` monotonic. */
+  private evictedItemCount = 0;
   private onLogEvent?: (eventType: string, detail: Record<string, unknown>) => void;
   private droppedBufferedEvents = 0;
   private readonly eventObservers: Array<(event: RequestStreamEventWithId) => void> = [];
@@ -426,6 +435,8 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       applyItemSeam(this.internalSeams, item, "item.added")
     );
     this.itemsById.set(interceptedItem.id, interceptedItem);
+    // A re-added item (keyed replace-on-emit) is in progress again.
+    this.doneTransientIds.delete(interceptedItem.id);
     this.fanoutItemEvent(interceptedItem, "added");
 
     // Skip the runtime log line for transient items. Long-lived polling
@@ -460,6 +471,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       item: asWireItem(interceptedItem)
     });
     this.itemHooks?.onItemDone?.(interceptedItem);
+    this.retainDoneItem(interceptedItem);
     return event;
   }
 
@@ -472,7 +484,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    *
    * Out-of-order resilience: if `itemId` is unknown (no prior `item.added`
    * for it on this emitter), nothing is emitted and a debug event is
-   * recorded for diagnosis. Updates after `item.done` are applied normally.
+   * recorded for diagnosis. Updates after `item.done` are applied normally,
+   * except to a done transient item already dropped from the map (see
+   * `retainDoneItem`), which counts as unknown.
    */
   async emitItemUpdated(
     itemId: string,
@@ -727,6 +741,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * matches the emission sequence that `itemIndex` encodes. No read-time sort
    * — the previous `Array.from(...).sort()` ran on every emit via
    * `getItemCount`'s former `getItems().length`, compounding to O(N² log N).
+   *
+   * Done transient items beyond the newest `maxBufferSize` are not retained;
+   * their events still reached the wire and the events log.
    */
   getItems(): RuntimeItem[] {
     return Array.from(this.itemsById.values());
@@ -738,10 +755,12 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * next item's index without materializing or ordering the items snapshot.
    * Includes `baseItemIndex` so a same-request continuation's re-entry items
    * continue after the prior persisted log; `baseItemIndex` is `0` on
-   * a fresh run, so this stays `itemsById.size` there.
+   * a fresh run. Also counts items dropped from the map, so the
+   * cursor never moves back and no index is reissued; a dropped keyed item
+   * that is emitted again takes a new slot.
    */
   getItemCount(): number {
-    return this.baseItemIndex + this.itemsById.size;
+    return this.baseItemIndex + this.itemsById.size + this.evictedItemCount;
   }
 
   // FIX-479; FIX-523.
@@ -957,6 +976,24 @@ export class ResponseEmitter implements ResponseEmitterHandle {
         limit: this.recordLimiter.limit
       });
     });
+  }
+
+  // FIX-2672.
+  /**
+   * Bounds the done transient items `itemsById` holds to the newest
+   * `maxBufferSize`, dropping the oldest. Non-transient and in-progress items
+   * are never dropped. Runs after the item's events are delivered and logged,
+   * so only the in-memory view is affected.
+   */
+  private retainDoneItem(item: RuntimeItem): void {
+    this.doneTransientIds.delete(item.id);
+    if (item.transient !== true) return;
+    this.doneTransientIds.add(item.id);
+    if (this.doneTransientIds.size <= this.maxBufferSize) return;
+    const oldest = this.doneTransientIds.values().next().value as string;
+    this.doneTransientIds.delete(oldest);
+    this.itemsById.delete(oldest);
+    this.evictedItemCount += 1;
   }
 
   private enforceBufferLimit(): void {
