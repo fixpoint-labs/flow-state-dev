@@ -48,9 +48,9 @@
  *   capability and its formatter.
  * - `harnessUsageAction`, the one query for how much of each harness's
  *   subscription a person has used, and the collection behind it.
- * - `harnessRunChangesRead`, the read for what a run's commits changed: each
- *   file and its lines, or one file's patch. A run review's data carries the
- *   same files; `harnessSessionFlow` declares the same read per turn.
+ * - `harnessRunChangesView`, the session view of what a run's commits changed:
+ *   each file and its lines, or one file's patch. A run review's data carries
+ *   the same files; `harnessSessionFlow` declares the same view per turn.
  *
  * **Checkout internals are NOT here.** They live behind
  * `@flow-state-dev/harness-manager/checkout`, a separate entry point, because
@@ -191,11 +191,11 @@ export {
 
 // ── What a run changed: its files and lines, or one file's patch ────────────
 export {
-  harnessRunChangesRead,
+  harnessRunChangesView,
   harnessRunChangesInputSchema,
   harnessRunChangesOutputSchema,
   HarnessRunChangesRefused,
-  type HarnessRunChangesReadOptions,
+  type HarnessRunChangesViewOptions,
 } from "./run-changes";
 export {
   MAX_DIFF_FILES,

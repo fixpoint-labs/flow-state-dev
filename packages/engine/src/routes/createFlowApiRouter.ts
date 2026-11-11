@@ -35,6 +35,7 @@ import {
 import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
 import { internalEntriesFrom } from "../execution/request-recovery";
+import { continueWithoutReader } from "../execution/request-continuation";
 import { drainRequestEnds } from "../execution/request-end-hooks";
 import { assertPublicReentrySources } from "./public-reentry";
 import { createDurabilitySweeper } from "../durability/durability-sweeper";
@@ -564,7 +565,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
           logger: runtimeConfig.logger,
           // Lets the sweep resume an overdue wait with `wait_timed_out`
           // through this router's host (FIX-1816).
-          continueRequest: (opts) => handlers.host.continueRequest(opts),
+          continueRequest: continueWithoutReader((opts) => handlers.host.continueRequest(opts)),
           // A due wake's entry runs through this router's host, as a dispatched
           // internal request in its session, as its owner (FIX-2078 D1). Off
           // where the host offers no wakes, a store that can't read them included.

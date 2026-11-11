@@ -8,7 +8,7 @@
 import { toError } from "@flow-state-dev/core/helpers";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import type { FlowRegistry } from "../registry/flow-registry";
+import { registryHasViews, type FlowRegistry } from "../registry/flow-registry";
 import { withResourceIndexWriter } from "../resources/resource-indexes";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
@@ -19,6 +19,7 @@ import { createHostDiskState, type HostDiskState } from "../blobs/host-disk";
 import { handleGetBlob, handleUploadBlob } from "./blob-routes";
 import type { ChangeBus } from "../bus/types";
 import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
+import { continueWithoutReader } from "../execution/request-continuation";
 import {
   parseFlowRoute,
   type ParsedFlowRoute
@@ -33,6 +34,7 @@ import { handleAnswerSuspension } from "./answer-routes";
 import { handleResumeSuspension } from "./resume-routes";
 import { handleGetRequestStatus } from "./request-status-routes";
 import { handleRunRead } from "./read-routes";
+import { handleRunView } from "./view-routes";
 import { handleExecuteAction } from "./action-routes";
 import {
   handleCheckInterruptedRequests,
@@ -353,7 +355,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig.requestHost.waitResume = createWaitResumeOperation({
       provider: runtimeConfig.durabilityProvider,
       stores,
-      continueRequest: (opts) => host.continueRequest(opts)
+      continueRequest: continueWithoutReader((opts) => host.continueRequest(opts))
     });
   }
   // And whether a sweeper bounds a wait here, so the turn is offered one.
@@ -379,7 +381,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       ? createParkedStopDeps({
           provider: runtimeConfig.durabilityProvider,
           stores,
-          continueRequest: (opts) => host.continueRequest(opts)
+          continueRequest: continueWithoutReader((opts) => host.continueRequest(opts))
         })
       : undefined;
   if (
@@ -400,6 +402,11 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig.requestHost.resolveFlow === undefined
   ) {
     runtimeConfig.requestHost.resolveFlow = (address: string) => options.registry.get(address);
+  }
+  // Same terms for the view publish rule (FIX-2623 D1): a router mounted
+  // without a `FlowState` reads its own registry.
+  if (runtimeConfig.requestHost !== undefined && runtimeConfig.requestHost.hostHasViews === undefined) {
+    runtimeConfig.requestHost.hostHasViews = () => registryHasViews(options.registry);
   }
 
   // Detect interrupted requests from previous runs on startup
@@ -529,6 +536,16 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           seams,
           bootstrapMetadata,
           requestContext,
+          tenantIdHeader: options.tenantIdHeader
+        });
+      }
+
+      if (route.kind === "run_view") {
+        return await handleRunView(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          runtimeConfig,
           tenantIdHeader: options.tenantIdHeader
         });
       }

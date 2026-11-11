@@ -323,6 +323,9 @@ export async function handleExecuteAction(
       });
     }
 
+    // Nobody reads the live stream past a 202 (the caller follows the
+    // request through its GET stream): close it so it fills no further.
+    handle.liveStream?.close();
     const accepted = jsonResponse(202, {
       status: "in_progress",
       request: {

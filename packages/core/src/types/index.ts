@@ -123,6 +123,8 @@ export type {
   UserConfig
 } from "./flow";
 
+export type { ViewConfig, ViewDefinition, ViewInput, ViewOutput, ViewElement, ViewScope } from "./view";
+
 export type {
   AuthenticationConfig,
   InboundSource,

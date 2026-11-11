@@ -12,6 +12,7 @@
 import { generator, type GeneratorConfig } from "../blocks/generator";
 import { mergeDeclaredResources } from "../blocks/internal/build-block";
 import { isBlockDefinition } from "../blocks/internal/utils";
+import { isViewDefinition } from "./defineView";
 import type { AuthenticationConfig } from "../types/auth";
 import type { BlockDefinition, DeclaredResourceEntry, DeclaredResources } from "../types/block";
 import {
@@ -43,6 +44,7 @@ import type {
   UserConfig,
 } from "../types/flow";
 import type { ResourceScope } from "../types/resource";
+import type { ViewDefinition } from "../types/view";
 import { isDefinedResourceCollection } from "../types/resource-collection";
 import { isCollectionConfig, resourceStorageKeys } from "../types/storage-identity";
 import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } from "../types/schedules";
@@ -184,6 +186,7 @@ const DEFINITION_ONLY_INSTANCE_OPTIONS = [
   "internal",
   "task",
   "reads",
+  "views",
 ] as const;
 
 /**
@@ -875,6 +878,28 @@ function validateReads(
   return reads;
 }
 
+// FIX-2623.
+/**
+ * Validate the flow's `views` at definition time: each is a view
+ * `defineView` returned, so a bare block or a hand-written object fails here
+ * by name rather than when a screen calls it.
+ */
+function validateViews(
+  kind: string,
+  declared: Record<string, ViewDefinition> | undefined
+): Record<string, ViewDefinition> | undefined {
+  if (declared === undefined) return undefined;
+  if (typeof declared !== "object" || declared === null) {
+    throw new Error(`Flow "${kind}" declares "views" that is not a map of name to a view.`);
+  }
+  for (const [name, view] of Object.entries(declared)) {
+    if (!isViewDefinition(view)) {
+      throw new Error(`Flow "${kind}" view "${name}" is not a view. Declare it with \`defineView({ scope, block })\`.`);
+    }
+  }
+  return { ...declared };
+}
+
 /**
  * Validate the `internal` and `task` entry maps at definition time.
  *
@@ -1479,7 +1504,11 @@ function normalizeFlowConfig(
   // A read's block is a root like an action's: its resources register on the
   // flow, and a dispatcher it reaches is checked. It never dispatches (its
   // context refuses), but an unknown address is still a definition error.
-  const readBlocks = Object.values(reads ?? {}).map((read) => read.block);
+  const views = validateViews(kind, definition.views);
+  const readBlocks = [
+    ...Object.values(reads ?? {}).map((read) => read.block),
+    ...Object.values(views ?? {}).map((view) => view.block)
+  ];
 
   // Enumerated once by `actionBlocks` and walked by one `walkBlockGraph`, so
   // no collector can see a different edge set (three hand-rolled walks was how
@@ -1591,6 +1620,7 @@ function normalizeFlowConfig(
     ...(internal !== undefined ? { internal: { actions: internal } } : {}),
     ...(task !== undefined ? { task: { actions: task } } : {}),
     ...(reads !== undefined ? { reads } : {}),
+    ...(views !== undefined ? { views } : {}),
     session,
     request: requestMerged,
     user,
@@ -1680,6 +1710,7 @@ export function defineFlow<
     ...(baseInstance.internal !== undefined ? { internal: baseInstance.internal } : {}),
     ...(baseInstance.task !== undefined ? { task: baseInstance.task } : {}),
     ...(baseInstance.reads !== undefined ? { reads: baseInstance.reads } : {}),
+    ...(baseInstance.views !== undefined ? { views: baseInstance.views } : {}),
     session: baseInstance.session as TSession,
     request: baseInstance.request as TRequest,
     user: baseInstance.user as TUser,

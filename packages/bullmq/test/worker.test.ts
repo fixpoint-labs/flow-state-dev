@@ -336,6 +336,31 @@ describe("createFlowJobProcessor — a job that holds a place on a concurrency k
     expect(backend.giveBack).toHaveBeenCalledWith(place);
   });
 
+  it("publishes a terminal for a turn cancelled while it waited, so its dispatcher stops waiting", async () => {
+    // The run never starts, so no result terminal will follow. Without one
+    // the dispatching process keeps its subscriber and the dispatch's
+    // bookkeeping until something else ends them.
+    const terminals: unknown[] = [];
+    const bridge = {
+      createPublisher: vi.fn(() => ({
+        publishEvent: vi.fn().mockResolvedValue(undefined),
+        publishTerminal: vi.fn(async (result: unknown) => void terminals.push(result)),
+        close: vi.fn().mockResolvedValue(undefined)
+      })),
+      createSubscriber: vi.fn()
+    };
+    const cancelled = stores();
+    cancelled.request.isAbortRequested.mockResolvedValue(true);
+    const processor = createFlowJobProcessor(
+      makeDeps(bridge, { leaseBackend: backendThat(), stores: cancelled })
+    );
+
+    await expect(processor(placeJob())).resolves.toBeUndefined();
+
+    expect(runActionMock).not.toHaveBeenCalled();
+    expect(terminals).toEqual([{ error: { message: expect.stringMatching(/cancelled/) } }]);
+  });
+
   it("keeps the request open and the place held when the turn check fails with a retry to come", async () => {
     const { bridge, publisher } = makeBridge();
     const backend = backendThat({ renew: vi.fn().mockRejectedValue(new Error("Connection is closed.")) });

@@ -30,8 +30,8 @@
  * | `resetTeammate`     | the workforce client's `reset`: a file's teammate back as the file has it    |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
- * |                     | and the board's `listTasks` read (`taskActionName`), on each notice of the     |
- * |                     | conversation's board                                                          |
+ * |                     | and the board's task-list view (`taskListViewRef`), on each notice of the     |
+ * |                     | topics its answer names                                                       |
  * |                     | and each linked run's session, where the run writes its row (its holds)      |
  * |                     | and `taskView` with the Inbox's holds (`inboxItems`), for what it waits on |
  * |                     | you for, and what its runs spent (the harness and model they reported)       |
@@ -88,6 +88,7 @@ import {
   createInboxClient,
   inboxItems,
   taskActionName,
+  taskListViewRef,
   taskView,
   type InboxAnswer,
   type InboxHold,
@@ -562,16 +563,12 @@ const POLL_MS = 1_500;
 const TASK_CHANGE = "task-change";
 /** The tool a worker files a task with. */
 const CREATE_TASK = "createTask";
-/** What a board row's `listTasks` read never carries: an ended task's output and error, read from the row's other copies. */
+/** What a board row's task-list view never carries: an ended task's output and error, read from the row's other copies. */
 const UNPROJECTED = ["output", "error"] as const;
 /** Nor the brief a re-run copies beside its goal and title, read from those copies too, open or ended. */
 const BRIEF = ["context", "labels", "priority"] as const;
 /** The board a conversation files its tasks on: Workforce's `"tasks"`. */
 const TASK_BOARD = "tasks";
-/** The board's read of its rows, on a conversation's flow. */
-const LIST_TASKS = taskActionName("listTasks", TASK_BOARD);
-/** The ledgers that read returns: the conversation's board and its planning worker's steps. */
-const BOARD_LEDGERS = ["tasks", "plan"] as const;
 /** The board's action a question on a row is answered through, on the conversation that filed it. */
 const UPDATE_TASK = taskActionName("updateTask", TASK_BOARD);
 /** The board's one-task read: a re-run copies the whole brief from it. */
@@ -1662,14 +1659,13 @@ export function createLabAdapter(client: Client = connect(), connection: LabConn
           }),
         ).then(publish, (error) => console.error("teammates: a session's flow couldn't be read", error));
       };
-      // Topics narrowed to the ledgers the read returns: every notice on them is the board's,
-      // so a reply streaming in the conversation never wakes the read.
-      const stopBoard = client.live(BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), {
+      // The board's view, on the conversation's flow: its answer names the topics to hear next.
+      const stopBoard = client.live<Array<Record<string, any>>>([], {
+        topicsFromResult: true,
         read: async () => {
           const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
-          const read = await client.flow(flow).read<{ ok: boolean; error?: string; tasks: Array<Record<string, any>> }>(LIST_TASKS, {}, { sessionId });
-          if (!read.ok) throw new Error(read.error);
-          return read.tasks;
+          const { value, topics } = await client.view(taskListViewRef(flow, TASK_BOARD), {}, { sessionId });
+          return { value, topics };
         },
         onValue: (tasks) => {
           if (stopped) return;

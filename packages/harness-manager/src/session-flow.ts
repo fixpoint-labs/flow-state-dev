@@ -92,11 +92,18 @@
  * doesn't wait for its process (`stopsOnAbort`) is never stopped for one: its
  * calls are denied, so nothing runs that nobody allowed.
  *
+ * **A turn's deadline** (`turnTimeoutMs`, 60 minutes by default): the harness
+ * step is stopped once it has run that long, through the same abort a stop
+ * uses, so a harness wedged on a hung tool takes its process down with it.
+ * The turn ends recorded as `timedOut`, with an error that says so. Time a
+ * turn spends waiting on a user's answer about a tool call doesn't count:
+ * each harness run the turn resumes gets the whole deadline again.
+ *
  * Nothing here names a harness. A harness that needs more than these feeds has
  * found a gap in its own package. The flow writes no item of its own.
  */
 import { existsSync } from "node:fs";
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, defineView, handler, sequencer } from "@flow-state-dev/core";
 import {
   OBSERVED_PULL_REQUESTS,
   harnessFailureKind,
@@ -144,6 +151,7 @@ import {
   runCommandChecks,
   type CommandCheckOptions,
 } from "./command-check";
+import { assertPositiveInt } from "./guards";
 import { harnessUsageAction, recordHarnessUsage } from "./harness-usage";
 import {
   MAX_APPROVAL_STEPS,
@@ -215,6 +223,13 @@ export const harnessTurnRecordSchema = z.object({
    * on a turn that never waited, and on one recorded before this field.
    */
   waitsOnApproval: z.boolean().nullable().default(null),
+  // BP-030.
+  /**
+   * Whether the turn ended because its harness ran past the flow's deadline
+   * (`turnTimeoutMs`) and was stopped. `null` on a turn that didn't, and on
+   * one recorded before this field.
+   */
+  timedOut: z.boolean().nullable().default(null),
 });
 
 /** One turn's record. */
@@ -499,6 +514,14 @@ export interface HarnessSessionFlowOptions {
    * default: a turn's prompt is the person's words alone.
    */
   readonly issueSpec?: IssueSpecOption;
+  // FIX-2680.
+  /**
+   * How long the harness may run in one turn, in ms, before it is stopped and
+   * the turn ends timed out. Time a turn waits on a user's answer about a
+   * tool call (`approveTools`) doesn't count: each run it resumes gets the
+   * whole of it. Default 60 minutes.
+   */
+  readonly turnTimeoutMs?: number;
 }
 
 /** What a `verify` resolver is handed: whose session, and where it works. */
@@ -553,6 +576,7 @@ const BLANK_TURN: HarnessTurnRecord = {
   spend: null,
   endedAt: null,
   waitsOnApproval: null,
+  timedOut: null,
 };
 
 /** `state` with the turn `requestId` changed by `change`, keeping only the latest {@link KEPT_TURNS}. */
@@ -793,6 +817,9 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // The branch each attached turn started on, by request id: it must end on it.
   const attachedHeads = new Map<string, string | null>();
   const approveTools = options.approveTools === true;
+  const deadlines = turnDeadlines(
+    assertPositiveInt("harnessSessionFlow's turnTimeoutMs", options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS),
+  );
   const feeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse, attachedHeads);
   // The approval feed, its stop and the calls it held, kept per request.
   // `stopsOnAbort` is read off the block once it's built, before any turn runs.
@@ -810,22 +837,27 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // A failure is recorded on the turn, classified by the harness, so the page
   // can tell a refused conversation from any other error and from a stop. The
   // turn still fails with the harness's own error, rethrown here, and the
-  // binding is left as it was.
+  // binding is left as it was. A harness stopped at the turn's deadline is
+  // recorded as timed out, not stopped, and the turn fails saying so, with
+  // the harness's error as its cause.
   const recordTurnFailure = async (error: Error, ctx: BlockContext): Promise<never> => {
     const requestId = ctx.request.identity.id;
+    const timedOut = deadlines.takeFired(requestId);
+    const ended = timedOut ? new Error(turnTimedOutMessage(deadlines.timeoutMs), { cause: error }) : error;
     await changeState(ctx as unknown as HarnessCallbackContext, (state) =>
       withTurn(state, requestId, (record) => ({
         ...record,
         failure: harnessFailureKind(error),
-        stopped: ctx.signal.aborted,
-        error: error.message,
+        stopped: timedOut ? false : ctx.signal.aborted,
+        error: ended.message,
+        ...(timedOut ? { timedOut: true } : {}),
         ...turnEndOf(ctx, requestId),
       })),
     );
     // A stopped or failed turn still records where its changes end. Never in
     // place of the harness's error: a head that can't be written is left unset.
     await writeTurnHead(ctx as unknown as HarnessCallbackContext).catch(() => undefined);
-    throw error;
+    throw ended;
   };
   const recordFailure = handler({
     name: "record-turn-failure",
@@ -838,8 +870,10 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   const recordFailedOutcome = handler({
     name: "record-failed-outcome",
     execute: async (handle: HarnessRunHandle, ctx): Promise<void> => {
-      if (handle.outcome !== "failed") return;
       const requestId = ctx.request.identity.id;
+      // A harness that answered past its deadline rather than failing ended on its own.
+      deadlines.takeFired(requestId);
+      if (handle.outcome !== "failed") return;
       await changeState(ctx, (state) =>
         withTurn(state, requestId, (record) => ({
           ...record,
@@ -1121,8 +1155,13 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     inputSchema: z.object({ prompt: z.string().min(1) }),
   }).tap(titleFromPrompt);
   const harnessTurn = approveTools
-    ? approvals.turn({ agent, titleFromPrompt, recordTurnFailure, brief, turnFiles })
-    : (brief === undefined ? opened : opened.step(brief)).step(turnFiles).step(agent.rescue([{ block: recordFailure }]));
+    ? approvals.turn({ agent, titleFromPrompt, recordTurnFailure, brief, turnFiles, deadlines })
+    : (brief === undefined ? opened : opened.step(brief))
+        .step(turnFiles)
+        .step(agent.rescue([{ block: recordFailure }]), {
+          abortSignal: (ctx) => deadlines.arm(ctx),
+          onSettled: (ctx) => deadlines.clear(ctx),
+        });
   const turn = harnessTurn
     .tap(recordFailedOutcome)
     .tap(turnSpend)
@@ -1143,7 +1182,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       harnessUsage: harnessUsageAction({ readers: options.usageReaders ?? {} }),
       removeWorktree: { block: removeWorktree, concurrency: "reject" },
     },
-    reads: { changes: { block: changes, description: "What one turn's commits changed: its files and lines, or one file's patch." } },
+    views: { changes: defineView({ scope: "session", block: changes, description: "What one turn's commits changed: its files and lines, or one file's patch." }) },
     request: { onFinished: turnEnd },
     // The user's worktree rows: the host writes them through this flow's
     // workspace, and every session and agent of the user reads them.
@@ -1199,6 +1238,54 @@ function turnEndOf(ctx: object, requestId: string): { spend: TaskSpendView | nul
   return { spend, endedAt: Date.now() };
 }
 
+
+/** The default bound on one harness run of a turn. */
+const DEFAULT_TURN_TIMEOUT_MS = 60 * 60_000;
+
+/** The error a turn whose harness ran past its deadline ends with. */
+function turnTimedOutMessage(timeoutMs: number): string {
+  return `[harness-session] the turn's harness timed out after ${timeoutMs}ms and was stopped.`;
+}
+
+// FIX-2680.
+/**
+ * Each running harness step's deadline, by request: an abort the step runs
+ * under (composed with any other stop it has), whose timer is cleared when the
+ * step settles, and a note of each request whose deadline fired, read once by
+ * the turn's failure record.
+ */
+function turnDeadlines(timeoutMs: number) {
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const fired = new Set<string>();
+  return {
+    timeoutMs,
+    /** The step's deadline signal: aborts `timeoutMs` from now unless the step settles first. */
+    arm(ctx: BlockContext): AbortSignal {
+      const requestId = ctx.request.identity.id;
+      const controller = new AbortController();
+      clearTimeout(timers.get(requestId));
+      const timer = setTimeout(() => {
+        fired.add(requestId);
+        controller.abort(new Error(turnTimedOutMessage(timeoutMs)));
+      }, timeoutMs);
+      // A deadline never holds a host's process open on its own.
+      timer.unref?.();
+      timers.set(requestId, timer);
+      return controller.signal;
+    },
+    /** The step settled: its deadline goes. */
+    clear(ctx: BlockContext): void {
+      const requestId = ctx.request.identity.id;
+      clearTimeout(timers.get(requestId));
+      timers.delete(requestId);
+    },
+    /** Whether the request's deadline fired, forgetting it: asked once per turn end. */
+    takeFired(requestId: string): boolean {
+      return fired.delete(requestId);
+    },
+  };
+}
+type TurnDeadlines = ReturnType<typeof turnDeadlines>;
 
 // FIX-2432.
 /**
@@ -1305,6 +1392,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
       recordTurnFailure,
       brief,
       turnFiles,
+      deadlines,
     }: {
       agent: HarnessBlock;
       titleFromPrompt: ReturnType<typeof handler>;
@@ -1313,6 +1401,8 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
       brief?: ReturnType<ReturnType<typeof handler>["rescue"]>;
       /** The person's files onto the run's input, once ahead of the harness step: a loop back continues a conversation that has them. */
       turnFiles: ReturnType<ReturnType<typeof handler>["rescue"]>;
+      /** Each harness step's deadline, composed with its approval stop. */
+      deadlines: TurnDeadlines;
     }) {
       // Refused before the harness runs: a held call waits as a durable stop.
       const requireDurable = handler({
@@ -1339,7 +1429,8 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
       });
       // The harness step, with its own stop: a step stopped for an approval
       // ends with a marker, not an error, so the turn goes on to the wait.
-      // Any other failure is the turn's, recorded as without approvals.
+      // Any other failure is the turn's, recorded as without approvals. The
+      // turn's deadline runs beside the stop, never in place of it.
       const harnessStep = sequencer({
         name: `${kind}-harness-step`,
         inputSchema: z.object({ prompt: z.string() }).passthrough(),
@@ -1348,10 +1439,11 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
           abortSignal: (ctx) => {
             const controller = new AbortController();
             stops.set(ctx.request.identity.id, controller);
-            return controller.signal;
+            return AbortSignal.any([controller.signal, deadlines.arm(ctx)]);
           },
           onSettled: (ctx) => {
             stops.delete(ctx.request.identity.id);
+            deadlines.clear(ctx);
           },
         })
         .rescue([
@@ -1361,7 +1453,11 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
               inputSchema: z.unknown(),
               outputSchema: z.unknown(),
               execute: async (error: unknown, ctx) => {
-                if (heldCalls.has(ctx.request.identity.id)) return STOPPED_FOR_APPROVAL;
+                if (heldCalls.has(ctx.request.identity.id)) {
+                  // Stopped for the call: the step's deadline, had it fired too, is moot.
+                  deadlines.takeFired(ctx.request.identity.id);
+                  return STOPPED_FOR_APPROVAL;
+                }
                 return recordTurnFailure(error as Error, ctx);
               },
             }),

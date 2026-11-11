@@ -633,8 +633,8 @@ export const ENTRIES = [
   // build them ship (FIX-2623 views, FIX-2626 kits and slots).
   {
     term: "View",
-    means: "The one hook that computes an answer for a screen: it has a scope (no session at user or org), declared dependencies and keyed rows, storing nothing and refusing writes.",
-    decision: "Owner, 2026-11-10 (epic FIX-2618 O2, ER-1); FIX-2619",
+    means: "The one hook that computes an answer for a screen (`defineView`, a flow's `views`): it has a scope (no session at user or org) and, for a list, keyed rows. It stores nothing, refuses writes and model calls, and each run records what it read, so its answer names the change topics a watcher listens to. Nothing about its dependencies is declared.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O2, ER-1); FIX-2619; FIX-2623 D1 (dependencies recorded, not declared) and D2 (no model call)",
     // "Read" retires as the hook's name. Its matcher lands with FIX-2623, the PR that removes
     // `reads`, so no check refuses what is still on main (epic ER-9). "View" is not retired in
     // any other sense: `readTaskView` and "derived views" in prose stay.
@@ -1098,7 +1098,7 @@ const EXEMPTIONS = [
     why: "WR-3: a person's approval or question, which a blocked task's notes are not drawn as",
   },
   {
-    path: /^packages\/((core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)|tools\/test\/bash-moat-purge\.test\.ts)$/,
+    path: /^packages\/((core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)|tools\/test\/bash-moat-(purge|lifecycle)\.test\.ts)$/,
     line: /\baddTask\b/,
     rules: ["task-tool-names"],
     why: "FIX-2243: the engine's side-chain pool's addTask (or a test's stand-in pool) adds a promise to a request's pool, not a task to a collection",

@@ -147,7 +147,7 @@ describe("a task's brief, which the board's list read leaves out", () => {
         stream: () => ({ close() {} }),
         get: async () => ({ id: "wks_cos", flowKind: "agent" }),
       },
-      flow: () => ({ read: async () => ({ ok: true, tasks: [listed] }) }),
+      view: async () => ({ value: [listed], topics: [{ scope: "session", id: "wks_cos" }], keys: [String(listed.id)] }),
     } as unknown as Client;
     let tasks: ReturnType<typeof toBoardTask>[] = [];
     const until = async (check: () => boolean) => {
@@ -195,7 +195,7 @@ describe("a task retried after its run ended", () => {
         stream: () => ({ close() {} }),
         get: async (id: string) => ({ id, flowKind: "agent" }),
       },
-      flow: () => ({ read: async () => ({ ok: true, tasks: [listed] }) }),
+      view: async () => ({ value: [listed], topics: [{ scope: "session", id: "wks_cos" }], keys: [String(listed.id)] }),
     } as unknown as Client;
     let tasks: ReturnType<typeof toBoardTask>[] = [];
     const until = async (check: () => boolean) => {

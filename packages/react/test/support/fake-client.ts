@@ -124,6 +124,7 @@ export function fakeClient(parts: FakeClientParts): Client {
     // The client's own live read, over the faked subscription.
     live: ((topics: Parameters<Client["subscribe"]>[0], options: never) =>
       liveRead((wanted, subscribeOptions) => parts.subscribe?.(wanted, subscribeOptions) ?? { close() {} }, topics, options)) as Client["live"],
+    view: async () => missing("view"),
     transcribe: async () => missing("transcribe"),
     upload: async () => missing("upload")
   };

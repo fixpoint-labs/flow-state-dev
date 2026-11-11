@@ -24,7 +24,7 @@ import {
 import {
   createInMemoryStores
 } from "../src/host";
-import { detectInterruptedRequests } from "../src/execution/request-recovery";
+import { sweepAsStale } from "./sweep-as-stale";
 import { abortRequest, hasActiveAbortController } from "../src/execution/abort-registry";
 
 type Worker = 0 | 1;
@@ -91,18 +91,6 @@ function parkedFlow(kind: string) {
   })({ id: kind });
 
   return { flow, release, parked, signals, heldEntered, releaseHeld };
-}
-
-/**
- * Sweep `stores` as the stale-request sweep would, once the parked run's last
- * heartbeat is in the past. A heartbeat counts as stale only when it is older
- * than now minus the threshold, so with a threshold of 0 a run that registered
- * in the same millisecond as the sweep would not be marked `interrupted`.
- */
-async function sweepAsStale(stores: ReturnType<typeof createInMemoryStores>) {
-  const parkedAt = Date.now();
-  while (Date.now() <= parkedAt) await new Promise((resolve) => setTimeout(resolve, 1));
-  await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
 }
 
 async function parkOriginal(ids: OverlapIds) {

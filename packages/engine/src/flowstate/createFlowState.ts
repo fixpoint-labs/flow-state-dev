@@ -17,7 +17,7 @@ import {
   type FlowStateSettings
 } from "@flow-state-dev/core";
 import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
-import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
+import { createFlowRegistry, registryHasViews, type FlowRegistry } from "../registry/flow-registry";
 import {
   createFlowApiRouter,
   disposeFlowApiRouter,
@@ -32,6 +32,7 @@ import {
 } from "../execution/logging";
 import { abortRequest } from "../execution/abort-registry";
 import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
+import { continueWithoutReader } from "../execution/request-continuation";
 import { resolveDurabilityProvider } from "../durability/default-durability";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import { warnOnce } from "@flow-state-dev/core/internal";
@@ -1067,6 +1068,10 @@ class InternalFlowState<TSettings extends object>
         // so wiring it anywhere later leaves one of them unable to resolve a
         // flow the process has plainly registered.
         resolveFlow: (address: string) => this.#registry.get(address),
+        // FIX-2623 D1: once any registered flow declares a view, every
+        // resource write publishes. Read per request: a flow registered
+        // later counts from its first request on.
+        hostHasViews: () => registryHasViews(this.#registry),
         ...(this.#routerRequested ? { staleSweepIntervalMs } : {})
       }
     });
@@ -1178,8 +1183,8 @@ class InternalFlowState<TSettings extends object>
     requestHost.parkedStop ??= createParkedStopDeps({
       provider,
       stores,
-      continueRequest: (options) =>
-        this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options)
+      continueRequest: continueWithoutReader((options) =>
+        this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options))
     });
     if (requestHost.waitResume !== undefined) return;
 
@@ -1197,8 +1202,8 @@ class InternalFlowState<TSettings extends object>
       operation ??= createWaitResumeOperation({
         provider,
         stores,
-        continueRequest: (options) =>
-          this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options)
+        continueRequest: continueWithoutReader((options) =>
+          this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options))
       });
       return operation(input);
     };

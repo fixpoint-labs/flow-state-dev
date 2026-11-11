@@ -147,6 +147,21 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       readName: p.readName
     }))
   ],
+  // FIX-2623: a user or org view has no session in its address; a session
+  // view runs on the one it names.
+  run_view: [
+    entry("POST", "/:flowKind/views/:viewName", (p) => ({
+      kind: "run_view",
+      flowKind: p.flowKind,
+      viewName: p.viewName
+    })),
+    entry("POST", "/:flowKind/:sessionId/views/:viewName", (p) => ({
+      kind: "run_view",
+      flowKind: p.flowKind,
+      sessionId: p.sessionId,
+      viewName: p.viewName
+    }))
+  ],
   request_stream: [
     entry("GET", "/:flowKind/requests/:requestId/stream", (p) => ({
       kind: "request_stream",

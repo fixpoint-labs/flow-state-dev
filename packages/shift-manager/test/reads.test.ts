@@ -19,11 +19,14 @@ import {
 import { workerStates, type LoadedSnapshot } from "../src/lib/derive";
 import { withRoster } from "../src/lib/roster";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
+import { ROSTER_FLOW, rosterView } from "@flow-state-dev/workforce/browser";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 import { ASK_LAB_COORDINATORS, ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { ASKER_FLOW } from "./fixtures/ask-lab/asker.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
+
+/** The roster view's route: the one call the Lab reads the user's own workers by. */
+const ROSTER_VIEW_ROUTE = `/api/flows/${rosterView.flow}/views/${rosterView.view}`;
 
 /** The one session open a first visit makes: a reading session on the roster flow. */
 const READER_OPENS = ["/api/flows/workforce-roster/sessions"];
@@ -447,7 +450,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const url = String(input instanceof Request ? input.url : input);
-      if (url.endsWith("/resources/workforceWorkers")) {
+      if (url.endsWith(ROSTER_VIEW_ROUTE)) {
         return Promise.resolve(new Response(JSON.stringify({ error: "roster unavailable" }), { status: 500 }));
       }
       return real(input, init);
@@ -457,7 +460,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
     expect(snapshot.inventory.ok).toBe(true);
   });
 
-  it("a 404 from the roster's own reads fails Inbox's asks; only a Lab with no roster flow has no own workers", async () => {
+  it("a 404 the roster flow answers fails Inbox's asks; only a Lab with no roster flow has no own workers", async () => {
     const { baseUrl } = await lab();
     const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
     await ask(client, "ops.asker", "deploy");
@@ -468,8 +471,9 @@ describe("asks through a coordinator's delivery (V7)", () => {
     const spy = vi.spyOn(globalThis, "fetch");
     spy.mockImplementation((input, init) => {
       const url = String(input instanceof Request ? input.url : input);
-      if (url.endsWith("/resources/workforceWorkers")) {
-        return Promise.resolve(new Response(JSON.stringify({ error: "no such collection" }), { status: 404 }));
+      // A 404 the roster flow answered, for its view: not the Lab lacking the flow.
+      if (url.endsWith(ROSTER_VIEW_ROUTE)) {
+        return Promise.resolve(new Response(JSON.stringify({ error: `Flow "${ROSTER_FLOW}" has no view "${rosterView.view}"` }), { status: 404 }));
       }
       return real(input, init);
     });
@@ -478,7 +482,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
     // The Lab refuses the roster flow itself, as one that doesn't serve it does.
     spy.mockImplementation((input, init) => {
       const url = String(input instanceof Request ? input.url : input);
-      if (url.includes(`/${ROSTER_FLOW}/sessions`)) {
+      if (url.endsWith(ROSTER_VIEW_ROUTE) || url.includes(`/${ROSTER_FLOW}/sessions`)) {
         return Promise.resolve(new Response(JSON.stringify({ error: `Unknown flow "${ROSTER_FLOW}"` }), { status: 404 }));
       }
       return real(input, init);
@@ -502,9 +506,9 @@ describe("asks through a coordinator's delivery (V7)", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input instanceof Request ? input.url : input);
       const response = await real(input, init);
-      if (!url.endsWith("/resources/workforceWorkers")) return response;
-      const body = (await response.json()) as { items: Array<{ clientData?: Record<string, unknown> }> };
-      for (const item of body.items) item.clientData = { ...item.clientData, flow: "elsewhere" };
+      if (!url.endsWith(ROSTER_VIEW_ROUTE)) return response;
+      const body = (await response.json()) as { output: Array<{ flow: string; standard: boolean }> };
+      for (const entry of body.output) if (!entry.standard) entry.flow = "elsewhere";
       return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
     });
     const snapshot = loaded(await createLabReader(client).read());
