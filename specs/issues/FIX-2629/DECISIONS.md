@@ -12,7 +12,7 @@ children are still being specced; what this plan assumes of each is [below](#wha
 ```mermaid
 flowchart TD
   I["FIX-2629"] --> D1["D1 · the inventory reads the code, not only its paths"]
-  D1 -.->|"rejected · passes src/adapter.ts today"| X1a["ER-1's path classes alone"]
+  D1 -.->|"rejected · its path classes pass src/adapter.ts"| X1a["ER-1's path classes alone"]
   D1 -.->|"rejected · no check left after the wrap"| X1b["a reviewer reads the lab"]
   I --> D2["D2 · real model for the thread, scripted coder for the task"]
   D2 -.->|"rejected · a credential and a flaky run that test nothing the epic built"| X2["a signed-in Claude Code for the task"]
@@ -26,7 +26,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | FIX-2152 ER-1's inventory as written: every file classed by path as config, UI or a small flow · or a reviewer reading the lab for logic the packages should own, as ER-1 leaves it |
-| **Because** | ER-1 classes every `src/**/*.ts` as UI, so `src/adapter.ts` (1,642 lines, 3 subscribes, 10 flow calls, 9 row types) passes it today. The [POC](poc/end-state-inventory/README.md) ran it: L1 green on `main`. The epic's control "the inventory refuses `adapter.ts`" then can't fail, and a renamed adapter passes the closure. Two content rules close it: no UI file imports a client value (only `createClient`, in the entry) or calls `.subscribe(` or `.flow(`; and every exported object type in a non-component `src/` module is on the app's list of screen-computed types ([ER-6](../../epics/FIX-2618/DECISIONS.md#who-owns-what)). The POC passes the epic's proposed lab and fails a planted `src/glue.ts` |
+| **Because** | ER-1 classes every `src/**/*.ts` as UI, so its path classes pass `src/adapter.ts` (1,642 lines, 3 subscribes, 10 flow calls, 9 row types). The [POC](poc/end-state-inventory/README.md) ran it: L1 green on `main`. ER-1's caps (L2) fail today's lab, but only on flow count and size, so once the flows shrink, nothing in ER-1 refuses the adapter or a renamed one, and the epic's control "the inventory refuses `adapter.ts`" can't fail for that reason. Two content rules close it: no UI file imports a client value (only `createClient`, in the entry) or calls `.subscribe(` or `.flow(`; and every exported object type in a non-component `src/` module is on the app's list of screen-computed types ([ER-6](../../epics/FIX-2618/DECISIONS.md#who-owns-what)). The POC passes the epic's proposed lab and fails a planted `src/glue.ts` |
 | **Locks in** | claude-code-style reaches the server only through package hooks and views, checked by a test in the lab that keeps running after the wrap, so its adapter can't grow back ([ER-8](../../epics/FIX-2618/DECISIONS.md#who-owns-what)). The two content rules join FIX-2628's lab inventory, so the lab has one inventory, not two. A new app type goes on the list in a reviewed PR. Teammates is not held to the content rules: it keeps its adapter until the follow-up epic |
 
 ![D1: the inventory reads the code, chosen, beside ER-1's path classes alone. Decides it: whether today's adapter fails the check; under paths alone it passes. Price: an allowlist of app types a reviewer keeps. Flips if FIX-2628 moves every server call behind a path rule can see](figures/d1-content-inventory.svg)

@@ -79,7 +79,7 @@ function labRules(dir) {
   const flows = files.filter((x) => x.kind === "flow");
   if (flows.length > 3) f.L2.push(`${flows.length} flows, cap 3`);
   for (const x of flows) if (lines(x.abs) >= 200) f.L2.push(`${x.rel}: ${lines(x.abs)} lines, cap 199`);
-  const config = files.filter((x) => x.kind === "config" && x.rel.endsWith(".mts")).reduce((n, x) => n + lines(x.abs), 0);
+  const config = files.filter((x) => x.kind === "config" && /\.(mts|md)$/.test(x.rel)).reduce((n, x) => n + lines(x.abs), 0);
   if (config > 300) f.L2.push(`config ${config} lines, cap 300`);
   for (const x of files.filter((x) => x.kind === "ui" && /\.tsx?$/.test(x.rel))) {
     // Comments name APIs without calling them; strip them before matching.

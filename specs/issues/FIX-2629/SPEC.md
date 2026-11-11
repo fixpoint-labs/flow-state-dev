@@ -23,7 +23,7 @@ team's journey, each child's check and the gap sweep pass beside controls that f
 | Is it the right goal? | |
 |---|---|
 | **The real need** | [The epic's goal](../../epics/FIX-2618/SPEC.md#the-goal-and-how-well-know-its-met) on the assembled set: "an app on workforce is configuration, UI and small flows", proved where the children meet ([closure rule](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)) |
-| **Smaller, and rejected** | "Re-run every child's check and the lab's own scripts." Each child proves its piece on a fixture host; none draws the lab's screen from kit views, so a screen still assembling rows, a pin written outside a flow, or a view that never hears the default write flow passes them all. Or "ER-1's inventory passes": it classifies `src/adapter.ts` as UI by path, and passes today ([D1](DECISIONS.md#d1)) |
+| **Smaller, and rejected** | "Re-run every child's check and the lab's own scripts." Each child proves its piece on a fixture host; none draws the lab's screen from kit views, so a screen still assembling rows, a pin written outside a flow, or a view that never hears the default write flow passes them all. Or "ER-1's inventory passes": its caps fail today's lab, but its path classes call `src/adapter.ts` UI, so a lab that met the caps would pass with the adapter in place, or renamed ([D1](DECISIONS.md#d1)) |
 | **Not done if** | [The epic's list](../../epics/FIX-2618/SPEC.md#the-goal-and-how-well-know-its-met), plus: a check ran on another commit · a check passed on a fixture host where the epic names the lab · the thread ran with no model · a control was skipped or passed · a planted file passed the inventory · a finding is open |
 
 ```mermaid
