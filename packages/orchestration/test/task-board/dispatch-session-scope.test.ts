@@ -98,13 +98,10 @@ describe("FIX-1068: session-scoped dispatching boards", () => {
     const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "session-dispatch-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ request: z.string() }),
-          block: sequencer({
+        run: sequencer({
             name: "file-only",
             inputSchema: z.object({ request: z.string() })
           }).tap(fileTask)
-        }
       }
     })();
 

@@ -31,6 +31,8 @@ async function ask(text: string) {
 }
 
 const thread = () => screen.getByRole("main", { name: "Main thread" });
+/** A status line of the thread itself: the composer's attachment notices are a status region too. */
+const OUTSIDE_COMPOSER = { name: (_name: string, element: Element) => element.closest("form") === null };
 const pane = () => screen.getByRole("complementary", { name: "Background tasks" });
 const row = (title: string) => within(pane()).getByRole("button", { name: new RegExp(title) });
 
@@ -304,7 +306,7 @@ describe("the session-mode screen", () => {
     expect(sent.every((s) => s.feed === feed && s.behavior === "smooth")).toBe(true);
     const scrolled = feeds.scrolls.length;
     await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
-    await waitFor(() => expect(within(thread()).queryByRole("status")).toBeNull());
+    await waitFor(() => expect(within(thread()).queryByRole("status", OUTSIDE_COMPOSER)).toBeNull());
     // Everything after it arrived below: nothing scrolled, and the way down is offered.
     expect(feeds.scrolls.length).toBe(scrolled);
     expect(feed.scrollHeight - feed.scrollTop - feed.clientHeight).toBeGreaterThan(32);
@@ -344,12 +346,12 @@ describe("the session-mode screen", () => {
     // Step 4: the card lands while the working indicator is still on, and the turn goes on to use it.
     const card = await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
     expect(card.dataset.duringTurn).toBe("true");
-    expect(within(thread()).getByRole("status").textContent).toMatch(/working/);
+    expect(within(thread()).getByRole("status", OUTSIDE_COMPOSER).textContent).toMatch(/working/);
     await within(thread()).findByText(/Acme's research is in/);
     expect(row("Research Acme").dataset.taskStatus).toBe("completed");
 
     // The turn ends with Globex still running.
-    await waitFor(() => expect(within(thread()).queryByRole("status")).toBeNull());
+    await waitFor(() => expect(within(thread()).queryByRole("status", OUTSIDE_COMPOSER)).toBeNull());
     expect(row("Research Globex").dataset.taskStatus).toBe("in_progress");
 
     // Step 5: stopping is asked of the main session, which cancels its own task.
@@ -513,7 +515,7 @@ describe("the session-mode screen", () => {
     render(<App adapter={createFakeLab({ speed: 0.2 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await within(thread()).findByRole("status");
+    await within(thread()).findByRole("status", OUTSIDE_COMPOSER);
     await ask("Also add a risks section.");
     // Its answer lands while the first turn still runs: the vendor script's closing line hasn't.
     await within(thread()).findByText(/Noted\./, undefined, { timeout: 4000 });
@@ -525,7 +527,7 @@ describe("the session-mode screen", () => {
     render(<App adapter={fast()} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await within(thread()).findByRole("status");
+    await within(thread()).findByRole("status", OUTSIDE_COMPOSER);
     fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
     await within(thread()).findByText(/Interrupted by you/);
     // The working line is gone; the one status left is the stopped line.
@@ -536,7 +538,7 @@ describe("the session-mode screen", () => {
     render(<App adapter={createFakeLab({ speed: 0.2 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await within(thread()).findByRole("status");
+    await within(thread()).findByRole("status", OUTSIDE_COMPOSER);
     const box = screen.getByLabelText("Message the main session");
     // Esc in the text box is the box's, however many times it is pressed.
     fireEvent.keyDown(box, { key: "Escape" });
@@ -550,7 +552,7 @@ describe("the session-mode screen", () => {
     // The next Esc only arms: the one that closed the sheet did not count as the first.
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(within(thread()).getByText(/press Esc again/)).toBeTruthy();
-    expect(within(thread()).getByRole("status")).toBeTruthy();
+    expect(within(thread()).getByRole("status", OUTSIDE_COMPOSER)).toBeTruthy();
     expect(within(thread()).queryByText(/Interrupted/)).toBeNull();
   });
 
@@ -558,7 +560,7 @@ describe("the session-mode screen", () => {
     render(<App adapter={createFakeLab({ speed: 0.2 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await within(thread()).findByRole("status");
+    await within(thread()).findByRole("status", OUTSIDE_COMPOSER);
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(within(thread()).getByText(/press Esc again to stop the turn/)).toBeTruthy();
     expect(within(thread()).queryByText(/Interrupted/)).toBeNull();
@@ -570,7 +572,7 @@ describe("the session-mode screen", () => {
     render(<App adapter={createFakeLab({ speed: 0.2 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await within(thread()).findByRole("status");
+    await within(thread()).findByRole("status", OUTSIDE_COMPOSER);
     fireEvent.keyDown(screen.getByLabelText("Message the main session"), { key: ".", metaKey: true });
     await within(thread()).findByText(/Interrupted/);
   });

@@ -10,6 +10,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient, type Client, type ClientFetch, type SubscribeOptions, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { createWiredLab, type TaskWork, type Unsubscribe } from "../src/adapter";
+import { liveOver } from "./live-over";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
@@ -91,6 +92,9 @@ function host(options: { stored: unknown[]; live: Record<string, unknown[]>; pla
   }) as ClientFetch;
   const subscriptions: Array<{ topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean }> = [];
   const client: Client = Object.assign(createClient({ userId: "u", baseUrl: "", fetcher }), {
+    get live() {
+      return liveOver(this as never);
+    },
     subscribe: (topics: readonly WireTopic[], subscribeOptions: SubscribeOptions) => {
       const entry = { topics, options: subscribeOptions, closed: false };
       subscriptions.push(entry);

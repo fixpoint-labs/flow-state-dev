@@ -25,9 +25,9 @@
     "packages/*/test/**/*.type-test.ts",
     // Type tests `tsc -p tsconfig.test-d.json` compiles; nothing imports them.
     "packages/*/test/**/*.test-d.ts",
-    "packages/cli/bin/*.ts",
+    "packages/fsdev/bin/*.ts",
     // Each fixtures* directory is a project the CLI tests load by cwd.
-    "packages/cli/test/fixtures*/**/*.{ts,mjs}",
+    "packages/fsdev/test/fixtures*/**/*.{ts,mjs}",
     // Fake Codex programs the codex specs spawn by path.
     "packages/codex/test/fake-*.mjs",
     // Scripts the Cursor package runs in a child process by path.
@@ -42,6 +42,8 @@
     "apps/docs/src/components/**/index.tsx",
     // Vercel deploys each file under api/ as a Function; nothing imports them.
     "apps/build-site/api/*.js",
+    // The preload the super app's lab servers load with `tsx --import <path>`.
+    "apps/super-app/record-server-inputs.mjs",
 
     "examples/*/test/**/*.{test,spec}.ts",
     // Neither a package.json entry nor seeded by the Next plugin.
@@ -172,6 +174,13 @@
     // their install lists ship with message; a composer draws the strip once a client is passed.
     "apps/kitchen-sink/components/flow-state/attachments.tsx",
     "packages/shift-manager/src/components/flow-state/attachments.tsx",
+    // The labs' byte copies of the registry's attachments: their composers draw the
+    // strip and the + button; the downscaling and size helpers are the hook's own.
+    "labs/claude-code-style/src/components/flow-state/attachments.tsx",
+    "labs/teammates/src/components/flow-state/attachments.tsx",
+    // The Teammates lab's byte copy of the registry's message: a line of yours draws
+    // its files with MessageFiles; its own markdown answer draws the rest.
+    "labs/teammates/src/components/flow-state/message.tsx",
     // Kitchen Sink's and Shift Manager's byte copies of the registry's review card:
     // their suspension cards import ReviewSuspension; the card's other exports are
     // for apps that draw holds.
@@ -194,6 +203,9 @@
   // registry's own ToolGroup keeps its `defaultOpen` prop, so neither app calls it.
   // They also carry `knownToolVerbs`, the one tool lookup the Teammates lab's answering line reads.
   "ignoreExports": [
+    // Shift Manager's byte copy of the registry's connection screen: `retryDelayMs` is exported for
+    // the registry's own test, and the copy stays byte-equal to its source (static.test.ts V8).
+    { "file": "packages/shift-manager/src/components/flow-state/connection-screen.tsx", "exports": ["retryDelayMs"] },
     { "file": "apps/kitchen-sink/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen", "knownToolVerbs"] },
     { "file": "packages/shift-manager/src/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen", "knownToolVerbs"] },
     // Kitchen Sink's copies of the registry's composer and message: the attach button,

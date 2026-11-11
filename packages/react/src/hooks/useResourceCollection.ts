@@ -23,7 +23,7 @@ import {
 import type { SessionView } from "./useSession";
 import { useReadFence, type ReadFence } from "./useReadFence";
 import { useClient } from "../internal/useClient";
-import { mayBelongTo, storagePrefixOf } from "../internal/scopeNotices";
+import { mayHold, storageRootsOf } from "@flow-state-dev/client/internal";
 import { useResourceManifest } from "./useResourceManifest";
 
 /**
@@ -203,22 +203,22 @@ export function useResourceCollection<TClient = unknown>(
   // A change names the item's storage path, which the collection's key need
   // not name (`roster` stores under `workforce/workers/…`), so the path is
   // matched against the storage prefix the flow's manifest declares, through
-  // the one rule the live views share (`mayBelongTo`). Until the manifest is
+  // the client's path rule, the one the live reads use (`mayHold`). Until the manifest is
   // known, no path is ruled out: a read too many, never a stale list.
   const { manifest } = useResourceManifest(session);
-  const prefix = useMemo(() => storagePrefixOf(manifest, ref), [manifest, ref]);
+  const roots = useMemo(() => storageRootsOf(manifest, ref), [manifest, ref]);
   const lastSeenResourceChangeIdxRef = useRef(0);
   useEffect(() => {
     const changes = session.resourceChanges;
     const start = lastSeenResourceChangeIdxRef.current;
     lastSeenResourceChangeIdxRef.current = changes.length;
     for (let i = start; i < changes.length; i++) {
-      if (mayBelongTo(changes[i]!.resourcePath, ref, prefix)) {
+      if (mayHold(changes[i]!.resourcePath, roots)) {
         invalidate();
         break;
       }
     }
-  }, [session.resourceChanges, ref, prefix, invalidate]);
+  }, [session.resourceChanges, roots, invalidate]);
 
   const collectionEntry = useMemo(
     () => findCollectionEntry(session, ref),

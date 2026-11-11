@@ -11,6 +11,7 @@ import type {
   FlowInstance,
   FlowStateSettings,
   InstanceOwnerPin,
+  KitInstance,
   VoiceProvider
 } from "@flow-state-dev/core";
 import type { CreateFlowApiRouterOptions, FlowApiRouter } from "../routes/createFlowApiRouter";
@@ -115,8 +116,41 @@ export interface WorkerAdapter {
 export interface CreateFlowStateOptions<
   TSettings extends object = FlowStateSettings
 > {
-  /** Flows to register. Map of stable keys to flow instances. */
-  flows: Record<string, FlowInstance<any, any>>;
+  /**
+   * Flows to register, as a list. Each is served under its own `flow.id`
+   * (its `kind` unless the instance was given another); two with one id are
+   * refused.
+   */
+  flows?: readonly FlowInstance<any, any>[];
+
+  /**
+   * Kits to install, each a kit's factory called with its config, in any
+   * order: `kits: [harnesses({}), workforce({ model })]`. They install in
+   * `requires` order, each slot filled once from the kits that require its
+   * owner; their flows are served beside `flows`.
+   *
+   * An order nobody can satisfy, a slot filled twice under one key, a fill by
+   * a kit that doesn't require the slot's owner and an entry its slot's schema
+   * refuses throw here. Each kit's folder is read at start-up, and any file in
+   * it no reader used rejects `ready()` and every request, naming each file.
+   */
+  kits?: readonly KitInstance[];
+
+  /**
+   * The app's own entries for the kits' slots, by slot key:
+   * `fill: { [harnesses.slots.harnesses]: [codexHarness(), cursorHarness()] }`.
+   * A keyed slot takes a record, or a list of entries each keyed by its `id`;
+   * a list slot gets the app's entries last.
+   */
+  fill?: Readonly<Record<string, unknown>>;
+
+  /**
+   * The app's folder, which a kit's default folder is read against: a path,
+   * or a URL such as `import.meta.url` (its directory). Defaults to the
+   * working directory. A `directory` given in a kit's config reads against
+   * the working directory instead.
+   */
+  root?: string | URL;
 
   /** Model resolver config. Auto-wires AI Gateway via `AI_GATEWAY_API_KEY`. */
   models?: FlowStateModelsConfig;

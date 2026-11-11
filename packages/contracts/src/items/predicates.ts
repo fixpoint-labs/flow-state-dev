@@ -48,7 +48,9 @@ function isResourceChange(item: OutputItem): item is ResourceChangeItem {
  *
  * Used to suspend a sequencer until a specific resource mutation reaches the
  * request stream — for example, waiting for a worker pattern to write its
- * artifact before the supervisor reads it.
+ * artifact before the supervisor reads it. `resource_change` items are
+ * transient, so a wait's entry check sees only the most recent
+ * `maxBufferSize` (default 10,000) of those already done.
  */
 export function whenResourceChanged(criteria: {
   scope: ResourceChangeItem["scope"];
@@ -87,7 +89,8 @@ export function whenAnyItem(
  * True if any `resource_change` item's `resourcePath` matches `pattern` under
  * the given `scope`. `pattern` supports `*` (single path segment) and `**`
  * (any number of segments). Use this when the path is templated — e.g.,
- * `artifacts/*` or `workers/**\/done`.
+ * `artifacts/*` or `workers/**\/done`. Like `whenResourceChanged`, a wait's
+ * entry check sees only the most recent `maxBufferSize` done changes.
  */
 export function whenResourceMatching(criteria: {
   scope: ResourceChangeItem["scope"];

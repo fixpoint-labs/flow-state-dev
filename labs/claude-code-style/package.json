@@ -9,7 +9,7 @@
     ".": "./cli/index.ts"
   },
   "scripts": {
-    "dev": "vite build && cd ../.. && tsx packages/cli/bin/fsdev.ts dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev/claude-code-style",
+    "dev": "vite build && cd ../.. && tsx packages/fsdev/bin/fsdev.ts dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev/claude-code-style",
     "build": "vite build",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run --root .",
@@ -49,6 +49,7 @@
     "happy-dom": "^20.8.3",
     "lucide-react": "^0.575.0",
     "motion": "^12.34.3",
+    "nanoid": "^5.1.6",
     "radix-ui": "^1.4.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

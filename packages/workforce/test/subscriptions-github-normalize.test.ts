@@ -12,7 +12,7 @@
  * quoted reply or a pasted snippet must never read as asking the agent.
  */
 import { describe, expect, it } from "vitest";
-import { followPullRequest, normalizeGitHubEvent } from "../src/subscriptions";
+import { followPullRequest, normalizeGitHubEvent } from "../src/service-flows";
 import { githubMentions, githubThreadKey, pullRequestThread } from "../src/internal";
 
 const REPO = { full_name: "Acme/API", private: false };

@@ -1601,8 +1601,7 @@ describe("same-request continuation (FIX-811)", () => {
           // Durable at the action level so ctx.suspend() is available without
           // a sequencer wrapper.
           block: rootHandler,
-          durable: true,
-          inputSchema: z.object({ amount: z.number() })
+          durable: true
         }
       }
     })({ id: "fix811-root-suspend" });

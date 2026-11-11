@@ -40,6 +40,7 @@ export {
 } from "./client";
 
 export type { SubscribeOptions, Subscription } from "./subscribe/push-hub";
+export type { LiveRead, LivePaths, LiveReadOptions, LiveReadWithTopicsOptions, LiveResult } from "./live/live-read";
 // The wire topics `subscribe` takes, and the notice `onChange` gets.
 export { topic } from "@flow-state-dev/contracts";
 export type { ChangeKind, PushCapability, TopicOptions, WireNotice, WireTopic } from "@flow-state-dev/contracts";

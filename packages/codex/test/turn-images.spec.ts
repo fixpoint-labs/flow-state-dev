@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
 import { toBlobRef } from "@flow-state-dev/core/attachments";
 import { HarnessAttachmentRefusedError } from "@flow-state-dev/core/harness";
-import { HARNESS_ATTACHMENT_SEAM, type HarnessAttachmentSeam } from "@flow-state-dev/core/internal";
+import { ATTACHMENT_SEAM, type AttachmentSeam } from "@flow-state-dev/core/internal";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { codexAgent, INTERNAL_CODEX_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 import { TESTED_CODEX_SDK, type CodexThreadEvent, type CodexTurnInput } from "../src/types";
@@ -62,13 +62,18 @@ function scripted(opts: { throwOnRun?: Error } = {}) {
 }
 
 /** A context whose request's file reader serves `files` by reference. */
-async function contextWith(files: Record<string, { mediaType: string; bytes: Uint8Array }>) {
+async function contextWith(files: Record<string, { mediaType: string; bytes: Uint8Array; text?: string }>) {
   const runtime = await createTestContext({});
-  const read: HarnessAttachmentSeam = async (file) => {
+  const read: AttachmentSeam = async (file) => {
     const found = files[file.data]!;
-    return { mediaType: found.mediaType, bytes: found.bytes, base64: () => Buffer.from(found.bytes).toString("base64") };
+    return {
+      mediaType: found.mediaType,
+      bytes: found.bytes,
+      base64: () => Buffer.from(found.bytes).toString("base64"),
+      ...(found.text !== undefined ? { text: async () => found.text! } : {}),
+    };
   };
-  (runtime.ctx as unknown as Record<symbol, unknown>)[HARNESS_ATTACHMENT_SEAM] = read;
+  (runtime.ctx as unknown as Record<symbol, unknown>)[ATTACHMENT_SEAM] = read;
   return runtime.ctx as never;
 }
 
@@ -124,15 +129,45 @@ describe("a turn's images, to Codex", () => {
     expect(client.turns[0]!.input).toBe("just text");
   });
 
-  it("refuses a type it can't take, by name, before a thread starts", async () => {
+  // FIX-2520 D1: the Codex SDK takes no documents, so a PDF reaches it as the
+  // text extracted on the server, and nothing but images is written to disk.
+  it("hands a PDF and a text-like file over as their text after the prompt, writing no file for them", async () => {
     const client = scripted();
     const block = codexAgent({ ...GATE_OFF, resolveCodexClient: client.resolve });
     const pdf: FileContent = { type: "file", mediaType: "application/pdf", data: toBlobRef("b_report01"), filename: "report.pdf" };
+    const csv: FileContent = { type: "file", mediaType: "text/csv", data: toBlobRef("b_errors01"), filename: "errors.csv" };
+    const ctx = await contextWith({
+      [pdf.data]: { mediaType: "application/pdf", bytes: new Uint8Array([1]), text: "### report.pdf\n[page 1]\nTANGERINE" },
+      [csv.data]: { mediaType: "text/csv", bytes: new Uint8Array([2]), text: "### errors.csv\nts,level" },
+      ...FILES,
+    });
+    await block.config.execute?.({ prompt: "read these", attachments: [pdf, shot, csv] }, ctx);
+    const parts = client.turns[0]!.input as Exclude<CodexTurnInput, string>;
+    expect(parts[0]).toEqual({ type: "text", text: "read these\n\n### report.pdf\n[page 1]\nTANGERINE\n\n### errors.csv\nts,level" });
+    expect(parts.slice(1).map((part) => part.type)).toEqual(["local_image"]);
+    expect(client.turns[0]!.onDisk).toEqual([[...PNG]]);
+  });
+
+  it("sends a turn of documents only as one text prompt", async () => {
+    const client = scripted();
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: client.resolve });
+    const md: FileContent = { type: "file", mediaType: "text/markdown", data: toBlobRef("b_notes0001"), filename: "notes.md" };
+    await block.config.execute?.(
+      { prompt: "read", attachments: [md] },
+      await contextWith({ [md.data]: { mediaType: "text/markdown", bytes: new Uint8Array([1]), text: "### notes.md\nPLUM" } }),
+    );
+    expect(client.turns[0]!.input).toBe("read\n\n### notes.md\nPLUM");
+  });
+
+  it("refuses a type it can't take, by name, before a thread starts", async () => {
+    const client = scripted();
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: client.resolve });
+    const heic: FileContent = { type: "file", mediaType: "image/heic", data: toBlobRef("b_heic0001"), filename: "photo.heic" };
     const thrown = await Promise.resolve(
-      block.config.execute?.({ prompt: "read this", attachments: [pdf] }, await contextWith({})),
+      block.config.execute?.({ prompt: "read this", attachments: [heic] }, await contextWith({})),
     ).catch((error: unknown) => error);
     expect(thrown).toBeInstanceOf(HarnessAttachmentRefusedError);
-    expect((thrown as Error).message).toContain('Codex can\'t take "report.pdf"');
+    expect((thrown as Error).message).toContain('Codex can\'t take "photo.heic"');
     expect(client.started()).toBe(0);
   });
 });

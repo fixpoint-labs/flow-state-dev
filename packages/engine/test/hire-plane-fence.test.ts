@@ -88,7 +88,7 @@ const workerKind = defineFlow({
   cardinality: "collection",
   configSchema: z.object({ instructions: z.string().nullable().default(null) }),
   resources,
-  actions: { whoami: { inputSchema: tagInput, block: whoami } },
+  actions: { whoami },
   internal: { actions: { whoami: { block: whoami } } },
   authentication: verified,
 });
@@ -149,10 +149,10 @@ const appFlow = defineFlow({
   kind: "app",
   resources: { ...resources, privateRoster },
   actions: {
-    whoami: { inputSchema: tagInput, block: whoami },
+    whoami,
     hand: { inputSchema: tagInput, block: handToAcmeWorker },
-    peek: { inputSchema: tagInput, block: peekPrivate },
-    peekBrowser: { inputSchema: tagInput, block: peekBrowser },
+    peek: peekPrivate,
+    peekBrowser,
   },
   authentication: verified,
 });
@@ -166,7 +166,7 @@ const ALICE_PROMPT = "ALICE-PRIVATE: my research assistant";
 
 async function boot(stores = inMemoryStores(), options: { debug?: boolean } = {}) {
   const state = createFlowState({
-    flows: { app: appFlow() },
+    flows: [appFlow()],
     resolvePrincipal: verified.resolvePrincipal,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),
@@ -573,15 +573,12 @@ describe("FIX-1529 hire plane", () => {
         kind: "writer",
         resources: { privateRoster },
         actions: {
-          ping: {
-            inputSchema: z.object({}),
-            block: handler({
+          ping: handler({
               name: "writer-ping",
               inputSchema: z.object({}),
               outputSchema: z.object({ ok: z.boolean() }),
               execute: () => ({ ok: true }),
             }),
-          },
         },
       })()
     );
@@ -589,15 +586,12 @@ describe("FIX-1529 hire plane", () => {
     const leak = defineFlow({
       kind: "leak",
       actions: {
-        ping: {
-          inputSchema: z.object({}),
-          block: handler({
+        ping: handler({
             name: "ping",
             inputSchema: z.object({}),
             outputSchema: z.object({ ok: z.boolean() }),
             execute: () => ({ ok: true }),
           }),
-        },
       },
     })();
     (leak as { resources: unknown }).resources = {
@@ -608,15 +602,12 @@ describe("FIX-1529 hire plane", () => {
     const redeclared = defineFlow({
       kind: "redeclared",
       actions: {
-        ping: {
-          inputSchema: z.object({}),
-          block: handler({
+        ping: handler({
             name: "ping-2",
             inputSchema: z.object({}),
             outputSchema: z.object({ ok: z.boolean() }),
             execute: () => ({ ok: true }),
           }),
-        },
       },
     })();
     (redeclared as { resources: unknown }).resources = {
@@ -627,15 +618,12 @@ describe("FIX-1529 hire plane", () => {
     const notes = defineFlow({
       kind: "notes",
       actions: {
-        ping: {
-          inputSchema: z.object({}),
-          block: handler({
+        ping: handler({
             name: "ping-3",
             inputSchema: z.object({}),
             outputSchema: z.object({ ok: z.boolean() }),
             execute: () => ({ ok: true }),
           }),
-        },
       },
     })();
     (notes as { resources: unknown }).resources = {
@@ -657,15 +645,12 @@ describe("FIX-1529 hire plane", () => {
           }),
         },
         actions: {
-          ping: {
-            inputSchema: z.object({}),
-            block: handler({
+          ping: handler({
               name: "ping-wide",
               inputSchema: z.object({}),
               outputSchema: z.object({ ok: z.boolean() }),
               execute: () => ({ ok: true }),
             }),
-          },
         },
       })();
       expect(() => registry.register(wide)).toThrow(reaches);

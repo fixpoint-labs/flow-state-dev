@@ -137,7 +137,7 @@ function bystanderFlow() {
 
 async function boot(flows: FlowInstance[]) {
   const state = createFlowState({
-    flows: Object.fromEntries(flows.map((flow) => [flow.kind, flow])),
+    flows: Object.values(Object.fromEntries(flows.map((flow) => [flow.kind, flow]))),
     stores: { default: { primary: inMemoryStores() } }
   });
   const runtime = await state.getRuntime();

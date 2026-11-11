@@ -19,7 +19,7 @@ function recordingIntake(taken: Array<Record<string, unknown>>): FlowInstance {
   const flow = defineFlow({
     kind: ERROR_REPORTER_INTAKE_FLOW,
     actions: {},
-    internal: { actions: { [INTAKE_ENTRY]: { inputSchema: intake.inputSchema, block: intake } } }
+    internal: { actions: { [INTAKE_ENTRY]: intake } }
   } as never);
   return (flow as unknown as (options: { id: string }) => FlowInstance)({ id: ERROR_REPORTER_INTAKE_FLOW });
 }

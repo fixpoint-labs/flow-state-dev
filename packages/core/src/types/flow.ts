@@ -24,6 +24,7 @@ import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
 import type { SessionCreateCheck } from "./session-create";
 import type { ResourceVisibilityRule } from "./resource-visibility";
+import type { FileContent } from "../items/content";
 
 /** Legacy scope-keyed config alias preserved for type-internal usage. */
 export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
@@ -196,10 +197,21 @@ export interface ActionMcpConfig {
   session?: string | { fromInput: string };
 }
 
-/** What an action's `userMessage` may return beside plain text: the text, and the item's `metadata`. */
+/** What an action's `userMessage` may return beside plain text: the text, the item's `metadata`, and files the flow hands the line. */
 export type UserMessageEcho = {
   readonly text: string;
   readonly metadata?: Record<string, unknown>;
+  // FIX-2522.
+  /**
+   * Files the line carries that the flow kept itself, in reference form
+   * (`FileContent` whose `data` is `fsd-blob:<id>`), such as a task's brief
+   * files read off its row. Written as `file` parts after the person's own
+   * files, so a model reads them as part of the line. Read off server-written
+   * state, never off the action's input: a reference from input is a claim
+   * the action route never checked. A run reads only files its session or its
+   * person's own scope owns, so any other reference reads nothing.
+   */
+  readonly attachments?: ReadonlyArray<FileContent>;
 };
 
 /**
@@ -294,10 +306,35 @@ export type ActionConfig<
    * communicate (1) what the tool does, (2) when to use it vs. siblings,
    * (3) preconditions and side effects, (4) what each argument means.
    * Used by the devtool for tooltips even when MCP is not enabled.
+   *
+   * Defaults to `block.description`: `defineFlow` resolves it once, so every
+   * consumer reads the one value. Set it when a public MCP tool needs
+   * wording of its own.
    */
   description?: string;
   /** Per-action MCP overrides. */
   mcp?: ActionMcpConfig;
+};
+
+/**
+ * What an author writes for an entry: the block alone, or the object form when
+ * the entry sets anything beyond its block (`userMessage`, `mcp`,
+ * `concurrency`, a description that differs from the block's, …).
+ * `defineFlow` turns a bare block into `{ block }`, so an instance only ever
+ * carries the object form.
+ */
+export type ActionEntry<TBlock extends BlockDefinition = BlockDefinition> =
+  | TBlock
+  | ActionConfig<TBlock>;
+
+/** One entry as `defineFlow` publishes it: a bare block as `{ block }`. Distributes over an optional entry's `undefined`. */
+type NormalizedEntry<TEntry> = TEntry extends BlockDefinition
+  ? ActionConfig<TEntry>
+  : Extract<TEntry, ActionConfig | undefined>;
+
+/** An `actions` map as `defineFlow` publishes it: each bare block as `{ block }`. */
+export type NormalizedActions<TActions extends Record<string, ActionEntry>> = {
+  [K in keyof TActions]: NormalizedEntry<TActions[K]>;
 };
 
 // FIX-2286.
@@ -315,9 +352,12 @@ export type ReadConfig<TBlock extends BlockDefinition = BlockDefinition> = {
   block: TBlock;
   /** Overrides `block.inputSchema` for the read's input, as on an action. */
   inputSchema?: TBlock["inputSchema"];
-  /** Human-readable description, for tooling. */
+  /** Human-readable description, for tooling. Defaults to `block.description`. */
   description?: string;
 };
+
+/** What an author writes for a read: the block alone, or `{ block, ... }`. */
+export type ReadEntry<TBlock extends BlockDefinition = BlockDefinition> = TBlock | ReadConfig<TBlock>;
 
 /**
  * The entries of one dispatch type, nested under the type so a per-type
@@ -538,7 +578,7 @@ export type FlowConfigValue<TConfigSchema extends ZodTypeAny | undefined> =
     : Readonly<Record<string, unknown>>;
 
 export type FlowDefinition<
-  TActions extends Record<string, ActionConfig> = Record<string, ActionConfig>,
+  TActions extends Record<string, ActionEntry> = Record<string, ActionEntry>,
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
@@ -595,7 +635,8 @@ export type FlowDefinition<
 
   /**
    * The flow's `public` entries — what a caller may name over HTTP, MCP or
-   * voice, each authorized per request. The public API of the flow.
+   * voice, each authorized per request. The public API of the flow. Each is
+   * a block, or `{ block, ... }` when the entry sets more than its block.
    */
   actions: TActions;
 
@@ -610,7 +651,7 @@ export type FlowDefinition<
    * background job in a child session, a wake sent to a coordinator, a
    * follow-up delivered into a session that already exists.
    */
-  internal?: TypedEntries<InternalEntry>;
+  internal?: TypedEntries<InternalEntry | BlockDefinition>;
 
   /**
    * The flow's `task` entries — `task: { actions: { implement: { block } } }`
@@ -620,14 +661,14 @@ export type FlowDefinition<
    * board the flow reaches. `defineFlow` puts each entry behind that board's
    * claim gate and refuses an entry no board addresses.
    */
-  task?: TypedEntries<TaskEntry>;
+  task?: TypedEntries<TaskEntry | BlockDefinition>;
 
   /**
    * The flow's reads: blocks an app runs on a session to watch a view the
    * flow computes, answered in the response and stored nowhere. See
    * {@link ReadConfig}. A read may share a name with an action.
    */
-  reads?: Record<string, ReadConfig>;
+  reads?: Record<string, ReadEntry>;
 
   session?: TSession;
   request?: TRequest;
@@ -746,7 +787,13 @@ export type FlowInstanceOptions<
   config?: FlowConfigInput<TConfigSchema>;
   requireUser?: boolean;
   authentication?: AuthenticationConfig;
-  actions?: Partial<TActions> & Record<string, ActionConfig>;
+  /**
+   * Per-instance action overrides, merged over the definition's. Each is a
+   * block, or `{ block, ... }`. An existing action's override is typed off that
+   * action (`TActions[K]`), so it keeps the block's input type the client was
+   * typed with; a new name takes any entry.
+   */
+  actions?: { [K in keyof TActions]?: TActions[K] | TActions[K]["block"] } & Record<string, ActionEntry>;
   session?: TSession;
   request?: TRequest;
   user?: TUser;

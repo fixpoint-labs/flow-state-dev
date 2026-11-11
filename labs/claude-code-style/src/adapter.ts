@@ -12,7 +12,9 @@
  * | `listProjects`  | the project blocks' `listProjects`: only projects the user may work in    |
  * | `createProject` | the project blocks' `createProject`, a private project on a repository   |
  * | `openSession`   | a new session on the mode's main worker, then `setWorkProject`            |
- * | `send`          | the worker's door, `respond`, in that session                             |
+ * | `send`          | the worker's door, `respond`, in that session, with the line's files       |
+ * | `upload`        | the client's `upload`: a file the composer attached, stored, as its reference |
+ * | `readFile`      | the server's read route for a file a line carries, through the page's fetcher |
  * | `interrupt`     | aborting each turn running in the session when it is called                |
  * | `retry`         | the client's `request(id).retry()` on the session's flow: a failed turn again |
  * | `watchThread`   | the session's items, followed through the client's `sessionFeed`          |
@@ -34,15 +36,15 @@
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else the board's `steer` |
  * | `taskActions`   | the Inbox client's `board(at)` on the session that holds the board: `cancel`, |
  * |                 | `steer`, `release` and `retry`, each the board's own action                 |
- * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }` |
+ * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }`, naming its `land` when one is given |
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state; `watchPins` is its |
  * |                 | `listPins` read, again on each state notice of your user topic             |
  * | `watchDismissed`, `dismiss` | the lab's `dismissals` flow, your own user state, read the way pins are |
  *
- * Every watch reads on a change, through `onNotice`.
+ * Every watch reads on a change, through the client's live read (`client.live`).
  */
-import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, type Client, type SessionConnectionStatus, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
+import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, type Client, type ClientFetch, type SessionConnectionStatus, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createInboxClient,
@@ -75,16 +77,19 @@ import {
   WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
-import { isSuspensionWait } from "@flow-state-dev/core/items";
+import { isSuspensionWait, type FileContent } from "@flow-state-dev/core/items";
 import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
+import type { LandedWork, ReviewAnswer, ReviewLand } from "./components/flow-state/review-hold";
 import { dismissalKey, waitingOnYou } from "./lib/columns";
 import { resultSummary } from "./lib/result-summary";
 import { firstLineOfText, NEW_SESSION_TITLE, sessionTitle } from "./lib/session-title";
 import { filedTaskOf, toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
 import { toolInFlight, type PlanRowNow, type ToolCallNow } from "./components/flow-state/working-status";
+import type { AttachmentUploader } from "./components/flow-state/attachments";
+import { parseBlobRef } from "@flow-state-dev/core/attachments";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -117,6 +122,8 @@ export type ThreadEntry = (
       kind: "user";
       id: string;
       text: string;
+      /** The files the line carries, as references, in the order attached. */
+      files?: FileContent[];
       /** Threads mode: the lead's turn filed threads for this line. */
       sentToThread?: boolean;
     }
@@ -200,6 +207,11 @@ export interface LabTask {
    * and it completed unreviewed, none when no review was asked.
    */
   review?: "accepted" | "deadline" | null;
+  /**
+   * For an accepted coding task, where its work went: the pull request opened, or the merge into
+   * your checkout, as the run's output records it. Absent until a landing has happened.
+   */
+  landed?: LandedWork;
   /** Steps done of total, when known. */
   steps?: { done: number; total: number };
   /** When the task last changed, in ms. */
@@ -232,6 +244,8 @@ export interface TaskWork {
   entries: ThreadEntry[];
   /** Its run's latest review stop, when it made one. */
   review?: ReviewDetail;
+  /** The id of that stop: one per review round, so an accept can tell a new round from the one it answered. */
+  reviewStop?: string;
   /** Present while the run holds items older than its first entry: adds the page before them. */
   loadEarlier?: () => Promise<void>;
   /** What its run is doing now, while the task runs. */
@@ -264,7 +278,12 @@ export interface LabAdapter {
   /** Which coding harnesses can run on this machine; `refresh` checks them again (Re-check). */
   readHarnesses(refresh?: boolean): Promise<LabHarness[]>;
   openSession(mode: ModeId, projectId: string): Promise<LabSession>;
-  send(sessionId: string, text: string): Promise<void>;
+  /** Send a line to the session's main worker, with the files attached to it, as references (`upload`). */
+  send(sessionId: string, text: string, attachments?: readonly FileContent[]): Promise<void>;
+  /** Store a file the composer attached; resolves to its reference, which a line then carries. */
+  upload: AttachmentUploader["upload"];
+  /** The bytes of a file a line carries, for its thumbnail; rejects when the server won't serve it. */
+  readFile(file: FileContent): Promise<Blob>;
   interrupt(sessionId: string): Promise<void>;
   /** Run a failed turn of the session again, as a new request the engine links to `requestId`. */
   retry(sessionId: string, requestId: string): Promise<void>;
@@ -279,8 +298,11 @@ export interface LabAdapter {
   sayInThread(sessionId: string, taskId: string, line: string): Promise<void>;
   /** The task changes you make from an opened task, on the board of session `sessionId`. */
   taskActions(sessionId: string): TaskBoardCalls;
-  /** Accept a thread's work: answers its review wait. */
-  resolve(sessionId: string, taskId: string): Promise<void>;
+  /**
+   * Accept a thread's work: answers its review wait. `land` names how the work lands (a pull
+   * request, or a merge into your checkout); absent, the accept is plain.
+   */
+  resolve(sessionId: string, taskId: string, land?: ReviewLand): Promise<void>;
   /** Send a thread back to work: answers its review wait with your words. */
   requestChanges(sessionId: string, taskId: string, words: string): Promise<void>;
   /** Your pinned task ids. */
@@ -364,14 +386,14 @@ const BOARD_LEDGERS = ["tasks", "plan"] as const;
 
 /**
  * A write to the plan a harness records (core's `observed-plan` rows and its
- * `observed-plan-list` markers). A row only its owner may read is published
- * unnamed, so an unnamed resource notice reads too.
+ * `observed-plan-list` markers), as a live read hears it. A row only its owner
+ * may read is published unnamed, and the live read hears an unnamed resource
+ * notice whatever its paths say.
  */
-const isPlanWrite = (notice: WireNotice): boolean =>
-  notice.kind === "resource" &&
-  (notice.topic.resource === undefined ||
-    notice.topic.resource.startsWith(`${OBSERVED_PLAN}/`) ||
-    notice.topic.resource.startsWith(`${OBSERVED_PLAN_LIST}/`));
+const PLAN_WRITES = {
+  hear: (notice: WireNotice) => notice.kind === "resource",
+  paths: [OBSERVED_PLAN, OBSERVED_PLAN_LIST],
+};
 
 /**
  * A read again after a failed one, 1 s and doubling to 30 s, the shape of the
@@ -398,77 +420,8 @@ function retryAfterFailure(again: () => void): { failed(): void; succeeded(): vo
   };
 }
 
-/**
- * Read `read` now, and again whenever a notice under `topics` passes `hears`
- * reporting a value only when it changed.
- * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
- * and one waiting for any number of notices. Wherever push can miss a change,
- * `client.subscribe` reads every `everyMs` instead, so the view keeps no
- * timer of its own. A failed read tries again on its own ({@link retryAfterFailure}).
- * A read still out when the watch stops reports nothing. `onStale` hears `true`
- * when a read fails and `false` when one succeeds after it.
- */
-function onNotice<T>(
-  fsd: Client,
-  topics: readonly WireTopic[],
-  hears: (notice: WireNotice) => boolean,
-  read: () => Promise<T>,
-  onChange: (value: T) => void,
-  everyMs = READ_EVERY_MS,
-  onStale?: (stale: boolean) => void,
-): Unsubscribe {
-  let live = true;
-  let stale = false;
-  let last: string | undefined;
-  let running = false;
-  let queued = false;
-  const retry = retryAfterFailure(() => void tick());
-  const tick = async (): Promise<void> => {
-    if (!live) return;
-    if (running) {
-      queued = true;
-      return;
-    }
-    running = true;
-    try {
-      const value = await read();
-      retry.succeeded();
-      const key = JSON.stringify(value);
-      if (live && key !== last) {
-        last = key;
-        onChange(value);
-      }
-      if (live && stale) {
-        stale = false;
-        onStale?.(false);
-      }
-    } catch (error) {
-      console.warn("[claude-code-style]", error);
-      if (live) retry.failed();
-      if (live && !stale) {
-        stale = true;
-        onStale?.(true);
-      }
-    }
-    running = false;
-    if (queued) {
-      queued = false;
-      void tick();
-    }
-  };
-  const subscription = fsd.subscribe(topics, {
-    onChange: (notice) => {
-      if (notice === null || notice.kind === "resync" || hears(notice)) void tick();
-    },
-    pollIntervalMs: everyMs,
-  });
-  void tick();
-  return () => {
-    live = false;
-    retry.stop();
-    subscription.close();
-  };
-}
+/** A live read's failure, logged; the read tries again on its own (`client.live`). */
+const logFailedRead = (error: unknown): void => console.warn("[claude-code-style]", error);
 
 /**
  * A run's latest review stop, read with harness-manager's browser reader, or
@@ -476,11 +429,52 @@ function onNotice<T>(
  * stops for review again.
  */
 export function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
-  const stop = [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review");
+  const stop = latestReviewStop(items);
   return (stop && reviewDetail(stop.data)) ?? undefined;
 }
 
+/** The latest review stop's item, or undefined before the run makes one. */
+const latestReviewStop = (items: readonly Item[]) => [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review");
+
+/**
+ * The id of the latest review stop: one id per review round. A run sent back, or a landing retried,
+ * stops for review again under a new id, which is how the accept tells a new round from the one it answered.
+ */
+export function reviewStopIdOf(items: readonly Item[]): string | undefined {
+  return latestReviewStop(items)?.id;
+}
+
+/**
+ * The verdict an accept sends: plain, or naming how the work lands. Without a `land` the key is
+ * absent, so a plain accept on a run that can't land reads as it always did. Exported for its tests.
+ */
+export function acceptOf(land?: ReviewLand): ReviewAnswer {
+  return land === undefined ? { verdict: "accepted" } : { verdict: "accepted", land };
+}
+
+/**
+ * Where an accepted run's work went, from its output's `landed`, or nothing when it names none
+ * readable. Exported for its tests.
+ */
+export function landedOf(value: unknown): LandedWork | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const v = value as Record<string, unknown>;
+  if (v.kind === "pull-request" && typeof v.url === "string" && typeof v.number === "number" && typeof v.branch === "string" && typeof v.base === "string") {
+    return { kind: "pull-request", url: v.url, number: v.number, branch: v.branch, base: v.base };
+  }
+  if (v.kind === "merge" && typeof v.branch === "string" && typeof v.commit === "string" && typeof v.checkout === "string" && typeof v.from === "string") {
+    return { kind: "merge", branch: v.branch, commit: v.commit, checkout: v.checkout, from: v.from };
+  }
+  return undefined;
+}
+
 const textOf = (item: Item) => (item.content ?? []).map((part) => part.text ?? "").join("");
+
+/** The files a message carries: its `file` parts, references to the stored bytes. */
+const filesOf = (item: Item): FileContent[] =>
+  (item.content ?? []).filter(
+    (part): part is FileContent => part.type === "file" && typeof (part as Partial<FileContent>).data === "string" && typeof (part as Partial<FileContent>).mediaType === "string",
+  );
 
 /** A `tool_output` item as the call it answers: its tool, its args, its status and its result. */
 function callOf(item: Item): ToolCallOf {
@@ -553,7 +547,15 @@ export function entriesOf(items: readonly Item[], threads = false, retryableTurn
       continue;
     }
     if (item.role === "user") {
-      entries.push({ kind: "user", id: item.id, text, requestId, ...(threads && filingTurns.has(requestId) ? { sentToThread: true } : {}) });
+      const files = filesOf(item);
+      entries.push({
+        kind: "user",
+        id: item.id,
+        text,
+        requestId,
+        ...(files.length > 0 ? { files } : {}),
+        ...(threads && filingTurns.has(requestId) ? { sentToThread: true } : {}),
+      });
       continue;
     }
     // A failure that runs again is not an ending; the others are the thread's own task statuses.
@@ -611,7 +613,28 @@ function withStopped(entries: readonly ThreadEntry[], stopped: ReadonlySet<strin
 
 /** The adapter the app runs on: the served lab, as the user the page was served for. */
 export function createLabAdapter(): LabAdapter {
-  return createWiredLab(createClient({ userId: readUserId(), baseUrl: readBasePath(), fetcher: withBearerToken(readBearerToken()) }));
+  const fetcher = withBearerToken(readBearerToken());
+  return createWiredLab(createClient({ userId: readUserId(), baseUrl: readBasePath(), fetcher }), { basePath: readBasePath(), fetcher });
+}
+
+/** How the page reaches the server outside the client: where its API is mounted, and the fetch that authenticates. */
+export interface LabConnection {
+  basePath?: string;
+  fetcher?: ClientFetch;
+}
+
+/**
+ * A file's bytes through the server's read route. Read with the page's own fetch rather than a plain
+ * `<img src>`, which can't carry the bearer token `fsdev dev` may serve the page with.
+ */
+function fileReader({ basePath = "", fetcher = (input, init) => fetch(input, init) }: LabConnection) {
+  return async (file: FileContent): Promise<Blob> => {
+    const id = parseBlobRef(file.data);
+    if (id === undefined) throw new Error(`${file.filename ?? "The file"} is not a stored file.`);
+    const response = await fetcher(`${basePath.replace(/\/+$/, "")}/api/flows/blobs/${id}`);
+    if (!response.ok) throw new Error(`${file.filename ?? "The file"} couldn't be read (${response.status}).`);
+    return await response.blob();
+  };
 }
 
 /**
@@ -723,7 +746,7 @@ function inFlightOf(streamed: readonly Item[], fed: readonly Item[], requestId: 
 }
 
 /** The adapter over one client. */
-export function createWiredLab(fsd: Client): LabAdapter {
+export function createWiredLab(fsd: Client, connection: LabConnection = {}): LabAdapter {
   const workforce = createWorkforceClient(fsd);
   const inbox = createInboxClient(fsd);
   const modes = MODES;
@@ -986,18 +1009,24 @@ export function createWiredLab(fsd: Client): LabAdapter {
     return harnesses.get(task.assignee);
   };
 
-  /** How a finished coding task's review ended, from its output. Kept, since a finished task's output never changes. */
-  const reviews = new Map<string, Promise<LabTask["review"]>>();
-  const reviewOf = (sessionId: string, task: Listed) => {
-    if (!reviews.has(task.id)) {
-      reviews.set(
-        task.id,
+  /**
+   * A coding task's output as its `getTask` carries it (a `listTasks` row never does): how its review
+   * ended, and where its work landed. Kept per status, so a status change reads it again; a read that
+   * fails is tried again on the next poll.
+   */
+  const outputs = new Map<string, Promise<Record<string, unknown>>>();
+  const outputOf = (sessionId: string, task: Listed) => {
+    const key = `${task.id}#${task.attempts ?? 0}#${task.status}`;
+    return (
+      outputs.get(key) ??
+      keptUnlessFailed(
+        outputs,
+        key,
         flowOfSession(sessionId)
           .then((flow) => run(flow, sessionId, taskActionName("getTask", TASKS_BOARD), { id: task.id }))
-          .then((read) => (read.task?.output?.review as LabTask["review"]) ?? null),
-      );
-    }
-    return reviews.get(task.id)!;
+          .then((read) => (read.task?.output as Record<string, unknown> | undefined) ?? {}),
+      )
+    );
   };
 
   /**
@@ -1060,15 +1089,20 @@ export function createWiredLab(fsd: Client): LabAdapter {
         const run = { ...(typeof link?.startedAt === "number" ? { startedAt: link.startedAt } : {}), ...(leaseUntil === undefined ? {} : { leaseUntil }) };
         // The harness its run reported; until one reports, the assignee's `harness` setting.
         const harness = task.spend?.harness ?? (await harnessOf(task));
-        const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
-        const error = row.status === "errored" ? await errorOf(sessionId, task) : undefined;
         const pullRequests = await pullRequestsOf(task);
+        // A coding task's output says how its review ended and where its work landed. Landing happens on an accept,
+        // so the output is read once the run is done, or while it waits on a pull request it opened.
+        const output = harness !== undefined && (row.status === "completed" || pullRequests !== undefined) ? await outputOf(sessionId, task) : undefined;
+        const review = harness !== undefined && row.status === "completed" ? ((output?.review as LabTask["review"]) ?? null) : undefined;
+        const landed = landedOf(output?.landed);
+        const error = row.status === "errored" ? await errorOf(sessionId, task) : undefined;
         return {
           ...row,
           ...(Object.keys(run).length === 0 ? {} : { run }),
           ...(harness === undefined ? {} : { harness }),
           ...(pullRequests === undefined ? {} : { pullRequests }),
           ...(review === undefined ? {} : { review }),
+          ...(landed === undefined ? {} : { landed }),
           ...(error === undefined ? {} : { error }),
         };
       }),
@@ -1252,18 +1286,20 @@ export function createWiredLab(fsd: Client): LabAdapter {
       for (const tell of [...sessionOpened]) tell();
       return { id: created.id, title: NEW_SESSION_TITLE, worker, updatedAt: created.updatedAt, running: false, waiting: 0, projectId };
     },
-    send: async (sessionId, text) => {
+    send: async (sessionId, text, attachments = []) => {
       const flow = fsd.flow(await flowOfSession(sessionId));
       const feed = threadFeeds.get(sessionId);
       // With the thread open, stream the send so its answer shows as it is written.
       if (feed === undefined) {
-        await flow.send("respond", { message: text }, { sessionId });
+        await flow.send("respond", { message: text }, { sessionId, attachments: [...attachments] });
         return;
       }
-      const response = await flow.send("respond", { message: text }, { sessionId, stream: true });
+      const response = await flow.send("respond", { message: text }, { sessionId, stream: true, attachments: [...attachments] });
       if (!response.ok) throw new Error(`The send was refused (${response.status}).`);
       if (response.headers.get("content-type")?.includes("text/event-stream")) feed.followResponse(response);
     },
+    upload: (request) => fsd.upload(request),
+    readFile: fileReader(connection),
     interrupt: async (sessionId) => {
       // Stopping from the press; the turns it stops are those running now, not one started after.
       const stop: { ids: Set<string> | null } = { ids: null };
@@ -1372,11 +1408,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
       stopWatchers.set(sessionId, watchers.add(tell));
       // A turn starts and ends as a request: a request notice on the session's topic. Never on
       // `items`, which a streaming reply sends once per stored chunk.
-      const stopTurns = onNotice(
-        fsd,
-        [topic.session(sessionId)],
-        (notice) => notice.kind === "request",
-        async (): Promise<TurnsRead> => {
+      const stopTurns = fsd.live([topic.session(sessionId)], {
+        read: async (): Promise<TurnsRead> => {
           // One read of the latest requests, newest updated first, answers all three: the running turn
           // is among them, so are the stopped turns, and so is the turn a failed line could retry.
           const [recent, threads] = await Promise.all([fsd.sessions.requests(sessionId, { limit: RECENT_TURNS }), isThreads(sessionId)]);
@@ -1385,12 +1418,15 @@ export function createWiredLab(fsd: Client): LabAdapter {
           const turns = recent.filter((request) => TURN_ACTIONS.has(request.actionName)).sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
           return { turns, turn: turnsRunningIn(recent)[0], threads, retryable };
         },
-        (next) => {
+        onValue: (next) => {
           turnOf = next;
           build();
           tell();
         },
-      );
+        hear: (notice) => notice.kind === "request",
+        pollIntervalMs: READ_EVERY_MS,
+        onError: logFailedRead,
+      }).close;
       return () => {
         watchers.delete(tell);
         if (threadFeeds.get(sessionId) === feed) threadFeeds.delete(sessionId);
@@ -1402,7 +1438,13 @@ export function createWiredLab(fsd: Client): LabAdapter {
     // The board's notices (FIX-2429): the topics are narrowed to the ledgers the read returns,
     // so every notice on them is the board's, and a reply streaming in the session never wakes it.
     watchTasks: (sessionId, onChange, onStale) =>
-      onNotice(fsd, BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), () => true, () => boardOf(sessionId), onChange, TASKS_EVERY_MS, onStale),
+      fsd.live(BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), {
+        read: () => boardOf(sessionId),
+        onValue: onChange,
+        pollIntervalMs: TASKS_EVERY_MS,
+        onStale: onStale,
+        onError: logFailedRead,
+      }).close,
     // Shown only inside the tasks pane or the threads board, whose watch keeps `runSessionOf` current.
     watchTaskWork: (_sessionId, taskId, onChange) => {
       // The task's run session is known once the board has listed it, and a re-run moves it: follow
@@ -1447,16 +1489,16 @@ export function createWiredLab(fsd: Client): LabAdapter {
           streamed = items;
           tell();
         });
-        const stopPlan = onNotice(
-          fsd,
-          [topic.session(runSession)],
-          isPlanWrite,
-          async () => (await readRecordedWork(fsd, { sessionId: runSession, requestId })).plan?.rows.map(({ title, status }) => ({ title, status })) ?? null,
-          (rows) => {
+        const stopPlan = fsd.live([topic.session(runSession)], {
+          read: async () => (await readRecordedWork(fsd, { sessionId: runSession, requestId })).plan?.rows.map(({ title, status }) => ({ title, status })) ?? null,
+          onValue: (rows) => {
             plan = rows ?? undefined;
             tell();
           },
-        );
+          ...PLAN_WRITES,
+          pollIntervalMs: READ_EVERY_MS,
+          onError: logFailedRead,
+        }).close;
         stopRun = () => {
           stopCalls();
           stopPlan();
@@ -1481,10 +1523,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
           }
           stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items, loadEarlier) => {
             const review = reviewStopOf(items);
+            const reviewStop = reviewStopIdOf(items);
             fed = items;
             work = {
               entries: entriesOf(items.filter((item) => item.type !== "suspension")),
               ...(review === undefined ? {} : { review }),
+              ...(reviewStop === undefined ? {} : { reviewStop }),
               ...(loadEarlier === undefined ? {} : { loadEarlier }),
             };
             tell();
@@ -1516,10 +1560,16 @@ export function createWiredLab(fsd: Client): LabAdapter {
       release: async (id) => (await boardAt(sessionId)).release(id),
       retry: async (id) => (await boardAt(sessionId)).retry(id),
     }),
-    resolve: (sessionId, taskId) => answerReview(sessionId, taskId, { value: { verdict: "accepted" } }),
+    resolve: (sessionId, taskId, land) => answerReview(sessionId, taskId, { value: acceptOf(land) }),
     requestChanges: (sessionId, taskId, words) => answerReview(sessionId, taskId, { value: { verdict: "revise", words } }),
     // Pins are your user state: a state notice on your topic, from this tab or another, says they may have changed.
-    watchPins: (onChange) => onNotice(fsd, [topic.user()], (notice) => notice.kind === "state", readPins, onChange, 3000),
+    watchPins: (onChange) => fsd.live([topic.user()], {
+      read: readPins,
+      onValue: onChange,
+      hear: (notice) => notice.kind === "state",
+      pollIntervalMs: 3000,
+      onError: logFailedRead,
+    }).close,
     pin: async (taskId) => {
       await pinsDo("pin", { taskId });
     },
@@ -1527,7 +1577,13 @@ export function createWiredLab(fsd: Client): LabAdapter {
       await pinsDo("unpin", { taskId });
     },
     // Read the way pins are: your dismissals are your user state.
-    watchDismissed: (onChange) => onNotice(fsd, [topic.user()], (notice) => notice.kind === "state", readDismissed, onChange, 3000),
+    watchDismissed: (onChange) => fsd.live([topic.user()], {
+      read: readDismissed,
+      onValue: onChange,
+      hear: (notice) => notice.kind === "state",
+      pollIntervalMs: 3000,
+      onError: logFailedRead,
+    }).close,
     dismiss: async (task) => {
       await run("dismissals", await ownSession("dismissals"), "dismiss", { key: dismissalKey(task) });
     },

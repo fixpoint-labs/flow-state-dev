@@ -26,17 +26,14 @@ const withScheduler: CapabilitySlotMap = { primary: inMemoryStores(), scheduler:
 const flow = defineFlow({
   kind: "slots-flow",
   actions: {
-    ping: {
-      inputSchema: z.object({}),
-      block: handler({ name: "ping", inputSchema: z.object({}), execute: () => ({ ok: true }) })
-    }
+    ping: handler({ name: "ping", inputSchema: z.object({}), execute: () => ({ ok: true }) })
   }
 })();
 
 describe("profile slots", () => {
   it("still constructs a profile with primary, bus and blobs", async () => {
     const state = createFlowState({
-      flows: { flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores(), bus: adapter(["bus"]), blobs: adapter(["blobs"]) } }
     });
     await state.ready();

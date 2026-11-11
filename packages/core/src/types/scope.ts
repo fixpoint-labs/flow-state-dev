@@ -95,6 +95,16 @@ export type ItemQuery = {
    * turns up to its mark.
    */
   afterRequestId?: string;
+  // FIX-2636 D2.
+  /**
+   * `history()` only: how an earlier turn's documents ride. `"window"` (the
+   * default) re-sends the newest, up to one message's limits, and names older
+   * ones. `"named"` sends none: each becomes one line with its name and id,
+   * which a model with the attachments capability's `readAttachment` reads on
+   * request. The request's own files and every image are unaffected. The
+   * attachments capability sets it.
+   */
+  earlierDocuments?: "window" | "named";
 };
 
 /**

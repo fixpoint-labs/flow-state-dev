@@ -165,7 +165,7 @@ async function main(): Promise<void> {
 
   // ---- register and ask, over the real route ------------------------------
   const flowState = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { dev: { primary: inMemoryStores() } },
     modelResolver,
   } as never);

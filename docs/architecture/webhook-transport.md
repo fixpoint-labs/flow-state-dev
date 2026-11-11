@@ -81,6 +81,10 @@ from the event. A provider's service flow factory declares it
 (`githubServiceFlow` in `@flow-state-dev/workforce`); an app doesn't write one
 by hand. `normalize` is pure, so a redelivery names the same objects at the
 same versions, and a poll that calls the same normalize agrees with the push.
+An event a session publishes takes the same routing without a webhook: it
+enters through the dispatch seam's service route (see `dispatched-work.md` →
+"A run as a resource's owner, fired by the host"), with the publishing session
+as its sender and only its own user's runs in its tenant fired.
 
 Because a webhook handler lives off `flow.actions`, the runtime resolves it from
 `flow.webhooks[provider].on[event]` via the `(provider, eventType)` coordinate

@@ -84,11 +84,11 @@ function boot(rule: ResourceVisibilityRule | undefined) {
       grep: { inputSchema: z.object({ pattern: z.string() }).passthrough(), block: grepResourceContent },
       create: { inputSchema: z.object({ path: z.string() }), block: createResource },
       discover: { inputSchema: z.object({}).passthrough(), block: discover },
-      peek: { inputSchema: z.object({ uri: z.string() }), block: peek }
+      peek
     }
   });
   const instance = flow() as unknown as FlowInstance;
-  const state = createFlowState({ flows: { docs: instance }, stores: { default: { primary: inMemoryStores() } } });
+  const state = createFlowState({ flows: [instance], stores: { default: { primary: inMemoryStores() } } });
   const call = async (actionName: string, input: unknown) => {
     const runtime = await state.getRuntime();
     const result = await runAction({

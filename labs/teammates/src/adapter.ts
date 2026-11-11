@@ -8,7 +8,10 @@
  * |---------------------|------------------------------------------------------------------------------|
  * | `watchWorkers`      | the workforce client's `watchRoster()`: every hire, edit and fire, anywhere   |
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
- * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
+ * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written, |
+ * |                     | with the line's files                                                        |
+ * | `upload`            | the client's `upload`: a file the composer attached, stored, as its reference |
+ * | `readFile`          | the server's read route for a file a line carries, through the page's fetch   |
  * | `interrupt`         | the request's `abort`, for each answering turn the conversation showed running |
  * | `watchConversation` | the session's items, from its snapshot and then its stream (`sessionFeed`), |
  * |                     | each run of tool calls named by the UI registry's `tool-naming` and        |
@@ -60,12 +63,13 @@ import {
   readEveryCollectionPage,
   topic,
   type Client,
+  type ClientFetch,
   type SessionConnectionStatus,
   type SessionRequestSummary,
   type WireNotice,
   type WireTopic,
 } from "@flow-state-dev/client";
-import { isSuspensionWait, type OutputItem } from "@flow-state-dev/core/items";
+import { isSuspensionWait, type FileContent, type OutputItem } from "@flow-state-dev/core/items";
 import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
@@ -112,6 +116,8 @@ import { harnessName } from "./lib/harness";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
 import { stableList } from "./lib/stable";
 import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
+import type { AttachmentUploader } from "./components/flow-state/attachments";
+import { parseBlobRef } from "@flow-state-dev/core/attachments";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -287,7 +293,8 @@ export interface SessionStep {
 
 /** One entry of a worker's conversation, in the order it happened. */
 export type ConversationEntry =
-  | { kind: "user"; id: string; text: string }
+  /** `files`: what the line carries, as references, in the order attached. */
+  | { kind: "user"; id: string; text: string; files?: FileContent[] }
   /** `streaming` while the answer is still being written; `incomplete` when its turn failed before it was finished. */
   | { kind: "assistant"; id: string; text: string; streaming?: boolean; incomplete?: boolean }
   /**
@@ -477,7 +484,12 @@ export interface LabAdapter {
   readHarnesses(refresh?: boolean): Promise<LabHarness[]>;
   /** The worker's one conversation; the same id every time. */
   openConversation(worker: string): Promise<string>;
-  send(sessionId: string, text: string): Promise<void>;
+  /** Send a line to the worker, with the files attached to it, as references (`upload`). */
+  send(sessionId: string, text: string, attachments?: readonly FileContent[]): Promise<void>;
+  /** Store a file the composer attached; resolves to its reference, which a line then carries. */
+  upload: AttachmentUploader["upload"];
+  /** The bytes of a file a line carries, for its thumbnail; rejects when the server won't serve it. */
+  readFile(file: FileContent): Promise<Blob>;
   /**
    * Stop the worker: abort each answering turn the conversation shows running now. A line sent
    * after it starts its own turn, which this never reaches. Rejects with why the server refused one.
@@ -578,6 +590,12 @@ const textOf = (item: Item): string =>
     .map((part: { text?: unknown }) => (typeof part.text === "string" ? part.text : ""))
     .join("");
 
+/** The files a message carries: its `file` parts, references to the stored bytes. */
+const filesOf = (item: Item): FileContent[] =>
+  (Array.isArray(item.content) ? item.content : []).filter(
+    (part: Record<string, unknown>): part is FileContent => part.type === "file" && typeof part.data === "string" && typeof part.mediaType === "string",
+  );
+
 const parseArgs = (item: Item): Record<string, unknown> => {
   try {
     return JSON.parse(String(item.toolCall?.arguments ?? "{}")) as Record<string, unknown>;
@@ -675,102 +693,8 @@ function poll<T>(read: () => Promise<T>, onValue: (value: T) => void, everyMs = 
   };
 }
 
-/**
- * A read again after a failed one, 1 s and doubling to 30 s, the shape of the
- * client's own reconnects. A view that reads on a notice has no clock to try
- * again on where push covers it, so a failed read would otherwise wait for a
- * change that may never come. `succeeded` resets the delay; `stop` drops a
- * waiting try.
- */
-function retryAfterFailure(again: () => void): { failed(): void; succeeded(): void; stop(): void } {
-  let attempt = 0;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  return {
-    failed() {
-      clearTimeout(timer);
-      timer = setTimeout(again, Math.min(30_000, 1_000 * 2 ** attempt));
-      attempt += 1;
-    },
-    succeeded() {
-      attempt = 0;
-    },
-    stop() {
-      clearTimeout(timer);
-    },
-  };
-}
-
-/**
- * Read `read` now, and again whenever a notice under `topics` passes `hears`
- * reporting a value only when it changed, as {@link poll} does.
- * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
- * and one waiting for any number of notices. Wherever push can miss a change,
- * `client.subscribe` reads every `everyMs` instead, so the view keeps no timer
- * of its own. A failed read tries again on its own ({@link retryAfterFailure}).
- * A read still out when the watch stops reports nothing. `onStale` hears `true`
- * when a read fails and `false` when one succeeds after it.
- */
-function onNotice<T>(
-  client: Client,
-  topics: readonly WireTopic[],
-  hears: (notice: WireNotice) => boolean,
-  read: () => Promise<T>,
-  onValue: (value: T) => void,
-  everyMs = POLL_MS,
-  onStale?: (stale: boolean) => void,
-): Unsubscribe {
-  let live = true;
-  let last = "";
-  let stale = false;
-  let running = false;
-  let queued = false;
-  const retry = retryAfterFailure(() => void run());
-  const run = async (): Promise<void> => {
-    if (!live) return;
-    if (running) {
-      queued = true;
-      return;
-    }
-    running = true;
-    try {
-      const value = await read();
-      retry.succeeded();
-      const seen = JSON.stringify(value);
-      if (live && seen !== last) {
-        last = seen;
-        onValue(value);
-      }
-      if (live && stale) {
-        stale = false;
-        onStale?.(false);
-      }
-    } catch (error) {
-      console.error("teammates: a read failed", error);
-      if (live) retry.failed();
-      if (live && !stale) {
-        stale = true;
-        onStale?.(true);
-      }
-    }
-    running = false;
-    if (queued) {
-      queued = false;
-      void run();
-    }
-  };
-  const subscription = client.subscribe(topics, {
-    onChange: (notice) => {
-      if (notice === null || notice.kind === "resync" || hears(notice)) void run();
-    },
-    pollIntervalMs: everyMs,
-  });
-  void run();
-  return () => {
-    live = false;
-    retry.stop();
-    subscription.close();
-  };
-}
+/** A live read's failure, logged; the read tries again on its own (`client.live`). */
+const logFailedRead = (error: unknown): void => console.error("teammates: a read failed", error);
 
 /**
  * The tool calls of one request as its own stream sends them: each one as it
@@ -838,14 +762,14 @@ const isRequest = (notice: WireNotice): boolean => notice.kind === "request";
 
 /**
  * A write to the plan a harness records (core's `observed-plan` rows and its
- * `observed-plan-list` markers). A row only its owner may read is published
- * unnamed, so an unnamed resource notice reads too.
+ * `observed-plan-list` markers), as a live read hears it. A row only its owner
+ * may read is published unnamed, and the live read hears an unnamed resource
+ * notice whatever its paths say.
  */
-const isPlanWrite = (notice: WireNotice): boolean =>
-  notice.kind === "resource" &&
-  (notice.topic.resource === undefined ||
-    notice.topic.resource.startsWith(`${OBSERVED_PLAN}/`) ||
-    notice.topic.resource.startsWith(`${OBSERVED_PLAN_LIST}/`));
+const PLAN_WRITES = {
+  hear: (notice: WireNotice) => notice.kind === "resource",
+  paths: [OBSERVED_PLAN, OBSERVED_PLAN_LIST],
+};
 
 /** Whether `copy` of a row is of the same attempt (try count and run) as `row`: a retry's copies speak only for it. */
 function sameAttempt(copy: Record<string, any> | undefined, row: Record<string, any>): boolean {
@@ -1051,7 +975,8 @@ export function toEntries(
         retryable: false,
       });
     } else if (item.type === "message" && item.role === "user") {
-      entries.push({ kind: "user", id: item.id, text: textOf(item) });
+      const files = filesOf(item);
+      entries.push({ kind: "user", id: item.id, text: textOf(item), ...(files.length > 0 ? { files } : {}) });
     } else if (item.type === "message" && item.role === "assistant" && workers.has(item.agentName)) {
       // A task it filed ended: the board's line under the worker that ran it, which names its task
       // in its data. A completed task's answer said as is (`resultTo: "conversation"`) names the
@@ -1267,13 +1192,39 @@ function activityOf(requests: readonly SessionRequestSummary[]): Activity {
   };
 }
 
-/** The connection `fsdev dev` served this page with. */
-function connect(): Client {
-  return createClient({ userId: readUserId(), baseUrl: readBasePath(), fetcher: withBearerToken(readBearerToken()) });
+/** How the page reaches the server outside the client: where its API is mounted, and the fetch that authenticates. */
+export interface LabConnection {
+  basePath?: string;
+  fetcher?: ClientFetch;
 }
 
-/** The adapter the app runs on: the package, through one client. */
-export function createLabAdapter(client: Client = connect()): LabAdapter {
+/** The connection `fsdev dev` served this page with. */
+function pageConnection(): LabConnection {
+  return { basePath: readBasePath(), fetcher: withBearerToken(readBearerToken()) };
+}
+
+/** The client over the page's connection. */
+function connect(): Client {
+  const { basePath, fetcher } = pageConnection();
+  return createClient({ userId: readUserId(), baseUrl: basePath, fetcher });
+}
+
+/**
+ * A file's bytes through the server's read route. Read with the page's own fetch rather than a plain
+ * `<img src>`, which can't carry the bearer token `fsdev dev` may serve the page with.
+ */
+function fileReader({ basePath = "", fetcher = (input, init) => fetch(input, init) }: LabConnection) {
+  return async (file: FileContent): Promise<Blob> => {
+    const id = parseBlobRef(file.data);
+    if (id === undefined) throw new Error(`${file.filename ?? "The file"} is not a stored file.`);
+    const response = await fetcher(`${basePath.replace(/\/+$/, "")}/api/flows/blobs/${id}`);
+    if (!response.ok) throw new Error(`${file.filename ?? "The file"} couldn't be read (${response.status}).`);
+    return await response.blob();
+  };
+}
+
+/** The adapter the app runs on: the package, through one client; `connection` is where it reads a line's files. */
+export function createLabAdapter(client: Client = connect(), connection: LabConnection = pageConnection()): LabAdapter {
   const workforce: WorkforceClient = createWorkforceClient(client);
   const inbox = createInboxClient(client);
   /** The flow each run session belongs to, where a run's stop is answered. Kept, since a session's flow never changes. */
@@ -1367,17 +1318,19 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     async openConversation(worker) {
       return (await conversationOf(worker)).sessionId;
     },
-    async send(sessionId, text) {
+    async send(sessionId, text, attachments = []) {
       const flow = flowOfSession.get(sessionId);
       if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
       // The id is the page's own, so a Stop pressed before this send can tell this turn came after it.
       const requestId = `req_${crypto.randomUUID()}`;
       sent.set(sessionId, [...(sent.get(sessionId) ?? []), requestId]);
       // Streamed, so the answer shows as it is written (the session stream sends it once finished).
-      const response = await client.flow(flow).send("respond", { message: text }, { sessionId, requestId, stream: true });
+      const response = await client.flow(flow).send("respond", { message: text }, { sessionId, requestId, stream: true, attachments: [...attachments] });
       if (!response.ok) throw new Error(`teammates: the send was refused (${response.status})`);
       if (response.headers.get("content-type")?.includes("text/event-stream")) feeds(sessionId).followResponse(response);
     },
+    upload: (request) => client.upload(request),
+    readFile: fileReader(connection),
     async interrupt(sessionId) {
       const flow = flowOfSession.get(sessionId);
       if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
@@ -1483,12 +1436,9 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       });
       const watchers = stopWatchers.get(sessionId) ?? new Set<() => void>();
       stopWatchers.set(sessionId, watchers.add(emit));
-      const stopPoll = onNotice(
-        client,
-        [topic.session(sessionId)],
-        isRequest,
-        () => client.sessions.requests(sessionId, { limit: 20 }),
-        (requests) => {
+      const stopPoll = client.live([topic.session(sessionId)], {
+        read: () => client.sessions.requests(sessionId, { limit: 20 }),
+        onValue: (requests) => {
           const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName));
           inProgress = answering.filter((r) => r.status === "in_progress").map((r) => r.id);
           quiet = requests.filter((r) => QUIET_ACTIONS.has(r.actionName)).map((r) => r.id);
@@ -1501,7 +1451,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           reuse(toEntries(items, workerIds, ended, retryable, stopped));
           emit();
         },
-      );
+        hear: isRequest,
+        pollIntervalMs: POLL_MS,
+        onError: logFailedRead,
+      }).close;
       return () => {
         watchers.delete(emit);
         if (watchers.size === 0) runningNow.delete(sessionId);
@@ -1544,7 +1497,13 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const follow = () => {
         const known = conversations.get(worker);
         if (!live || known === undefined || stopRead !== undefined) return;
-        stopRead = onNotice(client, [topic.session(known.sessionId)], isRequest, async () => activityOf(await client.sessions.requests(known.sessionId, { limit: 20 })), onChange);
+        stopRead = client.live([topic.session(known.sessionId)], {
+          read: async () => activityOf(await client.sessions.requests(known.sessionId, { limit: 20 })),
+          onValue: onChange,
+          hear: isRequest,
+          pollIntervalMs: POLL_MS,
+          onError: logFailedRead,
+        }).close;
       };
       if (conversations.has(worker)) follow();
       else onChange({ running: false, lastActiveAt: 0 });
@@ -1571,22 +1530,22 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         emit();
       });
       // The window moves with a turn (a request notice), and the summary's mark with its resource.
-      const stopPoll = onNotice(
-        client,
-        [topic.session(sessionId)],
-        (notice) => isRequest(notice) || (notice.kind === "resource" && notice.topic.resource === HISTORY_SUMMARY),
-        async (): Promise<WindowRead> => {
+      const stopPoll = client.live([topic.session(sessionId)], {
+        read: async (): Promise<WindowRead> => {
           const requests = await client.sessions.requests(sessionId, { limit: 20 });
           const summary = (await client.sessions.state(sessionId, { includeItems: false })).resources?.session?.[HISTORY_SUMMARY] as
             | HistorySummaryFace
             | undefined;
           return windowReadOf(requests, summary);
         },
-        (next) => {
+        onValue: (next) => {
           read = next;
           emit();
         },
-      );
+        hear: (notice) => isRequest(notice) || (notice.kind === "resource" && notice.topic.resource === HISTORY_SUMMARY),
+        pollIntervalMs: POLL_MS,
+        onError: logFailedRead,
+      }).close;
       return () => {
         stopFeed();
         stopPoll();
@@ -1705,26 +1664,24 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       };
       // Topics narrowed to the ledgers the read returns: every notice on them is the board's,
       // so a reply streaming in the conversation never wakes the read.
-      const stopBoard = onNotice(
-        client,
-        BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })),
-        () => true,
-        async () => {
+      const stopBoard = client.live(BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), {
+        read: async () => {
           const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
           const read = await client.flow(flow).read<{ ok: boolean; error?: string; tasks: Array<Record<string, any>> }>(LIST_TASKS, {}, { sessionId });
           if (!read.ok) throw new Error(read.error);
           return read.tasks;
         },
-        (tasks) => {
+        onValue: (tasks) => {
           if (stopped) return;
           listed = new Map(tasks.map((task) => [task.id as string, task]));
           publish();
         },
-        POLL_MS,
-        (stale) => {
+        pollIntervalMs: POLL_MS,
+        onStale: (stale) => {
           if (!stopped) onStale?.(stale);
         },
-      );
+        onError: logFailedRead,
+      }).close;
       const stopFeed = watchFeed(sessionId, boardRows, (read) => {
         rows = read;
         publish();
@@ -1850,16 +1807,16 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const stopPlan =
         requestId === undefined
           ? () => {}
-          : onNotice(
-              client,
-              [topic.session(run.sessionId)],
-              isPlanWrite,
-              () => readRecordedWork(client, { sessionId: run.sessionId, requestId }),
-              (work) => {
-                const { plan: _, ...rest } = now;
-                tell(work.plan === null ? rest : { ...rest, plan: work.plan.rows.map(({ title, status }) => ({ title, status })) });
-              },
-            );
+          : client.live([topic.session(run.sessionId)], {
+            read: () => readRecordedWork(client, { sessionId: run.sessionId, requestId }),
+            onValue: (work) => {
+              const { plan: _, ...rest } = now;
+              tell(work.plan === null ? rest : { ...rest, plan: work.plan.rows.map(({ title, status }) => ({ title, status })) });
+            },
+            ...PLAN_WRITES,
+            pollIntervalMs: POLL_MS,
+            onError: logFailedRead,
+          }).close;
       return () => {
         stopFeed();
         stopCalls();

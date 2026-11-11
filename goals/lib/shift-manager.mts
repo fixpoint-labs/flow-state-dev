@@ -164,11 +164,13 @@ export async function startShiftManager(options: {
   tsx?: string;
   /** How long the start may take before it is refused. Default: 90s. */
   timeoutMs?: number;
+  /** The working directory to serve from: an earlier start's `workDir`, to restart on the files it keeps there (the default local blob folder). Default: a fresh one. */
+  workDir?: string;
 }): Promise<ServedShiftManager> {
   const root = options.root ?? SHIFT_MANAGER;
   const tsx = options.tsx ?? TSX;
   mkdirSync(join(options.scratch, "labs"), { recursive: true });
-  const workDir = mkdtempSync(join(options.scratch, "labs", `${options.label}-`));
+  const workDir = options.workDir ?? mkdtempSync(join(options.scratch, "labs", `${options.label}-`));
   const env = intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", ...options.env });
   if (NODE_ENV_AT_LOAD === undefined) delete env.NODE_ENV;
   else env.NODE_ENV = NODE_ENV_AT_LOAD;

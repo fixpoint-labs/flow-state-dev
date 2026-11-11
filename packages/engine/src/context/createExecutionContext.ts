@@ -52,8 +52,10 @@ import {
   resolveAllowedActions,
   BOARD_NOTICE_SEAM,
   DISPATCH_SEAM,
-  HARNESS_ATTACHMENT_SEAM,
-  type HarnessAttachmentSeam,
+  ATTACHMENT_SEAM,
+  type AttachmentSeam,
+  USER_ATTACHMENT_SEAM,
+  type UserAttachmentSeam,
   REQUEST_RESUME_SEAM,
   REQUEST_SPEND_SEAM,
   type RequestResume,
@@ -171,9 +173,19 @@ import {
   LLM_AUDIENCE_TYPES,
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
-import { AttachmentUnavailableError, resolveAttachment, sessionBlobOwner, type ResolvedAttachment } from "../blobs/attachments";
+import {
+  AttachmentUnavailableError,
+  copyAttachments,
+  discardAttachments,
+  resolveAttachment,
+  sessionBlobOwner,
+  userBlobOwner,
+  type ResolvedAttachment
+} from "../blobs/attachments";
 import type { BlobStore } from "../blobs/types";
+import type { AttachmentAccepts } from "@flow-state-dev/core/attachments";
 import { resolveHistoryFiles } from "./history-files";
+import { readAttachmentText } from "../blobs/attachment-text";
 import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
@@ -1182,6 +1194,7 @@ export async function createExecutionContext<
             lineageId
           },
           dispatchOperation: options.requestHost.dispatchOperation,
+          serviceRoute: options.requestHost.serviceRoute,
           resolveFlow: options.requestHost.resolveFlow,
           parentTask: options.requestHost.parentTask,
           waitResume: options.requestHost.waitResume,
@@ -2934,19 +2947,33 @@ export async function createExecutionContext<
   // sends it again. A failed read isn't kept, so the next step tries again.
   const blobs = stores.blobs;
   const reads = new Map<string, Promise<ResolvedAttachment>>();
+  const runUser = { userId, orgId: resolvedOrgId };
+  // A copy this run keeps names this flow instance, whose sign-in the read route checks it under.
+  const userOwner = userBlobOwner(options.tenantId, runUser, flow.id);
   const readOnce = (store: BlobStore, file: FileContent) => {
     const cached = reads.get(file.data);
     if (cached !== undefined) return cached;
-    const read = resolveAttachment(store, file, { owner: sessionBlobOwner(sessionKey), user: { userId, orgId: resolvedOrgId } });
+    // The session's files, and the user's own scope's, whichever flow kept them: a task's brief files (FIX-2522).
+    const read = resolveAttachment(store, file, {
+      owner: sessionBlobOwner(sessionKey),
+      user: runUser,
+      userKept: { tenantId: options.tenantId }
+    });
     reads.set(file.data, read);
     read.catch(() => reads.delete(file.data));
     return read;
   };
-  resolveModel.prepareMessages = (messages: unknown[]) =>
-    resolveHistoryFiles(messages, blobs === undefined ? undefined : (file: FileContent) => readOnce(blobs, file));
-  // The same reader for a harness handed the turn's files (FIX-2519), named
-  // in core's terms. No blob store: no reader, and a harness refuses the files.
-  const harnessAttachmentSeam: HarnessAttachmentSeam | undefined =
+  resolveModel.prepareMessages = (messages: unknown[], target?: { accepts: AttachmentAccepts }) =>
+    resolveHistoryFiles(
+      messages,
+      blobs === undefined ? undefined : (file: FileContent) => readOnce(blobs, file),
+      target,
+      requestRef.current.attachments ?? []
+    );
+  // The same reader for a harness handed the turn's files (FIX-2519) and for
+  // the model's read of an earlier file (FIX-2636), named in core's terms.
+  // No blob store: no reader, and a harness refuses the files.
+  const attachmentSeam: AttachmentSeam | undefined =
     blobs === undefined
       ? undefined
       : async (file: FileContent) => {
@@ -2961,8 +2988,27 @@ export async function createExecutionContext<
             mediaType: resolved.record.mediaType,
             ...(file.filename !== undefined ? { filename: file.filename } : {}),
             bytes: resolved.bytes,
-            base64: resolved.base64
+            base64: resolved.base64,
+            // A document's text, for a harness that doesn't read it as a file (FIX-2520).
+            text: () => readAttachmentText(file, resolved, (other: FileContent) => readOnce(blobs, other))
           };
+        };
+  // FIX-2522. Copies of files kept in the person's own scope, read through the
+  // same resolver, so only a file this run can read is copied. No blob store:
+  // no keeper, and a caller that keeps files says so.
+  let keptSends = 0;
+  const userAttachmentSeam: UserAttachmentSeam | undefined =
+    blobs === undefined
+      ? undefined
+      : {
+          keep: (files) =>
+            copyAttachments(blobs, files, {
+              owner: userOwner,
+              send: `keep:${requestId}:${(keptSends += 1)}`,
+              read: (file) => readOnce(blobs, file)
+            }),
+          // Only what this flow kept for this user: a reference to anything else is left alone.
+          discard: (files) => discardAttachments(blobs, files, { owner: userOwner, user: runUser })
         };
   // Evaluator strings resolve only through the flow's own resolver. When an
   // app-supplied resolver has no `resolveEvaluationModel`, the hook stays
@@ -3955,7 +4001,8 @@ export async function createExecutionContext<
       // A task board's change reaches this run's bus, under the
       // request's tenant. No bus (a registry no entry wrapped): no seam.
       ...(boardNoticeSeam !== undefined ? { [BOARD_NOTICE_SEAM]: boardNoticeSeam } : {}),
-      ...(harnessAttachmentSeam !== undefined ? { [HARNESS_ATTACHMENT_SEAM]: harnessAttachmentSeam } : {}),
+      ...(attachmentSeam !== undefined ? { [ATTACHMENT_SEAM]: attachmentSeam } : {}),
+      ...(userAttachmentSeam !== undefined ? { [USER_ATTACHMENT_SEAM]: userAttachmentSeam } : {}),
       settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,

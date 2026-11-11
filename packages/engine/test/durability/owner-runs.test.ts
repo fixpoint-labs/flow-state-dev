@@ -44,8 +44,8 @@ const svc = defineFlow({
   actions: {},
   internal: {
     actions: {
-      deliver: { inputSchema: z.object({ note: z.string() }), block: ownerRun },
-      route: { inputSchema: z.object({ runs: z.array(z.any()) }), block: route }
+      deliver: ownerRun,
+      route
     }
   }
 })();
@@ -54,7 +54,7 @@ async function boot() {
   let host: InboundTransportHost | undefined;
   const stores = inMemoryStores();
   const state = createFlowState({
-    flows: { svc },
+    flows: [svc],
     stores: { default: { primary: stores } },
     resolvePrincipal: () => null,
     adapters: [{ source: "test", createBindings: (h: InboundTransportHost) => ((host = h), {}) }]

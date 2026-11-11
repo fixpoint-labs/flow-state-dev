@@ -45,6 +45,7 @@ export type {
   DispatchSpec,
   DispatchType,
   InternalEntry,
+  InternalServiceRoute,
   SessionTarget,
   TaskBinding,
   TaskDispatchInput,
@@ -84,6 +85,9 @@ export {
 export type {
   ActionConfig,
   ReadConfig,
+  ActionEntry,
+  NormalizedActions,
+  ReadEntry,
   TypedEntries,
   ActionCore,
   UserMessageEcho,

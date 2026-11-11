@@ -9,6 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Client, SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
 import { createLabAdapter, type BoardTask } from "../src/adapter";
+import { liveOver } from "./live-over";
 
 /** `client.subscribe`, faked: each subscription is kept so a case can deliver its notices. */
 function fakeSubscribe() {
@@ -41,6 +42,9 @@ function clientWith(item: ReturnType<typeof filed>, started = () => true) {
   const reads: string[] = [];
   const push = fakeSubscribe();
   const client = {
+    get live() {
+      return liveOver(this as never);
+    },
     subscribe: push.subscribe,
     sessions: {
       state: async () => ({ at: 1, sessionCreatedAt: 1, items: [item], pagination: { hasMore: false, nextOffset: 1 } }),
@@ -110,6 +114,9 @@ describe("a coding task's run, while it runs", () => {
     const push = fakeSubscribe();
     let linked = false;
     const client = {
+      get live() {
+        return liveOver(this as never);
+      },
       subscribe: push.subscribe,
       sessions: {
         state: async () => ({ at: 1, sessionCreatedAt: 1, items: [stamped], pagination: { hasMore: false, nextOffset: 1 } }),
@@ -134,6 +141,9 @@ describe("a coding task's run, while it runs", () => {
     const push = fakeSubscribe();
     let status = "in_progress";
     const client = {
+      get live() {
+        return liveOver(this as never);
+      },
       subscribe: push.subscribe,
       sessions: {
         state: async () => ({ at: 1, sessionCreatedAt: 1, items: [item], pagination: { hasMore: false, nextOffset: 1 } }),
@@ -158,6 +168,9 @@ describe("what a task's runs spent, as the board read folds it", () => {
     const item = filed("completed");
     const push = fakeSubscribe();
     const client = {
+      get live() {
+        return liveOver(this as never);
+      },
       subscribe: push.subscribe,
       sessions: {
         state: async () => ({ at: 1, sessionCreatedAt: 1, items: [item], pagination: { hasMore: false, nextOffset: 1 } }),
@@ -189,6 +202,9 @@ describe("a hold answered in the run's session", () => {
     const push = fakeSubscribe();
     let answered = false;
     const client = {
+      get live() {
+        return liveOver(this as never);
+      },
       subscribe: push.subscribe,
       sessions: {
         state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: id === "dsx_run" ? [] : [held], pagination: { hasMore: false, nextOffset: 1 } }),
@@ -221,6 +237,9 @@ describe("a row the run's feed and the board read both carry", () => {
     const fromRun = { ...linked, id: "task-change:board/task_1@run", requestId: "req_run", ts: 5, data: { ...linked.data, kind: "progress_reported", task: { ...linked.data.task, updatedAt: 5 } } };
     const push = fakeSubscribe();
     const client = {
+      get live() {
+        return liveOver(this as never);
+      },
       subscribe: push.subscribe,
       sessions: {
         state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: id === "dsx_run" ? [fromRun] : [linked], pagination: { hasMore: false, nextOffset: 1 } }),
@@ -267,6 +286,9 @@ describe("a board read still in flight when the watch stops", () => {
     const opened: string[] = [];
     let land!: () => void;
     const client = {
+      get live() {
+        return liveOver(this as never);
+      },
       subscribe: push.subscribe,
       sessions: {
         state: async () => ({ at: 1, sessionCreatedAt: 1, items: [item], pagination: { hasMore: false, nextOffset: 1 } }),
@@ -321,6 +343,9 @@ describe("a coding task's hold, while it runs", () => {
       },
     };
     return {
+      get live() {
+        return liveOver(this as never);
+      },
       subscribe: fakeSubscribe().subscribe,
       sessions: {
         state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: id === "dsx_run" ? [held] : [conversation], pagination: { hasMore: false, nextOffset: 1 } }),
@@ -349,6 +374,9 @@ describe("a coding task's hold, while it runs", () => {
     const running = { ...conversation, data: { ...conversation.data, task: { ...conversation.data.task, run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 }, updatedAt: 1 } } };
     const ended = { ...running, id: "task-change:board/task_1@end", ts: 3, itemIndex: 2, data: { ...running.data, kind: "completed", task: { ...running.data.task, status: "completed", updatedAt: 3 } } };
     const client = {
+      get live() {
+        return liveOver(this as never);
+      },
       subscribe: fakeSubscribe().subscribe,
       sessions: {
         state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: id === "wks_1" ? [old, running] : [running], pagination: { hasMore: false, nextOffset: 1 } }),

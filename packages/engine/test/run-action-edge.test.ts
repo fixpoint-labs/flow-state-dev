@@ -12,15 +12,12 @@ describe("runAction edge behavior", () => {
     const flow = defineFlow({
       kind: "missing-action-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "run",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.string(),
             execute: () => "ok"
           })
-        }
       }
     })();
 
@@ -43,15 +40,12 @@ describe("runAction edge behavior", () => {
     const flow = defineFlow({
       kind: "invalid-input-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "run",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.string(),
             execute: () => "ok"
           })
-        }
       }
     })();
 
@@ -75,15 +69,12 @@ describe("runAction edge behavior", () => {
     const flow = defineFlow({
       kind: "started-observer-fail",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "run",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.string(),
             execute: () => "ok"
           })
-        }
       },
       request: {
         onStarted: handler({
@@ -116,7 +107,6 @@ describe("runAction edge behavior", () => {
       kind: "errored-observer-fail",
       actions: {
         run: {
-          inputSchema: z.object({ value: z.number() }),
           block: handler({
             name: "run",
             inputSchema: z.object({ value: z.number() }),
@@ -177,15 +167,12 @@ describe("runAction edge behavior", () => {
     const successFlow = defineFlow({
       kind: "internal-seam-success",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "run",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.string(),
             execute: () => "ok"
           })
-        }
       }
     })();
 
@@ -217,9 +204,7 @@ describe("runAction edge behavior", () => {
     const failureFlow = defineFlow({
       kind: "internal-seam-failure",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "run",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.string(),
@@ -227,7 +212,6 @@ describe("runAction edge behavior", () => {
               throw new Error("failure");
             }
           })
-        }
       }
     })();
 
@@ -255,15 +239,12 @@ describe("runAction edge behavior", () => {
     const flow = defineFlow({
       kind: "default-internal-seams",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "run",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.string(),
             execute: () => "ok"
           })
-        }
       }
     })();
 
@@ -298,15 +279,12 @@ describe("runAction edge behavior", () => {
     const flow = defineFlow({
       kind: "request-patch-missing",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "run",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.string(),
             execute: () => "ok"
           })
-        }
       }
     })();
 
@@ -524,9 +502,7 @@ describe("runAction edge behavior", () => {
     const flow = defineFlow({
       kind: "terminal-error-guard",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "run",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.string(),
@@ -535,7 +511,6 @@ describe("runAction edge behavior", () => {
               throw new Error("primary failure");
             }
           })
-        }
       }
     })();
 

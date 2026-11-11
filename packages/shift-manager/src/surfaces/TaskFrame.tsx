@@ -33,6 +33,8 @@ import { TaskSession } from "./TaskSession";
 import { cn } from "../lib/utils";
 import { STALE_CLASS } from "../components/flow-state/connection-banner";
 import { ErrorBody } from "../components/flow-state/error";
+import { MessageFiles } from "../components/flow-state/message";
+import { fileReadBase, flowUploader, readStoredFile } from "../lib/files";
 import { TaskActions } from "../components/flow-state/task-actions";
 
 export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
@@ -279,6 +281,15 @@ function Brief({ gaps }: { gaps: Gaps }) {
           {row?.goal ?? "—"}
         </dd>
       </div>
+      {row === undefined || row.attachments.length === 0 ? null : (
+        // FIX-2522: the brief's files, which every run of the task gets.
+        <div>
+          <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">FILES</dt>
+          <dd className="flex pt-1" data-testid="brief-files">
+            <MessageFiles files={row.attachments} readBase={fileReadBase()} readFile={readStoredFile} />
+          </dd>
+        </div>
+      )}
       <div>
         <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">CONTEXT AND INPUT</dt>
         <dd className="text-muted-foreground" data-testid="brief-fields-gap" data-gap={gaps.task.briefFields}>
@@ -334,12 +345,15 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       label={`Message ${worker ?? "this worker"}`}
       placeholder={`Message ${worker ?? "this worker"}…`}
       blocked={blocked}
+      // Through the run's own flow, whose sign-in its send runs.
+      uploader={flowUploader(client, flowId)}
       // No `held`: the draft stays until the door turn ends. The Session follows the request from `onStarted`.
-      send={async (message) => {
+      // A file found after the task started goes here, as a line to its run, not into its brief (FIX-2522 D1).
+      send={async (message, _held, attachments) => {
         const target = { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! };
         const sent = await sendTurn(client, stamps ? { ...target, taskId: task.taskId } : target, message, {
           onStarted: (requestId) => task.noteSent(requestId, stamps),
-        });
+        }, attachments);
         // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
         if (sent.suspended) void refresh();
         return sent;

@@ -222,7 +222,7 @@ const service = defineSubscriptionServiceFlow({ kind: "github-service", provider
 const instances = Object.fromEntries(hireWorkforce(installation, { routines: { providers: [github] } }).map((copy) => [copy.id, copy]));
 const stores = inMemoryStores();
 const state = createFlowState({
-  flows: { ...instances, "github-service": service },
+  flows: [...Object.values(instances), service],
   stores: { default: { primary: stores } },
   modelResolver: models,
   resolvePrincipal: (context: any) => {

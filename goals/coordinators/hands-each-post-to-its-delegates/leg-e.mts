@@ -164,7 +164,7 @@ const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: route }
 flows = { helper: { flow: helper, roles: ["contributor"] }, coordinator };
 const copies = wf.hireWorkforce(installation) as Array<{ id: string }>;
 const state = engine.createFlowState({
-  flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+  flows: copies,
   stores: { default: { primary: engine.inMemoryStores() } },
   modelResolver,
   resolvePrincipal: (context: any) => {

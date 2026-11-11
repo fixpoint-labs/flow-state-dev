@@ -15,14 +15,11 @@ import { serve, type ServeHandle, type ServeOptions } from "../src/serve";
 const chat = defineFlow({
   kind: "chat",
   actions: {
-    say: {
-      inputSchema: z.object({ text: z.string() }),
-      block: handler({
+    say: handler({
         name: "chat-say",
         inputSchema: z.object({ text: z.string() }),
         execute: () => ({})
       })
-    }
   }
 })();
 
@@ -37,7 +34,7 @@ afterEach(async () => {
 });
 
 async function start(options: ServeOptions = {}): Promise<{ handle: ServeHandle; base: string; flowState: FlowState }> {
-  const flowState = createFlowState({ flows: { chat }, stores: { default: { primary: inMemoryStores() } } });
+  const flowState = createFlowState({ flows: [chat], stores: { default: { primary: inMemoryStores() } } });
   const handle = await serve(flowState, { port: 0, host: "127.0.0.1", handleSignals: false, shutdownGraceMs: 200, ...options });
   handles.push(handle);
   return { handle, base: `http://127.0.0.1:${handle.port}`, flowState };
@@ -164,7 +161,7 @@ describe("serve() push delivery", () => {
   });
 
   it("accepts tickets on either of two hosts that serve one router, with no pushSecret", async () => {
-    const flowState = createFlowState({ flows: { chat }, stores: { default: { primary: inMemoryStores() } } });
+    const flowState = createFlowState({ flows: [chat], stores: { default: { primary: inMemoryStores() } } });
     const router = await flowState.getRouter();
     const options = { port: 0, host: "127.0.0.1", handleSignals: false, shutdownGraceMs: 200, disposeOnClose: false };
     const first = await serve(router, options);
@@ -186,7 +183,7 @@ describe("serve() push delivery", () => {
   });
 
   it("reports and mints push only on the host that serves the socket, when two hosts share a router", async () => {
-    const flowState = createFlowState({ flows: { chat }, stores: { default: { primary: inMemoryStores() } } });
+    const flowState = createFlowState({ flows: [chat], stores: { default: { primary: inMemoryStores() } } });
     const router = await flowState.getRouter();
     const options = { port: 0, host: "127.0.0.1", handleSignals: false, shutdownGraceMs: 200, disposeOnClose: false };
     const withPush = await serve(router, options);
@@ -245,7 +242,7 @@ describe("serve() push delivery", () => {
 
 describe("createServerApp", () => {
   it("reports no push over a router another host serves push for", async () => {
-    const flowState = createFlowState({ flows: { chat }, stores: { default: { primary: inMemoryStores() } } });
+    const flowState = createFlowState({ flows: [chat], stores: { default: { primary: inMemoryStores() } } });
     const router = await flowState.getRouter();
     const handle = await serve(router, { port: 0, host: "127.0.0.1", handleSignals: false, disposeOnClose: false });
     handles.push(handle);
@@ -259,7 +256,7 @@ describe("createServerApp", () => {
   });
 
   it("serves no push: capabilities says so, with no socket to open", async () => {
-    const flowState = createFlowState({ flows: { chat }, stores: { default: { primary: inMemoryStores() } } });
+    const flowState = createFlowState({ flows: [chat], stores: { default: { primary: inMemoryStores() } } });
     const { app, dispose } = createServerApp(flowState);
     const response = await app.fetch(new Request("http://localhost/api/flows/capabilities"));
     expect(await response.json()).toEqual({ userStream: false, push: null });

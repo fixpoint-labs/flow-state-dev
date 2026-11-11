@@ -655,7 +655,7 @@ describe("request-scope writes under a recovery continuation", () => {
     const flow = defineFlow({
       kind: "recovery-overlap-flow",
       actions: {
-        run: { inputSchema: z.any(), block: parkedBlock }
+        run: parkedBlock
       }
     })({ id: "recovery-overlap-flow" });
 

@@ -173,15 +173,12 @@ describe("a worker's skills at the mint", () => {
       cardinality: "collection",
       configSchema: z.object({ desk: z.string().default("front") }),
       actions: { ...workerDoor,
-        run: {
-          inputSchema: z.object({ message: z.string() }),
-          block: handler({
+        run: handler({
             name: "triage",
             inputSchema: z.object({ message: z.string() }),
             outputSchema: z.object({ ok: z.boolean() }),
             execute: () => ({ ok: true }),
           }),
-        },
       },
     });
 
@@ -216,15 +213,12 @@ describe("a worker's skills at the mint", () => {
       cardinality: "collection",
       configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
       actions: { ...workerDoor,
-        run: {
-          inputSchema: z.object({ message: z.string() }),
-          block: handler({
+        run: handler({
             name: "triage",
             inputSchema: z.object({ message: z.string() }),
             outputSchema: z.object({ ok: z.boolean() }),
             execute: () => ({ ok: true }),
           }),
-        },
       },
     });
 

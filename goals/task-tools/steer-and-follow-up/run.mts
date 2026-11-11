@@ -318,7 +318,7 @@ function buildHost(filename: string, repo: string, checkouts: string) {
   flows = { agent, coordinator, coder: { flow: coder, roles: ["contributor"] } };
   const instances = Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy]));
   const state = createFlowState({
-    flows: instances,
+    flows: Object.values(instances),
     stores: { default: { primary: sqliteStores({ filename }) } },
     logger: silentLogger,
     modelResolver: modelResolver(),

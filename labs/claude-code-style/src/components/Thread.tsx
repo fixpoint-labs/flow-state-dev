@@ -133,6 +133,7 @@ export function Thread({
                     stillRunning={countFor(entry)}
                     onViewTasks={onViewTasks}
                     tasks={feedTasks}
+                    readFile={adapter.readFile}
                     // Retry only the newest turn, and not while one runs: the engine retries a failed request as a new one.
                     onRetry={entry.kind === "failed" && entry.retryable && !running && entry.requestId !== undefined ? retryOf(entry.requestId) : undefined}
                   />
@@ -162,10 +163,11 @@ export function Thread({
           stopRefused={stopRefused}
           armed={keys.armed}
           seed={seed}
-          onSend={(text) => {
+          uploader={adapter}
+          onSend={(text, attachments) => {
             // Your own line brings you back to the end, wherever you had scrolled to.
             feed.sent();
-            return adapter.send(session.id, text);
+            return adapter.send(session.id, text, attachments);
           }}
           onStop={stop}
         />

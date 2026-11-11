@@ -133,7 +133,7 @@ function researchFlow(installation: ReturnType<typeof createWorkerInstallation>)
     resources: { ...installation.resources, ...workerMessagesResources },
     internal: { actions: hearsMessages(installation, "research") },
     request: { onStarted: loadWorker },
-    actions: { respond: { inputSchema: input, block: door, userMessage: (turn: { message: string }) => turn.message } },
+    actions: { respond: { block: door, userMessage: (turn: { message: string }) => turn.message } },
     task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "research-task", turn: door }) } }
   });
 }
@@ -190,7 +190,7 @@ async function openDesk(routing: "best-fit" | "round-robin", options: DeskOption
   const route = scriptedRoute();
   const answer = scriptedAnswer();
   const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({
       generators: { "agent-answer": answer, "research-answer": answer },

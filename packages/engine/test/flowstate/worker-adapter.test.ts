@@ -37,14 +37,11 @@ const { FlowStateConfigError } = await import("../../src/errors/flow-error");
 const noopFlow = defineFlow({
   kind: "noop-flow",
   actions: {
-    ping: {
-      inputSchema: z.object({}).passthrough(),
-      block: handler({
+    ping: handler({
         name: "ping",
         inputSchema: z.object({}).passthrough(),
         execute: () => undefined
       })
-    }
   }
 })();
 
@@ -89,7 +86,7 @@ function makeFakeAdapter(mode?: WorkerMode) {
 
 function makeFlowState(adapter: WorkerAdapter) {
   return createFlowState({
-    flows: { noop: noopFlow },
+    flows: [noopFlow],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: stubModelResolver,
     worker: adapter
@@ -198,7 +195,7 @@ describe("createFlowState — worker adapter", () => {
     const { adapter, runner } = makeFakeAdapter();
     expect(() =>
       createFlowState({
-        flows: { noop: noopFlow },
+        flows: [noopFlow],
         stores: { default: { primary: inMemoryStores() } },
         modelResolver: stubModelResolver,
         worker: adapter,
@@ -212,7 +209,7 @@ describe("createFlowState — worker adapter", () => {
     const { runner } = makeFakeAdapter();
     expect(() =>
       createFlowState({
-        flows: { noop: noopFlow },
+        flows: [noopFlow],
         stores: { default: { primary: inMemoryStores() } },
         modelResolver: stubModelResolver,
         dispatcher: runner

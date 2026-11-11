@@ -549,7 +549,7 @@ describe("the startup fence", () => {
       const one = defineFlow({ kind: "one", actions: order.first } as never);
       const two = defineFlow({ kind: "two", actions: order.second } as never);
       const boot = async () => {
-        const state = createFlowState({ flows: { one: one(), two: two() } as never, stores: { default: { primary: inMemoryStores() } } } as never);
+        const state = createFlowState({ flows: [one(), two()] as never, stores: { default: { primary: inMemoryStores() } } } as never);
         await state.getRouter();
       };
       await expect(boot()).rejects.toThrow(/workstreams\/\*\/\*\/\*.*workstreams\/\[project\]\/\[owner\]\/\[workstream\]/s);

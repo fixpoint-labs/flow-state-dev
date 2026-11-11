@@ -9,9 +9,9 @@
     ".": "./cli/index.ts"
   },
   "scripts": {
-    "dev": "vite build && tsx ../../packages/cli/bin/fsdev.ts dev --app @flow-state-dev/teammates",
+    "dev": "vite build && tsx ../../packages/fsdev/bin/fsdev.ts dev --app @flow-state-dev/teammates",
     "build": "vite build",
-    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
+    "fsdev": "tsx ../../packages/fsdev/bin/fsdev.ts",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run --root ."
   },
@@ -28,6 +28,7 @@
     "happy-dom": "^20.8.3",
     "lucide-react": "^0.575.0",
     "motion": "^12.34.3",
+    "nanoid": "^5.1.6",
     "radix-ui": "^1.4.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

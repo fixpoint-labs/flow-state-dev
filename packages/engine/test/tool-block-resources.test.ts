@@ -45,7 +45,7 @@ describe("resources declared on a tool-only block", () => {
     const flow = defineFlow({
       kind: "tool-only-resources",
       ...(options.flowTools ? { tools: { onToolStarted: () => {} } } : {}),
-      actions: { run: { inputSchema: z.object({ text: z.string() }), block: chat } }
+      actions: { run: chat }
     })();
 
     const result = await runAction({

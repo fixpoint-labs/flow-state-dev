@@ -16,7 +16,8 @@ import type { DispatchAddress, DispatchSeam } from "./dispatch";
 import { DISPATCH_SEAM } from "./dispatch";
 import type { RequestEndSeam, RequestSpendSeam } from "./request-end";
 import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM } from "./request-end";
-import { HARNESS_ATTACHMENT_SEAM, type HarnessAttachmentSeam } from "./harness-attachment-seam";
+import { ATTACHMENT_SEAM, type AttachmentSeam } from "./attachment-seam";
+import { USER_ATTACHMENT_SEAM, type UserAttachmentSeam } from "./user-attachment-seam";
 import { REQUEST_RESUME_SEAM, type RequestResume } from "./request-resume";
 import { BOARD_NOTICE_SEAM, type BoardNoticeSeam } from "./board-notice";
 import type { TracingLevel } from "../helpers/tracing-level";
@@ -142,15 +143,18 @@ export type EmitMessageOptions = {
 export interface ResponseEmitterHandle {
   emit(event: unknown): void | Promise<void>;
   /**
-   * Snapshot of every item emitted to this response so far, in stream order.
+   * Snapshot of the items emitted to this response so far, in stream order.
    * Used by sequencer ops (e.g. `.waitForCondition`) to evaluate predicates
-   * over already-flushed items before subscribing for future ones.
+   * over already-flushed items before subscribing for future ones. Every
+   * non-transient and in-progress item is included; of the done transient
+   * items, only the most recent `maxBufferSize` (default 10,000) are retained.
    */
   getItems(): readonly RuntimeItem[];
   /**
-   * O(1) count of items currently tracked by this response. Equivalent to
-   * `getItems().length` but without materializing or ordering the snapshot —
-   * used on the per-emit hot path to assign sequential `itemIndex` values.
+   * O(1) next-`itemIndex` cursor for this response: its starting index plus
+   * every item it has tracked, including done transient items `getItems()`
+   * no longer retains, so it never moves backwards or reissues an index. Used on
+   * the per-emit hot path to assign sequential `itemIndex` values.
    */
   getItemCount(): number;
   /**
@@ -967,7 +971,15 @@ export interface InternalBlockContext extends BlockContext {
    * request's conversation, under a symbol key. Read only by
    * `readHarnessAttachments`. See `types/harness-attachments.ts`.
    */
-  [HARNESS_ATTACHMENT_SEAM]?: HarnessAttachmentSeam;
+  [ATTACHMENT_SEAM]?: AttachmentSeam;
+
+  // FIX-2522.
+  /**
+   * The request's file keeper: copies of files into the running person's own
+   * scope, under a symbol key. Read only by `keepAttachmentsForUser`. See
+   * `types/user-attachment-seam.ts`.
+   */
+  [USER_ATTACHMENT_SEAM]?: UserAttachmentSeam;
 
   /**
    * The running request's board-notice seam, under a

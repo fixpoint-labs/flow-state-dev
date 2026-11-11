@@ -25,17 +25,14 @@ function doublerFlow() {
     kind,
     authentication: { defaultUserId: "u1", requireUser: false },
     actions: {
-      double: {
-        inputSchema: z.object({ n: z.number() }),
-        block: handler({
+      double: handler({
           name: "double",
           inputSchema: z.object({ n: z.number() }),
           execute: (input: { n: number }) => ({ doubled: input.n * 2 })
         })
-      }
     }
   })();
-  return { kind, flows: { [kind]: flow } };
+  return { kind, flows: [flow] };
 }
 
 /** An in-memory adapter that records what it resolved and whether it was disposed. */

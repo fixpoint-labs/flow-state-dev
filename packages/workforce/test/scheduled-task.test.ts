@@ -287,4 +287,17 @@ describe("the user's clock routines, listed", () => {
     await roster(h, "deleteRoutine", { id: "clock:adoption" });
     expect(removed).toEqual(["adoption"]);
   });
+
+  // FIX-2674: serve() ticks only flows whose registered `schedules` name an index,
+  // so a roster flow that mirrors entries into the index but does not name it never fires.
+  it("names the host's index on the roster flow, so the host's tick claims its clock routines", async () => {
+    const index: ScheduleIndex = { upsert: async () => undefined, remove: async () => undefined, claimDue: async () => [] };
+    const h = boot({ hire: { routines: { index } } });
+    const runtime = await h.state.getRuntime();
+    const ticked = runtime.registry
+      .list()
+      .filter((flow) => (flow as { schedules?: { index?: ScheduleIndex } }).schedules?.index === index)
+      .map((flow) => flow.id);
+    expect(ticked).toEqual([ROSTER_FLOW]);
+  });
 });

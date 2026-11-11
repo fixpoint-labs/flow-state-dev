@@ -51,7 +51,7 @@ describe("FIX-914: block-level state", () => {
 
     const flow = defineFlow({
       kind: "block-state-flow",
-      actions: { run: { inputSchema: z.string(), block: stateful } }
+      actions: { run: stateful }
     })();
 
     const result = await runAction({
@@ -78,7 +78,7 @@ describe("FIX-914: block-level state", () => {
     });
     const flow = defineFlow({
       kind: "no-state-flow",
-      actions: { run: { inputSchema: z.string(), block: plain } }
+      actions: { run: plain }
     })();
     const result = await runAction({
     orgId: DEFAULT_ORG_ID,
@@ -122,7 +122,7 @@ describe("FIX-914: block-level state", () => {
 
     const flow = defineFlow({
       kind: "duality-flow",
-      actions: { run: { inputSchema: z.number(), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const result = await runAction({
@@ -160,7 +160,7 @@ describe("FIX-914: block-level state", () => {
 
     const flow = defineFlow({
       kind: "loop-isolation-flow",
-      actions: { run: { inputSchema: z.number(), block: seq } }
+      actions: { run: seq }
     })();
 
     const result = await runAction({
@@ -211,7 +211,7 @@ describe("FIX-914: block-level state", () => {
 
     const flow = defineFlow({
       kind: "loop-owner-accum-flow",
-      actions: { run: { inputSchema: z.number(), block: seq } }
+      actions: { run: seq }
     })();
 
     const result = await runAction({
@@ -248,7 +248,7 @@ describe("FIX-914: block-level state", () => {
 
     const flow = defineFlow({
       kind: "foreach-isolation-flow",
-      actions: { run: { inputSchema: z.array(z.number()), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const result = await runAction({
@@ -349,7 +349,7 @@ describe("FIX-914: block-level state", () => {
 
     const flow = defineFlow({
       kind: "router-self-flow",
-      actions: { run: { inputSchema: z.number(), block: pickRouter } }
+      actions: { run: pickRouter }
     })();
 
     const result = await runAction({
@@ -403,7 +403,7 @@ describe("FIX-914: block-level state", () => {
 
     const flow = defineFlow({
       kind: "live-parent-state-flow",
-      actions: { run: { inputSchema: z.number(), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const result = await runAction({
@@ -439,7 +439,7 @@ describe("FIX-914: block-level state", () => {
 
     const flow = defineFlow({
       kind: "stateless-parent-flow",
-      actions: { run: { inputSchema: z.number(), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const result = await runAction({
@@ -494,7 +494,7 @@ describe("FIX-914: block-level state", () => {
 
     const flow = defineFlow({
       kind: "sibling-shadow-flow",
-      actions: { run: { inputSchema: z.number(), block: seq } }
+      actions: { run: seq }
     })();
 
     const result = await runAction({

@@ -102,7 +102,6 @@ function buildHost(
         },
         work: {
           concurrency,
-          inputSchema: z.any(),
           block: handler({ name: "work", inputSchema: z.any(), outputSchema: z.any(), execute: block("work") })
         }
       }

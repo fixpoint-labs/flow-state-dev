@@ -18,10 +18,7 @@ import { serve, type ServeHandle } from "../src/serve";
 const notesFlow = defineFlow({
   kind: "notes",
   actions: {
-    note: {
-      inputSchema: z.object({}),
-      block: handler({ name: "note", inputSchema: z.object({}), execute: () => ({ ok: true }) }),
-    },
+    note: handler({ name: "note", inputSchema: z.object({}), execute: () => ({ ok: true }) }),
   },
 })();
 
@@ -33,7 +30,7 @@ afterEach(async () => {
 /** A host with no sign-in, holding one session each for Alice and Bob. */
 async function hostWithTwoUsers(): Promise<string> {
   const flowState = createFlowState({
-    flows: { notes: notesFlow },
+    flows: [notesFlow],
     modelResolver: createMockModelResolver({}),
     stores: { default: { primary: inMemoryStores() } },
   });

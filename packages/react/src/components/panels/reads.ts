@@ -7,14 +7,14 @@
  * (`internal/useFencedRead.ts`), which the flow navigator's reads share, so the
  * fence protocol lives there, once. A live `BoardList` reads its board again on
  * each board notice (`liveBoardDriver`); a live `Roster` or `BoardColumns`
- * reads its collection again on another session's change to it, heard through
- * `client.subscribe` (`liveScopeDriver`). Internal on purpose —
+ * reads its collection again on another session's change to it
+ * (`liveScopeDriver`). Both are the client's live read (`client.live`), over
+ * the `subscribe` the host passed. Internal on purpose —
  * exporting a read would let a host mount it twice.
  */
 import { useMemo } from "react";
-import { readEveryCollectionPage, topic, type Client, type ResourcesApi, type WireNotice } from "@flow-state-dev/client";
-import { coalescedReads } from "../../internal/coalescedReads";
-import { LIVE_POLL_MS, mayBelongTo, storagePrefixOf } from "../../internal/scopeNotices";
+import { readEveryCollectionPage, topic, type Client, type ResourcesApi } from "@flow-state-dev/client";
+import { liveRead, storageRootsOf } from "@flow-state-dev/client/internal";
 import { useFencedRead, type ReadDriver } from "../../internal/useFencedRead";
 
 // BR-29.
@@ -80,24 +80,15 @@ const EMPTY: PanelRow<never>[] = [];
  * `items` notices) never does. It reads on mount, on each notice, and on each
  * connect, reconnect or timer tick (`null`), which may have missed a change.
  *
- * Reads are coalesced: one in flight, and one queued for any number of
- * notices that arrive meanwhile. A notice says when to read, never what: the
- * rows drawn are always the read's.
+ * Reads go through the live read: one in flight, one waiting for any number
+ * of notices, and a failed one tried again on its own. A notice says when to
+ * read, never what: the rows drawn are always the read's.
  */
 function liveBoardDriver(sessionId: string, boardRef: string, client: PanelLiveSource): ReadDriver {
-  return (read) => {
-    const reads = coalescedReads(read);
-    const subscription = client.subscribe([topic.session(sessionId, { resource: boardRef })], {
-      onChange: () => reads.request(),
-      pollIntervalMs: LIVE_POLL_MS
-    });
-    reads.request();
-
-    return () => {
-      reads.close();
-      subscription.close();
-    };
-  };
+  return (read) =>
+    liveRead((topics, options) => client.subscribe(topics, options), [topic.session(sessionId, { resource: boardRef })], {
+      read
+    }).close;
 }
 
 /**
@@ -111,37 +102,26 @@ function liveBoardDriver(sessionId: string, boardRef: string, client: PanelLiveS
  * `roster` stores under `workforce/workers/…`. If the manifest can't be read,
  * every resource notice reads again: a read too many, never one missed. So
  * does a pattern with no static prefix.
- * Reads are coalesced: one in flight, one queued.
+ * Reads go through the live read: one in flight, one waiting.
  */
 function liveScopeDriver(sessionId: string, ref: string, client: PanelNoticeSource): ReadDriver {
   return (read) => {
-    const reads = coalescedReads(read);
-    let prefix: string | null | undefined;
+    let roots: readonly string[] | undefined;
     void client.resources.getResourceManifest(sessionId).then(
       (manifest) => {
-        prefix = storagePrefixOf(manifest, ref);
+        roots = storageRootsOf(manifest, ref);
       },
       () => {
-        prefix = undefined;
+        roots = undefined;
       }
     );
     // Before the manifest lands, or if it fails, and for a pattern with no
     // static prefix (`**`, `[topic]/observations`), no path is ruled out.
-    const names = (path: string | undefined): boolean => path === undefined || mayBelongTo(path, ref, prefix);
-
-    const subscription = client.subscribe([topic.session(sessionId), topic.user(), topic.org()], {
-      onChange: (notice: WireNotice | null) => {
-        if (notice === null || notice.kind === "resync") return reads.request();
-        if (notice.kind === "resource" && names(notice.topic.resource)) reads.request();
-      },
-      pollIntervalMs: LIVE_POLL_MS
-    });
-    reads.request();
-
-    return () => {
-      reads.close();
-      subscription.close();
-    };
+    return liveRead(
+      (topics, options) => client.subscribe(topics, options),
+      [topic.session(sessionId), topic.user(), topic.org()],
+      { read, hear: (notice) => notice.kind === "resource", paths: () => roots }
+    ).close;
   };
 }
 

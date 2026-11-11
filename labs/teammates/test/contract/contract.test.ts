@@ -69,7 +69,15 @@ const ASK = {
   beside: ["Meanwhile, list the launch risks.", "Meanwhile, check the launch date."],
   /** A line sent as a turn ends. */
   next: "Add the beta numbers.",
+  /** A line sent with a screenshot. */
+  shot: "What does this screenshot show?",
 };
+
+/** What the lead says when its model was handed the line's image: only a turn that got it can say it. */
+const SAW_IMAGE = "I see the screenshot.";
+
+/** A tiny PNG, as the composer would upload it. */
+const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
 
 /** The last user message of a step's messages: what this turn answers, not what an earlier one did. */
 const lastUserLine = (said: string) => said.slice(said.lastIndexOf('"role":"user"'));
@@ -108,6 +116,8 @@ function labScript(failing: { next: boolean }): ModelResolver {
           throw new Error(FAILURE);
         }
         const asked = lastUserLine(said);
+        // The line's image, as the model is handed it: a file part of its type.
+        if (asked.includes(ASK.shot)) return { text: asked.includes("image/png") ? SAW_IMAGE : "I see no image." };
         if (asked.includes(ASK.stopMe) && step < 2) {
           const module = step === 0 ? "A" : "B";
           return { call: { name: "createTask", args: { assignee: CODER, title: `Fix module ${module}`, goal: `Fix the typo in module ${module}.` } } };
@@ -168,7 +178,7 @@ async function realTarget(): Promise<Target> {
     return inProcess(input, init);
   });
   const client = createClient({ userId: "you", baseUrl: "", fetcher: plug.fetcher as never });
-  const lab = createLabAdapter(client);
+  const lab = createLabAdapter(client, { fetcher: plug.fetcher as never });
   return {
     lab,
     failNextTurn: () => (failing.next = true),
@@ -494,6 +504,27 @@ describe.each([
       // The view reads the requests on the turn's ending notice; in process that lands well inside a second.
       await waitFor(1_500);
       expect(view.latest()!.entries.some((e) => e.kind === "stopped")).toBe(false);
+    });
+  });
+
+  describe("a line with files", () => {
+    check("carries the file to the worker, draws it on your line, and reads its bytes back", async () => {
+      const { lab, id } = await chief();
+      const view = conversation(lab, id);
+      const shot = await lab.upload({ data: new Blob([PNG], { type: "image/png" }), mediaType: "image/png", filename: "bug.png" });
+      expect(shot.data).toMatch(/^fsd-blob:/);
+      await lab.send(id, ASK.shot, [shot]);
+      const sent = await view.until((v) => v.entries.some((e) => e.kind === "user" && e.text === ASK.shot), 30_000);
+      const line = sent.entries.find((e) => e.kind === "user" && e.text === ASK.shot) as Extract<ConversationEntry, { kind: "user" }>;
+      // A reference on the line, never the bytes.
+      expect(line.files).toEqual([{ type: "file", data: shot.data, mediaType: "image/png", filename: "bug.png" }]);
+      expect(new Uint8Array(await (await lab.readFile(line.files![0])).arrayBuffer())).toEqual(PNG);
+      // Only the real column has a model: its answer says the turn was handed the image.
+      if (column === "real") {
+        const answered = await view.until((v) => afterLine(v, ASK.shot).some((e) => e.kind === "assistant"), 30_000);
+        expect(afterLine(answered, ASK.shot).find((e) => e.kind === "assistant")).toMatchObject({ text: SAW_IMAGE });
+      }
+      await stopAll(lab, id, view);
     });
   });
 

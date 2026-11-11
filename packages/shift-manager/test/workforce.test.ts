@@ -41,13 +41,13 @@ async function workerLab() {
   flows = { agent };
   const blocks = createWorkerHireBlocks(installation);
   const roster = defineWorkerRosterFlow(installation, {
-    hire: { inputSchema: blocks.hire.inputSchema, block: blocks.hire },
-    fire: { inputSchema: blocks.fire.inputSchema, block: blocks.fire },
+    hire: blocks.hire,
+    fire: blocks.fire,
   });
   const instances = [agent({ id: "agent" }), roster()] as unknown as FlowInstance[];
   const verify = createBearerSecretPrincipalResolver({ secret: SECRET, principal: { userId: USER, orgId: ORG } });
   const flowState = createFlowState({
-    flows: Object.fromEntries(instances.map((i) => [i.id, i])),
+    flows: instances,
     stores: { default: { primary: inMemoryStores() } },
     resolvePrincipal: async (context: never) => {
       const principal = await verify(context);

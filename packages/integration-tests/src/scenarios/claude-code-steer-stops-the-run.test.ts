@@ -153,7 +153,7 @@ function host() {
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "cc-steer-host" } as never);
   const state = createFlowState({
-    flows: { "cc-steer-host": flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,

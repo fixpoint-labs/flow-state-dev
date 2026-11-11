@@ -113,7 +113,7 @@ async function serve(port: number): Promise<{ origin: string; stop: () => void }
   // Detached, so `stop` reaches the whole group and not only the `tsx` wrapper.
   const child = spawn(
     join(REPO_ROOT, "node_modules", ".bin", "tsx"),
-    [join(REPO_ROOT, "packages", "cli", "bin", "fsdev.ts"), "dev", "--config", CONFIG, "--no-open", "--port", String(port)],
+    [join(REPO_ROOT, "packages", "fsdev", "bin", "fsdev.ts"), "dev", "--config", CONFIG, "--no-open", "--port", String(port)],
     {
       cwd: workDir,
       env: intentFreeEnv(process.env, {

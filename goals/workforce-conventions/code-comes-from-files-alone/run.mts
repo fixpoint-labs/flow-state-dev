@@ -83,7 +83,7 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const TREE_KIND_MODULE = join(TREE, "flows", "workers", `${fixture.host.kind}.ts`);
-const CLI = join(REPO_ROOT, "packages", "cli", "src", "bin.ts");
+const CLI = join(REPO_ROOT, "packages", "fsdev", "src", "bin.ts");
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** A name only the kind's own module carries: its answer block's. Present in the bundle means the kind was bundled. */
 const KIND_MARK = "desk-clerk-answer";

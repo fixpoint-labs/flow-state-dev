@@ -189,7 +189,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
     const pipeline = sequencer({ name: "ec-seq", inputSchema: z.object({}) }).step(reader);
     const flow = defineFlow({
       kind: "eager-many",
-      actions: { run: { inputSchema: z.object({}), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const stores = createInMemoryStores();
@@ -308,7 +308,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
     const pipeline = sequencer({ name: "par", inputSchema: z.object({}) }).parallel({ a: branchA, b: branchB });
     const flow = defineFlow({
       kind: "par-trace",
-      actions: { run: { inputSchema: z.object({}), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const stores = createInMemoryStores();

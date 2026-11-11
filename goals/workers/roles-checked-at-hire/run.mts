@@ -244,7 +244,7 @@ await runGoal(async (failures, tell) => {
   let filedEnded = false;
   if (hired.length > 0) {
     const state = createFlowState({
-      flows: Object.fromEntries(hired.map((copy) => [copy.id, copy])),
+      flows: hired,
       stores: { default: { primary: inMemoryStores() } },
       logger: silentLogger,
       resolvePrincipal: (context: any) => {

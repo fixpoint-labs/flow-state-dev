@@ -26,13 +26,12 @@ import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import {
   SUBSCRIPTION_CURSORS_PATTERN,
   SUBSCRIPTIONS_PATTERN,
-  defineSubscriptionServiceFlow,
   subscribe,
   subscriptionResources,
   type SubscriptionProvider,
-  type SubscriptionScreens,
-  type SubscriptionServiceOptions
+  type SubscriptionScreens
 } from "../src/subscriptions";
+import { defineSubscriptionServiceFlow, internalServiceFlow, type InternalServiceFlow, type InternalTopics, type SubscriptionServiceOptions } from "../src/service-flows";
 import { createRoutinesCapability } from "../src/routines";
 import { workerRoutineVerbs } from "../src/routines/routines";
 import type { WorkerManifest } from "../src/manifest";
@@ -105,10 +104,45 @@ function memoryScheduleIndex(): ScheduleIndex & { entries: Map<string, ScheduleI
 
 const doorInput = z.object({ message: z.string() });
 
-function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, isolated: boolean) {
+/** What a woken follower publishes on, by its session, and what each try came to: a relay of routines, with no model. */
+type Relay = {
+  readonly next: (sessionId: string, text: string) => Record<string, unknown> | undefined;
+  readonly tried: Array<{ sessionId: string; outcome: unknown }>;
+};
+
+function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, isolated: boolean, internal: InternalServiceFlow | undefined, relay: Relay | undefined) {
   const tools = workerRoutineVerbs(installation);
+  // A block in any flow publishing: the test's way onto `publishEvent` with no model. Its input is passed on as given.
+  const publish =
+    internal === undefined
+      ? undefined
+      : handler({ name: "follower-publish", inputSchema: z.unknown(), resources: internal.resources, execute: async (input, ctx) => internal.publishEvent(ctx, input) });
+  // The same publish twice in one request: what a request repeated after a crash does.
+  const publishTwice =
+    internal === undefined
+      ? undefined
+      : handler({
+          name: "follower-publish-twice",
+          inputSchema: z.unknown(),
+          resources: internal.resources,
+          execute: async (input, ctx) => [await internal.publishEvent(ctx, input), await internal.publishEvent(ctx, input)]
+        });
+  const relayTurn =
+    internal === undefined || relay === undefined
+      ? undefined
+      : handler({
+          name: "follower-relay",
+          inputSchema: z.object({ text: z.string() }).passthrough(),
+          resources: internal.resources,
+          execute: async (received, ctx) => {
+            const next = relay.next(ctx.session.identity.id, received.text);
+            if (next === undefined) return "";
+            relay.tried.push({ sessionId: ctx.session.identity.id, outcome: await internal.publishEvent(ctx, next) });
+            return "";
+          }
+        });
   // A worker's turn on a model: one with the routines capability, one without.
-  const chat = generator({ name: "follower-chat", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, uses: [createRoutinesCapability(installation)], user: (input) => input.message, itemVisibility: { client: true, history: true } });
+  const chat = generator({ name: "follower-chat", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, uses: [createRoutinesCapability(installation), ...(internal === undefined ? [] : [internal.capability])], user: (input) => input.message, itemVisibility: { client: true, history: true } });
   const chatPlain = generator({ name: "follower-chat-plain", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, user: (input) => input.message, itemVisibility: { client: true, history: true } });
   // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, `[hold]` waits on the
   // host's hold, then `[fail]` fails the task.
@@ -138,10 +172,12 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
       // Not doors: `respond` is the flow's one door; these are a test's way onto a model turn.
       chat: { inputSchema: doorInput, block: chat },
       chatPlain: { inputSchema: doorInput, block: chatPlain },
+      ...(publish === undefined ? {} : { publish: { inputSchema: z.unknown(), block: publish } }),
+      ...(publishTwice === undefined ? {} : { publishTwice: { inputSchema: z.unknown(), block: publishTwice } }),
       ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
     },
-    // No turn: a message lands as its items and nothing runs, so no model is asked.
-    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "follower" }) } },
+    // No turn: a message lands as its items and nothing runs, so no model is asked. With a relay, the turn passes it on.
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "follower", ...(relayTurn === undefined ? {} : { turn: relayTurn }) }) } },
     task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: door }) } }
   });
 }
@@ -159,6 +195,13 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   isolatedFollower?: boolean;
   /** The service flow itself, in place of the one built from `service` (GitHub's own flow); its kind must be `github-service`. */
   serviceFlow?: (installation: WorkerInstallation) => FlowInstance;
+  // FIX-2630.
+  /**
+   * Internal events: the declared topics; the internal service flow is `internal-service`, its provider beside GitHub's,
+   * and a follower's `publish` action publishes. With `relay`, a follower a message wakes publishes what it answers for its session,
+   * and the host's `relayed` lists each try.
+   */
+  internal?: { readonly topics: InternalTopics; readonly relay?: Relay["next"]; readonly screens?: SubscriptionScreens; readonly maxOwnerRuns?: number };
 };
 
 /** A board host with followers and a GitHub service flow. */
@@ -167,6 +210,19 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const index = options.poll === undefined ? undefined : memoryScheduleIndex();
   const poll = index === undefined ? undefined : { index, ...(options.poll?.everyMinutes === undefined ? {} : { everyMinutes: options.poll.everyMinutes }) };
   const provider: SubscriptionProvider = options.screens === undefined ? github : { ...github, screens: options.screens };
+  // The providers `hireWorkforce` is given; the internal one joins once the installation exists, before the hire reads it.
+  const providers: SubscriptionProvider[] = [provider];
+  const relay: Relay | undefined = options.internal?.relay === undefined ? undefined : { next: options.internal.relay, tried: [] };
+  let internal: InternalServiceFlow | undefined;
+  const internalOf = (installation: WorkerInstallation) => {
+    if (options.internal === undefined) return undefined;
+    if (internal === undefined) {
+      const { topics, screens, maxOwnerRuns } = options.internal;
+      internal = internalServiceFlow({ installation, topics, ...(screens === undefined ? {} : { screens }), ...(maxOwnerRuns === undefined ? {} : { maxOwnerRuns }) });
+      providers.push(internal.provider);
+    }
+    return internal;
+  };
   const standard: WorkerManifest[] = [
     ...boardWorkers({ lead: { delegates: ["eng.tasker", "eng.follower"] } }),
     { id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] },
@@ -175,12 +231,13 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   ];
   const board = bootBoardHost({
     ...options,
-    hire: { ...options.hire, routines: { providers: [provider], ...(poll === undefined ? {} : { poll }), ...options.hire?.routines } },
+    hire: { ...options.hire, routines: { providers, ...(poll === undefined ? {} : { poll }), ...options.hire?.routines } },
     standard,
     // A coordinator's conversation keeps event routines too (its routine actions).
     coordinatorRoutines: options.coordinatorRoutines ?? true,
-    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, options.isolatedFollower === true), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
+    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, options.isolatedFollower === true, internalOf(installation), relay), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
     plainFlowsOf: (installation): Record<string, FlowInstance> => ({
+      ...(internalOf(installation) === undefined ? {} : { "internal-service": internalOf(installation)!.flow }),
       "github-service":
         options.serviceFlow?.(installation) ??
         defineSubscriptionServiceFlow({
@@ -366,6 +423,29 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     };
   };
 
+  // FIX-2630.
+  /** Publish as `userId` from `sessionId`, under `tenantId` when given, and wait for what it started: its answer, `{ published }` or `{ refused }`. */
+  const publish = async (userId: string, sessionId: string, input: Record<string, unknown>, tenantId?: string) => {
+    const runtime = await board.state.getRuntime();
+    const ran =
+      tenantId === undefined
+        ? await board.act(userId, sessionId, "publish", input, "follower")
+        : ((await runAction({
+            flow: board.instances.follower!,
+            actionName: "publish",
+            input,
+            userId,
+            orgId: ORG,
+            tenantId,
+            sessionId,
+            stores: runtime.stores,
+            runtimeConfig: { ...runtime.runtimeConfig }
+          })) as { output?: unknown });
+    const output = ran.output as { published: string } | { refused: string };
+    await board.settled();
+    return output;
+  };
+
   /** The service's messages that landed in `sessionId`, as the model reads them. */
   const heard = async (sessionId: string) => (await board.messages(sessionId)).filter((m) => m.text.startsWith("From service:")).map((m) => m.text);
 
@@ -402,6 +482,8 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     unsubscribe,
     route,
     routeBeside,
+    publish,
+    relayed: relay?.tried ?? [],
     holdFirstDispatch,
     failFirstTake,
     heard,

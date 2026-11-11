@@ -74,7 +74,7 @@ function slowHelperFlow(installation: WorkerInstallation, behaviour: Behaviour) 
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources },
     internal: { actions: hearsMessages(installation, "slowhelper") },
-    actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { block: turn, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "slow-helper-task", turn }) } }
   } as never);
 }

@@ -25,7 +25,7 @@ import { stat } from "node:fs/promises";
 import { createServer, request as httpRequest } from "node:http";
 import { connect } from "node:net";
 import { extname, join, sep } from "node:path";
-import { bodyCloseInjector, buttonScript, DEVTOOL_PATH, insertBeforeBodyClose } from "./button.mjs";
+import { bodyCloseInjector, buttonScript, DEVTOOL_PATH, insertBeforeBodyClose, RESTART_HEADER, RESTART_PATH } from "./button.mjs";
 import { escapeHtml, PAGE_STYLE } from "./page.mjs";
 
 /** What the DevTool page's files are served as. */
@@ -45,8 +45,11 @@ const CONTENT_TYPES = {
  * @param {ReturnType<import("./auth.mjs").createAuth>} [options.auth]  Unset, no sign-in is asked for.
  * @param {(id: string) => string} options.status  A word for an app's state on the landing page.
  * @param {string} [options.devtoolDir]  The built DevTool page (`pnpm build:devtool`), served at `/devtool/`. Unset, that route answers 404.
+ * @param {(id: string) => boolean} [options.changed]  Whether an app's server code changed since it started. Unset, never.
+ * @param {(id: string) => boolean} [options.restartable]  Whether an app's server can be restarted from here. Unset, none can.
+ * @param {(id: string) => Promise<import("./lifecycle.mjs").RestartResult>} [options.restart]  Restarts one app's server. Unset, the restart route answers 404.
  */
-export function createProxy({ apps, auth, status, devtoolDir }) {
+export function createProxy({ apps, auth, status, devtoolDir, changed = () => false, restartable = () => false, restart }) {
   /** Whether a request target is a path this server can parse; anything else is refused before it is read. */
   const validTarget = (target) => {
     if (typeof target !== "string" || !target.startsWith("/")) return false;
@@ -87,6 +90,8 @@ export function createProxy({ apps, auth, status, devtoolDir }) {
         title,
         prefix,
         status: status(id),
+        changed: changed(id),
+        restartable: restartable(id),
         ...(devtoolUserId === undefined ? {} : { userId: devtoolUserId }),
       }));
       res.writeHead(200, { "content-type": CONTENT_TYPES[".json"], "cache-control": "no-store" });
@@ -119,6 +124,25 @@ export function createProxy({ apps, auth, status, devtoolDir }) {
     createReadStream(file).on("error", () => res.destroy()).pipe(res);
   };
 
+  /** `POST /__super/restart/<id>`: restarts one app's server. */
+  const restartRoute = async (req, res, url) => {
+    const reply = (code, message, headers = {}) => {
+      res.writeHead(code, { "content-type": "text/plain", "cache-control": "no-store", ...headers });
+      res.end(`${message}\n`);
+    };
+    if (req.method !== "POST") return reply(405, "Method not allowed.", { allow: "POST" });
+    if (req.headers[RESTART_HEADER] !== "1") return reply(403, `A restart must carry the ${RESTART_HEADER} header.`);
+    if (restart === undefined) return reply(404, "Restarting an app isn't available here.");
+    let id;
+    try {
+      id = decodeURIComponent(url.split("?")[0].slice(RESTART_PATH.length));
+    } catch {
+      return reply(400, "Bad request target.");
+    }
+    const result = await restart(id);
+    return result.ok ? reply(202, "Restarting.") : reply(result.status, result.message);
+  };
+
   const server = createServer((req, res) => {
     if (!validTarget(req.url)) {
       res.writeHead(400, { "content-type": "text/plain", connection: "close" });
@@ -132,13 +156,14 @@ export function createProxy({ apps, auth, status, devtoolDir }) {
     }
     if (auth?.handle(req, res)) return;
     const url = req.url ?? "/";
-    if (url === "/" || url.startsWith("/?")) return landing(res, apps, status, auth !== undefined);
+    if (url === "/" || url.startsWith("/?")) return landing(res, apps, { status, changed, restartable }, auth !== undefined);
     if (url === "/devtool" || url.startsWith("/devtool?")) {
       res.writeHead(308, { location: `${DEVTOOL_PATH}${url.slice("/devtool".length)}` });
       res.end();
       return;
     }
     if (url.startsWith(DEVTOOL_PATH)) return void devtoolPage(req, res, url).catch(() => res.destroy());
+    if (url.startsWith(RESTART_PATH)) return void restartRoute(req, res, url).catch(() => res.destroy());
 
     const target = route(url);
     if (target === undefined) {
@@ -184,7 +209,7 @@ export function createProxy({ apps, auth, status, devtoolDir }) {
           // A streamed page keeps arriving while the app renders it: write the button in as it passes.
           delete out["content-length"];
           res.writeHead(up.statusCode ?? 502, out);
-          up.pipe(bodyCloseInjector(buttonScript(app))).pipe(res);
+          up.pipe(bodyCloseInjector(buttonScript(app, { restartable: restartable(app.id) }))).pipe(res);
           return;
         }
         if (!(app.kind === "spa" && page)) {
@@ -196,7 +221,7 @@ export function createProxy({ apps, auth, status, devtoolDir }) {
         up.on("data", (c) => chunks.push(c));
         up.on("end", () => {
           const rebased = Buffer.concat(chunks).toString("utf8").replace(/<base href="\/"\s*\/?>/i, `<base href="${app.prefix}/">`);
-          const body = Buffer.from(insertBeforeBodyClose(rebased, buttonScript(app)));
+          const body = Buffer.from(insertBeforeBodyClose(rebased, buttonScript(app, { restartable: restartable(app.id) })));
           delete out["content-length"];
           delete out["transfer-encoding"];
           res.writeHead(up.statusCode ?? 200, { ...out, "content-length": body.length });
@@ -295,11 +320,17 @@ function forwardedHeaders(req, auth, { upgrade = false } = {}) {
   return headers;
 }
 
-function landing(res, apps, status, signOut) {
+function landing(res, apps, { status, changed, restartable }, signOut) {
   const cards = apps
     .map((a) => {
       const state = status(a.id);
-      return `<a class="card" href="${a.prefix}/"><span class="state ${state}">${state}</span><h2>${escapeHtml(a.title)}</h2><p>${escapeHtml(a.blurb)}</p><code>${a.prefix}/</code></a>`;
+      const card = `<a class="card" href="${a.prefix}/"><span class="state ${state}">${state}</span><h2>${escapeHtml(a.title)}</h2><p>${escapeHtml(a.blurb)}</p><code>${a.prefix}/</code></a>`;
+      // A button can't sit inside the card's link, so it goes under it.
+      const stale = restartable(a.id) && changed(a.id);
+      const restart = !restartable(a.id)
+        ? ""
+        : `<div class="changed${stale ? "" : " quiet"}"><span>${stale ? "Server code changed since it started." : ""}</span><button type="button" data-restart="${escapeHtml(a.id)}" data-title="${escapeHtml(a.title)}">Restart</button></div>`;
+      return `<div class="slot">${card}${restart}</div>`;
     })
     .join("");
   res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -314,5 +345,16 @@ main{max-width:880px;margin:0 auto;padding:48px 16px}h1{font-size:22px;margin:0 
 .card:hover{border-color:var(--muted)}.card h2{font-size:16px;margin:8px 0 4px}.card p{margin:0 0 10px;color:var(--muted)}
 code{font-size:12px;color:var(--muted)}.state{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 .state.running{color:#16a34a}.state.stopped{color:#dc2626}
-</style></head><body><main><header><div><h1>flow-state-dev</h1><p class="sub">Every app on this server, one route each.</p></div><div class="out"><a href="/devtool/">DevTool</a>${signOut ? '<form method="post" action="/logout"><button type="submit">Sign out</button></form>' : ""}</div></header><div class="grid">${cards}</div></main></body></html>`);
+.slot{display:flex;flex-direction:column;gap:6px}.changed{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:#d97706}
+.changed.quiet{color:var(--muted)}.changed button{font:inherit;font-size:13px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit;cursor:pointer}
+</style></head><body><main><header><div><h1>flow-state-dev</h1><p class="sub">Every app on this server, one route each.</p></div><div class="out"><a href="/devtool/">DevTool</a>${signOut ? '<form method="post" action="/logout"><button type="submit">Sign out</button></form>' : ""}</div></header><div class="grid">${cards}</div></main>${RESTART_SCRIPT}</body></html>`);
 }
+
+/** The landing page's Restart buttons: warn, ask, then reload to show the app starting. */
+const RESTART_SCRIPT = `<script>document.addEventListener("click",function(e){
+var b=e.target.closest("button[data-restart]");if(!b)return;
+if(!confirm("Restart "+b.dataset.title+"? Work in progress there (a coding run, a turn) stops."))return;
+b.disabled=true;
+fetch("${RESTART_PATH}"+encodeURIComponent(b.dataset.restart),{method:"POST",headers:{"${RESTART_HEADER}":"1"}})
+.then(function(r){return r.ok?location.reload():r.text().then(function(t){alert(t);b.disabled=false})});
+});</script>`;

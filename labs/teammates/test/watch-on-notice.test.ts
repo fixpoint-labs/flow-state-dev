@@ -22,6 +22,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 });
 
 import { createLabAdapter, type Activity, type ConversationView, type Unsubscribe, type WindowMark } from "../src/adapter";
+import { liveOver } from "./live-over";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -74,6 +75,9 @@ function host() {
   }) as ClientFetch;
   const subscriptions: Array<{ topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean }> = [];
   const client: Client = Object.assign(createClient({ userId: "u", baseUrl: "", fetcher }), {
+    get live() {
+      return liveOver(this as never);
+    },
     subscribe: (topics: readonly WireTopic[], options: SubscribeOptions) => {
       const entry = { topics, options, closed: false };
       subscriptions.push(entry);

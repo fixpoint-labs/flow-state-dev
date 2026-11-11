@@ -77,7 +77,6 @@ function rootGateFlow(kind: string, paid: string[]) {
             return "paid";
           }
         }),
-        inputSchema: z.any(),
         durable: true
       }
     }
@@ -189,10 +188,7 @@ describe("caller metadata cannot pre-approve a suspension (FIX-1707)", () => {
     const flow = defineFlow({
       kind: "plain",
       actions: {
-        run: {
-          block: handler({ name: "noop", inputSchema: z.any(), outputSchema: z.string(), execute: async () => "ok" }),
-          inputSchema: z.any()
-        }
+        run: handler({ name: "noop", inputSchema: z.any(), outputSchema: z.string(), execute: async () => "ok" })
       }
     })({ id: "plain" }) as unknown as FlowInstance;
 

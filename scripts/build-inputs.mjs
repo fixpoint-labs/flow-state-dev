@@ -25,8 +25,12 @@ import { fileURLToPath } from "node:url";
 /** The record's file name inside a build's output directory. */
 export const BUILD_INPUTS_FILE = "build-inputs.json";
 
-/** @param {string} file */
-const hashOf = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
+/**
+ * The SHA-256 of a file's content, as a record stores it.
+ *
+ * @param {string} file
+ */
+export const hashOf = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
 
 /**
  * A Vite plugin that records the build's repository source files and their

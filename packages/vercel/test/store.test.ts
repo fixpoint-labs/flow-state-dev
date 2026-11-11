@@ -52,7 +52,7 @@ describe("vercelPostgresStores · the bus a deployment's profile gets", () => {
     const { vercelPostgresStores: fresh } = await import("../src/store");
     const { createFlowState } = await import("@flow-state-dev/engine");
     const state = createFlowState({
-      flows: {},
+      flows: [],
       stores: { default: { primary: fresh({ connectionString: "postgres://deploy.example/app" }) } },
       durable: false,
       detectInterruptedOnStartup: false

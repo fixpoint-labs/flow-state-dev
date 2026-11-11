@@ -35,10 +35,7 @@ function demoFlow(kind = "demo") {
   return defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({ name: `${kind}-run`, inputSchema: z.object({}), outputSchema: z.object({}), execute: () => ({}) })
-      }
+      run: handler({ name: `${kind}-run`, inputSchema: z.object({}), outputSchema: z.object({}), execute: () => ({}) })
     }
   })();
 }

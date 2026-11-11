@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { Client, WireNotice } from "@flow-state-dev/client";
 import { createLabAdapter, type WorkingNow } from "../src/adapter";
+import { liveOver } from "./live-over";
 
 const tool = (id: string, status: string, command: string) => ({
   id,
@@ -29,6 +30,9 @@ function clientWith(items: unknown[], plan?: { title: string; status: string }[]
   const streamed: string[] = [];
   const heard: Array<(notice: WireNotice | null) => void> = [];
   const client = {
+    get live() {
+      return liveOver(this as never);
+    },
     subscribe: (_topics: unknown, options: { onChange: (notice: WireNotice | null) => void }) => {
       heard.push(options.onChange);
       return { close() {} };

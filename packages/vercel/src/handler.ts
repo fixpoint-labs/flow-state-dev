@@ -31,13 +31,16 @@ function isSSEResponse(response: Response): boolean {
 }
 
 /**
- * This host's runtime: a function's disk does not last between requests, so
- * the router is told before it serves one. It then refuses attachment uploads
- * to a blob store that keeps bytes on this host, by name, rather than storing
- * files the next request can't read; a hosted blob store is unaffected.
+ * This host's runtime: on Vercel (`VERCEL` set, as the platform sets it), a
+ * function's disk does not last between requests, so the router is told
+ * before it serves one. It then refuses attachment uploads to a blob store
+ * that keeps bytes on this host, by name, rather than storing files the next
+ * request can't read; a hosted blob store is unaffected. Served anywhere else,
+ * such as `next dev` or `next start` on a machine, the disk lasts and a local
+ * blob store takes uploads.
  */
 function onThisHost(router: FlowApiRouter): FlowApiRouter {
-  declareEphemeralDisk(router);
+  if (process.env.VERCEL) declareEphemeralDisk(router);
   return router;
 }
 

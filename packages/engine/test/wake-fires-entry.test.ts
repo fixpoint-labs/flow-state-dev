@@ -72,7 +72,7 @@ afterEach(async () => {
 
 async function host(durable: boolean) {
   const state = createFlowState({
-    flows: { wakes: flow },
+    flows: [flow],
     stores: { default: { primary: inMemoryStores() } },
     durable
   });

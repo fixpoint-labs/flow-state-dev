@@ -103,7 +103,7 @@ async function host(options: { declareResource?: boolean } = {}) {
 
   const instance = flow();
   const state = createFlowState({
-    flows: { [instance.kind]: instance },
+    flows: [instance],
     stores: { default: { primary: inMemoryStores() } },
   } as never);
   const runtime = await state.getRuntime();

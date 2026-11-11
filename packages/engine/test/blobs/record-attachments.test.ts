@@ -17,9 +17,10 @@ import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "../
 import { createMemoryBlobStore } from "../../src/blobs/memory-blob-store";
 import { createInMemoryStores } from "../../src/host";
 import { retryRequest } from "../../src/execution/request-recovery";
+import { makePdf } from "./pdf-fixture";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
-const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 9, 9]);
+const PDF = makePdf(["the report"]);
 
 const input = z.object({ message: z.string() });
 
@@ -71,7 +72,7 @@ function setup(options: Options = {}) {
     kind: "with-block",
     actions: {
       send: { ...send, block: sequencer({ name: "chat", inputSchema: input }).tap(recordAttachments).step(reply) },
-      tamper: { inputSchema: input, block: tamper }
+      tamper
     }
   })();
   const without = defineFlow({

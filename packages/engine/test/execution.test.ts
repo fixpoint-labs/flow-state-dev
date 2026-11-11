@@ -112,9 +112,7 @@ describe("execution runtime", () => {
     const flow = defineFlow({
       kind: "log-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ text: z.string() }),
-          block: handler({
+        run: handler({
             name: "log-handler",
             inputSchema: z.object({ text: z.string() }),
             outputSchema: z.string(),
@@ -132,7 +130,6 @@ describe("execution runtime", () => {
               return `${text}-done`;
             }
           })
-        }
       }
     })();
 
@@ -170,9 +167,7 @@ describe("execution runtime", () => {
     const failingFlow = defineFlow({
       kind: "log-failure-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ text: z.string() }),
-          block: handler({
+        run: handler({
             name: "log-failing-handler",
             inputSchema: z.object({ text: z.string() }),
             outputSchema: z.string(),
@@ -180,7 +175,6 @@ describe("execution runtime", () => {
               throw new Error("boom");
             }
           })
-        }
       }
     })();
 
@@ -456,10 +450,7 @@ describe("execution runtime", () => {
     const flow = defineFlow({
       kind: "target-flow",
       actions: {
-        run: {
-          inputSchema: z.number(),
-          block: base
-        }
+        run: base
       }
     })();
 
@@ -1247,15 +1238,12 @@ describe("execution runtime", () => {
         })
       },
       actions: {
-        run: {
-          inputSchema: z.number(),
-          block: handler({
+        run: handler({
             name: "noop",
             inputSchema: z.number(),
             outputSchema: z.number(),
             execute: (input) => input
           })
-        }
       }
     })();
 
@@ -1352,15 +1340,12 @@ describe("execution runtime", () => {
       user: { stateSchema: z.object({ role: z.string().default("guest") }) },
       org: { stateSchema: z.object({ tier: z.string().default("free") }) },
       actions: {
-        run: {
-          inputSchema: z.number(),
-          block: handler({
+        run: handler({
             name: "noop",
             inputSchema: z.number(),
             outputSchema: z.number(),
             execute: (input) => input
           })
-        }
       }
     })();
 
@@ -1416,15 +1401,12 @@ describe("execution runtime", () => {
       kind: "scope-state-change-noop",
       session: { stateSchema: z.object({ status: z.string().default("idle") }) },
       actions: {
-        run: {
-          inputSchema: z.number(),
-          block: handler({
+        run: handler({
             name: "noop",
             inputSchema: z.number(),
             outputSchema: z.number(),
             execute: (input) => input
           })
-        }
       }
     })();
 
@@ -1466,15 +1448,12 @@ describe("execution runtime", () => {
         kind: "scope-state-change-transient",
         session: { stateSchema: z.object({ status: z.string().default("idle") }) },
         actions: {
-          run: {
-            inputSchema: z.number(),
-            block: handler({
+          run: handler({
               name: "noop",
               inputSchema: z.number(),
               outputSchema: z.number(),
               execute: (input) => input
             })
-          }
         }
       })() as ReturnType<ReturnType<typeof defineFlow>> & { persistStateChanges?: boolean };
 
@@ -1556,10 +1535,7 @@ describe("execution runtime", () => {
       const flow = defineFlow({
         kind: "state-change-transience",
         actions: {
-          run: {
-            inputSchema: z.number(),
-            block: seq
-          }
+          run: seq
         }
       })() as ReturnType<ReturnType<typeof defineFlow>> & { persistStateChanges?: boolean };
 
@@ -1675,7 +1651,7 @@ describe("execution runtime", () => {
       const flow = defineFlow({
         kind: "noop-persisted-flow",
         actions: {
-          run: { inputSchema: z.number(), block: seq }
+          run: seq
         }
       })() as ReturnType<ReturnType<typeof defineFlow>> & { persistStateChanges?: boolean };
       flow.persistStateChanges = true;
@@ -1894,10 +1870,7 @@ describe("execution runtime", () => {
     const flow = defineFlow({
       kind: "seq-tool-flow",
       actions: {
-        run: {
-          inputSchema: z.number(),
-          block: base
-        }
+        run: base
       }
     })();
 
@@ -2255,7 +2228,6 @@ describe("execution runtime", () => {
       kind: "run-success",
       actions: {
         run: {
-          inputSchema: z.object({ value: z.number() }),
           block: handler({
             name: "success-action",
             inputSchema: z.object({ value: z.number() }),
@@ -2300,7 +2272,6 @@ describe("execution runtime", () => {
       kind: "run-failure",
       actions: {
         run: {
-          inputSchema: z.object({ value: z.number() }),
           block: handler({
             name: "failure-action",
             inputSchema: z.object({ value: z.number() }),
@@ -2362,15 +2333,12 @@ describe("execution runtime", () => {
     const flow = defineFlow({
       kind: "observer-logger-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "observer-logger-action",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.string(),
             execute: () => "done"
           })
-        }
       },
       request: {
         onFinished: handler({
@@ -2467,16 +2435,13 @@ describe("transient block output", () => {
     const flow = defineFlow({
       kind: "transient-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "transient-handler",
             transient: true,
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
             execute: ({ value }) => `processed:${value}`
           })
-        }
       }
     })();
 
@@ -2508,16 +2473,13 @@ describe("transient block output", () => {
     const flow = defineFlow({
       kind: "transient-stream-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "transient-streaming",
             transient: true,
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
             execute: ({ value }) => `streamed:${value}`
           })
-        }
       }
     })();
 
@@ -2561,8 +2523,6 @@ describe("transient block output", () => {
       kind: "mixed-flow",
       actions: {
         run: {
-          inputSchema: z.object({ value: z.string() }),
-          // A sequencer takes no `execute`: the two blocks run as its steps.
           block: sequencer({
             name: "mixed-sequencer",
             inputSchema: z.object({ value: z.string() })
@@ -2611,9 +2571,7 @@ describe("transient block output", () => {
     const flow = defineFlow({
       kind: "transient-gen-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ prompt: z.string() }),
-          block: handler({
+        run: handler({
             name: "transient-gen",
             transient: true,
             inputSchema: z.object({ prompt: z.string() }),
@@ -2623,7 +2581,6 @@ describe("transient block output", () => {
               return `done:${prompt}`;
             }
           })
-        }
       }
     })();
 
@@ -2674,9 +2631,7 @@ describe("transient block output", () => {
       const flow = defineFlow({
         kind: "fix478-comp-default",
         actions: {
-          run: {
-            inputSchema: z.object({ value: z.string() }),
-            block: handler({
+          run: handler({
               name: "transient-emit-component",
               transient: true,
               inputSchema: z.object({ value: z.string() }),
@@ -2686,7 +2641,6 @@ describe("transient block output", () => {
                 return value;
               }
             })
-          }
         }
       })();
 
@@ -2716,9 +2670,7 @@ describe("transient block output", () => {
       const flow = defineFlow({
         kind: "fix478-comp-opt-in",
         actions: {
-          run: {
-            inputSchema: z.object({ value: z.string() }),
-            block: handler({
+          run: handler({
               name: "transient-emit-component-transient",
               transient: true,
               inputSchema: z.object({ value: z.string() }),
@@ -2728,7 +2680,6 @@ describe("transient block output", () => {
                 return value;
               }
             })
-          }
         }
       })();
 
@@ -2758,9 +2709,7 @@ describe("transient block output", () => {
       const flow = defineFlow({
         kind: "fix478-comp-nontransient-block",
         actions: {
-          run: {
-            inputSchema: z.object({ value: z.string() }),
-            block: handler({
+          run: handler({
               name: "durable-block-transient-emit",
               inputSchema: z.object({ value: z.string() }),
               outputSchema: z.string(),
@@ -2769,7 +2718,6 @@ describe("transient block output", () => {
                 return value;
               }
             })
-          }
         }
       })();
 
@@ -2799,9 +2747,7 @@ describe("transient block output", () => {
       const flow = defineFlow({
         kind: "fix478-message-opt-in",
         actions: {
-          run: {
-            inputSchema: z.object({ value: z.string() }),
-            block: handler({
+          run: handler({
               name: "transient-emit-message-transient",
               transient: true,
               inputSchema: z.object({ value: z.string() }),
@@ -2811,7 +2757,6 @@ describe("transient block output", () => {
                 return value;
               }
             })
-          }
         }
       })();
 
@@ -2845,9 +2790,7 @@ describe("transient block output", () => {
       const flow = defineFlow({
         kind: "fix478-status-default",
         actions: {
-          run: {
-            inputSchema: z.object({ value: z.string() }),
-            block: handler({
+          run: handler({
               name: "transient-emit-status",
               transient: true,
               inputSchema: z.object({ value: z.string() }),
@@ -2857,7 +2800,6 @@ describe("transient block output", () => {
                 return value;
               }
             })
-          }
         }
       })();
 
@@ -2887,9 +2829,7 @@ describe("transient block output", () => {
       const flow = defineFlow({
         kind: "fix478-status-opt-out",
         actions: {
-          run: {
-            inputSchema: z.object({ value: z.string() }),
-            block: handler({
+          run: handler({
               name: "status-persist-opt-out",
               inputSchema: z.object({ value: z.string() }),
               outputSchema: z.string(),
@@ -2898,7 +2838,6 @@ describe("transient block output", () => {
                 return value;
               }
             })
-          }
         }
       })();
 
@@ -2929,9 +2868,7 @@ describe("transient block output", () => {
     const flow = defineFlow({
       kind: "status-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ text: z.string() }),
-          block: handler({
+        run: handler({
             name: "status-handler",
             inputSchema: z.object({ text: z.string() }),
             outputSchema: z.string(),
@@ -2940,7 +2877,6 @@ describe("transient block output", () => {
               return text;
             }
           })
-        }
       }
     })();
 
@@ -2974,9 +2910,7 @@ describe("keyed component upsert (FIX-491)", () => {
     const flow = defineFlow({
       kind: "fix491-keyed-upsert",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "keyed-emit-twice",
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
@@ -2986,7 +2920,6 @@ describe("keyed component upsert (FIX-491)", () => {
               return value;
             }
           })
-        }
       }
     })();
 
@@ -3032,9 +2965,7 @@ describe("keyed component upsert (FIX-491)", () => {
     const flow = defineFlow({
       kind: "fix491-non-keyed",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "non-keyed-emit-twice",
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
@@ -3044,7 +2975,6 @@ describe("keyed component upsert (FIX-491)", () => {
               return value;
             }
           })
-        }
       }
     })();
 
@@ -3080,9 +3010,7 @@ describe("keyed component upsert (FIX-491)", () => {
     const flow = defineFlow({
       kind: "fix491-distinct-keys",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "distinct-keyed-emit",
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
@@ -3093,7 +3021,6 @@ describe("keyed component upsert (FIX-491)", () => {
               return value;
             }
           })
-        }
       }
     })();
 
@@ -3127,9 +3054,7 @@ describe("keyed component upsert (FIX-491)", () => {
     const flow = defineFlow({
       kind: "fix491-event-log",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "keyed-emit-thrice",
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
@@ -3140,7 +3065,6 @@ describe("keyed component upsert (FIX-491)", () => {
               return value;
             }
           })
-        }
       }
     })();
 
@@ -3251,10 +3175,7 @@ describe("rescue boundary in nested sequencer", () => {
     const flow = defineFlow({
       kind: "rescue-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: fullSeq
-        }
+        run: fullSeq
       }
     })();
 
@@ -3469,10 +3390,7 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
     const flow = defineFlow({
       kind: "tool-status-restore-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ text: z.string() }),
-          block: chat
-        }
+        run: chat
       }
     })();
 
@@ -3549,10 +3467,7 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
     const flow = defineFlow({
       kind: "parallel-tools-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ text: z.string() }),
-          block: chat
-        }
+        run: chat
       }
     })();
 
@@ -3628,10 +3543,7 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
     const flow = defineFlow({
       kind: "silent-tool-status-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ text: z.string() }),
-          block: chat
-        }
+        run: chat
       }
     })();
 

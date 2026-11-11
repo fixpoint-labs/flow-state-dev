@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes in each of the three hosts, Teammates, Claude Code-style and Shift Manager's devteam. Four rows, today and after. A session's tools: today, no routine tools; after, every conversation worker can list, save, pause and delete routines. GitHub: today, unreachable; after, a GitHub service flow polls as the user on the operator's token. The clock: today, nothing ticks; after, fsdev dev ticks a clock index and a poll index each minute, one SQLite file each. Shift Manager's Routines view: today, always empty; after, every routine a worker made, marked made by that worker. Below a line: every package, the view's code and the webhook transport are unchanged."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .head  { fill:var(--surface-2); }
+    .old   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-o   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-gone { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="header">
+    <rect class="head" x="16" y="14" width="908" height="44" rx="6"/>
+    <text class="t-lbl" x="32" y="32">EACH HOST · TEAMMATES · CLAUDE CODE-STYLE · SHIFT MANAGER'S DEVTEAM</text>
+    <text class="t-lbl c-gone" x="232" y="50">TODAY</text>
+    <text class="t-lbl c-code" x="582" y="50">AFTER</text>
+  </g>
+
+  <g id="row-tools">
+    <text class="t-lbl" x="32" y="94">A SESSION'S</text>
+    <text class="t-lbl" x="32" y="107">TOOLS</text>
+    <rect class="old" x="216" y="72" width="334" height="54" rx="5"/>
+    <text class="t-o" x="232" y="94">No routine tools</text>
+    <text class="t-s" x="232" y="112">"follow #412" gets "I can't"</text>
+    <rect class="new" x="566" y="72" width="358" height="54" rx="5"/>
+    <text class="t-b" x="582" y="94">Every conversation worker: list, save, pause, delete</text>
+    <text class="t-s" x="582" y="112">coding workers keep following their own PR (D2)</text>
+  </g>
+
+  <g id="row-github">
+    <text class="t-lbl" x="32" y="170">GITHUB</text>
+    <rect class="old" x="216" y="142" width="334" height="54" rx="5"/>
+    <text class="t-o" x="232" y="164">Unreachable</text>
+    <text class="t-s" x="232" y="182">no provider, no service flow, no public URL</text>
+    <rect class="new" x="566" y="142" width="358" height="54" rx="5"/>
+    <text class="t-b" x="582" y="164">A GitHub service flow polls, as you</text>
+    <text class="t-s" x="582" y="182">on the operator's token, for the host's own user (D3)</text>
+  </g>
+
+  <g id="row-clock">
+    <text class="t-lbl" x="32" y="240">THE CLOCK</text>
+    <rect class="old" x="216" y="212" width="334" height="54" rx="5"/>
+    <text class="t-o" x="232" y="234">Nothing ticks</text>
+    <text class="t-s" x="232" y="252">a clock routine would never fire</text>
+    <rect class="new" x="566" y="212" width="358" height="54" rx="5"/>
+    <text class="t-b" x="582" y="234">fsdev dev ticks two indexes each minute</text>
+    <text class="t-s" x="582" y="252">clock routines and polls, one SQLite file each</text>
+  </g>
+
+  <g id="row-view">
+    <text class="t-lbl" x="32" y="304">SHIFT MANAGER'S</text>
+    <text class="t-lbl" x="32" y="317">ROUTINES VIEW</text>
+    <rect class="old" x="216" y="282" width="334" height="54" rx="5"/>
+    <text class="t-o" x="232" y="304">Always empty</text>
+    <text class="t-s" x="232" y="322">the view ships; nothing installs routines</text>
+    <rect class="new" x="566" y="282" width="358" height="54" rx="5"/>
+    <text class="t-b" x="582" y="304">Every routine a worker made</text>
+    <text class="t-s" x="582" y="322">"made by" that worker; pause, resume, delete</text>
+  </g>
+
+  <g id="fence">
+    <line class="row" x1="16" y1="356" x2="924" y2="356"/>
+    <text class="t-lbl" x="32" y="380">UNCHANGED · EVERY PACKAGE · THE ROUTINES VIEW'S CODE · THE WEBHOOK TRANSPORT, WHICH NO LAB MOUNTS</text>
+  </g>
+</svg>

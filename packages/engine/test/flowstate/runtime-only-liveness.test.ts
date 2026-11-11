@@ -105,7 +105,7 @@ function probeFlow(kind: string, seen: Seen) {
 
   return defineFlow({
     kind,
-    actions: { run: { inputSchema: z.object({}), block: probe } },
+    actions: { run: probe },
     request: { heartbeatIntervalMs: 10_000 }
   })();
 }
@@ -144,7 +144,7 @@ describe("liveness is not advertised on a runtime-only init (FIX-999)", () => {
     const adapter = sharedInMemoryStores();
 
     const state = createFlowState({
-      flows: { probe: flow },
+      flows: [flow],
       stores: { default: { primary: adapter } },
       modelResolver: (() => undefined) as never
     });
@@ -169,7 +169,7 @@ describe("liveness is not advertised on a runtime-only init (FIX-999)", () => {
     const adapter = sharedInMemoryStores();
 
     const state = createFlowState({
-      flows: { probe: flow },
+      flows: [flow],
       stores: { default: { primary: adapter } },
       modelResolver: (() => undefined) as never
     });

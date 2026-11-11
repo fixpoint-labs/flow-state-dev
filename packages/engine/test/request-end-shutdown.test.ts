@@ -56,7 +56,7 @@ afterEach(async () => {
 });
 
 async function host() {
-  const state = createFlowState({ flows: { "request-end-shutdown": flow }, stores: { default: { primary: inMemoryStores() } } });
+  const state = createFlowState({ flows: [flow], stores: { default: { primary: inMemoryStores() } } });
   states.push(state);
   await state.getRouter();
   const runtime = await state.getRuntime();

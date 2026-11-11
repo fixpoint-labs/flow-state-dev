@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
 import { toBlobRef } from "@flow-state-dev/core/attachments";
 import { HarnessAttachmentRefusedError } from "@flow-state-dev/core/harness";
-import { HARNESS_ATTACHMENT_SEAM, type HarnessAttachmentSeam } from "@flow-state-dev/core/internal";
+import { ATTACHMENT_SEAM, type AttachmentSeam } from "@flow-state-dev/core/internal";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { cursorAgent, INTERNAL_CURSOR_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 import {
@@ -62,13 +62,18 @@ function scripted() {
   return { resolve, sent, created: () => created };
 }
 
-async function contextWith(files: Record<string, { mediaType: string; bytes: Uint8Array }>) {
+async function contextWith(files: Record<string, { mediaType: string; bytes: Uint8Array; text?: string }>) {
   const runtime = await createTestContext({});
-  const read: HarnessAttachmentSeam = async (file) => {
+  const read: AttachmentSeam = async (file) => {
     const found = files[file.data]!;
-    return { mediaType: found.mediaType, bytes: found.bytes, base64: () => Buffer.from(found.bytes).toString("base64") };
+    return {
+      mediaType: found.mediaType,
+      bytes: found.bytes,
+      base64: () => Buffer.from(found.bytes).toString("base64"),
+      ...(found.text !== undefined ? { text: async () => found.text! } : {}),
+    };
   };
-  (runtime.ctx as unknown as Record<symbol, unknown>)[HARNESS_ATTACHMENT_SEAM] = read;
+  (runtime.ctx as unknown as Record<symbol, unknown>)[ATTACHMENT_SEAM] = read;
   return runtime.ctx as never;
 }
 
@@ -108,15 +113,47 @@ describe("a turn's images, to Cursor", () => {
     expect(client.sent).toEqual(["just text"]);
   });
 
-  it("refuses a type it can't take, by name, before an agent opens", async () => {
+  // FIX-2520 D1: the Cursor SDK takes no documents, so a PDF reaches it as
+  // the text extracted on the server.
+  it("sends a PDF and a text-like file as their text after the prompt, beside the images", async () => {
     const client = scripted();
     const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: client.resolve });
     const pdf: FileContent = { type: "file", mediaType: "application/pdf", data: toBlobRef("b_report01"), filename: "report.pdf" };
+    const md: FileContent = { type: "file", mediaType: "text/markdown", data: toBlobRef("b_notes0001"), filename: "notes.md" };
+    const ctx = await contextWith({
+      [pdf.data]: { mediaType: "application/pdf", bytes: new Uint8Array([1]), text: "### report.pdf\n[page 1]\nTANGERINE" },
+      [md.data]: { mediaType: "text/markdown", bytes: new Uint8Array([2]), text: "### notes.md\nPLUM" },
+      [shot.data]: { mediaType: "image/png", bytes: PNG },
+    });
+    await block.config.execute?.({ prompt: "read these", attachments: [pdf, shot, md] }, ctx);
+    expect(client.sent).toEqual([
+      {
+        text: "read these\n\n### report.pdf\n[page 1]\nTANGERINE\n\n### notes.md\nPLUM",
+        images: [{ data: Buffer.from(PNG).toString("base64"), mimeType: "image/png" }],
+      },
+    ]);
+  });
+
+  it("sends a turn of documents only as one text prompt", async () => {
+    const client = scripted();
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: client.resolve });
+    const md: FileContent = { type: "file", mediaType: "text/markdown", data: toBlobRef("b_notes0001"), filename: "notes.md" };
+    await block.config.execute?.(
+      { prompt: "read", attachments: [md] },
+      await contextWith({ [md.data]: { mediaType: "text/markdown", bytes: new Uint8Array([1]), text: "### notes.md\nPLUM" } }),
+    );
+    expect(client.sent).toEqual(["read\n\n### notes.md\nPLUM"]);
+  });
+
+  it("refuses a type it can't take, by name, before an agent opens", async () => {
+    const client = scripted();
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: client.resolve });
+    const heic: FileContent = { type: "file", mediaType: "image/heic", data: toBlobRef("b_heic0001"), filename: "photo.heic" };
     const thrown = await Promise.resolve(
-      block.config.execute?.({ prompt: "read this", attachments: [pdf] }, await contextWith({})),
+      block.config.execute?.({ prompt: "read this", attachments: [heic] }, await contextWith({})),
     ).catch((error: unknown) => error);
     expect(thrown).toBeInstanceOf(HarnessAttachmentRefusedError);
-    expect((thrown as Error).message).toContain('Cursor can\'t take "report.pdf"');
+    expect((thrown as Error).message).toContain('Cursor can\'t take "photo.heic"');
     expect(client.created()).toBe(0);
   });
 });

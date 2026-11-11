@@ -30,7 +30,7 @@ export async function answerSeats(input: {
   const installation = createWorkerInstallation({ standardWorkers: input.workers, workerFlows: input.kinds as never });
   const copies = hireWorkforce(installation);
   const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { default: { primary: inMemoryStores() } },
   } as never);
   const answers: Record<string, SeatAnswer> = {};

@@ -27,3 +27,6 @@ Not shown failing: `b:other-user`'s "never shows alice's workers" half. The serv
 | 2026-11-04 | claude/project-thread-uxpn8e (pre-push) | n/a | FAIL (expected) | `read-once`: `a:within-1s` (all 15 never shown within 3 s) and `c:no-push` (3 views never); a:quiet, b, d held |
 | 2026-11-04 | claude/project-thread-uxpn8e (pre-push) | n/a | FAIL (expected) | `hand-list`: `d:rail` (listed ["support.help"]); nothing else failed |
 | 2026-11-04 | claude/project-thread-uxpn8e (pre-push) | n/a | FAIL (expected) | `timer`: `a:quiet` (4 reads per view over 10 s idle) and `b:other-user` (4 reads per bob view); a:within-1s, c, d held |
+| 2026-11-11 | claude/fix-2551-impl (pre-push) | n/a | PASS (a–c) | The watch is `client.live` now; the controls patch its call. a: 3 views × 5 changes, slowest 26 ms; 0 reads over 10 s idle · b: bob's views read 0 times · c: no push, 1501/1504/1493 ms. d not run: `twoCoordinatorTree` fails at `hireWorkforce` (support.fsd names tools no catalog registers), in setup, before the rail reads |
+| 2026-11-11 | claude/fix-2551-impl (pre-push) | n/a | FAIL (expected) | `read-once`: `a:within-1s` (every change never shown in 3 views) and `c:no-push` (3 views never) |
+| 2026-11-11 | claude/fix-2551-impl (pre-push) | n/a | FAIL (expected) | `timer`: `a:quiet` (4 reads per view over 10 s idle) and `b:other-user` (4 per bob view) |

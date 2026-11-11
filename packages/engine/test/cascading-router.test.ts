@@ -367,7 +367,7 @@ describe("cascadingRouter · trace and resume", () => {
     const { triage, received, departmentModel, urgencyModel } = tree({ suspendEscalate: true });
     const flow = defineFlow({
       kind: "cascade-resume",
-      actions: { run: { inputSchema: z.any(), block: sequencer({ name: "root", durable: true, inputSchema: z.any() }).step(triage) } },
+      actions: { run: sequencer({ name: "root", durable: true, inputSchema: z.any() }).step(triage) },
     })();
     const stores = createInMemoryStores();
     const provider = createCheckpointDurabilityProvider({

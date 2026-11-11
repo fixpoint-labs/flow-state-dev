@@ -404,6 +404,21 @@ export function createSQLiteRequestStore(
     return { batch, persisted };
   }
 
+  /**
+   * Write the request's queued item snapshot, if any: only the items that
+   * changed since the last write, recording what was written.
+   */
+  function writeLatestItems(requestId: string): void {
+    const snapshot = latestItemSnapshots.get(requestId);
+    latestItemSnapshots.delete(requestId);
+    if (snapshot === undefined) return;
+    if (droppedAfterClose(db, "items", requestId, snapshot.length)) return;
+
+    const { batch, persisted } = itemDelta(requestId, snapshot);
+    if (batch.length > 0) writeItemsBatchTxn(batch, requestId);
+    lastPersistedItems.set(requestId, persisted);
+  }
+
   /** Reject an item id past the length bound, before any SQL runs. */
   function assertItemIds(items: RuntimeItem[]): void {
     for (const item of items) {
@@ -656,19 +671,19 @@ export function createSQLiteRequestStore(
 
       queueMicrotask(() => {
         pendingItemWrites.delete(requestId);
-        const snapshot = latestItemSnapshots.get(requestId);
-        latestItemSnapshots.delete(requestId);
-        if (snapshot === undefined) return;
-        if (droppedAfterClose(db, "items", requestId, snapshot.length)) return;
-
-        const { batch, persisted } = itemDelta(requestId, snapshot);
-        if (batch.length > 0) writeItemsBatchTxn(batch, requestId);
-        lastPersistedItems.set(requestId, persisted);
+        writeLatestItems(requestId);
       });
     },
 
     async flushItems(_requestId: string): Promise<void> {
       // No-op: queueMicrotask writes complete before any await resumes
+    },
+
+    async releaseItemTracking(requestId: string): Promise<void> {
+      // Write a snapshot still queued now, rather than drop it: the queued
+      // microtask then finds nothing, so it cannot put the memory back.
+      writeLatestItems(requestId);
+      lastPersistedItems.delete(requestId);
     },
 
     async countItems(requestId: string): Promise<number> {

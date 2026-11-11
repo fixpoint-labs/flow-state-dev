@@ -354,8 +354,8 @@ Tools are compiled from block definitions and auto-executed in the model loop (u
 | Action runner | `packages/engine/src/execution/runAction.ts` |
 | Error classes | `packages/engine/src/errors/flow-error.ts` |
 | Retry logic | `packages/engine/src/execution/retry.ts` |
-| CLI run command | `packages/cli/src/commands/run.ts` |
-| CLI block command | `packages/cli/src/commands/block.ts` |
+| CLI run command | `packages/fsdev/src/commands/run.ts` |
+| CLI block command | `packages/fsdev/src/commands/block.ts` |
 
 ---
 

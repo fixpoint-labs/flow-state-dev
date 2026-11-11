@@ -64,7 +64,7 @@ const find = handler({
 const flow = defineFlow({
   kind: "partitions",
   resources: taskLedgerResources(ledger),
-  actions: { file: { inputSchema: fileInput, block: file }, find: { inputSchema: findInput, block: find } },
+  actions: { file, find },
 })({ id: "partitions" });
 
 const dirs: string[] = [];
@@ -101,7 +101,7 @@ function countScans(raw: StoreRegistry): { scans: number } {
 async function boot(adapter: StoreAdapter) {
   const raw = (await adapter.resolve(["primary"])) as StoreRegistry;
   const state = createFlowState({
-    flows: { partitions: flow } as never,
+    flows: [flow] as never,
     stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(raw) } } },
     modelResolver: createMockModelResolver({}),
   });

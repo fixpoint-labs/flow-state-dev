@@ -83,6 +83,37 @@ whole set by the spec-set author; see the set PR. One finding folded: D1.
 6. **Ergonomics** — the comparison is what the owner reads; the table is the deliverable.
 7. **Concerns** — a variant B built with less care than A. The anti-game row names it.
 
+## Settled
+
+- **The proof ran, and the "A only" row is empty** (2026-11-10, `main` at `f60ca70a7`;
+  [`poc/kit-or-api/`](poc/kit-or-api/README.md), run with
+  `bash specs/issues/FIX-2622/poc/kit-or-api/run.sh`). Workforce as a kit and a better
+  install API each remove the same 11 host lines: the tree read and its refusal, the install
+  imports, the `hireWorkforce` call and the hand-spread map. The kit adds 145 package lines for
+  it, the API 34. Both variants serve today's five flows, read a relative `tree` against the
+  working directory as today's host does, and pass the lab's typecheck, its four host tests and
+  the contract test's real column. Opening either costs the same within noise (A − B −0.3 ms).
+- **The controls, and what each proves.**
+  - Parity fails on a host without `lab-context`, so a variant that dropped a flow can't pass.
+  - The relative-`tree` case fails on a kit that reads the path against the app's folder (an
+    earlier draft of A did), so a variant can't pass by reading a different tree.
+  - In the attribution, synthetic hosts with one real edit must be credited exactly. Stripping
+    the loader import from A alone reads "A only", so the empty "A only" row is a reading the
+    table could have come out otherwise.
+  - Dropping the hire's cast while keeping the call must leave the call "neither". An earlier
+    row that anchored on both had credited B0 with removing the call.
+- **The callback and the casts were never workforce's API.** A third host, B0, uses only
+  today's API. Eight of the nine `as never` casts are dead on `main` (`tsc` passes without
+  them). The circular `workerFlows: () => flows` callback and the ninth cast go with
+  `workerFlow(...)`, which workforce already exports. That fires D1's "what would change my
+  mind" more strongly than it was written. The proof is still both variants, because the tree
+  read, the refusal and the spread do need a change.
+- **What goes to the owner.** Per the amended spec, a B-wins verdict is a reason to reopen
+  [O1](../../epics/FIX-2618/DECISIONS.md#o1), not a decision. The proof tests the install half
+  only. O1 rests on the client half (the adapters), which this host doesn't exercise. A second
+  kit (slots across kits, `requires`) has no consumer here either. It went to the owner, who
+  kept kits; see [the epic's entry](../../epics/FIX-2618/DECISIONS.md#fix-2622-result).
+
 ## How it got here
 
 - **Draft (2026-11-09)** — written in the stage-1 spec set. Variant B added: the Linear issue
@@ -91,5 +122,9 @@ whole set by the spec-set author; see the set PR. One finding folded: D1.
   merged in #4986). O1 and O5 are decided; variant A now installs workforce with its file
   convention, the attribution credits the tree read accordingly, and a B-wins verdict goes to the
   owner as a reason to reopen O1. Variant B and the parity check are unchanged.
+- **Proof run (2026-11-10)**: built and run on a follow-up PR from `main`. B removes everything
+  A removes, and B0, a control on today's API, was added once the casts turned out dead. See
+  [Settled](#settled). The verdict goes to the owner, and the epic's four lines follow as their own
+  amendment.
 
 **Open: none of this issue's own.**

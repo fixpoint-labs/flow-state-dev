@@ -18,6 +18,7 @@ import type { StoreRegistry } from "../stores/types";
 import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
 import type { ParentTaskBinding } from "./create-request-host";
 import type { DispatchOperation } from "./dispatch-operation";
+import type { ServiceRouteOperation } from "../durability/owner-runs";
 import type { WaitResumeOperation } from "./wait-resume-operation";
 import type { SuspendedStopDeps } from "../durability/stop-suspended";
 import type { DurabilityProvider } from "../durability/types";
@@ -191,6 +192,14 @@ export type RequestHostConstructionInputs = {
    * there explicitly.
    */
   dispatchOperation?: DispatchOperation;
+  // FIX-2630 D1.
+  /**
+   * Routes a dispatch to an internal entry marked `service` (a publish) as
+   * the service, firing only the sender's own user's runs. Installed beside
+   * `dispatchOperation`, over the same host. Absent → such a dispatch is
+   * refused `no-dispatch-operation`.
+   */
+  serviceRoute?: ServiceRouteOperation;
   /**
    * Whether `dispatchOperation` runs what it starts in this process, read as
    * each request starts (`RequestHost.dispatchRunsHere`). Absent → no request

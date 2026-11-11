@@ -6,6 +6,8 @@
 import { StrictMode } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { FileContent } from "@flow-state-dev/core/items";
+import { toBlobRef } from "@flow-state-dev/core/attachments";
 import { TurnComposer } from "../src/components/TurnComposer";
 import { TurnNotDelivered } from "../src/lib/send";
 import { legacyTaskDraftKey, taskDraftKey } from "../src/lib/tasks";
@@ -347,5 +349,93 @@ describe("adopting an old task draft when storage is full", () => {
       <TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} draftKey={taskDraftKey("lead.tasks", "t-1")} legacyDraftKey={legacyTaskDraftKey("t-1")} send={() => new Promise(() => {})} />,
     );
     expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("kept through a full storage");
+  });
+});
+
+// FIX-2522.
+describe("a line's files (FIX-2522)", () => {
+  /** An uploader that answers with a stored file's reference, as the Lab does. */
+  const uploader = () => ({
+    upload: vi.fn(async (request: { data: Blob; mediaType?: string; filename?: string }): Promise<FileContent> => ({
+      type: "file",
+      mediaType: request.mediaType ?? request.data.type,
+      ...(request.filename ? { filename: request.filename } : {}),
+      data: toBlobRef(`b_${(request.filename ?? "file").replace(/\W/g, "")}000000`),
+    })),
+  });
+  const png = (name: string) => new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], name, { type: "image/png" });
+  const paste = (target: Element, files: File[]) =>
+    fireEvent.paste(target, { clipboardData: { items: files.map((f) => ({ kind: "file", getAsFile: () => f })), files } });
+
+  it("go beside the line as references, by paste or the + picker, and leave the draft with it", async () => {
+    const client = uploader();
+    const send = vi.fn(async (_message: string, held: () => void, _files: FileContent[]) => held());
+    render(<TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} uploader={client} send={send} />);
+    const input = screen.getByTestId("t-input");
+    await act(async () => paste(input, [png("pasted.png")]));
+    const picker = document.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(picker, "files", { value: [png("picked.png")], configurable: true });
+    await act(async () => fireEvent.change(picker));
+    expect(screen.getByRole("button", { name: "Attach files" })).toBeTruthy();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+
+    fireEvent.change(input, { target: { value: "what's wrong here?" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0]![0]).toBe("what's wrong here?");
+    expect(send.mock.calls[0]![2].map((f) => f.filename)).toEqual(["pasted.png", "picked.png"]);
+    expect(JSON.stringify(send.mock.calls[0]![2])).not.toMatch(/base64|"blob:/);
+    // Sent: the strip is empty again.
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  it("stay in the draft when the line never got there, and Retry sends them again", async () => {
+    const client = uploader();
+    let tries = 0;
+    const send = vi.fn(async (_message: string, _held: () => void, _files: FileContent[]) => {
+      tries += 1;
+      if (tries === 1) throw new TurnNotDelivered("not-sent", "the Lab is unreachable");
+    });
+    render(<TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} uploader={client} send={send} />);
+    const input = screen.getByTestId("t-input");
+    await act(async () => paste(input, [png("bug.png")]));
+    fireEvent.change(input, { target: { value: "look" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    expect(screen.getByTestId("t-error").textContent).toContain("the Lab is unreachable");
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+
+    await act(async () => fireEvent.click(screen.getByTestId("t-retry")));
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1]![2].map((f) => f.filename)).toEqual(["bug.png"]);
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  it("come back with the line when it fails after the session held it, and go with it when it is sent again", async () => {
+    const client = uploader();
+    let tries = 0;
+    const send = vi.fn(async (_message: string, held: () => void, _files: FileContent[]) => {
+      tries += 1;
+      held();
+      if (tries === 1) throw new TurnNotDelivered("refused", "no thanks");
+    });
+    render(<TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} uploader={client} send={send} />);
+    const input = screen.getByTestId("t-input") as HTMLInputElement;
+    await act(async () => paste(input, [png("bug.png")]));
+    fireEvent.change(input, { target: { value: "look" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    // Refused after it left: the line and its file are both back in the draft.
+    expect(input.value).toBe("look");
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1]![2].map((f) => f.filename)).toEqual(["bug.png"]);
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  it("are refused by name in a composer with nowhere to upload them", async () => {
+    render(<TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} send={async () => undefined} />);
+    await act(async () => paste(screen.getByTestId("t-input"), [png("bug.png")]));
+    expect(screen.getByRole("status", { name: "Attachment notices" }).textContent).toBe("Attachments aren't available here");
   });
 });

@@ -107,7 +107,7 @@ await runGoal(async (failures) => {
   evidence.push(`booted ${workers.length} workers on ${copies.length - 1} flows, one copy each`);
 
   const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: {

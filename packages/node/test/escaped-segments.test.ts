@@ -14,15 +14,12 @@ function runFlow(kind: string) {
   return defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}).passthrough(),
-        block: handler({
+      run: handler({
           name: "run",
           inputSchema: z.object({}).passthrough(),
           outputSchema: z.object({ ok: z.boolean() }),
           execute: () => ({ ok: true }),
         }),
-      },
     },
   })();
 }
@@ -34,7 +31,7 @@ describe("createServerApp — a flow kind that carries percent escapes", () => {
     ["a plain kind", "plain-helper"],
   ])("dispatches an action on %s from the raw URL", async (_label, kind) => {
     const flowstate = createFlowState({
-      flows: { worker: runFlow(kind) },
+      flows: [runFlow(kind)],
       stores: { default: { primary: inMemoryStores() } },
     });
     const server = createServerApp(flowstate);

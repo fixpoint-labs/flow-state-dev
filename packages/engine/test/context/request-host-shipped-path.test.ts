@@ -108,7 +108,7 @@ function probeFlow(kind: string, seen: Seen, ask: string[]) {
 
   return defineFlow({
     kind,
-    actions: { run: { inputSchema: z.object({}), block: probe } },
+    actions: { run: probe },
     internal: { actions: { work: { block: work } } },
     request: { heartbeatIntervalMs: 10_000 }
   })();
@@ -354,7 +354,7 @@ describe("request-host seam on the shipped worker path", () => {
     const flow = probeFlow("worker-seam", seen, []);
 
     const state = createFlowState({
-      flows: { workerSeam: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: (() => undefined) as never
     });

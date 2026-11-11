@@ -19,9 +19,10 @@ import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "../
 import { createMemoryBlobStore } from "../../src/blobs/memory-blob-store";
 import { createInMemoryStores } from "../../src/host";
 import { retryRequest } from "../../src/execution/request-recovery";
+import { makePdf } from "./pdf-fixture";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
-const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 9, 9]);
+const PDF = makePdf(["the report"]);
 
 const byHeader = (context: { request?: Request }) => {
   const user = context.request?.headers.get("x-user");
@@ -67,7 +68,8 @@ function recordingResolver(calls: ModelCall[], toolLoop: boolean) {
 
 const input = z.object({ message: z.string() });
 
-type Options = { toolLoop?: boolean; failFirst?: boolean };
+/** `model`: the generator's model string; its provider decides whether a PDF goes as a file or as its text. */
+type Options = { toolLoop?: boolean; failFirst?: boolean; model?: string };
 
 function chatFlow(seen: { attachments?: ReadonlyArray<FileContent> }, options: Options) {
   let failuresLeft = options.failFirst === true ? 1 : 0;
@@ -88,7 +90,7 @@ function chatFlow(seen: { attachments?: ReadonlyArray<FileContent> }, options: O
   const lookup = handler({ name: "lookup", inputSchema: z.object({}), outputSchema: z.object({ ok: z.boolean() }), execute: () => ({ ok: true }) });
   const answer = generator({
     name: "answer",
-    model: "mock",
+    model: options.model ?? "anthropic/claude-test",
     prompt: "You answer.",
     history: true,
     ...(options.toolLoop === true ? { tools: [lookup] } : {}),
@@ -98,12 +100,9 @@ function chatFlow(seen: { attachments?: ReadonlyArray<FileContent> }, options: O
   return defineFlow({
     kind: "chat",
     actions: {
-      send: { inputSchema: input, block: sequencer({ name: "chat", inputSchema: input }).step(look).step(answer), userMessage: (i) => i.message },
+      send: { block: sequencer({ name: "chat", inputSchema: input }).step(look).step(answer), userMessage: (i) => i.message },
       // No user line, so no place for files.
-      note: {
-        inputSchema: input,
-        block: handler({ name: "note", inputSchema: input, outputSchema: input, execute: (value) => ({ message: value.message }) })
-      }
+      note: handler({ name: "note", inputSchema: input, outputSchema: input, execute: (value) => ({ message: value.message }) })
     }
   })();
 }
@@ -195,6 +194,33 @@ describe("a message's files, from the request to the model", () => {
       { type: "image", image: Buffer.from(PNG).toString("base64"), mediaType: "image/png" },
       { type: "file", data: Buffer.from(PDF).toString("base64"), mediaType: "application/pdf", filename: "report.pdf" }
     ]);
+  });
+
+  // FIX-2520: the generator's own provider decides; nothing in the flow names it.
+  it("sends a provider that can't read PDFs each document as text headed by its name", async () => {
+    const { calls, upload, send, finished } = setup({ model: "acme/house-model" });
+    const report = await upload(makePdf(["intro", "code word TANGERINE"]), "application/pdf", "spec.pdf");
+    const notes = await upload(new TextEncoder().encode("# Notes\ncode word PLUM"), "text/markdown", "notes.md");
+    const record = await finished(await send("s1", [report, notes]));
+    expect(record.status).toBe("completed");
+
+    const users = calls.at(-1)!.messages.filter((m) => m.role === "user");
+    expect(users[0]!.content).toEqual([
+      { type: "text", text: "what is in these?" },
+      { type: "text", text: "### spec.pdf\n[page 1]\nintro\n\n[page 2]\ncode word TANGERINE" },
+      { type: "text", text: "### notes.md\n# Notes\ncode word PLUM" }
+    ]);
+  });
+
+  it("fails the turn by name, before the model is called, when a PDF's text is over the cap for a provider that gets text", async () => {
+    const { calls, upload, send, finished } = setup({ model: "acme/house-model" });
+    // Sixty full pages, well under the page cap, and over 200 KB of text.
+    const page = Array.from({ length: 50 }, () => "word ".repeat(18).trim()).join("\n");
+    const dense = await upload(makePdf(Array.from({ length: 60 }, () => page)), "application/pdf", "dense.pdf");
+    const record = await finished(await send("s1", [dense]));
+    expect(record.status).toBe("failed");
+    expect(JSON.stringify(record)).toContain("dense.pdf");
+    expect(calls).toHaveLength(0);
   });
 
   it("still shows the model a file sent two turns before", async () => {

@@ -700,7 +700,7 @@ describe("FIX-1001 — orderings the drain forces", () => {
     // re-read is what makes the outcome `aborted`, so anything downstream of
     // it that still reads the pre-drain snapshot reports a different outcome
     // than the durable record — two authoritative-looking surfaces disagreeing
-    // about the same request. `packages/cli/src/commands/run.ts` keys straight
+    // about the same request. `packages/fsdev/src/commands/run.ts` keys straight
     // off `result.error`, so a stale read there prints a failure for a request
     // the user successfully stopped.
     expect(result.error).toBeUndefined();

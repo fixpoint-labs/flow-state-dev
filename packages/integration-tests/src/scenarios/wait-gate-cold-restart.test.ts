@@ -154,7 +154,7 @@ afterEach(async () => {
 
 function runtimeOn(filename: string, model: GeneratorModel): FlowState {
   const state = createFlowState({
-    flows: { "wait-restart": waitFlow(model) },
+    flows: [waitFlow(model)],
     stores: { default: { primary: sqliteStores({ filename }) } },
     durable: true
   });

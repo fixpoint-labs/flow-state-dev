@@ -194,7 +194,7 @@ await runGoal(async (failures, tell) => {
     ]),
   );
   const host = createFlowState({
-    flows,
+    flows: Object.values(flows),
     stores: { goal: { primary: inMemoryStores() } },
     defaultProfile: "goal",
     logger: silentLogger,

@@ -19,6 +19,7 @@ import { createHostDiskState, type HostDiskState } from "../blobs/host-disk";
 import { handleGetBlob, handleUploadBlob } from "./blob-routes";
 import type { ChangeBus } from "../bus/types";
 import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
+import { continueWithoutReader } from "../execution/request-continuation";
 import {
   parseFlowRoute,
   type ParsedFlowRoute
@@ -77,6 +78,7 @@ import {
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { createDispatchOperation } from "../context/dispatch-operation";
+import { createServiceRouteOperation } from "../durability/owner-runs";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { pinRejectsCaller } from "../context/instance-pin";
 import { createInstanceCallerResolver, type InstanceCallerResolver } from "./instance-caller";
@@ -337,6 +339,10 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   ) {
     runtimeConfig.requestHost.dispatchOperation = createDispatchOperation({ host });
   }
+  // FIX-2630: the seam's service route, on the same terms and over the same host.
+  if (runtimeConfig.requestHost !== undefined && runtimeConfig.requestHost.serviceRoute === undefined) {
+    runtimeConfig.requestHost.serviceRoute = createServiceRouteOperation(host);
+  }
 
   // Same last-resort terms for the wait resume, and only with durable execution:
   // a router mounted without a `FlowState` can still serve waits.
@@ -348,7 +354,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig.requestHost.waitResume = createWaitResumeOperation({
       provider: runtimeConfig.durabilityProvider,
       stores,
-      continueRequest: (opts) => host.continueRequest(opts)
+      continueRequest: continueWithoutReader((opts) => host.continueRequest(opts))
     });
   }
   // And whether a sweeper bounds a wait here, so the turn is offered one.
@@ -374,7 +380,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       ? createParkedStopDeps({
           provider: runtimeConfig.durabilityProvider,
           stores,
-          continueRequest: (opts) => host.continueRequest(opts)
+          continueRequest: continueWithoutReader((opts) => host.continueRequest(opts))
         })
       : undefined;
   if (

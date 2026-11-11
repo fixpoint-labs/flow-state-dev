@@ -49,8 +49,8 @@ import { isAbsolute } from "node:path";
 
 const ASSIGNEE = "harness" as const;
 
-/** The flow kind; `createFlowState` registers the host under it. */
-export const HARNESS_GOAL_FLOW_KIND = "harness-goal" as const;
+/** The flow kind the host flow is defined under. */
+const HARNESS_GOAL_FLOW_KIND = "harness-goal" as const;
 
 export interface HarnessGoalFlowOptions {
   /** Names the board and the collection so two goals do not share rows. */

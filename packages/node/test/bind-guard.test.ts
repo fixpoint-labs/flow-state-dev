@@ -21,21 +21,18 @@ function pingFlow(kind: string, authenticated: boolean) {
         }
       : {}),
     actions: {
-      ping: {
-        inputSchema: z.object({}).passthrough(),
-        block: handler({
+      ping: handler({
           name: "ping",
           inputSchema: z.object({}).passthrough(),
           execute: () => undefined,
         }),
-      },
     },
   })();
 }
 
 function flowState(flows: Record<string, ReturnType<typeof pingFlow>>) {
   return createFlowState({
-    flows,
+    flows: Object.values(flows),
     modelResolver: createMockModelResolver({}),
     stores: { default: { primary: inMemoryStores() } },
   });
@@ -106,18 +103,15 @@ describe("assertNetworkBindIsAuthenticated", () => {
       kind: "explicit-default",
       authentication: { resolvePrincipal: defaultBodyUserIdPrincipalResolver },
       actions: {
-        ping: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        ping: handler({
             name: "ping",
             inputSchema: z.object({}).passthrough(),
             execute: () => undefined,
           }),
-        },
       },
     })();
     const fs = createFlowState({
-      flows: { explicitDefault: flow },
+      flows: [flow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
     });

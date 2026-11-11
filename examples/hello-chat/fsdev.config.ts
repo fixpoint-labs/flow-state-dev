@@ -15,7 +15,7 @@ import { createFlowState } from "@flow-state-dev/engine";
 import helloChatFlow from "./src/flows/hello-chat/flow";
 
 export default createFlowState({
-  flows: { helloChat: helloChatFlow },
+  flows: [helloChatFlow],
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },

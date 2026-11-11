@@ -141,6 +141,7 @@ export async function packWorkerInput(
     goal: task.goal,
     ...(task.title !== undefined ? { title: task.title } : {}),
     ...(task.context !== undefined ? { context: task.context } : {}),
+    ...(task.attachments !== undefined && task.attachments.length > 0 ? { attachments: task.attachments } : {}),
     ...(task.input !== undefined ? { input: task.input } : {}),
     attempts: task.attempts,
     ...(task.feedback !== undefined ? { feedback: task.feedback } : {}),

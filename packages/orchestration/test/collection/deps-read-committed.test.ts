@@ -104,7 +104,7 @@ describe("a filing reads its dependencies as stored now", () => {
   ])("refuses a dependency that failed in another request while %s ran, and stores nothing", async (_how, batch) => {
     const meanwhile: { run?: () => Promise<unknown> } = {};
     const flow = depsFlow(meanwhile);
-    const state = createFlowState({ flows: { [flow.id]: flow }, stores: { default: { primary: inMemoryStores() } } } as never);
+    const state = createFlowState({ flows: [flow], stores: { default: { primary: inMemoryStores() } } } as never);
     const act = async (actionName: string, input: unknown = {}) => {
       const runtime = await state.getRuntime();
       const result = await runAction({

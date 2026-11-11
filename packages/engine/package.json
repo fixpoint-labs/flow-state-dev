@@ -51,6 +51,10 @@
     "./resource-template": {
       "types": "./dist/resource-template-loader.d.ts",
       "default": "./src/resource-template-loader.ts"
+    },
+    "./folder": {
+      "types": "./dist/folder/index.d.ts",
+      "default": "./src/folder/index.ts"
     }
   },
   "license": "MIT",
@@ -86,6 +90,10 @@
       "./resource-template": {
         "types": "./dist/resource-template-loader.d.ts",
         "default": "./dist/resource-template-loader.js"
+      },
+      "./folder": {
+        "types": "./dist/folder/index.d.ts",
+        "default": "./dist/folder/index.js"
       }
     }
   },
@@ -97,7 +105,8 @@
     "@cfworker/json-schema": "^4.1.1",
     "@flow-state-dev/core": "workspace:*",
     "p-retry": "^6.2.0",
-    "path-to-regexp": "^8.2.0"
+    "path-to-regexp": "^8.2.0",
+    "unpdf": "1.9.1"
   },
   "peerDependencies": {
     "vitest": "^3.0.0"

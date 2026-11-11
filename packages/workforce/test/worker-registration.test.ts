@@ -31,7 +31,6 @@ function researchFlow(installation: WorkerInstallation | undefined) {
       : {}),
     actions: {
       respond: {
-        inputSchema: door,
         userMessage: (input: { message: string }) => input.message,
         block: handler({ name: "research-run", inputSchema: door, execute: (input) => input })
       }
@@ -102,7 +101,7 @@ describe("hireWorkforce", () => {
       configSchema: workerConfigSchema(),
       session: made.session(),
       resources: { ...made.resources },
-      actions: { work: { inputSchema: door, block: handler({ name: "doorless-work", inputSchema: door, execute: (input) => input }) } }
+      actions: { work: handler({ name: "doorless-work", inputSchema: door, execute: (input) => input }) }
     });
     flows = { research: researchFlow(made), doorless };
     expect(() => hireWorkforce(made)).toThrow(/refused 1 worker flow \("doorless"\); nothing was hired[\s\S]*no door/);
@@ -122,14 +121,14 @@ describe("hireWorkforce", () => {
         configSchema: workerConfigSchema(),
         session: made.session(),
         resources: { ...made.resources, ...workerMessagesResources },
-        actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: handler({ name: "deaf-run", inputSchema: door, execute: (input) => input }) } },
+        actions: { respond: { userMessage: (i: { message: string }) => i.message, block: handler({ name: "deaf-run", inputSchema: door, execute: (input) => input }) } },
         internal: { actions: internal(made) }
       });
       flows = { research: researchFlow(made), deaf };
       return () => hireWorkforce(made);
     };
     expect(hire(() => ({}))).toThrow(/refused 1 worker flow[\s\S]*worker flow "deaf" has no "onMessageReceived"/);
-    const handBuilt = { inputSchema: z.object({ messageId: z.string() }), block: handler({ name: "deaf-hand-built", inputSchema: z.object({ messageId: z.string() }), execute: () => ({}) }) };
+    const handBuilt = { block: handler({ name: "deaf-hand-built", inputSchema: z.object({ messageId: z.string() }), execute: () => ({}) }) };
     expect(hire(() => ({ onMessageReceived: handBuilt })), "a hand-built entry is no entry").toThrow(/"deaf" has a "onMessageReceived" that `messageReceivedEntry` didn't build/);
     expect(hire((made) => hearsMessages(made, "deaf"))).not.toThrow();
   });
@@ -152,7 +151,7 @@ describe("hireWorkforce", () => {
         configSchema: workerConfigSchema(),
         session: { ...made.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
         resources: { ...made.resources, ...board.resources },
-        actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: turn }, ...(withPass ? board.actions : {}) },
+        actions: { respond: { userMessage: (i: { message: string }) => i.message, block: turn }, ...(withPass ? board.actions : {}) },
         internal: { actions: withPass ? board.entries(turn) : hearsMessages(made, "chatty") }
       } as never);
       flows = { research: researchFlow(made), chatty: withPass ? { flow: chatty, roles: ["manager"] } : chatty };
@@ -179,7 +178,7 @@ describe("hireWorkforce", () => {
       configSchema: workerConfigSchema(),
       session: { ...made.session(undefined), serverOwned: [...board.serverOwned] },
       resources: { ...made.resources, ...board.resources },
-      actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: turn }, ...board.actions },
+      actions: { respond: { userMessage: (i: { message: string }) => i.message, block: turn }, ...board.actions },
       internal: { actions: board.entries(turn) }
     } as never);
     flows = { research: researchFlow(made), manages: { flow: manages, roles: ["manager"] } };

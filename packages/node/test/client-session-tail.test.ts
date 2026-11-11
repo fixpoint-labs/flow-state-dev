@@ -22,9 +22,7 @@ const lines = z.object({ count: z.number(), label: z.string() });
 const chatFlow = defineFlow({
   kind: "chat",
   actions: {
-    say: {
-      inputSchema: lines,
-      block: handler({
+    say: handler({
         name: "say",
         inputSchema: lines,
         execute: ({ count, label }, ctx) => {
@@ -32,7 +30,6 @@ const chatFlow = defineFlow({
           return { ok: true };
         },
       }),
-    },
   },
 })();
 
@@ -52,7 +49,7 @@ const text = (item: unknown) => ((item as { content?: Array<{ text?: string }> }
 describe("a client's tail read of a long session", () => {
   it("holds the newest reply of a session with more than 1,000 items, and pages back on request", async () => {
     const flowState = createFlowState({
-      flows: { chat: chatFlow },
+      flows: [chatFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
     });

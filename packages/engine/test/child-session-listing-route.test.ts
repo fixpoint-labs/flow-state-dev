@@ -46,15 +46,12 @@ function openFlow(kind: string) {
   return defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({
+      run: handler({
           name: `${kind}-run`,
           inputSchema: z.object({}),
           outputSchema: z.object({}),
           execute: () => ({})
         })
-      }
     }
   })();
 }
@@ -64,15 +61,12 @@ function secureFlow(kind: string) {
   return defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({
+      run: handler({
           name: `${kind}-run`,
           inputSchema: z.object({}),
           outputSchema: z.object({}),
           execute: () => ({})
         })
-      }
     },
     authentication: {
       resolvePrincipal: (context) => {

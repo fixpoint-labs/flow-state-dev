@@ -12,7 +12,8 @@
  */
 import { describe, expect, it } from "vitest";
 import type { BlockContext, SubscriptionEvent } from "@flow-state-dev/core/types";
-import { githubSubscriptionProvider, normalizeGitHubEvent, screenRefusal } from "../src/subscriptions";
+import { githubSubscriptionProvider, normalizeGitHubEvent } from "../src/service-flows";
+import { screenRefusal } from "../src/subscriptions";
 
 const PR = "github:acme/api#412";
 const SINCE = Date.parse("2026-11-09T10:00:00Z");
@@ -71,7 +72,7 @@ describe("a repository's poll and its webhook agree", () => {
     const { provider } = fakeGitHub({
       "/repos/acme/api": repository,
       "/repos/acme/api/issues": [issue],
-      "/repos/acme/api/issues/comments": [comment]
+      "/repos/acme/api/issues/comments": [comment], "/repos/acme/api/pulls/comments": []
     });
     const polled = await provider.poll!("github:acme/api", { since: SINCE }, ctx);
     if ("unchanged" in polled) throw new Error("expected the comment");
@@ -90,7 +91,7 @@ describe("a repository's poll and its webhook agree", () => {
     // The list GitHub returns carries no `closed_by`; the issue itself does.
     const listed = { number: 9, title: "Deploy is blocked", labels: [], user: user("alice"), author_association: "MEMBER", created_at: at(-600), updated_at: at(3), closed_at: at(3), state: "closed" };
     const full = { ...listed, closed_by: user("bob") };
-    const { provider } = fakeGitHub({ "/repos/acme/api": repository, "/repos/acme/api/issues": [listed], "/repos/acme/api/issues/9": full, "/repos/acme/api/issues/comments": [] });
+    const { provider } = fakeGitHub({ "/repos/acme/api": repository, "/repos/acme/api/issues": [listed], "/repos/acme/api/issues/9": full, "/repos/acme/api/issues/comments": [], "/repos/acme/api/pulls/comments": [] });
     const polled = await provider.poll!("github:acme/api", { since: SINCE }, ctx);
     if ("unchanged" in polled) throw new Error("expected the close");
     const fromPoll = polled.events.find((e) => e.closes === true)!;
@@ -103,7 +104,7 @@ describe("a repository's poll and its webhook agree", () => {
 
   it("marks a close's sender unknown when the closer can't be read, never the author", async () => {
     const listed = { number: 9, title: "Deploy is blocked", labels: [], user: user("alice"), author_association: "MEMBER", created_at: at(-600), updated_at: at(3), closed_at: at(3), state: "closed" };
-    const { provider } = fakeGitHub({ "/repos/acme/api": { full_name: "acme/api" }, "/repos/acme/api/issues": [listed], "/repos/acme/api/issues/comments": [] });
+    const { provider } = fakeGitHub({ "/repos/acme/api": { full_name: "acme/api" }, "/repos/acme/api/issues": [listed], "/repos/acme/api/issues/comments": [], "/repos/acme/api/pulls/comments": [] });
     const polled = await provider.poll!("github:acme/api", { since: SINCE }, ctx);
     if ("unchanged" in polled) throw new Error("expected the close");
     const close = polled.events.find((e) => e.closes === true)!;
@@ -118,7 +119,7 @@ describe("a repository's poll and its webhook agree", () => {
       "/repos/acme/api": { full_name: "acme/api", private: false },
       "/repos/acme/api/issues": [],
       "/repos/acme/api/issues/9": issue,
-      "/repos/acme/api/issues/comments": comments
+      "/repos/acme/api/issues/comments": comments, "/repos/acme/api/pulls/comments": []
     });
     const polled = await provider.poll!("github:acme/api", { since: SINCE }, ctx);
     if ("unchanged" in polled) throw new Error("expected the comments");

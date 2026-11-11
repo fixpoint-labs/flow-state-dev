@@ -50,10 +50,7 @@ describe("errorCapture final-failure event", () => {
     const flow = defineFlow({
       kind: "final-flow",
       actions: {
-        run: {
-          inputSchema: z.any(),
-          block: sequencer({ name: "root", inputSchema: z.any() }).step(handler({ name: "pass", execute: (i) => i })).step(leaf)
-        }
+        run: sequencer({ name: "root", inputSchema: z.any() }).step(handler({ name: "pass", execute: (i) => i })).step(leaf)
       }
     })();
 
@@ -105,12 +102,9 @@ describe("errorCapture final-failure event", () => {
     const flow = defineFlow({
       kind: "rescued-flow",
       actions: {
-        run: {
-          inputSchema: z.any(),
-          block: sequencer({ name: "root", inputSchema: z.any() }).step(risky).rescue([
+        run: sequencer({ name: "root", inputSchema: z.any() }).step(risky).rescue([
             { when: [Error], block: handler({ name: "fallback", execute: () => ({ ok: true }) }) }
           ])
-        }
       }
     })();
 

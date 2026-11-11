@@ -1,0 +1,105 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="What changes. Today a notice names a topic and a kind, and only a collection entry's notice says which row, in its path; every reader reads whole. After, a notice passes five points left to right. The publisher adds the ids it already holds: the task on a board notice, the entry key on a collection notice, the session on a run notice, the request on a request notice. The one publish queue folds notices and unions their ids up to a cap. The bus carries them, and the Postgres bus drops them first when a payload is too big. The push edge sends them unless the scope turned ids off, and then also cuts entry paths on scope-wide subscriptions. The client's one merge unions ids for the same topic and kind, else reads everything. At the end, three readers: a view that opted in answers only the rows the ids touch, a collection direct read fetches only the named entries, and every other reader reads whole, as today."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.3; stroke-dasharray:4 3; }
+    .user  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .core  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.1; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="14" width="908" height="96" rx="6"/>
+    <text class="t-lbl" x="32" y="34">TODAY · A NOTICE SAYS THAT, NEVER WHICH</text>
+    <rect class="old" x="32" y="46" width="420" height="50" rx="5"/>
+    <text class="t-b" x="46" y="66">topic · kind · origin</text>
+    <text class="t-g" x="46" y="84">only a collection entry's path says which row</text>
+    <rect class="old" x="488" y="46" width="420" height="50" rx="5"/>
+    <text class="t-b" x="502" y="66">Every reader reads whole</text>
+    <text class="t-g" x="502" y="84">a board re-runs for one task, per watching screen</text>
+    <path class="ln" d="M452 71 L488 71"/>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="16" y="124" width="908" height="302" rx="6"/>
+    <text class="t-lbl" x="32" y="144">AFTER · IDS ADDED WHERE THEY ARE KNOWN, READ WHERE THEY ARE UNDERSTOOD</text>
+
+    <rect class="user" x="32" y="158" width="160" height="112" rx="5"/>
+    <text class="t-lbl" x="44" y="176">PUBLISHER</text>
+    <text class="t-b" x="44" y="196">adds the ids it holds</text>
+    <text class="t-s" x="44" y="216">board: the task</text>
+    <text class="t-s" x="44" y="232">entry: its key</text>
+    <text class="t-s" x="44" y="248">run: the session</text>
+    <text class="t-s" x="44" y="264">request: the request</text>
+
+    <rect class="core" x="206" y="158" width="164" height="112" rx="5"/>
+    <text class="t-lbl" x="218" y="176">ONE PUBLISH QUEUE</text>
+    <text class="t-c" x="218" y="196">fold unions ids</text>
+    <text class="t-s" x="218" y="216">past one cap: no ids,</text>
+    <text class="t-s" x="218" y="232">read everything</text>
+    <text class="t-s" x="218" y="248">no ids beats ids</text>
+
+    <rect class="user" x="384" y="158" width="164" height="112" rx="5"/>
+    <text class="t-lbl" x="396" y="176">BUS</text>
+    <text class="t-b" x="396" y="196">carries ids</text>
+    <text class="t-s" x="396" y="216">Postgres drops them first</text>
+    <text class="t-s" x="396" y="232">when a payload is too big</text>
+
+    <rect class="core" x="562" y="158" width="168" height="112" rx="5"/>
+    <text class="t-lbl" x="574" y="176">PUSH EDGE · D2</text>
+    <text class="t-c" x="574" y="196">ids off for this scope?</text>
+    <text class="t-s" x="574" y="216">then no ids, and no entry</text>
+    <text class="t-s" x="574" y="232">path on a scope-wide topic</text>
+    <text class="t-s" x="574" y="248">no store read per notice</text>
+
+    <rect class="core" x="744" y="158" width="164" height="112" rx="5"/>
+    <text class="t-lbl" x="756" y="176">CLIENT · ONE MERGE</text>
+    <text class="t-c" x="756" y="196">same topic and kind:</text>
+    <text class="t-c" x="756" y="214">union the ids</text>
+    <text class="t-s" x="756" y="234">anything else: null,</text>
+    <text class="t-s" x="756" y="250">read everything</text>
+
+    <path class="ln" d="M192 214 L206 214"/>
+    <path class="ln" d="M370 214 L384 214"/>
+    <path class="ln" d="M548 214 L562 214"/>
+    <path class="ln" d="M730 214 L744 214"/>
+    <path class="ln" d="M826 270 L826 290 L118 290 L118 308"/>
+    <path class="ln" d="M470 290 L470 308"/>
+    <path class="ln" d="M826 290 L826 308"/>
+
+    <text class="t-lbl" x="32" y="302">THE READER DECIDES WHAT AN ID MEANS</text>
+    <rect class="core" x="32" y="308" width="286" height="100" rx="5"/>
+    <text class="t-lbl" x="44" y="326">A VIEW THAT OPTED IN · D1</text>
+    <text class="t-c" x="44" y="346">answers only the rows</text>
+    <text class="t-c" x="44" y="364">the ids touch</text>
+    <text class="t-s" x="44" y="384">placed by key; never reorders</text>
+    <text class="t-s" x="44" y="400">the board view opts in here</text>
+
+    <rect class="core" x="332" y="308" width="276" height="100" rx="5"/>
+    <text class="t-lbl" x="344" y="326">A COLLECTION DIRECT READ</text>
+    <text class="t-c" x="344" y="346">fetches only the named</text>
+    <text class="t-c" x="344" y="364">entries</text>
+    <text class="t-s" x="344" y="384">one it can't find: reads all</text>
+
+    <rect class="user" x="622" y="308" width="286" height="100" rx="5"/>
+    <text class="t-lbl" x="634" y="326">EVERY OTHER READER</text>
+    <text class="t-b" x="634" y="346">reads whole, as today</text>
+    <text class="t-s" x="634" y="366">a view that says nothing, a tab</text>
+    <text class="t-s" x="634" y="382">from before the deploy, connect,</text>
+    <text class="t-s" x="634" y="398">reconnect, resync, a poll tick</text>
+  </g>
+</svg>

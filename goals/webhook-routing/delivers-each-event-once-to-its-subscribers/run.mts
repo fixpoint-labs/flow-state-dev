@@ -39,7 +39,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   // A delivery's id without its session: one key per object version, as one dedupe key would have it.
   "one-key": [
     {
-      module: "packages/workforce/src/subscriptions/service-flow.ts",
+      module: "packages/workforce/src/service-flows/service-flow.ts",
       from: String.raw`@\$\{object\.version\}\$\{tenant\}:\$\{sessionId\}`,
       to: "@${object.version}"
     }
@@ -47,7 +47,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   // A thread's closing ends only the subscriptions the closing event reached: the end-only runs are dropped.
   "close-gated": [
     {
-      module: "packages/workforce/src/subscriptions/service-flow.ts",
+      module: "packages/workforce/src/service-flows/service-flow.ts",
       from: String.raw`for \(const candidate of closing\) if \(!delivered\.has\(candidate\.subscription\)\) ownerRuns\.push\(runFor\(candidate, true\)\);`,
       to: ""
     }
@@ -55,7 +55,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   // A closing event ends every subscription it reaches, the whole repo's too.
   "close-whole": [
     {
-      module: "packages/workforce/src/subscriptions/service-flow.ts",
+      module: "packages/workforce/src/service-flows/service-flow.ts",
       from: String.raw`const closes = closedThreadOf\(event\) === row\.thread;`,
       to: "const closes = event.closes === true;"
     }
@@ -166,7 +166,7 @@ const modelResolver = Object.assign((modelId: string, blockName?: string) => {
 let captured: InboundTransportHost | undefined;
 const stores = inMemoryStores();
 const state = createFlowState({
-  flows: instances,
+  flows: Object.values(instances),
   stores: { default: { primary: stores } },
   modelResolver,
   logger: silentLogger,

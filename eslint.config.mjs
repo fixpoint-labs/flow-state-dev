@@ -8,6 +8,7 @@ import js from "@eslint/js";
 import reactHooks from "eslint-plugin-react-hooks";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
+import oneCoalescer, { LIVE_READ_SOURCE } from "./scripts/eslint-rules/one-coalescer.mjs";
 import trackerIds, { COPIED_WHOLE, SHIPPED_SOURCE } from "./scripts/eslint-rules/no-tracker-ids.mjs";
 
 export default defineConfig(
@@ -44,7 +45,11 @@ export default defineConfig(
     files: ["**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}"],
     languageOptions: { parser: tseslint.parser },
     // Existing eslint-disable comments name these plugins. Neither plugin's rules are on.
-    plugins: { "@typescript-eslint": tseslint.plugin, "react-hooks": reactHooks, fsd: trackerIds },
+    plugins: {
+      "@typescript-eslint": tseslint.plugin,
+      "react-hooks": reactHooks,
+      fsd: { rules: { ...trackerIds.rules, ...oneCoalescer.rules } },
+    },
     linterOptions: { reportUnusedDisableDirectives: "off" },
     rules: {
       ...js.configs.recommended.rules,
@@ -104,5 +109,10 @@ export default defineConfig(
   {
     ...COPIED_WHOLE,
     rules: { "fsd/no-tracker-ids": ["error", { comments: "all" }] },
+  },
+  {
+    // One coalescer, in the client: a live screen calls `client.live`.
+    ...LIVE_READ_SOURCE,
+    rules: { "fsd/one-coalescer": "error" },
   },
 );

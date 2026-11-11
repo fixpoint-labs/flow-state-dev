@@ -54,7 +54,7 @@ type Router = Record<string, (request: Request, ctx: { params: { path: string[] 
 /** Boot one app over `stores`, and a caller that speaks for `user` in org acme. */
 async function bootApp(flows: Record<string, unknown>, stores: ReturnType<typeof inMemoryStores>) {
   const state = createFlowState({
-    flows: flows as never,
+    flows: Object.values(flows as never),
     resolvePrincipal: verified.resolvePrincipal,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),
@@ -186,8 +186,8 @@ const entriesFlow = defineFlow({
     },
   },
   actions: {
-    probe: { inputSchema: tagInput, block: probeEntries },
-    seed: { inputSchema: tagInput, block: seedOwn },
+    probe: probeEntries,
+    seed: seedOwn,
   },
   authentication: verified,
 });
@@ -358,7 +358,7 @@ describe("the startup fence reaches owner-writes rows too", () => {
     execute: () => ({ ok: true }),
   });
   const flowWith = (kind: string, resources: Record<string, unknown>) =>
-    defineFlow({ kind, resources: resources as never, actions: { ping: { inputSchema: z.object({}), block: ping } }, authentication: verified });
+    defineFlow({ kind, resources: resources as never, actions: { ping }, authentication: verified });
   const wide = flowWith("wide", {
     everything: defineResourceCollection({ pattern: "entries/**", scope: "org", stateSchema: passthrough }),
   });
@@ -423,7 +423,7 @@ describe("an owner-private collection keeps its refusal beside the new mode", ()
     const flow = defineFlow({
       kind: "notes",
       resources: { notes, probes, entries },
-      actions: { probe: { inputSchema: tagInput, block: probeNotes } },
+      actions: { probe: probeNotes },
       authentication: verified,
     });
     const stores = inMemoryStores();

@@ -56,7 +56,7 @@ const probe = handler({
 const probeFlow = defineFlow({
   kind: "probe",
   resources: { ...conversationLedgerResources, ...routedSessionResources },
-  actions: { probe: { inputSchema: probeInput, block: probe } }
+  actions: { probe }
 });
 
 describe("a session two conversations route to", () => {

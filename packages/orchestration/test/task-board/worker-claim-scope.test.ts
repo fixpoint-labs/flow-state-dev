@@ -154,7 +154,7 @@ describe("a dispatched worker behind the claim gate", () => {
     })({ id: "claim-sender" });
 
     const state = createFlowState({
-      flows: { "claim-sender": sender, "claim-recipient": recipient },
+      flows: [sender, recipient],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({}),
     });
@@ -243,7 +243,7 @@ describe("a request a claimed worker starts in-process", () => {
     })({ id: "claim-starter" });
 
     const state = createFlowState({
-      flows: { "claim-starter": flowRef },
+      flows: [flowRef],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({}),
     });

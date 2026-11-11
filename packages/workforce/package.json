@@ -94,6 +94,7 @@
   "dependencies": {
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/scheduled": "workspace:*",
     "@flow-state-dev/tools": "workspace:*",
@@ -101,7 +102,6 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/memory": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",

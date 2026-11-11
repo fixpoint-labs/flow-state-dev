@@ -410,15 +410,17 @@ export const ENTRIES = [
   },
   {
     term: "Session factory",
-    means: "What `defineSessionBoard` builds. Never a kit.",
-    decision: "FIX-2246",
+    means: "What `defineSessionBoard` builds. Never a kit: a kit is the installable unit (see Kit).",
+    decision: "FIX-2246; narrowed by FIX-2619 (epic FIX-2618 O5)",
     retires: [
       {
         id: "session-factory",
         check: "sweep",
         reach: "meaning",
         files: CODE_OR_PUBLISHED,
-        pattern: /\b(filing|session|task-filing|manager) kits?\b|\bthe kit('s)?\b|\b(const|this) kit\b|\bkit\.\w+/i,
+        // Only the session-factory sense. `the kit`, `const kit` / `this kit` and `kit.x` are the
+        // installable unit's ordinary spelling since O5 named it kit, so they are no longer refused.
+        pattern: /\b(filing|session|task-filing|manager) kits?\b/i,
       },
     ],
   },
@@ -625,6 +627,41 @@ export const ENTRIES = [
     ],
   },
 
+  // Views, kits and slots ---------------------------------------------------------------------
+  // Epic FIX-2618's names, landed by FIX-2619 with its concept doc,
+  // docs/internal/design/reading-writing-installing.md. Not published until the children that
+  // build them ship (FIX-2623 views, FIX-2626 kits and slots).
+  {
+    term: "View",
+    means: "The one hook that computes an answer for a screen: it has a scope (no session at user or org), declared dependencies and keyed rows, storing nothing and refusing writes.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O2, ER-1); FIX-2619",
+    // "Read" retires as the hook's name. Its matcher lands with FIX-2623, the PR that removes
+    // `reads`, so no check refuses what is still on main (epic ER-9). "View" is not retired in
+    // any other sense: `readTaskView` and "derived views" in prose stay.
+    retires: [],
+  },
+  {
+    term: "Kit",
+    means: "FSD's own installable unit above a flow: a config, the kits it requires, slots other kits fill, an optional folder it owns in the app, and an install that returns flows (which carry the resources, views and capabilities). Screens use a kit through its package's ordinary exports; a kit has no client half.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O1, O5); FIX-2619; FIX-2626 D1 (no kit client runtime)",
+    // Never a session factory (that entry). A third-party ecosystem stays a non-goal (docs/objectives.md).
+    retires: [],
+  },
+  {
+    term: "Slot",
+    means: "A typed, named place in a kit that only its owning kit declares, with a schema and a merge policy, and other kits fill at install. The same idea as a block's slot (`ToolsSlot`, `UsesSlot`, the context slot), one level up.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O1, ER-5); FIX-2619",
+    retires: [],
+  },
+  {
+    term: "Live read",
+    means: "`client.live`: keep a screen current on change notices. It filters the notices a screen hears, merges them, runs one read at a time with at most one waiting, reports a value only when it changed, and retries a failed read on its own. Every watch in the framework and its apps is one; a view's hook builds on it.",
+    decision: "Owner, 2026-11-11 (FIX-2551 D1, epic FIX-2618 ER-7)",
+    // Not published until the release that ships `client.live`. Nothing is retired: `subscribe`
+    // stays the lower-level call a live read rides, and "coalesced read" was never a public name.
+    retires: [],
+  },
+
   // Execution tiers ---------------------------------------------------------------------------
   {
     term: "Side chain",
@@ -694,7 +731,7 @@ export const ENTRIES = [
   // Routines ----------------------------------------------------------------------------------
   {
     term: "Routine",
-    means: "A standing instruction that fires on its own as its owner, with exactly one trigger: a clock (recurring work) or an event (a subscription, pushed or polled).",
+    means: "A standing instruction that fires on its own as its owner, with exactly one trigger: a clock (recurring work) or an event (a subscription, pushed, polled or published).",
     decision: "Owner, 2026-11-08; FIX-2471 D12; FIX-2614",
     // FIX-2614 renamed the shipped surface: the four routine verbs and the routines capability replace the schedule
     // actions and the subscription tools, with no aliases. "Schedule" and "subscription" stay, as the words
@@ -719,6 +756,13 @@ export const ENTRIES = [
         pattern: /\brecurring work\b|\bscheduled work\b/i,
       },
     ],
+  },
+  {
+    term: "Topic",
+    means:
+      "A declared name an internal event is published on (`deploy.finished`), with its kinds, its data's schema and a description. A session publishes on one with `publishEvent`, and a routine follows one on the thread `internal:<topic>`; a topic or kind nobody declared is refused at both.",
+    decision: "FIX-2630 D1",
+    retires: [],
   },
 ];
 
@@ -760,13 +804,13 @@ const EXEMPTIONS = [
     why: "FIX-2246: the README's upgrade note, which says the door is gone and how its kept lines become steers; a page can't carry the marker",
   },
   {
-    path: /^packages\/workforce\/src\/subscriptions\/github\/normalize\.ts$/,
+    path: /^packages\/workforce\/src\/service-flows\/github\/normalize\.ts$/,
     line: /^const (PR|ISSUE)_ACTIONS = new Set\(\[/,
     rules: ["reopened-shape"],
     why: "FIX-2535: GitHub's own `reopened` webhook action, which normalize matches by name; not the task entry's reopened shape",
   },
   {
-    path: /^packages\/workforce\/src\/subscriptions\/github\/poll\.ts$/,
+    path: /^packages\/workforce\/src\/service-flows\/github\/poll\.ts$/,
     line: /^const TIMELINE_ACTIONS = new Set\(\[/,
     rules: ["reopened-shape"],
     why: "FIX-2536: GitHub's own `reopened` timeline event, which the poll rebuilds by name; not a task's reopened shape",
@@ -787,7 +831,13 @@ const EXEMPTIONS = [
     path: /^labs\/teammates\/(?:src|test)\/|^labs\/teammates\/workforce\/teams\/teammates\/workers\/chief-of-staff\/WORKER\.md$/,
     line: /\bteammates\.chief-of-staff\b|^\(file path\)$/,
     rules: ["shift-coordinator-names"],
-    why: "FIX-2354: the Teammates lab's Lead keeps its stored worker id `teammates.chief-of-staff` (its folder and roster key): stored worker id — renaming strands persisted conversations (BP-030). The name a person reads is Lead",
+    why: "FIX-2354: the Teammates lab's Chief of Staff keeps its stored worker id `teammates.chief-of-staff` (its folder and roster key): stored worker id — renaming strands persisted conversations (BP-030)",
+  },
+  {
+    path: /^labs\/teammates\/workforce\/teams\/teammates\/workers\/chief-of-staff\/WORKER\.md$/,
+    line: /^name: Chief of Staff$/,
+    rules: ["shift-coordinator-prose"],
+    why: "the Teammates lab's own worker is called Chief of Staff; the Shift Coordinator decision (FIX-2244) retires that name for Shift Manager's coordinator, not for this lab",
   },
   {
     path: /^\.changeset\/fix-2614-routines\.md$/,
@@ -991,7 +1041,7 @@ const EXEMPTIONS = [
     why: "WR-5: the kitchen sink shell's message box, where the person asks a worker; nothing waits on a task",
   },
   {
-    path: /^packages\/cli\/src\//,
+    path: /^packages\/fsdev\/src\//,
     rules: ["ask-symbol", "ask-prose"],
     why: "WR-5: the CLI asks the app who an in-process caller is; not a wait",
   },
@@ -1048,7 +1098,7 @@ const EXEMPTIONS = [
     why: "WR-3: a person's approval or question, which a blocked task's notes are not drawn as",
   },
   {
-    path: /^packages\/((core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)|tools\/test\/bash-moat-purge\.test\.ts)$/,
+    path: /^packages\/((core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)|tools\/test\/bash-moat-(purge|lifecycle)\.test\.ts)$/,
     line: /\baddTask\b/,
     rules: ["task-tool-names"],
     why: "FIX-2243: the engine's side-chain pool's addTask (or a test's stand-in pool) adds a promise to a request's pool, not a task to a collection",
@@ -1066,7 +1116,7 @@ const EXEMPTIONS = [
     why: "FIX-2243: updateTask's live helper that answers a task's open question; the harness manager's removed answerQuestion() was another thing",
   },
   {
-    path: /^(packages\/(workforce|cli)\/README\.md|apps\/docs\/docs\/workforce\/documents-on-disk\.md)$/,
+    path: /^(packages\/(workforce|fsdev)\/README\.md|apps\/docs\/docs\/workforce\/documents-on-disk\.md)$/,
     line: /\banswerQuestion\b/,
     rules: ["task-tool-names"],
     why: "FIX-2243: an example app's own block or action that answers a person's question, not a task tool",
@@ -1203,8 +1253,9 @@ const EXEMPTIONS = [
     id: "subscription-modules",
     terms: ["thread", "member", "kind"],
     // FIX-2614: an event routine is a subscription, so the routine modules, tests and screen name its thread too.
+    // FIX-2651: the service flows that route and deliver to subscriptions moved out of subscriptions/ and share its words.
     where: (path) =>
-      /^packages\/workforce\/(?:src\/subscriptions\/|src\/routines\/|test\/subscriptions-|test\/routines\.test\.ts$)|^packages\/shift-manager\/(?:src\/lib\/routines\.ts|src\/surfaces\/Routines\.tsx|test\/routines-view\.test\.tsx)$/.test(path),
+      /^packages\/workforce\/(?:src\/subscriptions\/|src\/service-flows\/|src\/routines\/|test\/subscriptions-|test\/routines\.test\.ts$)|^packages\/shift-manager\/(?:src\/lib\/routines\.ts|src\/surfaces\/Routines\.tsx|test\/routines-view\.test\.tsx)$/.test(path),
     strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bMEMBER\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
     why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there (GitHub's `MEMBER` association), and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
   },

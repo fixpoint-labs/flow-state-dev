@@ -11,32 +11,30 @@
  * Tasks list all come from the same snapshot.
  *
  * It also reads again on its own when another session changes what it shows:
- * one subscription through the provider's client, on the topics
+ * one live read through the provider's client (`client.live`), on the topics
  * and notices `snapshot-subscribe.ts` names, and every
  * {@link SNAPSHOT_POLL_MS} wherever push can miss a change. Those reads give
  * no sign while they run; only a read the user asked for dims the counts
  * ({@link LabData.asking}).
  *
  * A read that can't reach the Lab after a good one keeps the last snapshot,
- * reports `lapsed`, and retries on its own at 2, 4, 8… seconds until one
- * lands. Only a failed first read, or a refusal, swaps the shell for a
- * full-screen page.
+ * reports `lapsed`, and the live read tries again on its own, 1 s doubling to
+ * 30 s, until one lands. Only a failed first read, or a refusal, swaps the
+ * shell for a full-screen page.
  *
  * The connection bar reads one state for the page: the worst of the snapshot
  * read's and those of the session feeds on screen, which report theirs with
  * `useReportFeedState` (`feed-health.ts`).
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useSubscription } from "@flow-state-dev/react";
 import type { ResumeAction } from "@flow-state-dev/core/types";
-import type { Client } from "@flow-state-dev/client";
+import type { Client, LiveRead } from "@flow-state-dev/client";
 import type { InboxAnswer, InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { isFeedStale, type ConnectionFeedStatus } from "../components/flow-state/connection-banner";
-import { retryDelayMs } from "../components/flow-state/connection-screen";
 import { connect, type Connection } from "./connection";
 import { FeedHealthContext, worstFeedState, type ReportFeed } from "./feed-health";
 import { createLabReader, type Ask, type LabReader, type LabSnapshot } from "./reads";
-import { heard, heardSessionIds, SNAPSHOT_POLL_MS, snapshotTopics } from "./snapshot-subscribe";
+import { heard, heardSessionIds, SNAPSHOT_POLL_MS, snapshotPaths, snapshotTopics } from "./snapshot-subscribe";
 
 /** What a surface reads from the provider. */
 export type LabData = {
@@ -125,23 +123,30 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   // Only the latest refresh may land: an older one finishing late would draw
   // a Lab that has moved on.
   const generation = useRef(0);
+  // The live read, while there is a good snapshot to keep current.
+  const live = useRef<LiveRead | null>(null);
 
   // `asked`: the user asked for this read, so the counts dim until it lands.
-  const readLab = useCallback(async (asked: boolean) => {
+  // `viaLive`: the live read made it, and tries again itself if it lapses.
+  // Resolves `false` when it lapsed.
+  const readLab = useCallback(async (asked: boolean, viaLive = false): Promise<boolean> => {
     const mine = ++generation.current;
     setRefreshing(true);
     if (asked) setAsking(true);
     try {
       const next = await reader.read();
-      if (mine !== generation.current) return;
+      if (mine !== generation.current) return true;
       if (next.unreachable !== undefined && loaded.current) {
         // After a good read, keep it: the route, the open task and a draft stay, and the bar says why it is old.
         setLapses((n) => n + 1);
-        return;
+        // The live read's retry is what brings it back.
+        if (!viaLive) live.current?.refresh();
+        return false;
       }
       loaded.current = next.refused === undefined && next.unreachable === undefined;
       setSnapshot(next);
       setLapses(0);
+      return true;
     } finally {
       if (mine === generation.current) {
         setRefreshing(false);
@@ -149,45 +154,43 @@ export function LabProvider({ connection, children }: { connection: Connection; 
       }
     }
   }, [reader]);
-  const refresh = useCallback(() => readLab(true), [readLab]);
+  const refresh = useCallback(async () => {
+    await readLab(true);
+  }, [readLab]);
 
   useEffect(() => {
     void readLab(false);
   }, [readLab]);
 
-  // While the read is lapsed, read again on its own, further apart after each failure.
-  useEffect(() => {
-    if (lapses === 0) return;
-    const timer = setTimeout(() => void readLab(false), retryDelayMs(lapses - 1));
-    return () => clearTimeout(timer);
-  }, [lapses, readLab]);
-
   // Read again when another session changes what the snapshot shows. The topic
-  // list follows the sessions the last read listed. `useSubscription` keys it
-  // by its topics, so a read that lists the same sessions keeps the
-  // subscription; a new session's first subscribe reads once, so a change
-  // between the read and it is not lost.
+  // list follows the sessions the last read listed, keyed by the topics, so a
+  // read that lists the same sessions keeps the live read; a new session's
+  // first subscribe reads once, so a change between the read and it is not
+  // lost. The live read drops a notice the snapshot doesn't hear before it
+  // merges, so two different unheard notices never widen into a whole read.
   const listed = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.sessions : undefined;
   const topics = useMemo(() => snapshotTopics(listed === undefined ? [] : heardSessionIds(listed, client.userId)), [listed, client.userId]);
-  // Notices the snapshot doesn't hear are dropped before `useSubscription`
-  // coalesces them: two different unheard notices waiting together would
-  // otherwise merge into `null` and read the whole Lab.
-  const heardOnly = useMemo<Pick<Client, "subscribe">>(
-    () => ({
-      subscribe: (wanted, options) =>
-        client.subscribe(wanted, {
-          ...options,
-          onChange: (notice) => {
-            if (notice === null || heard(notice)) options.onChange(notice);
-          },
-        }),
-    }),
-    [client],
-  );
-  const onNotice = useCallback(async () => {
-    await readLab(false);
-  }, [readLab]);
-  useSubscription(topics, onNotice, { client: heardOnly, pollIntervalMs: SNAPSHOT_POLL_MS, enabled: listed !== undefined });
+  const topicsKey = listed === undefined ? null : JSON.stringify(topics);
+  const topicsNow = useRef(topics);
+  topicsNow.current = topics;
+  useEffect(() => {
+    if (topicsKey === null) return;
+    const watching = client.live(topicsNow.current, {
+      read: async () => {
+        if (!(await readLab(false, true))) throw new Error("The Lab could not be reached.");
+      },
+      hear: heard,
+      paths: snapshotPaths,
+      pollIntervalMs: SNAPSHOT_POLL_MS,
+      // The subscription's connect is the first read: the snapshot was just read.
+      readNow: false,
+    });
+    live.current = watching;
+    return () => {
+      watching.close();
+      if (live.current === watching) live.current = null;
+    };
+  }, [client, readLab, topicsKey]);
 
   const reportFeed = useCallback<ReportFeed>((key, state) => {
     setFeeds((last) => {

@@ -52,6 +52,7 @@ export {
 } from "./update-state-with";
 export { toError } from "./to-error";
 export { isWindowsReservedName } from "./windows-reserved-name";
+export { MAX_SEGMENT_LENGTH, segmentNameProblem, type SegmentNameProblem } from "./segment-name";
 export { withTimeout } from "./with-timeout";
 export {
   assertSetExpectedVersion,

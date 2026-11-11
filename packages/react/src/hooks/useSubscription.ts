@@ -6,9 +6,10 @@
  * It subscribes through the provider's client (`client.subscribe`), or the
  * host's own when it passes `client`, which
  * owns the one socket and the timer: push on a host that has it, and a read
- * every `pollIntervalMs` wherever push can miss a change. The read goes
- * through the coalesced read, so a burst of notices is one read in flight
- * and at most one waiting.
+ * every `pollIntervalMs` wherever push can miss a change. The read is the
+ * client's live read (`client.live`), so a burst of notices is one read in
+ * flight and at most one waiting, and a read that throws tries again on its
+ * own, 1 s doubling to 30 s.
  *
  * `read` gets the notice that woke it, or `null` for a connect, a reconnect
  * or a timer tick. A waiting read that stands for several different notices
@@ -22,8 +23,8 @@
  */
 import { useEffect, useMemo, useRef } from "react";
 import type { Client, WireNotice, WireTopic } from "@flow-state-dev/client";
+import { liveRead } from "@flow-state-dev/client/internal";
 import { wireTopicKey } from "@flow-state-dev/contracts";
-import { coalescedReads } from "../internal/coalescedReads";
 import { useClient } from "../internal/useClient";
 
 /** Options for {@link useSubscription}. */
@@ -49,15 +50,6 @@ function topicsKey(topics: readonly WireTopic[]): string {
   return topics.map(wireTopicKey).join("\u0001");
 }
 
-function sameNotice(a: WireNotice | null, b: WireNotice | null): boolean {
-  if (a === null || b === null) return a === b;
-  return (
-    a.kind === b.kind &&
-    wireTopicKey(a.topic) === wireTopicKey(b.topic) &&
-    a.origin?.requestId === b.origin?.requestId
-  );
-}
-
 /**
  * Run `read` when something under `topics` changes. `read` may return a
  * promise; the next read waits for it. Its `signal` aborts when this
@@ -80,24 +72,12 @@ export function useSubscription(
 
   useEffect(() => {
     if (!enabled || stable.length === 0) return;
-    let next: { notice: WireNotice | null } | undefined;
-    const ended = new AbortController();
-    const reads = coalescedReads(async () => {
-      const notice = next?.notice ?? null;
-      next = undefined;
-      await readRef.current(notice, ended.signal);
+    // No read at start: the subscription's connect is the first, as before.
+    const live = liveRead((wanted, subscribeOptions) => client.subscribe(wanted, subscribeOptions), stable, {
+      read: (notice, signal) => readRef.current(notice, signal),
+      pollIntervalMs: pollIntervalMs ?? null,
+      readNow: false
     });
-    const subscription = client.subscribe(stable, {
-      onChange: (notice) => {
-        next = next === undefined || sameNotice(next.notice, notice) ? { notice } : { notice: null };
-        reads.request();
-      },
-      ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {})
-    });
-    return () => {
-      ended.abort();
-      subscription.close();
-      reads.close();
-    };
+    return () => live.close();
   }, [client, stable, pollIntervalMs, enabled]);
 }

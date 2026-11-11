@@ -60,14 +60,14 @@ const lookup = handler({
 
 const ledgerFlow = defineFlow({
   kind: "ledger",
-  actions: { lookup: { inputSchema: lookupInput, block: lookup } },
+  actions: { lookup },
 });
 
 async function boot(flows: Record<string, unknown> = { ledger: ledgerFlow() }) {
   const adapter = inMemoryStores();
   const raw = await adapter.resolve(["primary"]);
   const state = createFlowState({
-    flows: flows as never,
+    flows: Object.values(flows as never),
     stores: { default: { primary: adapter } },
     modelResolver: createMockModelResolver({}),
   });
@@ -151,7 +151,7 @@ describe("findBy", () => {
       execute: async (_input, ctx) =>
         (await (ctx.resources.notes as unknown as ResourceCollectionRef).findBy("byTopic", "x")).map((r) => r.path),
     });
-    const notesFlow = defineFlow({ kind: "notes", actions: { find: { inputSchema: z.object({}), block: find } } });
+    const notesFlow = defineFlow({ kind: "notes", actions: { find } });
     const h = await boot({ notes: notesFlow() });
     await h.raw.resourceState.set("org", ORG, `notes/${ownerSegment("alice")}/a`, { topic: "x" }, "any");
     await h.raw.resourceState.set("org", ORG, `notes/${ownerSegment("bob")}/b`, { topic: "x" }, "any");
@@ -219,7 +219,7 @@ describe("the index writer on the runtime's stores", () => {
         return {};
       },
     });
-    const writerFlow = defineFlow({ kind: "writer", actions: { write: { inputSchema: z.object({}), block: writer } } });
+    const writerFlow = defineFlow({ kind: "writer", actions: { write: writer } });
     const h = await boot({ ledger: ledgerFlow(), writer: writerFlow() });
     const seen = recordSets(h.raw);
     await runAction({
@@ -261,9 +261,7 @@ describe("the index writer and flow-isolated collections", () => {
       defineFlow({
         kind,
         actions: {
-          write: {
-            inputSchema: z.object({}),
-            block: handler({
+          write: handler({
               name: `write-${kind}`,
               inputSchema: z.object({}),
               outputSchema: z.object({}),
@@ -273,7 +271,6 @@ describe("the index writer and flow-isolated collections", () => {
                 return {};
               },
             }),
-          },
         },
       })();
     const a = flowOf("tagged", tagged, { tags: ["Red"] });
@@ -375,7 +372,7 @@ describe("startup check on index declarations", () => {
   };
   const start = (flows: Record<string, unknown>) =>
     createFlowState({
-      flows: flows as never,
+      flows: Object.values(flows as never),
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({}),
     });

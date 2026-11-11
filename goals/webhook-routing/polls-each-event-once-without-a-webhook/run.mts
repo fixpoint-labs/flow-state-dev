@@ -41,7 +41,7 @@ const ORG = "acme";
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("webhook-routing-poll");
 const MINUTE = 60_000;
-const SF = "packages/workforce/src/subscriptions/service-flow.ts";
+const SF = "packages/workforce/src/service-flows/service-flow.ts";
 
 /** The controls: each degrades one behaviour in the code under test, as it loads. */
 const PATCHES: Record<string, ModulePatch[]> = {
@@ -245,7 +245,7 @@ async function boot(options: BootOptions) {
   let captured: InboundTransportHost | undefined;
   build();
   const state = createFlowState({
-    flows: instances,
+    flows: Object.values(instances),
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),
     logger: silentLogger,

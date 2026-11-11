@@ -92,7 +92,7 @@ import {
   tagAbortController,
   wasFiredOnlyFenced
 } from "./abort-registry";
-import { beginRequestAttempt, type RequestAttempt } from "./request-attempts";
+import { beginRequestAttempt, hasLiveRequestAttempt, type RequestAttempt } from "./request-attempts";
 import {
   assertSessionAdmitted,
   FlowInstanceBindingMismatchError,
@@ -1077,6 +1077,17 @@ export async function runActionInternal<
     if (attempt.end() && attempt.leftToStamp() !== undefined) {
       await finalizeAfterLastAttempt(options, requestId, attempt.leftToStamp());
     }
+    // However the run ended, once no attempt of the request is live here
+    // nothing more is written under the id from this process: the store
+    // drops what it kept to make the request's item writes incremental.
+    if (!hasLiveRequestAttempt(options.stores.request, requestId)) {
+      try {
+        await options.stores.request.releaseItemTracking?.(requestId);
+      } catch (err) {
+        logRuntimeEvent(options.runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER, "warn",
+          "[flow-state] releasing the request's item tracking failed", { requestId, error: String(err) });
+      }
+    }
   }
 }
 
@@ -1815,6 +1826,8 @@ async function runActionAttempt<
       const echo = action.userMessage(parsedInput);
       const text = typeof echo === "string" ? echo : echo.text;
       const metadata = typeof echo === "string" ? undefined : echo.metadata;
+      // Files the flow kept itself (a task's brief files, FIX-2522), after the person's own.
+      const kept = typeof echo === "string" ? [] : (echo.attachments ?? []);
       const userItem: MessageItem = {
         id: `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         type: "message",
@@ -1827,7 +1840,7 @@ async function runActionAttempt<
         ts: Date.now(),
         ...requestTaskStamp(requestTaskId),
         // The person's files after the text, in the order attached, as references.
-        content: [{ type: "output_text", text }, ...(options.attachments ?? [])],
+        content: [{ type: "output_text", text }, ...(options.attachments ?? []), ...kept],
         ...(metadata !== undefined ? { metadata } : {})
       };
       await response.emitItemAdded(userItem);
@@ -3385,7 +3398,7 @@ async function runActionAttempt<
       // request as failed whose record says `aborted`, because the post-drain
       // re-read can reclassify a `failed`/`interrupted` branch after that
       // snapshot was taken — and callers key straight off this field
-      // (`packages/cli/src/commands/run.ts` prints a failure when it is set).
+      // (`packages/fsdev/src/commands/run.ts` prints a failure when it is set).
       //
       // The client-visible error *item* is deliberately not suppressed to
       // match: it was already delivered before the drain, the failure really

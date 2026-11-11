@@ -11,6 +11,7 @@
  * `requestStream` and `sessionStream` with the route a real client would use
  * (`url`, `sessionId`), so a test can capture and drive them.
  */
+import { liveRead } from "@flow-state-dev/client/internal";
 import type {
   Client,
   RequestHandle,
@@ -120,6 +121,9 @@ export function fakeClient(parts: FakeClientParts): Client {
     }),
     requests: { interrupted: async () => missing("requests.interrupted") },
     subscribe: (topics, options) => parts.subscribe?.(topics, options) ?? { close() {} },
+    // The client's own live read, over the faked subscription.
+    live: ((topics: Parameters<Client["subscribe"]>[0], options: never) =>
+      liveRead((wanted, subscribeOptions) => parts.subscribe?.(wanted, subscribeOptions) ?? { close() {} }, topics, options)) as Client["live"],
     transcribe: async () => missing("transcribe"),
     upload: async () => missing("upload")
   };

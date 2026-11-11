@@ -190,7 +190,7 @@ async function startLab(env: Record<string, string>, log: string): Promise<{ chi
   const out: string[] = [];
   const child = spawn(
     "npx",
-    ["tsx", "../../packages/cli/bin/fsdev.ts", "dev", "--app", "@flow-state-dev/teammates", "--port", String(fixture.port), "--no-open"],
+    ["tsx", "../../packages/fsdev/bin/fsdev.ts", "dev", "--app", "@flow-state-dev/teammates", "--port", String(fixture.port), "--no-open"],
     { cwd: LAB, env, detached: true, stdio: ["ignore", "pipe", "pipe"] },
   );
   const keep = (chunk: Buffer) => {

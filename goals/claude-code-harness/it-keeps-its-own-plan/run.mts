@@ -153,7 +153,7 @@ async function attempt(arm: Arm, job: Job) {
   const checkout = seedCheckout(job);
   const seen: Seen = { systemPromptSent: null, model: null, planToolsOffered: null, toolCalls: {} };
   const state = createFlowState({
-    flows: { [KIND]: buildFlow(arm, checkout, seen) },
+    flows: [buildFlow(arm, checkout, seen)],
     stores: { default: { primary: inMemoryStores() } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {

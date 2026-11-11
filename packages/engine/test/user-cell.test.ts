@@ -102,8 +102,8 @@ const delegate = dispatcher({
 });
 
 const actions = {
-  save: { inputSchema: noteInput, block: save },
-  read: { inputSchema: tagInput, block: read },
+  save,
+  read,
 };
 
 const workerKind = defineFlow({
@@ -142,7 +142,7 @@ const BOB_ACME: Who = { user: "bob", org: "acme" };
 async function boot(options: { debug?: boolean } = {}) {
   const stores = inMemoryStores();
   const state = createFlowState({
-    flows: { app: appFlow() },
+    flows: [appFlow()],
     resolvePrincipal: verified.resolvePrincipal,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),

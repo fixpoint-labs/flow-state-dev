@@ -388,6 +388,7 @@ export async function loadLLMHistory(
   for (const turn of selectedTurns) {
     messages.push(...turn.messages);
   }
+  const earlier = messages.length;
 
   // Live items from the in-flight request are included regardless of limit
   // unless the caller opts out. This is the retry/resume guarantee.
@@ -403,7 +404,14 @@ export async function loadLLMHistory(
   // A person's files stay references here, budgeted (D1): the bytes are read
   // only at the model call (`resolveHistoryFiles`), so nothing that records
   // this history records them.
-  return budgetHistoryFiles(trimOrphanedToolMessages(messages));
+  // An earlier turn's documents are named rather than sent where the query
+  // says so (FIX-2636 D2). The trim's leading drop shifts where they end.
+  let leading = 0;
+  while (leading < messages.length && messages[leading]!.role === "tool") leading++;
+  return budgetHistoryFiles(trimOrphanedToolMessages(messages), {
+    earlierDocuments: query?.earlierDocuments,
+    earlier: earlier - leading
+  });
 }
 
 /**

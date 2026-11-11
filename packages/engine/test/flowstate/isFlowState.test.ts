@@ -7,21 +7,18 @@ import { isFlowState } from "../../src/host";
 const noopFlow = defineFlow({
   kind: "noop-flow",
   actions: {
-    ping: {
-      inputSchema: z.object({}).passthrough(),
-      block: handler({
+    ping: handler({
         name: "ping",
         inputSchema: z.object({}).passthrough(),
         execute: () => undefined
       })
-    }
   }
 })();
 
 describe("isFlowState", () => {
   it("accepts a real createFlowState handle", () => {
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       stores: { default: { primary: inMemoryStores() } }
     });
     expect(isFlowState(fs)).toBe(true);

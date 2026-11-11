@@ -1,0 +1,7 @@
+// From specs/epics/FIX-2618/examples/ccs-types.md (proposed).
+import type { ViewOutput } from "@flow-state-dev/client";
+import type { workerSessions } from "@flow-state-dev/workforce";
+import type { codingBoard } from "@flow-state-dev/harness-manager";
+export type LabTask = ViewOutput<typeof codingBoard>[number];
+export type LabSession = ViewOutput<typeof workerSessions>[number];
+export type ThreadEntry = { kind: "user"; id: string; text: string } | { kind: "assistant"; id: string; text: string };

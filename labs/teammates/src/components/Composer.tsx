@@ -1,5 +1,9 @@
-import { clearDraft, interruptChordLabel, isSendKey, useDraft, useSubmit } from "@flow-state-dev/react";
+import type { FileContent } from "@flow-state-dev/core/items";
+import { interruptChordLabel, isSendKey } from "@flow-state-dev/react";
 import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
+import { useDraftSend } from "../lib/use-draft-send";
+import { cn } from "../lib/utils";
+import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader } from "./flow-state/attachments";
 
 /**
  * Where you type to the open worker. Enter or Cmd+Enter (Ctrl+Enter) sends,
@@ -9,10 +13,17 @@ import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
  * conversation's column (`--thread-width`), and the box grows with what you
  * type up to a cap, then scrolls.
  *
+ * Files come in by paste, the + button or a drop on the box, and show above
+ * the text with a remove button each (the registry's `attachments`); a file
+ * refused says why under them. Each uploads as it is added, so Send carries
+ * references; Backspace in an empty box removes the last one. A box with
+ * files and no text sends too.
+ *
  * A line stays in the box until its send lands, so a failed send loses
- * nothing: the box keeps it and says why, with Retry. A send that lands clears
- * the box, unless something else was typed meanwhile. The draft is kept per
- * conversation across a reload.
+ * nothing: the box keeps it and its files and says why, with Retry. A send
+ * that lands clears the box, unless something else was typed meanwhile. The
+ * text draft is kept per conversation across a reload; files are not, and a
+ * switch drops them.
  *
  * While the worker answers, Stop sits beside Send and stops every turn it is
  * answering; it reads *Stopping…* until they have ended, and a refused stop
@@ -33,6 +44,7 @@ export function Composer({
   armed = false,
   onStop,
   seed,
+  uploader,
   onSend,
   prefill,
   onPrefilled,
@@ -51,14 +63,17 @@ export function Composer({
   armed?: boolean;
   /** Stop the worker's answering turns. */
   onStop: () => void;
+  /** Where an attached file is stored. With none, a file is refused with a line that says so. */
+  uploader?: AttachmentUploader;
   /** Resolves once the line has landed; rejects with why it didn't. */
-  onSend: (text: string) => Promise<void>;
+  onSend: (text: string, attachments: FileContent[]) => Promise<void>;
   /** Words to add to the box, once per `n`. */
   prefill?: { text: string; n: number };
   /** Called once `prefill`'s words are in the box, for the parent to drop them. */
   onPrefilled?: () => void;
 }) {
-  const [text, setText] = useDraft("teammates:draft", sessionId);
+  const attachments = useAttachments({ client: uploader, sessionId });
+  const { text, setText, sending: busy, failure: error, submit, canSend } = useDraftSend("teammates:draft", sessionId, attachments);
   const current = useRef(text);
   current.current = text;
   const box = useRef<HTMLTextAreaElement>(null);
@@ -83,30 +98,37 @@ export function Composer({
     setText(seed.text);
     box.current?.focus();
   }, [seed]);
-  const { error, busy, submit } = useSubmit(async (typed: string) => {
-    await onSend(typed.trim());
-    // The box may have closed and reopened while it ran: the stored draft goes only if it is still this line.
-    clearDraft("teammates:draft", sessionId, typed);
-    if (current.current === typed) setText("");
-  });
-  const send = (event?: FormEvent) => {
-    if (!text.trim() || busy) {
-      event?.preventDefault();
-      return;
-    }
-    void submit(event, text);
+  const send = () => {
+    if (!canSend || busy) return;
+    void submit(onSend);
   };
-  const onSubmit = (event: FormEvent) => send(event);
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    send();
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (isSendKey(event, { enterSends: true })) {
       event.preventDefault();
       send();
+      return;
+    }
+    const last = attachments.files.at(-1);
+    if (event.key === "Backspace" && event.currentTarget.value === "" && last !== undefined) {
+      event.preventDefault();
+      attachments.remove(last.id);
     }
   };
   return (
     <form onSubmit={onSubmit} className="px-6 pb-4">
       <div data-column className="mx-auto max-w-(--thread-width)">
-        <div className="flex items-end gap-2 rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring">
+        <div
+          {...attachments.dropTarget}
+          data-dragging={attachments.dragging ? "true" : undefined}
+          className={cn("rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring", attachments.dragging && "border-ring bg-accent/40")}
+        >
+          <AttachmentStrip attachments={attachments} className="px-1 pb-1 empty:hidden" />
+          <div className="flex items-end gap-2">
+          <AttachButton attachments={attachments} className="rounded-full" />
           <textarea
             ref={box}
             aria-label={`Message ${workerName}`}
@@ -116,6 +138,7 @@ export function Composer({
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={attachments.onPaste}
             placeholder={`Message ${workerName}…`}
             className="block field-sizing-content max-h-48 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted-foreground"
           />
@@ -131,11 +154,12 @@ export function Composer({
           ) : null}
           <button
             type="submit"
-            disabled={!text.trim() || busy}
+            disabled={!canSend || busy}
             className="rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground disabled:opacity-40"
           >
             {busy ? "Sending…" : "Send"}
           </button>
+          </div>
         </div>
         {running && stopRefused !== undefined ? (
           <p role="alert" className="mt-1 text-xs text-destructive">

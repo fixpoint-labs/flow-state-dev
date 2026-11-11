@@ -893,6 +893,23 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    */
   flushItems(requestId: string): Promise<void>;
 
+  // FIX-2676.
+  /**
+   * The request's run has finished writing under `requestId`, however it
+   * ended: drop what the store keeps in memory to make that request's item
+   * writes incremental (the persistent adapters remember the content they
+   * last wrote per item). Item writes still queued for the request land
+   * first, so none is lost and none puts the memory back afterwards.
+   *
+   * The runtime calls it once the last live attempt of the request in this
+   * process has ended, after everything that attempt writes past its
+   * terminal status (`request.onFinished`, side-chain drains, request-end
+   * hooks). A write under the id after this still lands, in full.
+   *
+   * Optional: a store that keeps no per-request item state omits it.
+   */
+  releaseItemTracking?(requestId: string): Promise<void>;
+
   // FIX-685.
   /**
    * Count the items persisted for a request without materializing them.

@@ -22,7 +22,7 @@ import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createModelResolver } from "@flow-state-dev/core";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { z } from "zod";
-import { forceModelResolver } from "../../../packages/cli/src/model-override.ts";
+import { forceModelResolver } from "../../../packages/fsdev/src/model-override.ts";
 import {
   goalSessionId,
   loadFixture,

@@ -389,7 +389,7 @@ export function runtimeFor(
   waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number }
 ) {
   return createFlowState({
-    flows: { "wait-board": flow },
+    flows: [flow],
     stores: { default: { primary } },
     durable,
     ...(sweepIntervalMs !== undefined ? { durabilityRetention: { sweepIntervalMs } } : {}),

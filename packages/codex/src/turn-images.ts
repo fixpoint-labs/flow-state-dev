@@ -16,7 +16,7 @@ import { ATTACHMENT_IMAGE_TYPES, normalizeMediaType, type AttachmentAccepts } fr
 import type { HarnessAttachmentBytes } from "@flow-state-dev/core/harness";
 import { privateTempRoot } from "@flow-state-dev/workspace/internal";
 
-/** What Codex takes as a turn's files: images. */
+/** What Codex reads as a turn's files: images. A document reaches it as its text, after the prompt. */
 export const CODEX_ACCEPTS: AttachmentAccepts = ATTACHMENT_IMAGE_TYPES;
 
 /** The extension each image type is written under, which is how the CLI tells their types apart. */

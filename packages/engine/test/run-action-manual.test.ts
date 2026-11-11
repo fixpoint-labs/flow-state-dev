@@ -20,9 +20,7 @@ function buildMessageFlow() {
   return defineFlow({
     kind: "manual-message",
     actions: {
-      greet: {
-        inputSchema: z.object({ name: z.string() }),
-        block: handler({
+      greet: handler({
           name: "greet",
           inputSchema: z.object({ name: z.string() }),
           outputSchema: z.string(),
@@ -31,7 +29,6 @@ function buildMessageFlow() {
             return `greeted:${name}`;
           }
         })
-      }
     }
   })();
 }
@@ -95,9 +92,7 @@ describe("runAction — non-HTTP affordances", () => {
     const flow = defineFlow({
       kind: "manual-transient",
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({
+        run: handler({
             name: "transient-emitter",
             inputSchema: z.object({}),
             outputSchema: z.string(),
@@ -106,7 +101,6 @@ describe("runAction — non-HTTP affordances", () => {
               return "done";
             }
           })
-        }
       }
     })();
 

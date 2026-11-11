@@ -17,15 +17,12 @@ function runFlow(kind: string) {
   return defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}).passthrough(),
-        block: handler({
+      run: handler({
           name: "run",
           inputSchema: z.object({}).passthrough(),
           outputSchema: z.object({ ok: z.boolean() }),
           execute: () => ({ ok: true })
         })
-      }
     }
   })();
 }
@@ -36,7 +33,7 @@ describe("createNextHandler — a flow kind that carries percent escapes", () =>
     ["an escaped user segment", ESCAPED_USER]
   ])("dispatches an action on %s, decoded once by Next", async (_label, kind) => {
     const flowstate = createFlowState({
-      flows: { worker: runFlow(kind) },
+      flows: [runFlow(kind)],
       stores: { default: { primary: inMemoryStores() } }
     });
     const { POST } = createNextHandler(flowstate);

@@ -9,7 +9,7 @@
  * nothing, and one user's private repo must never reach another user.
  */
 import { describe, expect, it, vi } from "vitest";
-import { deliveryMessageId } from "../src/subscriptions";
+import { deliveryMessageId } from "../src/service-flows";
 import { bootSubscriptionsHost, event, revoked, type SubscriptionsHost } from "./subscriptions-harness";
 
 const PR = "github:acme/api#412";

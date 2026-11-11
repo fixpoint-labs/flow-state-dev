@@ -39,7 +39,7 @@ import {
   openRoot,
   openStructuralDirectory,
   refusedSymlink,
-} from "./structural-directory";
+} from "@flow-state-dev/engine/folder";
 
 /**
  * Why one thing that should have reached the worker did not — the discriminant on
@@ -210,7 +210,7 @@ export function createWorkerSkillsReader(
     // here, once, through the shared primitive — which is also what refuses a
     // symlinked root, the one level this reader's own ancestor check never
     // reaches.
-    rootOpened ??= openRoot(root);
+    rootOpened ??= openRoot(root, "workforce directory");
     await rootOpened;
 
     const errors: WorkerSkillError[] = [];

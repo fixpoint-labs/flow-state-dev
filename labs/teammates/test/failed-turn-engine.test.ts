@@ -25,8 +25,8 @@ describe("on a real engine", () => {
         return { ok: true };
       },
     });
-    const flow = defineFlow({ kind: "lab-turn", actions: { respond: { block: answer, inputSchema: z.any() } } })();
-    const app = createFlowState({ flows: { "lab-turn": flow }, stores: { default: { primary: inMemoryStores() } } });
+    const flow = defineFlow({ kind: "lab-turn", actions: { respond: answer } })();
+    const app = createFlowState({ flows: [flow], stores: { default: { primary: inMemoryStores() } } });
     try {
       const client = createClient({ userId: "u1", fetcher: createInProcessFetch(app) as unknown as ClientFetch });
       const { id: sessionId } = await client.flow("lab-turn").createSession();

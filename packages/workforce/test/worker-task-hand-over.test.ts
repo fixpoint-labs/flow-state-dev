@@ -32,15 +32,12 @@ function deskClerk(installation: WorkerInstallation) {
     resources: { ...installation.resources },
     actions: {
       ...workerDoor,
-      answer: {
-        inputSchema: z.object({ note: z.string() }),
-        block: handler({
+      answer: handler({
           name: "desk-answer",
           inputSchema: z.object({ note: z.string() }),
           outputSchema: z.object({ note: z.string() }),
           execute: (input) => input
         })
-      }
     }
   });
 }

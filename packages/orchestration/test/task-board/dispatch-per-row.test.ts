@@ -98,7 +98,7 @@ async function until(predicate: () => Promise<boolean>, label: string): Promise<
 async function boot(ran: Ran[], rows: Array<{ id: string; input: TaskEntryInput }>) {
   const flow = boardFlow(ran, rows);
   const state = createFlowState({
-    flows: { [flow.id]: flow },
+    flows: [flow],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({}),
   });

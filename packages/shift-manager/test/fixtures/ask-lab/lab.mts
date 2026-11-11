@@ -184,7 +184,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
   };
   const primary = inMemoryStores();
   const flowState = createFlowState({
-    flows,
+    flows: Object.values(flows),
     stores: { default: { primary } },
     durable: true,
     devtool: { userId: ASK_LAB_USER_ID, ...(options.bearer === undefined ? {} : { bearerToken: options.bearer }) },

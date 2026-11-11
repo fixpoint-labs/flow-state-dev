@@ -46,21 +46,27 @@ const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("realtime-app-views");
 const BOUND_MS = 1_000;
 const IDLE_MS = 10_000;
 const ORG = "acme";
-const LABS = ["labs/claude-code-style/src/adapter.ts", "labs/teammates/src/adapter.ts"];
+// The labs' watches are the client's live read (`client.live`); the only live
+// reads this goal's views make, so a patch to it reaches only the two labs.
+const LIVE_READ = "packages/client/src/live/live-read.ts";
 
 const PATCHES: Record<string, ModulePatch[]> = {
   // A fixed timer beside the subscription, as a view that kept its poll would.
-  timer: LABS.map((module) => ({
-    module,
-    from: String.raw`const subscription = (fsd|client)\.subscribe\(topics, \{`,
-    to: "setInterval(() => void (typeof tick === 'function' ? tick() : run()), everyMs); const subscription = $1.subscribe(topics, {",
-  })),
+  timer: [
+    {
+      module: LIVE_READ,
+      from: String.raw`let subscription = subscribeTo\(topics\);`,
+      to: "let subscription = subscribeTo(topics); setInterval(() => reads.request(null), pollIntervalMs ?? 1_500);",
+    },
+  ],
   // Every notice on the topic reads, `items` included.
-  "every-kind": LABS.map((module) => ({
-    module,
-    from: String.raw`if \(notice === null \|\| notice\.kind === "resync" \|\| hears\(notice\)\)`,
-    to: "if (true)",
-  })),
+  "every-kind": [
+    {
+      module: LIVE_READ,
+      from: String.raw`if \(notice === null \|\| heard\(notice\)\) reads\.request\(notice\);`,
+      to: "reads.request(notice);",
+    },
+  ],
 };
 
 if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {

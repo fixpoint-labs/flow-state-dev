@@ -89,6 +89,12 @@ actions: {
 - Action input validation runs before any block execution
 - `userMessage` is optional — omit it for system triggers or background tasks
 
+### Bare-block entries
+
+An entry that sets nothing beyond its block is the block itself: `actions: { chat, summarize }`. The same holds for `reads`, `internal.actions`, `task.actions` and an instance's `actions` override. `defineFlow` turns each bare block into `{ block }` once, in `normalizeFlowConfig`, so every reader past it (the runtime, HTTP, MCP, the devtool) sees only the object form, and `NormalizedActions` gives the client the same input typing as `{ block }`. Webhook bindings and schedules have no bare form: each always carries `input` or `cron`.
+
+The same normalize step resolves an action's (and a read's) `description` to `action.description ?? block.description`, so MCP's tool text and its definition-time check read one value. An action's own description still wins; set one when a public MCP tool needs wording the block's doesn't have.
+
 ### When to override `inputSchema`
 
 `inputSchema` is optional because every block already carries its own. Override it when the action's public contract should diverge from the block's:
@@ -239,6 +245,39 @@ const flow = defineFlow({
 
 See [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
 
+## Reads
+
+A flow's `reads` are blocks an app runs on a session to watch something the flow computes, such as a conversation's task list ([FIX-2286 D1](../../specs/issues/FIX-2286/DECISIONS.md#d1)). A read is answered in the HTTP response and stored nowhere: no request record, no items, no concurrency slot, no entry in the active-request registry.
+
+```ts
+defineFlow({
+  kind: "pins",
+  user: { stateSchema: pinsUserStateSchema },
+  reads: {
+    listPins: {
+      block: handler({
+        name: "listPins",
+        inputSchema: z.object({}),
+        outputSchema: pinsSchema,
+        userStateSchema: pinsUserStateSchema,
+        execute: async (_input, ctx) => ({ pinned: ctx.user.state.pinned }),
+      }),
+    },
+  },
+  actions: { /* pin, unpin */ },
+});
+```
+
+`ReadConfig` (`packages/core/src/types/flow.ts`) takes a `block`, an optional `inputSchema` that overrides the block's, and a `description`. A read may share a name with an action.
+
+**How it runs.** `runRead` (`packages/engine/src/execution/runRead.ts`) parses the input like an action's, then runs the block through the same execution context an action gets, with `source: "read"`, so it sees the session, its resources and its user under the same binding checks. What differs is the stores it is handed: its own request record, traces and checkpoints go to an in-memory registry dropped when the read ends, the first seed of a user or org record a fresh session lacks lands there too, and every other write throws `FlowError` with code `read_only`. Dispatch is refused the same way. "Stores nothing" holds by construction, and a store method added later is refused until it is named as a read verb. A read ends like a request: its side-chain work drains and its request-end hooks run.
+
+**How it is reached.** `POST /api/flows/:flowKind/:sessionId/reads/:readName` with `{ input }`, answering `200 { output }` (`packages/engine/src/routes/read-routes.ts`). The caller is resolved and fenced as on the session's action route: a session the caller may not run in answers as an unknown one, and a session another flow instance owns answers `409`. A read can't create a session. The client calls it as `client.flow(kind).read(name, input, { sessionId })`.
+
+**Keeping a screen current.** A read has no push of its own. A screen calls it inside the client's live read, `client.live(topics, { read, hear, paths, onValue })`, which runs it again on the notices under `topics` that `hear` and `paths` let through: one read in flight and at most one waiting, a value reported only when it changed, and a failed read tried again on its own (1 s doubling to 30 s, `onStale` meanwhile). Where push can miss a change it reads on a timer (3 s by default). The live read is the one loop every watch in the framework and its apps runs on (`packages/client/src/live/`); a second coalescer anywhere else fails the `fsd/one-coalescer` lint. `client.subscribe` stays the lower-level call it rides.
+
+**`reads` beside `derived`.** Two hooks compute what a screen shows today: a flow read, run on request, and a scope's `client.derived` entries, computed into the snapshot's `clientData` ([Resources and Client Data](./resources-and-client-data.md#client-data)). Neither reads without a session. The target model, where views replace both and run at user or org scope with no session, is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
+
 ## Flow Discovery
 
 Convention: `src/flows/**/flow.ts`
@@ -257,6 +296,7 @@ Server routes follow a canonical pattern:
 ```
 POST /api/flows/:flowKind/actions/:action
 POST /api/flows/:flowKind/:sessionId/actions/:action
+POST /api/flows/:flowKind/:sessionId/reads/:readName
 GET  /api/flows/:flowKind/requests/:requestId/stream
 ```
 

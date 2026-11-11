@@ -20,6 +20,7 @@ import {
   type StreamResumeOptions
 } from "./stream-client/streams";
 import { createPushHub, type SubscribeOptions, type Subscription } from "./subscribe/push-hub";
+import { liveRead, type LiveRead, type LiveReadOptions, type LiveReadWithTopicsOptions } from "./live/live-read";
 import type {
   ChildSessionSummary,
   ClientFetch,
@@ -393,7 +394,12 @@ export interface RequestHandle {
    */
   answer(body: AnswerSuspensionBody): Promise<RequestHandle>;
   answer(body: AnswerSuspensionBody, options: StreamOption): Promise<Response>;
-  /** Follow the request's events. */
+  /**
+   * Follow the request's events. When the server ends the stream before the
+   * request ends (it cuts off a reader that falls too far behind), the stream
+   * resumes after the last event it delivered; after five connections in a
+   * row that deliver nothing it gives up with `onError`.
+   */
   stream(options: RequestStreamOptions): RequestStreamHandle;
 }
 
@@ -546,6 +552,17 @@ export interface Client {
    * `topic.user()` and `topic.org()`.
    */
   subscribe(topics: readonly WireTopic[], options: SubscribeOptions): Subscription;
+  /**
+   * A live read: keep a screen current on what `subscribe` hears. Reads now,
+   * and again on each notice under `topics` that `hear` and `paths` let
+   * through, with one read in flight and at most one waiting; reports a value
+   * only when it changed. A failed read tries again on its own (1 s doubling
+   * to 30 s) and `onStale` says the screen is stale until one lands. Reads on
+   * a timer (3 s by default) wherever push can miss a change. With
+   * `topicsFromResult`, each read also returns the topics to hear next.
+   */
+  live<T>(topics: readonly WireTopic[], options: LiveReadOptions<T>): LiveRead;
+  live<T>(topics: readonly WireTopic[], options: LiveReadWithTopicsOptions<T>): LiveRead;
   /** Transcribe audio on the server. */
   transcribe(request: TranscribeRequest): Promise<TranscribeResponse>;
   /**
@@ -735,6 +752,8 @@ export function createClient(options: CreateClientOptions): Client {
       }
     },
     subscribe: (topics, subscribeOptions) => push.subscribe(topics, subscribeOptions),
+    live: <T>(topics: readonly WireTopic[], liveOptions: LiveReadOptions<T> | LiveReadWithTopicsOptions<T>) =>
+      liveRead<T>(push.subscribe, topics, liveOptions as LiveReadOptions<T>),
     transcribe: (request) => {
       const mediaType = request.mediaType ?? "audio/webm";
       const body =
@@ -968,10 +987,11 @@ function requestHandle(
       openRequestStream(
         {
           fetcher: t.fetcher,
-          url: t.url(`${base}/stream`, {
-            starting_after: startingAfter,
-            include: includeTrace === true ? "trace" : undefined
-          })
+          url: (after) =>
+            t.url(`${base}/stream`, {
+              starting_after: after,
+              include: includeTrace === true ? "trace" : undefined
+            })
         },
         { ...callbacks, startingAfter, lastEventId, dedupWindowSize }
       )

@@ -58,7 +58,7 @@ describe("a delegation board whose seam throws once the claim is released", () =
       task: { actions: { work: { block: worker } } }
     })({ id: "delegation-throw" });
     const state = createFlowState({
-      flows: { [flow.id]: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       durable: true
     });

@@ -107,6 +107,24 @@ export type {
 
 export { defineCapability } from "./capability";
 
+/** Kits: the installable unit above a flow, with slots other kits fill. */
+export { defineKit, slot } from "./kit";
+export type {
+  AnyKitFactory,
+  KeyedSlot,
+  KitDefinition,
+  KitFactory,
+  KitFolder,
+  KitInstallation,
+  KitInstallInput,
+  KitInstance,
+  KitWithheld,
+  ListSlot,
+  SlotDeclaration,
+  SlotKey,
+  SlotValue,
+} from "./kit";
+
 /**
  * One dispatch protocol — typed entries addressed `(type, name)`, and the
  * `dispatcher()` block that sends to one.
@@ -266,6 +284,9 @@ export type {
   CostEstimator,
   ActionConfig,
   ReadConfig,
+  ActionEntry,
+  NormalizedActions,
+  ReadEntry,
   ActionCore,
   UserMessageEcho,
   ActionMcpConfig,

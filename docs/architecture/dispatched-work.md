@@ -206,6 +206,25 @@ block: `fireOwnerRunThrough` (`engine/src/durability/owner-runs.ts`), the
 sibling of `fireWakeThrough`. It is not a `RequestHost` verb, so nothing a
 running request holds can call it.
 
+A request reaches it in one way only: the seam's service route. An internal
+entry marked `service: { provider }` (`InternalEntry.service`) is not started
+as the caller in a child session. The seam hands the envelope to the host's
+`serviceRoute` operation (`createServiceRouteOperation`), which stamps the
+event's sender as the calling session (a member, named by the marker's
+`senderName` from that session's stored state, else the calling flow's kind,
+whatever the payload said) and its `owner` as the caller's user and tenant,
+runs `routeServiceEvent` as `service:<provider>` in the caller's org, and
+fires only that user's runs in that tenant. The routing entry reads `owner`
+and nominates no one else, so another user's subscription is never screened
+or counted against the cap; the host's check is the backstop: a run the
+routing names for another user is refused `other_user`, for another tenant
+`other_tenant`, and never fired. The caller learns only that the
+routing was accepted, not who it fired: the operation answers on acceptance,
+because the caller may hold a queue's only worker slot and the routing may need
+it. The routing and the runs it fires go on detached, held by the host's
+shutdown drain like any dispatched child. Workforce's `publishEvent` is the one
+caller.
+
 The nomination (a user, an org, an optional tenant, a resource key) only picks a
 cell. The run starts only when that user's cell for collections shared across
 flows (`resolveSharedUserCellKey`, the one the schedule resolver reads) holds

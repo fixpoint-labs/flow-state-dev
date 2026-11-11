@@ -38,10 +38,7 @@ describe("requests and AsyncLocalStorage", () => {
     const flow = defineFlow({
       kind: "als-per-request",
       actions: {
-        run: {
-          inputSchema: z.object({ n: z.number() }),
-          block: handler({ name: "echo", inputSchema: z.object({ n: z.number() }), execute: (input) => input.n + 1 }),
-        },
+        run: handler({ name: "echo", inputSchema: z.object({ n: z.number() }), execute: (input) => input.n + 1 }),
       },
     })();
     const stores = createInMemoryStores();

@@ -16,7 +16,7 @@ afterAll(cleanupTrees);
 
 const codes = (report) => report.refusals.map((r) => r.code);
 const base = { "package.json": manifest({ packageManager: "npm@10.0.0" }) };
-const ourConfig = `// fsd:generated\nimport hello from "./flows/hello/flow.mts";\nexport default createFlowState({ flows: { hello } });\n`;
+const ourConfig = `// fsd:generated\nimport hello from "./flows/hello/flow.mts";\nexport default createFlowState({ flows: [hello] });\n`;
 const ourFlow = `// fsd:generated\nexport default defineFlow({ kind: "hello" })({ id: "default" });\n`;
 
 describe("the config the run acts on is the one the CLI loads", () => {
@@ -24,7 +24,7 @@ describe("the config the run acts on is the one the CLI loads", () => {
     const root = makeTree({
       ...base,
       "fsdev.config.mts": ourConfig,
-      "fsdev.config.ts": "export default createFlowState({ flows: {} });\n",
+      "fsdev.config.ts": "export default createFlowState({ flows: [] });\n",
       "fsdev.config.js": "module.exports = {};\n",
     });
     const resolved = resolveLoadedConfig(root);
@@ -44,7 +44,7 @@ describe("the config the run acts on is the one the CLI loads", () => {
     const root = makeTree({
       ...base,
       "fsdev.config.mts": ourConfig,
-      "fsdev.config.ts": "export default createFlowState({ flows: {} });\n",
+      "fsdev.config.ts": "export default createFlowState({ flows: [] });\n",
       "flows/hello/flow.mts": ourFlow,
     });
     const report = buildReport(root);
@@ -71,7 +71,7 @@ describe("resolution 8b — what their registry holds", () => {
     // registration, and writes the flow file anyway.
     const root = makeTree({
       ...base,
-      "fsdev.config.ts": `import hello from "./flows/hello/flow.mts";\nimport theirs from "./src/flows/billing.ts";\nexport default createFlowState({ flows: { hello, billing: theirs } });\n`,
+      "fsdev.config.ts": `import hello from "./flows/hello/flow.mts";\nimport theirs from "./src/flows/billing.ts";\nexport default createFlowState({ flows: [hello, theirs] });\n`,
       "flows/hello/flow.mts": ourFlow,
       "src/flows/billing.ts": `export default defineFlow({ kind: "billing" })({ id: "default" });\n`,
     });
@@ -86,7 +86,7 @@ describe("resolution 8b — what their registry holds", () => {
     // skipping registration is worse — `fsdev run hello send` then invokes THEIR flow.
     const root = makeTree({
       ...base,
-      "fsdev.config.ts": `import greeter from "./src/flows/greeter.ts";\nexport default createFlowState({ flows: { greeter } });\n`,
+      "fsdev.config.ts": `import greeter from "./src/flows/greeter.ts";\nexport default createFlowState({ flows: [greeter] });\n`,
       "src/flows/greeter.ts": `export default defineFlow({ kind: "hello" })({ id: "default" });\n`,
     });
     const report = buildReport(root);
@@ -105,8 +105,8 @@ describe("resolution 8b — what their registry holds", () => {
       "fsdev.config.ts": [
         `import greeter from "./src/flows/greeter.ts";`,
         `const example = { flows: {} };`,
-        `// const old = { flows: { hello: nothing } };`,
-        `export default createFlowState({ flows: { greeter } });`,
+        `// const old = { flows: [nothing] };`,
+        `export default createFlowState({ flows: [greeter] });`,
         "",
       ].join("\n"),
       "src/flows/greeter.ts": `export default defineFlow({ kind: "hello" })({ id: "default" });\n`,
@@ -122,8 +122,8 @@ describe("resolution 8b — what their registry holds", () => {
     const root = makeTree({
       ...base,
       "fsdev.config.ts": [
-        `const a = createFlowState({ flows: {} });`,
-        `const b = createFlowState({ flows: {} });`,
+        `const a = createFlowState({ flows: [] });`,
+        `const b = createFlowState({ flows: [] });`,
         `export default process.env.CI ? a : b;`,
         "",
       ].join("\n"),
@@ -139,7 +139,7 @@ describe("resolution 8b — what their registry holds", () => {
     // bodies to find assignments also blanked `import x from "./y"` down to `"      "`.
     const root = makeTree({
       ...base,
-      "fsdev.config.ts": `import hello from "./flows/hello/flow.mts";\nexport default createFlowState({ flows: { hello } });\n`,
+      "fsdev.config.ts": `import hello from "./flows/hello/flow.mts";\nexport default createFlowState({ flows: [hello] });\n`,
       "flows/hello/flow.mts": ourFlow,
     });
     expect(inspectRegistry(join(root, "fsdev.config.ts")).ourEntry?.specifier).toBe(
@@ -152,8 +152,8 @@ describe("resolution 8b — what their registry holds", () => {
     // free would write files that never load.
     const root = makeTree({
       ...base,
-      "fsdev.config.ts": `import { all } from "./registry.ts";\nexport default createFlowState({ flows: { ...all } });\n`,
-      "registry.ts": "export const all = {};\n",
+      "fsdev.config.ts": `import { all } from "./registry.ts";\nexport default createFlowState({ flows: [...all] });\n`,
+      "registry.ts": "export const all = [];\n",
     });
     const registry = inspectRegistry(join(root, "fsdev.config.ts"));
     expect(registry.extendable).toBe(false);
@@ -166,7 +166,7 @@ describe("resolution 8b — what their registry holds", () => {
     // proxy, and acting on `demoKind: "free"` leaves their flow registered instead of the demo.
     const root = makeTree({
       ...base,
-      "fsdev.config.ts": `import hello from "./flows/hello/flow.js";\nexport default createFlowState({ flows: { hello } });\n`,
+      "fsdev.config.ts": `import hello from "./flows/hello/flow.js";\nexport default createFlowState({ flows: [hello] });\n`,
       "flows/hello/flow.js": `export default defineFlow({ kind: "hello" })({ id: "default" });\n`,
     });
     const registry = inspectRegistry(join(root, "fsdev.config.ts"));
@@ -180,7 +180,7 @@ describe("resolution 8b — what their registry holds", () => {
     // simply cannot parse, and the skill has a documented fallback for it.
     const root = makeTree({
       ...base,
-      "fsdev.config.ts": `import x from "./nowhere.ts";\nexport default createFlowState({ flows: { x } });\n`,
+      "fsdev.config.ts": `import x from "./nowhere.ts";\nexport default createFlowState({ flows: [x] });\n`,
     });
     expect(codes(buildReport(root))).not.toContain("demo-kind-taken");
     expect(buildReport(root).fsdevConfig.registry.demoKind).toBe("undetermined");
@@ -342,7 +342,7 @@ describe("detection writes nothing", () => {
       ".gitignore": ".env.local\n",
       ".env.local": "OPENAI_API_KEY=\n",
       "AGENTS.md": "# Project\n",
-      "fsdev.config.ts": "export default createFlowState({ flows: {} });\n",
+      "fsdev.config.ts": "export default createFlowState({ flows: [] });\n",
       "app/page.tsx": "export default function Page() { return null }\n",
     });
     initGit(root);
