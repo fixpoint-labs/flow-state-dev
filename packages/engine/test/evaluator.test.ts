@@ -15,7 +15,7 @@ import {
   DEFAULT_ORG_ID
 } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import type { EvaluationModel, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
+import type { ActionConfig, EvaluationModel, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { createMockModelResolver, mockEvaluationModel } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
@@ -42,7 +42,7 @@ type RunOptions = {
   signal?: AbortSignal;
 };
 
-async function run(block: Parameters<typeof defineFlow>[0]["actions"][string]["block"], options: RunOptions) {
+async function run(block: ActionConfig["block"], options: RunOptions) {
   const flow = defineFlow({
     kind: `evaluator-${options.requestId}`,
     actions: { run: { inputSchema: z.object({ message: z.string() }), block } },

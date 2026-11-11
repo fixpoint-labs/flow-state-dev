@@ -19,9 +19,7 @@ import { serve, type ServeHandle } from "../src/serve";
 const notesFlow = defineFlow({
   kind: "notes",
   actions: {
-    say: {
-      inputSchema: z.object({ text: z.string() }),
-      block: handler({
+    say: handler({
         name: "say",
         inputSchema: z.object({ text: z.string() }),
         execute: async (input, ctx) => {
@@ -29,10 +27,7 @@ const notesFlow = defineFlow({
           return {};
         },
       }),
-    },
-    burst: {
-      inputSchema: z.object({ count: z.number() }),
-      block: handler({
+    burst: handler({
         name: "burst",
         inputSchema: z.object({ count: z.number() }),
         execute: async (input, ctx) => {
@@ -40,7 +35,6 @@ const notesFlow = defineFlow({
           return {};
         },
       }),
-    },
   },
 })();
 

@@ -17,15 +17,12 @@ function runFlow(kind: string) {
   return defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}).passthrough(),
-        block: handler({
+      run: handler({
           name: "run",
           inputSchema: z.object({}).passthrough(),
           outputSchema: z.object({ ok: z.boolean() }),
           execute: () => ({ ok: true })
         })
-      }
     }
   })();
 }

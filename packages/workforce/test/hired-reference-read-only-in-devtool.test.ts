@@ -75,7 +75,7 @@ function flowWith(resources: DeclaredResources) {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { ...resources } as DeclaredResources,
-    actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } },
+    actions: { ...workerDoor, run: work },
   });
 }
 

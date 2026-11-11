@@ -229,7 +229,7 @@ describe("projectWorkspace for a task filed from a workstream session", () => {
       configSchema: workerConfigSchema(),
       session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
       resources: { ...installation.resources, ...board.resources },
-      actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+      actions: { respond: { block: door, userMessage: (i: { message: string }) => i.message }, ...board.actions },
       internal: { actions: { ...board.entries(door), onWorkstreamOpened: workstreamOpenedEntry() } }
     } as never);
   }
@@ -252,7 +252,7 @@ describe("projectWorkspace for a task filed from a workstream session", () => {
       configSchema: workerConfigSchema(),
       session: installation.session(),
       resources: { ...installation.resources },
-      actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+      actions: { respond: { block: turn, userMessage: (i: { message: string }) => i.message } },
       task: { actions: { work: workerTaskEntry({ name: "taker-task", turn }) } }
     } as never);
   }

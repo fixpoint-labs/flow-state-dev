@@ -75,7 +75,6 @@ function host(workers: readonly string[] = ["coder", "em"], stores = inMemorySto
     resources: { ...installation.resources },
     actions: {
       respond: {
-        inputSchema: input,
         block: sequencer({ name: "work-turn", inputSchema: input }).step(resolve).step(harness).tap(ask),
         userMessage: (i: { message: string }) => i.message
       },

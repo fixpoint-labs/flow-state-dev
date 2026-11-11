@@ -25,9 +25,7 @@ const recordsFlow = defineFlow({
     client: { expose: ["phase"] },
   },
   actions: {
-    fail: {
-      inputSchema: z.object({}),
-      block: handler({
+    fail: handler({
         name: "fail",
         inputSchema: z.object({}),
         execute: async (_input, ctx) => {
@@ -35,7 +33,6 @@ const recordsFlow = defineFlow({
           throw new Error("boom");
         },
       }),
-    },
   },
 })();
 

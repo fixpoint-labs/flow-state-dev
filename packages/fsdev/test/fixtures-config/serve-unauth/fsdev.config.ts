@@ -29,14 +29,11 @@ function memStores(): StoreAdapter {
 const openFlow = defineFlow({
   kind: "open",
   actions: {
-    ping: {
-      inputSchema: z.object({}).passthrough(),
-      block: handler({
+    ping: handler({
         name: "ping",
         inputSchema: z.object({}).passthrough(),
         execute: () => undefined,
       }),
-    },
   },
 })();
 

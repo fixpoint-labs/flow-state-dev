@@ -133,7 +133,7 @@ function researchFlow(installation: ReturnType<typeof createWorkerInstallation>)
     resources: { ...installation.resources, ...workerMessagesResources },
     internal: { actions: hearsMessages(installation, "research") },
     request: { onStarted: loadWorker },
-    actions: { respond: { inputSchema: input, block: door, userMessage: (turn: { message: string }) => turn.message } },
+    actions: { respond: { block: door, userMessage: (turn: { message: string }) => turn.message } },
     task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "research-task", turn: door }) } }
   });
 }

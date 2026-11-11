@@ -315,10 +315,7 @@ describe("V2 · BR-15 · an unavailable mode's flow is not served", () => {
     defineFlow({
       kind: "codex-session",
       actions: {
-        run: {
-          inputSchema: z.object({ message: z.string() }),
-          block: handler({ name: "codex-standin", inputSchema: z.object({ message: z.string() }), execute: () => "ran" }),
-        },
+        run: handler({ name: "codex-standin", inputSchema: z.object({ message: z.string() }), execute: () => "ran" }),
       },
     })();
 

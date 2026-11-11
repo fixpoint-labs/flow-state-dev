@@ -24,10 +24,7 @@ const counterHandler = handler({
 const statefulFlow = defineFlow({
   kind: "stateful",
   actions: {
-    increment: {
-      inputSchema: z.object({ increment: z.number().default(1) }),
-      block: counterHandler,
-    },
+    increment: counterHandler,
   },
   session: {
     stateSchema: sessionStateSchema,

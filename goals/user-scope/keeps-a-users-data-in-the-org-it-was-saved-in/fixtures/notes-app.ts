@@ -90,8 +90,8 @@ export const notesApp = defineFlow({
     client: { derived: { mine: (ctx) => ({ marker: (ctx.state as { marker?: string | null }).marker ?? null }) } },
   },
   actions: {
-    save: { inputSchema: saveInput, block: save },
-    read: { inputSchema: z.object({}), block: read },
+    save,
+    read,
   },
   authentication: verified,
 });

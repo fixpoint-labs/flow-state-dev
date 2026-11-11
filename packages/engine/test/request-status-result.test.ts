@@ -21,14 +21,11 @@ import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 const computeFlow = defineFlow({
   kind: "compute",
   actions: {
-    square: {
-      inputSchema: z.object({ n: z.number() }),
-      block: handler({
+    square: handler({
         name: "compute-square",
         inputSchema: z.object({ n: z.number() }),
         execute: (input: { n: number }) => ({ squared: input.n * input.n })
       })
-    }
   }
 })();
 

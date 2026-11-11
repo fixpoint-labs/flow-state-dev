@@ -1070,7 +1070,7 @@ describe("flow config bag — refusals carry their issues as data", () => {
     outputSchema: z.object({}),
     execute: async () => ({})
   });
-  const action = { run: { block: plain, inputSchema: z.object({}) } };
+  const action = { run: plain };
 
   it("names each undeclared key and each wrong value at its own path, message unchanged", () => {
     const flow = defineFlow({
@@ -1111,16 +1111,13 @@ describe("flow config bag — refusals carry their issues as data", () => {
       cardinality: "collection",
       configSchema: z.object({ model: z.string() }),
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({
+        run: handler({
             name: "transforms-the-bag",
             inputSchema: z.object({}),
             outputSchema: z.object({}),
             flowConfigSchema: z.object({ model: z.string() }).transform(() => "flat"),
             execute: async () => ({})
           })
-        }
       }
     });
     const refused = refusalOf(() => flow({ id: "a", config: { model: "m" } }));
@@ -1134,16 +1131,13 @@ describe("flow config bag — refusals carry their issues as data", () => {
       cardinality: "collection",
       configSchema: z.object({ limits: z.object({}).passthrough() }),
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({
+        run: handler({
             name: "fills-retries",
             inputSchema: z.object({}),
             outputSchema: z.object({}),
             flowConfigSchema: z.object({ limits: z.object({ retries: z.number().default(9) }) }),
             execute: async () => ({})
           })
-        }
       }
     });
     const refused = refusalOf(() => flow({ id: "a", config: { limits: {} } }));

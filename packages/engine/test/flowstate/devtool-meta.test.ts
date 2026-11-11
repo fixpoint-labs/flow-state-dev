@@ -11,14 +11,11 @@ import { createFlowState, inMemoryStores } from "../../src";
 const noopFlow = defineFlow({
   kind: "noop-flow",
   actions: {
-    ping: {
-      inputSchema: z.object({}).passthrough(),
-      block: handler({
+    ping: handler({
         name: "ping",
         inputSchema: z.object({}).passthrough(),
         execute: () => undefined
       })
-    }
   }
 })();
 

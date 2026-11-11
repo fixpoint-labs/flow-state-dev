@@ -22,9 +22,7 @@ const lines = z.object({ count: z.number(), label: z.string() });
 const chatFlow = defineFlow({
   kind: "chat",
   actions: {
-    say: {
-      inputSchema: lines,
-      block: handler({
+    say: handler({
         name: "say",
         inputSchema: lines,
         execute: ({ count, label }, ctx) => {
@@ -32,7 +30,6 @@ const chatFlow = defineFlow({
           return { ok: true };
         },
       }),
-    },
   },
 })();
 

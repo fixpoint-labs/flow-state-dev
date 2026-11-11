@@ -22,7 +22,6 @@ function notesFlow(kind: string) {
     kind,
     actions: {
       write: {
-        inputSchema: noteSchema,
         userMessage: (input: { text: string }) => input.text,
         block: handler({
           name: `${kind}-write`,
@@ -34,7 +33,6 @@ function notesFlow(kind: string) {
       // Queued behind its session, so the run is admitted by the transport
       // host at enqueue time rather than by the in-process run.
       writeQueued: {
-        inputSchema: noteSchema,
         userMessage: (input: { text: string }) => input.text,
         concurrency: { policy: "queue", key: "session" },
         block: handler({

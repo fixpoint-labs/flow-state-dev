@@ -24,31 +24,22 @@ let release: (() => void) | undefined;
 const chat = defineFlow({
   kind: "chat",
   actions: {
-    say: {
-      inputSchema: z.object({}),
-      block: handler({ name: "chat-say", inputSchema: z.object({}), execute: () => ({}) })
-    },
-    slow: {
-      inputSchema: z.object({}),
-      block: handler({
+    say: handler({ name: "chat-say", inputSchema: z.object({}), execute: () => ({}) }),
+    slow: handler({
         name: "chat-slow",
         inputSchema: z.object({}),
         execute: () =>
           new Promise<Record<string, never>>((resolve) => {
             release = () => resolve({});
           })
-      })
-    },
-    boom: {
-      inputSchema: z.object({}),
-      block: handler({
+      }),
+    boom: handler({
         name: "chat-boom",
         inputSchema: z.object({}),
         execute: () => {
           throw new Error("the turn broke");
         }
       })
-    }
   }
 })();
 

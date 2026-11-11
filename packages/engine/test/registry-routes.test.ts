@@ -493,9 +493,7 @@ describe("createFlowApiRouter", () => {
       isolateUserState: true,
       isolateOrgState: true,
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "isolated-state-route-run",
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -505,7 +503,6 @@ describe("createFlowApiRouter", () => {
               return { ok: true };
             }
           })
-        }
       },
       user: {
         stateSchema: z.object({ nickname: z.string().optional() }),
@@ -589,15 +586,12 @@ describe("createFlowApiRouter", () => {
     const flow = defineFlow({
       kind: "declared-content-route",
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({
+        run: handler({
             name: "declared-content-route-run",
             inputSchema: z.object({}),
             outputSchema: z.object({ ok: z.boolean() }),
             execute: async () => ({ ok: true })
           })
-        }
       },
       resources: { guide }
     })({ id: "declared-content-route" });
@@ -637,9 +631,7 @@ describe("createFlowApiRouter", () => {
       kind: "isolated-resource-route",
       isolateUserState: true,
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "isolated-resource-route-run",
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -649,7 +641,6 @@ describe("createFlowApiRouter", () => {
               return { ok: true };
             }
           })
-        }
       },
       resources: {
         profile
@@ -754,9 +745,7 @@ describe("createFlowApiRouter", () => {
     const flow = defineFlow({
       kind: "stateful-cd",
       actions: {
-        increment: {
-          inputSchema: z.object({ amount: z.number() }),
-          block: handler({
+        increment: handler({
             name: "incrementer",
             inputSchema: z.object({ amount: z.number() }),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -769,7 +758,6 @@ describe("createFlowApiRouter", () => {
               return { ok: true };
             }
           })
-        }
       },
       session: {
         stateSchema: z.object({ count: z.number().default(0) }),
@@ -824,9 +812,7 @@ describe("createFlowApiRouter", () => {
     const flow = defineFlow({
       kind: "stateful-client",
       actions: {
-        increment: {
-          inputSchema: z.object({ amount: z.number() }),
-          block: handler({
+        increment: handler({
             name: "stateful-client-incr",
             inputSchema: z.object({ amount: z.number() }),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -837,7 +823,6 @@ describe("createFlowApiRouter", () => {
               return { ok: true };
             }
           })
-        }
       },
       session: {
         stateSchema: z.object({ count: z.number().default(0) }),
@@ -897,9 +882,7 @@ describe("createFlowApiRouter", () => {
     const flow = defineFlow({
       kind: "res-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "res-run",
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.object({ ok: z.boolean() }),
@@ -908,7 +891,6 @@ describe("createFlowApiRouter", () => {
               return { ok: true };
             }
           })
-        }
       },
       resources: {
         counter: counterResource

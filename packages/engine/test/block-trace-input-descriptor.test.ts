@@ -41,10 +41,7 @@ describe("block_trace input descriptor wiring", () => {
     const flow = defineFlow({
       kind: "input-desc-then-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ x: z.number() }),
-          block: pipeline
-        }
+        run: pipeline
       }
     })();
 
@@ -113,10 +110,7 @@ describe("block_trace input descriptor wiring", () => {
     const flow = defineFlow({
       kind: "input-desc-thenall-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ x: z.number() }),
-          block: pipeline
-        }
+        run: pipeline
       }
     })();
 
@@ -182,10 +176,7 @@ describe("block_trace input descriptor wiring", () => {
     const flow = defineFlow({
       kind: "input-desc-foreach-flow",
       actions: {
-        run: {
-          inputSchema: z.array(z.number()),
-          block: pipeline
-        }
+        run: pipeline
       }
     })();
 

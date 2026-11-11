@@ -13,15 +13,12 @@ describe("retention policy integration", () => {
     const flow = defineFlow({
       kind: "retention-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "echo",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.object({ value: z.number() }),
             execute: (input) => input,
           }),
-        },
       },
       session: {
         retention: { maxItems: 3 },
@@ -80,15 +77,12 @@ describe("retention policy integration", () => {
     const flow = defineFlow({
       kind: "retention-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "echo",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.object({ value: z.number() }),
             execute: (input) => input,
           }),
-        },
       },
       session: {
         retention: { maxItems: 100 },
@@ -123,15 +117,12 @@ describe("retention policy integration", () => {
     const flow = defineFlow({
       kind: "no-retention-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "echo",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.object({ value: z.number() }),
             execute: (input) => input,
           }),
-        },
       },
     })();
 
@@ -163,9 +154,7 @@ describe("retention policy integration", () => {
     const flow = defineFlow({
       kind: "retention-fail-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "maybe-fail",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.object({ value: z.number() }),
@@ -174,7 +163,6 @@ describe("retention policy integration", () => {
               return input;
             },
           }),
-        },
       },
       session: {
         retention: { maxItems: 1 },
@@ -254,15 +242,12 @@ describe("retention against a run still in onFinished in another process", () =>
     const flow = defineFlow({
       kind: "retention-tail-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.number() }),
-          block: handler({
+        run: handler({
             name: "echo",
             inputSchema: z.object({ value: z.number() }),
             outputSchema: z.object({ value: z.number() }),
             execute: (input) => input,
           }),
-        },
       },
       request: {
         onFinished: handler({

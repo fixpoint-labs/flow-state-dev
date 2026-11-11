@@ -55,7 +55,7 @@ function setup(withBlobs = true) {
     },
   });
   const registry = createFlowRegistry();
-  registry.register(defineFlow({ kind: "harness", actions: { turn: { inputSchema: input, block: turn, userMessage: (i) => i.message } } })());
+  registry.register(defineFlow({ kind: "harness", actions: { turn: { block: turn, userMessage: (i) => i.message } } })());
   const blobs = createMemoryBlobStore();
   const stores: StoreRegistry = { ...createInMemoryStores(), ...(withBlobs ? { blobs } : {}) };
   const router = createFlowApiRouter({ registry, stores, resolvePrincipal: byHeader });

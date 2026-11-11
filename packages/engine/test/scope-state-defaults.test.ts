@@ -54,15 +54,12 @@ const flow = defineFlow({
   },
   org: { stateSchema: z.object({ tier: z.string().default("free") }) },
   actions: {
-    run: {
-      inputSchema: z.number(),
-      block: handler({
+    run: handler({
         name: "noop",
         inputSchema: z.number(),
         outputSchema: z.number(),
         execute: (input) => input
       })
-    }
   }
 })();
 
@@ -183,10 +180,7 @@ describe("native delta writes start from the defaulted value", () => {
       })
     },
     actions: {
-      run: {
-        inputSchema: z.number(),
-        block: handler({ name: "noop", inputSchema: z.number(), outputSchema: z.number(), execute: (input) => input })
-      }
+      run: handler({ name: "noop", inputSchema: z.number(), outputSchema: z.number(), execute: (input) => input })
     }
   })();
 
@@ -269,10 +263,7 @@ describe("the /state projection reads defaults too", () => {
         client: { expose: ["count"] }
       },
       actions: {
-        run: {
-          inputSchema: z.object({}),
-          block: handler({ name: "noop", inputSchema: z.object({}), outputSchema: z.object({}), execute: () => ({}) })
-        }
+        run: handler({ name: "noop", inputSchema: z.object({}), outputSchema: z.object({}), execute: () => ({}) })
       }
     })();
     const registry = createFlowRegistry();
@@ -327,7 +318,7 @@ const reader = handler({
 const blockDefaultsFlow = defineFlow({
   kind: "block-defaults",
   session: { client: { derived: { countSeen: ({ state }: { state: { count?: number } }) => state.count ?? "absent" } } },
-  actions: { read: { inputSchema: z.object({}), block: reader } }
+  actions: { read: reader }
 })();
 
 async function runRead(stores: ReturnType<typeof createInMemoryStores>, sessionId: string) {
@@ -421,8 +412,8 @@ describe("a readonly session field a block declares is protected like the flow's
   const ownerFlow = defineFlow({
     kind: "block-readonly",
     actions: {
-      write: { inputSchema: z.object({ owner: z.string() }), block: ownerBlock },
-      read: { inputSchema: z.object({}), block: ownerReader }
+      write: ownerBlock,
+      read: ownerReader
     }
   })();
 
@@ -470,7 +461,7 @@ describe("a readonly session field a block declares is protected like the flow's
     const flow = defineFlow({
       kind: "wrapped-root",
       session: { stateSchema: z.object({ owner: z.string().readonly().default("alice") }) },
-      actions: { write: { inputSchema: z.object({ owner: z.string() }), block: wrapped } }
+      actions: { write: wrapped }
     })();
     expect(getReadonlyStateKeys(flow.scopeStateSchemas?.session)).toEqual(["owner"]);
     const stores = createInMemoryStores();
@@ -618,7 +609,7 @@ describe("reading one stored record always gives one value", () => {
         defineFlow({
           kind: `alone-${scope}`,
           [scope]: { stateSchema: z.object({ visitorId: z.string().default(() => "x") }) },
-          actions: { read: { inputSchema: z.object({}), block: handler({ name: "n", inputSchema: z.object({}), execute: () => ({}) }) } }
+          actions: { read: handler({ name: "n", inputSchema: z.object({}), execute: () => ({}) }) }
         } as never)
       ).toThrow(new RegExp(`${scope}\\.state\\.visitorId has a default factory declared by flow "alone-${scope}"`));
     }
@@ -635,7 +626,7 @@ describe("reading one stored record always gives one value", () => {
     const flow = defineFlow({
       kind: "lazy-tree",
       session: { stateSchema: z.object({ tree: node().default({ name: "root" }) }) },
-      actions: { a: { inputSchema: z.object({}), block: reads } }
+      actions: { a: reads }
     })();
     const result = await runAction({
       orgId: ORG,
@@ -657,15 +648,12 @@ describe("reading one stored record always gives one value", () => {
       kind: "root-wrappers",
       session: { stateSchema: z.object({ a: z.string().default("x") }).default({}) },
       actions: {
-        a: {
-          inputSchema: z.object({}),
-          block: handler({
+        a: handler({
             name: "nullable-root",
             inputSchema: z.object({}),
             sessionStateSchema: z.object({ b: z.number().default(1) }).nullable(),
             execute: () => ({})
           })
-        }
       }
     })();
     expect(Object.keys((flow.scopeStateSchemas?.session as z.AnyZodObject).shape).sort()).toEqual(["a", "b"]);
@@ -681,7 +669,7 @@ describe("reading one stored record always gives one value", () => {
       defineFlow({
         kind: "keyed-user",
         user: { stateSchema: z.object({ r: keyed }) },
-        actions: { a: { inputSchema: z.object({}), block: handler({ name: "n", inputSchema: z.object({}), execute: () => ({}) }) } }
+        actions: { a: handler({ name: "n", inputSchema: z.object({}), execute: () => ({}) }) }
       })
     ).toThrow(/user\.state\.r has a default factory declared by flow "keyed-user"/);
   });
@@ -689,14 +677,14 @@ describe("reading one stored record always gives one value", () => {
   it("refuses a lazy a block declares, and a lazy in user or org state, the flow's own included", () => {
     const node = (): z.ZodTypeAny => z.object({ name: z.string(), children: z.array(z.lazy(node)).default([]) });
     const lazyBlock = handler({ name: "lazy-block", inputSchema: z.object({}), sessionStateSchema: z.object({ tree: node() }), execute: () => ({}) });
-    expect(() => defineFlow({ kind: "block-lazy", actions: { a: { inputSchema: z.object({}), block: lazyBlock } } })).toThrow(
+    expect(() => defineFlow({ kind: "block-lazy", actions: { a: lazyBlock } })).toThrow(
       /session\.state\.tree\.children holds a z\.lazy, declared by block "lazy-block"[\s\S]*declare it on the flow's session stateSchema, or avoid z\.lazy/
     );
     expect(() =>
       defineFlow({
         kind: "user-lazy",
         user: { stateSchema: z.object({ tree: node() }) },
-        actions: { a: { inputSchema: z.object({}), block: handler({ name: "n", inputSchema: z.object({}), execute: () => ({}) }) } }
+        actions: { a: handler({ name: "n", inputSchema: z.object({}), execute: () => ({}) }) }
       })
     ).toThrow(/user\.state\.tree\.children holds a z\.lazy, declared by flow "user-lazy"/);
   });
@@ -840,12 +828,12 @@ describe("a decision on stored state reads it as a run reads it, defaults filled
   });
   const childFlow = defineFlow({
     kind: "effective-child",
-    actions: { noop: { inputSchema: z.object({}), block: childBlock } },
-    internal: { actions: { work: { inputSchema: z.object({}), block: childBlock } } }
+    actions: { noop: childBlock },
+    internal: { actions: { work: childBlock } }
   })();
   const parentFlow = defineFlow({
     kind: "effective-parent",
-    actions: { noop: { inputSchema: z.object({}), block: handler({ name: "p", inputSchema: z.object({}), execute: () => ({}) }) } }
+    actions: { noop: handler({ name: "p", inputSchema: z.object({}), execute: () => ({}) }) }
   })();
   const seam = (stores: ReturnType<typeof createInMemoryStores>) =>
     createRequestHost({
@@ -977,7 +965,7 @@ describe("declarations that disagree are refused before anything runs", () => {
       registry.register(
         defineFlow({
           kind,
-          actions: { a: { inputSchema: z.object({}), block: shared }, b: { inputSchema: z.object({}), block: sharedUser } }
+          actions: { a: { inputSchema: z.object({}), block: shared }, b: sharedUser }
         })()
       );
     }
@@ -1012,7 +1000,7 @@ describe("declarations that disagree are refused before anything runs", () => {
       registry.register(
         defineFlow({
           kind,
-          actions: { a: { inputSchema: z.object({}), block: sharedCode }, b: { inputSchema: z.object({}), block: own(kind) } }
+          actions: { a: sharedCode, b: { inputSchema: z.object({}), block: own(kind) } }
         })()
       );
     }
@@ -1024,10 +1012,7 @@ describe("declarations that disagree are refused before anything runs", () => {
       defineFlow({
         kind,
         actions: {
-          a: {
-            inputSchema: z.object({}),
-            block: handler({ name: `${kind}-block`, inputSchema: z.object({}), userStateSchema: z.object({ theme }), execute: () => ({}) })
-          }
+          a: handler({ name: `${kind}-block`, inputSchema: z.object({}), userStateSchema: z.object({ theme }), execute: () => ({}) })
         }
       })();
     const registry = createFlowRegistry();

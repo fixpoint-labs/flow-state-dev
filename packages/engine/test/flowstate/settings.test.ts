@@ -24,10 +24,7 @@ async function runCapturingSettings(
   const flow = defineFlow({
     kind: "settings-flow",
     actions: {
-      run: {
-        inputSchema: z.object({}).passthrough(),
-        block: capture
-      }
+      run: capture
     }
   })();
 

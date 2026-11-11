@@ -122,7 +122,7 @@ async function boot() {
       session: installation.session(),
       resources: { ...installation.resources },
       actions: {
-        respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
+        respond: { block: door, userMessage: (i: { message: string }) => i.message },
         [SET_WORK_PROJECT_ACTION]: setWorkProjectAction,
         ...toolActions
       }
@@ -146,7 +146,7 @@ async function boot() {
       configSchema: workerConfigSchema(),
       session: installation.session(),
       resources: { ...installation.resources },
-      actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
+      actions: { respond: { block: turn, userMessage: (i: { message: string }) => i.message } },
       task: { actions: { work: workerTaskEntry({ name: "taker-task", turn }) } }
     } as never);
   };

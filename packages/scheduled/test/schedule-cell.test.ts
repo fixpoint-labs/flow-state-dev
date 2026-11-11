@@ -127,10 +127,10 @@ const kind = (name: string, cardinality: "collection" | "singleton") =>
       resolve: createResourceCollectionScheduleResolver({ collection: schedules, blocks: { ping } }),
     },
     actions: {
-      plan: { inputSchema: z.object({ key: z.string() }), block: plan },
-      reschedule: { inputSchema: z.object({ key: z.string() }), block: reschedule },
-      planInto: { inputSchema: z.object({ key: z.string(), orgId: z.string() }), block: planInto },
-      moveInto: { inputSchema: z.object({ key: z.string(), orgId: z.string() }), block: moveInto },
+      plan,
+      reschedule,
+      planInto,
+      moveInto,
     },
   });
 

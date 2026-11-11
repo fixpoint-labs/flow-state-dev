@@ -124,7 +124,7 @@ function stopperFlow(installation: WorkerInstallation) {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources, ...conversationLedgerResources },
-    actions: { respond: { inputSchema: z.object({ message: z.string() }), block: door, userMessage: (i: { message: string }) => i.message, concurrency: REPLY_CONCURRENCY } },
+    actions: { respond: { block: door, userMessage: (i: { message: string }) => i.message, concurrency: REPLY_CONCURRENCY } },
     internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "stopper", turn: answer }) } }
   } as never);
 }
@@ -146,7 +146,7 @@ function quietFlow(installation: WorkerInstallation, unmarked = false) {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources, ...conversationLedgerResources },
-    actions: { respond: { inputSchema: z.object({ message: z.string() }), block: door, userMessage: (i: { message: string }) => i.message, concurrency: REPLY_CONCURRENCY } },
+    actions: { respond: { block: door, userMessage: (i: { message: string }) => i.message, concurrency: REPLY_CONCURRENCY } },
     internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: entry } }
   } as never);
 }

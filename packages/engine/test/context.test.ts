@@ -207,15 +207,12 @@ describe("createExecutionContext", () => {
     const flow = defineFlow({
       kind: "resource-content-flow",
       actions: {
-        run: {
-          inputSchema: z.object({ value: z.string() }),
-          block: handler({
+        run: handler({
             name: "noop",
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.object({ ok: z.boolean() }),
             execute: () => ({ ok: true })
           })
-        }
       },
       resources: {
         soul: defineResource({

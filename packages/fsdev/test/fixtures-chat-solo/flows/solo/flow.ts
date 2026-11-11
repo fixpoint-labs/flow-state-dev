@@ -12,10 +12,7 @@ const soloHandler = handler({
 const soloFlow = defineFlow({
   kind: "solo",
   actions: {
-    chat: {
-      inputSchema: z.object({ message: z.string() }),
-      block: soloHandler,
-    },
+    chat: soloHandler,
   },
 });
 

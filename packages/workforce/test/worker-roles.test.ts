@@ -39,7 +39,7 @@ import { workerMessagesResources } from "../src/messages/message-log";
 
 const message = z.object({ message: z.string() });
 const turn = handler({ name: "roles-turn", inputSchema: message, outputSchema: z.object({}), execute: () => ({}) });
-const respond = { inputSchema: message, block: turn, userMessage: (i: { message: string }) => i.message };
+const respond = { block: turn, userMessage: (i: { message: string }) => i.message };
 
 /** A worker flow on `installation`: the door, plus whatever `over` adds. */
 function flowOn(installation: WorkerInstallation | undefined, flowName: string, over: Record<string, unknown> = {}) {

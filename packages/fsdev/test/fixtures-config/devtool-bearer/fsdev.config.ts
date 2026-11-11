@@ -12,14 +12,11 @@ import { z } from "zod";
 const pingFlow = defineFlow({
   kind: "ping",
   actions: {
-    ping: {
-      inputSchema: z.object({}).passthrough(),
-      block: handler({
+    ping: handler({
         name: "ping",
         inputSchema: z.object({}).passthrough(),
         execute: () => undefined,
       }),
-    },
   },
 })();
 

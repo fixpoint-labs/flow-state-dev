@@ -92,7 +92,7 @@ function boot() {
     schedules: {
       resolve: createResourceCollectionScheduleResolver({ collection: schedules, blocks: { ping } }),
     },
-    actions: { plan: { inputSchema: z.object({ key: z.string() }), block: plan } },
+    actions: { plan },
   })() as unknown as FlowInstance;
 
   const registry = createFlowRegistry();

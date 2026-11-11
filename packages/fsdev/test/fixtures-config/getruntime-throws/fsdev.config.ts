@@ -25,14 +25,11 @@ function rejectingStores(): StoreAdapter {
 const flow = defineFlow({
   kind: "x",
   actions: {
-    go: {
-      inputSchema: z.object({}).passthrough(),
-      block: handler({
+    go: handler({
         name: "x",
         inputSchema: z.object({}).passthrough(),
         execute: () => undefined,
       }),
-    },
   },
 })();
 

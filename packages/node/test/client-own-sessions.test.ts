@@ -18,10 +18,7 @@ import { serve, type ServeHandle } from "../src/serve";
 const notesFlow = defineFlow({
   kind: "notes",
   actions: {
-    note: {
-      inputSchema: z.object({}),
-      block: handler({ name: "note", inputSchema: z.object({}), execute: () => ({ ok: true }) }),
-    },
+    note: handler({ name: "note", inputSchema: z.object({}), execute: () => ({ ok: true }) }),
   },
 })();
 

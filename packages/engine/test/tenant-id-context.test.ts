@@ -31,7 +31,7 @@ function buildCapturingFlow(capture: { tenantId?: string; sessionTenantId?: stri
   });
   return defineFlow({
     kind: "tenant-flow",
-    actions: { run: { inputSchema: z.object({}), block: probe } }
+    actions: { run: probe }
   })();
 }
 

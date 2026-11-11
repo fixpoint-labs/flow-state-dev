@@ -39,15 +39,12 @@ function flow(kind: string, authenticated: boolean) {
   const base = {
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({
+      run: handler({
           name: `${kind}-run`,
           inputSchema: z.object({}),
           outputSchema: z.object({}),
           execute: () => ({})
         })
-      }
     }
   };
   if (!authenticated) return defineFlow(base)();

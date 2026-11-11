@@ -18,9 +18,6 @@ const approve = handler({
 export default defineFlow({
   kind: "approval",
   actions: {
-    chat: {
-      inputSchema: z.object({ message: z.string() }),
-      block: approve,
-    },
+    chat: approve,
   },
 })();

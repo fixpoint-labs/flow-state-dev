@@ -79,7 +79,7 @@ function queueFlow(kind: string, observed: Observed, concurrency: ConcurrencyCon
   const flow = defineFlow({
     kind,
     actions: {
-      hold: { block: hold, inputSchema: z.object({ note: z.string() }) },
+      hold,
       deliver: { block: deliver }
     },
     internal: { actions: { work: { block: work } } },
@@ -824,7 +824,7 @@ describe("a run started in process whose place on the shared backend is lost", (
       });
       const flow = defineFlow({
         kind: "lost-lease",
-        actions: { watch: { block: watch, inputSchema: z.object({}) } },
+        actions: { watch },
         request: { concurrency: policy }
       })({ id: "lost-lease" });
       const registry = createFlowRegistry();

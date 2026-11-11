@@ -102,8 +102,8 @@ const delegate = dispatcher({
 });
 
 const actions = {
-  save: { inputSchema: noteInput, block: save },
-  read: { inputSchema: tagInput, block: read },
+  save,
+  read,
 };
 
 const workerKind = defineFlow({

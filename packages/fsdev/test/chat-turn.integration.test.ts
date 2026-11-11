@@ -25,9 +25,7 @@ function slowFlow() {
   return defineFlow({
     kind: "slow",
     actions: {
-      chat: {
-        inputSchema: z.object({ message: z.string() }),
-        block: handler({
+      chat: handler({
           name: "slow-handler",
           inputSchema: z.object({ message: z.string() }),
           outputSchema: z.string(),
@@ -38,7 +36,6 @@ function slowFlow() {
             return "unreachable";
           },
         }),
-      },
     },
   })();
 }
@@ -245,15 +242,12 @@ describe("executeTurn", () => {
     const strictFlow = defineFlow({
       kind: "strict",
       actions: {
-        run: {
-          inputSchema: z.object({ ticket: z.string() }),
-          block: handler({
+        run: handler({
             name: "strict-handler",
             inputSchema: z.object({ ticket: z.string() }),
             outputSchema: z.string(),
             execute: async (input) => input.ticket,
           }),
-        },
       },
     })();
 

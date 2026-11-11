@@ -20,14 +20,11 @@ import { serve, type ServeHandle } from "../src/serve";
 const echoFlow = defineFlow({
   kind: "echo",
   actions: {
-    say: {
-      inputSchema: z.object({ text: z.string() }),
-      block: handler({
+    say: handler({
         name: "say",
         inputSchema: z.object({ text: z.string() }),
         execute: (input) => ({ heard: input.text }),
       }),
-    },
   },
 })();
 

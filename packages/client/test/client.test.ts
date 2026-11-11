@@ -39,15 +39,12 @@ const calls = (fetcher: ReturnType<typeof routed>) =>
 const demoFlow = defineFlow({
   kind: "demo",
   actions: {
-    run: {
-      inputSchema: z.object({ value: z.string() }),
-      block: handler({
+    run: handler({
         name: "run-handler",
         inputSchema: z.object({ value: z.string() }),
         outputSchema: z.object({ ok: z.boolean() }),
         execute: (input) => ({ ok: input.value.length > 0 })
       })
-    }
   }
 });
 

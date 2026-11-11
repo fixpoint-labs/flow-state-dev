@@ -84,7 +84,7 @@ function boot(rule: ResourceVisibilityRule | undefined) {
       grep: { inputSchema: z.object({ pattern: z.string() }).passthrough(), block: grepResourceContent },
       create: { inputSchema: z.object({ path: z.string() }), block: createResource },
       discover: { inputSchema: z.object({}).passthrough(), block: discover },
-      peek: { inputSchema: z.object({ uri: z.string() }), block: peek }
+      peek
     }
   });
   const instance = flow() as unknown as FlowInstance;

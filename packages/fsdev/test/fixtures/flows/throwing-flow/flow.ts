@@ -31,12 +31,8 @@ const throwingHook = handler({
 const throwingFlow = defineFlow({
   kind: "throwing",
   actions: {
-    fail: {
-      inputSchema: z.object({ message: z.string() }),
-      block: throwingHandler,
-    },
+    fail: throwingHandler,
     answerThenHookFails: {
-      inputSchema: z.object({ message: z.string() }),
       block: answeringHandler,
       onCompleted: throwingHook,
     },
