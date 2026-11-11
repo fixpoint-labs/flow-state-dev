@@ -9,3 +9,6 @@ export { githubRepositoryOf } from "./github/provider";
 export { GITHUB_SERVICE_FLOW } from "./github/service-flow";
 export { FOLLOWED_PULL_REQUEST_KINDS, pullRequestThread } from "./github/follow-pull-request";
 export { DEFAULT_MAX_OWNER_RUNS } from "./service-flow";
+// FIX-2630.
+export { INTERNAL_PROVIDER, INTERNAL_SERVICE_FLOW, internalThreadKey } from "./internal-events/topics";
+export { PUBLISH_EVENT_TOOL } from "./internal-events/publish";

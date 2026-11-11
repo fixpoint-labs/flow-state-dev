@@ -31,7 +31,7 @@ import {
   type SubscriptionProvider,
   type SubscriptionScreens
 } from "../src/subscriptions";
-import { defineSubscriptionServiceFlow, type SubscriptionServiceOptions } from "../src/service-flows";
+import { defineSubscriptionServiceFlow, internalServiceFlow, type InternalServiceFlow, type InternalTopics, type SubscriptionServiceOptions } from "../src/service-flows";
 import { createRoutinesCapability } from "../src/routines";
 import { workerRoutineVerbs } from "../src/routines/routines";
 import type { WorkerManifest } from "../src/manifest";
@@ -104,8 +104,13 @@ function memoryScheduleIndex(): ScheduleIndex & { entries: Map<string, ScheduleI
 
 const doorInput = z.object({ message: z.string() });
 
-function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, isolated: boolean) {
+function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, isolated: boolean, internal: InternalServiceFlow | undefined) {
   const tools = workerRoutineVerbs(installation);
+  // A block in any flow publishing: the test's way onto `publishEvent` with no model. Its input is passed on as given.
+  const publish =
+    internal === undefined
+      ? undefined
+      : handler({ name: "follower-publish", inputSchema: z.unknown(), resources: internal.resources, execute: async (input, ctx) => internal.publishEvent(ctx, input) });
   // A worker's turn on a model: one with the routines capability, one without.
   const chat = generator({ name: "follower-chat", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, uses: [createRoutinesCapability(installation)], user: (input) => input.message, itemVisibility: { client: true, history: true } });
   const chatPlain = generator({ name: "follower-chat-plain", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, user: (input) => input.message, itemVisibility: { client: true, history: true } });
@@ -137,6 +142,7 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
       // Not doors: `respond` is the flow's one door; these are a test's way onto a model turn.
       chat: { inputSchema: doorInput, block: chat },
       chatPlain: { inputSchema: doorInput, block: chatPlain },
+      ...(publish === undefined ? {} : { publish: { inputSchema: z.unknown(), block: publish } }),
       ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
     },
     // No turn: a message lands as its items and nothing runs, so no model is asked.
@@ -158,6 +164,8 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   isolatedFollower?: boolean;
   /** The service flow itself, in place of the one built from `service` (GitHub's own flow); its kind must be `github-service`. */
   serviceFlow?: (installation: WorkerInstallation) => FlowInstance;
+  /** Internal events (FIX-2630): the declared topics; the internal service flow is `internal-service`, its provider beside GitHub's, and a follower's `publish` action publishes. */
+  internal?: { readonly topics: InternalTopics };
 };
 
 /** A board host with followers and a GitHub service flow. */
@@ -166,6 +174,17 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const index = options.poll === undefined ? undefined : memoryScheduleIndex();
   const poll = index === undefined ? undefined : { index, ...(options.poll?.everyMinutes === undefined ? {} : { everyMinutes: options.poll.everyMinutes }) };
   const provider: SubscriptionProvider = options.screens === undefined ? github : { ...github, screens: options.screens };
+  // The providers `hireWorkforce` is given; the internal one joins once the installation exists, before the hire reads it.
+  const providers: SubscriptionProvider[] = [provider];
+  let internal: InternalServiceFlow | undefined;
+  const internalOf = (installation: WorkerInstallation) => {
+    if (options.internal === undefined) return undefined;
+    if (internal === undefined) {
+      internal = internalServiceFlow({ installation, topics: options.internal.topics });
+      providers.push(internal.provider);
+    }
+    return internal;
+  };
   const standard: WorkerManifest[] = [
     ...boardWorkers({ lead: { delegates: ["eng.tasker", "eng.follower"] } }),
     { id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] },
@@ -174,12 +193,13 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   ];
   const board = bootBoardHost({
     ...options,
-    hire: { ...options.hire, routines: { providers: [provider], ...(poll === undefined ? {} : { poll }), ...options.hire?.routines } },
+    hire: { ...options.hire, routines: { providers, ...(poll === undefined ? {} : { poll }), ...options.hire?.routines } },
     standard,
     // A coordinator's conversation keeps event routines too (its routine actions).
     coordinatorRoutines: options.coordinatorRoutines ?? true,
-    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, options.isolatedFollower === true), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
+    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, options.isolatedFollower === true, internalOf(installation)), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
     plainFlowsOf: (installation): Record<string, FlowInstance> => ({
+      ...(internalOf(installation) === undefined ? {} : { "internal-service": internalOf(installation)!.flow }),
       "github-service":
         options.serviceFlow?.(installation) ??
         defineSubscriptionServiceFlow({
@@ -365,6 +385,13 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     };
   };
 
+  /** Publish as `userId` from a follower's `sessionId` (FIX-2630), and wait for what it started: its answer, `{ published }` or `{ refused }`. */
+  const publish = async (userId: string, sessionId: string, input: Record<string, unknown>) => {
+    const output = (await board.act(userId, sessionId, "publish", input, "follower")).output as { published: string } | { refused: string };
+    await board.settled();
+    return output;
+  };
+
   /** The service's messages that landed in `sessionId`, as the model reads them. */
   const heard = async (sessionId: string) => (await board.messages(sessionId)).filter((m) => m.text.startsWith("From service:")).map((m) => m.text);
 
@@ -401,6 +428,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     unsubscribe,
     route,
     routeBeside,
+    publish,
     holdFirstDispatch,
     failFirstTake,
     heard,

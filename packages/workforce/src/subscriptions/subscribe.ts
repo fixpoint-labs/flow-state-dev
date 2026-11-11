@@ -56,8 +56,17 @@ export interface SubscriptionProvider {
   readonly provider: string;
   /** Whether the running request's user can read `thread`. Asked at subscribe, and again before a private event is delivered. */
   canRead(thread: string, ctx: BlockContext): boolean | Promise<boolean>;
-  /** The running user's own id at the provider, so their own actions are dropped (`own`). */
-  self?(ctx: BlockContext): string | undefined | Promise<string | undefined>;
+  /**
+   * The running user's own id at the provider, so their own actions are dropped (`own`).
+   * `hearer` is the session the subscription is written for: a provider whose senders are sessions (internal events) answers it.
+   */
+  self?(ctx: BlockContext, hearer: { readonly sessionId: string }): string | undefined | Promise<string | undefined>;
+  // FIX-2630.
+  /**
+   * Why a subscription to `thread` hearing `kinds` can't be taken, naming what can (an undeclared topic or kind),
+   * or `undefined` when it can. Asked at subscribe, before `canRead`. Absent, nothing is refused here.
+   */
+  refuses?(thread: string, kinds: readonly string[] | undefined): string | undefined;
   /** The app's own screens on this provider, declared once: its custom functions, and the model `interest` asks. */
   readonly screens?: SubscriptionScreens;
   // FIX-2536.
@@ -343,6 +352,8 @@ async function writeSubscription(
   if (!thread.startsWith(`${provider.provider}:`)) {
     return { refused: `wrong_provider: a ${provider.provider} thread key starts with "${provider.provider}:".` };
   }
+  const undeclared = provider.refuses?.(thread, input.kinds);
+  if (undeclared !== undefined) return { refused: undeclared };
   const unrunnable = unrunnableScreen(provider, input.screens);
   if (unrunnable !== undefined) return { refused: unrunnable };
   if (input.everyMinutes !== undefined && !(ROUTINE_CADENCES as readonly number[]).includes(input.everyMinutes)) {
@@ -366,7 +377,7 @@ async function writeSubscription(
   }
   const tenantId = target === undefined ? tenantOf(ctx) : target.tenantId;
   const id = write.id ?? (await subscriptionIdOf(hears.sessionId, provider.provider, thread, tenantId));
-  const self = await provider.self?.(ctx);
+  const self = await provider.self?.(ctx, { sessionId: hears.sessionId });
   const at = Date.now();
   const row: SubscriptionResourceState = {
     id,

@@ -662,7 +662,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         entry: spec.action,
         provider: service.provider,
         input: spec.payload,
-        sender: { userId: identity.userId, orgId: identity.orgId, sessionId: identity.sessionId }
+        sender: { userId: identity.userId, orgId: identity.orgId, sessionId: identity.sessionId, flowKind: flow.kind }
       });
       if (!routed.ok) return refuse("dispatch-rejected", routed.detail);
       return { ok: true, sessionId: routed.sessionId, requestId: routed.requestId, adopted: false };

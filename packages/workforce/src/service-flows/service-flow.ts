@@ -159,6 +159,14 @@ export interface SubscriptionServiceOptions {
    * left `routines.declared` ends, as `config_removed`.
    */
   readonly poll?: boolean;
+  // FIX-2630 D1.
+  /**
+   * Events are published from inside the app (`publishEvent`) and enter
+   * through the dispatch seam: the routing entry is a service route, which
+   * the host runs as `service:<provider>` in the publisher's org, firing only
+   * the publisher's own user's runs. Set by `internalServiceFlow`.
+   */
+  readonly published?: true;
 }
 
 /** How a forwarded event reaches a coordinator: it asks the app's agent, or nobody asked. Written by the delivery, never by a model. */
@@ -941,7 +949,11 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     resources: pollResources,
     internal: {
       actions: {
-        [SUBSCRIPTION_ROUTE_ENTRY]: { inputSchema: subscriptionEventSchema, block: route },
+        [SUBSCRIPTION_ROUTE_ENTRY]: {
+          inputSchema: subscriptionEventSchema,
+          block: route,
+          ...(options.published === true ? { service: { provider: provider.provider } } : {})
+        },
         [SUBSCRIPTION_DELIVER_ENTRY]: { inputSchema: deliverInputSchema, block: deliver }
       }
     }

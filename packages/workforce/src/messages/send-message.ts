@@ -182,7 +182,7 @@ function filingSessionFor(state: Record<string, unknown>, worker: string): Messa
 }
 
 /** A send's place: its id, its chain and its hop, or why the budget refused it. */
-type Place = { readonly ok: true; readonly id: string; readonly chain: string; readonly hop: number } | { readonly ok: false; readonly error: string };
+export type Place = { readonly ok: true; readonly id: string; readonly chain: string; readonly hop: number } | { readonly ok: false; readonly error: string };
 
 // FIX-2269.
 /**
@@ -192,9 +192,10 @@ type Place = { readonly ok: true; readonly id: string; readonly chain: string; r
  * here, for all its sends. The per-request count is taken first and given back
  * if the chain has no place left, so a refused send spends nothing. A `given`
  * id already paid for (a send repeated after a crash) pays nothing
- * again: neither count takes it twice.
+ * again: neither count takes it twice. A publish pays here too, once however
+ * many hear it (FIX-2630 D2).
  */
-async function payPlace(ctx: BlockContext, installation: WorkerInstallation, given: string | undefined): Promise<Place> {
+export async function payPlace(ctx: BlockContext, installation: WorkerInstallation, given: string | undefined): Promise<Place> {
   const limits = messageLimitsOf(installation);
   const chains = messageChainsOf(ctx);
   const floor = turnHopOf(ctx) + 1;

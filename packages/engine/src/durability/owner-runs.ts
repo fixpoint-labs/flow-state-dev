@@ -214,7 +214,7 @@ export interface ServiceRouteDispatch {
   /** The event. Its `sender` is replaced with {@link sender}'s session. */
   readonly input: unknown;
   /** The dispatching request's server-derived identity. */
-  readonly sender: { readonly userId: string; readonly orgId: string; readonly sessionId: string };
+  readonly sender: { readonly userId: string; readonly orgId: string; readonly sessionId: string; readonly flowKind: string };
 }
 
 /** What a service route came to: routed (its runs fired or refused), or not, and why. */
@@ -225,7 +225,8 @@ export type ServiceRouteOperation = (route: ServiceRouteDispatch) => Promise<Ser
 
 /**
  * The seam's service route, over `host`: the event, its `sender` stamped as
- * the dispatching session (role `member`, its own name kept), routed through
+ * the dispatching session (role `member`, its own name kept, else the
+ * sender's flow kind), routed through
  * {@link routeServiceEvent} as `service:<provider>` in the sender's org, with
  * only the sender's own user's runs fired (own-user first, FIX-2630 Q1).
  * Resolves once every run is fired or refused. A routing that failed or never
@@ -235,7 +236,7 @@ export function createServiceRouteOperation(host: Pick<InboundTransportHost, "di
   return async (route) => {
     const event = typeof route.input === "object" && route.input !== null ? (route.input as Record<string, unknown>) : {};
     const named = (event.sender as { name?: unknown } | undefined)?.name;
-    const input = { ...event, sender: { id: route.sender.sessionId, name: typeof named === "string" ? named : "", role: "member" } };
+    const input = { ...event, sender: { id: route.sender.sessionId, name: typeof named === "string" && named.length > 0 ? named : route.sender.flowKind, role: "member" } };
     const routed = await routeServiceEvent(
       host,
       { flowKind: route.flowKind, entry: route.entry, input, principal: { userId: `service:${route.provider}`, orgId: route.sender.orgId } },
