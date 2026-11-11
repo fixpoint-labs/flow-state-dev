@@ -75,13 +75,14 @@ It comes down to the sibling's approval: the screens are the same, so reopening 
   filer (`filingSessionId`, set by the board's hand-over). Never from a task's input, the
   request body or a header (BP-031). The **convergence point** is the app's run source: every
   coding run and every source read asks it, and it refuses a repository the host no longer
-  lists, with the host's reason. The field's carrier (a session field through workforce's flow
-  settings, or the app kit's own resource) is the implementer's, after FIX-2627's slots.
+  lists, with the host's reason. The field's carrier is FIX-2627's `sessionFields` option on
+  workforce.
 - **Old sessions keep their repository.** A session opened on a project before this lands is
   read once: its project's repository, if the host lists it (BP-030). Otherwise it shows no
   repository and asks. The read goes when the adapter's last caller does.
 - **The pins fallback goes.** FIX-2624's one-time read of the old user-state lists is removed,
-  as FIX-2624 says. A person who never opened the lab between the two loses old pins: a local lab.
+  as FIX-2624 says, with `user-marks.mts`, which FIX-2627 moved out of `workforce/flows/`. A
+  person who never opened the lab between the two loses old pins: a local lab.
 - **No "no repository" refusal at filing.** Today the board refuses a coding task in a session
   with no project before it files it. Every session now opens on a repository (FIX-2592 ER-6),
   so the run source's refusal at run start is the one check, and the row shows it.
@@ -103,7 +104,7 @@ It comes down to the sibling's approval: the screens are the same, so reopening 
 | Rename only: workforce projects behind the word *repository* | D1 |
 | A repositories kit now | O1 lists it as a later candidate; one app needs it today |
 | The app's projects flow in `flows:`, as the epic's host example has it | The app kit already holds the app's flows; the flow becomes repositories |
-| Keep `projectSourceCapability` under its name | It names a project to the model and installs project resources; FIX-2627 owns its placement. If FIX-2627 keeps it, it is this spec's one named exception |
+| Keep `projectSourceCapability` under its name | It names a project to the model and installs project resources. The lab takes FIX-2627's `sourceReadCapability`, its tool body with no project |
 | Keep the fake lab beside the in-process host | Two ways to test one screen; the contract test already runs the real host |
 
 ## Open

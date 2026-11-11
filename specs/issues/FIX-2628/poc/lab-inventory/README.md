@@ -60,6 +60,9 @@ flows and a 158-line host. Today: 1,642, 503 in five, 160.
 
 ## What it does not cover
 
-Whether a file under `src/` assembles server data. No path rule can see that; it stays a review
-gate at FIX-2628's PR and the closure (FIX-2152 ER-1 says the same). The implementation PR
-promotes `POC_EXPECT=gone` into the lab's inventory script, which FIX-2629's leg a reads.
+Whether a file under `src/` assembles server data. No path rule can see that, so this POC
+doesn't try. The implementation PR promotes `POC_EXPECT=gone` into the lab's inventory test
+(`test/inventory.test.ts`) and adds [FIX-2629 D1](../../../FIX-2629/DECISIONS.md#d1)'s two
+content rules to it: no UI file reaches the server itself, and no hand-written type for a row a
+view returns. Those rules are the static floor; FIX-2629's browser legs, which read that test,
+catch a screen still assembling rows.
