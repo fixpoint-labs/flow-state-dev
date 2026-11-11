@@ -43,12 +43,14 @@ The classes, checked against the PRs:
   #4968 (FIX-2630's spec) was open 43 hours with one Gitar pass. Codex's review started at 22:38:36Z
   (its summary comment) and the PR merged at 22:38:48Z. Codex posted at 22:41: publishing with only `hop` loses the shared
   message budget, so a fan-out spends past it (`design-off`). That took an amendment PR the next
-  day (#5062, chain on the event). Two implementation PRs did the same with follow-up passes:
+  day (#5062, chain on the event). One implementation PR did the same with a follow-up pass:
   #4971 merged at 23:14:34Z and Codex posted two P2s at 23:16, neither replied to, and both still
   hold on `main` (the worker's `saveRoutine` description omits the app's custom screens; a delivery
-  doesn't check that the interest it was judged on is still the subscription's). #4970 merged seven
-  minutes after a P2 with no reply. The code on `main` now includes the field it named. **Proposed below as a check,
-  not text: this class has been an owner ask for five cycles.**
+  doesn't check that the interest it was judged on is still the subscription's). **Proposed below
+  as a check, not text: this class has been an owner ask for five cycles.** A neighbouring case the
+  check does not reach: #4970 merged at 22:57:35Z, after its requested Codex pass had completed
+  (22:50:48Z), past that pass's one P2 with no reply. The code on `main` now includes the field it
+  named.
 - **(e) Parallel specs against a moving epic decision** (`stale-restatement`, cycle 29 (d)). The
   four child specs drafted on 11-05 (FIX-2535 to FIX-2538) waited on the owner until 11-09. The
   routines amendment (#4945, 11-08) landed while they waited, and each took an alignment commit
@@ -107,7 +109,7 @@ work shipped inside #5108.
 | [#4973](https://github.com/fixpoint-labs/flow-state-dev/pull/4973) 2536 | **8** (6 Codex, 2 Gitar) | 21 | (a). Three open at merge, filed at wrap (FIX-2647, FIX-2648, FIX-2649). A paging helper named at pass 3, the close invariant at pass 5 | yes |
 | [#4971](https://github.com/fixpoint-labs/flow-state-dev/pull/4971) 2537 | 6 (3 Codex, 2 Gitar, 1 code scanning) | 7 | Nested fence tags in a quoted interest; a refusal read from a reason's words; a rejected async screen. **2 P2s after merge, open on `main`** (d) | no |
 | [#4972](https://github.com/fixpoint-labs/flow-state-dev/pull/4972) 2538 | 4 (2 Codex, 1 Gitar, 1 code scanning) | 6 | An `observe` confirm must not expire into a yes; the inferred marker safe from caller metadata; retry after a yes. 2 unused variables | no |
-| [#4970](https://github.com/fixpoint-labs/flow-state-dev/pull/4970) 2614 | **9** (5 Codex, 3 Gitar, 1 Cursor security) | 19 | (b): about 12 on transitions, primitive at pass 3. Security High: two users' copies of a declared routine shared one index key (fixed, test first). User docs edited (f). One P2 at merge minus 7 min | no |
+| [#4970](https://github.com/fixpoint-labs/flow-state-dev/pull/4970) 2614 | **9** (5 Codex, 3 Gitar, 1 Cursor security) | 19 | (b): about 12 on transitions, primitive at pass 3. Security High: two users' copies of a declared routine shared one index key (fixed, test first). User docs edited (f). Merged 7 min after a completed Codex pass, past its one P2 with no reply | no |
 | [#5087](https://github.com/fixpoint-labs/flow-state-dev/pull/5087) 2630 | 5 (2 Codex, 1 Cursor, 2 Gitar) | 11 | 6 on one structure: a service routing's lifecycle at dispose (three fixes in 8 min). Cursor ×4 recorded. Merged red against FIX-2626 (c) | no |
 | [#5108](https://github.com/fixpoint-labs/flow-state-dev/pull/5108) 2539 | 5 (1 Codex, 2 Cursor, 2 Gitar) | 13 | Gitar: the operator's token gated on a userId the caller supplies (BP-031, `philosophy-drift`), fixed. Cursor security ×2 High filed by the owner's call (FIX-2686, FIX-2687). The Engineering Manager lacked the routine tools | no |
 | [#5070](https://github.com/fixpoint-labs/flow-state-dev/pull/5070) 2647/2648/2651 | 4 (Gitar ×2, Codex, Cursor) | 6 | A rate-limited 403 read as nothing new; issues kept when pulls are forbidden. 3 declined | no |
@@ -167,7 +169,7 @@ service sender on sendMessage's exempt path)`
 | 24, 26 | a direction artifact each | — | recorded |
 | 27 | #3771 | merged 4 min before its requested third pass; three P1s | fixed in #3795 within the hour |
 | 30 | #4968 | merged 12 s after its first Codex request | `design-off`, an amendment PR |
-| 30 | #4971, #4970 | merged 2 min and 7 min around follow-up passes | 2 findings open on `main`, unfiled |
+| 30 | #4971 | merged 2 min before its follow-up pass posted | 2 findings open on `main`, unfiled |
 
 Five cycles of the same answer (*"an owner ask, not text"*) is the signal that the answer sits at
 the wrong rung. The merge is the owner's act, so no agent rule reaches it; a required status does.
@@ -181,13 +183,16 @@ results:
   status has to go pending within that window. #4968 is the case to measure it on.
 - It does not ask for a pass per push. A PR whose last requested pass completed stays green, which
   keeps `orchestration.md`'s *"Ask Codex again only when you have a concern"*.
-- It does not catch #4971 or #4970 if the follow-up request had not yet produced a state change
-  when the merge happened. Those were seconds to minutes. A pending state set on the `@codex review`
+- It does not catch #4971 if the follow-up request had not yet produced a state change when the
+  merge happened. That was about two minutes. A pending state set on the `@codex review`
   comment itself, before Codex answers, closes that. The workflow should set pending on the request
   comment, not wait for Codex's reply.
 
 What it costs: one workflow file and one protection rule. What being wrong costs: a merge blocked
 until Codex answers, which on a busy day is minutes.
+
+It does not reach #4970, which merged after its pass completed, past a finding nobody answered.
+That is a different gap (claim 4 below), and no review-state status sees it.
 
 ## Enforcement, rung by rung
 
@@ -283,9 +288,10 @@ and stop what runs as you (FIX-2614); send a message into a session (FIX-2534, t
 
 ## Claims to test next cycle
 
-1. **Merged before the requested Codex pass.** Baseline: 1 direction artifact and 2 implementation
-   PRs here. If the status lands, it should read 0.
+1. **Merged before the requested Codex pass.** Baseline: 1 direction artifact (#4968) and 1
+   implementation PR (#4971) here. If the status lands, it should read 0.
 2. **Two copies of one decision.** After FIX-2690, a change to a routing rule touches one function.
    Count review findings on poll/push divergence in the next PR that changes routing. Baseline: 21
    on #4973.
 3. **Open findings at merge, unfiled.** Baseline: 2 (#4971).
+4. **Merged past a completed pass's unreplied finding.** Baseline: 1 (#4970, one P2).
