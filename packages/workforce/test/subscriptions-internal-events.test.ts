@@ -119,3 +119,57 @@ describe("who hears a publish", () => {
     expect(await host.serviceRows("bob")).toEqual([]);
   });
 });
+
+describe("the loop guard is the message budget (D2)", () => {
+  it("stops a ring of two routines announcing to each other at the budget, refusing with the budget's reason", async () => {
+    const sessions: { a?: string; b?: string } = {};
+    host = bootSubscriptionsHost({
+      internal: {
+        topics: TOPICS,
+        relay: (sessionId) =>
+          sessionId === sessions.a
+            ? { topic: "report.ready", kind: "weekly", title: "passed on", text: "a passes it on", data: { url: "https://example.test/r" } }
+            : sessionId === sessions.b
+              ? { ...failed, title: "passed back", text: "b passes it back" }
+              : undefined
+      }
+    });
+    const publisher = await host.follower("alice", "eng.watcher");
+    sessions.a = await host.follower("alice");
+    sessions.b = await host.follower("alice");
+    await host.subscribe("alice", sessions.a, { provider: "internal", thread: "internal:deploy.finished" });
+    await host.subscribe("alice", sessions.b, { provider: "internal", thread: "internal:report.ready" });
+    expect(await host.publish("alice", publisher, failed)).toHaveProperty("published");
+    const outcomes = host.relayed.map((tried) => tried.outcome as { published?: string; refused?: string });
+    // The publisher's one place and five passes fill the budget of 6; the next pass is refused, and nothing runs after it.
+    expect(outcomes.filter((o) => o.published !== undefined)).toHaveLength(5);
+    expect(outcomes.map((o) => o.refused).filter((r) => r !== undefined)).toEqual([
+      "budget: this would be message 7 since the user's last line, and the budget is 6. Nothing was published. Stop passing messages on, and say that you stopped; the next line from the user lets the workers go on."
+    ]);
+    // Each pass landed once, one hop on, all in the publisher's one chain.
+    const rows = await host.serviceRows("alice");
+    expect(rows.map((row) => row.hop).sort()).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(new Set(rows.map((row) => row.chain)).size).toBe(1);
+  });
+
+  it("makes a fan-out's branches share the publisher's budget: paid places never pass it, and every publish past it is refused", async () => {
+    const fans = new Set<string>();
+    host = bootSubscriptionsHost({
+      internal: { topics: TOPICS, relay: (sessionId) => (fans.has(sessionId) ? { ...failed, title: `passed on by ${sessionId}`, text: "passing it on" } : undefined) }
+    });
+    const publisher = await host.follower("alice", "eng.watcher");
+    for (let i = 0; i < 3; i += 1) {
+      const fan = await host.follower("alice");
+      fans.add(fan);
+      await host.subscribe("alice", fan, { provider: "internal", thread: "internal:deploy.finished" });
+    }
+    expect(await host.publish("alice", publisher, failed)).toHaveProperty("published");
+    const outcomes = host.relayed.map((tried) => tried.outcome as { published?: string; refused?: string });
+    expect(outcomes.filter((o) => o.published !== undefined)).toHaveLength(5);
+    const refused = outcomes.filter((o) => o.refused !== undefined);
+    expect(refused.length).toBeGreaterThan(0);
+    for (const o of refused) expect(o.refused).toMatch(/^budget: .* the budget is 6\./);
+    const chains = new Set((await host.serviceRows("alice")).map((row) => row.chain));
+    expect(chains.size).toBe(1);
+  });
+});

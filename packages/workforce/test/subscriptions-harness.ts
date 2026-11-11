@@ -104,13 +104,33 @@ function memoryScheduleIndex(): ScheduleIndex & { entries: Map<string, ScheduleI
 
 const doorInput = z.object({ message: z.string() });
 
-function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, isolated: boolean, internal: InternalServiceFlow | undefined) {
+/** What a woken follower publishes on, by its session, and what each try came to: a relay of routines, with no model. */
+type Relay = {
+  readonly next: (sessionId: string, text: string) => Record<string, unknown> | undefined;
+  readonly tried: Array<{ sessionId: string; outcome: unknown }>;
+};
+
+function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, isolated: boolean, internal: InternalServiceFlow | undefined, relay: Relay | undefined) {
   const tools = workerRoutineVerbs(installation);
   // A block in any flow publishing: the test's way onto `publishEvent` with no model. Its input is passed on as given.
   const publish =
     internal === undefined
       ? undefined
       : handler({ name: "follower-publish", inputSchema: z.unknown(), resources: internal.resources, execute: async (input, ctx) => internal.publishEvent(ctx, input) });
+  const relayTurn =
+    internal === undefined || relay === undefined
+      ? undefined
+      : handler({
+          name: "follower-relay",
+          inputSchema: z.object({ text: z.string() }).passthrough(),
+          resources: internal.resources,
+          execute: async (received, ctx) => {
+            const next = relay.next(ctx.session.identity.id, received.text);
+            if (next === undefined) return "";
+            relay.tried.push({ sessionId: ctx.session.identity.id, outcome: await internal.publishEvent(ctx, next) });
+            return "";
+          }
+        });
   // A worker's turn on a model: one with the routines capability, one without.
   const chat = generator({ name: "follower-chat", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, uses: [createRoutinesCapability(installation)], user: (input) => input.message, itemVisibility: { client: true, history: true } });
   const chatPlain = generator({ name: "follower-chat-plain", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, user: (input) => input.message, itemVisibility: { client: true, history: true } });
@@ -145,8 +165,8 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
       ...(publish === undefined ? {} : { publish: { inputSchema: z.unknown(), block: publish } }),
       ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
     },
-    // No turn: a message lands as its items and nothing runs, so no model is asked.
-    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "follower" }) } },
+    // No turn: a message lands as its items and nothing runs, so no model is asked. With a relay, the turn passes it on.
+    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "follower", ...(relayTurn === undefined ? {} : { turn: relayTurn }) }) } },
     task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: door }) } }
   });
 }
@@ -164,8 +184,12 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   isolatedFollower?: boolean;
   /** The service flow itself, in place of the one built from `service` (GitHub's own flow); its kind must be `github-service`. */
   serviceFlow?: (installation: WorkerInstallation) => FlowInstance;
-  /** Internal events (FIX-2630): the declared topics; the internal service flow is `internal-service`, its provider beside GitHub's, and a follower's `publish` action publishes. */
-  internal?: { readonly topics: InternalTopics };
+  /**
+   * Internal events (FIX-2630): the declared topics; the internal service flow is `internal-service`, its provider beside GitHub's,
+   * and a follower's `publish` action publishes. With `relay`, a follower a message wakes publishes what it answers for its session,
+   * and the host's `relayed` lists each try.
+   */
+  internal?: { readonly topics: InternalTopics; readonly relay?: Relay["next"] };
 };
 
 /** A board host with followers and a GitHub service flow. */
@@ -176,6 +200,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const provider: SubscriptionProvider = options.screens === undefined ? github : { ...github, screens: options.screens };
   // The providers `hireWorkforce` is given; the internal one joins once the installation exists, before the hire reads it.
   const providers: SubscriptionProvider[] = [provider];
+  const relay: Relay | undefined = options.internal?.relay === undefined ? undefined : { next: options.internal.relay, tried: [] };
   let internal: InternalServiceFlow | undefined;
   const internalOf = (installation: WorkerInstallation) => {
     if (options.internal === undefined) return undefined;
@@ -197,7 +222,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     standard,
     // A coordinator's conversation keeps event routines too (its routine actions).
     coordinatorRoutines: options.coordinatorRoutines ?? true,
-    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, options.isolatedFollower === true, internalOf(installation)), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
+    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, options.isolatedFollower === true, internalOf(installation), relay), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
     plainFlowsOf: (installation): Record<string, FlowInstance> => ({
       ...(internalOf(installation) === undefined ? {} : { "internal-service": internalOf(installation)!.flow }),
       "github-service":
@@ -429,6 +454,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     route,
     routeBeside,
     publish,
+    relayed: relay?.tried ?? [],
     holdFirstDispatch,
     failFirstTake,
     heard,
