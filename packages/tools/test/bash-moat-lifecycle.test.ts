@@ -14,7 +14,7 @@
  * exactly as killing the real CLI leaves it running in the container.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -42,7 +42,7 @@ case "$1" in
     echo ']' ;;
   run) touch "$FAKE_MOAT_DIR/run-$3"; exec sleep 30 ;;
   exec) shift 3; "$@"; rc=$?; exit $rc ;;
-  stop) rm -f "$FAKE_MOAT_DIR/run-$2" ;;
+  stop) [ -e "$FAKE_MOAT_DIR/slow-stop" ] && sleep 2; rm -f "$FAKE_MOAT_DIR/run-$2" ;;
   destroy) ;;
 esac
 `;
@@ -240,6 +240,38 @@ describe("MOAT: idle containers", () => {
 
     expect((await calls()).filter((c) => c.startsWith("stop"))).toEqual([]);
   });
+  it("does not stop a container a command returned to while the idle stop was running", async () => {
+    // The stop takes a while; a command arriving mid-stop must wait for it
+    // and start a fresh container, not reconnect to the one being stopped.
+    await writeFile(join(dir, "slow-stop"), "", "utf-8");
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const provider: SandboxProvider = { type: "moat", bin, workspace };
+    const { bashCommand } = createBashBlocks({ provider, destination: "/workspace" });
+    const ctx = ctxFor("moat-return");
+
+    await runForTest(bashCommand, { command: "true" }, ctx);
+    await releaseBashSandbox(provider, ctx);
+    await vi.advanceTimersByTimeAsync(SANDBOX_IDLE_RELEASE_MS);
+    vi.useRealTimers();
+    const started = Date.now() + 3_000;
+    while (Date.now() < started && !(await calls()).some((c) => c.startsWith("stop "))) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect((await calls()).some((c) => c.startsWith("stop "))).toBe(true);
+
+    // Back mid-stop.
+    await runForTest(bashCommand, { command: "true" }, ctx);
+    // Let any stop still in flight finish.
+    await new Promise((r) => setTimeout(r, 2_500));
+
+    const log = await calls();
+    expect(log.findLastIndex((c) => c.startsWith("run "))).toBeGreaterThan(
+      log.findLastIndex((c) => c.startsWith("destroy ")),
+    );
+    expect(readdirSync(dir).filter((f) => f.startsWith("run-fsdev-moat-return-"))).toHaveLength(1);
+    await releaseBashSandbox({ ...provider, persist: false }, ctx);
+  });
+
   it("leaves a container shared under an explicit runName to its operator", async () => {
     // Every session resolves an explicit runName to the same container, so
     // one session going idle must not stop it under another.

@@ -233,6 +233,13 @@ const idleTimers = new Map<
  */
 const runningCommands = new Map<string, number>();
 
+/**
+ * Idle teardowns in progress, per registry key. Once a teardown is past its
+ * check it cannot be called off, so a command returning to the key waits for
+ * it and then starts fresh, rather than reconnecting to a runtime being stopped.
+ */
+const idleTeardowns = new Map<string, Promise<void>>();
+
 /** (Re)start the idle clock for `key`. Unref'd, so it never holds the process open. */
 function armIdleRelease(key: string, finalStop: (() => Promise<void>) | null): void {
   const previous = idleTimers.get(key);
@@ -241,7 +248,7 @@ function armIdleRelease(key: string, finalStop: (() => Promise<void>) | null): v
     idleTimers.delete(key);
     // In use: the running command re-arms the clock when it finishes.
     if ((runningCommands.get(key) ?? 0) > 0) return;
-    void (async () => {
+    const teardown = (async () => {
       await releaseEntry(key);
       // A command that arrived while the entry was being released re-armed
       // the clock and is about to use the runtime: leave it running.
@@ -253,6 +260,10 @@ function armIdleRelease(key: string, finalStop: (() => Promise<void>) | null): v
         }
       }
     })();
+    idleTeardowns.set(key, teardown);
+    void teardown.finally(() => {
+      if (idleTeardowns.get(key) === teardown) idleTeardowns.delete(key);
+    });
   }, SANDBOX_IDLE_RELEASE_MS);
   timer.unref?.();
   idleTimers.set(key, { timer, finalStop });
@@ -765,6 +776,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     const identity = getIdentity(ctx);
     const scope = effectiveScope(provider);
     const { key: registryKey } = resolveScopeKey(scope, identity);
+    await idleTeardowns.get(registryKey);
 
     const existing = registry.get(registryKey);
     let entry: SandboxEntry;
