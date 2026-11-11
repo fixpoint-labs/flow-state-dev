@@ -186,6 +186,8 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   const log: LabTalk[] = [];
   let seq = 0;
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
+  /** Files the composer uploaded, by id: what `readFile` serves. */
+  const uploads = new Map<string, Blob>();
 
   const workers = new Map<string, FixtureWorker>(
     ROSTER.map((row) => [row.id, { row, sessionId: `conversation:${row.id}`, entries: [], turns: [], lastActiveAt: now(), deferred: [] }]),
@@ -633,13 +635,26 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       return worker(workerId).sessionId;
     },
 
-    async send(sessionId, text) {
+    async send(sessionId, text, attachments = []) {
       const w = bySession(sessionId);
       if (!w) throw new Error(`no conversation ${sessionId}`);
       const entryId = nextId("u");
-      push(w, { kind: "user", id: entryId, text });
+      push(w, { kind: "user", id: entryId, text, ...(attachments.length > 0 ? { files: [...attachments] } : {}) });
       // Its own turn, at once, beside any running: the door is `hold`.
       startTurn(w, { kind: "user", entryId, text });
+    },
+
+    // A stored file is its reference; the bytes are the picked file's, kept here for its thumbnail.
+    async upload({ data, mediaType, filename }) {
+      const id = `b_${String(uploads.size + 1).padStart(8, "0")}`;
+      uploads.set(id, data);
+      return { type: "file" as const, data: `fsd-blob:${id}`, mediaType: mediaType ?? data.type, ...(filename === undefined ? {} : { filename }) };
+    },
+
+    async readFile(file) {
+      const found = uploads.get(file.data.replace(/^fsd-blob:/, ""));
+      if (found === undefined) throw new Error(`${file.filename ?? "file"} was never uploaded`);
+      return found;
     },
 
     async interrupt(sessionId) {

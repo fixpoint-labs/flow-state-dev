@@ -1,3 +1,4 @@
+import type { FileContent } from "@flow-state-dev/core/items";
 import type { SentLineMark } from "@flow-state-dev/react";
 import { useState } from "react";
 import { defaultRehypePlugins } from "streamdown";
@@ -6,7 +7,7 @@ import { TASK_STATUS } from "../lib/task-status";
 import type { ToolRun, ToolStep } from "../lib/tool-steps";
 import { cn } from "../lib/utils";
 import { Clamp } from "./Clamp";
-import { MessageResponse } from "./flow-state/message";
+import { MessageFiles, MessageResponse } from "./flow-state/message";
 import { RequestRecovery } from "./flow-state/request-recovery";
 import { composeToolCallsLabel, toolRunOpen, type ToolStepStatus } from "./flow-state/tool-grouping";
 
@@ -45,7 +46,9 @@ function AgentMarkdown({ text, className }: { text: string; className?: string }
  * Retry, so pass it only for the newest turn while nothing runs. A reply its
  * turn never finished is marked incomplete. `mark` is the feed's
  * mark for your line (`useJumpToLatest`'s `mine`), so a line you send rises to
- * near the top of the feed.
+ * near the top of the feed. The files your line carries draw above it, a
+ * thumbnail per image and a chip for anything else (the registry's
+ * `MessageFiles`); `readFile` reads a thumbnail's bytes as the page's user.
  *
  * `tasks` is what the main thread hands a line that names a task (a result,
  * or the step that started it): the session's task rows, so its dot is the
@@ -64,6 +67,7 @@ export function Entry({
   onRetry,
   stillRunning,
   onViewTasks,
+  readFile,
 }: {
   entry: ThreadEntry;
   mark?: SentLineMark;
@@ -71,15 +75,21 @@ export function Entry({
   onRetry?: () => Promise<void>;
   stillRunning?: number;
   onViewTasks?: () => void;
+  /** Reads the bytes of a file your line carries, for its thumbnail. */
+  readFile?: (file: FileContent) => Promise<Blob>;
 }) {
   switch (entry.kind) {
     case "user":
       return (
         <div className="flex flex-col items-end gap-1.5" {...mark}>
-          <div className="max-w-[80%] rounded-xl border border-border/40 bg-accent/50 px-4 py-3 text-sm" data-entry="user">
-            {/* A task's first line is its brief, which can run to paragraphs: held to a few lines. */}
-            <Clamp lines={6}>{entry.text}</Clamp>
-          </div>
+          {entry.files !== undefined ? <MessageFiles files={entry.files} readFile={readFile} /> : null}
+          {/* A line of files alone has no words to box. */}
+          {entry.text !== "" || entry.files === undefined ? (
+            <div className="max-w-[80%] rounded-xl border border-border/40 bg-accent/50 px-4 py-3 text-sm" data-entry="user">
+              {/* A task's first line is its brief, which can run to paragraphs: held to a few lines. */}
+              <Clamp lines={6}>{entry.text}</Clamp>
+            </div>
+          ) : null}
           {entry.sentToThread ? <span className="text-xs text-muted-foreground">↳ Sent to a task</span> : null}
         </div>
       );

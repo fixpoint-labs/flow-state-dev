@@ -146,6 +146,8 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   let failNext: string | undefined;
   let refuseStop = false;
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
+  /** Files the composer uploaded, by id: what `readFile` serves. */
+  const uploads = new Map<string, Blob>();
 
   const notify = () => {
     for (const listener of [...listeners]) listener();
@@ -538,13 +540,26 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       return row;
     },
 
-    async send(sessionId, text) {
+    async send(sessionId, text, attachments = []) {
       const s = session(sessionId);
       if (s.entries.length === 0) s.row = { ...s.row, title: text.split("\n")[0].slice(0, 120) };
       // A line sent while a turn runs starts its own turn at once, as the server's `hold` starts it.
       const id = nextId("u");
-      push(s, { kind: "user", id, text });
+      push(s, { kind: "user", id, text, ...(attachments.length > 0 ? { files: [...attachments] } : {}) });
       turn(s, text, id);
+    },
+
+    // A stored file is its reference; the bytes are the picked file's, kept here for its thumbnail.
+    async upload({ data, mediaType, filename }) {
+      const id = `b_${String(uploads.size + 1).padStart(8, "0")}`;
+      uploads.set(id, data);
+      return { type: "file" as const, data: `fsd-blob:${id}`, mediaType: mediaType ?? data.type, ...(filename === undefined ? {} : { filename }) };
+    },
+
+    async readFile(file) {
+      const found = uploads.get(file.data.replace(/^fsd-blob:/, ""));
+      if (found === undefined) throw new Error(`${file.filename ?? "file"} was never uploaded`);
+      return found;
     },
 
     async interrupt(sessionId) {

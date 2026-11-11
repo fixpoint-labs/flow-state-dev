@@ -968,6 +968,9 @@ importers:
       motion:
         specifier: ^12.34.3
         version: 12.34.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      nanoid:
+        specifier: ^5.1.6
+        version: 5.1.6
       radix-ui:
         specifier: ^1.4.3
         version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -1182,6 +1185,9 @@ importers:
       motion:
         specifier: ^12.34.3
         version: 12.34.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      nanoid:
+        specifier: ^5.1.6
+        version: 5.1.6
       radix-ui:
         specifier: ^1.4.3
         version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)

@@ -12,7 +12,9 @@
  * | `listProjects`  | the project blocks' `listProjects`: only projects the user may work in    |
  * | `createProject` | the project blocks' `createProject`, a private project on a repository   |
  * | `openSession`   | a new session on the mode's main worker, then `setWorkProject`            |
- * | `send`          | the worker's door, `respond`, in that session                             |
+ * | `send`          | the worker's door, `respond`, in that session, with the line's files       |
+ * | `upload`        | the client's `upload`: a file the composer attached, stored, as its reference |
+ * | `readFile`      | the server's read route for a file a line carries, through the page's fetcher |
  * | `interrupt`     | aborting each turn running in the session when it is called                |
  * | `retry`         | the client's `request(id).retry()` on the session's flow: a failed turn again |
  * | `watchThread`   | the session's items, followed through the client's `sessionFeed`          |
@@ -42,7 +44,7 @@
  *
  * Every watch reads on a change, through `onNotice`.
  */
-import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, type Client, type SessionConnectionStatus, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
+import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, type Client, type ClientFetch, type SessionConnectionStatus, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createInboxClient,
@@ -75,7 +77,7 @@ import {
   WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
-import { isSuspensionWait } from "@flow-state-dev/core/items";
+import { isSuspensionWait, type FileContent } from "@flow-state-dev/core/items";
 import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
@@ -86,6 +88,8 @@ import { resultSummary } from "./lib/result-summary";
 import { firstLineOfText, NEW_SESSION_TITLE, sessionTitle } from "./lib/session-title";
 import { filedTaskOf, toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
 import { toolInFlight, type PlanRowNow, type ToolCallNow } from "./components/flow-state/working-status";
+import type { AttachmentUploader } from "./components/flow-state/attachments";
+import { parseBlobRef } from "@flow-state-dev/core/attachments";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -118,6 +122,8 @@ export type ThreadEntry = (
       kind: "user";
       id: string;
       text: string;
+      /** The files the line carries, as references, in the order attached. */
+      files?: FileContent[];
       /** Threads mode: the lead's turn filed threads for this line. */
       sentToThread?: boolean;
     }
@@ -272,7 +278,12 @@ export interface LabAdapter {
   /** Which coding harnesses can run on this machine; `refresh` checks them again (Re-check). */
   readHarnesses(refresh?: boolean): Promise<LabHarness[]>;
   openSession(mode: ModeId, projectId: string): Promise<LabSession>;
-  send(sessionId: string, text: string): Promise<void>;
+  /** Send a line to the session's main worker, with the files attached to it, as references (`upload`). */
+  send(sessionId: string, text: string, attachments?: readonly FileContent[]): Promise<void>;
+  /** Store a file the composer attached; resolves to its reference, which a line then carries. */
+  upload: AttachmentUploader["upload"];
+  /** The bytes of a file a line carries, for its thumbnail; rejects when the server won't serve it. */
+  readFile(file: FileContent): Promise<Blob>;
   interrupt(sessionId: string): Promise<void>;
   /** Run a failed turn of the session again, as a new request the engine links to `requestId`. */
   retry(sessionId: string, requestId: string): Promise<void>;
@@ -528,6 +539,12 @@ export function landedOf(value: unknown): LandedWork | undefined {
 
 const textOf = (item: Item) => (item.content ?? []).map((part) => part.text ?? "").join("");
 
+/** The files a message carries: its `file` parts, references to the stored bytes. */
+const filesOf = (item: Item): FileContent[] =>
+  (item.content ?? []).filter(
+    (part): part is FileContent => part.type === "file" && typeof (part as Partial<FileContent>).data === "string" && typeof (part as Partial<FileContent>).mediaType === "string",
+  );
+
 /** A `tool_output` item as the call it answers: its tool, its args, its status and its result. */
 function callOf(item: Item): ToolCallOf {
   let args: unknown;
@@ -599,7 +616,15 @@ export function entriesOf(items: readonly Item[], threads = false, retryableTurn
       continue;
     }
     if (item.role === "user") {
-      entries.push({ kind: "user", id: item.id, text, requestId, ...(threads && filingTurns.has(requestId) ? { sentToThread: true } : {}) });
+      const files = filesOf(item);
+      entries.push({
+        kind: "user",
+        id: item.id,
+        text,
+        requestId,
+        ...(files.length > 0 ? { files } : {}),
+        ...(threads && filingTurns.has(requestId) ? { sentToThread: true } : {}),
+      });
       continue;
     }
     // A failure that runs again is not an ending; the others are the thread's own task statuses.
@@ -657,7 +682,28 @@ function withStopped(entries: readonly ThreadEntry[], stopped: ReadonlySet<strin
 
 /** The adapter the app runs on: the served lab, as the user the page was served for. */
 export function createLabAdapter(): LabAdapter {
-  return createWiredLab(createClient({ userId: readUserId(), baseUrl: readBasePath(), fetcher: withBearerToken(readBearerToken()) }));
+  const fetcher = withBearerToken(readBearerToken());
+  return createWiredLab(createClient({ userId: readUserId(), baseUrl: readBasePath(), fetcher }), { basePath: readBasePath(), fetcher });
+}
+
+/** How the page reaches the server outside the client: where its API is mounted, and the fetch that authenticates. */
+export interface LabConnection {
+  basePath?: string;
+  fetcher?: ClientFetch;
+}
+
+/**
+ * A file's bytes through the server's read route. Read with the page's own fetch rather than a plain
+ * `<img src>`, which can't carry the bearer token `fsdev dev` may serve the page with.
+ */
+function fileReader({ basePath = "", fetcher = (input, init) => fetch(input, init) }: LabConnection) {
+  return async (file: FileContent): Promise<Blob> => {
+    const id = parseBlobRef(file.data);
+    if (id === undefined) throw new Error(`${file.filename ?? "The file"} is not a stored file.`);
+    const response = await fetcher(`${basePath.replace(/\/+$/, "")}/api/flows/blobs/${id}`);
+    if (!response.ok) throw new Error(`${file.filename ?? "The file"} couldn't be read (${response.status}).`);
+    return await response.blob();
+  };
 }
 
 /**
@@ -769,7 +815,7 @@ function inFlightOf(streamed: readonly Item[], fed: readonly Item[], requestId: 
 }
 
 /** The adapter over one client. */
-export function createWiredLab(fsd: Client): LabAdapter {
+export function createWiredLab(fsd: Client, connection: LabConnection = {}): LabAdapter {
   const workforce = createWorkforceClient(fsd);
   const inbox = createInboxClient(fsd);
   const modes = MODES;
@@ -1309,18 +1355,20 @@ export function createWiredLab(fsd: Client): LabAdapter {
       for (const tell of [...sessionOpened]) tell();
       return { id: created.id, title: NEW_SESSION_TITLE, worker, updatedAt: created.updatedAt, running: false, waiting: 0, projectId };
     },
-    send: async (sessionId, text) => {
+    send: async (sessionId, text, attachments = []) => {
       const flow = fsd.flow(await flowOfSession(sessionId));
       const feed = threadFeeds.get(sessionId);
       // With the thread open, stream the send so its answer shows as it is written.
       if (feed === undefined) {
-        await flow.send("respond", { message: text }, { sessionId });
+        await flow.send("respond", { message: text }, { sessionId, attachments: [...attachments] });
         return;
       }
-      const response = await flow.send("respond", { message: text }, { sessionId, stream: true });
+      const response = await flow.send("respond", { message: text }, { sessionId, stream: true, attachments: [...attachments] });
       if (!response.ok) throw new Error(`The send was refused (${response.status}).`);
       if (response.headers.get("content-type")?.includes("text/event-stream")) feed.followResponse(response);
     },
+    upload: (request) => fsd.upload(request),
+    readFile: fileReader(connection),
     interrupt: async (sessionId) => {
       // Stopping from the press; the turns it stops are those running now, not one started after.
       const stop: { ids: Set<string> | null } = { ids: null };

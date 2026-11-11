@@ -1,6 +1,9 @@
 import { interruptChordLabel, isSendKey } from "@flow-state-dev/react";
+import type { FileContent } from "@flow-state-dev/core/items";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useDraftSend } from "../lib/use-draft-send";
+import { cn } from "../lib/utils";
+import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader } from "./flow-state/attachments";
 
 /**
  * Which coder a code change goes to, as the composer's chip offers it. *Auto* leaves the main
@@ -30,9 +33,14 @@ export function withCoder(text: string, coder: CoderChoice): string {
  * The *Coder* chip picks who makes a code change you ask for: it holds for the
  * session while it is open, and rides on each line as {@link withCoder} writes it.
  *
+ * Files come in by paste, the + button or a drop on the box, and show above
+ * the text with a remove button each (the registry's `attachments`); a file
+ * refused says why under them. Each uploads as it is added, so Send carries
+ * references; Backspace in an empty box removes the last one.
+ *
  * A line stays in the box until its send lands ({@link useDraftSend}): a
- * failed one says why, with Retry. The draft is kept per session across a
- * reload.
+ * failed one says why, with Retry, and keeps its files. The text draft is kept
+ * per session across a reload; files are not, and a session switch drops them.
  */
 export function Composer({
   sessionId,
@@ -41,6 +49,7 @@ export function Composer({
   stopRefused,
   armed = false,
   seed,
+  uploader,
   onSend,
   onStop,
 }: {
@@ -55,13 +64,16 @@ export function Composer({
   stopRefused?: string;
   /** A first Esc is waiting for its second: say so under the box. */
   armed?: boolean;
+  /** Where an attached file is stored. With none, a file is refused with a line that says so. */
+  uploader?: AttachmentUploader;
   /** Resolves once the line has landed; rejects with why it didn't. */
-  onSend: (text: string) => Promise<void>;
+  onSend: (text: string, attachments: FileContent[]) => Promise<void>;
   onStop: () => void;
 }) {
   const [coder, setCoder] = useState<CoderChoice>("Auto");
-  const { text, setText, sending, failure, submit } = useDraftSend("claude-code-style:draft", sessionId);
-  const send = () => submit((line) => onSend(withCoder(line, coder)));
+  const attachments = useAttachments({ client: uploader, sessionId });
+  const { text, setText, sending, failure, submit, canSend } = useDraftSend("claude-code-style:draft", sessionId, attachments);
+  const send = () => submit((line, files) => onSend(withCoder(line, coder), files));
   const box = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (seed === undefined) return;
@@ -79,13 +91,24 @@ export function Composer({
     if (isSendKey(event, { enterSends: true })) {
       event.preventDefault();
       void send();
+      return;
+    }
+    const last = attachments.files.at(-1);
+    if (event.key === "Backspace" && event.currentTarget.value === "" && last !== undefined) {
+      event.preventDefault();
+      attachments.remove(last.id);
     }
   };
   return (
     <form onSubmit={onSubmit} className="px-6 pb-4">
       {/* The feed's own column, so the box and the lines above it share their edges. */}
       <div className="mx-auto max-w-2xl">
-      <div className="rounded-xl border border-border/60 bg-card transition-colors focus-within:border-ring">
+      <div
+        {...attachments.dropTarget}
+        data-dragging={attachments.dragging ? "true" : undefined}
+        className={cn("rounded-xl border border-border/60 bg-card transition-colors focus-within:border-ring", attachments.dragging && "border-ring bg-accent/40")}
+      >
+        <AttachmentStrip attachments={attachments} className="px-3 empty:hidden" />
         <textarea
           ref={box}
           aria-label="Message the main session"
@@ -95,10 +118,12 @@ export function Composer({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={attachments.onPaste}
           placeholder="Reply to the main session…"
           className="block w-full resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
         />
         <div className="flex items-center justify-end gap-2 px-2 pb-2">
+          <AttachButton attachments={attachments} className="size-7" />
           <label className="mr-auto flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
             Coder
             <select
@@ -131,7 +156,7 @@ export function Composer({
           ) : null}
           <button
             type="submit"
-            disabled={!text.trim() || sending}
+            disabled={!canSend || sending}
             className="rounded-md bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground disabled:opacity-40"
           >
             {sending ? "Sending…" : "Send"}

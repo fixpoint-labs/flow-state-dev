@@ -22,6 +22,8 @@ needs is a gap filed against the package.
   after it failed reads "failed · now running", since the line's words keep what it reported.
   A line from a task the board doesn't list has no *Open task*. Tool calls read as plain words ("Waiting for your
   answer", "Sent for review"). Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box in the lab.
+- **Files:** paste an image, pick files with **+**, or drop them on the box; each shows above the
+  text with a remove button, and your line keeps them, after a reload too. The main session sees them.
 - **The *Coder* chip** beside Send picks who makes a code change you ask for, in either mode:
   *Auto* (Claude Code, as above), *Plan first* (Claude Code in plan mode, which reads, changes
   nothing and answers with a plan), *Codex* or *Cursor*. Any choice but *Auto* adds one line to
