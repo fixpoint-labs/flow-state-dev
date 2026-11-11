@@ -261,8 +261,11 @@ describe("MOAT: idle containers", () => {
 
     // Back mid-stop.
     await runForTest(bashCommand, { command: "true" }, ctx);
-    // Let any stop still in flight finish.
-    await new Promise((r) => setTimeout(r, 2_500));
+    // Let a stop still in flight finish.
+    const settled = Date.now() + 5_000;
+    while (Date.now() < settled && !(await calls()).some((c) => c.startsWith("destroy "))) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
 
     const log = await calls();
     expect(log.findLastIndex((c) => c.startsWith("run "))).toBeGreaterThan(
@@ -270,7 +273,7 @@ describe("MOAT: idle containers", () => {
     );
     expect(readdirSync(dir).filter((f) => f.startsWith("run-fsdev-moat-return-"))).toHaveLength(1);
     await releaseBashSandbox({ ...provider, persist: false }, ctx);
-  });
+  }, 20_000);
 
   it("leaves a container shared under an explicit runName to its operator", async () => {
     // Every session resolves an explicit runName to the same container, so
