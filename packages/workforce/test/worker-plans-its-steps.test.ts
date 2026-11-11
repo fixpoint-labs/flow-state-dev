@@ -17,6 +17,7 @@ import { describe, expect, it } from "vitest";
 import { handler, defineFlow } from "@flow-state-dev/core";
 import { type BlockContext } from "@flow-state-dev/core/types";
 import { onRequestEnded } from "@flow-state-dev/core/internal";
+import { runView } from "@flow-state-dev/engine/internal";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { defineSessionBoard, workerConfigSchema, type WorkerManifest } from "../src";
@@ -144,6 +145,8 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
       respond: { inputSchema: doorInput.strict(), block: planned, userMessage: (input: { message: string }) => input.message },
       ...board.actions
     },
+    // As the agent worker flow declares it: the board's task list as a session view.
+    views: board.views,
     internal: { actions: board.entries(planned) },
     task: { actions: { work: workerTaskEntry({ name: "stepper-task", turn: planned }) } }
   } as never);
@@ -522,6 +525,48 @@ describe("a step is the worker's: the tools settle no step, and nothing else fil
       await h.settled();
       const listed = (await h.act("alice", lead, "listTasks_tasks", {}, "stepper")).output as { tasks: Array<{ id: string; assignee: string }> };
       expect(listed.tasks.map((task) => task.assignee).sort()).toEqual(["editor", "writer"]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("a step reaches whoever watches the board's view (FIX-2623 D1)", () => {
+  // The board's watchers no longer name the plan ledger's topic: they hear the
+  // topics the view's answer names, from what its run read. A step is an entry
+  // on the plan ledger (user scope), so its write has to publish on one of them,
+  // or a screen showing the board misses the worker's own steps.
+  it("publishes a step's filing on a topic the board view's answer names", async () => {
+    const h = host();
+    try {
+      h.controls.plans.editor = [{ id: "e-plan", goal: "Plan the edit" }];
+      const lead = await h.open("alice", "editor");
+      const runtime = await h.state.getRuntime();
+      const stepper = runtime.registry.get("stepper")!;
+      const answer = await runView({ flow: stepper, viewName: "listTasks_tasks", input: {}, userId: "alice", orgId: ORG, sessionId: lead, stores: runtime.stores });
+
+      const published: Array<{ scope: string; id: string; resource?: string }> = [];
+      const bus = runtime.stores.bus!;
+      const publish = bus.publish.bind(bus);
+      bus.publish = (notice) => {
+        published.push(notice.topic as { scope: string; id: string; resource?: string });
+        return publish(notice);
+      };
+      expect((await h.act("alice", lead, "respond", { message: "plan the edit" }, "stepper")).error).toBeUndefined();
+      await h.settled();
+      expect((await h.steps("alice")).map((step) => step.id)).toEqual(["e-plan"]);
+
+      // A wire topic is the caller's own: `{ scope: "user" }` hears alice's user
+      // notices, `{ scope: "session", id }` that session's.
+      const heard = published.filter((topic) =>
+        answer.topics.some((wire) =>
+          wire.scope === "user"
+            ? topic.scope === "user" && topic.id === "alice"
+            : wire.scope === "session" && topic.scope === "session" && topic.id === wire.id
+        )
+      );
+      // The step itself, not another write of the same request: a notice narrowed to the plan ledger.
+      expect(heard.filter((topic) => topic.resource === "plan" || topic.resource?.startsWith("plan/") === true)).not.toEqual([]);
     } finally {
       await h.dispose();
     }
