@@ -270,6 +270,9 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // FIX-2286.
     /** The task list as a read, `listTasks_tasks`, stored nowhere, for the flow's `reads`. */
     reads: board.reads,
+    // FIX-2623.
+    /** The task list as a session view, `listTasks_tasks`, for the flow's `views`. */
+    views: board.views,
     /** The ledger, the chain records and the message log, for the flow's `resources`. */
     resources: { ...board.resources, ...workerMessagesResources },
     /** The session state the delegates, the board and worker messages keep, for `installation.session(...)`. */

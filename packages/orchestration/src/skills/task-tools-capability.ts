@@ -51,8 +51,8 @@
  * name rather than letting the schema drop it.
  */
 
-import { defineCapability, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
-import type { ActionConfig, BlockContext, ReadConfig } from "@flow-state-dev/core/types";
+import { defineCapability, defineView, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
+import type { ActionConfig, BlockContext, ReadConfig, ViewDefinition } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { discardAttachmentsForUser, keepAttachmentsForUser } from "@flow-state-dev/core/internal";
@@ -2482,4 +2482,26 @@ export function taskToolReads(
   }).find((tool) => tool.name === `listTasks_${taskToolSuffix(collectionId)}`);
   if (listTasks === undefined) throw new Error(`taskToolReads("${collectionId}"): the task tools built no listTasks`);
   return { [listTasks.name]: { block: listTasks, description: listTasks.description } };
+}
+
+// FIX-2623.
+/**
+ * A durable ledger's task list as a flow `views` map: `listTasks_<suffix>`, a
+ * session view answering exactly what the `listTasks_<suffix>` action answers
+ * for the same board, from the same list code. Spread it into `defineFlow`'s
+ * `views`; a screen watches it with `useView` and names no topic.
+ *
+ * `resolve` is the view's own resolver, as for `taskToolReads`: it must reach
+ * the board the action's does and write nothing on the way.
+ */
+export function taskToolViews(
+  collectionId: string,
+  resolve: TaskCollectionResolver,
+): Record<string, ViewDefinition> {
+  return Object.fromEntries(
+    Object.entries(taskToolReads(collectionId, resolve)).map(([name, read]) => [
+      name,
+      defineView({ scope: "session", block: read.block, ...(read.description !== undefined ? { description: read.description } : {}) }),
+    ]),
+  );
 }
