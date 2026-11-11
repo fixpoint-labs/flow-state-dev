@@ -2,7 +2,7 @@
 // The run's clock, moved between beats: imported first, so every module reads it.
 import { moveTo } from "../../webhook-routing/polls-each-event-once-without-a-webhook/clock.mts";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { createClient, type Client, type ClientFetch } from "@flow-state-dev/client";
@@ -312,6 +312,7 @@ async function tickRefusal(host: Host, flow: string): Promise<string | undefined
 
 /** The clock routine's row in `host`'s clock index: when it is due next, or that there is none. */
 function clockIndexRow(host: Host, key: string): string {
+  if (!existsSync(host.clockIndex)) return "the host keeps no clock index";
   const db = new Database(host.clockIndex, { readonly: true, fileMustExist: true });
   try {
     const row = db.prepare("SELECT next_fire_at FROM schedule_index WHERE key = ?").get(key) as { next_fire_at: number } | undefined;

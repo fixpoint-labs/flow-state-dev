@@ -33,7 +33,6 @@ An environment whose `FSDEV_DEFAULT_MODEL`/`FSDEV_INTENT_*` name an id the resol
 
 **Open (blocks PASS):**
 - **Teammates and Claude Code Style configure no principal resolver.** `serve()`'s tick sends no user, and the default resolver refuses it with 401 "Action request requires non-empty userId". Their (c), (d) resumed and (e) fail, and each failure prints that 401. They go green once the tick is admitted (the fix to `serve()`'s tick, decided separately).
-- **No host's clock routine is ever claimed by `serve()`'s tick.** Workforce's roster flow names no `schedules.index`: `defineScheduledWork` mirrors rows into the index but leaves `index` off the roster's `schedules`, and `serve()` ticks only flows that name one. (e) fails on every host with "the clock index holds "pr-sweep" due …, never claimed; the tick is admitted" (DevTeam). Until that is fixed, `no-clock-index` cannot show its own red.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -44,3 +43,6 @@ An environment whose `FSDEV_DEFAULT_MODEL`/`FSDEV_INTENT_*` name an id the resol
 | 2026-11-11 | 4257c827 | scripted | FAIL | DevTeam alone: (a)–(d) and (f) pass. (e) fails: the clock index holds `pr-sweep` due 2026-11-16T09:00Z, never claimed, though the tick is admitted (the roster's missing `schedules.index`). |
 | 2026-11-11 | 4257c827 | scripted + `openai/gpt-6-luna` | FAIL | All three hosts, both halves. (a), (b), (f) and (g) pass everywhere; DevTeam passes (c) and (d) too. Teammates and Claude Code Style fail (c) and (d) resumed with 0 deliveries, each printing "serve()'s tick is refused by this host: … 401 Action request requires non-empty userId". Every host fails (e): the clock index holds `pr-sweep` due 2026-11-16T09:00Z, never claimed. |
 | 2026-11-11 | 4257c827 | scripted | FAIL (expected) | `GOAL_CONTROL=no-poll` on DevTeam: (c) the first review reached the session 0 times; (d) resumed 0; "CAN'T TELL: c · GitHub calls as the operators: read 0". |
+| 2026-11-11 | rebased on 650474a4 (with FIX-2674) | scripted | FAIL | All three hosts. DevTeam passes (a)–(f). Teammates and Claude Code Style pass (a), (b) and (f), and fail (c), (d) resumed and (e), each printing "serve()'s tick is refused by this host: … 401 Action request requires non-empty userId". The clock index failure is gone. |
+| 2026-11-11 | rebased on 650474a4 | scripted | FAIL (expected) | `GOAL_CONTROL=no-clock-index` on DevTeam: (e) 0 tasks before, 0 after; "the host keeps no clock index; the tick is admitted". |
+| 2026-11-11 | rebased on 650474a4 | scripted | FAIL (expected) | `GOAL_CONTROL=shared-token` on DevTeam: (f) u_devforce_member saved `github:initech/tps-reports#9`, and the refusal doesn't name GITHUB_TOKEN. |
