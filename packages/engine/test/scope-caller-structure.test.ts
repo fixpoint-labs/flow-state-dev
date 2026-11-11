@@ -4,7 +4,9 @@
  * flow whose rules apply. A second `resolvePrincipal` call in these files is
  * how a principal gets derived from a flow other than the one that runs (the
  * runBy-{flow} bypass) or hands a configured resolver the query's userId (the
- * identity read).
+ * identity read). A write record (its session, a request's status, stream and
+ * abort) answers to the flow whose door ran it: a named writer itself, never a
+ * declarer picked by registry order.
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -19,5 +21,19 @@ describe("the no-session routes' caller", () => {
     expect(calls(address)).toBe(1);
     const body = address.slice(address.indexOf("export async function resolveFlowCaller"), address.indexOf("export async function admitAddress"));
     expect(calls(body)).toBe(1);
+  });
+
+  it("governs a named writer's records by the writer, on every record route", () => {
+    const flow = read("resources/default-write-flow.ts");
+    const governor = flow.slice(flow.indexOf("function writeSessionGoverningFlow("), flow.indexOf("/** A refused write"));
+    const writerBranch = governor.indexOf("registry.get(target.writer)");
+    expect(writerBranch).toBeGreaterThan(-1);
+    // The writer is chosen before any declarer could be.
+    expect(writerBranch).toBeLessThan(governor.indexOf("resolveAddress("));
+    // Every record route (a session, a request record, an in-flight entry) asks the one owner rule.
+    const auth = read("routes/route-auth.ts");
+    expect(auth.match(/ownerFlowOf\(ctx, /g)?.length).toBe(3);
+    const owner = auth.slice(auth.indexOf("function ownerFlowOf("), auth.indexOf("function ownerFlowOf(") + 1200);
+    expect(owner).toContain("writeRecordGovernor(ctx.registry, ctx.hostResolver, record)");
   });
 });

@@ -560,6 +560,24 @@ describe("the principal comes from the flow that runs, and nothing tells a real 
     expect(refunds).toEqual(["alice@billing"]);
   });
 
+  it("serves a named writer's request to its writer through the writer flow's sign-in: status and stream", async () => {
+    // Codex 4543542971: the record's governor picked the first declarer (`app`), so the writer's own
+    // status read resolved as alice@app and was refused.
+    const { router, stores } = host();
+    const res = await post(router, ["resources", "org", "invoice", "actions", "refund"], alice, { input: {} });
+    const { request } = (await res.json()) as { request: { id: string } };
+    const done = await settle(stores, request.id);
+    expect(done.userId).toBe("alice@billing");
+    const status = await get(router, ["billing", "requests", request.id, "status"], alice);
+    expect(status.status, await status.clone().text()).toBe(200);
+    const stream = await get(router, ["billing", "requests", request.id, "stream"], alice);
+    expect(stream.status).toBe(200);
+    // Another signed-in user still gets the unused id's answer.
+    const unused = await get(router, ["billing", "requests", "req_unused", "status"], bob);
+    const other = await get(router, ["billing", "requests", request.id, "status"], bob);
+    expect(other.status).toBe(unused.status);
+  });
+
   /** Status and body, with the probed key in the body replaced, so two probes compare. */
   async function probe(res: Response, key: string) {
     return { status: res.status, body: (await res.text()).split(key).join("<key>") };
