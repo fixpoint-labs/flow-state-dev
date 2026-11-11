@@ -29,8 +29,8 @@ reads, with no hand-written read model and no session made only to read.**
 |---|---|
 | **The real need** | The kill line: the block kinds compose into real apps only through per-app glue. The need is to stop writing the glue, not to write it faster |
 | **Smaller, and rejected** | "Views and direct reads ship." The adapter shrinks, but every host still assembles workforce by hand, and the next feature is wired the same way. Or "kits ship with workforce as the only one": slots designed for one consumer freeze the wrong contract |
-| **Bigger, and not this epic's** | A third-party ecosystem (publishing, discovery, versioning, a registry). Moving Teammates' and Shift Manager's remaining adapters onto kit clients. Serving each answer on one route only. Each its own epic |
-| **Not done if** | claude-code-style keeps a file that assembles server data by hand · any of the four own-session helpers survives · a host keeps `workerFlows: () =>` or `as never`, or calls `createWorkerInstallation` or `hireWorkforce` · a client can write a user or org resource by scope other than through a flow (exempt until [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633), the skills drawer's user and org `client.content.*` writes, as below) · `reads` or scope `derived` is still exported · a view reads something it did not declare and no test fails · ids reach a client in a scope that turned them off ([O4](DECISIONS.md#o4)) · a bug the closure run found is open |
+| **Bigger, and not this epic's** | A third-party ecosystem (publishing, discovery, versioning, a registry). Moving Teammates' and Shift Manager's remaining adapters onto the kit packages' views. Serving each answer on one route only. Each its own epic |
+| **Not done if** | claude-code-style keeps a file that assembles server data by hand · any of the four own-session helpers survives · a host keeps `workerFlows: () =>` or `as never`, or calls `createWorkerInstallation` or `hireWorkforce` · a client can write a user or org resource by scope other than through a flow (the content routes' user and org writes already answer 501; they keep refusing until [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633), as below) · `reads` or scope `derived` is still exported · a change to something a view's run read reaches none of its watchers and no test fails · ids reach a client in a scope that turned them off ([O4](DECISIONS.md#o4)) · a bug the closure run found is open |
 
 ```mermaid
 flowchart LR
@@ -51,11 +51,11 @@ must fail the run, which is what makes the PASS mean something.
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's goal check (FIX-2629), real model, in a browser, on one `main` commit after every other child merges. Its clean run is the epic's wrap condition |
-| **Signal** | Leg a: a thread, a delegated coding task, its board row changing, and a pin written in one line through the default write flow, all seen on screen, with FIX-2152 ER-1's inventory passing and no file that assembles server data. Leg b: the teammates host installs workforce and the harness kit, its own routing flow is gone, its `workforce/` tree is read through the kit's install, and no flow is both scaffolded and importable ([O1](DECISIONS.md#o1)). **Both legs:** every client write to a user or org resource by scope that the run makes is an action whose request is recorded in a flow's session (exempt until [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633), the skills drawer's user and org `client.content.*` writes, as in the row below); such a write with no request fails the leg |
-| **Must fail: a direct write path** | The closure lists the engine's client routes that change a user or org resource and fails if any is not the action route, and it writes a resource with no `runBy` from the client and fails unless that is refused ([ER-4](DECISIONS.md#who-owns-what)). One temporary exemption, by name: the skills drawer's `client.content.*` create, update and delete on its user or org collection (`skills/collection.ts`), the only such writer today. It is deleted when [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) moves it onto the default write flow. FIX-296's routes on session-scope collections are not resource-by-scope writes and stay |
+| **Signal** | Leg a: a thread, a delegated coding task, its board row changing, and a pin written in one line through the default write flow, all seen on screen, with FIX-2152 ER-1's inventory passing and no file that assembles server data. Leg b: the teammates host installs workforce and the harness kit, its own routing flow is gone, its `workforce/` tree is read through the kit's install, and no flow is both scaffolded and importable ([O1](DECISIONS.md#o1)). **Both legs:** every client write to a user or org resource by scope that the run makes is an action whose request is recorded in a flow's session (the content routes' user and org writes answer 501 until [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633), as in the row below); such a write with no request fails the leg |
+| **Must fail: a direct write path** | The closure lists the engine's client routes that change a user or org resource and fails if any is not the action route, and it writes a resource with no `runBy` from the client and fails unless that is refused ([ER-4](DECISIONS.md#who-owns-what)). One temporary exemption, by name: the `client.content.*` create, update and delete routes, which the skills collection's user and org grants (`skills/collection.ts`) reach. They already answer 501 at user and org (`resource-routes.ts`), so the closure checks that they still refuse. The exemption goes when [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) moves those grants onto the default write flow. FIX-296's routes on session-scope collections are not resource-by-scope writes and stay |
 | **Input** | A held-out coding prompt in a scratch repository, chosen at run time |
 | **Anti-game** | Don't assert on a view's own output or a kit's unit tests: they pass while a screen still reads through a hand-rolled session. Assert on the screen and on the inventory |
-| **Control that must fail** | Today's `main`: the inventory refuses `adapter.ts` and the own-session helpers. A view with one dependency left out: the development-time check fails |
+| **Control that must fail** | Today's `main`: the inventory refuses `adapter.ts` and the own-session helpers. The engine's recorder blinded to one path a view reads: the missed change fails ([O2](DECISIONS.md#o2)) |
 
 ## What's in the box
 
@@ -80,14 +80,14 @@ Stage 1 is specced in the spec-set PR. Stage 2 is parked until the proofs merge,
 |---|---|---|---|
 | [FIX-2619](https://linear.app/fixpoint-labs/issue/FIX-2619) · stage 1 | The concept doc; glossary entries for view, kit and slot; the narrowed objectives line; the architecture doc debt | Every spec reads one written model; the names land before code | Backlog |
 | [FIX-2620](https://linear.app/fixpoint-labs/issue/FIX-2620) · stage 1 | Proof: a user-scoped view answers with no session | `runRead` takes a `sessionId` today; views and direct reads rest on this | Backlog |
-| [FIX-2621](https://linear.app/fixpoint-labs/issue/FIX-2621) · stage 1 | Proof: `dependsOn` checked against what a view reads | The name "view" is earned only if declared dependencies can't drift silently ([O2](DECISIONS.md#o2)) | Backlog |
+| [FIX-2621](https://linear.app/fixpoint-labs/issue/FIX-2621) · stage 1 | Proof: `dependsOn` checked against what a view reads | The name "view" is earned only if dependencies can't drift silently. Its cost result moved [O2](DECISIONS.md#o2) to recording | Backlog |
 | [FIX-2622](https://linear.app/fixpoint-labs/issue/FIX-2622) · stage 1 | Proof: the teammates host with workforce as a kit, its `workforce/` tree read through the kit's install, beside a better workforce API | The collapse trigger for the kit children ([D1](DECISIONS.md#d1), [O1](DECISIONS.md#o1)) | Backlog |
 | [FIX-2551](https://linear.app/fixpoint-labs/issue/FIX-2551) · stage 2 | One live read in the client: the coalescer and the path rule | `useView` and every package watch sit on it | Backlog · existing issue, now parented |
-| [FIX-2623](https://linear.app/fixpoint-labs/issue/FIX-2623) · stage 2 | Views replace reads; `useView`, `ViewOutput`; `derived` folds in; board and roster move | The read half of the goal | Backlog |
-| [FIX-2624](https://linear.app/fixpoint-labs/issue/FIX-2624) · stage 2 | Direct user and org reads; every write through `runBy`, with the default write flow and one-line client helpers ([O3](DECISIONS.md#o3)); a session-free identity read; the four workarounds deleted | The session half of the goal | Backlog |
+| [FIX-2623](https://linear.app/fixpoint-labs/issue/FIX-2623) · stage 2 | Views replace reads, their dependencies recorded and model calls refused; `useView`, `ViewOutput`; `derived` folds in; board and roster move | The read half of the goal | Backlog |
+| [FIX-2624](https://linear.app/fixpoint-labs/issue/FIX-2624) · stage 2 | Direct user and org reads; every write through `runBy`, with the default write flow and one-line client helpers ([O3](DECISIONS.md#o3)); a session-free identity read; the four workarounds deleted. Open with the owner: whether an org resource with no write rule refuses to start or lets every member write | The session half of the goal | Backlog |
 | [FIX-2625](https://linear.app/fixpoint-labs/issue/FIX-2625) · stage 2 · **gated** | Ids on notices | Re-reads only what changed. [O4](DECISIONS.md#o4) is decided; parked with stage 2 under [D2](DECISIONS.md#d2) | Backlog |
-| [FIX-2626](https://linear.app/fixpoint-labs/issue/FIX-2626) · stage 2 | `defineKit` and slots in `core`; install in the engine; an owned directory read by the walker lifted from workforce; config, the client half | The install half of the goal | Backlog |
-| [FIX-2627](https://linear.app/fixpoint-labs/issue/FIX-2627) · stage 2 | Workforce fully a kit (library half, `workforce/` convention, slots) and the harnesses kit, harness values filling its slot; one shared coding worker flow | Two kits, so slots meet a second consumer before they freeze | Backlog |
+| [FIX-2626](https://linear.app/fixpoint-labs/issue/FIX-2626) · stage 2 | `defineKit` and slots in `core`; install in the engine; an owned directory read by the walker lifted from workforce; config. No kit client runtime: screens import a kit package's views and hooks (its D1); a stray file in a kit's folder stops the app starting (its D2) | The install half of the goal | Backlog |
+| [FIX-2627](https://linear.app/fixpoint-labs/issue/FIX-2627) · stage 2 | Workforce fully a kit (library half, `workforce/` convention, slots, the roster view, the workers collection on `runBy: { flow }`) and the harnesses kit, harness values filling its slot, with the readiness view; one shared coding worker flow | Two kits, so slots meet a second consumer before they freeze | Backlog |
 | [FIX-2628](https://linear.app/fixpoint-labs/issue/FIX-2628) · stage 2 | claude-code-style on kits | The worked example made real; it measures the estimates. Kept, narrowed, if the kits collapse | Backlog |
 | [FIX-2629](https://linear.app/fixpoint-labs/issue/FIX-2629) · closure · **required** | The QA run on one `main` commit: both legs, each team's journey, every child's goal check, the seams | The only child that proves an app sheds its adapter | Backlog · blocked by every other child |
 
@@ -107,24 +107,25 @@ flowchart LR
   D["FIX-2619 · concept doc"] -->|"the model and the names"| P["FIX-2620 / 2621 / 2622 · three proofs"]
   P -->|"a no-session read, the dependency check"| V["FIX-2623 · views"]
   L["FIX-2551 · one live read"] -->|"the coalescer"| V
-  P -->|"the no-session context"| R["FIX-2624 · resources by scope"]
+  V -->|"views for the helpers' answers · last PR"| R["FIX-2624 · resources by scope"]
   V -->|"view notices and keys"| I["FIX-2625 · ids · gated"]
-  V -->|"views to install"| K["FIX-2626 · kits"]
-  R -->|"runBy resources"| K
-  K -->|"defineKit and slots"| W["FIX-2627 · workforce and harness kits"]
+  K["FIX-2626 · kits"] -->|"defineKit and slots"| W["FIX-2627 · workforce and harness kits"]
+  V -->|"the roster and readiness views"| W
+  R -->|"runBy on the workers collection"| W
   W -->|"the kits and their views"| C["FIX-2628 · claude-code-style"]
 ```
 
 An edge is what one issue hands the next. A dashed input is consumed, not owned, and never
 re-parented. Every child blocks the closure FIX-2629, which is left off to keep the graph
 readable. The doc goes first; the proofs run in parallel; views and resources build in parallel
-once the proofs land; kits come last because they package everything before them ([D2](DECISIONS.md#d2)).
+once the proofs land, FIX-2624's last PR after views. `defineKit` needs neither views nor
+resources; the workforce kit needs both, so it comes last ([D2](DECISIONS.md#d2)).
 
 ## What stays as it is
 
 - **Session-scope content writes.** FIX-296's `client.content.*` routes stay for session-scope
-  collections. Their user and org writes (the skills drawer) are a listed leftover, not a fence
-  exemption: [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) moves them onto the default write flow. The epic adds no direct client write;
+  collections. Their user and org writes already answer 501 (`resource-routes.ts`); the skills
+  collection's user and org grants are a listed leftover, not a fence exemption: [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) moves them onto the default write flow. The epic adds no direct client write;
   every new one goes through a flow ([ER-4](DECISIONS.md#who-owns-what)).
 - **Session items, streams and the transcript.** A transcript belongs to one session; those
   routes keep their session address.
@@ -137,7 +138,7 @@ once the proofs land; kits come last because they package everything before them
 
 | Already here | What the set does with it |
 |---|---|
-| Flow `reads` ([FIX-2286 D1](../../issues/FIX-2286/DECISIONS.md#d1)): "the one hook for watching a computed view" | **Amended, revisited by the owner's leave.** The rule is kept (one hook, no writes); the hook is renamed to view and gains scope, `dependsOn` and `key` ([O2](DECISIONS.md#o2)) |
+| Flow `reads` ([FIX-2286 D1](../../issues/FIX-2286/DECISIONS.md#d1)): "the one hook for watching a computed view" | **Amended, revisited by the owner's leave.** The rule is kept (one hook, no writes); the hook is renamed to view and gains scope, recorded dependencies and `key` ([O2](DECISIONS.md#o2)) |
 | Scope `derived` (two kitchen-sink flows) | **Superseded.** Folds into views (FIX-2623) |
 | A notice carries no rows ([FIX-2367 D2](../FIX-2367/DECISIONS.md#d2)) | **Amended by the owner** ([O4](DECISIONS.md#o4)): a notice may carry ids. Ids are not rows; every byte still comes through a checked read |
 | One hour of notices after revocation ([FIX-2428 D2](../../issues/FIX-2428/DECISIONS.md#d2)) | **Amended by the owner** ([O4](DECISIONS.md#o4)): the hour is accepted with ids, which it leaks, with a per-scope opt-out. Its reason (a check per notice is a store read per viewer) is kept |
@@ -149,14 +150,14 @@ once the proofs land; kits come last because they package everything before them
 | "Session factory… never a kit" ([FIX-2246](https://linear.app/fixpoint-labs/issue/FIX-2246), glossary) | **Narrowed** to the session-factory sense by FIX-2619 ([O5](DECISIONS.md#o5)) |
 | A plugin system ([FIX-147](https://linear.app/fixpoint-labs/issue/FIX-147), canceled) and the objectives non-goal "Plugin/extension ecosystem" | **Kept out.** A kit is FSD's own composition unit; the third-party ecosystem stays a non-goal, and FIX-2619 narrows the line to say so |
 | FIX-2369's FIX-2374 `sessionFeed`, FIX-2379 task-row view, FIX-2412 `watchRoster` | **Builds on.** Re-expressed as views, not duplicated |
-| FIX-2036's deferred "Workforce browser contract for Shift Manager reads" (overlaps FIX-1672) | **Absorbed.** The workforce kit's views and client half are that contract |
+| FIX-2036's deferred "Workforce browser contract for Shift Manager reads" (overlaps FIX-1672) | **Absorbed.** The workforce package's views and hooks are that contract |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | Views (FIX-2623) | Flow `reads`, scope `derived` | **Extends** reads; removes `derived`. Still one hook ([ER-1](DECISIONS.md#who-owns-what)) |
 | `runBy` and `fsd.resource(ref).send` (FIX-2624) | FIX-1788's worker; `client.content.*`; actions | **Extends** the worker pattern; a send is an ordinary action on the resource's session, so no write route is added |
 | The default write flow and the client helpers (FIX-2624, [O3](DECISIONS.md#o3)) | `runBy`; the action route; the labs' hand-written pins flow and `listPins`; `resource-cas` | **Reuse:** a stock flow behind `runBy` on the existing action path, so no write route is added. It replaces the labs' pins flows; the helpers are `send` with field patches |
-| A session-free identity read (FIX-2624) | The principal resolver, push topics | **Reuse:** the same verified principal the push topics use |
+| A session-free identity read (FIX-2624) | The principal resolver; FIX-2522's governing-flow check in route-auth | **Extends** that path: user and org resolve through the declaring flow's effective resolver (`pickPrincipalResolver`), never a host fallback or the body, query or headers. Not the push mint's: it falls back to the path's user id with no principal (`push-delivery.ts`) |
 | Ids on notices (FIX-2625) | FIX-2367's notice shape | **Extends** the notice with an optional field |
 | `defineKit` and slots (FIX-2626) | `defineCapability`, `defineFlow`, workforce's `createWorkerInstallation` | **Genuinely new.** A capability installs into a block and can't add flows or views; a kit holds only those existing pieces ([ER-5](DECISIONS.md#who-owns-what)). It lands in `core` and the engine, no new package. Its owned directory reuses workforce's walker, lifted, and the UI registry's scaffolding |
 | One shared coding worker flow (FIX-2627) | claude-code-style's `harness-thread.mts`, teammates' `coder.ts`, `harness-manager` | **Reuse and merge:** two copies of the same routing become one |
@@ -165,7 +166,7 @@ once the proofs land; kits come last because they package everything before them
 |---|---|
 | **Removes** | About 1,250 lines of claude-code-style's adapter (estimate); three of its flows; four own-session helpers; two read-only flows in each lab host; scope `derived`; three coalescer copies; one duplicated coding flow |
 | **Adds** | Kits and slots: a new concept and a public contract, permanent by design. `runBy` session lifecycle (creation races, deletes, a flow that's gone) |
-| **Leaves** | Teammates' and Shift Manager's remaining adapters, and the same data served on two routes. Both named as follow-up epics, filed at wrap. The skills drawer's user and org `client.content.*` writes, the last direct client writes to a resource by scope: filed as [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633), related, not a child |
+| **Leaves** | Teammates' and Shift Manager's remaining adapters, and the same data served on two routes. Both named as follow-up epics, filed at wrap. The skills collection's user and org `client.content.*` grants, refused at 501 today, so [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) (related, not a child) moves grants, not live writes |
 
 **Net: down.** Each app sheds its read model; the framework gains one concept and one contract.
 
@@ -188,7 +189,7 @@ framework gains kits and slots. If wrong: a slot contract that is hard to change
 
 **Decided by the owner, in session, 2026-11-10:** [O1](DECISIONS.md#o1) kits, with typed slots,
 an optional owned directory the kit scaffolds and reads, `defineKit` in `core` and install in the
-engine · [O2](DECISIONS.md#o2) views replace reads, with the `dependsOn` check ·
+engine · [O2](DECISIONS.md#o2) views replace reads, their dependencies recorded (amended by FIX-2623 D1, 2026-11-11) ·
 [O4](DECISIONS.md#o4) ids on notices, the hour accepted with a per-scope opt-out ·
 [O5](DECISIONS.md#o5) "kit". If O1 is wrong: a slot contract that is hard to change.
 

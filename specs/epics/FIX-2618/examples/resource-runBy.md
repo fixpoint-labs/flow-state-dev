@@ -2,7 +2,7 @@
 
 [Spec](../SPEC.md) · [Decisions](../DECISIONS.md) · example
 
-> **PROPOSED.** A sketch from the design review, not code. None of the APIs it names exist yet (`defineView`, `defineKit`, `runBy`, `fsd.resource`, `useView`, `ViewOutput`, kit slots and the kits' views). The name "kit" is the owner's answer to [O5](../DECISIONS.md#o5). The child that builds each piece owns its real shape.
+> **PROPOSED.** A sketch from the design review, not code. None of the APIs it names exist yet (`defineView`, `defineKit`, `runBy`, `fsd.resource`, `useView`, `ViewOutput`, kit slots and the kit packages' views). The name "kit" is the owner's answer to [O5](../DECISIONS.md#o5). The child that builds each piece owns its real shape.
 
 Reads are direct, by scope and key, with no session; the access check is the resource's own client config, as today. Every client write goes through a flow, the owner's answer to [O3](../DECISIONS.md#o3): `runBy` names it, and the client sends that flow's session an action, found or made by the server. For plain data (pins), `runBy: "default"` names the framework's default write flow, which sets, patches and deletes fields under the resource's schema, owner fence and optional `canWrite`. Where a flow does real work (a dashboard), `runBy` names the app's own. A resource with no `runBy` cannot be written from a client. Built by [FIX-2624](https://linear.app/fixpoint-labs/issue/FIX-2624).
 
@@ -25,8 +25,8 @@ await fsd.resource(pins).update((s) => ({ pinned: toggle(s.pinned, threadId) }))
 
 // toggle(list, id): drop id if present, append it if not. A plain helper, not framework API.
 
-// React: the value and the same setters.
-const { value, update } = useResource(pins);
+// React: the value, whether it is stale, and the same setters; the same names as useView.
+const { value, stale, update } = useResource(pins);
 ```
 
 **Real work: a dashboard, on its own flow.** The same route and the same send; only the flow differs.
@@ -41,6 +41,6 @@ export const artifacts = defineResourceCollection({
 });
 
 // Client
-const q3 = await fsd.resources.user("artifacts/q3").state();     // direct read, no session
-await fsd.resource("artifacts/q3").send("refresh", { data });      // data in; the flow builds the resource
+const all = await fsd.resource(artifacts).state();                    // direct read, no session; entry addressing is FIX-2624's
+await fsd.resource(artifacts).send("refresh", { key: "q3", data });  // data in; the flow builds the entry
 ```
