@@ -41,7 +41,8 @@
  */
 
 import { defineFlow, generator, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
-import type { GeneratorTool } from "@flow-state-dev/core";
+import type { CapabilityRef, GeneratorTool } from "@flow-state-dev/core";
+import { flattenCapabilities, resolveActivePresets } from "@flow-state-dev/core/capability";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
@@ -154,6 +155,12 @@ export interface EmWorkerFlowOptions {
    */
   catalog: Record<string, GeneratorTool>;
   /**
+   * Capabilities the turn uses, such as the routines capability. Their
+   * resources are installed, and their default presets' tools join the
+   * catalog, so a worker names them in its `tools:` line like the catalog's.
+   */
+  uses?: CapabilityRef[];
+  /**
    * **Control only.** The asking door files its row *before* it suspends, so
    * a row exists while the ask is still pending. The red state of "nothing is
    * filed until a user approves"; never set outside a goal control.
@@ -171,7 +178,8 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   const { installation } = options;
   const readOwnFacts = defineReadOwnFacts(workerOf(installation, EM_FLOW));
   const factory = defineSessionBoard({ installation, flowKind: EM_FLOW });
-  const toolNames = Object.keys(options.catalog);
+  const catalog = { ...capabilityTools(options.uses ?? []), ...options.catalog };
+  const toolNames = Object.keys(catalog);
   const settingsOf = (ctx: BlockContext): EmSettings => workerConfigOf(ctx) as EmSettings;
 
   /**
@@ -192,7 +200,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     inputSchema: z.object({ message: z.string() }),
     itemVisibility: { client: true, history: true },
     history: routedTaskHistory,
-    uses: [factory.tools, factory.messages],
+    uses: [factory.tools, factory.messages, ...(options.uses ?? [])],
     prompt: [
       // The default-layer entry. It must change together with the first
       // `prompt` entry of Workforce's built-in agent flow's turn: when that
@@ -206,7 +214,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       if (model === undefined) throw new Error(`EM worker "${workerConfigOf(ctx).workerId}" names no \`model:\`, so its turn has nothing to run on.`);
       return model;
     },
-    tools: (_input: unknown, ctx: BlockContext) => (settingsOf(ctx).tools ?? []).map((name) => options.catalog[name]!),
+    tools: (_input: unknown, ctx: BlockContext) => (settingsOf(ctx).tools ?? []).map((name) => catalog[name]!),
     user: (input: { message: string }) => input.message,
   } as never);
 
@@ -401,4 +409,20 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       },
     },
   } as never);
+}
+
+/**
+ * The tools a capability's active presets list, by name. The turn declares
+ * `tools:`, which drops a capability's own tools from it, so they are offered
+ * through the catalog instead.
+ */
+function capabilityTools(uses: CapabilityRef[]): Record<string, GeneratorTool> {
+  const tools: Record<string, GeneratorTool> = {};
+  for (const entry of flattenCapabilities(uses)) {
+    for (const { preset } of resolveActivePresets(entry)) {
+      if (!Array.isArray(preset.tools)) continue;
+      for (const tool of preset.tools) tools[String((tool as { name?: unknown }).name)] = tool as GeneratorTool;
+    }
+  }
+  return tools;
 }

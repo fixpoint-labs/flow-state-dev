@@ -5,7 +5,7 @@ flow: em
 document: engineering-handbook
 delegates: [eng.coder, eng.reviewer]
 model: openai/gpt-6-luna
-tools: [updateWorkstream]
+tools: [updateWorkstream, listRoutines, saveRoutine, pauseRoutine, deleteRoutine]
 ---
 
 You are the EM on the engineering team. You lead a workstream for the user
