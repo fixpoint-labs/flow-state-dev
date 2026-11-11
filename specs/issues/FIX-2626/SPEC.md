@@ -1,4 +1,4 @@
-# FIX-2626 · An installable unit above a flow: defineKit with requires, slots, config and a client half
+# FIX-2626 · An installable unit above a flow: defineKit with requires, slots and config
 
 **Spec** · [Decisions](DECISIONS.md)
 
@@ -62,7 +62,7 @@ A host, and the two kits it installs (FIX-2627 writes the real ones):
 - createFlowState({ flows: Object.fromEntries([...copies, readiness, context].map((c) => [c.id, c])), stores });
 + createFlowState({
 +   kits: [harnesses({ claudeCode: {}, codex: {} }), workforce({ directory: options.tree, model })],  // any order
-+   flows: { [READINESS_FLOW]: readiness, [LAB_CONTEXT_FLOW]: context },                             // the app's own
++   flows: [readiness, context],                                                                     // the app's own, by id
 +   stores,
 + });
 ```
@@ -72,7 +72,7 @@ export const workforce = defineKit({
   name: "workforce",
   config: z.object({ model: z.string() }),
   slots: { workerFlows: slot.keyed(workerFlowSchema) },
-  directory: { path: "workforce", read: readWorkforceFolder },        // Node-only; runs at install
+  directory: { path: "workforce", read: readWorkforceFolder },        // Node-only; FIX-2627's, through the claim pass
   install: ({ config, folder, slots }) => ({ flows: hire(folder, slots.workerFlows, config) }),
 });
 
@@ -84,9 +84,24 @@ export const harnesses = defineKit({
 });
 ```
 
+`readWorkforceFolder` is workforce's folder reader once FIX-2627 lands: today's walk, run through
+the walker's claim pass. It replaces `readDeclaredRoster`, the widest entry today, a join over
+`readWorkforce` and the directory readers (`packages/workforce/src/loader/read-declared-roster.ts:10,141`),
+with no alias.
+
+**`flows` becomes an array** (the owner, on #5064). A flow already names itself: the registry
+keys by `flow.id`, which defaults to its `kind` (`packages/engine/src/registry/flow-registry.ts:224,795`),
+and `createFlowState` never reads the record's keys (`Object.values(options.flows)`,
+`packages/engine/src/flowstate/createFlowState.ts:365`). So `flows: Record<string, FlowInstance>`
+(`packages/engine/src/flowstate/types.ts:119`) becomes `flows: FlowInstance[]`, and the keyed
+form goes with no alias, as FIX-2447's rule has it pre-1.0. A duplicate id is refused as today.
+The call sites move in their own mechanical PR in this issue's work, apart from the kit PR:
+245 files outside `specs/` (`git grep -l "createFlowState(" -- '*.ts' '*.tsx' '*.mts' | grep -v ^specs/ | wc -l`
+on `main` at `01dcfdc02`). It carries a `minor` changeset for the engine.
+
 **Docs:** create *Kits* in Core → Fundamentals, after *Capabilities*; API reference entries for
-`defineKit` and `createFlowState`'s `kits`; the `core` and `engine` READMEs (the engine's new
-Node-only folder subpath). Same PR: `docs/architecture/kits.md`, the package roles in
+`defineKit`, `createFlowState`'s `kits`, and `flows` as an array; the `core` and `engine` READMEs
+(the engine's new Node-only folder subpath). Same PR: `docs/architecture/kits.md`, the package roles in
 `overview.md`, a `kit` row in `docs/mechanisms/mechanisms.yaml`. This changeset carries the
 epic's shared story to `/release-docs`; workforce's pages are FIX-2627's.
 
@@ -107,7 +122,8 @@ first request.
 ## What stays as it is
 
 - **Capabilities**, the unit a block uses. A kit installs flows, which carry theirs.
-- **`createFlowState({ flows })`**. Installs add to the same registry.
+- **The flow registry behind `createFlowState`'s `flows`**. Installs add to it; only the option's
+  shape changes, to an array.
 - **Resources and views**, declared on blocks and flows. A kit holds them through its flows.
 - **`hireWorkforce` and `createWorkerInstallation`**, public until FIX-2627 makes them internals.
 
@@ -126,6 +142,7 @@ first request.
 |---|---|---|
 | `defineKit`, slot types (`core`) | `capability` · `defineCapability`; `flow` · `defineFlow` | A capability installs into one block and can't add flows or declare slots. A kit's install returns flows |
 | `kits` and install (engine) | The `flows` option and flow registry | **Extends:** the same registry, which refuses a duplicate id as today |
+| `flows` as an array (engine) | The `flows` record | **Replaces** it: the registry keys by `flow.id`, so the record's keys were never read |
 | Slots, keyed or list | `createWorkerInstallation`'s `workerFlows`; FIX-2622's sketch | New, as a contract across packages; the sketch is the start |
 | The folder walker (Node-only engine subpath) | `worker-loader` · `openRoot`, `classify`, `openStructuralDirectory`, `refusedSymlink`, `unreadable`, `IGNORED_ENTRIES` | **Reuse**, lifted. It adds one pass: what no reader claimed is refused |
 | The folder naming rule (`core` helpers) | `validateSegment`, `isWindowsReservedName` | **Reuse:** pure, and browser-safe workforce code calls it |
@@ -133,7 +150,7 @@ first request.
 
 | The debt | |
 |---|---|
-| **Removes** | Workforce's own walk primitives (moved, no alias, BP-034). Each host's tree read and refusal, once FIX-2627 lands. The two places a file is skipped silently |
+| **Removes** | Workforce's own walk primitives (moved, no alias, BP-034). The keyed `flows` record, no alias, and its keys at 245 call sites. Each host's tree read and refusal, once FIX-2627 lands. The two places a file is skipped silently |
 | **Adds** | Kits and slots, a concept and a contract, permanent by design. A third way to do the job, which shrinks when `hireWorkforce` goes internal (FIX-2627). A Node-only engine subpath. Kit flows register at start-up, so `meta.flowKeys` lists them only after `ready()` |
 | **Leaves** | The three adapters (follow-up epics). Workforce's folder constants (`RESOURCES_SLOT`, `PACKAGES_SLOT`), a third "slot": FIX-2627 owns that schema |
 
@@ -143,8 +160,18 @@ first request.
 
 | Issue | Must |
 |---|---|
-| **FIX-2627** | Claim every entry in workforce's folder, `workforce/flows/` included · route its readers and the `fsdev gen` walk through the claim pass · import the walk primitives from the engine, dropping them from `./loader` · declare the slots, with harnesses' keyed `harnesses` slot of `{ id, agent, readiness, pass, usage, models }` filled by two or more packages · views and hooks on a browser entry, components on `/react` · workforce's starter files · the third "slot" |
-| **FIX-2628** | Build claude-code-style's kit on this `defineKit` · credit its adapter's removal per [the POC](poc/client-half/README.md), confirming or refuting the 42 kit-only lines |
+| **FIX-2627** | Claim the entries in workforce's folder that workforce configures, `workforce/flows/` included, and only those: an app's own resources and flows go in its own kit or in `flows:` · replace `readDeclaredRoster` with `readWorkforceFolder`, and route every reader and the `fsdev gen` walk through the claim pass · import the walk primitives from the engine, dropping them from `./loader` · declare the slots, with harnesses' keyed `harnesses` slot of `{ id, agent, readiness, pass, usage, models }` filled by two or more packages · views and hooks on a browser entry, components on `/react` · workforce's starter files · the third "slot" |
+| **FIX-2628** | Build claude-code-style's kit on this `defineKit` · credit its adapter's removal per [the POC](poc/client-half/README.md), confirming or refuting the 42 kit-only lines · take the lab's own flows out of `workforce/flows/` (below) |
+
+claude-code-style's `labs/claude-code-style/workforce/flows/` holds five files on `main`: `pins.mts`
+and `dismissals.mts`, which FIX-2624 deletes; `harness-thread.mts`, which FIX-2627 merges into
+the one coding worker flow; and `projects.mts` and `user-marks.mts`, which are the app's.
+`projects.mts` is the app's project flow (`defineProjectBlocks`). It moves to the lab's own
+folder, listed in the host's `flows:` beside the readiness flow, before workforce's claim pass
+reaches the lab; FIX-2628 may then move it into the app's kit. `user-marks.mts` is the user state
+pins and dismissals share, so it goes with them in FIX-2624; whatever resource replaces it is
+declared on an app flow and moves the same way. Then the folder holds only what workforce
+claims, and the lab starts under [D2](DECISIONS.md#d2).
 
 ## Sign off
 
@@ -156,10 +183,13 @@ consumer, or ordering nobody ran.
 private walker and each host's refusal removed. If wrong: a permanent contract only two kits use.
 
 1. **[D1](DECISIONS.md#d1) · Kits are for composing features; a kit's client half is its
-   package's ordinary exports, with no kit client runtime.** The one to weigh: it is where O1
-   would reopen. If wrong: a client manifest is one field, added later.
+   package's ordinary exports, with no kit client runtime.** Decided: the owner merged #5064 as
+   written. Reopens if FIX-2628 finds screen code that needs to know which kits an app installed,
+   or with what config, and no view can answer.
 2. **[D2](DECISIONS.md#d2) · Every file in a kit's folder is used or refused, and any refusal
-   stops the app starting.** If wrong: a deploy fails on a file nobody meant to matter.
+   stops the app starting.** Decided: the owner merged #5064 as written. Reopens if a kit's
+   folder must hold files it never reads, and claiming them as ignored, by name, can't serve it.
+3. **`flows` as an array.** The owner's direction on #5064; built as given.
 
 **Open: none.**
 

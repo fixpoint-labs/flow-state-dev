@@ -19,19 +19,8 @@ import path from "node:path";
 const COMMIT = "f0b34c529";
 const FILE = "labs/claude-code-style/src/adapter.ts";
 
-/**
- * What removes a declaration. The rule each one must meet is in README.md.
- * - views:   the live read and views (FIX-2551, FIX-2623): watch loops, re-reads
- *            on notices, and rows one package can compute on the server.
- * - direct:  direct reads and writes by scope (FIX-2624): the own-session helpers
- *            and what reads or writes through them.
- * - package: a package export, with no kit: a constant, a call or a view that one
- *            package can ship because it already depends on every input.
- * - kit:     only a kit's slot: data that joins two packages where neither depends
- *            on the other, so no single package can serve it.
- * - stays:   the app's own screen logic, its thin calls, the transcript (which keeps
- *            its session address under the epic), and the file header.
- */
+// What removes a declaration. The five credit rules live in README.md
+// ("How it attributes") and only there.
 const BY = ["views", "direct", "package", "kit", "stays"];
 
 /** One row per declaration: name (with its scope) to what removes it. */

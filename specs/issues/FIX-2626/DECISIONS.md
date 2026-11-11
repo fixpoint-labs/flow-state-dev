@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-Two decisions are the sign-off. That there are kits, their shape, where each piece lives, folders
-side by side and the harness shape are the owner's ([FIX-2618 O1](../../epics/FIX-2618/DECISIONS.md#o1));
+Two decisions were the sign-off; the owner merged #5064 as written, so both are decided. That
+there are kits, their shape, where each piece lives, folders side by side and the harness shape are the owner's ([FIX-2618 O1](../../epics/FIX-2618/DECISIONS.md#o1));
 this spec builds them as decided.
 
 ## The tree
@@ -16,7 +16,7 @@ flowchart TD
   D2 -.->|"rejected"| X2["today's rule, and the host decides<br/>a skipped file is the silence the rule forbids"]
 ```
 
-Solid edges are what you're signing. Dashed edges lost, and the label says why.
+Solid edges are what was signed. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
 ## D1 · Kits are for composing features; a kit's client half is its package's ordinary exports
@@ -26,8 +26,6 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | **Instead of** | A client half that is part of the kit: a `client` field on `defineKit` and a manifest sent to the browser, as the epic's sketches show (`client: missionClient`, `mission.useAction`) |
 | **Because** | O1's note, run ([the POC](poc/client-half/README.md)): of claude-code-style's 1,642 adapter lines, views and direct reads remove 690, a package export 87, and **42 need a kit**: a task's harness before its run reports one (12 lines), and the board that fills each row's harness through it (30), which join workforce and harness-manager, and neither depends on the other. At most 129 if every package row went to the kit. Views remove the read model, and packages can ship views; what only a kit does is let one package reach another through a slot. A client runtime is a public surface for 42 lines, and it would put a definition naming a Node-only folder reader into the browser bundle |
 | **Locks in** | Screens import a kit's views, hooks and components from its package's browser entry and `/react`. No `client` field. A kit's flow ids are its own constants, so a kit installs once per app. The case for kits becomes composition: O1's *Because* ("only a kit's client half removes the adapters") needs an epic amendment, and FIX-2628 credits the adapter's removal to views and direct reads |
-
-![D1: the package's own exports, chosen, beside a kit client runtime; decided by the 42 of 1,642 adapter lines only a kit removes](figures/d1-composition.svg)
 
 It comes down to the adapter: views remove the read model, so a kit runtime would carry 42 lines.
 
@@ -43,9 +41,7 @@ client half (here) each remove little a better API or a view can't.
 |---|---|
 | **Instead of** | Today: workforce refuses only the shapes its docs name, passes over the rest (a folder's root entries, a stray file in `teams/`), collects its refusals, and leaves start-up to each host. Or warn in development and refuse in production |
 | **Because** | A file that loads nothing and says nothing is the silence the owner's rule ends: an author who followed the docs can't find out why. Every host already throws on a refusal (teammates, Shift Manager, claude-code-style), so this makes today's practice the framework's. Warning in one place and refusing in another lets a tree pass in development and fail on deploy |
-| **Locks in** | A stray file blocks start-up everywhere, a deploy included, until removed or claimed; the refusal names every file at once. An app with unclaimed files in a kit's folder stops starting: claude-code-style's `workforce/flows/` does, unless FIX-2627's schema claims it. The only pass is `IGNORED_ENTRIES`, the shared list of names that never mean anything |
-
-![D2: refuse and don't start, chosen, beside today's rule; decided by whether a file can load nothing and say nothing](figures/d2-refuse.svg)
+| **Locks in** | A stray file blocks start-up everywhere, a deploy included, until removed or claimed; the refusal names every file at once. An app with unclaimed files in a kit's folder stops starting. Workforce's folder claims only the flows workforce configures, so claude-code-style's `workforce/flows/` keeps only those; its projects flow moves to its own `flows:` or kit ([the spec](SPEC.md#what-fix-2627-and-fix-2628-must-agree-with)). The only pass is `IGNORED_ENTRIES`, the shared list of names that never mean anything |
 
 It comes down to silence: under today's rule a file the docs don't name loads nothing, unreported.
 
@@ -80,6 +76,8 @@ author's notes. Then its schema claims them as ignored, by name; the rule stays.
   Workforce's starter set is FIX-2627's.
 - **Names.** "Kit" and "slot" are in the glossary. Public names: `defineKit`, `kits`,
   `requires`, `slots`, `contributes`, `directory`; `defineKit` enters FIX-2447's export ratchet.
+- **`flows` is an array** (the owner's direction on #5064, 2026-11-11). The registry keys by
+  `flow.id`; the keyed record goes with no alias, and its call sites move in their own PR.
 - **Sequencing.** Nothing here needs views or `runBy` resources. FIX-2623 and FIX-2624 block
   FIX-2627, which ships workforce's views, not this issue.
 
@@ -133,6 +131,9 @@ agent: this dispatch has no sub-agent tool. One finding folded: D1.
 
 ## How it got here
 
+- **Merged** (#5064). The owner approved D1 and D2 as written and directed `flows: [readiness, context]`.
+  This follow-up makes `flows` an array, drops "a client half" from the title, and aligns with
+  wave A's review: workforce claims only what it configures.
 - **Draft** — the install half of the epic's goal, on FIX-2622's sketch and the loader's walk
   primitives. O1's note ran first and moved the client half out of the kit (D1); the open item
   on refused files is answered (D2).
