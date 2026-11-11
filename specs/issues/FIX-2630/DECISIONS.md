@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-Two decisions and one owner fork are the sign-off.
+Two decisions and one owner fork are the sign-off. The fork, Q1, is decided: own-user first.
 
 ## The tree
 
@@ -13,7 +13,7 @@ flowchart TD
   D1 -.->|"rejected · messaging grows fan-out"| X2["sendMessage to a topic"]
   I --> D2["D2 · the loop guard is the message budget"]
   D2 -.->|"rejected · two caps a ring can alternate under"| X3["a causation chain, depth 5"]
-  I --> Q1["Q1 · open, owner · who hears: the org, or the publisher's own user"]
+  I --> Q1["Q1 · decided, owner · own-user first"]
 ```
 
 <a name="d1"></a>
@@ -68,6 +68,10 @@ publish carries across users, a new store beside the new door. That cost now sit
 
 <a name="q1"></a>
 ### Q1 · Who hears an internal event: anyone in the org who follows the topic, or only the publisher's own user?
+
+**Decided 2026-11-11 (owner): own-user first.** Only the publisher's own routines hear an
+internal event. No new host door and no org-scoped chain row; delivery runs as the publisher's
+user, as polling does. Org-wide stays a later change that adds both.
 
 - **In plain terms:** a worker of yours announces "deploy failed". Org-wide, a teammate's
   routine on that topic hears it too. Own-user, only your routines do.
