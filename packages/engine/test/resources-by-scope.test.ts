@@ -828,3 +828,42 @@ describe("two declarers that let signed-out callers in as different default user
     expect(body.message).toContain('"porch"');
   });
 });
+
+describe("a default write aborted while its canWrite is pending", () => {
+  // Codex review 4544189602.
+  it("writes nothing once the abort lands, though canWrite then admits it", async () => {
+    let release: ((ok: boolean) => void) | undefined;
+    let asked = false;
+    const gated = defineResource({
+      ref: "gated",
+      scope: "org",
+      stateSchema: z.object({ n: z.number().default(0) }),
+      client: { expose: ["n"] },
+      runBy: "default",
+      canWrite: () => {
+        asked = true;
+        return new Promise<boolean>((resolve) => {
+          release = resolve;
+        });
+      }
+    });
+    const flow = defineFlow({
+      kind: "gate",
+      resources: { gated },
+      actions: { noop: { block: noop } },
+      authentication: { resolvePrincipal: signIn }
+    } as never)();
+    const { router, stores } = build([flow as never]);
+    const res = await post(router, ["resources", "org", "gated", "actions", "set"], alice, { input: { state: { n: 1 }, version: 0 } });
+    expect(res.status).toBe(202);
+    const { request } = (await res.json()) as { request: { id: string } };
+    for (let i = 0; i < 200 && !asked; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(asked).toBe(true);
+    const aborted = await post(router, ["fsd-default-write", "requests", request.id, "abort"], alice, {});
+    expect([200, 202, 204]).toContain(aborted.status);
+    release!(true);
+    const done = await settle(stores, request.id);
+    expect(done.status).toBe("aborted");
+    expect(await read(router, "org", "gated", alice)).toEqual({ scope: "org", key: "gated", value: { n: 0 }, version: 0 });
+  });
+});
