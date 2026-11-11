@@ -50,6 +50,9 @@ const REPO_API: Record<string, unknown> = {
   ]
 };
 
+/** A path the fake answers with a bare status (a token without that permission: `403`). */
+const FORBIDDEN = Symbol("forbidden");
+
 function fakeGitHub(extra: Record<string, unknown> = {}) {
   const api = { ...API, ...extra };
   const asked: Array<{ path: string; ifNoneMatch: string | null }> = [];
@@ -58,6 +61,7 @@ function fakeGitHub(extra: Record<string, unknown> = {}) {
     asked.push({ path, ifNoneMatch: init.headers["if-none-match"] ?? null });
     if (init.headers["if-none-match"] === `"${path}"`) return new Response(null, { status: 304 });
     if (!(path in api)) return new Response("{}", { status: 404 });
+    if (api[path] === FORBIDDEN) return new Response("{}", { status: 403 });
     return new Response(JSON.stringify(api[path]), { status: 200, headers: { etag: `"${path}"` } });
   }) as unknown as typeof globalThis.fetch;
   return { asked, provider: githubSubscriptionProvider({ token: () => "t", fetch }) };
@@ -112,5 +116,20 @@ describe("GitHub's poll", () => {
     // The review before the mark (id 80) is not delivered again.
     expect(named(polled)).toEqual(named(pushed));
     expect(polled.every((e) => e.threads.includes(REPO) && e.threads.includes(PR))).toBe(true);
+  });
+
+  // A fine-grained token can read issues and not pull requests: the repository poll still hears its issues.
+  it("still delivers a repo-wide thread's issue events when the token can't read pull requests", async () => {
+    const issue = { number: 9, title: "Deploy is blocked", labels: [], user: user("alice"), author_association: "MEMBER", created_at: at(1), updated_at: at(1), state: "open" };
+    const { provider } = fakeGitHub({
+      "/repos/acme/api/issues": [issue, API["/repos/acme/api/issues/412"]],
+      "/repos/acme/api/issues/comments": [],
+      "/repos/acme/api/pulls/comments": FORBIDDEN,
+      "/repos/acme/api/pulls/412/reviews": FORBIDDEN
+    });
+    const result = await provider.poll!(REPO, { since: SINCE }, ctx);
+    if ("unchanged" in result) throw new Error("expected the issue");
+    expect(result.events.map((e) => e.kind)).toContain("issue");
+    expect(result.events.some((e) => e.kind === "review" || e.kind === "comment")).toBe(false);
   });
 });

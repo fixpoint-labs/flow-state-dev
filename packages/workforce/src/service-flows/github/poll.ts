@@ -101,6 +101,12 @@ export async function pollGitHubThread(
   const etags: Record<string, string> = {};
   let moved = false;
   let incomplete = false;
+  /**
+   * A repository poll reads pull-request lists beside its issues. A token that
+   * may read issues and not pull requests (a fine-grained token) answers those
+   * `403`: read as nothing new there, so the issues it can read still land.
+   */
+  let pullsOptional = false;
 
   /**
    * GET `path`, conditional on its last ETag unless `full`: the body and its
@@ -116,6 +122,7 @@ export async function pollGitHubThread(
       if (cursor.etags?.[key] !== undefined) etags[key] = cursor.etags[key]!;
       return undefined;
     }
+    if (res.status === 403 && pullsOptional && path.startsWith(`${repo}/pulls`)) return undefined;
     if (!res.ok) throw new Error(`GitHub ${path} answered ${res.status}`);
     const etag = res.headers.get("etag");
     if (etag !== null) etags[key] = etag;
@@ -250,6 +257,7 @@ export async function pollGitHubThread(
   let repository = obj((await get(repo))?.body);
 
   if (n === undefined) {
+    pullsOptional = true;
     const issues = await pages(`${repo}/issues?state=all&per_page=100${sinceParam}`, (i) => ms(i.updated_at));
     const comments = await pages(`${repo}/issues/comments?per_page=100${sinceParam}`, (c) => ms(c.updated_at));
     const reviewComments = await pages(`${repo}/pulls/comments?per_page=100${sinceParam}`, (c) => ms(c.updated_at));
