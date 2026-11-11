@@ -22,6 +22,9 @@
  * session read are read for the "references, never bytes" half (ER-2).
  */
 import { randomInt } from "node:crypto";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Locator, Page, Request } from "playwright";
 import { checkClaudeCodeReadiness } from "@flow-state-dev/claude-code";
 import { checkCodexReadiness } from "@flow-state-dev/codex";
@@ -195,7 +198,14 @@ type PickedFile = { name: string; mimeType: string; buffer: Buffer };
 export async function pick(page: Page, files: PickedFile[]): Promise<void> {
   const chooser = page.waitForEvent("filechooser", { timeout: 15_000 });
   await visible(page, 'button[aria-label="Attach files"]').first().click();
-  await (await chooser).setFiles(files);
+  // Written to disk first: a large file handed over as a buffer is what times out `setFiles`.
+  const dir = mkdtempSync(join(tmpdir(), "closure-pick-"));
+  const paths = files.map((file) => {
+    const path = join(dir, file.name);
+    writeFileSync(path, file.buffer);
+    return path;
+  });
+  await (await chooser).setFiles(paths);
 }
 
 /** Whether `name` is drawn as a loaded image inside `scope`. */
