@@ -2512,6 +2512,7 @@ function taskListView(collectionId: string, resolve: TaskCollectionResolver) {
   block.validate();
   // Core types a sequencer as `BlockDefinition<any, any>`; this one declares `listedTasks` as its output
   // schema (checked by `validate` above and on every exit), so the view is typed by it, never `any`.
+  // FIX-2684
   const typed = block as unknown as BlockDefinition<typeof listTasks.inputSchema, typeof listedTasks>;
   return defineView({ scope: "session", block: typed, key: (task) => task.id, description: listTasks.description });
 }

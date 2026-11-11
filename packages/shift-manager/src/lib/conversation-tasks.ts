@@ -39,6 +39,7 @@ export type ConversationTask = ViewValueOf<ViewRef<TaskListView>>[number];
  */
 export function useConversationTasks(flow: string | null, sessionId: string | null): { tasks: ConversationTask[] | undefined; stale: boolean } {
   const { client } = useLab();
+  // A hook always takes a ref. With no flow, `enabled` is false and this placeholder is never read.
   const ref = useMemo(() => conversationBoardView(flow ?? "-"), [flow]);
   const { value, stale } = useView(ref, {}, { client, enabled: flow !== null && sessionId !== null, ...(sessionId !== null ? { sessionId } : {}) });
   return { tasks: value, stale };
