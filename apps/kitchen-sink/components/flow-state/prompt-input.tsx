@@ -9,6 +9,7 @@ import type {
   KeyboardEventHandler,
   PropsWithChildren,
   ReactNode,
+  RefObject,
 } from "react";
 
 import {
@@ -408,6 +409,9 @@ type PromptInputFormProps = Omit<
   "attachments" | "client" | "sessionId" | "accept" | "maxFiles" | "maxFileSize" | "onError" | "syncHiddenInput"
 >;
 
+/** The pickers mounted against each shared attachment state's picker ref, so one can take over the ref. */
+const mountedPickers = new WeakMap<RefObject<HTMLInputElement | null>, Set<HTMLInputElement>>();
+
 /** A PromptInput outside any provider: the attachment state is its own. */
 const PromptInputOwnAttachments = ({
   options,
@@ -435,6 +439,36 @@ const PromptInputForm = ({
   controller: PromptInputControllerProps | null;
 }) => {
   const formRef = useRef<HTMLFormElement | null>(null);
+  // This composer's own picker. The attachment state may be shared by two composers (two drawings of
+  // one), and a shared ref would hold one picker, nulled when its composer unmounts. The picker is
+  // also lent to the shared state while mounted, so a + outside the composer (beside it, inside a
+  // PromptInputProvider) still opens one. On unmount the loan passes to a picker still mounted.
+  const pickerRef = useRef<HTMLInputElement | null>(null);
+  const shared = attachments.fileInputRef;
+  const fileInputRef = useMemo<RefObject<HTMLInputElement | null>>(
+    () => ({
+      get current() {
+        return pickerRef.current;
+      },
+      set current(el) {
+        let mounted = mountedPickers.get(shared);
+        if (!mounted) mountedPickers.set(shared, (mounted = new Set()));
+        if (el) {
+          mounted.add(el);
+          shared.current = el;
+        } else if (pickerRef.current) {
+          mounted.delete(pickerRef.current);
+          if (shared.current === pickerRef.current) shared.current = [...mounted].at(-1) ?? null;
+        }
+        pickerRef.current = el;
+      },
+    }),
+    [shared]
+  );
+  const own = useMemo<Attachments>(
+    () => ({ ...attachments, fileInputRef, openFileDialog: () => pickerRef.current?.click() }),
+    [attachments, fileInputRef]
+  );
   // Set while a Send waits on uploads and onSubmit, so a second Enter doesn't send the same files again.
   const submittingRef = useRef(false);
 
@@ -561,7 +595,7 @@ const PromptInputForm = ({
   const { dropTarget } = attachments;
   const inner = (
     <>
-      <AttachmentFileInput attachments={attachments} multiple={multiple} />
+      <AttachmentFileInput attachments={own} multiple={multiple} />
       <form
         className={cn("w-full", className)}
         data-dragging={attachments.dragging || undefined}
@@ -604,7 +638,7 @@ const PromptInputForm = ({
   );
 
   return (
-    <LocalAttachmentsContext.Provider value={attachments}>
+    <LocalAttachmentsContext.Provider value={own}>
       {withReferencedSources}
     </LocalAttachmentsContext.Provider>
   );
