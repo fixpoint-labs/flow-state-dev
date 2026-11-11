@@ -66,3 +66,56 @@ describe("publishing on a declared topic", () => {
     expect(heard[0]).toContain('"sha":"4f2c"');
   });
 });
+
+describe("what a publish refuses", () => {
+  it("refuses an undeclared topic or kind, naming the declared topics, and an input that names a sender", async () => {
+    host = bootSubscriptionsHost({ internal: { topics: TOPICS } });
+    const publisher = await host.follower("alice", "eng.watcher");
+    const follower = await host.follower("alice");
+    await host.subscribe("alice", follower, { provider: "internal", thread: "internal:deploy.finished" });
+    expect(await host.publish("alice", publisher, { ...failed, topic: "deploy.finshed" })).toEqual({
+      refused: 'no_topic: "deploy.finshed" isn\'t a declared topic. You can publish: deploy.finished, report.ready. Nothing was published.'
+    });
+    expect(await host.publish("alice", publisher, { ...failed, kind: "rolled-back" })).toEqual({
+      refused: 'no_kind: "rolled-back" isn\'t a kind of "deploy.finished". Its kinds: succeeded, failed. Nothing was published.'
+    });
+    const forged = await host.publish("alice", publisher, { ...failed, sender: { id: follower, name: "someone", role: "member" } });
+    expect(forged).toEqual({ refused: expect.stringMatching(/^invalid_input: .*sender/) });
+    expect(await host.publish("alice", publisher, { ...failed, data: { service: "api" } })).toEqual({ refused: expect.stringMatching(/^invalid_data: sha/) });
+    // Nothing reached the follower, and nothing was paid for.
+    expect(await host.heard(follower)).toEqual([]);
+  });
+});
+
+describe("what following a topic refuses", () => {
+  it("refuses an undeclared topic or kind at subscribe, naming the declared ones, so a misspelt routine never waits forever", async () => {
+    host = bootSubscriptionsHost({ internal: { topics: TOPICS } });
+    const follower = await host.follower("alice");
+    expect(await host.subscribe("alice", follower, { provider: "internal", thread: "internal:deploy.finshed" })).toEqual({
+      refused: 'no_topic: "deploy.finshed" isn\'t a declared topic. You can follow: deploy.finished, report.ready.'
+    });
+    expect(await host.subscribe("alice", follower, { provider: "internal", thread: "internal:deploy.finished", kinds: ["failed", "rolled-back"] })).toEqual({
+      refused: 'no_kind: "rolled-back" isn\'t a kind of "deploy.finished". Its kinds: succeeded, failed.'
+    });
+    // No wildcards: a pattern is not a topic.
+    expect(await host.subscribe("alice", follower, { provider: "internal", thread: "internal:deploy.*" })).toHaveProperty("refused");
+    expect(await host.subscriptionRows("alice")).toEqual([]);
+  });
+});
+
+describe("who hears a publish", () => {
+  it("never the publishing session, and never a teammate: only the publisher's own other routines (own-user first)", async () => {
+    host = bootSubscriptionsHost({ internal: { topics: TOPICS } });
+    const publisher = await host.follower("alice", "eng.watcher");
+    const own = await host.follower("alice");
+    const teammate = await host.follower("bob");
+    for (const [user, session] of [["alice", publisher], ["alice", own], ["bob", teammate]] as const) {
+      expect(await host.subscribe(user, session, { provider: "internal", thread: "internal:deploy.finished" })).toHaveProperty("id");
+    }
+    expect(await host.publish("alice", publisher, failed)).toHaveProperty("published");
+    expect(await host.heard(own)).toHaveLength(1);
+    expect(await host.heard(publisher)).toEqual([]);
+    expect(await host.heard(teammate)).toEqual([]);
+    expect(await host.serviceRows("bob")).toEqual([]);
+  });
+});
