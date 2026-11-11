@@ -168,6 +168,35 @@ describe("installing kits", () => {
     );
   });
 
+  it("keeps an entry keyed __proto__ as an own key of the merged record", async () => {
+    let entries: Readonly<Record<string, string>> | undefined;
+    let byId: Readonly<Record<string, { id: string }>> | undefined;
+    const owner = defineKit({
+      name: "owner",
+      slots: { entries: slot.keyed(z.string()), byId: slot.keyed(z.object({ id: z.string() })) },
+      install: ({ slots }) => {
+        entries = slots.entries;
+        byId = slots.byId;
+        return { flows: [] };
+      },
+    });
+    const filler = defineKit({
+      name: "filler",
+      requires: [owner],
+      // A computed key makes `__proto__` an own property of the record given,
+      // as JSON.parse does; a literal `__proto__:` would set the prototype.
+      contributes: () => ({ [owner.slots.entries]: { ["__proto__"]: "from filler", plain: "p" } }),
+      install: () => ({ flows: [] }),
+    });
+    const state = track(
+      createFlowState({ kits: [owner(), filler()], fill: { [owner.slots.byId]: [{ id: "__proto__" }] }, stores }),
+    );
+    await state.ready();
+    expect(Object.keys(entries ?? {}).sort()).toEqual(["__proto__", "plain"]);
+    expect(Object.getOwnPropertyDescriptor(entries, "__proto__")?.value).toBe("from filler");
+    expect(Object.keys(byId ?? {})).toEqual(["__proto__"]);
+  });
+
   it("drops one entry of a kit's contribution, keeping the rest", async () => {
     const { b, c, d, seen } = chain();
     const state = track(createFlowState({ kits: [b(), c(), d().without(b.slots.entries, "d")], stores }));

@@ -86,10 +86,8 @@ describe("createFlowState — construction validation", () => {
         dev: { primary: inMemoryStores() }
       }
     });
-    // The registered instance's ID — the string a caller can actually address
-    // — not the arbitrary key the `flows` record filed it under. This fixture
-    // is the case that shows the difference: the record key is `noop` and
-    // nothing has ever answered to it.
+    // The registered instance's id, the string a caller addresses: its
+    // `flow.id`, which defaults to its `kind`.
     expect(fs.meta.flowKeys).toEqual(["noop-flow"]);
     expect(fs.meta.profileKeys).toEqual(["prod", "dev"]);
     expect(fs.meta.declaredSlots).toEqual({

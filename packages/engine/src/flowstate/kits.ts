@@ -164,7 +164,9 @@ export function planKits(
       }
       return list;
     }
-    const into: Record<string, unknown> = {};
+    // No prototype: an entry keyed `__proto__` must be an own key, not a
+    // call to the inherited setter that drops it from `Object.keys`.
+    const into: Record<string, unknown> = Object.create(null);
     const keyedBy = new Map<string, string>();
     for (const { from, value, dropped } of given) {
       // A record gives its keys; a list of entries is keyed by each entry's `id`.
@@ -208,7 +210,7 @@ export function planKits(
   const slots = new Map<string, unknown>();
   for (let rank = order.length - 1; rank >= 0; rank--) {
     const kit = order[rank]!;
-    const own: Record<string, unknown> = {};
+    const own: Record<string, unknown> = Object.create(null);
     for (const name of Object.keys(kit.definition.slots ?? {})) {
       const key = `${kit.kitName}.${name}`;
       const merged = merge(key);
