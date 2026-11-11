@@ -79,12 +79,12 @@ function boot() {
   return { seen, state, pub };
 }
 
-const run = (userId: string, orgId: string, note: string, tenantId?: string, rowKey = "subs/s1") => ({
+const run = (userId: string, orgId: string, note: string, tenantId?: string, key = "subs/s1") => ({
   flowKind: "svc",
   entry: "deliver",
   input: { note },
   owner: { userId, orgId, ...(tenantId === undefined ? {} : { tenantId }) },
-  rowKey
+  rowKey: key
 });
 
 describe("the dispatch seam's service route", () => {

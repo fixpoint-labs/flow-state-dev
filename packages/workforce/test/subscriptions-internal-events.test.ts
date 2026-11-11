@@ -26,8 +26,8 @@ describe("a delivery lands where the event's chain is", () => {
     const session = await host.follower("alice");
     await host.subscribe("alice", session, { thread: "github:acme/api#412" });
     await host.route(event({ hop: 2, chain: "chain_publisher" }));
-    const rows = await host.serviceRows("alice");
-    expect(rows.map((row) => [row.hop, row.chain])).toEqual([[3, "chain_publisher"]]);
+    const entries = await host.serviceRows("alice");
+    expect(entries.map((entry) => [entry.hop, entry.chain])).toEqual([[3, "chain_publisher"]]);
   });
 
   it("delivers an event with neither as before: one hop past the owner run's, in its own chain (BP-030)", async () => {
@@ -35,10 +35,10 @@ describe("a delivery lands where the event's chain is", () => {
     const session = await host.follower("alice");
     await host.subscribe("alice", session, { thread: "github:acme/api#412" });
     await host.route(event());
-    const rows = await host.serviceRows("alice");
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.hop).toBe(1);
-    expect(rows[0]!.chain).toMatch(/^chain_/);
+    const entries = await host.serviceRows("alice");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.hop).toBe(1);
+    expect(entries[0]!.chain).toMatch(/^chain_/);
   });
 });
 
@@ -152,8 +152,8 @@ describe("who a publish is routed to, at the source", () => {
     expect(await host.subscribe("alice", otherTenant, follow, "tenant-b")).toHaveProperty("id");
     expect(await host.subscribe("alice", noTenant, follow)).toHaveProperty("id");
     expect(await host.publish("alice", publisher, failed, "tenant-a")).toHaveProperty("published");
-    const rows = await host.serviceRows("alice");
-    expect(rows.map((row) => row.toSession)).toEqual([sameTenant]);
+    const entries = await host.serviceRows("alice");
+    expect(entries.map((entry) => entry.toSession)).toEqual([sameTenant]);
   });
 });
 
@@ -184,9 +184,9 @@ describe("the loop guard is the message budget (D2)", () => {
       "budget: this would be message 7 since the user's last line, and the budget is 6. Nothing was published. Stop passing messages on, and say that you stopped; the next line from the user lets the workers go on."
     ]);
     // Each pass landed once, one hop on, all in the publisher's one chain.
-    const rows = await host.serviceRows("alice");
-    expect(rows.map((row) => row.hop).sort()).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(new Set(rows.map((row) => row.chain)).size).toBe(1);
+    const entries = await host.serviceRows("alice");
+    expect(entries.map((entry) => entry.hop).sort()).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(new Set(entries.map((entry) => entry.chain)).size).toBe(1);
   });
 
   it("makes a fan-out's branches share the publisher's budget: paid places never pass it, and every publish past it is refused", async () => {
@@ -206,7 +206,7 @@ describe("the loop guard is the message budget (D2)", () => {
     const refused = outcomes.filter((o) => o.refused !== undefined);
     expect(refused.length).toBeGreaterThan(0);
     for (const o of refused) expect(o.refused).toMatch(/^budget: .* the budget is 6\./);
-    const chains = new Set((await host.serviceRows("alice")).map((row) => row.chain));
+    const chains = new Set((await host.serviceRows("alice")).map((entry) => entry.chain));
     expect(chains.size).toBe(1);
   });
 });
@@ -224,7 +224,7 @@ describe("a publish repeated in one request", () => {
     expect(await host.heard(follower)).toHaveLength(1);
     const runtime = await host.state.getRuntime();
     const chains = Object.values(await runtime.stores.resourceState.getByPrefix("user", "alice:~org:acme", "workforce/message-chains/"));
-    expect(chains.map((row) => (row.state as { sent: string[] }).sent)).toEqual([[first!.published]]);
+    expect(chains.map((entry) => (entry.state as { sent: string[] }).sent)).toEqual([[first!.published]]);
   });
 });
 
