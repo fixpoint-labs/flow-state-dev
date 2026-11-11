@@ -16,14 +16,16 @@
  *
  * ES modules are seen through a module load hook, which runs alongside tsx's
  * own. tsx compiles CommonJS through its own require path, which skips that
- * hook, so `require.cache` is read too. A module loaded late (a flow imported
- * on first use) joins the record when it loads.
+ * hook, so CommonJS loads are seen where Node loads every CommonJS module
+ * (`Module.prototype.load`). Either way a file is hashed as it loads, so an
+ * edit made after that marks the server changed. A module loaded late (a flow
+ * imported on first use) joins the record when it loads.
  *
  * The variable is removed from the environment once read, so a process the
  * lab starts (a coding agent, say) doesn't record into the same file.
  */
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
-import { createRequire, registerHooks } from "node:module";
+import Module, { registerHooks } from "node:module";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BUILD_INPUTS_FILE, hashOf } from "../../scripts/build-inputs.mjs";
@@ -35,7 +37,6 @@ delete process.env.SUPER_APP_SERVER_INPUTS;
 if (outDir !== undefined && outDir !== "") {
   /** Repo-relative path to the hash of its content when it loaded. */
   const inputs = {};
-  const cache = createRequire(import.meta.url).cache;
   /** @type {NodeJS.Timeout | undefined} */
   let timer;
 
@@ -56,7 +57,6 @@ if (outDir !== undefined && outDir !== "") {
 
   const write = () => {
     timer = undefined;
-    for (const file of Object.keys(cache)) add(file);
     mkdirSync(outDir, { recursive: true });
     // Written beside and renamed over, so a reader never sees half a record.
     const record = join(outDir, BUILD_INPUTS_FILE);
@@ -73,10 +73,10 @@ if (outDir !== undefined && outDir !== "") {
       return nextLoad(url, context);
     },
   });
-  // CommonJS loads don't pass the hook: pick up what `require.cache` gained.
-  setInterval(() => {
-    const before = Object.keys(inputs).length;
-    for (const file of Object.keys(cache)) add(file);
-    if (Object.keys(inputs).length !== before) schedule();
-  }, 2000).unref();
+  // CommonJS loads don't pass the hook above.
+  const load = Module.prototype.load;
+  Module.prototype.load = function (filename) {
+    if (add(filename)) schedule();
+    return load.call(this, filename);
+  };
 }

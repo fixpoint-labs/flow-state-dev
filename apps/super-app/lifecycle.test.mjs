@@ -177,6 +177,14 @@ describe("restarting one app", () => {
     assert.deepEqual(await first, { ok: true });
   });
 
+  it("refuses before the app has started, while dev may still be installing what its server loads", async () => {
+    const procs = fakeProcesses();
+    const { lifecycle } = lifecycleOver(labs(), procs);
+    const result = await lifecycle.restart("one");
+    assert.equal(result.status, 409);
+    assert.equal(procs.started.length, 0, "no server started ahead of the run's own start");
+  });
+
   it("stops at a port something else still holds, and marks the app stopped", async () => {
     const procs = fakeProcesses();
     const { lifecycle } = lifecycleOver(labs(), procs, { reclaimPort: async () => ({ status: "foreign", pid: 9, command: "nc -l" }) });

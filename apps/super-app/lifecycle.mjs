@@ -85,6 +85,8 @@ export function createLifecycle({
   const generation = new Map(apps.map((a) => [a.id, 0]));
   const watchersStarted = new Set();
   const restarting = new Set();
+  /** Apps whose `start` has run. Before it, `dev` may still be installing what a server would load. */
+  const begun = new Set();
   /** @type {Map<string, { at: number, changed: boolean }>} */
   const changedMemo = new Map();
   let stopping = false;
@@ -167,6 +169,7 @@ export function createLifecycle({
   /** Runs an app's steps in order; the last is its server. */
   async function start(id) {
     const { app, i } = byId.get(id);
+    begun.add(id);
     const gen = generation.get(id);
     watchPort(app, i);
     const label = labelOf(i, app);
@@ -245,6 +248,7 @@ export function createLifecycle({
     if (found === undefined) return { ok: false, status: 404, message: `No app is called ${id}.` };
     if (!restartable(id)) return { ok: false, status: 409, message: `${found.app.title} can't be restarted from here.` };
     if (stopping) return { ok: false, status: 409, message: "The super app is shutting down." };
+    if (!begun.has(id)) return { ok: false, status: 409, message: `${found.app.title} hasn't started yet; restart it once it has.` };
     if (restarting.has(id)) return { ok: false, status: 409, message: `${found.app.title} is already restarting.` };
     const { app, i } = found;
     const label = labelOf(i, app);
