@@ -439,7 +439,7 @@ export async function walkCodingHandOff(page: Page, surface: Surface, worker: st
     return words;
   }
   // The filer saw the images: a word it copied into the brief proves nothing of the run.
-  const brief = (await view.brief.innerText().catch(() => "")).toUpperCase();
+  const brief = (await view.brief.allInnerTexts().catch(() => [])).join("\n").toUpperCase();
   const leaked = words.filter((w) => brief.includes(w));
   if (leaked.length > 0) {
     failures.push(`[${surface.tag}:coding] the task's brief itself names ${leaked.join(", ")}: its run can't show it read the images`);

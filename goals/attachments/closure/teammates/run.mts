@@ -59,7 +59,9 @@ await runGoal(async (failures, tell) => {
         if (!(await card.waitFor({ timeout }).then(() => true, () => false))) return null;
         await card.click();
         const popup = p.getByRole("dialog").last();
-        return { work: popup.locator('[data-step="result"]'), brief: popup.locator("header") };
+        // The goal the filer wrote is drawn as the run's first step, not in the header.
+        await popup.locator('[data-step="given"]').first().waitFor({ timeout }).catch(() => undefined);
+        return { work: popup.locator('[data-step="result"]'), brief: popup.locator('header, [data-step="given"]') };
       },
       origin: () => lab.origin,
       async open(p) {
