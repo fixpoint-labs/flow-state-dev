@@ -14,8 +14,8 @@ import type { OwnHold, TaskHold } from "@flow-state-dev/orchestration/tasks";
 import { afterEach, describe, expect, it } from "vitest";
 import { refusedOnContent } from "../src/subscriptions/screens";
 import type { WorkerManifest } from "../src/manifest";
-import { githubServiceFlow } from "../src/subscriptions/github/service-flow";
-import type { GitHubSubscriptionProvider } from "../src/subscriptions/github/provider";
+import { githubServiceFlow } from "../src/service-flows/github/service-flow";
+import type { GitHubSubscriptionProvider } from "../src/service-flows/github/provider";
 import { bootSubscriptionsHost, event, github, revoked, type SubscriptionsHost } from "./subscriptions-harness";
 
 afterEach(() => revoked.clear());

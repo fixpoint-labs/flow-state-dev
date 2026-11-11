@@ -12,7 +12,8 @@
  */
 import { describe, expect, it } from "vitest";
 import type { BlockContext, SubscriptionEvent } from "@flow-state-dev/core/types";
-import { githubSubscriptionProvider, normalizeGitHubEvent, screenRefusal } from "../src/subscriptions";
+import { githubSubscriptionProvider, normalizeGitHubEvent } from "../src/service-flows";
+import { screenRefusal } from "../src/subscriptions";
 
 const PR = "github:acme/api#412";
 const SINCE = Date.parse("2026-11-09T10:00:00Z");

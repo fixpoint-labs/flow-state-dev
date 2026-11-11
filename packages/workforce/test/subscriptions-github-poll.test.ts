@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { githubSubscriptionProvider, normalizeGitHubEvent } from "../src/subscriptions";
+import { githubSubscriptionProvider, normalizeGitHubEvent } from "../src/service-flows";
 
 const PR = "github:acme/api#412";
 const REPO = "github:acme/api";

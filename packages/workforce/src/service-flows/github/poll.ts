@@ -36,7 +36,7 @@
  * `assigned`, `review_requested` and `reopened`.
  */
 import type { BlockContext, SubscriptionEvent } from "@flow-state-dev/core/types";
-import type { SubscriptionPollCursor, SubscriptionPollResult } from "../subscribe";
+import type { SubscriptionPollCursor, SubscriptionPollResult } from "../../subscriptions/subscribe";
 import { normalizeGitHubEvent, type GitHubNormalizeOptions } from "./normalize";
 
 type Json = Record<string, unknown>;

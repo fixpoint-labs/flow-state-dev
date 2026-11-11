@@ -7,7 +7,7 @@
  * subscriber before it is delivered, and a poll reads only what its user can.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
-import type { SubscriptionProvider } from "../subscribe";
+import type { SubscriptionProvider } from "../../subscriptions/subscribe";
 import { GITHUB_PROVIDER, githubLoginId } from "./normalize";
 import { pollGitHubThread } from "./poll";
 
