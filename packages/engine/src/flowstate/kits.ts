@@ -29,15 +29,19 @@ export interface KitPlan {
   readonly order: readonly KitInstance[];
   /** Each declared slot's merged entries, by slot key. */
   readonly slots: ReadonlyMap<string, unknown>;
-  /** Each folder-owning kit's absolute folder, by kit name. */
+  /** Each folder-owning kit's folder, by kit name, spelled as given (absolute or against the working directory). */
   readonly folders: ReadonlyMap<string, string>;
 }
 
-/** The app's root as a directory path: a path, or a URL such as `import.meta.url`. */
+/** What `check` returns for an entry its slot's schema refused. */
+const NOT_PARSED = Symbol("not parsed");
+
+/** The app's root as a directory path, spelled as given: a path, or a URL such as `import.meta.url`. */
 function rootPath(root: string | URL | undefined): string {
   if (root === undefined) return process.cwd();
   if (root instanceof URL || root.startsWith("file:")) return fileURLToPath(new URL(".", root));
-  return path.resolve(root);
+  // As written: a `..` in it reaches the root check unnormalized.
+  return root;
 }
 
 function refuse(problems: readonly string[]): never {
@@ -143,16 +147,20 @@ export function planKits(
   const merge = (key: string): unknown => {
     const { slot } = declared.get(key)!;
     const given = [...(pending.get(key) ?? [])].sort((a, b) => a.rank - b.rank);
-    const check = (entry: unknown, from: string, label: string): boolean => {
+    /** The entry as the slot's schema parsed it (defaults, coercions), or `NOT_PARSED`. */
+    const check = (entry: unknown, from: string, label: string): unknown => {
       const parsed = slot.schema.safeParse(entry);
-      if (parsed.success) return true;
+      if (parsed.success) return parsed.data;
       problems.push(`slot "${key}": ${from} gave ${label} its schema refuses: ${parsed.error.issues.map((issue) => issue.message).join("; ")}.`);
-      return false;
+      return NOT_PARSED;
     };
     if (slot.kind === "list") {
       const list: unknown[] = [];
       for (const { from, value } of given) {
-        for (const entry of Array.isArray(value) ? value : [value]) if (check(entry, from, "an entry")) list.push(entry);
+        for (const entry of Array.isArray(value) ? value : [value]) {
+          const parsed = check(entry, from, "an entry");
+          if (parsed !== NOT_PARSED) list.push(parsed);
+        }
       }
       return list;
     }
@@ -181,9 +189,10 @@ export function planKits(
           problems.push(`slot "${key}": the key "${entryKey}" is filled by ${earlier} and by ${from}.`);
           continue;
         }
-        if (!check(entry, from, `the entry "${entryKey}"`)) continue;
+        const parsed = check(entry, from, `the entry "${entryKey}"`);
+        if (parsed === NOT_PARSED) continue;
         keyedBy.set(entryKey, from);
-        into[entryKey] = entry;
+        into[entryKey] = parsed;
       }
     }
     return into;
@@ -226,14 +235,23 @@ export function planKits(
     // The kit's default reads against the app's root; a path the app typed
     // into config reads as any path a user gives does, against the working
     // directory.
-    const absolute = kit.directory !== undefined ? path.resolve(kit.directory) : path.resolve(base, directory.path);
+    // `spelled` keeps the path as written for the root check, which refuses a
+    // `..` stepping back through an earlier segment (a linked one would send
+    // the kernel elsewhere); `absolute` is normalized only to compare folders.
+    const spelled =
+      kit.directory !== undefined
+        ? kit.directory
+        : path.isAbsolute(directory.path)
+          ? directory.path
+          : `${base}${path.sep}${directory.path}`;
+    const absolute = path.resolve(spelled);
     const other = folderOwner.get(absolute);
     if (other !== undefined) {
       problems.push(`kits "${other}" and "${kit.kitName}" both read the folder "${absolute}"; each kit owns its own.`);
       continue;
     }
     folderOwner.set(absolute, kit.kitName);
-    folders.set(kit.kitName, absolute);
+    folders.set(kit.kitName, spelled);
   }
 
   if (problems.length > 0) refuse(problems);

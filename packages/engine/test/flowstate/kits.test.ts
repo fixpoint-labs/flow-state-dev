@@ -7,7 +7,7 @@
  * badly) throws at construction, as a duplicate flow id does. What is wrong
  * with a folder is found at start-up, and rejects `ready()` and every request.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -176,6 +176,24 @@ describe("installing kits", () => {
     expect(seen.order).toEqual(["c", "d"]);
   });
 
+  it("hands each slot what its schema parsed: defaults applied, values coerced", async () => {
+    let seen: { list?: readonly { n: number }[]; keyed?: Readonly<Record<string, number>> } = {};
+    const owner = defineKit({
+      name: "owner",
+      slots: { list: slot.list(z.object({ n: z.number().default(1) })), keyed: slot.keyed(z.coerce.number()) },
+      install: ({ slots }) => {
+        seen = { list: slots.list, keyed: slots.keyed };
+        return { flows: [] };
+      },
+    });
+    const state = track(
+      createFlowState({ kits: [owner()], fill: { [owner.slots.list]: [{}], [owner.slots.keyed]: { three: "3" } }, stores }),
+    );
+    await state.ready();
+    expect(seen.list).toEqual([{ n: 1 }]);
+    expect(seen.keyed).toEqual({ three: 3 });
+  });
+
   it("drops one kit's contribution when the app asks", async () => {
     const { b, c, d, seen } = chain();
     const state = track(createFlowState({ kits: [b(), c(), d().without(b.slots.order)], stores }));
@@ -314,6 +332,22 @@ describe("a kit's folder", () => {
     expect(installed).toBe(false);
     // Every later entry point gets the same refusal.
     await expect(state.getRuntime()).rejects.toThrow(/"notes\.txt"/);
+  });
+
+  it("refuses a folder path spelled with a .. through a symlink, rather than reading where the spelling collapses to", async () => {
+    // `<app>/linked/..` is `<app>` to a lexical join, and `<outside>/..` to the
+    // kernel. Normalizing before the check would read `<app>/notes` and pass.
+    const app = tempDir({ "notes/greeting.txt": "hi" });
+    const outside = tempDir({ "inner/x.txt": "x" });
+    symlinkSync(join(outside, "inner"), join(app, "linked"));
+    const state = track(
+      createFlowState({ kits: [notesKit()({ directory: `${app}/linked/../notes` })], root: app, stores }),
+    );
+    await expect(state.ready()).rejects.toThrow(/spelled with a "\.\." that steps back/);
+
+    // The same through the app's root, which the kit's default folder joins.
+    const viaRoot = track(createFlowState({ kits: [notesKit()()], root: `${app}/linked/..`, stores }));
+    await expect(viaRoot.ready()).rejects.toThrow(/spelled with a "\.\." that steps back/);
   });
 
   it("refuses two kits on one folder", () => {
