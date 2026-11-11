@@ -91,7 +91,7 @@ describe("write-record authorization", () => {
     expect(uses).toEqual([
       "hostResolver: PrincipalResolver;",
       "const { registry, stores, hostResolver } = options;",
-      "const address = resolveAddress(registry, hostResolver, target.scope, target.key);"
+      "const address = resolveAddress(registry, hostResolver, target.scope, target.key, (flow) =>"
     ]);
     // `resolveAddress` compares resolvers; it never calls one.
     const address = readFileSync(join(__dirname, "../src/resources/scope-address.ts"), "utf8");
