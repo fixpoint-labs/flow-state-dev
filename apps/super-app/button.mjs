@@ -72,8 +72,9 @@ document.documentElement.appendChild(p);
 function poll(){
 fetch(r.list,{cache:"no-store"}).then(function(res){return res.ok?res.json():[]}).then(function(list){
 var me=list.filter(function(x){return x.id===r.id})[0];
-// Done once it answers again, or failed if the new server stopped (a bad edit): either way the pill can be used again.
-if(sent&&me&&((me.status==="running"&&!me.changed)||me.status==="stopped"))reset();
+// Done once the new server answers, or failed if it stopped (a bad edit): either way the pill can be used again.
+// An edit made since it loaded leaves it changed, and the pill offers the next restart.
+if(sent&&me&&(me.status==="running"||me.status==="stopped"))reset();
 p.style.display=(me&&me.changed)||busy?"flex":"none";
 },function(){}).then(function(){setTimeout(poll,r.every)});
 }
