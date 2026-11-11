@@ -53,7 +53,7 @@ export const modeStatusView = defineView({
         thinkingStyle: coalesceThinkingStyle(state.thinkingStyle),
         requestCount: state.requestCount,
         features: state.features,
-        activeSkills: (state.activeSkills as Array<{ name: string; source?: string; mode?: "inline" | "fork" | "pattern" }>).map((s) => ({
+        activeSkills: state.activeSkills.map((s) => ({
           name: s.name,
           source: s.source ?? "tool",
           ...(s.mode !== undefined ? { mode: s.mode } : {}),

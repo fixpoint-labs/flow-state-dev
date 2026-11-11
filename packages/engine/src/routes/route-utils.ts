@@ -2,28 +2,14 @@
  * Shared utilities for route handlers: response builders, parsing, and validation helpers.
  */
 import { isOrgAttributed, UnattributedOrgError, type OrgAttributedRecord } from "../context/org-attribution";
-import type {
-  ProjectedResourceCollectionConfig,
-  ProjectedResourceContext,
-  JsonObject,
-  ResourceConfig,
-  ResourceCollectionConfig,
-  ResourceScope,
-  ScopeType,
-} from "@flow-state-dev/core/types";
-import { buildProjectedResourceRef } from "../resources/projected-ref";
+import type { JsonObject, ResourceConfig } from "@flow-state-dev/core/types";
 import {
   extractBareTopic,
   isProjectedResourceCollection,
   matchesPattern,
-  readProjectedRecord,
   resolveCollectionKey,
 } from "@flow-state-dev/core/types";
-import {
-  cloneValue,
-  hasClientProjection,
-  resolveClientData
-} from "@flow-state-dev/core/helpers";
+import { hasClientProjection, resolveClientData } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
@@ -36,7 +22,7 @@ import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import { principalOwnsRequest } from "../context/request-principal";
 import type { SessionCreateRefusedError } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
-import { OWNER_RESOURCE_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
+import { ownerKeyAdmits } from "../resources/owner-private";
 import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { isCollectionConfig } from "../resources/is-collection-config";

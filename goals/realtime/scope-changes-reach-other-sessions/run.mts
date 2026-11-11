@@ -139,7 +139,7 @@ const licenseCountView = defineView({
     inputSchema: z.object({}),
     outputSchema: z.number(),
     resources: { licenses },
-    execute: async (_input, ctx) => (await ctx.resources.licenses.list()).length
+    execute: async (_input, ctx) => ctx.resources.licenses.count()
   })
 });
 const LICENSE_COUNT = viewRef<typeof licenseCountView>("desk", "licenseCount");

@@ -1,14 +1,13 @@
 // FIX-858.
 /**
- * Shared builder for a read-only projected-collection instance ref.
+ * Builder for a read-only projected-collection instance ref.
  *
- * Both the execution-context registry (`createExternalCollectionHandle`) and the
- * client-route scope handle (`createScopeResources`) resolve an app record and
- * expose it as a read-only `ProjectedResourceRef`. Factored here so the ref shape
- * — `path` / `scope` / `uri` / synchronous `state`, and content rendered from
- * `contentTemplate` / `contentTemplateRef` — has ONE definition and the two call
- * sites can't drift (they did: the route copy ignored templates). The read+
- * validate step is `readProjectedRecord` in core; this owns only the ref shape.
+ * The execution-context registry (`createExternalCollectionHandle`) resolves an
+ * app record and exposes it as a read-only `ProjectedResourceRef` through this:
+ * the ref shape — `path` / `scope` / `uri` / synchronous `state`, and content
+ * rendered from `contentTemplate` / `contentTemplateRef` — has one definition
+ * here. The read+validate step is `readProjectedRecord` in core; this owns only
+ * the ref shape.
  */
 import type { ProjectedResourceRef, JsonObject, ResourceScope } from "@flow-state-dev/core/types";
 import {
