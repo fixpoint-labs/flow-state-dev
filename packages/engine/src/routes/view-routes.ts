@@ -9,6 +9,9 @@
  * the answer, and the change topics what it read falls under, deduped and
  * sorted. Nothing is stored (`execution/runView.ts`).
  *
+ * A caller outside the flow instance's owner pin gets the 404 an unregistered
+ * address gets, before anything about the flow's views is answered.
+ *
  * The caller is resolved on the `:flowKind` path through the flow's own
  * resolver (`pickPrincipalResolver`, through `host.resolvePrincipal`), as an
  * action and a read are, never from the body, query or headers. A
@@ -29,6 +32,7 @@ import {
   TenantBindingMismatchError,
   UserBindingMismatchError
 } from "../context/binding-errors";
+import { InstancePinMismatchError, pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
 import { NoSessionError } from "../context/no-session";
 import { UnrecordedReadError, ViewModelCallError } from "../context/view-reads";
 import { FlowError } from "../errors/flow-error";
@@ -50,24 +54,7 @@ type ViewRouteContext = {
 /** Run one view for its caller. See the file header. */
 export async function handleRunView(request: Request, route: ViewRoute, ctx: ViewRouteContext): Promise<Response> {
   const flow = ctx.registry.get(route.flowKind);
-  if (flow === undefined) return jsonResponse(404, { error: `Unknown flow "${route.flowKind}"` });
-  const view = Object.hasOwn(flow.views ?? {}, route.viewName) ? flow.views![route.viewName]! : undefined;
-  if (view === undefined) return jsonResponse(404, { error: new UnknownViewError(flow.id, route.viewName).message });
-
-  // The address must match the view's scope: a session view names its
-  // session, and a user or org view names none.
-  if (view.scope === "session" && route.sessionId === undefined) {
-    return jsonResponse(400, {
-      error: "view_needs_session",
-      message: `View "${route.viewName}" runs on a session: call it at /${route.flowKind}/<sessionId>/views/${route.viewName}`
-    });
-  }
-  if (view.scope !== "session" && route.sessionId !== undefined) {
-    return jsonResponse(400, {
-      error: "view_takes_no_session",
-      message: `View "${route.viewName}" runs at ${view.scope} scope, with no session: call it at /${route.flowKind}/views/${route.viewName}`
-    });
-  }
+  if (flow === undefined) return jsonResponse(404, { error: unknownFlowMessage(route.flowKind) });
 
   const body = await parseJsonBody(request);
   const metadata = asObject(body.metadata);
@@ -93,6 +80,31 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
       return jsonResponse(status, { error: error.message });
     }
     throw error;
+  }
+
+  // The instance's owner pin, before anything about the flow is answered: a
+  // caller outside it gets the 404 an unregistered address gets, so it can't
+  // learn the instance exists or which views it has (as session create does).
+  if (pinRejectsCaller(flow.ownerPin, { userId: principal.userId, orgId: principal.orgId })) {
+    return jsonResponse(404, { error: unknownFlowMessage(route.flowKind) });
+  }
+
+  const view = Object.hasOwn(flow.views ?? {}, route.viewName) ? flow.views![route.viewName]! : undefined;
+  if (view === undefined) return jsonResponse(404, { error: new UnknownViewError(flow.id, route.viewName).message });
+
+  // The address must match the view's scope: a session view names its
+  // session, and a user or org view names none.
+  if (view.scope === "session" && route.sessionId === undefined) {
+    return jsonResponse(400, {
+      error: "view_needs_session",
+      message: `View "${route.viewName}" runs on a session: call it at /${route.flowKind}/<sessionId>/views/${route.viewName}`
+    });
+  }
+  if (view.scope !== "session" && route.sessionId !== undefined) {
+    return jsonResponse(400, {
+      error: "view_takes_no_session",
+      message: `View "${route.viewName}" runs at ${view.scope} scope, with no session: call it at /${route.flowKind}/views/${route.viewName}`
+    });
   }
 
   try {
@@ -124,6 +136,10 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
 /** What a failed view answers: the action route's answer for a binding refusal, a named code for the rest. */
 function viewFailureResponse(error: unknown, route: ViewRoute): Response {
   if (error instanceof UnknownViewError) return jsonResponse(404, { error: error.message });
+  // A pin miss never names the instance or which half of the pin failed,
+  // however it surfaces: the pre-check above stops the caller, and this keeps
+  // one thrown later, or wrapped by the block executor, from saying more.
+  if (hasCause(error, InstancePinMismatchError)) return jsonResponse(404, { error: unknownFlowMessage(route.flowKind) });
   if (
     route.sessionId !== undefined &&
     (error instanceof UserBindingMismatchError ||
@@ -148,4 +164,12 @@ function viewFailureResponse(error: unknown, route: ViewRoute): Response {
   }
   const message = error instanceof Error ? error.message : String(error);
   return jsonResponse(500, { error: "view_failed", message });
+}
+
+/** Whether `error`, or an error in its `cause` chain, is a `type`. */
+function hasCause(error: unknown, type: new (...args: never[]) => Error): boolean {
+  for (let cause: unknown = error, depth = 0; cause instanceof Error && depth < 8; cause = (cause as Error).cause, depth += 1) {
+    if (cause instanceof type) return true;
+  }
+  return false;
 }
