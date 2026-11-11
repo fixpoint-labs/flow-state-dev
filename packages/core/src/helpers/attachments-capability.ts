@@ -31,7 +31,7 @@ import { HarnessAttachmentUnavailableError, readHarnessAttachments } from "../ty
 import { ATTACHMENTS, attachmentsCollection, type AttachmentResourceState } from "./record-attachments";
 
 /** Documents the context entry lists by id, newest first; an older one is read by its name. */
-export const LISTED_DOCUMENTS = 8;
+const LISTED_DOCUMENTS = 8;
 
 /** Matches a name answers with when it names several documents. */
 const LISTED_MATCHES = 10;
