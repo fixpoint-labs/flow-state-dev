@@ -177,8 +177,9 @@ export interface Surface {
   /** The page path that reopens the conversation leg a sent into, after a restart. Default: the page's own URL. */
   reopenPath?(page: Page): string;
   /**
-   * Open the coding task the hand-off filed and return its own view, where the
-   * coding run's work is drawn; null when no task shows within `timeout`.
+   * Open the coding task the hand-off filed and return the part of its view the
+   * coding run writes (its work or result, never the title or goal the filer
+   * wrote); null when no task shows within `timeout`.
    * Without it, the hand-off has nothing of the coding run's to read: a FAIL.
    */
   openCodingTask?(page: Page, timeout: number): Promise<Locator | null>;

@@ -53,12 +53,12 @@ await runGoal(async (failures, tell) => {
       label: "Teammates lab",
       box: (p: Page) => p.getByLabel(`Message ${LEAD_NAME}`),
       replyScope: (p: Page) => p.getByRole("main", { name: "Conversation" }),
-      // The task's card in the conversation opens its popup, which draws the run's result.
+      // The task's card in the conversation opens its popup; only its Result box, never the title the filer wrote, counts.
       async openCodingTask(p, timeout) {
         const card = p.getByRole("main", { name: "Conversation" }).locator("button:has([data-task-status])").last();
         if (!(await card.waitFor({ timeout }).then(() => true, () => false))) return null;
         await card.click();
-        return p.getByRole("dialog").last();
+        return p.getByRole("dialog").last().locator('[data-step="result"]');
       },
       origin: () => lab.origin,
       async open(p) {
