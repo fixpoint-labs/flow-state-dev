@@ -756,6 +756,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           const verdict = verdictOf(c);
           return verdict === undefined || (!verdict.pass && !refusedOnContent(verdict));
         });
+        /** Subscriptions this fire sent the event to, ordinary and unmatched together, as routing's finish step counts them. */
+        let runs = 0;
         const take = async (candidate: Candidate, forward: ForwardMark | undefined) => {
           const id = idOf(candidate);
           const sub = subs.get(id);
@@ -766,10 +768,12 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
             oweNow(id);
             return;
           }
-          if (!verdict.pass) {
+          // Refused, or past the owner-run cap: refused for good, as routing refuses past `maxOwnerRuns` on push.
+          if (!verdict.pass || runs >= maxOwnerRuns) {
             screen(id, event);
             return;
           }
+          runs += 1;
           const delivered = await deliverToRow(ctx, id, sub, event, forward);
           if (delivered.act === "refused") screen(id, event);
           else if (delivered.act === "unsent" || delivered.act === "inflight") oweNow(id);

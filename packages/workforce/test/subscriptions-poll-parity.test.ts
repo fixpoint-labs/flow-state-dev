@@ -175,3 +175,45 @@ describe("an unmatched subscription on a polled thread", () => {
     expect(forwards.poll).toEqual(forwards.push);
   });
 });
+
+describe("the owner-run cap on a polled thread", () => {
+  // The cap is an app's bound on what one event costs: a poll that skipped it would let one event start every follower's run.
+  it("delivers one event to at most maxOwnerRuns subscriptions on a poll, as on push", async () => {
+    const sessions: string[] = [];
+    const heard = await bothWays<number[]>(
+      { service: { maxOwnerRuns: 1 } },
+      async (host) => {
+        sessions.length = 0;
+        for (let i = 0; i < 2; i += 1) {
+          const session = await host.follower("alice");
+          sessions.push(session);
+          await host.subscribe("alice", session, { thread: PR });
+        }
+      },
+      (at) => [event({ at, received: at, text: "one review" })],
+      async (host) => (await Promise.all(sessions.map(async (id) => (await host.heard(id)).length))).sort()
+    );
+    expect(heard.push).toEqual([0, 1]);
+    expect(heard.poll).toEqual(heard.push);
+  });
+
+  it("spends the cap across unmatched subscriptions on a poll, as on push", async () => {
+    const forwarded = await bothWays<number>(
+      {
+        standard: [WATCHER],
+        judgment: mockGenerator({ script: [{ when: () => true, then: { text: "Done." } }] }),
+        service: { maxOwnerRuns: 1, forwards: { kinds: ["issue"] } }
+      },
+      async (host) => {
+        for (let i = 0; i < 2; i += 1) {
+          const coordinator = await host.conversation("alice", "watch.off");
+          await host.subscribe("alice", coordinator, { thread: REPO, unmatched: true, interest: "what nobody picked up" }, undefined, "coordinator");
+        }
+      },
+      (at) => [onRepo(at, { addressed: true })],
+      async (host) => (await host.serviceRows("alice")).filter((message) => message.forward !== undefined).length
+    );
+    expect(forwarded.push).toBe(1);
+    expect(forwarded.poll).toBe(forwarded.push);
+  });
+});
