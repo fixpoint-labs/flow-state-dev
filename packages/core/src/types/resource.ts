@@ -159,6 +159,35 @@ export type AnchoredPath = {
   importerUrl: string;
 };
 
+// FIX-2624.
+/**
+ * Which flow writes a user or org resource when a client asks to write it.
+ * `"default"` is the framework's default write flow: it checks the schema,
+ * the owner and {@link ResourceConfig.canWrite}, and writes at the version the
+ * client read. `{ flow }` names a flow the app hosts, whose actions write it
+ * with their own rules. With no `runBy`, a client can't write the resource;
+ * server flows still write it from inside their actions.
+ */
+export type ResourceRunBy = "default" | { flow: string };
+
+/**
+ * What {@link ResourceConfig.canWrite} decides on: the stored state, the state
+ * the client asks for, and who asks, from the verified sign-in.
+ */
+export type ResourceWriteCheck<TState extends JsonObject = JsonObject> = {
+  /** The stored state the write replaces: the schema's default when nothing is stored. */
+  prev: Readonly<TState>;
+  /** The state the write would store, already parsed by the schema. */
+  next: Readonly<TState>;
+  userId: string;
+  orgId: string;
+};
+
+/** The default write flow's own rule for one resource: `true` admits the write. */
+export type ResourceCanWrite<TState extends JsonObject = JsonObject> = (
+  check: ResourceWriteCheck<TState>
+) => boolean | Promise<boolean>;
+
 export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   /**
    * Logical reference name. Used as the storage namespace identifier
@@ -302,6 +331,23 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
    * `contentUpdated` (a content-body write) gets a `ResourceContentChange`.
    */
   reactTo?: ReactiveBindings<TState>;
+  // FIX-2624.
+  /**
+   * The flow a client's write of this user or org resource runs through:
+   * `"default"` (the framework's default write flow) or `{ flow }`. Omit it and
+   * a client can't write the resource. User or org scope only, and not with
+   * `flowIsolation: true`. With `"default"`, the resource must declare a
+   * `client` config the client reads it through, and no computed `client.data`.
+   */
+  runBy?: ResourceRunBy;
+  /**
+   * The default write flow's rule for this resource, run after the schema and
+   * owner checks; `false` refuses the write. Requires `runBy: "default"`.
+   * Required for an org resource on the default write flow: without it every
+   * member of the org could write it. Declare `canWrite: () => true` when that
+   * is what you want.
+   */
+  canWrite?: ResourceCanWrite<TState>;
   /** Declare a typed-edge graph on this resource. `true` = defaults; object = curated vocabulary / size cap. The framework injects an `edges: Edge[]` state field (if absent) and attaches an `.edges` API to the live ref. */
   edges?: boolean | EdgeSlotConfig;
 };
@@ -592,6 +638,8 @@ export function defineResource<
     );
   }
 
+  validateRunBy("defineResource()", config);
+
   validateClientProjection({
     definer: "defineResource()",
     ref: config.ref ?? "(unnamed)",
@@ -635,6 +683,73 @@ export function defineResource<
       AsStateObject<TStateSchema["_output"]> & EdgesField<TConfig>,
       ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
     >;
+}
+
+// FIX-2624.
+/**
+ * The definition errors of `runBy` and `canWrite`. An org resource on the
+ * default write flow with no `canWrite` is refused here, so an app that forgets
+ * the rule stops at start instead of giving every member of the org write access
+ * (the owner's decision, 2026-11-11). A user resource is its owner's either way.
+ */
+function validateRunBy(
+  definer: string,
+  config: {
+    ref?: string;
+    pattern?: string;
+    scope: string;
+    runBy?: unknown;
+    canWrite?: unknown;
+    flowIsolation?: boolean;
+    client?: { data?: unknown };
+  }
+): void {
+  const name = config.ref ?? config.pattern ?? "(unnamed)";
+  const runBy = config.runBy;
+  if (config.canWrite !== undefined && runBy !== "default") {
+    throw new Error(
+      `${definer} resource "${name}" declares canWrite without runBy: "default": only the default write flow runs it. ` +
+        `Add runBy: "default", or check the write inside the flow that writes it.`
+    );
+  }
+  if (runBy === undefined) return;
+  const isFlow =
+    typeof runBy === "object" && runBy !== null && typeof (runBy as { flow?: unknown }).flow === "string" &&
+    (runBy as { flow: string }).flow.length > 0;
+  if (runBy !== "default" && !isFlow) {
+    throw new Error(`${definer} resource "${name}" has runBy ${JSON.stringify(runBy)}: use "default" or { flow: "<flow kind>" }`);
+  }
+  if (config.scope !== "user" && config.scope !== "org") {
+    throw new Error(
+      `${definer} resource "${name}" sets runBy at ${config.scope} scope: runBy is for user or org resources. ` +
+        `A session's resources are written by the actions of that session's flow.`
+    );
+  }
+  if (config.flowIsolation === true) {
+    throw new Error(
+      `${definer} resource "${name}" sets runBy with flowIsolation: true: an isolated resource lives per flow instance, ` +
+        `so a scope and key don't name it. Drop one of the two.`
+    );
+  }
+  if (runBy !== "default") return;
+  if (config.client === undefined) {
+    throw new Error(
+      `${definer} resource "${name}" sets runBy: "default" with no client config: the default write flow writes only ` +
+        `what the client can read. Add client: {} (or expose / exclude).`
+    );
+  }
+  if (config.client.data !== undefined) {
+    throw new Error(
+      `${definer} resource "${name}" sets runBy: "default" with a computed client.data: the default write flow can't ` +
+        `write back through a computed projection. Use expose or exclude, or write it through runBy: { flow }.`
+    );
+  }
+  if (config.scope === "org" && config.canWrite === undefined) {
+    throw new Error(
+      `${definer} org resource "${name}" sets runBy: "default" with no canWrite: every member of the org could write it. ` +
+        `Declare who may, even everyone: canWrite: () => true.`
+    );
+  }
 }
 
 /**

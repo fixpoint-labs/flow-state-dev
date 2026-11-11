@@ -42,6 +42,7 @@ import {
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { flowAuthenticates } from "./instance-caller";
+import { DEFAULT_WRITE_FLOW, writeSessionGoverningFlow } from "../resources/default-write-flow";
 
 /** Wiring the guard needs; all of it is already built by `createFlowRouteHandlers`. */
 export type RouteAuthContext = {
@@ -185,6 +186,12 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     // A read resolves its principal the way an action does, in its handler,
     // and runs under the same session binding checks (`read-routes.ts`).
     case "run_read":
+    // FIX-2624: each resolves its caller in its handler through the declaring
+    // flow's own resolver (`scope-address.ts`), never the body, query or
+    // headers (BP-031); a send then runs as an action does.
+    case "read_scope_resource":
+    case "send_resource":
+    case "flow_identity":
       return { kind: "exempt" };
 
     case "get_session":
@@ -306,7 +313,14 @@ function ownerFlowOf(
   record: OwnedRecord & OrgAttributedRecord
 ): { flow?: FlowInstance; denied?: Response } {
   const owner = resolveRecordOwner(ctx.registry, record);
-  const flow = owner.ok ? owner.flow : undefined;
+  let flow = owner.ok ? owner.flow : undefined;
+  // FIX-2624: a write session answers to the sign-in of the flow that declares
+  // the resource it writes, not to the default write flow, which has none.
+  if (flow?.id === DEFAULT_WRITE_FLOW) {
+    const sessionId = (record as { sessionId?: string }).sessionId ?? (record as { id?: string }).id;
+    flow = writeSessionGoverningFlow(ctx.registry, ctx.hostResolver, sessionId);
+    if (flow === undefined) return { denied: jsonResponse(404, { error: "Unknown write session" }) };
+  }
   // The organization axis is checked FIRST and independently of the owner
   // (FIX-1442). A record can name its owning flow perfectly well and still
   // predate organizations entirely — which is the common case, since `flowId`
@@ -341,7 +355,9 @@ function unauthenticatedFlowIds(ctx: RouteAuthContext): Set<string> {
   return new Set(
     ctx.registry
       .list()
-      .filter((flow) => !flowAuthenticates(flow))
+      // The default write flow is never open: its records answer to the
+      // declaring flow's sign-in (`ownerFlowOf`).
+      .filter((flow) => !flowAuthenticates(flow) && flow.id !== DEFAULT_WRITE_FLOW)
       .map((flow) => flow.id)
   );
 }

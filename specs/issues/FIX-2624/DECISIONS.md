@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-Two decisions and one open fork are the sign-off surface: when the helpers go, the shape of
-`useResource`, and who may write an org resource that sets no write rule. The epic decided the rest ([O3](../../epics/FIX-2618/DECISIONS.md#o3), [ER-3, ER-4](../../epics/FIX-2618/DECISIONS.md#who-owns-what)).
+Three decisions were the sign-off surface: when the helpers go, the shape of `useResource`, and
+who may write an org resource that sets no write rule (the owner decided that one on 2026-11-11). The epic decided the rest ([O3](../../epics/FIX-2618/DECISIONS.md#o3), [ER-3, ER-4](../../epics/FIX-2618/DECISIONS.md#who-owns-what)).
 What follows them is recorded so the implementer doesn't decide it again.
 
 ## The tree
@@ -15,14 +15,21 @@ flowchart TD
   D1 -.->|"rejected"| X2["a framework lookup of my session on a flow<br/>the helper, moved into the framework"]
   I --> D2["D2 · useResource takes a resource<br/>a session only at session scope"]
   D2 -.->|"rejected"| X3["a second hook beside it<br/>two ways to read one resource"]
-  I -.->|"open · for the owner"| O1["an org resource with no write rule<br/>recommended: refuse until it sets canWrite"]
+  I --> O1["D3 · an org resource with no write rule<br/>refuses to start until it sets canWrite"]
+  O1 -.->|"rejected"| X4["every member of the org may write it<br/>org-wide write access nobody chose"]
 ```
 
-Solid edges are what you're signing. Dashed edges lost, and the label says why; the one dashed
-edge from the issue itself is the open fork.
+Solid edges are what was signed. Dashed edges lost, and the label says why.
 
 <a name="open-org-canwrite"></a>
-## Open · An org resource with no write rule: refuse to start until it sets one, or let every member write?
+<a name="d3"></a>
+## D3 · An org resource with no write rule refuses to start until it sets one
+
+**Decided by the owner, 2026-11-11: refuse.** An org resource marked `runBy: "default"` with no
+`canWrite` is a definition error: `defineResource` throws at start, naming the resource and the
+fix (`canWrite: () => true` for everyone). User resources are unaffected. It shipped in this
+issue's first PR, with its test (`packages/core/test/resource-run-by.test.ts`). The concept doc's
+"every member may write it" changes to match. What follows is the fork as it was put.
 
 **Plain terms.** A shared org resource, say a project's settings, can be marked "plain data" so
 any screen writes it in one line. The design doc says that, with no extra rule, every member of
@@ -45,9 +52,10 @@ is the point, and you'd rather the plain case stay one line.
 **What being wrong costs:** low if we refuse (an extra line, removable later); higher if we allow
 and an app ships org-wide write access nobody chose.
 
-![Open fork: an org resource with no write rule. Recommended: refuse to start until it sets canWrite. The other option: every member of the org may write it. Decides it: what an author gets when they forget. Price: one more line per org resource. Tie: a user resource is its owner's either way. Relaxing later is free, tightening is not](figures/open-org-canwrite.svg)
+![D3, decided by the owner on 2026-11-11: an org resource with no write rule. Chosen: nobody may write it until it sets canWrite, a definition error at startup. Rejected: every member of the org may write it. Decides it: what an author gets when they forget. Price: one more line per org resource. Tie: a user resource is its owner's either way. Relaxing later is free, tightening is not](figures/open-org-canwrite.svg)
 
-It comes down to the author who forgets: a startup error, or org-wide write access found later.
+It came down to the author who forgets: a startup error, or org-wide write access found later.
+The owner chose the startup error.
 
 <a name="d1"></a>
 ## D1 · All four helpers go in this issue, in its last PR, after FIX-2623's views land
@@ -194,7 +202,7 @@ mechanism list, `main` since the watermark and FIX-2623's draft.
 | Identity read as a host route (FIX-2522's bug class) | **Folded:** addressed by flow |
 | `fsd.resource` beside `fsd.resources`; `client.userId` beside the identity read | **Folded:** one handle; the others in *Leaves* |
 | The hidden declaration; no session-free collection hook | **Folded:** a line and the diff; D2 takes collections |
-| Org resource writable by any member by default | **Open:** [the fork above](#open-org-canwrite) |
+| Org resource writable by any member by default | **Decided** by the owner, 2026-11-11: [refuse to start](#d3) |
 | Registration refusal could stop a host; `flowIsolation: true`; "row"; pins as stopgap views | **Folded:** refused per request; isolated resources refused; reworded; pins land first |
 | A fifth fixed-id session; server-side merge of patches | **Recorded** for the implementer (a shared helper; FIX-2471 is the next user) |
 | The no-session context claimed three ways | **Recorded:** flagged to the coordinator |
@@ -209,4 +217,4 @@ mechanism list, `main` since the watermark and FIX-2623's draft.
   collections, and the org write default became an open fork, because the analysis found
   FIX-2522's bug class in a host route and a security default nobody had chosen.
 
-**Open: one,** [the org write rule](#open-org-canwrite).
+**Open: none.** [The org write rule](#d3) was decided by the owner on 2026-11-11: refuse to start.

@@ -164,7 +164,9 @@ There are two kinds of flow a resource can name:
 - **The default write flow**, for plain data such as pins. It is part of the framework. It sets,
   changes and deletes fields, and it checks three things inside the flow: the resource's schema,
   that the caller owns a user resource (or, for an org resource, belongs to its org), and the resource's own write rule, if it has one (for
-  pins: no task pinned twice).
+  pins: no task pinned twice). An org resource must have one: with none, the app refuses to start
+  rather than let every member of the org write it (the owner, 2026-11-11; FIX-2624 D3). The rule
+  can be "everyone".
 - **The app's own flow**, where a write does real work, such as a dashboard that takes data in
   and builds the resource from it.
 

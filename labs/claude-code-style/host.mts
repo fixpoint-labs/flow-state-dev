@@ -38,9 +38,8 @@ import { consultSessionsCapability, createWorkerInstallation, defineAgentWorkerF
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { localWorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { defineHarnessThreadFlow, HARNESS_THREAD_DRAIN_MS, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
-import { defineDismissalsFlow, DISMISSALS_FLOW } from "./workforce/flows/dismissals.mts";
-import { definePinsFlow, PINS_FLOW } from "./workforce/flows/pins.mts";
 import { defineProjectsFlow, PROJECTS_FLOW } from "./workforce/flows/projects.mts";
+import { LEGACY_MARK_FIELDS } from "./workforce/flows/user-marks.mts";
 
 /** What {@link openLab} builds the host from. */
 export interface LabOptions {
@@ -127,8 +126,6 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
       ? undefined
       : (repository: string) => workspace.checkRepository!(listed(repository) ?? repository, { ignored: ASK_MARKER_IGNORED });
   const projects = defineProjectsFlow({ checkRepository })({ id: PROJECTS_FLOW }) as { id: string };
-  const pins = definePinsFlow()({ id: PINS_FLOW }) as { id: string };
-  const dismissals = defineDismissalsFlow()({ id: DISMISSALS_FLOW }) as { id: string };
 
   /** Which harnesses a coding thread can run on here, over the environment each run gets. */
   const readiness = harnessReadiness({
@@ -144,7 +141,7 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
   const goalFlows = options.goalFlows === undefined ? [] : ((await import(pathToFileURL(options.goalFlows).href)).default as { id: string }[]);
 
   const flowState = createFlowState({
-    flows: [...workers, projects, pins, dismissals, readinessFlow, ...goalFlows],
+    flows: [...workers, projects, readinessFlow, ...goalFlows],
     stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
     // A coding run's review and a thread's question wait on you across a restart.
     durable: true,
@@ -156,5 +153,26 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
     models: { default: model, intents: { utility: [options.utilityModel] } },
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
   } as never);
+  await carryLegacyMarks(flowState);
   return { flowState, readiness };
+}
+
+// BP-030; FIX-2628 removes this.
+/**
+ * Copy the pins and dismissals the old `pins` and `dismissals` flows kept in
+ * each user's state into the user resources that hold them now, once: a
+ * resource already written is left alone, and so is one since deleted (BP-030).
+ * A user's state record and their shared user resources live at the same cell
+ * id.
+ */
+async function carryLegacyMarks(flowState: ReturnType<typeof createFlowState>): Promise<void> {
+  const { stores } = await flowState.getRuntime();
+  for (const record of await stores.user.list()) {
+    const state = (record.state ?? {}) as Record<string, unknown>;
+    for (const { field, resource } of LEGACY_MARK_FIELDS) {
+      const list = state[field];
+      if (!Array.isArray(list) || list.length === 0) continue;
+      await stores.resourceState.set("user", record.id, resource, { [field]: [...new Set(list.map(String))] }, "absent");
+    }
+  }
 }

@@ -34,6 +34,8 @@ import { handleResumeSuspension } from "./resume-routes";
 import { handleGetRequestStatus } from "./request-status-routes";
 import { handleRunRead } from "./read-routes";
 import { handleExecuteAction } from "./action-routes";
+import { handleFlowIdentity, handleReadScopeResource, resolveResourceSend } from "./scope-routes";
+import { DEFAULT_WRITE_FLOW } from "../resources/default-write-flow";
 import {
   handleCheckInterruptedRequests,
   handleListInterruptedRequests,
@@ -533,6 +535,50 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         });
       }
 
+      // FIX-2624: user and org resources with no session.
+      if (route.kind === "read_scope_resource") {
+        return await handleReadScopeResource(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          hostResolver
+        });
+      }
+
+      if (route.kind === "flow_identity") {
+        return await handleFlowIdentity(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          hostResolver
+        });
+      }
+
+      if (route.kind === "send_resource") {
+        const send = await resolveResourceSend(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          hostResolver,
+          tenantIdHeader: options.tenantIdHeader
+        });
+        if (send instanceof Response) return send;
+        return await handleExecuteAction(
+          request,
+          { kind: "execute_action", flowKind: send.flowKind, actionName: route.actionName, sessionId: send.sessionId },
+          {
+            host,
+            registry: options.registry,
+            stores,
+            seams,
+            bootstrapMetadata,
+            requestContext,
+            tenantIdHeader: options.tenantIdHeader
+          },
+          send
+        );
+      }
+
       if (route.kind === "run_read") {
         return await handleRunRead(request, route, {
           host,
@@ -934,7 +980,9 @@ async function flowsForCaller(
   registry: FlowRegistry,
   callerFor: InstanceCallerResolver
 ): Promise<FlowInstance[]> {
-  const flows = registry.list();
+  // FIX-2624: the default write flow runs only on a send addressed to a
+  // resource, so it is no flow a client lists.
+  const flows = registry.list().filter((flow) => flow.id !== DEFAULT_WRITE_FLOW);
   if (!flows.some((flow) => flow.ownerPin !== undefined)) return flows;
 
   const visible: FlowInstance[] = [];

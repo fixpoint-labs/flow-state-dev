@@ -21,6 +21,11 @@ import {
 } from "./stream-client/streams";
 import { createPushHub, type SubscribeOptions, type Subscription } from "./subscribe/push-hub";
 import { liveRead, type LiveRead, type LiveReadOptions, type LiveReadWithTopicsOptions } from "./live/live-read";
+import {
+  scopeResourceHandle,
+  type ScopeResourceDef,
+  type ScopeResourceHandle
+} from "./resource-client/scope-resource";
 import type {
   ChildSessionSummary,
   ClientFetch,
@@ -438,6 +443,12 @@ export interface FlowHandle<TFlow extends TypedFlow = UntypedFlow> {
    * that tried to write.
    */
   read<TOutput = unknown>(name: string, input: unknown, options: { sessionId: string }): Promise<TOutput>;
+  /**
+   * The user and org the server acts as for this client under this flow's
+   * sign-in, with no session. On a host with no sign-in, the client's user and
+   * the default org.
+   */
+  identity(): Promise<{ userId: string; orgId: string }>;
   /** Start a session on this flow, as the client's user. */
   createSession(options?: CreateSessionOptions): Promise<SessionDetail>;
   /**
@@ -527,6 +538,15 @@ export interface Client {
   flow<TFlow extends TypedFlow = UntypedFlow>(address: string): FlowHandle<TFlow>;
   sessions: SessionsApi;
   resources: ResourcesApi;
+  /**
+   * One user or org resource, by its definition: read by scope and key with no
+   * session, and written through the flow its `runBy` names. Its key is the
+   * definition's `ref`, or `options.key`. Reads nothing until a method is called.
+   */
+  resource<TDef extends ScopeResourceDef>(
+    def: TDef,
+    options?: { key?: string }
+  ): ScopeResourceHandle<TDef extends { ClientType: infer C } ? C : import("@flow-state-dev/core/types").JsonValue>;
   requests: {
     /**
      * The user's interrupted requests: a request a host lost in a crash or a
@@ -715,6 +735,22 @@ export function createClient(options: CreateClientOptions): Client {
     flow: <TFlow extends TypedFlow = UntypedFlow>(address: string) => flowHandle<TFlow>(t, userId, address),
     sessions,
     resources,
+    resource: (def, resourceOptions) =>
+      scopeResourceHandle(
+        t,
+        userId,
+        async (path, body) => {
+          const response = await t.json<ExecuteActionResponse>(path, {
+            method: "POST",
+            headers: JSON_HEADERS,
+            body: JSON.stringify(body)
+          });
+          const flow = response.request.flowId ?? response.request.flowKind;
+          return requestHandle(t, flow, response.request.id, response.session?.id ?? null).result();
+        },
+        def,
+        resourceOptions
+      ),
     requests: {
       interrupted: async (interruptedOptions) => {
         const userPath = `/api/flows/users/${seg(userId)}`;
@@ -832,6 +868,7 @@ function flowHandle<TFlow extends TypedFlow>(t: Transport, userId: string, addre
       );
       return response.output;
     },
+    identity: () => t.json<{ userId: string; orgId: string }>(`/api/flows/${seg(flow)}/identity`, undefined, { userId }),
     createSession: async (create = {}) =>
       (
         await t.json<{ session: SessionDetail }>(`/api/flows/${seg(flow)}/sessions`, {

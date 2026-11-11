@@ -197,8 +197,8 @@ user state. A session you open in another tab joins the list at the next reload.
 push can miss a change, such as the SQLite store the lab runs on, each also reads at its old pace:
 the list and pins every 3 seconds, the running turn every 1.5.
 | *Resolve*, *Open a PR*, *Merge locally* and *Request changes* | the Inbox client's `answerOne` on its review: `{ verdict: "accepted" }`, naming the `land` an accept takes, or `{ verdict: "revise", words }` |
-| *Pin* and *Unpin* | the lab's `pins` flow (`workforce/flows/pins.mts`), your own user state |
-| *Dismiss* | the lab's `dismissals` flow (`workforce/flows/dismissals.mts`), your own user state, kept per task attempt |
+| *Pin* and *Unpin* | your `lab-pins` user resource (`workforce/flows/user-marks.mts`), read by scope and written through the default write flow |
+| *Dismiss* | your `lab-dismissals` user resource, the same way, kept per task attempt |
 
 `desk.coder` and `desk.thread-coder`, and their plan, Codex and Cursor siblings, are on the lab's one coding flow,
 `workforce/flows/harness-thread.mts`: a `harnessManager` per harness, picked by the worker's

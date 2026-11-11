@@ -147,6 +147,31 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       readName: p.readName
     }))
   ],
+  // FIX-2624: a user or org resource by scope and key, with no session. A read
+  // answers from the store; a send is the action route with the resource
+  // named where a session id goes, run by the flow its `runBy` names.
+  read_scope_resource: [
+    entry("GET", "/resources/:scope/:key", (p) => ({
+      kind: "read_scope_resource",
+      scope: p.scope,
+      key: p.key
+    }))
+  ],
+  send_resource: [
+    entry("POST", "/resources/:scope/:key/actions/:actionName", (p) => ({
+      kind: "send_resource",
+      scope: p.scope,
+      key: p.key,
+      actionName: p.actionName
+    }))
+  ],
+  // FIX-2624: who the caller is under one flow's sign-in.
+  flow_identity: [
+    entry("GET", "/:flowKind/identity", (p) => ({
+      kind: "flow_identity",
+      flowKind: p.flowKind
+    }))
+  ],
   request_stream: [
     entry("GET", "/:flowKind/requests/:requestId/stream", (p) => ({
       kind: "request_stream",

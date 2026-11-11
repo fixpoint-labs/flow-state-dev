@@ -158,11 +158,9 @@ helper.
 flows go; a stock flow and a scope address come. If wrong: two read forms for one resource
 outlive the follow-up epic.
 
-**Open, for the owner: [an org resource with no write rule](DECISIONS.md#open-org-canwrite).**
-The [concept doc](../../../docs/internal/design/reading-writing-installing.md#writes-through-the-resources-flow)
-lets every member of the org write it. I recommend it refuse to start until it sets `canWrite`,
-since relaxing later is free and tightening later breaks apps. If wrong: one extra line per org
-resource, or org-wide write access nobody chose.
+**[D3](DECISIONS.md#d3) · An org resource with no write rule refuses to start until it sets
+`canWrite`** (decided by the owner, 2026-11-11). Relaxing later is free and tightening later
+breaks apps. If wrong: one extra line per org resource.
 
 1. **[D1](DECISIONS.md#d1) · The helpers go in this issue's last PR, after FIX-2623's views
    land.** Seven uses read by running an action, so they need a view. If wrong: this issue closes
@@ -171,7 +169,7 @@ resource, or org-wide write access nobody chose.
    only at session scope; the old form goes with no alias.** If wrong: adopters on the old hook
    rewrite a call site each.
 
-**Open: one,** the org write rule above, and it is the one to weigh: it sets a security default.
+**Open: none.** The org write rule was the one to weigh, a security default; the owner decided it.
 
 Feature · `core`, `engine`, `client`, `react`, `workforce`, `shift-manager`, two labs · large ·
 epic [FIX-2618](../../epics/FIX-2618/SPEC.md) stage 2

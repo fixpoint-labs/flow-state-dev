@@ -1,6 +1,7 @@
 /**
  * Session CRUD route handlers: create, get, list, delete.
  */
+import { isWriteSessionId } from "../resources/default-write-flow";
 import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
@@ -332,7 +333,9 @@ export async function handleListSessions(
   for (const s of sessions) {
     if (!tenantMatches(s.tenantId, ctx.tenantId)) continue;
     const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, s);
-    if (own ?? hostRuleAdmits(s)) visible.push(s);
+    // FIX-2624: a write session is the server's, made for one writer's writes
+    // to one resource; it is no conversation, so a listing never shows it.
+    if (!isWriteSessionId(s.id) && (own ?? hostRuleAdmits(s))) visible.push(s);
   }
 
   // Each visible row's latest request status, only when asked:
