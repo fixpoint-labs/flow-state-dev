@@ -5,6 +5,7 @@
  * only — validated by `tsc` via the package typecheck.
  */
 import type { ClientDataOf, DefinedResourceCollection } from "@flow-state-dev/core";
+import type { CollectionSnapshotEntry } from "@flow-state-dev/client";
 import { useResource } from "../src/hooks/useResource";
 import { useCollectionResource } from "../src/hooks/useCollectionResource";
 import { useResourceCollectionList } from "../src/hooks/useResourceCollectionList";
@@ -47,6 +48,15 @@ type _FromDefnHandle = NonNullable<
 >;
 type _FromDefn = Assert<Equals<_FromDefnHandle["clientData"], Client | undefined>>;
 
+// At session scope a collection's value is its snapshot entry (count, prefetched), as the hook
+// returns it, not one entry's client type (Gitar review 4543838048).
+type _SessionCollection = Assert<
+  Equals<
+    ReturnType<typeof useResource<{ scope: "session"; pattern: "memos/*"; ClientType: Client }>>["value"],
+    CollectionSnapshotEntry | null
+  >
+>;
+
 export const clientDataHookTypeSmoke = true;
-type _Checks = [_ResValue, _ResEntries, _Item, _List, _FromDefn];
+type _Checks = [_ResValue, _ResEntries, _SessionCollection, _Item, _List, _FromDefn];
 void 0 as unknown as _Checks;

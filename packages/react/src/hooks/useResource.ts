@@ -11,11 +11,12 @@
  * value is its first page of entries, and its setters name an entry.
  *
  * A session resource comes from that session's snapshot, as it always has: pass
- * `{ session }`. Its writes are that session's flow's actions, so it has no
- * setters here.
+ * `{ session }`; a session collection's value is its snapshot entry (`count`,
+ * `prefetched`), read by entry through the collection hooks. Its writes are
+ * that session's flow's actions, so it has no setters here.
  */
 import { useCallback, useMemo } from "react";
-import { topic, type ScopeEntry, type ScopeResourceDef } from "@flow-state-dev/client";
+import { topic, type CollectionSnapshotEntry, type ScopeEntry, type ScopeResourceDef } from "@flow-state-dev/client";
 import { liveRead } from "@flow-state-dev/client/internal";
 import { getPatternPrefix } from "@flow-state-dev/contracts/helpers";
 import type { JsonValue } from "@flow-state-dev/core/types";
@@ -52,7 +53,9 @@ export type UseScopeCollectionResult<TValue> = ResourceValue<ScopeEntry<TValue>[
 
 /** What `useResource(def)` returns for `def`. */
 export type UseResourceResult<TDef> = TDef extends { scope: "session" }
-  ? ResourceValue<ClientValue<TDef>>
+  ? TDef extends { pattern: string }
+    ? ResourceValue<CollectionSnapshotEntry>
+    : ResourceValue<ClientValue<TDef>>
   : TDef extends { pattern: string }
     ? UseScopeCollectionResult<ClientValue<TDef>>
     : UseScopeResourceResult<ClientValue<TDef>>;
