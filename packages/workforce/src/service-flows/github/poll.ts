@@ -105,6 +105,7 @@ export async function pollGitHubThread(
    * A repository poll reads pull-request lists beside its issues. A token that
    * may read issues and not pull requests (a fine-grained token) answers those
    * `403`: read as nothing new there, so the issues it can read still land.
+   * A rate-limited `403` still fails the poll.
    */
   let pullsOptional = false;
 
@@ -122,7 +123,9 @@ export async function pollGitHubThread(
       if (cursor.etags?.[key] !== undefined) etags[key] = cursor.etags[key]!;
       return undefined;
     }
-    if (res.status === 403 && pullsOptional && path.startsWith(`${repo}/pulls`)) return undefined;
+    // GitHub answers a rate limit 403 too: that one fails the poll, so the mark stays put and the next poll reads it again.
+    const rateLimited = res.headers.get("x-ratelimit-remaining") === "0" || res.headers.get("retry-after") !== null;
+    if (res.status === 403 && !rateLimited && pullsOptional && path.startsWith(`${repo}/pulls`)) return undefined;
     if (!res.ok) throw new Error(`GitHub ${path} answered ${res.status}`);
     const etag = res.headers.get("etag");
     if (etag !== null) etags[key] = etag;

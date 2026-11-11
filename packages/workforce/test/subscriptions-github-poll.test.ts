@@ -52,6 +52,8 @@ const REPO_API: Record<string, unknown> = {
 
 /** A path the fake answers with a bare status (a token without that permission: `403`). */
 const FORBIDDEN = Symbol("forbidden");
+/** A path the fake answers `403` with GitHub's rate-limit header: out of requests, not of permission. */
+const RATE_LIMITED = Symbol("rate-limited");
 
 function fakeGitHub(extra: Record<string, unknown> = {}) {
   const api = { ...API, ...extra };
@@ -62,6 +64,7 @@ function fakeGitHub(extra: Record<string, unknown> = {}) {
     if (init.headers["if-none-match"] === `"${path}"`) return new Response(null, { status: 304 });
     if (!(path in api)) return new Response("{}", { status: 404 });
     if (api[path] === FORBIDDEN) return new Response("{}", { status: 403 });
+    if (api[path] === RATE_LIMITED) return new Response("{}", { status: 403, headers: { "x-ratelimit-remaining": "0" } });
     return new Response(JSON.stringify(api[path]), { status: 200, headers: { etag: `"${path}"` } });
   }) as unknown as typeof globalThis.fetch;
   return { asked, provider: githubSubscriptionProvider({ token: () => "t", fetch }) };
@@ -131,5 +134,16 @@ describe("GitHub's poll", () => {
     if ("unchanged" in result) throw new Error("expected the issue");
     expect(result.events.map((e) => e.kind)).toContain("issue");
     expect(result.events.some((e) => e.kind === "review" || e.kind === "comment")).toBe(false);
+  });
+
+  // A rate-limited 403 is not a missing permission: read as nothing new, the mark would move past reviews never read.
+  it("fails a repo-wide poll whose pull-request read is rate limited, so the mark stays put", async () => {
+    const { provider } = fakeGitHub({
+      "/repos/acme/api/issues": [API["/repos/acme/api/issues/412"]],
+      "/repos/acme/api/issues/comments": [],
+      "/repos/acme/api/pulls/comments": [],
+      "/repos/acme/api/pulls/412/reviews": RATE_LIMITED
+    });
+    await expect(provider.poll!(REPO, { since: SINCE }, ctx)).rejects.toThrow(/answered 403/);
   });
 });
