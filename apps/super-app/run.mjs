@@ -31,7 +31,8 @@
  * (`workspace.mjs`). Packages need no build: they run from `src/`.
  *
  * The rules are `settings.mjs`. An app that stops leaves the others running; its route answers 502 and the
- * landing page marks it stopped. Ctrl-C stops everything.
+ * landing page marks it stopped. In `dev`, a lab whose server code changed since it started is marked changed,
+ * and can be restarted on its own (`lifecycle.mjs`). Ctrl-C stops everything.
  */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -39,6 +40,7 @@ import { connect } from "node:net";
 import { fileURLToPath } from "node:url";
 import { REPO } from "./apps.mjs";
 import { createAuth } from "./auth.mjs";
+import { createLifecycle } from "./lifecycle.mjs";
 import { createProxy } from "./proxy.mjs";
 import { rebuildOnChange } from "./rebuild.mjs";
 import { reclaimPort } from "./reclaim.mjs";
@@ -62,96 +64,28 @@ const auth =
     ? undefined
     : createAuth({ ...settings.credentials, ...(settings.secret === undefined ? {} : { secret: settings.secret }) });
 
-/** Every process started, so Ctrl-C reaches each one's whole group. */
-const children = new Set();
-/** @type {Map<string, "starting"|"running"|"stopped">} */
-const state = new Map(apps.map((a) => [a.id, "starting"]));
-let stopping = false;
-
-const color = (i) => `\x1b[3${(i % 6) + 1}m`;
-function prefixLines(stream, label, out) {
-  let buffered = "";
-  stream.on("data", (chunk) => {
-    buffered += chunk.toString();
-    const lines = buffered.split("\n");
-    buffered = lines.pop() ?? "";
-    for (const line of lines) out.write(`${label} ${line}\n`);
-  });
-  stream.on("end", () => buffered && out.write(`${label} ${buffered}\n`));
-}
-
-/** Run one step to its end (or, for the last, for as long as it lives), with `port` as its `PORT`. Resolves with its exit code. */
-function runStep(step, label, port) {
-  return new Promise((resolve) => {
-    const child = spawn(step.cmd, step.args, {
-      cwd: step.cwd,
-      env: { ...process.env, ...step.env, PORT: String(port), FORCE_COLOR: "1" },
-      stdio: ["ignore", "pipe", "pipe"],
-      // Its own process group: tsx and next start children of their own.
-      detached: true,
-    });
-    children.add(child);
-    prefixLines(child.stdout, label, process.stdout);
-    prefixLines(child.stderr, label, process.stderr);
-    child.on("error", (error) => {
-      process.stderr.write(`${label} could not start ${step.cmd}: ${error.message}\n`);
-    });
-    child.on("close", (code) => {
-      children.delete(child);
-      if (stopping && children.size === 0) process.exit(0);
-      resolve(code ?? 1);
-    });
-  });
-}
-
-/** Watchers wait for the app to answer: the checkout may still be building the pages they'd rebuild. */
-function startWatchers(app, i) {
-  const label = `${color(i)}[${app.id}]\x1b[0m`;
-  for (const step of app.run[mode].filter((s) => s.background)) {
-    if (step.rebuildOnChange !== undefined) {
-      rebuildOnChange({ outDir: step.rebuildOnChange, repoRoot: REPO, build: () => (stopping ? Promise.resolve() : runStep(step, label, app.port)) });
-      continue;
-    }
-    void runStep(step, label, app.port).then((code) => {
-      if (!stopping) process.stderr.write(`${label} ${step.args.join(" ")} stopped (exit ${code}); changes to its source won't show until a restart.\n`);
-    });
-  }
-}
-
-async function startApp(app, i) {
-  const label = `${color(i)}[${app.id}]\x1b[0m`;
-  const steps = app.run[mode].filter((s) => !s.background);
-  for (const [n, step] of steps.entries()) {
-    const code = await runStep(step, label, app.port);
-    if (stopping) return;
-    const last = n === steps.length - 1;
-    if (!last && code === 0) continue;
-    state.set(app.id, "stopped");
-    process.stderr.write(`${label} ${last ? "stopped" : "failed before starting"} (exit ${code}). The other apps keep running.\n`);
-    return;
-  }
-}
-
-/** Marks an app running once its port answers. */
-function watchPort(app, i) {
-  const probe = () => {
-    if (stopping || state.get(app.id) !== "starting") return;
-    const socket = connect(app.port, "127.0.0.1");
-    socket.once("connect", () => {
-      socket.destroy();
-      if (state.get(app.id) === "starting") {
-        state.set(app.id, "running");
-        startWatchers(app, i);
-      }
-    });
-    socket.once("error", () => setTimeout(probe, 1000));
-  };
-  probe();
-}
+const lifecycle = createLifecycle({
+  apps,
+  mode,
+  repoRoot: REPO,
+  spawn,
+  answers: (port) =>
+    new Promise((resolve) => {
+      const socket = connect(port, "127.0.0.1");
+      socket.once("connect", () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.once("error", () => resolve(false));
+    }),
+  reclaimPort: (port) => reclaimPort(port, { repo: REPO }),
+  rebuildOnChange,
+});
+const { children, state, runStep } = lifecycle;
 
 function stopAll() {
-  if (stopping) return;
-  stopping = true;
+  if (lifecycle.stopping) return;
+  lifecycle.stop(() => process.exit(0));
   for (const child of children) {
     try {
       process.kill(-child.pid, "SIGTERM");
@@ -213,13 +147,19 @@ if (mode === "dev") {
     // Builds the page when it is missing or stale, then rebuilds it as its source changes; a refresh picks the new build up.
     // Until the first build is written, /devtool/ answers that it isn't built.
     const step = { cmd: "pnpm", args: ["run", "build:devtool"], cwd: fileURLToPath(new URL(".", import.meta.url)) };
-    rebuildOnChange({ outDir: devtoolDir, repoRoot: REPO, build: () => (stopping ? Promise.resolve() : runStep(step, "[devtool]", port)) });
+    rebuildOnChange({ outDir: devtoolDir, repoRoot: REPO, build: () => (lifecycle.stopping ? Promise.resolve() : runStep(step, "[devtool]", port)) });
   })();
 } else if (!existsSync(`${devtoolDir}/index.html`)) {
   process.stderr.write("[super-app] the DevTool page isn't built (run `pnpm build`); /devtool/ won't load.\n");
 }
 
-const proxy = createProxy({ apps, auth, status: (id) => state.get(id) ?? "stopped", devtoolDir });
+const proxy = createProxy({
+  apps,
+  auth,
+  status: (id) => state.get(id) ?? "stopped",
+  devtoolDir,
+  ...(mode === "dev" ? { changed: lifecycle.changed, restartable: lifecycle.restartable, restart: lifecycle.restart } : {}),
+});
 proxy.on("error", (error) => {
   const hint = error.code === "EACCES" ? ` Port ${port} needs root here; run with PORT=8080, or grant node the bind capability.` : "";
   process.stderr.write(`[super-app] can't listen on ${host}:${port}: ${error.message}.${hint}\n`);
@@ -233,8 +173,7 @@ proxy.listen(port, host, () => {
 });
 
 await ready;
-apps.forEach((app, i) => {
-  if (stopping || blocked.has(app.id)) return;
-  watchPort(app, i);
-  void startApp(app, i);
-});
+for (const app of apps) {
+  if (lifecycle.stopping || blocked.has(app.id)) continue;
+  void lifecycle.start(app.id);
+}

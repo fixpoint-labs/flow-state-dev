@@ -12,6 +12,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addressKey, createAuth, safeNext } from "./auth.mjs";
+import { buttonScript } from "./button.mjs";
 import { createProxy, loopbackHost, publicLocation } from "./proxy.mjs";
 
 const seen = [];
@@ -601,8 +602,8 @@ describe("the DevTool button and page", () => {
     const res = await at(open, "/devtool/apps.json");
     assert.equal(res.headers.get("cache-control"), "no-store");
     assert.deepEqual(await res.json(), [
-      { id: "kitchen-sink", title: "Kitchen Sink", prefix: "/kitchen-sink", status: "running", userId: "devuser" },
-      { id: "lab", title: "Lab", prefix: "/lab", status: "starting" },
+      { id: "kitchen-sink", title: "Kitchen Sink", prefix: "/kitchen-sink", status: "running", changed: false, restartable: false, userId: "devuser" },
+      { id: "lab", title: "Lab", prefix: "/lab", status: "starting", changed: false, restartable: false },
     ]);
   });
 
@@ -642,5 +643,97 @@ describe("the DevTool button and page", () => {
     assert.equal(login.headers.get("location"), "/devtool/");
     const cookie = login.headers.get("set-cookie").split(";")[0];
     assert.equal((await at(signedIn, "/devtool/", { headers: { cookie } })).status, 200);
+  });
+});
+
+describe("a lab whose server code changed", () => {
+  const apps = [
+    { id: "kitchen-sink", title: "Kitchen Sink", blurb: "", prefix: "/kitchen-sink", kind: "next", port: 1, run: { dev: [], serve: [] } },
+    { id: "lab", title: "Lab", blurb: "", prefix: "/lab", kind: "spa", port: 1, run: { dev: [], serve: [] } },
+  ];
+  const restarts = [];
+  const options = {
+    apps,
+    status: () => "running",
+    changed: (id) => id === "lab",
+    restartable: (id) => id === "lab",
+    // Stands in for `lifecycle.restart`, which refuses what it can't restart.
+    restart: async (id) => {
+      restarts.push(id);
+      return id === "lab" ? { ok: true } : { ok: false, status: id === "kitchen-sink" ? 409 : 404, message: `can't restart ${id}` };
+    },
+  };
+  const open = createProxy(options);
+  const signedIn = createProxy({ ...options, auth: createAuth({ username: "ops", password: "s3cret" }) });
+  const servers = [open, signedIn];
+  const at = (server, path, init) => fetch(`http://127.0.0.1:${server.address().port}${path}`, { redirect: "manual", ...init });
+  const post = (server, path, headers = { "x-super-app-restart": "1" }) => at(server, path, { method: "POST", headers });
+
+  before(() => Promise.all(servers.map((s) => new Promise((r) => s.listen(0, "127.0.0.1", r)))));
+  after(() => {
+    for (const s of servers) {
+      s.closeAllConnections();
+      s.close();
+    }
+  });
+
+  it("is marked in the app list, with whether it can be restarted", async () => {
+    const list = await (await at(open, "/devtool/apps.json")).json();
+    assert.deepEqual(
+      list.map(({ id, changed, restartable }) => ({ id, changed, restartable })),
+      [
+        { id: "kitchen-sink", changed: false, restartable: false },
+        { id: "lab", changed: true, restartable: true },
+      ],
+    );
+  });
+
+  it("shows on its landing card with a Restart button, and Kitchen Sink gets none", async () => {
+    const html = await (await at(open, "/")).text();
+    assert.match(html, /Server code changed since it started\.<\/span><button type="button" data-restart="lab"/);
+    assert.doesNotMatch(html, /data-restart="kitchen-sink"/);
+  });
+
+  it("puts the changed pill's script only on a restartable app's pages", () => {
+    // The pill polls the app list; an app that can't be restarted has no reason to.
+    assert.match(buttonScript(apps[1], { restartable: true }), /x-super-app-restart/);
+    assert.doesNotMatch(buttonScript(apps[0]), /apps\.json/);
+  });
+
+  it("restarts on a POST that carries the restart header", async () => {
+    restarts.length = 0;
+    const res = await post(open, "/__super/restart/lab");
+    assert.equal(res.status, 202);
+    assert.deepEqual(restarts, ["lab"]);
+  });
+
+  it("refuses any other method, and a POST without the header (a cross-site form can't set one)", async () => {
+    restarts.length = 0;
+    const got = await at(open, "/__super/restart/lab");
+    assert.equal(got.status, 405);
+    assert.equal(got.headers.get("allow"), "POST");
+    assert.equal((await post(open, "/__super/restart/lab", { "content-type": "application/x-www-form-urlencoded" })).status, 403);
+    assert.deepEqual(restarts, [], "nothing was restarted");
+  });
+
+  it("passes on the refusal for an unknown or non-restartable app", async () => {
+    assert.equal((await post(open, "/__super/restart/nope")).status, 404);
+    assert.equal((await post(open, "/__super/restart/kitchen-sink")).status, 409);
+  });
+
+  it("is behind the sign-in: no restart without the cookie", async () => {
+    restarts.length = 0;
+    assert.equal((await post(signedIn, "/__super/restart/lab")).status, 401);
+    assert.deepEqual(restarts, []);
+  });
+
+  it("answers 404 where restarting isn't offered (serve)", async () => {
+    const serve = createProxy({ apps, status: () => "running" });
+    await new Promise((r) => serve.listen(0, "127.0.0.1", r));
+    try {
+      assert.equal((await post(serve, "/__super/restart/lab")).status, 404);
+    } finally {
+      serve.close();
+    }
   });
 });
