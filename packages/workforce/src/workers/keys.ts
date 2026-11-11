@@ -14,9 +14,6 @@
  */
 export const WORKERS_PATTERN = "workforce/workers/*";
 
-/** {@link WORKERS_PATTERN}'s prefix, without its wildcard. */
-export const WORKERS_PREFIX = "workforce/workers/";
-
 /**
  * The accessor a flow declares the user's worker collection under. A worker
  * flow's create check reads the creating user's row through it, and a turn

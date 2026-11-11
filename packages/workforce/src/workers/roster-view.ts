@@ -19,7 +19,7 @@ import type { WorkerInstallation } from "./installation";
 import { STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
 
 /** One worker on a user's roster, as the roster view answers it. */
-export const rosterEntrySchema = z.object({
+const rosterEntrySchema = z.object({
   id: z.string(),
   flow: z.string(),
   standard: z.boolean(),
