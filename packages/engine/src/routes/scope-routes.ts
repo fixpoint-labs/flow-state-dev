@@ -36,7 +36,8 @@ import {
   readAddressed,
   readEntries,
   readEntry,
-  resolveFlowCaller
+  resolveFlowCaller,
+  unknownRefusal
 } from "../resources/scope-address";
 import { ownerKeyAdmits } from "../resources/owner-private";
 import { applyClientData } from "./resource-routes";
@@ -290,7 +291,8 @@ export async function resolveResourceSend(
     // The writer's action runs, so the writer's door decides who the caller is:
     // its resolver, requireUser and defaultUserId, as a direct POST to it would.
     const writerCaller = await resolveFlowCaller({ ...ctx, request, flow, action: route.actionName, claimedUserId });
-    if ("refused" in writerCaller) return refusedResponse(writerCaller.refused);
+    // Refused by the writer (its pin): the unused key's answer, naming no writer.
+    if ("refused" in writerCaller) return refusedResponse(unknownRefusal(address.scope, address.key));
     writer = flow.id;
     caller = writerCaller;
   }
@@ -298,7 +300,13 @@ export async function resolveResourceSend(
   return {
     flowKind: writer,
     sessionId: writeSessionId(
-      { scope: address.scope, key: address.key, writer },
+      // A default write records the declaring instance that admitted its caller.
+      {
+        scope: address.scope,
+        key: address.key,
+        writer,
+        ...(writer === DEFAULT_WRITE_FLOW ? { admittedBy: address.flow.id } : {})
+      },
       { userId: caller.userId, orgId: caller.orgId, tenantId }
     ),
     principal: caller

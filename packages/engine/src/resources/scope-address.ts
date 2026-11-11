@@ -220,7 +220,7 @@ function declarationsAgree(
 export type AddressCaller = { userId: string; orgId: string };
 
 /** The answer an unused key gets: no flow named, nothing about why. */
-function unknownRefusal(scope: string, key: string): AddressRefusal {
+export function unknownRefusal(scope: string, key: string): AddressRefusal {
   return { status: 404, code: "unknown_resource", message: `Unknown resource "${key}" at ${scope} scope` };
 }
 

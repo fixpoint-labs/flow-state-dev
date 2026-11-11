@@ -698,3 +698,63 @@ describe("what a direct read projects: the session snapshot's own builder", () =
     expect(text.split("doc").join("<k>")).toBe((await unused.text()).split("nope").join("<k>"));
   });
 });
+
+describe("a default write's records answer to the instance that admitted it", () => {
+  // Codex review 4543985105.
+  it("serves the writer's status through that instance, even when another declarer's pin also admits the record's owner", async () => {
+    const kind = defineFlow({
+      kind: "board",
+      cardinality: "collection",
+      resources: { pins },
+      actions: { noop: { block: noop } }
+    } as never);
+    // One resolver for both instances: at `board.a` it answers user a, at `board.b` user b.
+    const perFlow = (context: { request?: Request; envelope?: { flowKind?: string } }) =>
+      context.request?.headers.get("x-user") == null
+        ? null
+        : { userId: context.envelope?.flowKind === "board.a" ? "a" : "b", orgId: ORG_A };
+    const registry = createFlowRegistry();
+    registry.register(kind({ id: "board.a" } as never) as never, { pin: { orgId: ORG_A, userId: "b" } } as never);
+    registry.register(kind({ id: "board.b" } as never) as never, { pin: { orgId: ORG_A, userId: "b" } } as never);
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, resolvePrincipal: perFlow } as never);
+    routers.push(router);
+    const caller = { user: "b", org: ORG_A };
+    const done = await write(router, stores, "user", "pins", caller, { input: { state: { pinned: ["x"] }, version: 0 } });
+    expect(done.status, JSON.stringify(done.result)).toBe("completed");
+    expect(done.userId).toBe("b");
+    const status = await get(router, ["fsd-default-write", "requests", done.id, "status"], caller);
+    expect(status.status, await status.clone().text()).toBe(200);
+  });
+});
+
+describe("a send whose writer's pin refuses a caller another declarer admits", () => {
+  // Cursor review 4543992827.
+  it("answers exactly as an unused key, naming no writer", async () => {
+    const ledger = defineResource({
+      ref: "ledger",
+      scope: "org",
+      stateSchema: z.object({ total: z.number().default(0) }),
+      client: { expose: ["total"] },
+      runBy: { flow: "billing.bob" }
+    });
+    const kind = defineFlow({
+      kind: "billing",
+      cardinality: "collection",
+      resources: { ledger },
+      actions: { noop: { block: noop } },
+      authentication: { resolvePrincipal: signIn }
+    } as never);
+    const registry = createFlowRegistry();
+    registry.register(kind({ id: "billing.open" } as never) as never);
+    registry.register(kind({ id: "billing.bob" } as never) as never, { pin: { orgId: ORG_A, userId: "bob" } } as never);
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    routers.push(router);
+    const unused = await post(router, ["resources", "org", "nope", "actions", "noop"], alice, { input: {} });
+    const refused = await post(router, ["resources", "org", "ledger", "actions", "noop"], alice, { input: {} });
+    expect(refused.status).toBe(unused.status);
+    expect((await refused.text()).split("ledger").join("<k>")).toBe((await unused.text()).split("nope").join("<k>"));
+    expect(await stores.request.list({})).toEqual([]);
+  });
+});
