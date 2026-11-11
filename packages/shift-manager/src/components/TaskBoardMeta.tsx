@@ -4,18 +4,16 @@
  * filed. Any other board is drawn by `TaskPlan` (`flow-state/task-plan.tsx`,
  * byte-equal to the registry, no router).
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useSubscription } from "@flow-state-dev/react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { ComponentItem, OutputItem } from "@flow-state-dev/core/items";
 import { ERROR_REPORTER_FLOW } from "@flow-state-dev/workforce/browser";
 import { SessionItemsProvider, useSessionItems } from "./flow-state/session-items-context";
 import { TaskPlan } from "./flow-state/task-plan";
 import { extractTaskPlanState, TASK_CHANGE_COMPONENT } from "./flow-state/task-plan-state";
-import { isOpen, TASKS_POLL_MS } from "./TasksPanel";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
 import { columnFor } from "../lib/columns";
 import { useConversationSession } from "../lib/conversation";
-import { conversationBoardTopics, readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
+import { useConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { workerLabel } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../lib/reads";
@@ -64,48 +62,16 @@ function isConversationTaskChange(item: OutputItem): boolean {
 }
 
 /**
- * Reads on mount, when the Lab is read again, and on each board notice.
- * Wherever push can miss a change it reads on a timer, only while a
- * task could be moving. A failed read leaves the last one, or the feed's
- * record, and keeps the timer. The snapshot hears the same moves on its own
- * (`lab-data.tsx`), so what it counts agrees with the card.
+ * Watches the conversation's task-list view (`useConversationTasks`): current
+ * on each board change, with the view's own timer where push can miss one. A
+ * failed read leaves the last answer, or the feed's record. The snapshot hears
+ * the same moves on its own (`lab-data.tsx`), so what it counts agrees with
+ * the card.
  */
 function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sessionId: string; boardRef: string; children: ReactNode }) {
-  const { client, snapshot } = useLab();
-  const readAt = snapshot !== undefined && "readAt" in snapshot ? snapshot.readAt : undefined;
-  const [read, setRead] = useState<{ sessionId: string; tasks: ReadonlyMap<string, ConversationTask> } | undefined>(undefined);
-  // Whether the last read left a task that can still move; before any read lands, assume one can.
-  const [moving, setMoving] = useState(true);
-  // Only the latest read started may land.
-  const latest = useRef(0);
-  useEffect(() => {
-    setMoving(true);
-  }, [flow, sessionId]);
-
-  // `signal` aborts once the read's subscription or effect is gone: a read that lands after the
-  // board unmounted sets nothing.
-  const readBoard = useCallback(async (_notice?: unknown, signal?: AbortSignal) => {
-    const mine = ++latest.current;
-    try {
-      const tasks = await readConversationTasks(client, flow, sessionId);
-      if (mine !== latest.current || signal?.aborted === true) return;
-      setRead({ sessionId, tasks: new Map(tasks.map((task) => [task.id, task])) });
-      setMoving(tasks.some(isOpen));
-    } catch {
-      // The last read stands; the timer, if any, stays on.
-    }
-  }, [client, flow, sessionId]);
-
-  useEffect(() => {
-    const ended = new AbortController();
-    void readBoard(null, ended.signal);
-    return () => ended.abort();
-  }, [readBoard, readAt]);
-
-  const topics = useMemo(() => conversationBoardTopics(sessionId), [sessionId]);
-  useSubscription(topics, readBoard, { client, ...(moving ? { pollIntervalMs: TASKS_POLL_MS } : {}) });
-
-  const board = useMemo(() => ({ boardRef, read: read?.sessionId === sessionId ? read.tasks : undefined }), [boardRef, read, sessionId]);
+  const { tasks } = useConversationTasks(flow, sessionId);
+  const read = useMemo(() => (tasks === undefined ? undefined : new Map(tasks.map((task) => [task.id, task]))), [tasks]);
+  const board = useMemo(() => ({ boardRef, read }), [boardRef, read]);
   return <BoardContext.Provider value={board}>{children}</BoardContext.Provider>;
 }
 

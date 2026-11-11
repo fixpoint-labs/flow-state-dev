@@ -2,9 +2,9 @@
  * A coding task's run shows while it runs. The run links itself to its row on
  * its own session, so the conversation's own stream hears of the link only
  * when the task ends; until then the popup would show nothing, and then every
- * step at once. The link is a board change: `watchTasks` reads the
- * board on each notice of the conversation's board, and on a timer only where
- * push can miss a change (`client.subscribe` owns that timer).
+ * step at once. The link is a board change: `watchTasks` reads the board's
+ * task-list view on each notice of the topics its answer names, and on a timer
+ * only where push can miss a change (`client.subscribe` owns that timer).
  */
 import { describe, expect, it, vi } from "vitest";
 import type { Client, SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
@@ -24,6 +24,12 @@ function fakeSubscribe() {
   };
   return { subscribe, subscriptions, hear };
 }
+
+/** The topics the board's view answer names: the conversation's session. */
+const BOARD_TOPICS: WireTopic[] = [{ scope: "session", id: "wks_1" }];
+
+/** What the board's task-list view answers for `tasks`: the rows, keyed, and the topics to hear. */
+const boardAnswer = (tasks: Array<Record<string, unknown>>) => ({ value: tasks, topics: BOARD_TOPICS, keys: tasks.map((task) => String(task.id)) });
 
 /** The conversation's one item: the board's row as filed, with no run yet. */
 const filed = (status: string) => ({
@@ -51,12 +57,10 @@ function clientWith(item: ReturnType<typeof filed>, started = () => true) {
       stream: () => ({ close() {} }),
       get: async () => ({ id: "wks_1", flowKind: "agent" }),
     },
-    flow: (flow: string) => ({
-      read: async (action: string) => {
-        reads.push(`${flow}.${action}`);
-        return { ok: true, tasks: [{ ...item.data.task, ...(started() ? { run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } } : {}) }] };
-      },
-    }),
+    view: async (ref: { flow: string; view: string }) => {
+      reads.push(`${ref.flow}.${ref.view}`);
+      return boardAnswer([{ ...item.data.task, ...(started() ? { run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } } : {}) }]);
+    },
   } as unknown as Client;
   return { client, reads, push };
 }
@@ -76,17 +80,15 @@ describe("a coding task's run, while it runs", () => {
     expect(reads).toContain("agent.listTasks_tasks");
   });
 
-  it("subscribes the conversation's board and plan ledgers, narrowed, with today's pace for where push can miss a change", async () => {
+  it("names no topic: it hears the topics the board view's answer named, with today's pace for where push can miss a change", async () => {
     const { client, push } = clientWith(filed("in_progress"));
     const stop = createLabAdapter(client).watchTasks("wks_1", () => {});
-    await until(() => push.subscriptions.length > 0);
+    await until(() => push.subscriptions.some((s) => s.topics.length > 0));
     stop();
-    expect(push.subscriptions[0]!.topics).toEqual([
-      { scope: "session", id: "wks_1", resource: "tasks" },
-      { scope: "session", id: "wks_1", resource: "plan" },
-    ]);
-    expect(push.subscriptions[0]!.options.pollIntervalMs).toBe(1_500);
-    expect(push.subscriptions[0]!.closed).toBe(true);
+    const board = push.subscriptions.find((s) => s.topics.length > 0)!;
+    expect(board.topics).toEqual(BOARD_TOPICS);
+    expect(board.options.pollIntervalMs).toBe(1_500);
+    expect(board.closed).toBe(true);
   });
 
   it("names the run when its link's board notice arrives, and reads the board for nothing else", async () => {
@@ -94,17 +96,18 @@ describe("a coding task's run, while it runs", () => {
     const { client, reads, push } = clientWith(filed("in_progress"), () => started);
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
-    await until(() => reads.length === 1);
-    // No timer of its own: with no notice, the board is read once.
+    // Read once, and once more once it hears the topics the answer named.
+    await until(() => reads.length === 2);
+    // No timer of its own: with no notice, the board is read no more.
     await new Promise((r) => setTimeout(r, 1_700));
-    expect(reads).toHaveLength(1);
+    expect(reads).toHaveLength(2);
     expect(tasks[0]?.runSessionId).toBeUndefined();
     started = true;
     push.hear({ topic: { scope: "session", id: "wks_1", resource: "tasks" }, kind: "board" });
     await until(() => tasks[0]?.runSessionId !== undefined);
     stop();
     expect(tasks[0]?.runSessionId).toBe("dsx_run");
-    expect(reads).toHaveLength(2);
+    expect(reads).toHaveLength(3);
   });
 
   it("takes the board read over the conversation's copy when the read is as new or newer", async () => {
@@ -123,7 +126,7 @@ describe("a coding task's run, while it runs", () => {
         stream: () => ({ close() {} }),
         get: async () => ({ id: "wks_1", flowKind: "agent" }),
       },
-      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...item.data.task, updatedAt: linked ? 3 : 1, ...(linked ? { run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } } : {}) }] }) }),
+      view: async () => boardAnswer([{ ...item.data.task, updatedAt: linked ? 3 : 1, ...(linked ? { run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } } : {}) }]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
@@ -150,7 +153,7 @@ describe("a coding task's run, while it runs", () => {
         stream: () => ({ close() {} }),
         get: async () => ({ id: "wks_1", flowKind: "agent" }),
       },
-      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...item.data.task, status, updatedAt: status === "completed" ? 5 : 1 }] }) }),
+      view: async () => boardAnswer([{ ...item.data.task, status, updatedAt: status === "completed" ? 5 : 1 }]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
@@ -177,12 +180,8 @@ describe("what a task's runs spent, as the board read folds it", () => {
         stream: () => ({ close() {} }),
         get: async () => ({ id: "wks_1", flowKind: "agent" }),
       },
-      flow: () => ({
-        read: async () => ({
-          ok: true,
-          tasks: [{ ...item.data.task, spend: { harness: "codex", model: "gpt-5.5-codex", inputTokens: 10, outputTokens: 5, costUsd: null, unreported: false, live: false } }],
-        }),
-      }),
+      view: async () =>
+        boardAnswer([{ ...item.data.task, spend: { harness: "codex", model: "gpt-5.5-codex", inputTokens: 10, outputTokens: 5, costUsd: null, unreported: false, live: false } }]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
@@ -212,7 +211,7 @@ describe("a hold answered in the run's session", () => {
         get: async (id: string) => (id === "dsx_run" ? { id, flowKind: "teammates-coder" } : { id, flowKind: "agent" }),
       },
       // `listTasks` lists a row's open holds, and leaves `holds` out once none is open.
-      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...conversation.data.task, run, updatedAt: answered ? 3 : 2, ...(answered ? {} : { holds: [hold] }) }] }) }),
+      view: async () => boardAnswer([{ ...conversation.data.task, run, updatedAt: answered ? 3 : 2, ...(answered ? {} : { holds: [hold] }) }]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
@@ -246,7 +245,7 @@ describe("a row the run's feed and the board read both carry", () => {
         stream: () => ({ close() {} }),
         get: async (id: string) => ({ id, flowKind: "agent" }),
       },
-      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...linked.data.task, ...board() }] }) }),
+      view: async () => boardAnswer([{ ...linked.data.task, ...board() }]),
     } as unknown as Client;
     return { client, push };
   }
@@ -298,12 +297,10 @@ describe("a board read still in flight when the watch stops", () => {
         },
         get: async () => ({ id: "wks_1", flowKind: "agent" }),
       },
-      flow: () => ({
-        read: () =>
-          new Promise((resolve) => {
-            land = () => resolve({ ok: true, tasks: [{ ...item.data.task, run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } }] });
-          }),
-      }),
+      view: () =>
+        new Promise((resolve) => {
+          land = () => resolve(boardAnswer([{ ...item.data.task, run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } }]));
+        }),
     } as unknown as Client;
     const calls: BoardTask[][] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => calls.push(next));
@@ -352,7 +349,7 @@ describe("a coding task's hold, while it runs", () => {
         stream: () => ({ close() {} }),
         get: async (id: string) => (id === "dsx_run" ? { id, flowKind: "teammates-coder" } : { id, flowKind: "agent" }),
       },
-      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...held.data.task }] }) }),
+      view: async () => boardAnswer([{ ...held.data.task }]),
     } as unknown as Client;
   }
 
@@ -387,7 +384,7 @@ describe("a coding task's hold, while it runs", () => {
         },
         get: async (id: string) => ({ id, flowKind: "agent" }),
       },
-      flow: () => ({ read: async () => ({ ok: true, tasks: [] }) }),
+      view: async () => boardAnswer([]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
@@ -426,13 +423,11 @@ describe("the board read's freshness", () => {
   it("says stale while the board's read fails, keeping the last rows, and fresh once one succeeds", async () => {
     let failing = false;
     const { client, push } = clientWith(filed("in_progress"));
-    const flow = (client as unknown as { flow: (f: string) => { read: (a: string) => Promise<unknown> } }).flow;
-    (client as unknown as { flow: unknown }).flow = (name: string) => ({
-      read: async (action: string) => {
-        if (failing) throw new Error("the board is down");
-        return flow(name).read(action);
-      },
-    });
+    const view = (client as unknown as { view: (ref: unknown) => Promise<unknown> }).view;
+    (client as unknown as { view: unknown }).view = async (ref: unknown) => {
+      if (failing) throw new Error("the board is down");
+      return view(ref);
+    };
     let tasks: BoardTask[] = [];
     const stale: boolean[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next), (next) => stale.push(next));

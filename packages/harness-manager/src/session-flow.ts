@@ -103,7 +103,7 @@
  * found a gap in its own package. The flow writes no item of its own.
  */
 import { existsSync } from "node:fs";
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, defineView, handler, sequencer } from "@flow-state-dev/core";
 import {
   OBSERVED_PULL_REQUESTS,
   harnessFailureKind,
@@ -1182,7 +1182,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       harnessUsage: harnessUsageAction({ readers: options.usageReaders ?? {} }),
       removeWorktree: { block: removeWorktree, concurrency: "reject" },
     },
-    reads: { changes: { block: changes, description: "What one turn's commits changed: its files and lines, or one file's patch." } },
+    views: { changes: defineView({ scope: "session", block: changes, description: "What one turn's commits changed: its files and lines, or one file's patch." }) },
     request: { onFinished: turnEnd },
     // The user's worktree rows: the host writes them through this flow's
     // workspace, and every session and agent of the user reads them.

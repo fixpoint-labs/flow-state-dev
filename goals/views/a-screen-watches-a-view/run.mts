@@ -33,6 +33,7 @@ import { defineFlow, defineResourceCollection, defineView, handler, sequencer } 
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createClient, readEveryCollectionPage, viewRef, type Client } from "@flow-state-dev/client";
 import { watchView } from "@flow-state-dev/client/internal";
+import { taskListViewRef } from "@flow-state-dev/orchestration/inbox";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
 import { bootBoardHost } from "../../../packages/workforce/test/conversation-board-harness.ts";
@@ -204,11 +205,11 @@ await runGoal(async (failures, tell) => {
     {
       const conversation = await host.conversation("alice", "lead");
       const roster: Array<{ at: number; value: RosterEntry[] }> = [];
-      const board: Array<{ at: number; value: { tasks?: Array<{ id: string }> } }> = [];
+      const board: Array<{ at: number; value: Array<{ id: string }> }> = [];
       const probe: Array<{ at: number; value: { count: number } }> = [];
       stops.push(createWorkforceClient({ ...watcher.client }).watchRoster((value) => roster.push({ at: Date.now(), value })));
       stops.push(
-        watchView<{ tasks?: Array<{ id: string }> }>(watcher.client, viewRef("coordinator", "listTasks_tasks"), {}, { onValue: (value) => board.push({ at: Date.now(), value }) }, { sessionId: conversation, pollIntervalMs: null })
+        watchView<Array<{ id: string }>>(watcher.client, taskListViewRef("coordinator", "tasks"), {}, { onValue: (value) => board.push({ at: Date.now(), value }) }, { sessionId: conversation, pollIntervalMs: null })
       );
       stops.push(watchView<{ count: number }>(watcher.client, viewRef("probe", "probe"), {}, { onValue: (value) => probe.push({ at: Date.now(), value }) }, { pollIntervalMs: null }));
       await delay(1_500);
@@ -228,7 +229,7 @@ await runGoal(async (failures, tell) => {
       // A filed task, from another client, into the watched conversation.
       const fileFrom = Date.now();
       await (await writer.flow("coordinator").send("createTask_tasks", { goal: "Audit licenses", assignee: "eng.tasker", held: true }, { sessionId: conversation })).wait();
-      const filed = await firstAt(board, (v) => (v.tasks ?? []).length > 0, fileFrom, 3_000);
+      const filed = await firstAt(board, (v) => v.length > 0, fileFrom, 3_000);
       lat["filed task"] = filed === undefined ? undefined : filed - fileFrom;
       // A probe write, from another client.
       const writeFrom = Date.now();
