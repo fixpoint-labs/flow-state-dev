@@ -7,12 +7,18 @@
  * `stale` until one lands; unmounting the last watcher closes the
  * subscription.
  */
-import { describe, expect, it } from "vitest";
-import { act, renderHook } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { createElement, type ReactNode } from "react";
 import type { SubscribeOptions, ViewResult, WireNotice, WireTopic } from "@flow-state-dev/client";
 import { viewRef } from "@flow-state-dev/client";
 import type { ViewWatchClient } from "@flow-state-dev/client/internal";
-import { useView } from "../src";
+import { FlowProvider, useView } from "../src";
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const flush = async () => {
   await act(async () => {
@@ -123,6 +129,72 @@ describe("useView", () => {
     await act(async () => fake.notify(null));
     await flush();
     expect(hook.result.current).toEqual({ value: "ok", stale: false });
+    hook.unmount();
+  });
+
+  it("is not stale once a restarted watch's read lands, after a failure before it stopped", async () => {
+    // The old watch's `stale: true` belongs to that watch. A new one starts its
+    // own live read, which never says `false` for a failure it didn't have.
+    let fail = true;
+    const fake = fakeClient(() => {
+      if (fail) throw new Error("down");
+      return { value: "ok", topics: [] };
+    });
+    const hook = renderHook(({ enabled }) => useView(BOARD, undefined, { client: fake.client, pollIntervalMs: null, enabled }), {
+      initialProps: { enabled: true }
+    });
+    await flush();
+    expect(hook.result.current).toEqual({ value: undefined, stale: true });
+    hook.rerender({ enabled: false });
+    fail = false;
+    hook.rerender({ enabled: true });
+    await flush();
+    expect(hook.result.current).toEqual({ value: "ok", stale: false });
+    hook.unmount();
+  });
+
+  it("answers nothing through a new client until that client's own answer lands, never the old client's", async () => {
+    // A client is a user: holding the old client's answer over a new one shows
+    // one user's data to another (BP-035, multi-tenant).
+    const alice = fakeClient(() => ({ value: "alice's", topics: [] }));
+    const bob = fakeClient(() => new Promise<ViewResult>(() => undefined));
+    const hook = renderHook(({ client }) => useView(BOARD, undefined, { client, pollIntervalMs: null }), {
+      initialProps: { client: alice.client }
+    });
+    await flush();
+    expect(hook.result.current).toEqual({ value: "alice's", stale: false });
+    hook.rerender({ client: bob.client });
+    expect(hook.result.current).toEqual({ value: undefined, stale: false });
+    await flush();
+    expect(hook.result.current).toEqual({ value: undefined, stale: false });
+    hook.unmount();
+  });
+
+  it("answers nothing for the provider's new user until that user's answer lands", async () => {
+    // The provider's `userId` picks the client; the second user's read is held open.
+    const held: Array<() => void> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (!String(input).includes("/views/")) return Promise.resolve(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+        const { userId: asked } = JSON.parse(String(init?.body ?? "{}")) as { userId?: string };
+        const respond = () => new Response(JSON.stringify({ output: `${asked}'s`, topics: [] }), { status: 200, headers: { "content-type": "application/json" } });
+        if (asked === "alice") return Promise.resolve(respond());
+        return new Promise<Response>((resolve) => held.push(() => resolve(respond())));
+      })
+    );
+    let userId = "alice";
+    const hook = renderHook(() => useView(BOARD, undefined, { pollIntervalMs: null }), {
+      wrapper: ({ children }: { children: ReactNode }) => createElement(FlowProvider, { flowKind: "desk", userId, baseUrl: "http://host.test", children })
+    });
+    await flush();
+    expect(hook.result.current).toEqual({ value: "alice's", stale: false });
+    userId = "bob";
+    hook.rerender();
+    expect(hook.result.current).toEqual({ value: undefined, stale: false });
+    await act(async () => held.splice(0).forEach((release) => release()));
+    await flush();
+    expect(hook.result.current).toEqual({ value: "bob's", stale: false });
     hook.unmount();
   });
 });

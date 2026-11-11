@@ -103,8 +103,12 @@ export function canonicalViewInput(input: unknown): string {
   );
 }
 
-/** One key per view, session and input as sent: inputs that send the same request share a read. */
-function watchKey(ref: ViewRef, input: unknown, sessionId: string | undefined): string {
+/**
+ * One identity per view, session and input as sent: inputs that send the same
+ * request share a read. The one encoding of a watch's identity, here and in
+ * `useView`, so the two can't disagree on what is the same watch.
+ */
+export function viewWatchIdentity(ref: ViewRef, input: unknown, sessionId: string | undefined): string {
   return JSON.stringify([ref.flow, ref.view, sessionId ?? null, canonicalViewInput(input)]);
 }
 
@@ -138,7 +142,7 @@ export function watchView<TValue = unknown>(
 ): () => void {
   let byKey = sharedByClient.get(client);
   if (byKey === undefined) sharedByClient.set(client, (byKey = new Map()));
-  const key = watchKey(ref, input, options.sessionId);
+  const key = viewWatchIdentity(ref, input, options.sessionId);
   let shared = byKey.get(key);
   if (shared === undefined) {
     const entry: Omit<Shared, "live"> = { watchers: new Set(), stale: false, byKey: new Map() };

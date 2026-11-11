@@ -15,7 +15,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { ViewCallOptions, ViewInputOf, ViewRef, ViewValueOf } from "@flow-state-dev/client";
-import { canonicalViewInput, watchView, type ViewWatchClient } from "@flow-state-dev/client/internal";
+import { viewWatchIdentity, watchView, type ViewWatchClient } from "@flow-state-dev/client/internal";
 import { useClient } from "../internal/useClient";
 
 /** Options for {@link useView}. */
@@ -36,6 +36,15 @@ export type UseViewResult<TValue> = {
   stale: boolean;
 };
 
+/**
+ * What one watch heard. `watch` is that watch's own token, made when it
+ * starts: a restarted watch (disabled and enabled again, or a new client,
+ * view, session or input) holds nothing of the one before it, not its value
+ * and not its `stale`. `client` and `identity` let a render that has already
+ * moved on answer nothing before the new watch's effect even runs.
+ */
+type Heard<TValue> = { watch: object; client: ViewWatchClient; identity: string; value: TValue | undefined; stale: boolean };
+
 /** Watch the view `ref` names, with `input`. See the file header. */
 export function useView<TRef extends ViewRef>(
   ref: TRef,
@@ -43,41 +52,50 @@ export function useView<TRef extends ViewRef>(
   options: UseViewOptions = {}
 ): UseViewResult<ViewValueOf<TRef>> {
   const built = useClient();
-  const client = options.client ?? (built as unknown as ViewWatchClient);
+  const client: ViewWatchClient = options.client ?? built;
   const { sessionId, enabled = true, pollIntervalMs } = options;
-  // The input as the request sends it: an omitted input is `{}`, `null` stays `null`.
-  const inputKey = canonicalViewInput(input);
+  // The same identity `watchView` shares reads by: view, session, and the input as the request sends it.
+  const identity = viewWatchIdentity(ref, input, sessionId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const stableInput = useMemo(() => input, [inputKey]);
-  // What was heard is tagged with the watch it belongs to, and the answer is
-  // derived from it: a disabled hook, or one watching another view, input or
-  // session, answers nothing rather than the last value as if current.
-  const watchKey = `${ref.flow}\u0000${ref.view}\u0000${sessionId ?? ""}\u0000${inputKey}`;
-  const [heard, setHeard] = useState<{ key: string; value: ViewValueOf<TRef> | undefined; stale: boolean } | undefined>(undefined);
+  const stableInput = useMemo(() => input, [identity]);
+  const [heard, setHeard] = useState<Heard<ViewValueOf<TRef>> | undefined>(undefined);
 
   useEffect(() => {
     if (!enabled) return;
-    const key = watchKey;
-    const fresh = (prev: typeof heard) => (prev?.key === key ? prev : { key, value: undefined, stale: false });
-    return watchView<ViewValueOf<TRef>>(
+    const watch = {};
+    const fresh = (prev: Heard<ViewValueOf<TRef>> | undefined): Heard<ViewValueOf<TRef>> =>
+      prev?.watch === watch ? prev : { watch, client, identity, value: undefined, stale: false };
+    const stop = watchView<ViewValueOf<TRef>>(
       client,
       ref,
       stableInput,
       {
         onValue: (value) => setHeard((prev) => ({ ...fresh(prev), value })),
-        onStale: (stale) => setHeard((prev) => (fresh(prev).stale === stale ? prev : { ...fresh(prev), stale }))
+        onStale: (stale) =>
+          setHeard((prev) => {
+            const held = fresh(prev);
+            return held === prev && held.stale === stale ? prev : { ...held, stale };
+          })
       },
       {
         ...(sessionId !== undefined ? { sessionId } : {}),
         ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {})
       }
     );
-    // `watchKey` names `ref`, `stableInput` and `sessionId` by value.
+    return () => {
+      stop();
+      // What this watch heard goes with it, so the next one starts from nothing.
+      setHeard((prev) => (prev?.watch === watch ? undefined : prev));
+    };
+    // `identity` names `ref`, `stableInput` and `sessionId` by value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, watchKey, enabled, pollIntervalMs]);
+  }, [client, identity, enabled, pollIntervalMs]);
 
   return useMemo(
-    () => (enabled && heard?.key === watchKey ? { value: heard.value, stale: heard.stale } : { value: undefined, stale: false }),
-    [enabled, heard, watchKey]
+    () =>
+      enabled && heard !== undefined && heard.client === client && heard.identity === identity
+        ? { value: heard.value, stale: heard.stale }
+        : { value: undefined, stale: false },
+    [enabled, heard, client, identity]
   );
 }
