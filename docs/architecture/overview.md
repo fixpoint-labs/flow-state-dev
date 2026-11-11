@@ -74,6 +74,7 @@ core ─────────────────────────
 - `react` has no transport logic — it wraps `client` with hooks and renderers
 - `fsdev` uses `engine` + `testing`, never `react` or `client`
 - `apps/devtool` uses only public APIs from `client` and `react`
+- Kits ([kits.md](kits.md)): `core` defines them (`defineKit`, `slot`) with no Node import; `engine` installs them (`createFlowState({ kits })`) and reads a kit's folder through its Node-only `@flow-state-dev/engine/folder` subpath. Only a kit's server entry, the module that names its folder reader, imports that subpath.
 
 ## Core abstractions
 

@@ -51,6 +51,10 @@
     "./resource-template": {
       "types": "./dist/resource-template-loader.d.ts",
       "default": "./src/resource-template-loader.ts"
+    },
+    "./folder": {
+      "types": "./dist/folder/index.d.ts",
+      "default": "./src/folder/index.ts"
     }
   },
   "license": "MIT",
@@ -86,6 +90,10 @@
       "./resource-template": {
         "types": "./dist/resource-template-loader.d.ts",
         "default": "./dist/resource-template-loader.js"
+      },
+      "./folder": {
+        "types": "./dist/folder/index.d.ts",
+        "default": "./dist/folder/index.js"
       }
     }
   },

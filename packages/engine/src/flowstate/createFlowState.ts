@@ -38,6 +38,7 @@ import { warnOnce } from "@flow-state-dev/core/internal";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { inMemoryStores } from "../stores";
 import { resolveProfileStores } from "./resolve-slots";
+import { installKits, planKits, type KitPlan } from "./kits";
 import type { FlowRunner } from "../transports/runner";
 import { refuseRetiredDispatcherOption } from "../transports/runner";
 import {
@@ -255,6 +256,8 @@ class InternalFlowState<TSettings extends object>
   /** No `stores` was given: the app runs in memory, and startup says so. */
   readonly #inMemoryByOmission: boolean;
   readonly #registry: FlowRegistry;
+  /** What construction settled about `kits`; installed at start-up. */
+  readonly #kitPlan: KitPlan;
   readonly #profileKeys: string[];
   readonly #allAdapters: StoreAdapter[];
   #resolvedProfile: string | undefined;
@@ -364,16 +367,20 @@ class InternalFlowState<TSettings extends object>
     // The keyed record this option used to take is refused by name: a caller
     // still passing it (from JavaScript, or through a cast) would otherwise
     // fail as "not iterable" with nothing saying what changed.
-    if (!Array.isArray(options.flows)) {
+    if (options.flows !== undefined && !Array.isArray(options.flows)) {
       throw new FlowStateConfigError(
         "createFlowState: `flows` is a list of flows, each served under its own id: " +
           "`flows: [readiness, context]`. The keyed record form was removed."
       );
     }
     this.#registry = createFlowRegistry();
-    for (const flow of options.flows) {
+    for (const flow of options.flows ?? []) {
       this.#registry.register(flow);
     }
+    // Kits: ordered, their slots merged and their folders resolved now, so a
+    // list nobody can install throws here. Their folders are read and their
+    // flows registered at start-up (`#buildRuntime`).
+    this.#kitPlan = planKits(options.kits ?? [], options.fill, options.root);
 
     this.#allAdapters = collectAdapters(this.#stores);
   }
@@ -937,6 +944,13 @@ class InternalFlowState<TSettings extends object>
    * stores or diverge on which `StoreRegistry` they use.
    */
   async #buildRuntime(): Promise<FlowStateRuntime> {
+    // Kits first: a folder with an unused file refuses the app before any
+    // store opens, and every entry point that reaches the runtime gets the
+    // same refusal. Registered here, so `meta.flowKeys` lists a kit's flows
+    // only after start-up.
+    for (const flow of await installKits(this.#kitPlan)) {
+      this.#registry.register(flow);
+    }
     const profileName = this.#resolveProfileName();
     const profile = this.#stores[profileName]!;
     const { stores: resolved } = await resolveProfileStores({ profileName, profile });
