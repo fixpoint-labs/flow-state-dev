@@ -36,7 +36,7 @@ vi.mock("../src/lib/lab-data", () => {
   // The conversation board's view answers the two rows.
   const view = async () => {
     const value = [WAITING, { ...WAITING, id: "t-8", holds: undefined }];
-    return { value, topics: [], keys: value.map((row) => row.id) };
+    return { value, topics: [], keys: value.map((task) => task.id) };
   };
   const client = { userId: "alice", subscribe: () => ({ close: () => {} }), view };
   return { useLab: () => ({ client, refresh: async () => {} }) };

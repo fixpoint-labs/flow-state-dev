@@ -58,7 +58,7 @@ function host(options: { stored: unknown[]; live: Record<string, unknown[]>; pla
     // The board's task-list view: its rows, keyed, and the topic a change to them publishes on.
     if (path.endsWith("/views/listTasks_tasks")) {
       const session = path.split("/")[4]!;
-      return json({ output: board, topics: [{ scope: "session", id: session }], keys: (board as Array<{ id: string }>).map((row) => row.id) });
+      return json({ output: board, topics: [{ scope: "session", id: session }], keys: (board as Array<{ id: string }>).map((task) => task.id) });
     }
     if (path.endsWith("/requests")) return json({ requests: [] });
     const request = /\/requests\/([^/]+)\/stream$/.exec(path)?.[1];

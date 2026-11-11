@@ -14,10 +14,10 @@ import type { ViewValueOf } from "@flow-state-dev/client";
 import { taskListViewRef } from "@flow-state-dev/orchestration/inbox";
 
 const board = taskListViewRef("coordinator", "tasks");
-type Rows = ViewValueOf<typeof board>;
-declare const rows: Rows;
+type Tasks = ViewValueOf<typeof board>;
+declare const tasks: Tasks;
 
-const first = rows[0]!;
+const first = tasks[0]!;
 const id: string = first.id;
 const status: string = first.status;
 const attempts: number = first.attempts;

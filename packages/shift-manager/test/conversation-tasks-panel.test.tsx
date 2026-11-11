@@ -62,7 +62,7 @@ board.view = async (ref, _input, options) => {
   calls.push(`${ref.view} ${ref.flow} ${options?.sessionId}`);
   if (refusal !== null) throw new Error(refusal);
   const listed = [...rows];
-  const answer = { value: listed, topics: answerTopics(options!.sessionId!), keys: listed.map((row) => row.id) };
+  const answer = { value: listed, topics: answerTopics(options!.sessionId!), keys: listed.map((task) => task.id) };
   // A case holding reads open answers each when it releases it.
   if (holdReads) return new Promise((resolve) => held.push(() => resolve(answer)));
   return answer;

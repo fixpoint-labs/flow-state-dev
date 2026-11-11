@@ -2497,12 +2497,12 @@ function taskListView(collectionId: string, resolve: TaskCollectionResolver) {
     claimless: true,
   }).find((tool) => tool.name === `listTasks_${taskToolSuffix(collectionId)}`) as BlockDefinition<z.ZodTypeAny, typeof listTasksOutputSchema> | undefined;
   if (listTasks === undefined) throw new Error(`taskToolViews("${collectionId}"): the task tools built no listTasks`);
-  const rows = z.array(listedTaskSchema);
-  const block = sequencer({ name: listTasks.name, inputSchema: listTasks.inputSchema, outputSchema: rows })
+  const listedTasks = z.array(listedTaskSchema);
+  const block = sequencer({ name: listTasks.name, inputSchema: listTasks.inputSchema, outputSchema: listedTasks })
     .step(listTasks)
     .step(handler, {
       name: `${listTasks.name}-rows`,
-      outputSchema: rows,
+      outputSchema: listedTasks,
       // The list's refusal (no board this session can file on) is the view's, by its own name.
       execute: (listed) => {
         if (!listed.ok) throw new FlowError(`The task list can't be read here: ${listed.error}`, { code: listed.error, retryable: false });
@@ -2510,10 +2510,10 @@ function taskListView(collectionId: string, resolve: TaskCollectionResolver) {
       },
     });
   block.validate();
-  // Core types a sequencer as `BlockDefinition<any, any>`; this one declares `rows` as its output
+  // Core types a sequencer as `BlockDefinition<any, any>`; this one declares `listedTasks` as its output
   // schema (checked by `validate` above and on every exit), so the view is typed by it, never `any`.
-  const typed = block as unknown as BlockDefinition<typeof listTasks.inputSchema, typeof rows>;
-  return defineView({ scope: "session", block: typed, key: (row) => row.id, description: listTasks.description });
+  const typed = block as unknown as BlockDefinition<typeof listTasks.inputSchema, typeof listedTasks>;
+  return defineView({ scope: "session", block: typed, key: (task) => task.id, description: listTasks.description });
 }
 
 /** A board's task-list view, as {@link taskToolViews} builds it: for a client's `viewRef<TaskListView>`. */

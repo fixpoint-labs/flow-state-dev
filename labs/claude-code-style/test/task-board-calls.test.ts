@@ -31,7 +31,7 @@ function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Rec
     view: async (ref: { flow: string; view: string }, _input: unknown, options: { sessionId: string }) => ({
       value: rows,
       topics: [{ scope: "session", id: options.sessionId }],
-      keys: rows.map((row) => String(row.id)),
+      keys: rows.map((task) => String(task.id)),
     }),
     flow: (flow: string) => ({
       send: async (action: string, input: Record<string, unknown>, options: { sessionId: string }) => {

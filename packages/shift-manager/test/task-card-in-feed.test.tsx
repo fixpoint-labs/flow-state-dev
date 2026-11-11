@@ -29,7 +29,7 @@ const view = async (ref: { flow: string; view: string }, _input: unknown, option
   calls.push(`${ref.view} ${ref.flow} ${options?.sessionId}`);
   if (failing) throw new Error("network");
   const listed = rows.map((row) => ({ ...row }));
-  const answer = { value: listed, topics: [{ scope: "session", id: options!.sessionId! }] as WireTopic[], keys: listed.map((row) => row.id) };
+  const answer = { value: listed, topics: [{ scope: "session", id: options!.sessionId! }] as WireTopic[], keys: listed.map((task) => task.id) };
   // A case holding reads open answers each when it releases it.
   if (holdReads) return new Promise((resolve) => held.push(() => resolve(answer)));
   return answer;
