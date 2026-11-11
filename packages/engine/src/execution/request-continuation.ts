@@ -227,3 +227,21 @@ export async function continueRequest(
 
   return { requestId, liveStream, finished };
 }
+
+// FIX-2675.
+/**
+ * Wraps a continuation entry for a caller that never reads the continuation's
+ * live stream — the durability sweeper, a wait's resume, a parked stop. The
+ * stream is closed as soon as the continuation returns, so the run's events
+ * are not held for a reader that never comes. A client follows the request
+ * through its GET stream, which reads the stored event log.
+ */
+export function continueWithoutReader<TOptions>(
+  continueRequest: (options: TOptions) => Promise<ContinueRequestResult>
+): (options: TOptions) => Promise<ContinueRequestResult> {
+  return async (options) => {
+    const result = await continueRequest(options);
+    result.liveStream?.close();
+    return result;
+  };
+}

@@ -32,6 +32,7 @@ import {
 } from "../execution/logging";
 import { abortRequest } from "../execution/abort-registry";
 import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
+import { continueWithoutReader } from "../execution/request-continuation";
 import { resolveDurabilityProvider } from "../durability/default-durability";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import { warnOnce } from "@flow-state-dev/core/internal";
@@ -1178,8 +1179,8 @@ class InternalFlowState<TSettings extends object>
     requestHost.parkedStop ??= createParkedStopDeps({
       provider,
       stores,
-      continueRequest: (options) =>
-        this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options)
+      continueRequest: continueWithoutReader((options) =>
+        this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options))
     });
     if (requestHost.waitResume !== undefined) return;
 
@@ -1197,8 +1198,8 @@ class InternalFlowState<TSettings extends object>
       operation ??= createWaitResumeOperation({
         provider,
         stores,
-        continueRequest: (options) =>
-          this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options)
+        continueRequest: continueWithoutReader((options) =>
+          this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options))
       });
       return operation(input);
     };

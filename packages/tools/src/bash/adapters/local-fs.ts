@@ -14,10 +14,16 @@
  * `executeCommand` below. Command execution assumes a Unix process-group
  * model (Linux/macOS): a timeout kills the command's process group.
  *
+ * A background job a command starts (`server > log 2>&1 &`) outlives that
+ * command, so the agent can start a server and use it in the next one. It
+ * does not outlive the sandbox: `stop()` ends every process group the
+ * sandbox's commands started (SIGTERM, then SIGKILL after a short grace).
+ *
  * None of this is an isolation boundary. Commands run as the server's own
  * user, so one can still read the server's environment on purpose
- * (`/proc/$PPID/environ`, `ps eww`) and can start processes that outlive
- * the timeout. Run untrusted commands with the moat adapter or in a
+ * (`/proc/$PPID/environ`, `ps eww`) and can start processes that leave
+ * their process group (`setsid`, a daemon) and so outlive both the timeout
+ * and `stop()`. Run untrusted commands with the moat adapter or in a
  * container.
  */
 
@@ -66,6 +72,9 @@ const DEFAULT_EXEC_TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 /** Exit code for a deadline overrun — the `timeout(1)` convention, as in the MOAT adapter. */
 const TIMEOUT_EXIT_CODE = 124;
+/** How long `stop()` lets process groups exit on SIGTERM before it sends SIGKILL. */
+const STOP_GRACE_MS = 2_000;
+const STOP_POLL_MS = 50;
 
 /**
  * Creates a sandbox backed by the local filesystem.
@@ -92,6 +101,12 @@ export function createLocalFsSandbox(
     if (value != null) childEnv[key] = value;
   }
   Object.assign(childEnv, options.env);
+  /**
+   * Process group ids of the commands this sandbox has run whose group may
+   * still have members — a background job keeps its command's group alive
+   * after the shell exits. `stop()` ends them all.
+   */
+  const startedGroups = new Set<number>();
 
   if (!strictPaths) {
     console.warn(
@@ -159,7 +174,12 @@ export function createLocalFsSandbox(
       // `find /workspace`, `python3 /workspace/skills/...`, etc. actually run.
       const runnable = translateCommand(command);
 
-      return runBash(runnable, cwd, childEnv, execTimeoutMs);
+      // Forget groups that have emptied, so the set stays bounded and a
+      // recycled id is never signalled.
+      for (const pgid of startedGroups) {
+        if (!signalGroup(pgid, 0)) startedGroups.delete(pgid);
+      }
+      return runBash(runnable, cwd, childEnv, execTimeoutMs, (pgid) => startedGroups.add(pgid));
     },
 
     async readFile(filePath: string): Promise<string> {
@@ -172,7 +192,35 @@ export function createLocalFsSandbox(
       await mkdir(path.dirname(resolved), { recursive: true });
       await writeFile(resolved, content, "utf-8");
     },
+
+    /**
+     * End every process group this sandbox's commands started: SIGTERM,
+     * then SIGKILL for any group still there after `STOP_GRACE_MS`.
+     */
+    async stop(): Promise<void> {
+      let live = [...startedGroups].filter((pgid) => signalGroup(pgid, "SIGTERM"));
+      startedGroups.clear();
+      const deadline = Date.now() + STOP_GRACE_MS;
+      while (live.length > 0 && Date.now() < deadline) {
+        await new Promise<void>((r) => setTimeout(r, STOP_POLL_MS).unref());
+        live = live.filter((pgid) => signalGroup(pgid, 0));
+      }
+      for (const pgid of live) signalGroup(pgid, "SIGKILL");
+    },
   };
+}
+
+/**
+ * Send `signal` to process group `pgid` (`0` only probes). Returns false
+ * when the group no longer exists.
+ */
+function signalGroup(pgid: number, signal: NodeJS.Signals | 0): boolean {
+  try {
+    process.kill(-pgid, signal);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -184,7 +232,8 @@ export function createLocalFsSandbox(
  * result would never arrive. Only the group is killed: a descendant that
  * starts its own session (`setsid`, a daemon) has left it and survives.
  * After a normal exit nothing is killed, so a background job whose output
- * is redirected (`server > log 2>&1 &`) keeps running as before.
+ * is redirected (`server > log 2>&1 &`) keeps running; `onGroup` hands the
+ * group id to the sandbox, whose `stop()` ends it.
  *
  * Output is capped at `MAX_OUTPUT_BYTES` per stream (stdout and stderr
  * counted separately, as Node's `maxBuffer` did); an overrun kills the group.
@@ -202,6 +251,7 @@ function runBash(
   cwd: string,
   env: Record<string, string>,
   timeoutMs: number,
+  onGroup: (pgid: number) => void,
 ): Promise<CommandResult> {
   return new Promise((resolve) => {
     const child = spawn("/bin/bash", ["-c", command], {
@@ -210,6 +260,8 @@ function runBash(
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    // Detached: the shell leads its own group, whose id is its pid.
+    if (child.pid != null) onGroup(child.pid);
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let failure: { exitCode: number; message: string } | null = null;

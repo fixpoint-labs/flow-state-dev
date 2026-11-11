@@ -1098,7 +1098,7 @@ const EXEMPTIONS = [
     why: "WR-3: a person's approval or question, which a blocked task's notes are not drawn as",
   },
   {
-    path: /^packages\/((core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)|tools\/test\/bash-moat-purge\.test\.ts)$/,
+    path: /^packages\/((core|engine)\/(src\/execution\/request-side-chain-pool\.ts|test\/request-side-chain-pool\.test\.ts)|tools\/test\/bash-moat-(purge|lifecycle)\.test\.ts)$/,
     line: /\baddTask\b/,
     rules: ["task-tool-names"],
     why: "FIX-2243: the engine's side-chain pool's addTask (or a test's stand-in pool) adds a promise to a request's pool, not a task to a collection",

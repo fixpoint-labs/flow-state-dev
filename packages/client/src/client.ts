@@ -394,7 +394,12 @@ export interface RequestHandle {
    */
   answer(body: AnswerSuspensionBody): Promise<RequestHandle>;
   answer(body: AnswerSuspensionBody, options: StreamOption): Promise<Response>;
-  /** Follow the request's events. */
+  /**
+   * Follow the request's events. When the server ends the stream before the
+   * request ends (it cuts off a reader that falls too far behind), the stream
+   * resumes after the last event it delivered; after five connections in a
+   * row that deliver nothing it gives up with `onError`.
+   */
   stream(options: RequestStreamOptions): RequestStreamHandle;
 }
 
@@ -982,10 +987,11 @@ function requestHandle(
       openRequestStream(
         {
           fetcher: t.fetcher,
-          url: t.url(`${base}/stream`, {
-            starting_after: startingAfter,
-            include: includeTrace === true ? "trace" : undefined
-          })
+          url: (after) =>
+            t.url(`${base}/stream`, {
+              starting_after: after,
+              include: includeTrace === true ? "trace" : undefined
+            })
         },
         { ...callbacks, startingAfter, lastEventId, dedupWindowSize }
       )
