@@ -39,6 +39,7 @@ import {
   resolveFlowCaller
 } from "../resources/scope-address";
 import { ownerKeyAdmits } from "../resources/owner-private";
+import { applyClientData } from "./resource-routes";
 import {
   buildProjectedResourceContextFromSession,
   isProjectedResourceCollection,
@@ -87,10 +88,12 @@ export async function handleReadScopeResource(
     });
   }
   const { state, version } = await readAddressed(ctx.stores, address, caller);
+  const value = await projectForClient(address, state);
   return jsonResponse(200, {
     scope: address.scope,
     key: address.key,
-    value: await projectForClient(address.config, state),
+    // Absent when the session's snapshot carries no state for it either.
+    ...(value !== undefined ? { value } : {}),
     version
   });
 }
@@ -137,7 +140,7 @@ export async function handleReadScopeEntries(
   const shaped = async (storageKey: string, state: JsonObject, version: number) => ({
     topic: extractBareTopic(config.pattern, storageKey),
     storageKey,
-    value: await projectForClient(config, state),
+    value: await applyClientData(config, state),
     version
   });
   const projected = isProjectedResourceCollection(config)

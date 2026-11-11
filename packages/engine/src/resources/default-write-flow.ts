@@ -157,8 +157,9 @@ function writeTargetOf(sessionId: string): WriteTarget | undefined {
 }
 
 /**
- * The flow whose sign-in governs a write session's records: the flow that
- * declares the resource it writes. The default write flow has no resolver of
+ * The flow whose sign-in governs a write session's records: a named writer
+ * (`runBy: { flow }`) itself, else the flow that declares the resource the
+ * default write flow writes. The default write flow has no resolver of
  * its own, so without this its sessions and requests would answer to the
  * host's fallback, the bug class of a route with no flow behind it. `undefined` when `sessionId` is no
  * write session, or its resource is declared nowhere now.
@@ -173,8 +174,15 @@ function writeSessionGoverningFlow(
   const at = sessionId.indexOf(WRITE_SESSION_PREFIX);
   const target = at < 0 ? undefined : writeTargetOf(sessionId.slice(at));
   if (target === undefined) return undefined;
-  // The declaring instance whose pin admits the record's owner: instances
-  // pinned to different users each govern their own writers' records.
+  // A named writer's records answer to the writer, whose door ran the action
+  // and resolved its caller: never a declarer picked by registry order.
+  if (target.writer !== DEFAULT_WRITE_FLOW) {
+    const writer = registry.get(target.writer);
+    return writer !== undefined && writer.id !== DEFAULT_WRITE_FLOW ? writer : undefined;
+  }
+  // The default write flow has no door of its own: the declaring instance
+  // whose pin admits the record's owner governs, so instances pinned to
+  // different users each govern their own writers' records.
   const address = resolveAddress(registry, hostResolver, target.scope, target.key, (flow) =>
     !pinRejectsCaller(flow.ownerPin, { userId: owner.userId ?? "", orgId: owner.orgId ?? "" })
   );

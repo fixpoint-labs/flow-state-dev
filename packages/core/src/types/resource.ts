@@ -702,7 +702,7 @@ export function validateRunBy(
     canWrite?: unknown;
     flowIsolation?: boolean;
     writable?: boolean;
-    client?: { data?: unknown };
+    client?: { data?: unknown; expose?: unknown; exclude?: unknown };
   }
 ): void {
   const name = config.ref ?? config.pattern ?? "(unnamed)";
@@ -752,6 +752,16 @@ export function validateRunBy(
     throw new Error(
       `${definer} resource "${name}" sets runBy: "default" with a computed client.data: the default write flow can't ` +
         `write back through a computed projection. Use expose or exclude, or write it through runBy: { flow }.`
+    );
+  }
+  // A client reads a single resource's state only through expose or exclude
+  // (the session snapshot carries none otherwise), and the default write flow
+  // writes only what the client reads. A collection reads its entries through
+  // `client.state.read` instead, checked where it is defined.
+  if (config.pattern === undefined && !Array.isArray(config.client.expose) && !Array.isArray(config.client.exclude)) {
+    throw new Error(
+      `${definer} resource "${name}" sets runBy: "default" with a client config that projects no state: the client ` +
+        `reads none of it, so the default write flow could write none of it. Add expose or exclude.`
     );
   }
   if (config.scope === "org" && config.canWrite === undefined) {
