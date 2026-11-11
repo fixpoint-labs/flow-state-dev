@@ -1,0 +1,11 @@
+--- a-kit/host.mts
++++ control/host.mts
+@@ -400,7 +400,7 @@
+     kits: [team],
+     root: import.meta.url,
+     contributes: { [workforce.slots.workerFlows]: workerFlows },
+-    flows: Object.fromEntries([readinessFlow, contextFlow].map((copy) => [copy.id, copy])),
++    flows: Object.fromEntries([readinessFlow].map((copy) => [copy.id, copy])),
+     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
+     durable: true,
+     dispatchDrainTimeoutMs,
