@@ -37,6 +37,8 @@ import {
 } from "../errors/flow-error";
 import { runResourceCAS } from "../stores/resource-cas";
 import { createStateContainer } from "../stores/state-container";
+import { builtInHostOf, type BuiltInHost } from "../context/built-in-host";
+import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { PrincipalResolver } from "../transports/types";
@@ -296,16 +298,16 @@ async function persistAtVersion(options: {
 
 // FIX-2624.
 /**
- * Hold the framework's own flows (the default write flow) in `registry`, over
- * `stores`. Every runtime entry that resolves flows from a registry calls it:
- * the inbound host and a queue worker, so a write never depends on which
- * process runs it. `hostResolver` is the host-level resolver that entry's host
- * is given (the development resolver when none is): the default write flow
- * decides whether two declarations agree with it, as the route does. Idempotent.
+ * Hold the framework's own flows (the default write flow) in `registry`. Every
+ * runtime entry that resolves flows from a registry calls it: the inbound host
+ * and a queue worker, so a write never depends on which process runs it. The
+ * flows capture nothing of a host: they read the stores and host resolver of
+ * the runtime running them off their context (`built-in-host.ts`), so one
+ * instance serves every host that shares the registry. Idempotent.
  */
-export function installBuiltIns(registry: FlowRegistry, stores: StoreRegistry, hostResolver: PrincipalResolver): void {
+export function installBuiltIns(registry: FlowRegistry): void {
   if (registry.registerBuiltIn === undefined || registry.get(DEFAULT_WRITE_FLOW) !== undefined) return;
-  registry.registerBuiltIn(createDefaultWriteFlow({ registry, stores, hostResolver }));
+  registry.registerBuiltIn(createDefaultWriteFlow({ registry }));
 }
 
 const setInput = z.object({
@@ -333,18 +335,12 @@ type AdmittedWrite = {
   cell: string;
 };
 
-/**
- * Build the default write flow's instance over a host's registry and stores.
- * The host holds it as a built-in (`createInboundTransportHost`).
- */
-function createDefaultWriteFlow(options: {
-  registry: FlowRegistry;
-  stores: StoreRegistry;
-  hostResolver: PrincipalResolver;
-}): FlowInstance {
+/** The default write flow's operations over one runtime's stores and host resolver. */
+function writeOperations(registry: FlowRegistry, host: BuiltInHost) {
+  const stores = host.stores;
   // The host resolver only decides whether the declarations agree, never who the
   // caller is: that is the session binding the action route admitted.
-  const { registry, stores, hostResolver } = options;
+  const hostResolver = host.hostResolver ?? defaultBodyUserIdPrincipalResolver;
 
   /** The write's target, address and caller, from the write session and its binding; refused otherwise. */
   const admit = (session: { id: string; userId?: string; orgId?: string; tenantId?: string }): AdmittedWrite => {
@@ -498,11 +494,27 @@ function createDefaultWriteFlow(options: {
     return { version: written.version };
   };
 
+  return { stores, admit, publish, stale, raced, entryKeyOf, writeSingle, writeEntry };
+}
+
+/**
+ * Build the default write flow's instance over a registry. Its stores and host
+ * resolver are the running runtime's, read off the context each run.
+ */
+function createDefaultWriteFlow(options: { registry: FlowRegistry }): FlowInstance {
+  const { registry } = options;
+  /** This runtime's operations, from the context the action runs in. */
+  const operationsOf = (ctx: object) => {
+    const host = builtInHostOf(ctx);
+    if (host === undefined) throw new ResourceWriteRefusedError("not_writable", "The default write flow runs only in an engine context.");
+    return writeOperations(registry, host);
+  };
   const set = handler({
     name: "fsd-default-write-set",
     inputSchema: setInput,
     outputSchema: z.object({ version: z.number() }),
     execute: async (input, ctx) => {
+      const { admit, writeEntry, writeSingle } = operationsOf(ctx);
       const write = admit(ctx.session.identity);
       const signal = sideChainSignalOf(ctx);
       return write.address.collection
@@ -516,6 +528,7 @@ function createDefaultWriteFlow(options: {
     inputSchema: deleteInput,
     outputSchema: z.object({ version: z.number() }),
     execute: async (input, ctx) => {
+      const { stores, admit, publish, stale, raced, entryKeyOf } = operationsOf(ctx);
       const write = admit(ctx.session.identity);
       if (!write.address.collection) {
         throw new ResourceWriteRefusedError(

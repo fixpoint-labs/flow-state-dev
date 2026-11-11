@@ -284,12 +284,14 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     options.runtimeConfig.defaultSseHeartbeatMs !== undefined
       ? options.runtimeConfig.defaultSseHeartbeatMs
       : DEFAULT_SSE_HEARTBEAT_MS;
+  const hostResolver = options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver;
   const runtimeConfig: RuntimeConfig = {
     ...options.runtimeConfig,
-    defaultSseHeartbeatMs
+    defaultSseHeartbeatMs,
+    // FIX-2624: the framework's own flows read this host's resolver off their context.
+    hostResolver
   };
 
-  const hostResolver = options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver;
   const push = createPushState(stores.bus);
   const hostDisk = createHostDiskState();
 

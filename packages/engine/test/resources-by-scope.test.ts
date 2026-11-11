@@ -833,7 +833,7 @@ describe("a default write aborted while its canWrite is pending", () => {
   // Codex review 4544189602.
   it("writes nothing once the abort lands, though canWrite then admits it", async () => {
     let release: ((ok: boolean) => void) | undefined;
-    let asked = false;
+    let called = false;
     const gated = defineResource({
       ref: "gated",
       scope: "org",
@@ -841,7 +841,7 @@ describe("a default write aborted while its canWrite is pending", () => {
       client: { expose: ["n"] },
       runBy: "default",
       canWrite: () => {
-        asked = true;
+        called = true;
         return new Promise<boolean>((resolve) => {
           release = resolve;
         });
@@ -857,13 +857,30 @@ describe("a default write aborted while its canWrite is pending", () => {
     const res = await post(router, ["resources", "org", "gated", "actions", "set"], alice, { input: { state: { n: 1 }, version: 0 } });
     expect(res.status).toBe(202);
     const { request } = (await res.json()) as { request: { id: string } };
-    for (let i = 0; i < 200 && !asked; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(asked).toBe(true);
+    for (let i = 0; i < 200 && !called; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(called).toBe(true);
     const aborted = await post(router, ["fsd-default-write", "requests", request.id, "abort"], alice, {});
     expect([200, 202, 204]).toContain(aborted.status);
     release!(true);
     const done = await settle(stores, request.id);
     expect(done.status).toBe("aborted");
     expect(await read(router, "org", "gated", alice)).toEqual({ scope: "org", key: "gated", value: { n: 0 }, version: 0 });
+  });
+});
+
+describe("two routers over one registry and two stores", () => {
+  // Codex review 4544289843: the built-in default write flow kept the first router's stores.
+  it("lands each router's write in its own stores", async () => {
+    const registry = createFlowRegistry();
+    registry.register(threadsFlow({ authenticated: true }) as never);
+    const first = createInMemoryStores();
+    const second = createInMemoryStores();
+    const one = createFlowApiRouter({ registry, stores: first, staleSweepIntervalMs: 0 });
+    const two = createFlowApiRouter({ registry, stores: second, staleSweepIntervalMs: 0 });
+    routers.push(one, two);
+    const done = await write(two, second, "user", "pins", alice, { input: { state: { pinned: ["two"] }, version: 0 } });
+    expect(done.status, JSON.stringify(done.result)).toBe("completed");
+    expect((await read(two, "user", "pins", alice)).value).toEqual({ pinned: ["two"] });
+    expect((await read(one, "user", "pins", alice)).value).toEqual({ pinned: [] });
   });
 });
