@@ -1108,7 +1108,9 @@ class InternalFlowState<TSettings extends object>
     // FIX-2630: the seam's service route, over the same host, closed with admission as a dispatch is.
     requestHost.serviceRoute ??= (route) => {
       if (this.#disposed) return Promise.resolve({ ok: false, detail: "the runtime is shutting down and is no longer routing work" });
-      return createServiceRouteOperation(this.#hostForRequestHostOperations(runtimeConfig, stores))(route);
+      return createServiceRouteOperation(this.#hostForRequestHostOperations(runtimeConfig, stores), {
+        onRouting: (routing) => this.#trackDispatchedRun(routing)
+      })(route);
     };
     if (requestHost.dispatchOperation !== undefined) return;
 

@@ -219,7 +219,11 @@ and nominates no one else, so another user's subscription is never screened
 or counted against the cap; the host's check is the backstop: a run the
 routing names for another user is refused `other_user`, for another tenant
 `other_tenant`, and never fired. The caller learns only that the
-routing ran, not who it fired. Workforce's `publishEvent` is the one caller.
+routing was accepted, not who it fired: the operation answers on acceptance,
+because the caller may hold a queue's only worker slot and the routing may need
+it. The routing and the runs it fires go on detached, held by the host's
+shutdown drain like any dispatched child. Workforce's `publishEvent` is the one
+caller.
 
 The nomination (a user, an org, an optional tenant, a resource key) only picks a
 cell. The run starts only when that user's cell for collections shared across

@@ -25,13 +25,14 @@ const ORG = "acme";
 
 type Seen = { routedAs: string[]; routedSender: unknown[]; routedOwner: unknown[]; delivered: Array<{ as: string; note: string }> };
 
-function boot() {
+function boot(gates: { route?: Promise<void>; deliver?: Promise<void> } = {}) {
   const seen: Seen = { routedAs: [], routedSender: [], routedOwner: [], delivered: [] };
   const deliver = handler({
     name: "svc-deliver",
     inputSchema: z.object({ note: z.string() }),
     outputSchema: z.object({}),
     execute: async (input, ctx) => {
+      await gates.deliver;
       seen.delivered.push({ as: (ctx.session.identity as { userId: string }).userId, note: input.note });
       return {};
     }
@@ -41,6 +42,7 @@ function boot() {
     inputSchema: z.object({ sender: z.unknown(), runs: z.array(z.any()) }).passthrough(),
     outputSchema: z.object({ ownerRuns: z.array(z.any()) }),
     execute: async (input, ctx) => {
+      await gates.route;
       seen.routedAs.push((ctx.session.identity as { userId: string }).userId);
       seen.routedSender.push(input.sender);
       seen.routedOwner.push(input.owner);
@@ -78,6 +80,36 @@ function boot() {
   const stores = inMemoryStores();
   const state = createFlowState({ flows: { svc, pub }, stores: { default: { primary: stores } }, resolvePrincipal: () => null } as never);
   return { seen, state, pub };
+}
+
+/** A gate a test opens by hand. */
+function gate() {
+  let open!: () => void;
+  const opened = new Promise<void>((resolve) => (open = resolve));
+  return { opened, open };
+}
+
+/** Alice's publish naming `runs`, through the seam. */
+async function publishAs(state: ReturnType<typeof boot>["state"], pub: ReturnType<typeof boot>["pub"], runs: unknown[]) {
+  const runtime = await state.getRuntime();
+  return (await runAction({
+    orgId: ORG,
+    flow: pub,
+    actionName: "publish",
+    input: { runs },
+    userId: "alice",
+    tenantId: "t1",
+    sessionId: "s_alice",
+    stores: runtime.stores,
+    runtimeConfig: { ...runtime.runtimeConfig }
+  })) as { output?: { outcome: DispatchOutcome } };
+}
+
+/** Alice's subscription in tenant t1, so her run fires. */
+async function aliceSubscription(state: ReturnType<typeof boot>["state"]) {
+  const runtime = await state.getRuntime();
+  const cell = resolveUserStorageKey("alice", ORG, { id: "svc", isolateUserState: false });
+  await runtime.stores.resourceState.set("user", cell, "subs/s1", { orgId: ORG, tenantId: "t1", enabled: true } as never, "any");
 }
 
 const run = (userId: string, orgId: string, note: string, tenantId?: string, key = "subs/s1") => ({
@@ -123,5 +155,39 @@ describe("the dispatch seam's service route", () => {
     } finally {
       await state.dispose();
     }
+  });
+
+  // A publisher on a queue may hold the only worker slot; a publish that waited for its
+  // routing to finish would wait on a job that can't start. It answers on acceptance.
+  it("answers once the routing is accepted, before the routing has run", async () => {
+    const route = gate();
+    const { seen, state, pub } = boot({ route: route.opened });
+    try {
+      await aliceSubscription(state);
+      const result = await publishAs(state, pub, [run("alice", ORG, "own", "t1")]);
+      expect(result.output?.outcome.ok).toBe(true);
+      expect(seen.routedAs).toEqual([]);
+      route.open();
+      await vi.waitFor(() => expect(seen.delivered).toEqual([{ as: "alice", note: "own" }]));
+    } finally {
+      route.open();
+      await state.dispose();
+    }
+  });
+
+  // A script that publishes and then disposes must not close the stores under a delivery still running.
+  it("holds dispose until the routing and the runs it fired have finished", async () => {
+    const deliver = gate();
+    const { seen, state, pub } = boot({ deliver: deliver.opened });
+    await aliceSubscription(state);
+    const result = await publishAs(state, pub, [run("alice", ORG, "own", "t1")]);
+    expect(result.output?.outcome.ok).toBe(true);
+    let disposed = false;
+    const disposing = state.dispose().then(() => (disposed = true));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(disposed).toBe(false);
+    deliver.open();
+    await disposing;
+    expect(seen.delivered).toEqual([{ as: "alice", note: "own" }]);
   });
 });

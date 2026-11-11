@@ -24,7 +24,7 @@
  */
 import type { ExecutionResult } from "../execution/types";
 import { resolveSharedUserCellKey, tenantMatches } from "../stores/scope-keys";
-import type { InboundTransportHost } from "../transports/types";
+import type { InboundDispatchHandle, InboundTransportHost } from "../transports/types";
 import { dispatchInternalAs, type InternalPrincipal } from "./dispatch-internal";
 
 /** One run as a row's owner: the entry to start, and the row that makes it that user's. */
@@ -182,6 +182,21 @@ export async function routeServiceEvent(
   },
   options: { readonly concurrency?: number; readonly owner?: RouteOwner } = {}
 ): Promise<RoutedServiceEvent> {
+  const started = startRouting(host, service);
+  return fireRouted(host, service, started, options);
+}
+
+/** The routing request a service event starts, before it runs. */
+interface StartedRouting {
+  readonly handle: InboundDispatchHandle;
+  readonly sessionId: string;
+}
+
+/** Dispatch `service`'s routing entry as the service, in its routing session. */
+function startRouting(
+  host: Pick<InboundTransportHost, "dispatch">,
+  service: { readonly flowKind: string; readonly entry: string; readonly input: unknown; readonly principal: InternalPrincipal }
+): StartedRouting {
   const { userId, orgId } = service.principal;
   const sessionId = `service-route:${[orgId, userId, service.flowKind].map(encodeURIComponent).join(":")}`;
   const handle = dispatchInternalAs(host, {
@@ -192,6 +207,17 @@ export async function routeServiceEvent(
     sessionId,
     metadata: { serviceRoute: { entry: service.entry } }
   });
+  return { handle, sessionId };
+}
+
+/** Wait for a started routing to finish, then fire each run it named. */
+async function fireRouted(
+  host: Pick<InboundTransportHost, "dispatch" | "stores">,
+  service: { readonly flowKind: string; readonly principal: InternalPrincipal },
+  { handle, sessionId }: StartedRouting,
+  options: { readonly concurrency?: number; readonly owner?: RouteOwner }
+): Promise<RoutedServiceEvent> {
+  const { orgId } = service.principal;
   const result = await handle.finished;
   const routing = { requestId: handle.requestId, sessionId };
   if (result.error !== undefined) return { ...routing, output: result.output, error: result.error, ownerRuns: [], malformed: [] };
@@ -238,36 +264,54 @@ export interface ServiceRouteDispatch {
   };
 }
 
-/** What a service route came to: routed (its runs fired or refused), or not, and why. */
+/** What a service route came to: its routing accepted (it runs on, detached), or not, and why. */
 export type ServiceRouted = { readonly ok: true; readonly requestId: string; readonly sessionId: string } | { readonly ok: false; readonly detail: string };
 
 /** The host operation the dispatch seam hands a service route to. */
 export type ServiceRouteOperation = (route: ServiceRouteDispatch) => Promise<ServiceRouted>;
 
+/** A routing the service route started and does not wait for: what a host's shutdown drain holds. */
+export interface ServiceRouting {
+  readonly requestId: string;
+  readonly sessionId: string;
+  /** Settles once the routing finished and every run it fired finished. Never rejects. */
+  readonly finished: Promise<unknown>;
+}
+
 /**
  * The seam's service route, over `host`: the event, its `sender` stamped as
  * the dispatching session (role `member`, the name the seam read) and its
- * `owner` as the sender's user and tenant, routed through
- * {@link routeServiceEvent} as `service:<provider>` in the sender's org, with
- * only that user's runs in that tenant fired (own-user first).
- * Resolves once every run is fired or refused. A routing that failed or never
- * finished is not routed.
+ * `owner` as the sender's user and tenant, routed as `service:<provider>` in
+ * the sender's org, with only that user's runs in that tenant fired (own-user
+ * first).
+ *
+ * Resolves once the routing request is accepted, not when it finishes: the
+ * publisher may itself hold a queue's worker slot, and the routing may need
+ * that slot to run. The routing and the runs it fires go on detached, handed
+ * to `onRouting` so the host's shutdown drain waits for them. A routing that
+ * was never accepted is not routed.
  */
-export function createServiceRouteOperation(host: Pick<InboundTransportHost, "dispatch" | "stores">): ServiceRouteOperation {
+export function createServiceRouteOperation(
+  host: Pick<InboundTransportHost, "dispatch" | "stores">,
+  options: { readonly onRouting?: (routing: ServiceRouting) => void } = {}
+): ServiceRouteOperation {
   return async (route) => {
     const event = typeof route.input === "object" && route.input !== null ? (route.input as Record<string, unknown>) : {};
     const { userId, tenantId, sessionId, name, orgId } = route.sender;
     const owner: RouteOwner = { userId, ...(tenantId === undefined ? {} : { tenantId }) };
     const input = { ...event, sender: { id: sessionId, name, role: "member" }, owner };
-    const routed = await routeServiceEvent(
-      host,
-      { flowKind: route.flowKind, entry: route.entry, input, principal: { userId: `service:${route.provider}`, orgId } },
-      { owner }
-    );
-    if (routed.error !== undefined) {
-      return { ok: false, detail: `the routing failed: ${routed.error instanceof Error ? routed.error.message : JSON.stringify(routed.error)}` };
+    const service = { flowKind: route.flowKind, entry: route.entry, input, principal: { userId: `service:${route.provider}`, orgId } };
+    let started: StartedRouting;
+    try {
+      started = startRouting(host, service);
+      if (started.handle.accepted !== undefined) await started.handle.accepted;
+    } catch (error) {
+      return { ok: false, detail: `the routing was not accepted: ${error instanceof Error ? error.message : String(error)}` };
     }
-    if (routed.incomplete === true) return { ok: false, detail: "the routing stopped before it finished" };
-    return { ok: true, requestId: routed.requestId, sessionId: routed.sessionId };
+    const finished = fireRouted(host, service, started, { owner })
+      .then((routed) => Promise.allSettled(routed.ownerRuns.map((run) => run.finished)))
+      .catch(() => undefined);
+    options.onRouting?.({ requestId: started.handle.requestId, sessionId: started.sessionId, finished });
+    return { ok: true, requestId: started.handle.requestId, sessionId: started.sessionId };
   };
 }
