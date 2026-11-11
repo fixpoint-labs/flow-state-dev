@@ -102,7 +102,7 @@ that entry keys already reach org members today. Then the push edge strips `ids`
   answer by key; FIX-2623's shared read per view and input is kept.
 - **A collection direct read** ([FIX-2624](../FIX-2624/SPEC.md)) fetches the named entries and
   places them; no ids, or an entry it can't find, reads the collection.
-- **The board view opts in here.** Its partial answer re-runs the rows the ids name and every row that shows one of them (a subtask showing its parent's title); the goal check's control is the identity-only version. Other framework views (the roster, harness readiness) may opt in
+- **The board view opts in here.** Its partial answer re-runs the rows the ids name and every row that shows one of them (a subtask showing its parent's title); the goal check's control is the identity-only version. The coding board view (harness-manager, built by FIX-2627) opts in by the same rule: it is the board plus each task's harness, so it re-runs the rows the ids name and every row that shows one of them. Other framework views (the roster, harness readiness) may opt in
   where they are built (FIX-2627); app views opt in per view.
 - **Changeset:** `minor` for `contracts`, `core`, `engine`, `store-postgres`, `client`, `react`, `orchestration` (the notice payload, the view option, the bus payload and the board's opt-in all ship); the glossary's
   *View* entry gains the partial answer in the implementation PR (ER-9). No new public term.
