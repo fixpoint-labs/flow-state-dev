@@ -1,0 +1,14 @@
+// From specs/epics/FIX-2618/examples/ccs-host.md (proposed).
+export function openLab(o: LabOptions) {
+  return createFlowState({
+    kits: [
+      workforce({ workers: "./workforce", model: o.model }),
+      harnesses({ claudeCode: { modes: ["default", "plan"] }, codex: {}, cursor: {}, workspace: { root: join(o.data, "runs") } }),
+      claudeCodeStyle({ utilityModel: o.utilityModel, answerAgain: o.answerAgain }),
+    ],
+    flows: [repositoriesFlow],
+    stores: { default: { primary: sqliteStores({ filename: join(o.data, "lab.sqlite") }) } },
+    durable: true,
+    models: { default: o.model },
+  });
+}
