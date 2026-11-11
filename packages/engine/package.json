@@ -97,7 +97,8 @@
     "@cfworker/json-schema": "^4.1.1",
     "@flow-state-dev/core": "workspace:*",
     "p-retry": "^6.2.0",
-    "path-to-regexp": "^8.2.0"
+    "path-to-regexp": "^8.2.0",
+    "unpdf": "1.9.1"
   },
   "peerDependencies": {
     "vitest": "^3.0.0"

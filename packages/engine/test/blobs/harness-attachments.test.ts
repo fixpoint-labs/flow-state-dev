@@ -8,7 +8,8 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { toBlobRef } from "@flow-state-dev/core/attachments";
-import { HarnessAttachmentUnavailableError, readHarnessAttachments } from "@flow-state-dev/core/harness";
+import { HarnessAttachmentUnavailableError, readHarnessAttachments, readHarnessTurnFiles } from "@flow-state-dev/core/harness";
+import { makePdf } from "./pdf-fixture";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -26,7 +27,7 @@ const byHeader = (context: { request?: Request }) => {
 const input = z.object({ message: z.string(), files: z.array(z.unknown()).optional() });
 
 /** What the block read: each file's type, name and bytes, or the error it got. */
-type Read = { files?: Array<{ mediaType: string; filename?: string; base64: string }>; error?: unknown };
+type Read = { files?: Array<{ mediaType: string; filename?: string; base64: string }>; text?: string; error?: unknown };
 
 function setup(withBlobs = true) {
   const read: Read = {};
@@ -38,7 +39,10 @@ function setup(withBlobs = true) {
     outputSchema: z.object({ ok: z.boolean() }),
     execute: async (value, ctx) => {
       try {
-        const files = await readHarnessAttachments(ctx, (value.files as FileContent[] | undefined) ?? ctx.request.attachments);
+        const named = (value.files as FileContent[] | undefined) ?? ctx.request.attachments;
+        const files = await readHarnessAttachments(ctx, named);
+        // As a harness that reads only images splits the same turn (FIX-2520).
+        read.text = (await readHarnessTurnFiles("Test", ctx, ["image/png"], named)).text;
         read.files = files.map((file) => ({
           mediaType: file.mediaType,
           ...(file.filename !== undefined ? { filename: file.filename } : {}),
@@ -96,6 +100,19 @@ describe("a turn's files, read for a harness", () => {
     expect(record.status).toBe("completed");
     expect(read.error).toBeUndefined();
     expect(read.files).toEqual([{ mediaType: "image/png", filename: "shot.png", base64: Buffer.from(PNG).toString("base64") }]);
+  });
+
+  it("hands a harness that reads only images each document's text, a PDF's as extracted at upload", async () => {
+    const { read, upload, send } = setup();
+    const spec = await upload(makePdf(["intro", null, "code word TANGERINE"]), "application/pdf", "spec.pdf");
+    const notes = await upload(new TextEncoder().encode("code word PLUM"), "text/markdown", "notes.md");
+    const record = await send("s1", { input: { message: "read these" }, attachments: [spec, notes] });
+    expect(record.status).toBe("completed");
+    expect(read.error).toBeUndefined();
+    expect(read.text).toBe(
+      "### spec.pdf\n[page 1]\nintro\n\n[page 2: no text layer. A scanned page has no text to read here.]\n\n[page 3]\ncode word TANGERINE" +
+        "\n\n### notes.md\ncode word PLUM",
+    );
   });
 
   it("refuses a reference another conversation owns, by name", async () => {

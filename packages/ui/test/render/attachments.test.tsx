@@ -8,6 +8,7 @@
  * draws and what `onSubmit` receives, never the hook's internals: a hook whose
  * state looks right while Send ships data URLs must fail here.
  */
+import { ATTACHMENT_ACCEPT } from "@flow-state-dev/core/attachments";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { act, cleanup, renderHook, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
@@ -44,11 +45,16 @@ function file(name: string, type: string, size = 1024): File {
 let blobCount = 0;
 
 /** An uploader that answers as the server does, after `gate` resolves when one is given. */
-function uploader(options: { gate?: Promise<void>; refuse?: (name: string) => number | undefined } = {}) {
+function uploader(
+  options: { gate?: Promise<void>; refuse?: (name: string) => number | { status: number; body: unknown } | undefined } = {},
+) {
   const upload = vi.fn(async (request: { data: Blob; mediaType?: string; filename?: string }): Promise<FileContent> => {
     if (options.gate) await options.gate;
-    const status = options.refuse?.(request.filename ?? "");
-    if (status !== undefined) throw Object.assign(new Error(`refused ${status}`), { status });
+    const refusal = options.refuse?.(request.filename ?? "");
+    if (refusal !== undefined) {
+      const { status, body } = typeof refusal === "number" ? { status: refusal, body: undefined } : refusal;
+      throw Object.assign(new Error(`refused ${status}`), { status, body });
+    }
     blobCount += 1;
     return {
       type: "file",
@@ -220,11 +226,11 @@ describe("attaching in PromptInput", () => {
     expect(screen.queryByRole("img")).toBeNull();
   });
 
-  it("opens a multi-select picker for the contract's image types from +", async () => {
+  it("opens a multi-select picker for the contract's types from +", async () => {
     composer(uploader());
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     expect(input.multiple).toBe(true);
-    expect(input.accept).toBe("image/png,image/jpeg,image/webp,image/gif");
+    expect(input.accept).toBe(ATTACHMENT_ACCEPT);
     const click = vi.spyOn(input, "click");
     fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
     expect(click).toHaveBeenCalledOnce();
@@ -349,6 +355,57 @@ describe("attaching in PromptInput", () => {
     fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
     expect(opened).toEqual([...document.querySelectorAll('input[type="file"]')]);
     expect(opened).toHaveLength(1);
+  });
+});
+
+// FIX-2520: documents in the composer, typed and refused as the server types and refuses them.
+describe("attaching documents", () => {
+  it("types a text-like file by its name, so a .md, .ts or .yaml the browser mistypes still goes, as text", async () => {
+    const client = uploader();
+    composer(client);
+    await act(async () =>
+      pick([
+        file("notes.md", ""),
+        file("agent.ts", "video/mp2t"),
+        file("deploy.yaml", "application/x-yaml"),
+        file("errors.csv", "text/csv"),
+        file("spec.pdf", "application/pdf"),
+      ]),
+    );
+    await waitFor(() => expect(client.upload).toHaveBeenCalledTimes(5));
+    expect(client.upload.mock.calls.map(([request]) => [request.filename, request.mediaType])).toEqual([
+      ["notes.md", "text/markdown"],
+      ["agent.ts", "text/plain"],
+      ["deploy.yaml", "application/yaml"],
+      ["errors.csv", "text/csv"],
+      ["spec.pdf", "application/pdf"],
+    ]);
+  });
+
+  it("refuses a text file over 200 KB with its limit, and Word by type, before upload", async () => {
+    const client = uploader();
+    composer(client);
+    await act(async () =>
+      pick([
+        file("big.txt", "text/plain", 250 * 1024),
+        file("report.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+      ]),
+    );
+    const live = screen.getByRole("status", { name: "Attachment notices" });
+    expect(live.textContent).toContain("big.txt is over 200 KB");
+    expect(live.textContent).toContain("report.docx isn't supported");
+    expect(client.upload).not.toHaveBeenCalled();
+  });
+
+  it("says a PDF is over the page cap when the server counts its pages over it", async () => {
+    const client = uploader({
+      refuse: (name) => (name === "long.pdf" ? { status: 413, body: { error: "pdf_too_many_pages", pages: 140 } } : undefined),
+    });
+    composer(client);
+    await act(async () => pick([file("long.pdf", "application/pdf")]));
+    await waitFor(() =>
+      expect(screen.getByRole("status", { name: "Attachment notices" }).textContent).toContain("long.pdf is over 100 pages"),
+    );
   });
 });
 

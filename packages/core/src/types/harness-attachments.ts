@@ -1,4 +1,4 @@
-// FIX-2519; epic FIX-2516 ER-1, ER-5.
+// FIX-2519, FIX-2520; epic FIX-2516 ER-1, ER-5.
 /**
  * A turn's files, as a harness takes them.
  *
@@ -10,15 +10,18 @@
  * the conversation the request runs in. Nothing a harness is handed carries
  * bytes, and no adapter decodes `data` itself.
  *
- * What a harness can take is its own word, {@link HarnessBlock}'s `accepts`.
- * A file of any other type refuses the turn before the run starts
+ * What a harness reads as files is its own word, {@link HarnessBlock}'s
+ * `accepts`. A document it doesn't read as a file (a text-like file always,
+ * a PDF where `accepts` lacks it) reaches it as its text, headed by its
+ * name: {@link readHarnessTurnFiles} splits a turn's files that way. Any
+ * other file refuses the turn before the run starts
  * ({@link refuseUnacceptedAttachments}), naming the file and the harness: a
  * harness never runs a turn without a file the person sent with it.
  *
  * @see `./harness.ts` for the run input and the block's `accepts`.
  */
 import type { FileContent } from "../items/content";
-import { normalizeMediaType, type AttachmentAccepts } from "../attachments";
+import { attachmentSentAs, normalizeMediaType, type AttachmentAccepts } from "../attachments";
 import { HARNESS_ATTACHMENT_SEAM, type HarnessAttachmentSeam } from "./harness-attachment-seam";
 
 /** One file's bytes, as a harness adapter hands them to its SDK. */
@@ -30,6 +33,21 @@ export interface HarnessAttachmentBytes {
   bytes: Uint8Array;
   /** The bytes as base64, for an SDK that takes a string. */
   base64(): string;
+  /**
+   * A document's text as a target that gets text receives it, headed by its
+   * name: a text-like file's own text, a PDF's extracted text. The engine's
+   * reader fills it. Rejects with `AttachmentTextTooLargeError` for a PDF
+   * whose text is over `ATTACHMENT_LIMITS.maxTextBytes`, never cutting it.
+   */
+  text?(): Promise<string>;
+}
+
+/** A turn's files as a harness hands them on: the ones it reads as files, and the text of the rest. */
+export interface HarnessTurnFiles {
+  /** The files the harness reads as files, in the order attached. */
+  files: HarnessAttachmentBytes[];
+  /** Each other file's text, headed by its name, in the order attached, a blank line apart. `""` for none. */
+  text: string;
 }
 
 /** Thrown before a harness run starts: the turn carries a file the harness can't take. Nothing ran. */
@@ -68,11 +86,43 @@ export function refuseUnacceptedAttachments(
   attachments: ReadonlyArray<FileContent> | undefined,
 ): void {
   for (const attachment of attachments ?? []) {
-    const type = normalizeMediaType(attachment.mediaType);
-    if (!(accepts ?? []).some((accepted) => accepted === type)) {
+    if (accepts === undefined || attachmentSentAs(attachment.mediaType, accepts) === undefined) {
       throw new HarnessAttachmentRefusedError(harness, attachment);
     }
   }
+}
+
+/**
+ * A turn's files as `harness` hands them on: refused first, by
+ * {@link refuseUnacceptedAttachments}, before anything is read; then each
+ * read through the engine's one resolver, and split into the files the
+ * harness reads (`accepts`) and the text of every other document.
+ *
+ * @throws {HarnessAttachmentRefusedError} Before anything is read.
+ * @throws {HarnessAttachmentUnavailableError} When a file can't be read, or a
+ *   document's text can't (a reader with no text).
+ */
+export async function readHarnessTurnFiles(
+  harness: string,
+  ctx: object,
+  accepts: AttachmentAccepts,
+  attachments: ReadonlyArray<FileContent> | undefined,
+): Promise<HarnessTurnFiles> {
+  refuseUnacceptedAttachments(harness, accepts, attachments);
+  const read = await readHarnessAttachments(ctx, attachments);
+  const files: HarnessAttachmentBytes[] = [];
+  const texts: string[] = [];
+  for (const [index, file] of read.entries()) {
+    if (attachmentSentAs(file.mediaType, accepts) === "file") files.push(file);
+    else if (file.text === undefined) throw new HarnessAttachmentUnavailableError(attachments![index]!);
+    else texts.push(await file.text());
+  }
+  return { files, text: texts.join("\n\n") };
+}
+
+/** The prompt a harness runs: the person's text, then the turn's documents' text after a blank line, when there is any. */
+export function promptWithTurnText(prompt: string, turn: HarnessTurnFiles): string {
+  return turn.text === "" ? prompt : `${prompt}\n\n${turn.text}`;
 }
 
 /**

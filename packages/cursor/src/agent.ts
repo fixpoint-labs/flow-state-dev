@@ -48,9 +48,9 @@ import {
   observedPlanCollection,
   observedPlanListCollection,
   observedPullRequestsCollection,
-  readHarnessAttachments,
+  promptWithTurnText,
+  readHarnessTurnFiles,
   recordPullRequests as startPullRequestRecorder,
-  refuseUnacceptedAttachments,
   replacePlanList,
   reportHarnessActivity,
   type PlanListCollection,
@@ -127,7 +127,7 @@ function selectionOf(choice: ModelChoice | null | undefined): CursorModelSelecti
 const CURSOR_HARNESS = "cursor";
 
 // FIX-2519.
-/** What Cursor takes as a turn's files: images, sent as base64 with the prompt. */
+/** What Cursor reads as a turn's files: images, sent as base64 with the prompt. A document reaches it as its text, after the prompt. */
 const CURSOR_ACCEPTS: AttachmentAccepts = ATTACHMENT_IMAGE_TYPES;
 
 /** Options for {@link cursorAgent}. */
@@ -500,12 +500,13 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       // A file Cursor can't take refuses the run before a runtime starts, and
       // every file is read before one does: a file that can't be read stops
       // the turn rather than running it without the file.
-      refuseUnacceptedAttachments("Cursor", CURSOR_ACCEPTS, input.attachments);
-      const files = await readHarnessAttachments(ctx, input.attachments);
+      // A document goes as its text after the prompt: the SDK takes no documents (FIX-2520 D1).
+      const turnFiles = await readHarnessTurnFiles("Cursor", ctx, CURSOR_ACCEPTS, input.attachments);
+      const text = promptWithTurnText(prompt, turnFiles);
       const message =
-        files.length === 0
-          ? prompt
-          : { text: prompt, images: files.map((file) => ({ data: file.base64(), mimeType: file.mediaType })) };
+        turnFiles.files.length === 0
+          ? text
+          : { text, images: turnFiles.files.map((file) => ({ data: file.base64(), mimeType: file.mediaType })) };
       if (recordPullRequests) startPullRequestRecorder(ctx);
 
       const emitState = createEmitState();
