@@ -317,7 +317,7 @@ const reader = handler({
 
 const blockDefaultsFlow = defineFlow({
   kind: "block-defaults",
-  session: { client: { derived: { countSeen: ({ state }: { state: { count?: number } }) => state.count ?? "absent" } } },
+  session: { client: { expose: ["count"] } },
   actions: { read: reader }
 })();
 
@@ -385,8 +385,8 @@ describe("defaults a block or a capability declares", () => {
     const state = await router.GET(new Request("http://localhost/api/flows/sessions/sess_block_route/state"), {
       params: { path: ["sessions", "sess_block_route", "state"] }
     });
-    const body = (await state.json()) as { clientData: { session: { countSeen: unknown } } };
-    expect(body.clientData.session.countSeen).toBe(0);
+    const body = (await state.json()) as { clientData: { session: { count?: unknown } } };
+    expect(body.clientData.session.count).toBe(0);
   });
 });
 

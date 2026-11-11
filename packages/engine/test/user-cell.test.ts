@@ -13,7 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, dispatcher, handler } from "@flow-state-dev/core";
-import type { FlowInstance, InstanceOwnerPin, ResourceCollectionRef, JsonObject } from "@flow-state-dev/core/types";
+import type { FlowInstance, InstanceOwnerPin, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { InstancePinMismatchError } from "../src/context/instance-pin";
@@ -56,7 +56,7 @@ const resources = {
 
 const userConfig = {
   stateSchema: z.object({ marker: z.string().nullable().default(null) }),
-  client: { derived: { mine: (ctx: { state: JsonObject }) => ({ marker: ctx.state.marker }) } },
+  client: { expose: ["marker"] as const },
 };
 
 const save = handler({
@@ -403,7 +403,7 @@ describe("the fence around the cell", () => {
 
       const stateView = await h.call("GET", ["sessions", session, "state"], ALICE_ACME);
       expect(stateView.status).toBe(200);
-      expect(stateView.json.clientData.user.mine).toEqual({ marker: "RUN-M" });
+      expect(stateView.json.clientData.user.marker).toBe("RUN-M");
 
       const resourceView = await h.call("GET", ["sessions", session, "resources", "notes"], ALICE_ACME);
       expect(resourceView.status).toBe(200);

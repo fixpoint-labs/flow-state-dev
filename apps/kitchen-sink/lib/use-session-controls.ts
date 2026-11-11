@@ -4,7 +4,7 @@
  * The assistant composer's per-session controls: mode, thinking style and
  * features. The session remembers them: the `run` action writes all three to
  * session state on every turn, and the flow projects them back as the
- * `modeStatus` client data. This hook seeds the controls from that record when
+ * `modeStatus` view. This hook seeds the controls from that record when
  * a session opens, so a session that last ran in Build reopens in Build.
  *
  * A session that never ran projects the defaults, so it opens on them.
@@ -19,10 +19,11 @@ import type { Mode } from "@/components/mode-selector";
 import type { ThinkingStyle } from "@/components/thinking-style-selector";
 import { DEFAULT_FEATURES, type Features } from "@/components/feature-selector";
 
-/** What the session last ran with, as the `modeStatus` client data carries it. */
+/** What the session last ran with, as the `modeStatus` view answers it. */
 export interface RecordedSessionControls {
   currentMode: Mode;
-  thinkingStyle: ThinkingStyle | undefined;
+  /** `null` (or absent) for a session that never chose one. */
+  thinkingStyle: ThinkingStyle | null | undefined;
   features?: Partial<Features>;
 }
 

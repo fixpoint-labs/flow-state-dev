@@ -79,8 +79,9 @@ type ScopeWithClient = {
 };
 
 /**
- * Validate a scope's `client` config. Throws on an `expose`/`derived` name
- * collision, or an `expose` key that isn't on the scope state schema.
+ * Validate a scope's `client` config. Throws on a `derived` key, which was
+ * removed (a view replaces it), or an `expose` key that isn't on the scope
+ * state schema.
  *
  * Validation only — nothing is rewritten, so the merged config the caller
  * already holds is the one the instance carries.
@@ -95,19 +96,16 @@ function validateScopeClientConfig(
   const client = config.client;
   if (client === undefined) return;
 
-  const exposeNames = client.expose ?? [];
-  const derivedNames = client.derived === undefined ? [] : Object.keys(client.derived);
-
-  if (exposeNames.length > 0 && derivedNames.length > 0) {
-    const exposeSet = new Set(exposeNames);
-    const collisions = derivedNames.filter((n) => exposeSet.has(n));
-    if (collisions.length > 0) {
-      throw new Error(
-        `Flow "${flowKind}" ${scope}.client has overlapping names in expose and derived: ` +
-        `${collisions.join(", ")}. Pick one per name.`
-      );
-    }
+  // Refused loudly, not ignored: a flow written for `derived` would otherwise
+  // define cleanly and its values would never reach the client (BP-030).
+  if (Object.hasOwn(client, "derived")) {
+    throw new Error(
+      `Flow "${flowKind}" ${scope}.client declares "derived", which was removed. Declare a view instead: ` +
+      `views: { name: defineView({ scope: "${scope}", block }) } in defineFlow, read with useView or client.view.`
+    );
   }
+
+  const exposeNames = client.expose ?? [];
 
   if (exposeNames.length > 0) {
     const knownKeys = introspectStateKeys(config.stateSchema);
@@ -1310,10 +1308,7 @@ function validateRequireUserFalseConsistency(
     );
   }
   const userClient = user?.client;
-  const userHasClient =
-    userClient !== undefined &&
-    ((userClient.expose?.length ?? 0) > 0 ||
-      Object.keys(userClient.derived ?? {}).length > 0);
+  const userHasClient = userClient !== undefined && (userClient.expose?.length ?? 0) > 0;
   if (userHasClient) {
     throw new Error(
       `Flow "${flowKind}" sets requireUser: false but declares user.client. ` +

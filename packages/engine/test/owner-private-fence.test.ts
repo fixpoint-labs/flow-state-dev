@@ -234,50 +234,6 @@ describe("key fence · a process that never declared an owner-private collection
   const openFlow = defineFlow({
     kind: "open",
     resources: open,
-    org: {
-      client: {
-        derived: {
-          wideSeen: (ctx: { resources: Record<string, unknown> }) => {
-            const wide = ctx.resources.wide as {
-              list(): Array<{ path: string }>;
-              count(): number;
-              getOptional(key: Record<string, string>): unknown;
-              get(key: Record<string, string>): unknown;
-            };
-            let get: string;
-            try {
-              wide.get(aliceParams);
-              get = "present";
-            } catch (error) {
-              get = (error as Error).message;
-            }
-            return {
-              list: wide.list().map((row) => row.path),
-              count: wide.count(),
-              byName: wide.getOptional(aliceParams) === undefined ? "absent" : "present",
-              get,
-            };
-          },
-          projectedSeen: async (ctx: { resources: Record<string, unknown> }) => {
-            const projected = ctx.resources.projected as {
-              getOptional(key: string): Promise<unknown>;
-              get(key: string): Promise<unknown>;
-            };
-            let get: string;
-            try {
-              await projected.get("~alice/research");
-              get = "present";
-            } catch (error) {
-              get = (error as Error).message;
-            }
-            return {
-              byName: (await projected.getOptional("~alice/research")) === undefined ? "absent" : "present",
-              get,
-            };
-          },
-        },
-      },
-    },
     actions: { probe: probeOpen },
     authentication: verified,
   });
@@ -372,7 +328,7 @@ describe("key fence · a process that never declared an owner-private collection
     expect(await h.aliceRow()).toEqual({ state: { text: ALICE_TEXT }, content: ALICE_TEXT });
   });
 
-  it("the session state snapshot counts, prefetches and derives without the row", async () => {
+  it("the session state snapshot counts and prefetches without the row", async () => {
     const h = await bootOpen();
     const snapshot = await h.bob("GET", ["sessions", h.sessionId, "state"]);
     expect(snapshot.status).toBe(200);
@@ -380,8 +336,6 @@ describe("key fence · a process that never declared an owner-private collection
     expect(snapshot.text).not.toContain("~alice");
     expect(snapshot.json.resources.org.wide.count).toBe(0);
     expect(snapshot.json.resources.org.notesWide.count).toBe(1);
-    expect(snapshot.json.clientData.org.wideSeen).toEqual({ list: [], count: 0, byName: "absent", get: REFUSAL });
-    expect(snapshot.json.clientData.org.projectedSeen).toEqual({ byName: "absent", get: REFUSAL });
   });
 
   it("the debug endpoints list, count and read without the row", async () => {

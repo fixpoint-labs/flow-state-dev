@@ -62,8 +62,7 @@ async function get(router: Router, path: string[]): Promise<{ status: number; bo
 /** What the copy actually ran on, through the public `/state` route. */
 async function ranOn(router: Router, sessionId: string) {
   const { status, body } = await get(router, ["sessions", sessionId, "state"]);
-  const seen = (body as { clientData?: { session?: { ran?: Record<string, unknown> } } }).clientData
-    ?.session?.ran;
+  const seen = (body as { clientData?: { session?: Record<string, unknown> } }).clientData?.session;
   return { status, ranOn: seen?.ranOn, routedTo: seen?.routedTo, runs: seen?.runs };
 }
 

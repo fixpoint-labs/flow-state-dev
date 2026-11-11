@@ -7,15 +7,13 @@
  *
  * Why "only merge keys already present in clientData[scope]": `clientData` is
  * the projected slice of scope state — the server filters down to the flow's
- * `expose` list (plus computed `derived` values) before sending the snapshot.
+ * `expose` list before sending the snapshot.
  * The on-the-wire `state_change` delta carries the *raw* keys the block
  * patched, including non-exposed ones. To avoid leaking those non-exposed
  * keys into `clientData[scope]`, we only update keys the initial snapshot
  * already populated. Trade-off: the first set of an expose key whose initial
  * value was `undefined` won't land mid-stream; declare a default in the
- * scope's `stateSchema` if that case matters. Derived projections aren't
- * addressable from a delta and stay stale until the terminal-status snapshot
- * refresh either way.
+ * scope's `stateSchema` if that case matters.
  *
  * Atomic mutations (`operation: "atomic"`) carry no structured delta and are
  * ignored here.
@@ -123,9 +121,7 @@ function reduceScopeData(
         return prev;
       }
       // setState replaces raw scope state, but `clientData[scope]` is a
-      // projection — only the exposed keys of the new state apply, and any
-      // derived projections we don't recompute stay as-is until terminal
-      // refresh.
+      // projection — only the exposed keys of the new state apply.
       const next: Record<string, unknown> = { ...prev };
       let changed = false;
       for (const k of Object.keys(prev)) {

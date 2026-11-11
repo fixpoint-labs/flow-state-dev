@@ -175,16 +175,6 @@ const seedOwn = handler({
 const entriesFlow = defineFlow({
   kind: "entries",
   resources: { entries, probes },
-  org: {
-    client: {
-      derived: {
-        entriesSeen: (ctx: { resources: Record<string, unknown> }) => {
-          const col = ctx.resources.entries as { list(): Array<{ path: string }>; count(): number };
-          return { list: col.list().map((row) => row.path).sort(), count: col.count() };
-        },
-      },
-    },
-  },
   actions: {
     probe: probeEntries,
     seed: seedOwn,
@@ -280,7 +270,6 @@ describe("an owner-writes collection: the scope reads every row, only its owner 
     const snapshot = await app.call("bob", "GET", ["sessions", sessionId, "state"]);
     expect(snapshot.status).toBe(200);
     expect(snapshot.json.resources.org.entries.count).toBe(2);
-    expect(snapshot.json.clientData.org.entriesSeen.list).toContain(ALICE_KEY);
 
     const debug = await app.call("bob", "GET", ["sessions", sessionId, "debug", "resources", "entries", "items"]);
     expect(debug.status).toBe(200);

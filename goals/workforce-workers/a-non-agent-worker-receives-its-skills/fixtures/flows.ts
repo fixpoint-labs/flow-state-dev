@@ -68,18 +68,7 @@ const seatState = z.object({
   runs: z.number().default(0)
 });
 
-const clientView = {
-  derived: {
-    ran: (ctx: {
-      state: { skills?: string[] | null; desk?: string | null; hasSeatSkills?: boolean | null; runs?: number };
-    }) => ({
-      skills: ctx.state.skills ?? null,
-      desk: ctx.state.desk ?? null,
-      hasSeatSkills: ctx.state.hasSeatSkills ?? null,
-      runs: ctx.state.runs ?? 0
-    })
-  }
-};
+const clientView = { expose: ["skills", "desk", "hasSeatSkills", "runs"] as const };
 
 /** The flow's `request.onStarted`: loads the turn's worker, on every run of a request. */
 function loadWorker(installation: WorkerInstallation, kind: string) {

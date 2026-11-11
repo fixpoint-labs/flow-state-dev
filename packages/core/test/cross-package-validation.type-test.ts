@@ -124,11 +124,7 @@ const flow = defineFlow({
         })
       }
     },
-    client: {
-      derived: {
-        activeMode: (ctx) => ctx.state.mode
-      }
-    }
+    client: { expose: ["mode"] }
   }
 });
 

@@ -3,7 +3,7 @@
  *
  * A multi-modal AI assistant demonstrating the core building blocks of
  * @flow-state-dev: handlers, generators, routers, sequencers, typed state,
- * resources, clientData, and tool-use. This file is the flow's public surface —
+ * resources, views, and tool-use. This file is the flow's public surface —
  * the `defineFlow` action map plus session/user/resources/voice/request wiring.
  * The implementation lives by action: `run/` (the chat turn), `shared/`
  * (schemas, capabilities reused across actions — artifacts is a capability that
@@ -29,12 +29,8 @@ import { approvalGate } from "./approval-gate";
 import { clarifyingQuestion, collectForm, chooseOption } from "./human-input";
 import { mem } from "./run/cognition";
 import { bashCap } from "./shared/capabilities/features";
-import {
-  coalesceThinkingStyle,
-  modeSchema,
-  sessionStateSchema,
-  userStateSchema,
-} from "./shared/schemas";
+import { sessionStateSchema, userStateSchema } from "./shared/schemas";
+import { modeStatusView, preferencesView } from "./views";
 
 const chatAgentFlow = defineFlow({
   kind: "chat-agent",
@@ -113,32 +109,10 @@ const chatAgentFlow = defineFlow({
 
   session: {
     stateSchema: sessionStateSchema,
-    client: {
-      derived: {
-        modeStatus: (ctx) => {
-          // Project to the surface shape the top-bar UI wants — name +
-          // source tier, drop the rest.
-          return {
-            // A retired mode stored before the enum changed is refused here
-            // rather than reaching the browser raw (BP-030).
-            currentMode: modeSchema.parse(ctx.state.mode),
-            // The only surface that reads the stored style raw. A session
-            // written before FIX-1478 holds a style this app removed, so it
-            // is folded to `default` here, before it leaves the server,
-            // rather than reaching a browser that has no entry for it (BP-030).
-            thinkingStyle: coalesceThinkingStyle(ctx.state.thinkingStyle),
-            requestCount: ctx.state.requestCount,
-            features: ctx.state.features,
-            activeSkills: (ctx.state.activeSkills as Array<{ name: string; source?: string; mode?: string }>).map((s) => ({
-              name: s.name,
-              source: s.source ?? "tool",
-              ...(s.mode !== undefined ? { mode: s.mode } : {}),
-            })),
-          };
-        },
-      },
-    },
   },
+
+  // What the page watches: the session's controls and the user's preferences.
+  views: { modeStatus: modeStatusView, preferences: preferencesView },
 
   // FIX-435: resources live in a single flat flow.resources map; their
   // intrinsic scope routes them to the right storage layer.
@@ -154,15 +128,6 @@ const chatAgentFlow = defineFlow({
 
   user: {
     stateSchema: userStateSchema,
-    client: {
-      derived: {
-        preferences: (ctx) => ({
-          displayName: ctx.state.displayName,
-          selectedModel: ctx.state.selectedModel,
-          thinkingEnabled: ctx.state.thinkingEnabled,
-        }),
-      },
-    },
   },
 });
 

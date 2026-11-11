@@ -71,11 +71,7 @@ const writeEverything = handler({
   },
 });
 
-const clientMarker = {
-  derived: {
-    seen: (ctx: { state: { marker?: string | null } }) => ({ marker: ctx.state.marker ?? null }),
-  },
-};
+const clientMarker = { expose: ["marker"] as const };
 
 export const reviewDefinition = defineFlow({
   kind: REVIEW_KIND,

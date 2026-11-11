@@ -40,8 +40,12 @@ export type ViewConfig<
    * The row's key, for a view whose answer is a list. With it the answer must
    * be an array whose rows have distinct string keys, and a screen keeps rows
    * by key.
+   *
+   * Method syntax on purpose: its parameter is checked bivariantly, so a view
+   * with no list (whose entry is `never`) is still a `ViewDefinition` under
+   * `strictFunctionTypes`. An author's `key` is still typed by the entry.
    */
-  key?: (entry: ViewElement<TBlock>) => string;
+  key?(entry: ViewElement<TBlock>): string;
   /** Human-readable description, for tooling. Defaults to `block.description`. */
   description?: string;
 };

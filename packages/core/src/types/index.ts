@@ -94,8 +94,6 @@ export type {
   ActionMcpConfig,
   CostEstimator,
   ModelUsageEntry,
-  ClientDataComputeFn,
-  ClientDataContext,
   FlowActionBlock,
   FlowActionInput,
   FlowConfigInput,
