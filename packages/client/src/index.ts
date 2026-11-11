@@ -103,6 +103,11 @@ export {
 } from "./resource-client/read-every-page";
 export {
   ResourceWriteError,
+  type ScopeCollectionHandle,
+  type ScopeEntry,
+  type ScopeEntryHandle,
+  type ScopeEntryPage,
+  type ScopeHandleOf,
   type ScopeResourceDef,
   type ScopeResourceHandle,
   type ScopeResourceRead
