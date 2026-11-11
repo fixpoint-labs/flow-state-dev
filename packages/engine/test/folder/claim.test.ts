@@ -59,6 +59,15 @@ describe("the claim pass", () => {
     expect(await opened.unclaimed()).toEqual([]);
   });
 
+  it("reads a claim on the folder itself as a claim on everything in it", async () => {
+    for (const spelling of [".", "", "./"]) {
+      const dir = folderWith(["a.txt", "sub/b.md"]);
+      const opened = await openKitFolder(dir, "folder");
+      opened.folder.claim(spelling);
+      expect(await opened.unclaimed()).toEqual([]);
+    }
+  });
+
   it("refuses a claim that leaves the folder", async () => {
     const dir = folderWith(["a.txt"]);
     const opened = await openKitFolder(dir, "folder");

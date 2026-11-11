@@ -350,6 +350,17 @@ describe("a kit's folder", () => {
     await expect(viaRoot.ready()).rejects.toThrow(/spelled with a "\.\." that steps back/);
   });
 
+  it("names a missing folder as missing, not as a file nobody used", async () => {
+    const app = tempDir();
+    const state = track(createFlowState({ kits: [notesKit()()], root: app, stores }));
+    const message = await state.ready().then(
+      () => "started",
+      (err: Error) => err.message,
+    );
+    expect(message).toMatch(/kit "notes": Failed to read folder of kit "notes"/);
+    expect(message).not.toMatch(/must be used/);
+  });
+
   it("refuses two kits on one folder", () => {
     const app = tempDir({ "shared/greeting.txt": "hi" });
     const notes = notesKit();

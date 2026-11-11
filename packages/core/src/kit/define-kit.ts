@@ -79,7 +79,8 @@ export interface KitFolder {
   /**
    * Mark a file or directory as used, by its slash-separated path relative to
    * the folder (`"teams"`, `"teams/eng/team.md"`). Claiming a directory claims
-   * everything under it.
+   * everything under it; `"."` claims the whole folder. A symlink is refused
+   * wherever it is, claimed or not.
    */
   claim(relativePath: string): void;
 }

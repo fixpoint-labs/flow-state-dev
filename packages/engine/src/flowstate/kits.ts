@@ -282,7 +282,7 @@ export async function installKits(plan: KitPlan): Promise<FlowInstance<any, any>
   }
   if (problems.length > 0) {
     throw new FlowStateConfigError(
-      `createFlowState: the app can't start; every file in a kit's folder must be used:\n` +
+      `createFlowState: the app can't start; a kit's folder was refused:\n` +
         problems.map((problem) => `  - ${problem}`).join("\n"),
     );
   }

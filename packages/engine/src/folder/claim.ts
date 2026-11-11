@@ -64,6 +64,8 @@ export async function openKitFolder(root: string, what: string): Promise<OpenedK
 
   /** The entry, or a directory above it, was claimed. */
   const covered = (rel: string): boolean => {
+    // A claim on the folder itself (`"."`, `""`) is stored as `""`: it covers everything.
+    if (claims.has("")) return true;
     const segments = rel.split("/");
     return segments.some((_, index) => claims.has(segments.slice(0, index + 1).join("/")));
   };
