@@ -217,3 +217,23 @@ describe("the owner-run cap on a polled thread", () => {
     expect(forwarded.poll).toBe(forwarded.push);
   });
 });
+
+describe("the owner-run cap's scope on a poll", () => {
+  // A poll runs as one user on one thread (FIX-2536 D1), so it can't see another user's sends: its cap is per user. Push
+  // sees every subscription at once. If this changes, the maxOwnerRuns doc and the changeset change with it.
+  it("caps each polling user's subscriptions apart, where push caps the event across users", async () => {
+    const heard = await bothWays<number>(
+      { service: { maxOwnerRuns: 1 } },
+      async (host) => {
+        for (const user of ["alice", "bob"]) {
+          const session = await host.follower(user);
+          await host.subscribe(user, session, { thread: PR });
+        }
+      },
+      (at) => [event({ at, received: at, text: "one review" })],
+      async (host) => (await host.serviceRows("alice")).length + (await host.serviceRows("bob")).length
+    );
+    expect(heard.push).toBe(1);
+    expect(heard.poll).toBe(2);
+  });
+});

@@ -128,7 +128,11 @@ export interface SubscriptionServiceOptions {
   readonly trustedBots?: readonly string[];
   /** The most messages one subscription sends in an hour; past it, events are held and counted. */
   readonly capPerHour?: number;
-  /** The most subscriptions one event is delivered to; past it, refused with the cap as the reason. Default {@link DEFAULT_MAX_OWNER_RUNS}. */
+  /**
+   * The most subscriptions one event is delivered to; past it, refused with the cap as the reason. Default {@link DEFAULT_MAX_OWNER_RUNS}.
+   * On push it counts every subscription the event reaches; on a poll, which runs per user and thread, it counts that user's
+   * subscriptions on that thread, so N users polling one thread can each reach the cap.
+   */
   readonly maxOwnerRuns?: number;
   // FIX-2535 D1.
   /**
