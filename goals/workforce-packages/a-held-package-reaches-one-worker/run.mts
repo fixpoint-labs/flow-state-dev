@@ -87,7 +87,7 @@ interface Observation {
 
 const fixture = loadFixture<Fixture>(import.meta.url);
 const TREE = fixturePath(import.meta.url, "workforce");
-const CLI = join(REPO_ROOT, "packages", "cli", "src", "bin.ts");
+const CLI = join(REPO_ROOT, "packages", "fsdev", "src", "bin.ts");
 
 /** Case- and separator-insensitive: `MARIGOLD-4417`, `marigold 4417`. */
 function carries(reply: string, token: string): boolean {

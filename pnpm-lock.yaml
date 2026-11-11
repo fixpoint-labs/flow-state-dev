@@ -363,7 +363,7 @@ importers:
         version: link:../../labs/design-system
       '@flow-state-dev/fsdev':
         specifier: workspace:*
-        version: link:../../packages/cli
+        version: link:../../packages/fsdev
       '@playwright/test':
         specifier: ^1.49.0
         version: 1.59.1
@@ -459,7 +459,7 @@ importers:
     devDependencies:
       '@flow-state-dev/fsdev':
         specifier: workspace:*
-        version: link:../../../packages/cli
+        version: link:../../../packages/fsdev
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../../packages/testing
@@ -493,7 +493,7 @@ importers:
     devDependencies:
       '@flow-state-dev/fsdev':
         specifier: workspace:*
-        version: link:../../../packages/cli
+        version: link:../../../packages/fsdev
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../../packages/testing
@@ -524,7 +524,7 @@ importers:
     devDependencies:
       '@flow-state-dev/fsdev':
         specifier: workspace:*
-        version: link:../../../packages/cli
+        version: link:../../../packages/fsdev
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../../packages/testing
@@ -561,7 +561,7 @@ importers:
     devDependencies:
       '@flow-state-dev/fsdev':
         specifier: workspace:*
-        version: link:../../../packages/cli
+        version: link:../../../packages/fsdev
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../../packages/testing
@@ -598,7 +598,7 @@ importers:
     devDependencies:
       '@flow-state-dev/fsdev':
         specifier: workspace:*
-        version: link:../../../packages/cli
+        version: link:../../../packages/fsdev
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../../packages/testing
@@ -665,7 +665,7 @@ importers:
     devDependencies:
       '@flow-state-dev/fsdev':
         specifier: workspace:*
-        version: link:../../packages/cli
+        version: link:../../packages/fsdev
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../packages/testing
@@ -720,7 +720,7 @@ importers:
         version: 0.5.4
       '@flow-state-dev/fsdev':
         specifier: workspace:*
-        version: link:../../packages/cli
+        version: link:../../packages/fsdev
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../packages/testing
@@ -898,7 +898,7 @@ importers:
         version: link:../../packages/engine
       '@flow-state-dev/fsdev':
         specifier: workspace:*
-        version: link:../../packages/cli
+        version: link:../../packages/fsdev
       '@flow-state-dev/harness-manager':
         specifier: workspace:*
         version: link:../../packages/harness-manager
@@ -1105,7 +1105,7 @@ importers:
         version: link:../../packages/engine
       '@flow-state-dev/fsdev':
         specifier: workspace:*
-        version: link:../../packages/cli
+        version: link:../../packages/fsdev
       '@flow-state-dev/harness-manager':
         specifier: workspace:*
         version: link:../../packages/harness-manager
@@ -1262,46 +1262,6 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
-
-  packages/cli:
-    dependencies:
-      '@flow-state-dev/core':
-        specifier: workspace:*
-        version: link:../core
-      '@flow-state-dev/engine':
-        specifier: workspace:*
-        version: link:../engine
-      '@flow-state-dev/node':
-        specifier: workspace:*
-        version: link:../node
-      '@flow-state-dev/store-sqlite':
-        specifier: workspace:*
-        version: link:../store-sqlite
-      '@flow-state-dev/testing':
-        specifier: workspace:*
-        version: link:../testing
-      '@flow-state-dev/workspace':
-        specifier: workspace:*
-        version: link:../workspace
-      commander:
-        specifier: ^13.1.0
-        version: 13.1.0
-      jiti:
-        specifier: ^2.7.0
-        version: 2.7.0
-    devDependencies:
-      '@flow-state-dev/devtool':
-        specifier: workspace:*
-        version: link:../devtool
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.13
-      tsx:
-        specifier: ^4.19.4
-        version: 4.21.0
-      zod:
-        specifier: ^3.25.76
-        version: 3.25.76
 
   packages/client:
     dependencies:
@@ -1543,6 +1503,46 @@ importers:
       ai:
         specifier: ^7.0.133
         version: 7.0.138(zod@3.25.76)
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
+  packages/fsdev:
+    dependencies:
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../core
+      '@flow-state-dev/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@flow-state-dev/node':
+        specifier: workspace:*
+        version: link:../node
+      '@flow-state-dev/store-sqlite':
+        specifier: workspace:*
+        version: link:../store-sqlite
+      '@flow-state-dev/testing':
+        specifier: workspace:*
+        version: link:../testing
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../workspace
+      commander:
+        specifier: ^13.1.0
+        version: 13.1.0
+      jiti:
+        specifier: ^2.7.0
+        version: 2.7.0
+    devDependencies:
+      '@flow-state-dev/devtool':
+        specifier: workspace:*
+        version: link:../devtool
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
+      tsx:
+        specifier: ^4.19.4
+        version: 4.21.0
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -1834,7 +1834,7 @@ importers:
         version: link:../devtool
       '@flow-state-dev/fsdev':
         specifier: workspace:*
-        version: link:../cli
+        version: link:../fsdev
       nanoid:
         specifier: ^5.1.6
         version: 5.1.6
@@ -2357,7 +2357,7 @@ importers:
     devDependencies:
       '@flow-state-dev/fsdev':
         specifier: workspace:*
-        version: link:../../packages/cli
+        version: link:../../packages/fsdev
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@25.3.2)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)

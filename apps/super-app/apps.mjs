@@ -22,7 +22,7 @@ import { join } from "node:path";
 export const REPO = fileURLToPath(new URL("../..", import.meta.url));
 
 const TSX = join(REPO, "node_modules/.bin/tsx");
-const FSDEV = join(REPO, "packages/cli/bin/fsdev.ts");
+const FSDEV = join(REPO, "packages/fsdev/bin/fsdev.ts");
 const bin = (dir, name) => join(REPO, dir, "node_modules/.bin", name);
 
 /** Kitchen Sink's env for its sub-route build and server: `next.config.mjs` reads both. */

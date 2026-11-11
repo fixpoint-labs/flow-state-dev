@@ -1026,7 +1026,7 @@ const EXEMPTIONS = [
     why: "WR-5: the kitchen sink shell's message box, where the person asks a worker; nothing waits on a task",
   },
   {
-    path: /^packages\/cli\/src\//,
+    path: /^packages\/fsdev\/src\//,
     rules: ["ask-symbol", "ask-prose"],
     why: "WR-5: the CLI asks the app who an in-process caller is; not a wait",
   },
@@ -1101,7 +1101,7 @@ const EXEMPTIONS = [
     why: "FIX-2243: updateTask's live helper that answers a task's open question; the harness manager's removed answerQuestion() was another thing",
   },
   {
-    path: /^(packages\/(workforce|cli)\/README\.md|apps\/docs\/docs\/workforce\/documents-on-disk\.md)$/,
+    path: /^(packages\/(workforce|fsdev)\/README\.md|apps\/docs\/docs\/workforce\/documents-on-disk\.md)$/,
     line: /\banswerQuestion\b/,
     rules: ["task-tool-names"],
     why: "FIX-2243: an example app's own block or action that answers a person's question, not a task tool",

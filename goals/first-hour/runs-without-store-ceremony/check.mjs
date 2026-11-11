@@ -33,7 +33,7 @@ const args = process.argv.slice(2);
 const at = args.indexOf("--control");
 const control = at >= 0 ? args[at + 1] : undefined;
 const keep = args.includes("--keep");
-const ENTRY = ["core", "engine", "cli", "store-sqlite", "store-postgres"];
+const ENTRY = ["core", "engine", "fsdev", "store-sqlite", "store-postgres"];
 
 /** The runtime names the spec moves off each store root (its census, `poc/census/check.mjs`). */
 const MOVED = {
@@ -65,7 +65,7 @@ function must(cmd, argv, cwd, env) {
  * packages it needs. The source is each package's tsconfig `references`, the
  * graph `tsc` builds from: a build reads its references' emitted declarations,
  * so on a clean tree (and under `--control`) they must exist first. That takes
- * in build-only packages such as cli's `devtool`. Post-order: a package is
+ * in build-only packages such as fsdev's `devtool`. Post-order: a package is
  * appended once its references are; `visiting` catches a cycle.
  */
 function buildOrder(tree) {

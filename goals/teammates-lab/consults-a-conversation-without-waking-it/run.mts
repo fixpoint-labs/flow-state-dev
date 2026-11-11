@@ -103,7 +103,7 @@ async function startTeammates(dir: string, tree: string, env: Record<string, str
   const origin = `http://127.0.0.1:${port}`;
   await refuseIfAnswering(origin);
   let log = "";
-  const child = spawn("npx", ["tsx", "../../packages/cli/bin/fsdev.ts", "dev", "--app", "@flow-state-dev/teammates", "--port", String(port), "--no-open"], {
+  const child = spawn("npx", ["tsx", "../../packages/fsdev/bin/fsdev.ts", "dev", "--app", "@flow-state-dev/teammates", "--port", String(port), "--no-open"], {
     cwd: LAB,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],

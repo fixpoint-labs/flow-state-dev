@@ -22,12 +22,12 @@ const packages = resolve(import.meta.dirname, "..", "..");
 
 /** The modules that make up the hook. */
 const HOOK_MODULES = [
-  "cli/src/commands/dev.ts",
-  "cli/src/dev-app.ts",
-  "cli/src/dev-vite.ts",
-  "cli/src/dev-watch.ts",
-  "cli/src/dev-watch-preload.ts",
-  "cli/src/commands/gen.ts",
+  "fsdev/src/commands/dev.ts",
+  "fsdev/src/dev-app.ts",
+  "fsdev/src/dev-vite.ts",
+  "fsdev/src/dev-watch.ts",
+  "fsdev/src/dev-watch-preload.ts",
+  "fsdev/src/commands/gen.ts",
   "node/src/serve.ts",
   "node/src/page-html.ts",
   "node/src/devtool-config-injection.ts",
@@ -52,7 +52,7 @@ describe("app hook layer line", () => {
   });
 
   it("flags a planted import and a planted word", () => {
-    const source = readFileSync(resolve(packages, "cli/src/commands/dev.ts"), "utf8");
+    const source = readFileSync(resolve(packages, "fsdev/src/commands/dev.ts"), "utf8");
     expect(layerViolations(`${source}\nimport { hireWorkforce } from "@flow-state-dev/workforce";\n`)).toHaveLength(1);
     expect(layerViolations(`${source}\nconst x = await import("@flow-state-dev/shift-manager");\n`)).toHaveLength(1);
     expect(layerViolations(`${source}\n// pick the team's roster\n`)).toHaveLength(1);
@@ -135,7 +135,7 @@ describe("fsdev and Layer 2", () => {
   });
 
   it("names no Layer 2 package in fsdev's manifest", () => {
-    const fsdev = readManifest("cli");
+    const fsdev = readManifest("fsdev");
     expect(dependsOn(fsdev).filter((name) => banned.has(name))).toEqual([]);
     expect(
       dependsOn({ ...fsdev, dependencies: { ...fsdev.dependencies, "@flow-state-dev/workforce": "workspace:*" } })
@@ -143,12 +143,12 @@ describe("fsdev and Layer 2", () => {
     ).toEqual(["@flow-state-dev/workforce"]);
   });
 
-  it.each(sources("cli/src"))("%s imports no Layer 2 package", (file) => {
+  it.each(sources("fsdev/src"))("%s imports no Layer 2 package", (file) => {
     expect(importsOf(readFileSync(resolve(packages, file), "utf8"), banned)).toEqual([]);
   });
 
   it("flags a planted import of each kind", () => {
-    const source = readFileSync(resolve(packages, "cli/src/commands/gen.ts"), "utf8");
+    const source = readFileSync(resolve(packages, "fsdev/src/commands/gen.ts"), "utf8");
     expect(importsOf(`${source}\nimport { x } from "@flow-state-dev/workforce/codegen";\n`, banned)).toHaveLength(1);
     expect(importsOf(`${source}\nconst m = await import("@flow-state-dev/shift-manager");\n`, banned)).toHaveLength(1);
     expect(importsOf(`${source}\nimport type { Y } from "@flow-state-dev/workforce";\n`, banned)).toHaveLength(1);

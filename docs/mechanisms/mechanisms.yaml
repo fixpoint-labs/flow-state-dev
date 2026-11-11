@@ -824,8 +824,8 @@ mechanisms:
     job: The terminal interface. fsdev run executes a flow, fsdev dev serves it with the DevTool, fsdev gen calls a package's generator hook.
     package: "@flow-state-dev/fsdev"
     anchor: program
-    file: packages/cli/src/cli.ts
+    file: packages/fsdev/src/cli.ts
     builtOn: [execution, host]
     overlaps: []
     status: canonical
-    doc: packages/cli/README.md
+    doc: packages/fsdev/README.md

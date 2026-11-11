@@ -84,7 +84,7 @@ export async function serveLab(options: {
   const child: ChildProcess = spawn(
     join(REPO_ROOT, "node_modules", ".bin", "tsx"),
     [
-      join(REPO_ROOT, "packages", "cli", "bin", "fsdev.ts"),
+      join(REPO_ROOT, "packages", "fsdev", "bin", "fsdev.ts"),
       "dev",
       "--config",
       LAB_CONFIG,

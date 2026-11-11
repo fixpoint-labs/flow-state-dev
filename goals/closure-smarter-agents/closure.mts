@@ -145,7 +145,7 @@ export async function serveFsdev(options: { root: string; cwd: string; args?: st
   const model = servedModel(options.model, options.args ?? []);
   const child = spawn(
     join(options.root, "node_modules", ".bin", "tsx"),
-    [join(options.root, "packages", "cli", "src", "bin.ts"), "serve", ...model.args, "--host", "127.0.0.1", "--port", String(port)],
+    [join(options.root, "packages", "fsdev", "src", "bin.ts"), "serve", ...model.args, "--host", "127.0.0.1", "--port", String(port)],
     {
       cwd: options.cwd,
       detached: true,

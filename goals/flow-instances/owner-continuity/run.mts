@@ -68,7 +68,7 @@ function cli(cwd: string, args: string[]): { status: number; stdout: string; std
   try {
     const stdout = execFileSync(
       join(REPO_ROOT, "node_modules", ".bin", "tsx"),
-      [join(REPO_ROOT, "packages", "cli", "src", "bin.ts"), ...args],
+      [join(REPO_ROOT, "packages", "fsdev", "src", "bin.ts"), ...args],
       { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: intentFreeEnv(process.env) },
     );
     return { status: 0, stdout, stderr: "" };

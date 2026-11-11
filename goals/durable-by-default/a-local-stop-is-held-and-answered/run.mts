@@ -18,7 +18,7 @@ const FLOWS = fileURLToPath(new URL("./fixtures/flows", import.meta.url));
 const CONFIG_DEFAULT = fileURLToPath(new URL("./fixtures/config-default/fsdev.config.mts", import.meta.url));
 const CONFIG_OFF = fileURLToPath(new URL("./fixtures/config-off/fsdev.config.mts", import.meta.url));
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
-const FSDEV = join(REPO_ROOT, "packages", "cli", "bin", "fsdev.ts");
+const FSDEV = join(REPO_ROOT, "packages", "fsdev", "bin", "fsdev.ts");
 const KIND = "durable-goal";
 /** The DevTool's default user, which a no-config `fsdev run` must share. */
 const LOCAL_USER = "devuser";
