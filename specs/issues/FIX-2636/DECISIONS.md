@@ -28,7 +28,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Keeping FIX-2517 D1's window (newest 5 documents re-sent each call) with the read tool added beside it |
 | **Because** | The issue's second outcome: five 50k-token documents ride every call. Once the model can read on request, re-sending is the cost with nothing left to buy. A flow with no read tool keeps the window, because naming a file it can't read would take away what FIX-2517 D1 gave (tenet 2: the capability, not a flag, switches the rule) |
-| **Locks in** | One `ItemQuery` key for earlier documents (default: FIX-2517 D1's window; the capability's `history` preset sets it to named). An earlier turn's document becomes one line naming it and its id, and pointing at `readAttachment`. A document read in a turn is resolved in full for that turn's tool loop and named after it. Images keep the window either way |
+| **Locks in** | One `ItemQuery` key, `earlierDocuments`, `"window"` or `"named"` (default `"window"`, FIX-2517 D1's rule; the capability's `history` preset sets `"named"`). An earlier turn's document becomes one line naming it and its id, and pointing at `readAttachment`. A document read in a turn is resolved in full for that turn's tool loop and named after it. Images keep the window either way |
 
 ![D2: in full only on its turn, chosen, beside keeping the five-document window. Decides it: what a long chat pays per call. Price: a follow-up question about the same document costs a tool call and its text again. Locks in an ItemQuery key; flips if most follow-ups re-ask about the last document](figures/d2-history-rule.svg)
 
@@ -44,7 +44,7 @@ Then keep the newest one in full, a one-number change to the same key.
 |---|---|
 | **Instead of** | The entry's content holding the text (a text file's text, a PDF's extracted text), read with `resourceTools` |
 | **Because** | The text is already stored once, in the blob store, deleted with its file and guarded by the session check (FIX-2520 D1, ER-3). A second copy in resource content is up to 200 KB per file, a second delete path, and an ER-2 that lets file text into a resource. The harness reader seam already returns a file's text for the request's conversation |
-| **Locks in** | `readAttachment({ id })`, a tool whose recorded output is the file's `fsd-blob:` reference and name, never its text (BP-042). The model call resolves it through `readAttachmentText`, as it resolves a user line's file. ER-2 is amended as `SPEC.md` proposes |
+| **Locks in** | `readAttachment({ id } or { name })`, a tool whose recorded output is the file's `fsd-blob:` reference and name, never its text (BP-042). The model call resolves it through `readAttachmentText`, as it resolves a user line's file. ER-2 is amended as `SPEC.md` proposes |
 
 ![D1: read through to the blob store, chosen, beside the text in the entry. Decides it: one copy of the text, with one delete and one session check. Price: no grep across a session's files. Locks in a tool whose output is a reference; flips if search across files is asked for](figures/d1-read-through.svg)
 
@@ -73,13 +73,21 @@ because the name gave no hint.
 
 - **The capability's three parts.** The `readAttachment` tool, a context entry listing the
   session's files from FIX-2634's list (name, type, id, turn; newest first, capped, with a count
-  of the rest), and the `history` preset. It declares the `attachments` collection, so it
+  of the rest and a line saying an older one is read by name), and the `history` preset. It declares the `attachments` collection, so it
   installs it; `recordAttachments` stays the one writer. Same two-halves shape as
   `historySummary` (a capability and a step).
 - **The read is scoped by the resolver, not the list.** The tool takes the id from the line or
-  the list and reads through the request's seam, bound to the session and the person (ER-3). A
+  the list, or a name matched within the session's list, and reads through the request's seam, bound to the session and the person (ER-3). A
   file not this conversation's answers "not in this conversation"; the id is never a key
   (BP-031).
+- **A file outside both windows is read by name.** When a document's turn has left the history
+  window and newer files have pushed it off the capped list, the model has no id to pass, and
+  the person names the file ("the Q3 PDF"). `readAttachment({ name })` matches the name,
+  case-insensitively, against this session's whole `attachments` list (not the capped view in context) and nothing else, then reads the match through the same
+  seam. One match reads it; several return their names, ids and turns, capped, without text;
+  none answers "no file by that name". Instead of a second, paging list tool: the model would
+  page through the list to find a file the person already named. *What would change my mind:*
+  people asking for an older file by what it holds, not its name; then the list pages.
 - **The convergence point is `history-files.ts`.** `budgetHistoryFiles` makes every per-file
   choice, user lines and read results alike; `resolveHistoryFiles` is the one place a reference
   becomes text. No other writer.
@@ -114,7 +122,9 @@ because the name gave no hint.
 sub-agent: this worker has no sub-agent dispatch. Weigh it as such.
 
 1. **Reuse** — seam, `readAttachmentText`, `resolveHistoryFiles`, the `history` preset and
-   FIX-2634's list reused; each Adds row composed, none a second mechanism.
+   FIX-2634's list reused; each Adds row composed, none a second mechanism. Searched
+   `readAttachment`, `prepareMessages`, `resolveAttachment`, `HARNESS_ATTACHMENT_SEAM`,
+   `resourceTools` across `packages/*/src`.
 2. **Prior art** — Claude.ai projects and ChatGPT keep files beside the chat and read on request.
 3. **Other shapes** — in the tree and *considered and dropped*.
 4. **New factors** — #5039 put PDF text in the blob store, which makes D1 cheap.
@@ -128,5 +138,17 @@ sub-agent: this worker has no sub-agent dispatch. Weigh it as such.
   installs the tool, the file list in context and a narrower history rule; text stays in the
   blob store; no summaries. Built on FIX-2517's history build, FIX-2520's stored PDF text,
   FIX-2519's reader seam and FIX-2634's list.
+- **Review round 1 (Nov 11)** — `readAttachment` also takes a file's name, and the goal check
+  reads a document outside both the history window and the capped list, because Codex showed
+  such a document had no id the model could find.
+
+## Notes from review
+
+Below the bar; for the implementer, not the design.
+
+- **Cursor (round 1), per-request cache:** "If every tool-loop step hits `prepareMessages`,
+  resolving the same `fsd-blob:` reference multiple times in one turn could mean repeat blob
+  reads. Worth a one-line implementer note here or in the implementation PR: per-request (or
+  per-pass) cache unless re-read is intentional."
 
 **Open: none.**

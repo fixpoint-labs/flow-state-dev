@@ -71,7 +71,7 @@
     <text class="t-lbl" x="32" y="231">A SESSION&#x27;S FILES</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">None in v1</text>
-    <text class="t-s" x="248" y="241">the model reads one file by id</text>
+    <text class="t-s" x="248" y="241">the model reads one file, by id or name</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">resourceTools grep and glob</text>
     <text class="t-s" x="612" y="241">over every entry&#x27;s content</text>

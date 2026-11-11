@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 440" role="img" aria-label="FIX-2636 before and after. Left, today: the history build re-sends the newest five documents in full on every call and names older ones, which the model cannot read. Right, after, in a flow with the attachments capability: the history build names every earlier document in one line with its id; the capability lists the session&#x27;s files from FIX-2634&#x27;s list; the model calls readAttachment with the id; the tool&#x27;s recorded output is a reference; the model call resolves it through the one resolver to the text in the blob store, for that turn only."
+<svg viewBox="0 0 940 440" role="img" aria-label="FIX-2636 before and after. Left, today: the history build re-sends the newest five documents in full on every call and names older ones, which the model cannot read. Right, after, in a flow with the attachments capability: the history build names every earlier document in one line with its id; the capability lists the session&#x27;s files from FIX-2634&#x27;s list; the list is capped, and an older file is read by name; the model calls readAttachment with an id or a name; the tool&#x27;s recorded output is a reference; the model call resolves it through the one resolver to the text in the blob store, for that turn only."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -71,11 +71,11 @@
     <rect class="new" x="486" y="140" width="430" height="64" rx="5"/>
     <text class="t-lbl" x="500" y="158">CAPABILITY CONTEXT</text>
     <text class="t-b" x="500" y="177">The session&#x27;s files, from FIX-2634&#x27;s list</text>
-    <text class="t-s" x="500" y="193">name · type · id · turn, newest first</text>
+    <text class="t-s" x="500" y="193">newest first, capped · older ones by name</text>
     <path class="arrow" d="M701 204 L701 230 M697 228 L701 234 L705 228"/>
     <rect class="new" x="486" y="236" width="430" height="64" rx="5"/>
     <text class="t-lbl" x="500" y="254">THE MODEL</text>
-    <text class="t-b" x="500" y="273">readAttachment({ id })</text>
+    <text class="t-b" x="500" y="273">readAttachment({ id } or { name })</text>
     <text class="t-s" x="500" y="289">recorded output: the reference, never the text</text>
     <path class="arrow" d="M701 300 L701 326 M697 324 L701 330 L705 324"/>
     <rect class="new" x="486" y="332" width="430" height="64" rx="5"/>
