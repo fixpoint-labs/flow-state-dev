@@ -35,10 +35,10 @@ import { SUBSCRIPTION_ROUTE_ENTRY } from "../../subscriptions/keys";
 import { INTERNAL_PROVIDER, internalThreadKey, undeclared, type InternalTopics } from "./topics";
 
 /** The verb's name, as a tool and as the dispatch's sending block. */
-export const PUBLISH_EVENT_TOOL = "publishEvent";
+const PUBLISH_EVENT_TOOL = "publishEvent";
 
 /** The request-state field the ids of this request's publishes are kept in, by what was published: a repeat publishes nothing new. */
-export const TURN_PUBLISHED_STATE = "workforcePublished";
+const TURN_PUBLISHED_STATE = "workforcePublished";
 
 /** What a publish takes. Strict: no sender, no recipient, no hop. */
 export const publishEventInputSchema = z

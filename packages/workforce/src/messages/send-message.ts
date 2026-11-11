@@ -182,7 +182,7 @@ function filingSessionFor(state: Record<string, unknown>, worker: string): Messa
 }
 
 /** A send's place: its id, its chain and its hop, or why the budget refused it. */
-export type Place = { readonly ok: true; readonly id: string; readonly chain: string; readonly hop: number } | { readonly ok: false; readonly error: string };
+type Place = { readonly ok: true; readonly id: string; readonly chain: string; readonly hop: number } | { readonly ok: false; readonly error: string };
 
 // FIX-2269.
 /**
@@ -258,7 +258,7 @@ function exemptPlace(ctx: BlockContext, given: string | undefined, after?: HopAt
 }
 
 /** A turn's place in an exchange: its hop count and its chain. */
-export interface HopAt {
+interface HopAt {
   readonly hop: number;
   readonly chain: string;
 }

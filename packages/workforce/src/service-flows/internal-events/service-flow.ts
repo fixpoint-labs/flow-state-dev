@@ -13,8 +13,9 @@
  *   the declared ones. No wildcards: a subscription's kinds only narrow.
  * - **A publish** (`./publish`) enters through the dispatch seam: the host
  *   routes it as `service:internal` in the sender's org, stamps its sender as
- *   the publishing session, and fires only the publisher's own user's runs
- *   (own-user first, Q1). A teammate and another org hear nothing.
+ *   the publishing session and its owner as the publisher's user and tenant,
+ *   and routing nominates only that owner's routines (own-user first). A
+ *   teammate, another tenant and another org hear nothing, and cost nothing.
  * - **`canRead`** is a declared topic, read as a member of the org: an owner
  *   run never leaves it. Events are private, so it is asked again per
  *   delivery. **`self`** is the subscribing session, so a session never hears

@@ -80,7 +80,7 @@ describe("what a publish refuses", () => {
       refused: 'no_topic: "deploy.finshed" isn\'t a declared topic. You can publish: deploy.finished, report.ready. Nothing was published.'
     });
     expect(await host.publish("alice", publisher, { ...failed, kind: "rolled-back" })).toEqual({
-      refused: 'no_kind: "rolled-back" isn\'t a kind of "deploy.finished". Its kinds: succeeded, failed. Nothing was published.'
+      refused: 'not_declared: "rolled-back" isn\'t a kind of "deploy.finished". Its kinds: succeeded, failed. Nothing was published.'
     });
     const forged = await host.publish("alice", publisher, { ...failed, sender: { id: follower, name: "someone", role: "member" } });
     expect(forged).toEqual({ refused: expect.stringMatching(/^invalid_input: .*sender/) });
@@ -98,7 +98,7 @@ describe("what following a topic refuses", () => {
       refused: 'no_topic: "deploy.finshed" isn\'t a declared topic. You can follow: deploy.finished, report.ready.'
     });
     expect(await host.subscribe("alice", follower, { provider: "internal", thread: "internal:deploy.finished", kinds: ["failed", "rolled-back"] })).toEqual({
-      refused: 'no_kind: "rolled-back" isn\'t a kind of "deploy.finished". Its kinds: succeeded, failed.'
+      refused: 'not_declared: "rolled-back" isn\'t a kind of "deploy.finished". Its kinds: succeeded, failed.'
     });
     // No wildcards: a pattern is not a topic.
     expect(await host.subscribe("alice", follower, { provider: "internal", thread: "internal:deploy.*" })).toHaveProperty("refused");

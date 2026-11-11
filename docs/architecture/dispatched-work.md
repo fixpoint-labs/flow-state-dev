@@ -210,10 +210,15 @@ A request reaches it in one way only: the seam's service route. An internal
 entry marked `service: { provider }` (`InternalEntry.service`) is not started
 as the caller in a child session. The seam hands the envelope to the host's
 `serviceRoute` operation (`createServiceRouteOperation`), which stamps the
-event's sender as the calling session (a member, whatever the payload said),
+event's sender as the calling session (a member, named by the marker's
+`senderName` from that session's stored state, else the calling flow's kind,
+whatever the payload said) and its `owner` as the caller's user and tenant,
 runs `routeServiceEvent` as `service:<provider>` in the caller's org, and
-fires only the caller's own user's runs. A run the routing names for anyone
-else is refused `other_user` and never fired. The caller learns only that the
+fires only that user's runs in that tenant. The routing entry reads `owner`
+and nominates no one else, so another user's subscription is never screened
+or counted against the cap; the host's check is the backstop: a run the
+routing names for another user is refused `other_user`, for another tenant
+`other_tenant`, and never fired. The caller learns only that the
 routing ran, not who it fired. Workforce's `publishEvent` is the one caller.
 
 The nomination (a user, an org, an optional tenant, a resource key) only picks a

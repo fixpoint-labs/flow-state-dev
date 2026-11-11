@@ -33,13 +33,13 @@ export const topicOf = (thread: string): string | undefined =>
   thread.startsWith(`${INTERNAL_PROVIDER}:`) ? thread.slice(INTERNAL_PROVIDER.length + 1) : undefined;
 
 /** The declared topics, as a refusal lists them. */
-export const declaredTopicsLine = (topics: InternalTopics) => Object.keys(topics).join(", ") || "none";
+const declaredTopicsLine = (topics: InternalTopics) => Object.keys(topics).join(", ") || "none";
 
 /** Why `topic` and `kinds` aren't declared, naming what is, or `undefined` when they are. `as` says what the caller does with a topic. */
 export function undeclared(topics: InternalTopics, topic: string, kinds: readonly string[] | undefined, as: "publish" | "follow"): string | undefined {
   const declared = Object.hasOwn(topics, topic) ? topics[topic] : undefined;
   if (declared === undefined) return `no_topic: "${topic}" isn't a declared topic. You can ${as}: ${declaredTopicsLine(topics)}.`;
   const unknown = (kinds ?? []).find((kind) => !declared.kinds.includes(kind));
-  if (unknown !== undefined) return `no_kind: "${unknown}" isn't a kind of "${topic}". Its kinds: ${declared.kinds.join(", ")}.`;
+  if (unknown !== undefined) return `not_declared: "${unknown}" isn't a kind of "${topic}". Its kinds: ${declared.kinds.join(", ")}.`;
   return undefined;
 }

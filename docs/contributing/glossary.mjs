@@ -723,7 +723,7 @@ export const ENTRIES = [
   // Routines ----------------------------------------------------------------------------------
   {
     term: "Routine",
-    means: "A standing instruction that fires on its own as its owner, with exactly one trigger: a clock (recurring work) or an event (a subscription, pushed or polled).",
+    means: "A standing instruction that fires on its own as its owner, with exactly one trigger: a clock (recurring work) or an event (a subscription, pushed, polled or published).",
     decision: "Owner, 2026-11-08; FIX-2471 D12; FIX-2614",
     // FIX-2614 renamed the shipped surface: the four routine verbs and the routines capability replace the schedule
     // actions and the subscription tools, with no aliases. "Schedule" and "subscription" stay, as the words
@@ -748,6 +748,13 @@ export const ENTRIES = [
         pattern: /\brecurring work\b|\bscheduled work\b/i,
       },
     ],
+  },
+  {
+    term: "Topic",
+    means:
+      "A declared name an internal event is published on (`deploy.finished`), with its kinds, its data's schema and a description. A session publishes on one with `publishEvent`, and a routine follows one on the thread `internal:<topic>`; a topic or kind nobody declared is refused at both.",
+    decision: "FIX-2630 D1",
+    retires: [],
   },
 ];
 
