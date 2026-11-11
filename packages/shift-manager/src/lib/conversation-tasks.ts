@@ -23,15 +23,12 @@ import { CONVERSATION_BOARD_COLLECTION } from "./reads";
 export const LIST_TASKS_ACTION = "listTasks_tasks";
 
 /** The conversation board's task list on flow `flow`, as a view: watch it on the conversation's session. */
-export function conversationBoardView(flow: string): ViewRef<TaskListView> {
+function conversationBoardView(flow: string): ViewRef<TaskListView> {
   return taskListViewRef(flow, CONVERSATION_BOARD_COLLECTION);
 }
 
 /** One task, as the conversation board's view answers it. */
 export type ConversationTask = ViewValueOf<ViewRef<TaskListView>>[number];
-
-/** Whether a task can still move by itself. */
-export const isOpen = (task: Pick<ConversationTask, "status">) => task.status === "pending" || task.status === "in_progress";
 
 /**
  * Watch the tasks of the coordinator conversation `sessionId` on `flow`, or
