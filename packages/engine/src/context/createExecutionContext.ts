@@ -2801,7 +2801,12 @@ export async function createExecutionContext<
       // FIX-2623 D1: a lineage-shared session resource is one resource across
       // the lineage, but a session notice reaches only the writer's session.
       // Every lineage member belongs to one user, so it also publishes on the
-      // user's topic, bare, which a view that read it records.
+      // user's topic, bare, which a view that read it records. Enforced at the
+      // one place a lineage is inherited: a same-flow dispatch child is seeded
+      // with the parent's userId and lineageId, and a record of another user is
+      // never adopted (`create-request-host.ts` dispatchSeed, `dispatch-run.ts`
+      // evaluateAdoption). A cross-flow child and every other birth root their
+      // own lineage (`session-birth.ts`). A session always has a userId.
       if (scope === "session" && hostHasViews && resolveBucketFlag("session", resourcePath) === true) {
         publishScopeNotice("user", "resource");
       }

@@ -134,4 +134,29 @@ describe("a session view over a lineage-shared resource", () => {
     await tick();
     expect(heard.filter((n) => n.kind === "resource")).toHaveLength(1);
   });
+
+  it("joins no one else to a lineage: a session born outside a dispatch roots its own", async () => {
+    // The user-topic publish rests on every lineage member having one owner.
+    // A lineage is inherited only by a same-flow dispatch child, which carries
+    // the parent's user, and a record of another user is never adopted
+    // (`dispatch-run.test.ts`, "refuses a record belonging to another principal").
+    // Every other birth, any user's, mints a lineage of its own.
+    const stores = createInMemoryStores();
+    await seed(stores, "root", "lin_shared");
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "write" as never,
+      input: { note: "bob" } as never,
+      userId: "bob",
+      sessionId: "bob-1",
+      stores,
+      runtimeConfig: {}
+    });
+    expect(result.error).toBeUndefined();
+    const born = await stores.session.get("bob-1");
+    expect(born?.userId).toBe("bob");
+    expect(born?.lineageId).toMatch(/^lin_/);
+    expect(born?.lineageId).not.toBe("lin_shared");
+  });
 });

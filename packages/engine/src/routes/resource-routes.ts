@@ -93,7 +93,9 @@ type ResourceRouteContext = {
 function publishSessionResource(ctx: ResourceRouteContext, sessionId: string, storageKey: string, collection: object): void {
   // FIX-2623 D1: a lineage-shared row is one row across the lineage, and every
   // member belongs to one user, so once the host has a view it also publishes
-  // on that user's topic, which a view that read it records.
+  // on that user's topic, which a view that read it records. The one-owner rule
+  // is enforced where a lineage is inherited (see `publishChange` in
+  // `createExecutionContext.ts`).
   const owner = ctx.checkedSession?.userId;
   if (owner !== undefined && isSharedToLineage(collection) && registryHasViews(ctx.registry)) {
     publishScopeChange(ctx.stores.bus, { scope: "user", id: owner, tenantId: ctx.tenantId, kind: "resource" });
