@@ -320,3 +320,47 @@ describe("a user line's documents, by what the model reads", () => {
     expect((await call([spec], undefined))[1]).toMatchObject({ type: "file", mediaType: "application/pdf" });
   });
 });
+
+// FIX-2636 D2: with the attachments capability, the history read asks for
+// earlier documents by name. Each goes in full only on the turn it was sent;
+// later calls name it with the id the model reads it by, so a long chat no
+// longer pays for five documents on every call.
+describe("an earlier turn's documents, named for the model to read on request", () => {
+  const readNamed = (prior: RequestRecord[], live: OutputItem[]) =>
+    createSessionItemViews([], prior, {
+      tokenCounter: estimateTokenCounter,
+      resolveModelId: () => "test-model",
+      readLiveItems: () => live
+    }).history({ earlierDocuments: "named" });
+
+  it("names every earlier document with its id, keeps the request's own, and leaves images in the window", async () => {
+    const { add, readAttachment } = filesFixture();
+    const q3 = await add("application/pdf", "q3.pdf");
+    const notes = await add("text/markdown", "notes.md");
+    const shot = await add("image/png", "shot.png");
+    const today = await add("text/csv", "today.csv");
+    const prior = [
+      turn("r1", [userLine("r1", "the report", [q3, shot], 100) as unknown as OutputItem], 100),
+      turn("r2", [userLine("r2", "and notes", [notes], 200) as unknown as OutputItem], 200)
+    ];
+    const read1 = await readNamed(prior, [userLine("r3", "and today's", [today], 300) as unknown as OutputItem]);
+    const messages = (await resolveHistoryFiles(read1, readAttachment, undefined, [today])) as LLMMessage[];
+
+    expect(parts(messages[0])).toEqual([
+      { type: "text", text: "the report" },
+      { type: "text", text: `[document: q3.pdf, id ${q3.data.slice("fsd-blob:".length)}, not re-sent; read it with readAttachment]` },
+      { type: "image", image: base64Of([3, 4]), mediaType: "image/png" }
+    ]);
+    expect(parts(messages[1])[1]).toMatchObject({ type: "text", text: expect.stringMatching(/^\[document: notes\.md, id b_\w+, not re-sent; read it with readAttachment\]$/) });
+    // The request's own document still goes in full.
+    expect(parts(messages[2])[1]).toEqual({ type: "text", text: `### today.csv\n${String.fromCharCode(4, 5)}` });
+  });
+
+  // FIX-2517 D1.
+  it("keeps the newest-documents window for a read that does not ask", async () => {
+    const { add } = filesFixture();
+    const q3 = await add("application/pdf", "q3.pdf");
+    const prior = [turn("r1", [userLine("r1", "the report", [q3], 100) as unknown as OutputItem], 100)];
+    expect(parts((await read(prior, []))[0])[1]).toEqual(q3);
+  });
+});

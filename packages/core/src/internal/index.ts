@@ -75,8 +75,8 @@ export type { RequestWaitOutcome, WaitOnRequestInput } from "../blocks/wait-on-r
 
 // FIX-2519.
 /** The harness attachment seam: the request's file reader, under a symbol slot. */
-export { HARNESS_ATTACHMENT_SEAM } from "../types/harness-attachment-seam";
-export type { HarnessAttachmentSeam } from "../types/harness-attachment-seam";
+export { ATTACHMENT_SEAM } from "../types/attachment-seam";
+export type { AttachmentSeam } from "../types/attachment-seam";
 
 // FIX-2522.
 /** The user attachment seam: copies of a turn's files kept in the person's own scope. */
