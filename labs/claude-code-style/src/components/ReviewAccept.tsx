@@ -1,38 +1,44 @@
 import { useSubmit } from "@flow-state-dev/react";
 import { useState } from "react";
-import type { LabAdapter, LabTask, ReviewDetail } from "../adapter";
+import type { LabAdapter, LabTask, TaskWork } from "../adapter";
 import { cn } from "../lib/utils";
-import { LAND_LABEL, type LandedWork, type ReviewLand } from "./flow-state/review-hold";
+import { LAND_LABEL, LandFailure, type LandedWork, orderedLands, type ReviewLand } from "./flow-state/review-hold";
 
 /**
  * A thread's accept, shared by its card and its view. The accept offers the ways its review lists in
  * `lands` (Open a PR, Merge locally) and nothing else; a review with none offers a plain Resolve. A
- * failed landing shows why, and its way comes back as Retry. The accept reads as *Landing…* until the
- * review comes back or the work moves on, so it never reads as accepted while it is still being sent.
+ * failed landing shows why, and its way comes back as Retry. The accept reads as *Landing…* from the
+ * moment it is sent until the run's next review stop arrives, so it never reads as accepted while the
+ * landing is still going on.
  */
-export function useReviewAccept(adapter: LabAdapter, sessionId: string, task: Pick<LabTask, "id" | "harness">, review: ReviewDetail | undefined) {
+export function useReviewAccept(adapter: LabAdapter, sessionId: string, task: Pick<LabTask, "id" | "harness">, work: TaskWork | undefined) {
+  const review = work?.review;
   const lands = review?.lands ?? [];
   const failed = review?.landFailed ?? null;
-  // Each review round is one failure and its tries: a review that comes back after a failed landing is a new round.
-  const roundKey = review === undefined ? "" : `${failed?.land ?? ""}|${failed?.message ?? ""}|${review.landAttempts?.length ?? 0}`;
-  // The round this accept answered; the buttons stay down until the review comes back.
+  // One review round is one stop: a retry that fails again stops for review under a new id, even with the same message.
+  const round = work?.reviewStop ?? "";
+  // The round this accept answered. It is cleared by the next round, so a stop that stays open after a send keeps the accept down.
   const [answered, setAnswered] = useState<string | null>(null);
   const submit = useSubmit(async (land?: ReviewLand) => {
     await adapter.resolve(sessionId, task.id, land);
-    setAnswered(roundKey);
+    setAnswered(round);
   });
   return {
     lands,
     failed,
     // A coding task's accept waits for its review to be read, so a plain Resolve can't go before the lands are known.
     ready: review !== undefined || task.harness === undefined,
-    waiting: submit.busy || answered === roundKey,
+    waiting: submit.busy || answered === round,
     error: submit.error,
     accept: (land?: ReviewLand) => void submit.submit(undefined, land),
   };
 }
 
-/** The accept buttons: one per way the review lists, else a plain Resolve. A failed landing's way comes first, as Retry. */
+/**
+ * The accept buttons: one per way the review lists, else a plain Resolve. A failed landing's way comes
+ * first, as Retry. These are the lab's compact buttons, labelled as the verbs (*Open a PR*), where the
+ * review card's labels its accept (*Accept: Open a PR*): the card says what is being accepted, the buttons say what happens.
+ */
 export function AcceptButtons({
   lands,
   failed,
@@ -57,10 +63,9 @@ export function AcceptButtons({
       </button>
     );
   }
-  const ordered = failed === null ? lands : [failed.land, ...lands.filter((land) => land !== failed.land)];
   return (
     <>
-      {ordered.map((land, i) => (
+      {orderedLands(lands, failed).map((land, i) => (
         <button
           key={land}
           type="button"
@@ -73,16 +78,6 @@ export function AcceptButtons({
         </button>
       ))}
     </>
-  );
-}
-
-/** Why the last landing failed, in the landing's own words. Nothing when none failed. */
-export function LandFailure({ failed }: { failed: { land: ReviewLand; message: string } | null }) {
-  if (failed === null) return null;
-  return (
-    <p role="alert" data-land-failed={failed.land} className="mt-1 text-xs text-destructive [overflow-wrap:anywhere]">
-      {failed.land === "pull-request" ? "Opening the PR failed" : "Merging locally failed"}: {failed.message}
-    </p>
   );
 }
 

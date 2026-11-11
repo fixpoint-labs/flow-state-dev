@@ -3,7 +3,8 @@ import { useWatch } from "../lib/use-watch";
 import type { LabAdapter, LabTask } from "../adapter";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
-import { AcceptButtons, LandedLink, LandFailure, useReviewAccept } from "./ReviewAccept";
+import { LandFailure } from "./flow-state/review-hold";
+import { AcceptButtons, LandedLink, useReviewAccept } from "./ReviewAccept";
 import { HarnessTag, PullRequestOpen, statusColumn, statusLine, ThreadIcon, waitsOnPullRequest } from "./ThreadStatus";
 
 /**
@@ -112,7 +113,7 @@ function ReviewActions({
   viewThread: ReactNode;
 }) {
   const work = useWatch((emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit), [adapter, sessionId, task.id]);
-  const accept = useReviewAccept(adapter, sessionId, task, work?.review);
+  const accept = useReviewAccept(adapter, sessionId, task, work);
   return (
     <div className="mt-1.5 min-w-0">
       <div className="flex flex-wrap gap-1.5">

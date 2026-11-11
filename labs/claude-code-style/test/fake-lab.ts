@@ -701,7 +701,10 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     watchTaskWork(sessionId, taskId, onChange) {
       return watch(() => {
         const task = sessions.get(sessionId)?.tasks.find((t) => t.id === taskId);
-        const work: TaskWork = { entries: task?.work ?? [], ...(task?.reviewDetail === undefined ? {} : { review: task.reviewDetail }) };
+        const work: TaskWork = {
+          entries: task?.work ?? [],
+          ...(task?.reviewDetail === undefined ? {} : { review: task.reviewDetail, reviewStop: `${task.id}-stop` }),
+        };
         onChange(work);
       });
     },

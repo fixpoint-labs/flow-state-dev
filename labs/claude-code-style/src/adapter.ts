@@ -238,6 +238,8 @@ export interface TaskWork {
   entries: ThreadEntry[];
   /** Its run's latest review stop, when it made one. */
   review?: ReviewDetail;
+  /** The id of that stop: one per review round, so an accept can tell a new round from the one it answered. */
+  reviewStop?: string;
   /** Present while the run holds items older than its first entry: adds the page before them. */
   loadEarlier?: () => Promise<void>;
   /** What its run is doing now, while the task runs. */
@@ -485,8 +487,19 @@ function onNotice<T>(
  * stops for review again.
  */
 export function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
-  const stop = [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review");
+  const stop = latestReviewStop(items);
   return (stop && reviewDetail(stop.data)) ?? undefined;
+}
+
+/** The latest review stop's item, or undefined before the run makes one. */
+const latestReviewStop = (items: readonly Item[]) => [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review");
+
+/**
+ * The id of the latest review stop: one id per review round. A run sent back, or a landing retried,
+ * stops for review again under a new id, which is how the accept tells a new round from the one it answered.
+ */
+export function reviewStopIdOf(items: readonly Item[]): string | undefined {
+  return latestReviewStop(items)?.id;
 }
 
 /**
@@ -1099,12 +1112,13 @@ export function createWiredLab(fsd: Client): LabAdapter {
         const run = { ...(typeof link?.startedAt === "number" ? { startedAt: link.startedAt } : {}), ...(leaseUntil === undefined ? {} : { leaseUntil }) };
         // The harness its run reported; until one reports, the assignee's `harness` setting.
         const harness = task.spend?.harness ?? (await harnessOf(task));
-        // A coding task's output says how its review ended and where its work landed; a row not yet pending carries it.
-        const output = harness !== undefined && row.status !== "pending" ? await outputOf(sessionId, task) : undefined;
+        const pullRequests = await pullRequestsOf(task);
+        // A coding task's output says how its review ended and where its work landed. Landing happens on an accept,
+        // so the output is read once the run is done, or while it waits on a pull request it opened.
+        const output = harness !== undefined && (row.status === "completed" || pullRequests !== undefined) ? await outputOf(sessionId, task) : undefined;
         const review = harness !== undefined && row.status === "completed" ? ((output?.review as LabTask["review"]) ?? null) : undefined;
         const landed = landedOf(output?.landed);
         const error = row.status === "errored" ? await errorOf(sessionId, task) : undefined;
-        const pullRequests = await pullRequestsOf(task);
         return {
           ...row,
           ...(Object.keys(run).length === 0 ? {} : { run }),
@@ -1524,10 +1538,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
           }
           stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items, loadEarlier) => {
             const review = reviewStopOf(items);
+            const reviewStop = reviewStopIdOf(items);
             fed = items;
             work = {
               entries: entriesOf(items.filter((item) => item.type !== "suspension")),
               ...(review === undefined ? {} : { review }),
+              ...(reviewStop === undefined ? {} : { reviewStop }),
               ...(loadEarlier === undefined ? {} : { loadEarlier }),
             };
             tell();

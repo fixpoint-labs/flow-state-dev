@@ -3,7 +3,7 @@
  * work went. A plain accept sends no `land`, so a review that can't land reads as it always did.
  */
 import { describe, expect, it } from "vitest";
-import { acceptOf, landedOf } from "../src/adapter";
+import { acceptOf, landedOf, reviewStopIdOf } from "../src/adapter";
 
 describe("acceptOf", () => {
   it("is a plain accept without a land", () => {
@@ -33,5 +33,15 @@ describe("landedOf", () => {
     expect(landedOf("merge")).toBeUndefined();
     expect(landedOf({ kind: "pull-request", number: 7 })).toBeUndefined();
     expect(landedOf({ kind: "elsewhere", url: "x" })).toBeUndefined();
+  });
+});
+
+describe("reviewStopIdOf", () => {
+  // Each review round is one stop: a run sent back, or a landing retried, stops under a new id.
+  it("names the latest review stop, so a new round is told apart from the one an accept answered", () => {
+    const stop = (id: string) => ({ id, type: "suspension", kind: "review", data: null }) as unknown as Parameters<typeof reviewStopIdOf>[0][number];
+    expect(reviewStopIdOf([stop("stop-1")])).toBe("stop-1");
+    expect(reviewStopIdOf([stop("stop-1"), stop("stop-2")])).toBe("stop-2");
+    expect(reviewStopIdOf([])).toBeUndefined();
   });
 });

@@ -62,11 +62,12 @@ export function ThreadView({
   const finished = task.status === "completed" || task.status === "cancelled" || task.status === "errored";
 
   // Accept and a send share the composer: nothing else goes while one is on its way.
-  const accept = useReviewAccept(adapter, sessionId, task, work?.review);
+  const accept = useReviewAccept(adapter, sessionId, task, work);
   const pin = useSubmit(() => (pinned ? adapter.unpin(task.id) : adapter.pin(task.id)));
   const dismiss = useSubmit(() => adapter.dismiss(task));
   const actions = useMemo(() => adapter.taskActions(sessionId), [adapter, sessionId]);
-  const held = sending || accept.waiting || !accept.ready;
+  // The composer holds while a send or an accept is on its way. Readiness gates only the review's own buttons: a working thread still takes a steer or an answer.
+  const held = sending || accept.waiting;
 
   // Your words stay in the box until they land; a failed send says why, with Retry.
   const say = (event?: FormEvent) => {
@@ -174,8 +175,8 @@ export function ThreadView({
               <div className="mt-2 flex justify-end gap-1.5">
                 {column === "review" ? (
                   <>
-                    <AcceptButtons lands={accept.lands} failed={accept.failed} disabled={held} busy={accept.waiting} onAccept={accept.accept} />
-                    <button type="button" disabled={!words || held} onClick={requestChanges} className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-40">
+                    <AcceptButtons lands={accept.lands} failed={accept.failed} disabled={held || !accept.ready} busy={accept.waiting} onAccept={accept.accept} />
+                    <button type="button" disabled={!words || held || !accept.ready} onClick={requestChanges} className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-40">
                       Request changes
                     </button>
                   </>

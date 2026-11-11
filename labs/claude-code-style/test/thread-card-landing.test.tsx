@@ -4,7 +4,7 @@
  * what the accept offers; the card never offers a way its review doesn't list, never reads a failed
  * landing as accepted, and sends the way you chose.
  */
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LabAdapter, LabTask, ReviewDetail } from "../src/adapter";
 import { ThreadCard } from "../src/components/ThreadCard";
@@ -31,16 +31,22 @@ const codingTask = (patch: Partial<LabTask> = {}): LabTask =>
     ...patch,
   }) as LabTask;
 
-/** An adapter whose only read is the run's review, and whose accept is `resolve`. */
+/**
+ * An adapter whose only read is the run's review, and whose accept is `resolve`. `emit` sends the
+ * work again, as the run's stream does when its review stop changes.
+ */
 function stubAdapter(review: ReviewDetail | undefined, resolve = vi.fn(async (_s: string, _t: string, _land?: string) => {})) {
+  let send: ((work: unknown) => void) | undefined;
   const adapter = {
     watchTaskWork: (_sessionId: string, _taskId: string, onChange: (work: unknown) => void) => {
-      onChange({ entries: [], ...(review === undefined ? {} : { review }) });
+      send = onChange;
+      onChange({ entries: [], ...(review === undefined ? {} : { review, reviewStop: "stop-1" }) });
       return () => {};
     },
     resolve,
   };
-  return { adapter: adapter as unknown as LabAdapter, resolve };
+  const emit = (next: ReviewDetail, reviewStop: string) => send?.({ entries: [], review: next, reviewStop });
+  return { adapter: adapter as unknown as LabAdapter, resolve, emit };
 }
 
 function renderCard(task: LabTask, adapter: LabAdapter, onOpen = vi.fn()) {
@@ -117,6 +123,20 @@ describe("a thread card's accept", () => {
     expect(card().textContent).not.toMatch(/accepted/i);
     refuse(new Error("The thread isn't waiting on your review."));
     await waitFor(() => expect(within(card()).getByRole("alert").textContent).toBe("Couldn't resolve: The thread isn't waiting on your review."));
+  });
+
+  it("a retry that fails with the same message is a new round, so its buttons come back", async () => {
+    const failure = { land: "pull-request" as const, message: "no push remote" };
+    const { adapter, resolve, emit } = stubAdapter({ ...REVIEW, landFailed: failure, landAttempts: [failure] });
+    renderCard(codingTask(), adapter);
+    fireEvent.click(await waitFor(() => within(card()).getByRole("button", { name: "Retry: Open a PR" })));
+    await waitFor(() => expect(resolve).toHaveBeenCalledWith("s-1", "t-1", "pull-request"));
+    // The answered stop stays the latest until the run stops for review again: the accept stays down.
+    expect(within(card()).getAllByRole("button", { name: "Landing…" })).toHaveLength(2);
+    // The run tried again, failed with the same words, and stopped for review under a new round.
+    await act(async () => emit({ ...REVIEW, landFailed: failure, landAttempts: [failure] }, "stop-2"));
+    await waitFor(() => expect(within(card()).getByRole("button", { name: "Retry: Open a PR" })).toBeTruthy());
+    expect(within(card()).queryByRole("button", { name: "Landing…" })).toBeNull();
   });
 
   it("keeps Request changes: it opens the task's view, where the words go", async () => {
