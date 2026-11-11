@@ -146,6 +146,8 @@ export async function handleRetryRequest(
         : undefined,
       runtimeConfig: ctx.runtimeConfig
     });
+    // This route always answers 202, so nothing reads the retry's live stream.
+    result.liveStream.close();
 
     return jsonResponse(202, {
       status: "in_progress",
@@ -280,6 +282,9 @@ export async function handleContinueRequest(
       });
     }
 
+    // Nobody reads the live stream past a 202 (the caller follows the
+    // request through its GET stream): close it so it fills no further.
+    handle.liveStream?.close();
     return jsonResponse(202, { requestId: route.requestId });
   } catch (error) {
     // Setup failed before the detached run took ownership of the lease release;

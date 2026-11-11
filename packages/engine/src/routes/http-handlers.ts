@@ -19,6 +19,7 @@ import { createHostDiskState, type HostDiskState } from "../blobs/host-disk";
 import { handleGetBlob, handleUploadBlob } from "./blob-routes";
 import type { ChangeBus } from "../bus/types";
 import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
+import { continueWithoutReader } from "../execution/request-continuation";
 import {
   parseFlowRoute,
   type ParsedFlowRoute
@@ -348,7 +349,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig.requestHost.waitResume = createWaitResumeOperation({
       provider: runtimeConfig.durabilityProvider,
       stores,
-      continueRequest: (opts) => host.continueRequest(opts)
+      continueRequest: continueWithoutReader((opts) => host.continueRequest(opts))
     });
   }
   // And whether a sweeper bounds a wait here, so the turn is offered one.
@@ -374,7 +375,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       ? createParkedStopDeps({
           provider: runtimeConfig.durabilityProvider,
           stores,
-          continueRequest: (opts) => host.continueRequest(opts)
+          continueRequest: continueWithoutReader((opts) => host.continueRequest(opts))
         })
       : undefined;
   if (
