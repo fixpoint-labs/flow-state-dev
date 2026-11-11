@@ -192,9 +192,10 @@ type Place = { readonly ok: true; readonly id: string; readonly chain: string; r
  * here, for all its sends. The per-request count is taken first and given back
  * if the chain has no place left, so a refused send spends nothing. A `given`
  * id already paid for (a send repeated after a crash) pays nothing
- * again: neither count takes it twice.
+ * again: neither count takes it twice. A publish pays here too, once however
+ * many hear it.
  */
-async function payPlace(ctx: BlockContext, installation: WorkerInstallation, given: string | undefined): Promise<Place> {
+export async function payPlace(ctx: BlockContext, installation: WorkerInstallation, given: string | undefined): Promise<Place> {
   const limits = messageLimitsOf(installation);
   const chains = messageChainsOf(ctx);
   const floor = turnHopOf(ctx) + 1;
@@ -250,8 +251,16 @@ async function payPlace(ctx: BlockContext, installation: WorkerInstallation, giv
  * exempt send in one request shares that hop, intentionally: none is a reply
  * to another, and the hop limit still bounds what each one draws.
  */
-function exemptPlace(ctx: BlockContext, given: string | undefined): Place {
+function exemptPlace(ctx: BlockContext, given: string | undefined, after?: HopAt): Place {
+  // FIX-2630 D2: a published event's delivery lands in its publisher's chain, one past the publishing turn.
+  if (after !== undefined) return { ok: true, id: given ?? newMessageId(), chain: after.chain, hop: after.hop + 1 };
   return { ok: true, id: given ?? newMessageId(), chain: turnChainOf(ctx) ?? newChainId(), hop: turnHopOf(ctx) + 1 };
+}
+
+/** A turn's place in an exchange: its hop count and its chain. */
+interface HopAt {
+  readonly hop: number;
+  readonly chain: string;
 }
 
 // FIX-2241; FIX-2310; FIX-2318.
@@ -353,6 +362,9 @@ interface ServiceMessage {
   readonly id: string;
   /** An unheard event forwarded to an unmatched subscription: how it reached it, and its link. */
   readonly forward?: WorkerMessageResourceState["forward"];
+  // FIX-2630 D2.
+  /** A published event's publishing turn: the message lands in its chain, one hop past it, instead of the delivering run's. */
+  readonly after?: HopAt;
 }
 
 /**
@@ -377,7 +389,7 @@ export async function sendServiceMessage(
     flowKind,
     { text: message.text },
     from,
-    { id: message.id, exempt: true },
+    { id: message.id, exempt: true, ...(message.after === undefined ? {} : { after: message.after }) },
     {
       sender: message.sender,
       recipientId: message.to.worker,
@@ -392,6 +404,8 @@ export async function sendServiceMessage(
 interface SendOptions {
   readonly id?: string;
   readonly exempt?: true;
+  /** With `exempt`: the place is one past this turn's, in its chain (a published event's delivery). */
+  readonly after?: HopAt;
   readonly replyRequested?: { readonly deadlineAt?: number };
   readonly noAnswer?: true;
 }
@@ -459,7 +473,7 @@ async function sendTo(
   const { destination } = resolved;
   // ---- the budget ----------------------------------------------------------
   // The server's own message costs none (FIX-2241); every other send pays its place.
-  const paid = options.exempt === true ? exemptPlace(ctx, options.id) : await payPlace(ctx, installation, options.id);
+  const paid = options.exempt === true ? exemptPlace(ctx, options.id, options.after) : await payPlace(ctx, installation, options.id);
   if (!paid.ok) return paid;
   const { id, chain, hop } = paid;
 

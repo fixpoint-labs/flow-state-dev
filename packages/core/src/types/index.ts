@@ -45,6 +45,7 @@ export type {
   DispatchSpec,
   DispatchType,
   InternalEntry,
+  InternalServiceRoute,
   SessionTarget,
   TaskBinding,
   TaskDispatchInput,

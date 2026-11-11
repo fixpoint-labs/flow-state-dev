@@ -1194,6 +1194,7 @@ export async function createExecutionContext<
             lineageId
           },
           dispatchOperation: options.requestHost.dispatchOperation,
+          serviceRoute: options.requestHost.serviceRoute,
           resolveFlow: options.requestHost.resolveFlow,
           parentTask: options.requestHost.parentTask,
           waitResume: options.requestHost.waitResume,
