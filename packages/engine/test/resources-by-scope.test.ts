@@ -44,7 +44,7 @@ const notes = defineResource({
   ref: "notes",
   scope: "user",
   stateSchema: z.object({ text: z.string().default("") }),
-  client: {}
+  client: { expose: ["text"] }
 });
 
 /** Signs callers in from two headers, as a real app's session cookie would. */
@@ -451,7 +451,7 @@ describe("a send through a flow of the app's own (runBy: { flow })", () => {
     ref: "plan",
     scope: "org",
     stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
-    client: {},
+    client: { expose: ["steps"] },
     runBy: { flow: "planner" }
   });
   const replan = handler({
@@ -502,7 +502,7 @@ describe("the principal comes from the flow that runs, and nothing tells a real 
     ref: "invoice",
     scope: "org",
     stateSchema: z.object({ refunded: z.boolean().default(false) }),
-    client: {},
+    client: { expose: ["refunded"] },
     runBy: { flow: "billing" }
   });
   const refunds: string[] = [];
@@ -690,6 +690,11 @@ describe("what a direct read projects: the session snapshot's own builder", () =
     const direct = await get(router, ["resources", "org", "doc"], alice);
     const text = await direct.text();
     expect(text).not.toContain("sk-secret");
-    expect((JSON.parse(text) as { value?: unknown }).value).toEqual(snapshot.resources?.org?.doc?.clientData);
+    // The snapshot carries no state for it, so a direct read has nothing to serve: it answers as
+    // an unused key (Gitar 4543814746), never a read with no value.
+    expect(snapshot.resources?.org?.doc?.clientData).toBeUndefined();
+    const unused = await get(router, ["resources", "org", "nope"], alice);
+    expect(direct.status).toBe(unused.status);
+    expect(text.split("doc").join("<k>")).toBe((await unused.text()).split("nope").join("<k>"));
   });
 });

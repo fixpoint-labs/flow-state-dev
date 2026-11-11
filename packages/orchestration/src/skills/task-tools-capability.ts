@@ -51,7 +51,7 @@
  * name rather than letting the schema drop it.
  */
 
-import { defineCapability, defineView, FlowError, handler, sequencer, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
+import { defineCapability, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
 import type { ActionConfig, BlockContext, BlockDefinition, ReadConfig } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import type { FileContent } from "@flow-state-dev/core/items";
@@ -2481,58 +2481,23 @@ export function taskToolReads(
   collectionId: string,
   resolve: TaskCollectionResolver,
 ): Record<string, ReadConfig> {
-  const listTasks = buildTaskTools(resolve, {
-    nameSuffix: taskToolSuffix(collectionId),
-    claimless: true,
-  }).find((tool) => tool.name === `listTasks_${taskToolSuffix(collectionId)}`);
-  if (listTasks === undefined) throw new Error(`taskToolReads("${collectionId}"): the task tools built no listTasks`);
+  const listTasks = listTasksBlockFor(collectionId, resolve);
   return { [listTasks.name]: { block: listTasks, description: listTasks.description } };
 }
 
-// FIX-2623.
-/** One board's task list as a session view: its rows, keyed by task id. See {@link taskToolViews}. */
-function taskListView(collectionId: string, resolve: TaskCollectionResolver) {
+/**
+ * One board's `listTasks_<suffix>` as the board's actions build it
+ * (`claimless`), typed by its output. The block the board's task-list view
+ * (`views/task-list-view.ts`) runs, and the read beside it.
+ */
+export function listTasksBlockFor(collectionId: string, resolve: TaskCollectionResolver) {
   const listTasks = buildTaskTools(resolve, {
     nameSuffix: taskToolSuffix(collectionId),
     claimless: true,
   }).find((tool) => tool.name === `listTasks_${taskToolSuffix(collectionId)}`) as BlockDefinition<z.ZodTypeAny, typeof listTasksOutputSchema> | undefined;
-  if (listTasks === undefined) throw new Error(`taskToolViews("${collectionId}"): the task tools built no listTasks`);
-  const listedTasks = z.array(listedTaskSchema);
-  const block = sequencer({ name: listTasks.name, inputSchema: listTasks.inputSchema, outputSchema: listedTasks })
-    .step(listTasks)
-    .step(handler, {
-      name: `${listTasks.name}-rows`,
-      outputSchema: listedTasks,
-      // The list's refusal (no board this session can file on) is the view's, by its own name.
-      execute: (listed) => {
-        if (!listed.ok) throw new FlowError(`The task list can't be read here: ${listed.error}`, { code: listed.error, retryable: false });
-        return listed.tasks;
-      },
-    });
-  block.validate();
-  // Core types a sequencer as `BlockDefinition<any, any>`; this one declares `listedTasks` as its output
-  // schema (checked by `validate` above and on every exit), so the view is typed by it, never `any`.
-  const typed = block as unknown as BlockDefinition<typeof listTasks.inputSchema, typeof listedTasks>;
-  return defineView({ scope: "session", block: typed, key: (task) => task.id, description: listTasks.description });
+  if (listTasks === undefined) throw new Error(`listTasksBlockFor("${collectionId}"): the task tools built no listTasks`);
+  return listTasks;
 }
 
-/** A board's task-list view, as {@link taskToolViews} builds it: for a client's `viewRef<TaskListView>`. */
-export type TaskListView = ReturnType<typeof taskListView>;
-
-/**
- * A durable ledger's task list as a flow `views` map: `listTasks_<suffix>`, a
- * session view answering the rows the `listTasks_<suffix>` action lists for
- * the same board, from the same list code, keyed by task id. Spread it into
- * `defineFlow`'s `views`; a screen watches it with `useView` through
- * `taskListViewRef` and names no topic. A session with no board to list
- * is refused by the list's own reason (`no_delegation_board`).
- *
- * `resolve` is the view's own resolver: it must reach the board the action's
- * does and write nothing on the way, since a view's context refuses every
- * write. A resolver that repairs or starts rows as it goes (a board's touch)
- * is the action's, not this one's.
- */
-export function taskToolViews(collectionId: string, resolve: TaskCollectionResolver): Record<string, TaskListView> {
-  const view = taskListView(collectionId, resolve);
-  return { [view.block.name]: view };
-}
+/** One task as the board's list answers it. */
+export { listedTaskSchema };

@@ -25,6 +25,7 @@ import {
 } from "../src/host";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
 import type { StoreRegistry } from "../src";
+import { sweepAsStale } from "./sweep-as-stale";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const FLOW_ID = "request-end-stream";
@@ -222,7 +223,7 @@ describe.each([
         [record] = await stores.request.list({ sessionId: "s1" });
       }
       // Its process died: the sweep stamps it interrupted, and nothing writes its event.
-      await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+      await sweepAsStale(stores);
       expect((await stores.request.get(record!.id))?.status).toBe("interrupted");
       const lastReal = Math.max(...(await stores.request.getEvents(record!.id)).map((event) => event.sequence_number ?? 0));
 

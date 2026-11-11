@@ -143,9 +143,10 @@ answer once.
   declares a view, every user or org resource write publishes (FIX-1506: an extra notice is
   allowed, a missed one is the failure). `useResource` stays current on [FIX-2551](https://linear.app/fixpoint-labs/issue/FIX-2551)'s live read ([ER-7](../../epics/FIX-2618/DECISIONS.md#who-owns-what)), with no poll of its own.
 - **The lab's pins and dismissals move here,** onto user resources with `runBy: "default"`: they
-  are O3's worked example and the goal check's plain write. Their first read falls back once to
-  the old user-state lists (BP-030); FIX-2628 moves the declarations into the app's kit and
-  removes the fallback. This lands in the first PR, and FIX-2623's PR that removes `reads` waits
+  are O3's worked example and the goal check's plain write. The old user-state lists are not
+  copied over: by owner direction, the lab's old pins and dismissals are not migrated, since it
+  is a lab with no users' marks to preserve (amended 2026-11-11, below). FIX-2628 moves the
+  declarations into the app's kit. This lands in the first PR, and FIX-2623's PR that removes `reads` waits
   on it, so FIX-2623 has no pins or dismissals reads to turn into views. The ordering is between
   PRs, not an issue relation: FIX-2623 blocking this issue would also hold back the first PR.
 - **Harness readiness is one view, in `harness-manager`.** FIX-2627 installs it through the
@@ -216,5 +217,10 @@ mechanism list, `main` since the watermark and FIX-2623's draft.
 - **Analysis** — the identity read moved from a host route to a flow address, `useResource` took
   collections, and the org write default became an open fork, because the analysis found
   FIX-2522's bug class in a host route and a security default nobody had chosen.
+- **Amended 2026-11-11, after merge (owner review on the implementation PR,
+  [#5111](https://github.com/fixpoint-labs/flow-state-dev/pull/5111))** — "No need for legacy
+  support": the lab's old pins and dismissals are not carried from the user-state record into
+  the new resources. The one-time read (BP-030) is dropped from *Adds* and the decision above,
+  and FIX-2628 no longer has a fallback to remove. A lab has no users whose marks need keeping.
 
 **Open: none.** [The org write rule](#d3) was decided by the owner on 2026-11-11: refuse to start.

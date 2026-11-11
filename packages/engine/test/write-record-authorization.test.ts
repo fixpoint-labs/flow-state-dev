@@ -8,7 +8,7 @@
  * A new file under `src/routes/` that calls `resolveRecordOwner` fails here
  * until it is classified below, with its reason.
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -82,6 +82,18 @@ describe("write-record authorization", () => {
     // the host passes its own, the worker the one its deployment's host is given.
     const host = readFileSync(join(__dirname, "../src/transports/host/createInboundTransportHost.ts"), "utf8");
     expect(host).toContain("installBuiltIns(registry, stores, resolvePrincipal)");
+    // Every worker adapter createFlowState starts hands the worker the host's resolver, from the
+    // runtime it is given: no caller supplies it, and a new adapter can't leave it out.
+    const packages = join(__dirname, "../..");
+    const adapters = readdirSync(packages).flatMap((pkg) => {
+      const src = join(packages, pkg, "src");
+      if (!existsSync(src)) return [];
+      return readdirSync(src, { recursive: true })
+        .map((file) => join(src, String(file)))
+        .filter((file) => file.endsWith(".ts") && readFileSync(file, "utf8").includes("startWorker: ("));
+    });
+    expect(adapters.length).toBeGreaterThan(0);
+    for (const file of adapters) expect(readFileSync(file, "utf8"), file).toContain("resolvePrincipal: rt.resolvePrincipal");
     const worker = readFileSync(join(__dirname, "../../bullmq/src/worker.ts"), "utf8");
     expect(worker).toContain("installBuiltIns(registry, stores, deps.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver)");
     // Inside the flow it reaches nothing but the agreement check: never a caller, never an owner.

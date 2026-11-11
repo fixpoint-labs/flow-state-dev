@@ -926,7 +926,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
    */
   const tasksAndTopicsOf = async (sessionId: string): Promise<{ tasks: Listed[]; topics: WireTopic[] }> => {
     const answer = await fsd.view(taskListViewRef(await flowOfSession(sessionId), TASKS_BOARD), {}, { sessionId });
-    const listed = answer.value as any[];
+    const listed = answer.value;
     let moved = false;
     for (const task of listed) {
       const ranAs = runningRunOf.get(task.id)?.requestId;
@@ -944,12 +944,13 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
       id: task.id,
       title: task.title ?? task.goal,
       goal: task.goal,
-      status: task.status,
+      // The view types a status as the board's string; the screen draws the statuses it knows.
+      status: task.status as TaskStatus,
       ...(task.assignee === undefined ? {} : { assignee: task.assignee }),
       ...(task.statusNote == null ? {} : { statusNote: task.statusNote }),
       ...(typeof task.updatedAt === "number" ? { updatedAt: task.updatedAt } : {}),
       // The row's own start, else its run link's; rows before either carry neither (BP-030).
-      ...(typeof (task.startedAt ?? task.run?.startedAt) === "number" ? { startedAt: task.startedAt ?? task.run.startedAt } : {}),
+      ...(typeof (task.startedAt ?? task.run?.startedAt) === "number" ? { startedAt: task.startedAt ?? task.run?.startedAt } : {}),
       ...(task.run?.sessionId === undefined ? {} : { runSessionId: task.run.sessionId, run: task.run }),
       ...(Array.isArray(task.holds) ? { holds: task.holds } : {}),
       ...(task.spend == null ? {} : { spend: task.spend }),

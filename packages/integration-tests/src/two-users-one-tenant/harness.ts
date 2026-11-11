@@ -258,6 +258,7 @@ function processLocalAdapter(connection: string, prefix: string, mode: WorkerMod
         registry: rt.registry,
         stores: rt.stores,
         runtimeConfig: rt.runtimeConfig,
+        resolvePrincipal: rt.resolvePrincipal,
         bridge,
         concurrency: 2,
         leaseBackend

@@ -13,7 +13,7 @@
  */
 import { ClientHttpError, viewRef, type Client, type RequestResult, type ViewRef } from "@flow-state-dev/client";
 import type { ResumeAction } from "@flow-state-dev/core/types";
-import type { TaskListView } from "../skills/task-tools-capability";
+import type { TaskListView } from "../skills/views/task-list-view";
 import { taskToolSuffix } from "../skills/task-tool-suffix";
 import type { InboxAnswer, InboxAskKind, InboxHold, InboxItem, OwnHoldSource } from "./types";
 
