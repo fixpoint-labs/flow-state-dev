@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import { defineView } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { runView, type RecordedRead } from "@flow-state-dev/engine/internal";
+import { taskToolViews } from "@flow-state-dev/orchestration/internal";
 import { bootBoardHost, messageOf, ORG } from "./conversation-board-harness";
 
 const LIST = "listTasks_tasks";
@@ -45,6 +46,22 @@ describe("the board's list, run as a session view", () => {
       // resolver), the roster, and the session's own state.
       expect(named(answer.reads)).toEqual(["session:state", "user:plan", "user:tasks", "user:workforceWorkers"]);
       expect(answer.topics).toEqual([{ scope: "session", id: conv }, { scope: "user" }]);
+    } finally {
+      await host.dispose();
+    }
+  });
+});
+
+describe("the board's task-list view", () => {
+  it("refuses a session with no board to list by the list's own reason, rather than answering an empty board", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "desk");
+      const runtime = await host.state.getRuntime();
+      const coordinator = runtime.registry.get("coordinator")!;
+      const flow = { ...coordinator, views: taskToolViews("tasks", async () => undefined) } as FlowInstance;
+      const viewing = runView({ flow, viewName: LIST, input: {}, userId: "alice", orgId: ORG, sessionId: conv, stores: runtime.stores });
+      await expect(viewing).rejects.toMatchObject({ code: "no_delegation_board", retryable: false });
     } finally {
       await host.dispose();
     }

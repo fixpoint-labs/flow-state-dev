@@ -77,7 +77,7 @@ describe("a teammate's finished task reads its answer", () => {
         stream: () => ({ close() {} }),
         get: async (id: string) => ({ id, flowKind: "agent" }),
       },
-      flow: () => ({ read: async () => ({ ok: true, tasks: [listed] }) }),
+      view: async () => ({ value: [listed], topics: [{ scope: "session", id: "wks_cos" }], keys: [String(listed.id)] }),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_cos", (next) => (tasks = next));

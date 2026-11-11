@@ -232,7 +232,7 @@ function ProjectBody({
     case "board":
       if (readFailure !== null) return readFailure;
       if (entries === undefined) return reading;
-      return <OwnBoards entries={entries} roster={roster} workers={workers} readAt={snapshot.readAt} />;
+      return <OwnBoards entries={entries} roster={roster} workers={workers} />;
     case "workstreams": {
       if (readFailure !== null) return readFailure;
       if (entries === undefined || read === undefined || !("value" in read) || read.value === null) return reading;
@@ -563,12 +563,10 @@ function OwnBoards({
   entries,
   roster,
   workers,
-  readAt,
 }: {
   entries: readonly WorkstreamEntry[];
   roster: ReturnType<typeof useRoster>;
   workers: readonly Worker[];
-  readAt: number;
 }) {
   const { client } = useLab();
   const own = entries.filter((entry) => entry.owner === client.userId && entry.sessionId !== null);
@@ -589,7 +587,7 @@ function OwnBoards({
             {worker === undefined ? (
               <p className="text-xs text-muted-foreground">Its lead "{entry.lead}" isn't on your roster.</p>
             ) : (
-              <TasksPanel worker={worker} sessionId={entry.sessionId} readAt={readAt} />
+              <TasksPanel worker={worker} sessionId={entry.sessionId} />
             )}
           </section>
         );

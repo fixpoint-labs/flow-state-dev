@@ -16,7 +16,7 @@ import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import { runAction } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
-import { runRead } from "@flow-state-dev/engine/internal";
+import { runView } from "@flow-state-dev/engine/internal";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,6 +24,9 @@ import { join } from "node:path";
 import { worktreeLockPath } from "@flow-state-dev/workspace";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+
+/** A turn's `changes` view, run as the view route runs it: its answer's output. */
+const viewChanges = async (options: Omit<Parameters<typeof runView>[0], "viewName">) => (await runView({ ...options, viewName: "changes" })).output;
 
 import {
   HARNESS_SESSION_ATTACH_MISSING,
@@ -727,7 +730,7 @@ describe("what a turn changed", () => {
       expect(turns).toHaveLength(2);
       expect(turns[1]!.base).toBe(turns[0]!.head);
 
-      const read = (input: unknown) => runRead({ flow, readName: "changes", input, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-changes", stores });
+      const read = (input: unknown) => viewChanges({ flow, input, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-changes", stores });
       expect(await read({ turn: turns[0]!.id })).toMatchObject({
         diff: { files: [{ path: "first.txt", added: 1, removed: 0 }], verified: true },
         patch: null,
@@ -760,7 +763,7 @@ describe("what a turn changed", () => {
       const [, second] = Object.entries(((await stores.session.get("s-amend"))!.state as { turns: Record<string, { at: number }> }).turns)
         .sort(([, a], [, b]) => a.at - b.at)
         .map(([id]) => id);
-      const read = await runRead({ flow, readName: "changes", input: { turn: second }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-amend", stores });
+      const read = await viewChanges({ flow, input: { turn: second }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-amend", stores });
       expect(read).toMatchObject({ diff: { files: [{ path: "amend.txt" }], fileCount: 1, verified: true } });
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -806,7 +809,7 @@ describe("what a turn changed", () => {
     const [id, record] = Object.entries(((await stores.session.get("s-nogit"))!.state as { turns: Record<string, { base: string | null }> }).turns)[0]!;
     expect(record.base).toBeNull();
     const flow = harnessSessionFlow({ kind: "stub-session", workspace: noWorkspace(), agent: stubAgent });
-    expect(await runRead({ flow, readName: "changes", input: { turn: id }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-nogit", stores })).toMatchObject({
+    expect(await viewChanges({ flow, input: { turn: id }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-nogit", stores })).toMatchObject({
       diff: { files: [], verified: false },
     });
   });
@@ -828,7 +831,7 @@ describe("what a turn changed", () => {
         { id: "s-legacy", flowKind: "stub-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model", turns: { req_old: legacyTurn } }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
         "any" as never,
       );
-      expect(await runRead({ flow, readName: "changes", input: { turn: "req_old" }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-legacy", stores })).toMatchObject({
+      expect(await viewChanges({ flow, input: { turn: "req_old" }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-legacy", stores })).toMatchObject({
         diff: { files: [], verified: false },
       });
     } finally {

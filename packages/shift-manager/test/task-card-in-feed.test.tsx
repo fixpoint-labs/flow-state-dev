@@ -8,7 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { SessionScope, TaskBoardMeta } from "../src/components/TaskBoardMeta";
 import type { SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
-import { TASKS_POLL_MS } from "../src/components/TasksPanel";
+
+/** The view's own timer where push can miss a change: `useView`'s default. */
+const VIEW_POLL_MS = 3_000;
 
 type StoredTask = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
 let rows: StoredTask[] = [];
@@ -22,8 +24,18 @@ const subscribe = (topics: readonly WireTopic[], options: SubscribeOptions) => {
   subscriptions.push(entry);
   return { close: () => void (entry.closed = true) };
 };
-const lab: { client: { userId: string; subscribe: typeof subscribe }; snapshot: Record<string, unknown>; refresh: () => Promise<void> } = {
-  client: { userId: "alice", subscribe },
+/** The Lab's client's `view`, faked: the conversation board's rows as its task-list view answers them. */
+const view = async (ref: { flow: string; view: string }, _input: unknown, options?: { sessionId?: string }) => {
+  calls.push(`${ref.view} ${ref.flow} ${options?.sessionId}`);
+  if (failing) throw new Error("network");
+  const listed = rows.map((row) => ({ ...row }));
+  const answer = { value: listed, topics: [{ scope: "session", id: options!.sessionId! }] as WireTopic[], keys: listed.map((row) => row.id) };
+  // A case holding reads open answers each when it releases it.
+  if (holdReads) return new Promise((resolve) => held.push(() => resolve(answer)));
+  return answer;
+};
+const lab: { client: { userId: string; subscribe: typeof subscribe; view: typeof view }; snapshot: Record<string, unknown>; refresh: () => Promise<void> } = {
+  client: { userId: "alice", subscribe, view },
   snapshot: { readAt: 1 },
   refresh: async () => void refreshes++,
 };
@@ -41,17 +53,6 @@ const navigated: unknown[] = [];
 vi.mock("../src/lib/routes", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/lib/routes")>()),
   navigate: (route: unknown) => void navigated.push(route),
-}));
-vi.mock("../src/lib/conversation-tasks", async (importOriginal) => ({
-  conversationBoardTopics: (await importOriginal<typeof import("../src/lib/conversation-tasks")>()).conversationBoardTopics,
-  readConversationTasks: async (_c: unknown, flow: string, sessionId: string) => {
-    calls.push(`list ${flow} ${sessionId}`);
-    if (failing) throw new Error("network");
-    const answer = rows.map((row) => ({ ...row }));
-    // A case holding reads open answers each when it releases it.
-    if (holdReads) return new Promise((resolve) => held.push(() => resolve(answer)));
-    return answer;
-  },
 }));
 
 let holdReads = false;
@@ -144,45 +145,37 @@ describe("a delegated post's task in the feed", () => {
     expect(document.querySelector(".animate-spin")).toBeNull();
   });
 
-  it("subscribes the conversation's board and plan ledgers, narrowed, through the Lab's client", async () => {
+  it("names no topic: it listens, through the Lab's client, on the topics the view's answer named", async () => {
     rows = [{ id: "t1", goal: "g", title: "Post for eng.pm", status: "in_progress", assignee: "eng.pm", attempts: 1 }];
     render(scope([filed("r1", "t1", "Post for eng.pm", "eng.pm")], ["r1"]));
     await tick(0);
-    expect(open().topics).toEqual([
-      { scope: "session", id: "s1", resource: "tasks" },
-      { scope: "session", id: "s1", resource: "plan" },
-    ]);
+    expect(open().topics).toEqual([{ scope: "session", id: "s1" }]);
   });
 
-  it("follows the task as it moves on its board's notices, with no reload, and keeps no timer once it has ended", async () => {
+  it("follows the task as it moves on its board's notices, with no reload", async () => {
     rows = [{ id: "t1", goal: "g", title: "Post for eng.pm", status: "in_progress", assignee: "eng.pm", attempts: 1 }];
     render(scope([filed("r1", "t1", "Post for eng.pm", "eng.pm")], ["r1"]));
     await tick(0);
     expect(cards()[0]!.status).toBe("in_progress");
-    // Where push can miss a change, a timer while the task can still move.
-    expect(open().options.pollIntervalMs).toBe(TASKS_POLL_MS);
+    // Where push can miss a change, the view's own timer.
+    expect(open().options.pollIntervalMs).toBe(VIEW_POLL_MS);
     rows = [{ ...rows[0]!, status: "completed" }];
     await hear(boardNotice);
     expect(cards()[0]).toMatchObject({ status: "completed", text: expect.stringContaining("completed") });
     // The task moved, and the card reloads nothing: the snapshot hears the same
     // move on its own subscription, one way to keep it fresh (FIX-2409).
     expect(refreshes).toBe(0);
-    expect(open().options.pollIntervalMs).toBeUndefined();
-    const read = calls.length;
-    await tick(TASKS_POLL_MS * 20);
-    expect(calls).toHaveLength(read);
   });
 
-  it("reads the board again when the Lab is read again, so a task that took a message shows running", async () => {
+  it("shows an ended task that took a message running again, on the view's own timer where push missed it", async () => {
     rows = [{ id: "t1", goal: "g", title: "Post for eng.pm", status: "completed", assignee: "eng.pm", attempts: 1 }];
-    const items = [filed("r1", "t1", "Post for eng.pm", "eng.pm")];
-    const { rerender } = render(scope(items, ["r1"]));
+    render(scope([filed("r1", "t1", "Post for eng.pm", "eng.pm")], ["r1"]));
     await tick(0);
     expect(cards()[0]!.status).toBe("completed");
     rows = [{ ...rows[0]!, status: "in_progress" }];
-    lab.snapshot = { readAt: 2 };
-    rerender(scope(items, ["r1"]));
-    await tick(0);
+    // The subscription's timer, which the view asked for, ticks: no notice came.
+    expect(open().options.pollIntervalMs).toBe(VIEW_POLL_MS);
+    await hear(null);
     expect(cards()[0]!.status).toBe("in_progress");
   });
 
@@ -193,7 +186,7 @@ describe("a delegated post's task in the feed", () => {
     failing = true;
     await hear(null);
     expect(cards()[0]!.status).toBe("in_progress");
-    expect(open().options.pollIntervalMs).toBe(TASKS_POLL_MS);
+    expect(open().options.pollIntervalMs).toBe(VIEW_POLL_MS);
     failing = false;
     rows = [{ ...rows[0]!, status: "errored" }];
     await hear(null);
@@ -207,7 +200,7 @@ describe("a delegated post's task in the feed", () => {
     holdReads = true;
     rows = [{ ...rows[0]!, status: "completed" }];
     await hear(boardNotice);
-    expect(held).toHaveLength(1);
+    expect(held.length).toBeGreaterThan(0);
     view.unmount();
     held.forEach((release) => release());
     await tick(0);
@@ -222,7 +215,8 @@ describe("a delegated post's task in the feed", () => {
     ];
     render(scope(items, ["r1", "r2"]));
     await tick(0);
-    expect(calls).toEqual(["list coordinator s1"]);
+    // One shared read for both cards: once, and once more on the answer's topics.
+    expect(calls).toEqual(["listTasks_tasks coordinator s1", "listTasks_tasks coordinator s1"]);
   });
 });
 
@@ -270,7 +264,7 @@ describe("a cancelled task's card", () => {
     await tick(0);
     expect(screen.queryByTestId("task-cancelled-note")).toBeNull();
     rows = [{ ...cancelledRow, status: "completed" }];
-    lab.snapshot = { ...lab.snapshot, readAt: 2 };
+    await hear(boardNotice);
     rerender(scope([filed("r1", "t1", "Post for eng.pm", "eng.pm")], ["r1"]));
     await tick(0);
     expect(cards()[0]!.status).toBe("completed");

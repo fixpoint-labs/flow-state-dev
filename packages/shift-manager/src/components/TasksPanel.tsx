@@ -1,109 +1,45 @@
-// FIX-1794 S11; FIX-2286; FIX-2429.
+// FIX-1794 S11; FIX-2286; FIX-2429; FIX-2623.
 /**
  * TASKS, at Shift Coordinator: the tasks the user's
  * conversation filed for its delegates, as the conversation's own
- * `listTasks` read answers them (`lib/conversation-tasks.ts`), which stores
- * nothing, so a poll costs no request. Each conversation
- * keeps a board of its own, so this reads that one board and nothing else.
+ * task-list view answers them (`lib/conversation-tasks.ts`), which stores
+ * nothing, so a look costs no request. Each conversation
+ * keeps a board of its own, so this watches that one board and nothing else.
  *
- * It reads when it opens, again each time the Lab is read again (`readAt`),
- * which is after each turn the user sends, and on every board notice:
- * a task filed, moved or settled in any session, on any process,
- * on the conversation's board or its plan ledger. Wherever push can miss a
- * change (no push, the socket down, a bus that doesn't cross, as the SQLite
- * store's) it reads every {@link TASKS_POLL_MS} instead, but only while a task
- * is open or for a while after one moved, as it always has: its ending wakes a
- * coordinator turn of its own, and the turn's follow-up shows too. Nothing here
- * knows a tool's name.
+ * The view keeps it current: a task filed, moved or settled in any session,
+ * on any process, reaches it, and it names no topic. Where push can miss a
+ * change, the view's own timer reads it again (`useConversationTasks`).
+ * Nothing here knows a tool's name.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSubscription } from "@flow-state-dev/react";
+import { useEffect, useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { columnFor, isDone } from "../lib/columns";
 import { workerLabel } from "../lib/derive";
 import {
-  conversationBoardTopics,
   pullRequestsWaitedOn,
-  readConversationTasks,
   readPullRequestLinks,
+  useConversationTasks,
   type ConversationTask,
 } from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
-import { conversationBoardRef, describeFailure, type Worker } from "../lib/reads";
+import { conversationBoardRef, type Worker } from "../lib/reads";
 import { RouteLink } from "./RouteLink";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
-
-type Read = { tasks: ConversationTask[] } | { failure: string } | undefined;
-
-/** How often the panel reads on a timer, where push can miss a change, while a task is open or just moved. */
-export const TASKS_POLL_MS = 3_000;
-/** How long the panel keeps its timer after a task moved: the turn its ending woke runs in that time. */
-const AFTER_A_MOVE_MS = 30_000;
-
-/** Whether a task can still move by itself. */
-export const isOpen = (task: ConversationTask) => task.status === "pending" || task.status === "in_progress";
-/** What the panel compares between reads: each task and where it stands. */
-const standing = (tasks: readonly ConversationTask[]) => tasks.map((task) => `${task.id}:${task.status}`).join(",");
 
 const isErrored = (task: ConversationTask) => task.status === "errored";
 
 export function TasksPanel({
   worker,
   sessionId,
-  readAt,
   activeOnly = false,
 }: {
   worker: Worker;
   sessionId: string | null;
-  readAt: number;
   /** List only the active tasks, with the done and the errored each folded into a closed group. */
   activeOnly?: boolean;
 }) {
-  const { client } = useLab();
-  const [read, setRead] = useState<Read>(undefined);
-  // Whether the last read left a task open, or one just moved: the timer's gate.
-  const [timed, setTimed] = useState(false);
-  // The last read's standing, and when a task last moved.
-  const last = useRef<{ standing?: string; movedAt: number }>({ movedAt: 0 });
-  // Only the latest read started may land: an older one finishing late would draw a board that moved on.
-  const latest = useRef(0);
-
-  // Another conversation's tasks never show under this one. A read again of the
-  // same conversation keeps its list up until the new answer lands.
-  useEffect(() => {
-    setRead(undefined);
-    setTimed(false);
-    last.current = { movedAt: 0 };
-  }, [worker.kind, sessionId]);
-
-  // `signal` aborts once the read's subscription or effect is gone: a read that lands after the
-  // panel unmounted, or moved to another conversation, sets nothing.
-  const readTasks = useCallback(async (_notice?: unknown, signal?: AbortSignal) => {
-    if (sessionId === null || worker.kind === null) return;
-    const mine = ++latest.current;
-    try {
-      const tasks = await readConversationTasks(client, worker.kind, sessionId);
-      if (mine !== latest.current || signal?.aborted === true) return;
-      setRead({ tasks });
-      const now = standing(tasks);
-      if (last.current.standing !== undefined && last.current.standing !== now) last.current.movedAt = Date.now();
-      last.current.standing = now;
-      setTimed(tasks.some(isOpen) || Date.now() - last.current.movedAt < AFTER_A_MOVE_MS);
-    } catch (error: unknown) {
-      if (mine === latest.current && signal?.aborted !== true) setRead({ failure: describeFailure(error).message });
-    }
-  }, [client, worker.kind, sessionId]);
-
-  // On open, and after each turn the user sends.
-  useEffect(() => {
-    const ended = new AbortController();
-    void readTasks(null, ended.signal);
-    return () => ended.abort();
-  }, [readTasks, readAt]);
-
-  const topics = useMemo(() => (sessionId === null || worker.kind === null ? [] : conversationBoardTopics(sessionId)), [sessionId, worker.kind]);
-  useSubscription(topics, readTasks, { client, ...(timed ? { pollIntervalMs: TASKS_POLL_MS } : {}) });
+  const { tasks, stale } = useConversationTasks(worker.kind, sessionId);
 
   if (sessionId === null || worker.kind === null) {
     return (
@@ -112,21 +48,21 @@ export function TasksPanel({
       </p>
     );
   }
-  if (read === undefined) {
+  if (tasks === undefined && !stale) {
     return (
       <p className="px-1 text-xs text-muted-foreground" data-testid="shift-coordinator-tasks-reading">
         Reading the tasks…
       </p>
     );
   }
-  if ("failure" in read) {
+  if (tasks === undefined) {
     return (
       <p className="px-1 text-xs text-destructive" data-testid="shift-coordinator-tasks-failure">
-        The tasks didn't load: {read.failure}
+        The tasks didn't load. They are read again on their own.
       </p>
     );
   }
-  if (read.tasks.length === 0) {
+  if (tasks.length === 0) {
     return (
       <p className="px-1 text-xs text-muted-foreground" data-testid="shift-coordinator-tasks-empty">
         This conversation hasn't filed a task.
@@ -134,10 +70,10 @@ export function TasksPanel({
     );
   }
   const boardRef = conversationBoardRef(sessionId);
-  if (!activeOnly) return <TaskList tasks={read.tasks} boardRef={boardRef} />;
-  const done = read.tasks.filter((task) => isDone(task.status));
-  const errored = read.tasks.filter(isErrored);
-  const active = read.tasks.filter((task) => !isDone(task.status) && !isErrored(task));
+  if (!activeOnly) return <TaskList tasks={tasks} boardRef={boardRef} />;
+  const done = tasks.filter((task) => isDone(task.status));
+  const errored = tasks.filter(isErrored);
+  const active = tasks.filter((task) => !isDone(task.status) && !isErrored(task));
   return (
     <div className="space-y-1">
       {active.length === 0 ? (

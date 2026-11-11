@@ -34,7 +34,7 @@ import { cancelAndResume, openOwnHolds } from "@flow-state-dev/orchestration/int
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   harnessManager,
-  harnessRunChangesRead,
+  harnessRunChangesView,
   HarnessRunChangesRefused,
   harnessTaskInputSchema,
   runOwnerClaimOrder,
@@ -199,7 +199,7 @@ function host(options: {
     },
   });
   // What the run changed, read from its session as a review screen reads it (FIX-2384).
-  const changes = harnessRunChangesRead({
+  const changes = harnessRunChangesView({
     name: "review-host",
     uses: [board.capability],
     board: async (ctx: BlockContext) => ({
@@ -215,7 +215,7 @@ function host(options: {
   const flow = defineFlow({
     kind: FLOW,
     actions: { seed: { block: seed }, drain: { block: board.drain }, cancel: { block: cancel } },
-    reads: { changes },
+    views: { changes },
     internal: { actions: { ...heard } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: FLOW } as never);
@@ -281,10 +281,10 @@ function host(options: {
     const hold = review(task)!;
     return (await (await runtime()).stores.suspensions.get(hold.source.requestId, hold.source.suspensionId))?.data;
   };
-  /** The `changes` read, on the run's own session, through the engine's read route. */
+  /** The `changes` view, on the run's own session, through the engine's view route. */
   const readChanges = async (input: Record<string, unknown>, sessionId?: string): Promise<{ status: number; body: any }> => {
     const router = await state.getRouter();
-    const path = [FLOW, sessionId ?? (await row()).run!.sessionId, "reads", "changes"];
+    const path = [FLOW, sessionId ?? (await row()).run!.sessionId, "views", "changes"];
     const res = await router.POST(
       new Request(`http://localhost/api/flows/${path.join("/")}`, {
         method: "POST",

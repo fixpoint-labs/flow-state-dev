@@ -1,9 +1,9 @@
-// FIX-2384; BP-042; BP-031.
+// FIX-2384; FIX-2623; BP-042; BP-031.
 /**
  * What a board run changed, read from the run's session: the
  * files its commits changed and their lines, or one file's patch.
  *
- * A read, not an action: it is answered in the response and stored nowhere,
+ * A session view, not an action: it is answered in the response and stored nowhere,
  * so a patch a person opens never lands in a request record or a session log.
  * It runs no harness and takes no checkout lease: git reads the
  * run's committed history, which a running step only adds to.
@@ -14,8 +14,8 @@
  * the base come from the task's run record, by the rule `readRunCommits`
  * documents, so the files a review's data lists are the files this reads.
  */
-import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
-import type { BlockContext, ReadConfig } from "@flow-state-dev/core/types";
+import { defineCapability, defineView, handler, type DefinedCapability } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { tasksInSession } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { readRunChanges, runChangesSchema, type RunChanges } from "./commits";
@@ -23,7 +23,7 @@ import { readRunRecord, RUNS, runRecordCollection, runTopic } from "./run-record
 import { sessionTask, type SessionDoorBoard } from "./session-door";
 import { runBoardSegment } from "./workspace";
 
-/** What a changes read takes: optionally which of the session's tasks, and optionally one file. */
+/** What the changes view takes: optionally which of the session's tasks, and optionally one file. */
 export const harnessRunChangesInputSchema = z.object({
   /** One of this session's own tasks. Default: the one the session's door would talk to. */
   taskId: z.string().min(1).optional(),
@@ -31,20 +31,20 @@ export const harnessRunChangesInputSchema = z.object({
   path: z.string().min(1).optional(),
 });
 
-/** What a changes read answers: the task it read, and the diff or the one file's patch. */
+/** What the changes view answers: the task it read, and the diff or the one file's patch. */
 export const harnessRunChangesOutputSchema = runChangesSchema.extend({ taskId: z.string() });
 
-/** How a host builds the read. */
-export interface HarnessRunChangesReadOptions {
-  /** Names the read's block. Default `"harness-manager"`. */
+/** How a host builds the view. */
+export interface HarnessRunChangesViewOptions {
+  /** Names the view's block. Default `"harness-manager"`. */
   readonly name?: string;
   /** The board the session's run is on, as the session door is given it: resolved from server state, never from the input. */
   readonly board: (ctx: BlockContext) => Promise<SessionDoorBoard | undefined>;
-  /** Capabilities the read's block holds, for the board ledgers `board` resolves. */
+  /** Capabilities the view's block holds, for the board ledgers `board` resolves. */
   readonly uses?: readonly DefinedCapability[];
 }
 
-/** Why a changes read found nothing to read. The read fails with this. */
+/** Why the changes view found nothing to read. The view fails with this. */
 export class HarnessRunChangesRefused extends Error {
   constructor(readonly reason: "not-started" | "not-this-session") {
     super(
@@ -57,8 +57,8 @@ export class HarnessRunChangesRefused extends Error {
 }
 
 /**
- * The `changes` read a coding flow declares beside its door:
- * `reads: { changes: harnessRunChangesRead({ board }) }`.
+ * The `changes` session view a coding flow declares beside its door:
+ * `views: { changes: harnessRunChangesView({ board }) }`.
  *
  * Input `{ taskId?, path? }`. Without `path` it answers `{ diff }`: each file
  * the run's commits changed and its lines, the totals, and `verified: false`
@@ -66,7 +66,7 @@ export class HarnessRunChangesRefused extends Error {
  * unified diff, cut at `MAX_PATCH_CHARS`. A run of kept files alone has no
  * branch, and answers a verified empty diff.
  */
-export function harnessRunChangesRead(options: HarnessRunChangesReadOptions): ReadConfig {
+export function harnessRunChangesView(options: HarnessRunChangesViewOptions) {
   const name = options.name ?? "harness-manager";
   const capability = defineCapability({
     name: `harness-manager-changes:${name}`,
@@ -107,5 +107,5 @@ export function harnessRunChangesRead(options: HarnessRunChangesReadOptions): Re
       return { taskId: row.id, ...changes };
     },
   });
-  return { block, description: "What this session's coding run changed: its files and lines, or one file's patch." };
+  return defineView({ scope: "session", block, description: "What this session's coding run changed: its files and lines, or one file's patch." });
 }

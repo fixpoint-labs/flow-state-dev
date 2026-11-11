@@ -28,8 +28,12 @@ function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Rec
     sessions: {
       get: async (id: string) => ({ id, flowKind: "agent", flowId: "agent", state: {} }),
     },
+    view: async (ref: { flow: string; view: string }, _input: unknown, options: { sessionId: string }) => ({
+      value: rows,
+      topics: [{ scope: "session", id: options.sessionId }],
+      keys: rows.map((row) => String(row.id)),
+    }),
     flow: (flow: string) => ({
-      read: async () => ({ ok: true, tasks: rows }),
       send: async (action: string, input: Record<string, unknown>, options: { sessionId: string }) => {
         const entry = { flow, action, input, sessionId: options.sessionId };
         sent.push(entry);
