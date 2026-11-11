@@ -75,7 +75,7 @@ export function defineRosterView(installation: WorkerInstallation): RosterView {
           return all;
         };
         const byPath = (a: StoredEntry, b: StoredEntry) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-        const [ownEntriesStored, standardStored] = (await Promise.all([resources[WORKERS_RESOURCE].list(), everyStandard()])).map((rows) => [...rows].sort(byPath));
+        const [ownEntriesStored, standardStored] = (await Promise.all([resources[WORKERS_RESOURCE].list(), everyStandard()])).map((entries) => [...entries].sort(byPath));
         const entryOf = (stored: StoredEntry, data: Record<string, unknown>, isStandard: boolean): z.infer<typeof rosterEntrySchema> => ({
           id: stored.path.slice(stored.path.lastIndexOf("/") + 1),
           flow: String(data.flow),
