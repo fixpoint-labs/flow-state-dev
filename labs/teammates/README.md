@@ -194,7 +194,7 @@ requests"*) files a task at its time.
 The lab polls GitHub; it needs no public address. It reads GitHub with the token of whoever runs
 the lab: `GITHUB_TOKEN`, or what `gh auth token` answers at start. The lab has one user
 (`TEAMMATES_USER`): it takes every request as that user, whatever user the request names, so
-the token serves nobody else. With no token, a GitHub routine is refused, naming
+the token serves nobody else. The lab keeps its data in its own organization (`teammates-lab`), so conversations saved before the lab named one don't open. With no token, a GitHub routine is refused, naming
 `GITHUB_TOKEN`, and clock routines still run. Clock routines and polls tick from two SQLite files
 beside the store.
 

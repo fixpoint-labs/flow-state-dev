@@ -131,7 +131,7 @@ review on that pull request reaches the same session as a message, once. *"What 
 following?"* lists your routines, and you can ask it to pause or delete one. A clock routine
 (*"Every Monday at 9, check the open pull requests"*) files a task at its time. The lab polls
 GitHub, so it needs no public address, with the token of whoever runs it; the lab takes every request
-as its own user, whatever user the request names, so the token serves nobody else. With no token,
+as its own user, whatever user the request names, so the token serves nobody else. The lab keeps its data in its own organization (`claude-code-style-lab`), so conversations saved before the lab named one don't open. With no token,
 a GitHub routine is refused, naming `GITHUB_TOKEN`. Clock routines need no token. Clock routines and polls tick from `clock.db` and `poll.db` in the data
 folder.
 
