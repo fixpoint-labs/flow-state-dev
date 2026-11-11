@@ -90,14 +90,15 @@ answer once.
   added to route-auth for user-kept files; never the body, query or headers (BP-031). Otherwise a
   resource declared by an authenticated flow could be written through the default write flow
   under the host's development resolver with a claimed user id. When two declarations of one
-  shared key disagree on their client config or their resolver, a direct read or send of it is
-  refused, naming both flows; registration still succeeds, so no host that runs today stops
+  shared key disagree on their client config, their resolver, or its `requireUser` and
+  `defaultUserId`, a direct read or send of it is refused, naming both flows
+  ([refined in implementation](#decided-during-implementation)); registration still succeeds, so no host that runs today stops
   starting (kitchen-sink's `weekly-digest` has its own resolver).
 - **What a direct read covers.** A resource reaches the registry the way every resource does,
   through a flow that declares it (a kit, once FIX-2626 lands); the default write flow declares
   none. Only shared cells: a resource with `flowIsolation: true` lives per flow instance, so a
   scope and key don't name it, and it is refused with that reason and read through its session as
-  today.
+  today. Only a single resource whose client config projects state: one with none is not served.
 - **One client handle:** `fsd.resource(ref)` reads and writes one resource or collection at any
   scope (a session option at session scope), as `useResource` does in React (D2).
 - **The identity read is addressed by flow,** `fsd.flow(kind).identity()`: the user and org the
@@ -151,6 +152,36 @@ answer once.
   write flow* land in the PR that ships them. The retire for `ownSession`, `labSession` and
   `readerSessionId` lands with D1's PR, scoped to apps and labs: the engine's and orchestration's
   `ownSession` options mean a run's own session.
+
+## Decided during implementation
+
+Settled on the implementation PRs, [#5111](https://github.com/fixpoint-labs/flow-state-dev/pull/5111)
+and [#5122](https://github.com/fixpoint-labs/flow-state-dev/pull/5122), in review. Each narrows a
+decision above; none reverses one.
+
+- **One caller per scope address per request.** Every declaring flow must resolve the request to
+  the same user and org, or it is refused with `resolver_disagreement`; `requireUser` and
+  `defaultUserId` count in `declarationsAgree`. Otherwise a read and a write of one resource could
+  land in two users' cells.
+- **A signed-out caller gets the unused key's 404, never a 401.** Which resolvers sign a caller in
+  depends on which flows declare the key, so a 401 that only a real key earns would tell a
+  stranger the key exists.
+- **A single resource with `runBy` must project state** (`expose`, `exclude` or `data`), a
+  definition error otherwise: a client writes back what it read. One with no projection and no
+  `runBy` is not served by the direct read, since the snapshot gives a client none of its state either.
+- **The default write records the instance that admitted it** (`admittedBy`, in the write
+  session's id), so its session and requests answer to that instance, not one recomputed later
+  when two instances are pinned to different users. A write session made before falls back to
+  the first declaring instance whose pin admits its owner (BP-030).
+- **The built-in write flow reads its stores and the host resolver from its execution context,
+  not at install.** It is installed once per registry, so two routers sharing one registry over
+  two stores would otherwise both write into the first one's.
+- **A user-scope collection entry's change notice carries no entry path.** The user topic spans
+  the user's orgs while a user cell is per org, so a key written in one org would reach their
+  pages in another. The bare notice still wakes every view of the scope.
+- **`maxInstances` counts every entry in the cell** (`countInstances`, as a run's create does),
+  so the default write flow and a run enforce one cap. **An `ownerPrivate` collection can't take
+  `runBy`:** `runBy` needs entries a client can read, and `ownerPrivate` refuses a browser read.
 
 ## Considered and dropped
 
@@ -214,5 +245,9 @@ mechanism list, `main` since the watermark and FIX-2623's draft.
   support": the lab's old pins and dismissals are not carried from the user-state record into
   the new resources. The one-time read (BP-030) is dropped from *Adds* and the decision above,
   and FIX-2628 no longer has a fallback to remove. A lab has no users whose marks need keeping.
+- **Amended 2026-11-11, from the implementation PRs** (#5111, #5122, review-clean) — seven
+  calls the build settled are recorded [above](#decided-during-implementation): one caller per
+  address per request, the signed-out 404, projection with `runBy`, `admittedBy`, the write
+  flow's context, the bare user-entry notice, and the cap and `ownerPrivate` rules.
 
 **Open: one,** [the org write rule](#open-org-canwrite).
