@@ -375,8 +375,8 @@ describe("an entry's content on delete", () => {
 describe("a collection's cap on entries written through the default write flow", () => {
   // Gitar review 4543837880.
   it("counts every entry in the org's cell, whoever owns it", async () => {
-    const seats = defineResourceCollection({
-      pattern: "seats/[owner]/[id]",
+    const badges = defineResourceCollection({
+      pattern: "badges/[owner]/[id]",
       scope: "org",
       ownerWrites: { param: "owner" },
       stateSchema: z.object({ label: z.string().default("") }),
@@ -387,13 +387,13 @@ describe("a collection's cap on entries written through the default write flow",
     });
     const flow = defineFlow({
       kind: "threads",
-      resources: { seats },
+      resources: { badges },
       actions: { noop: { block: noop } },
       authentication: { resolvePrincipal: signIn }
     } as never)();
     const { router, stores } = buildRouter([flow]);
     const create = (caller: Caller, id: string) =>
-      sendEntry(router, stores, "org", "seats/[owner]/[id]", "set", caller, {
+      sendEntry(router, stores, "org", "badges/[owner]/[id]", "set", caller, {
         entry: `${ownerSegment(caller.user!)}/${id}`,
         state: { label: id },
         version: 0
