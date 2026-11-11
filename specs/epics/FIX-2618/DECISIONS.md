@@ -36,7 +36,7 @@ flowchart TD
 | | |
 |---|---|
 | **Instead of** | Four epics in dependency order (views, resource addressing, notice ids, kits), as the design review first proposed · or views and resources alone, with kits never |
-| **Because** | Each change leans on the others. `defineKit` itself needs neither views nor resources, but the kits it is built against do: the workforce kit ships the roster view and the workers collection on `runBy` (FIX-2627), so in four epics the kit epic would meet names and seams it never chose. The objective needs the adapter gone, and only the kit's client half does that at the root. The owner has put kits in scope as FSD's own composition unit |
+| **Because** | Each change leans on the others. A kit installs and composes; the views and resources ride on the flows it installs and the package it ships ([FIX-2626 D1](../../issues/FIX-2626/DECISIONS.md#d1)). `defineKit` needs neither, but the kits it is built against do: the workforce kit ships the roster view and the workers collection on `runBy` (FIX-2627), so in four epics the kit epic would meet names and seams it never chose. The objective needs the adapter gone, and only the kit's client half does that at the root. The owner has put kits in scope as FSD's own composition unit |
 | **Locks in** | A large epic (twelve children) and one closure over four mechanisms. A collapse trigger, the owner's to pull now that [O1](#o1) is decided: if FIX-2622 shows the wiring pain is workforce's own API, FIX-2626 and FIX-2627 leave for a follow-up epic, and FIX-2628 narrows to moving claude-code-style onto views and direct reads with no kits, so leg a still has an owner |
 
 **What would change my mind:** the teammates proof (FIX-2622) showing that a better
@@ -110,15 +110,17 @@ It comes down to the delete count: each sibling verb added now is one more to re
 ## O1 · Decided · Kits: an installable unit above a flow, with slots and an optional owned directory
 
 Decided by the owner, in session, 2026-11-10: kits, yes, in the shape below. It confirms round
-1's library/copied split, now concretely the scaffolded directory. **Open with the owner, not
-decided here:** FIX-2626's D1, whether `defineKit` carries a client half at all
-([#5064](https://github.com/fixpoint-labs/flow-state-dev/pull/5064)). The client-half lines
-below, and the examples' kit-level `resources`, `views` and `client`, stand until it is answered.
+1's library/copied split, now concretely the scaffolded directory. **Amended 2026-11-11 by
+[FIX-2626](../../issues/FIX-2626/DECISIONS.md)** (#5064, approved by the owner as written).
+[D1](../../issues/FIX-2626/DECISIONS.md#d1): no kit client runtime, so no `client` field and no
+manifest; screens import a kit package's views, hooks and components from its browser entry and
+`/react`. Of claude-code-style's 1,642 adapter lines, 42 need a kit, through slots.
+[D2](../../issues/FIX-2626/DECISIONS.md#d2): a stray file in a kit's folder stops the app starting.
 
 | | |
 |---|---|
 | **Instead of** | No new unit: fix workforce's own installation API so the host's wiring goes, and keep each app's read model |
-| **Because** | Only a kit's client half removes the adapters at the root; a better install API removes the wiring, never the read model. A capability can't do the job: it installs into one block and can't add flows or views (`define-capability.ts`) |
+| **Because** | Composition: a kit lets one package reach another through a slot, which a better install API can't. Views and direct reads remove the read model; a kit removes the joins between packages (42 of claude-code-style's 1,642 adapter lines, [FIX-2626 D1](../../issues/FIX-2626/DECISIONS.md#d1)) and the host's wiring. A capability can't do the job: it installs into one block and can't add flows or views (`define-capability.ts`) |
 | **Locks in** | A new public unit and a slot contract, built last against two kits (FIX-2626, FIX-2627): **workforce**, the base, and **harnesses**, a workforce extension kit (harness-manager, with Claude Code, Codex and Cursor as its config), the owner, 2026-11-11. Workforce converts fully into a kit: its library half, its `workforce/` file convention and its slots (`workerFlows` among them). `createWorkerInstallation` and `hireWorkforce` become internals of its install; no app calls them. Harnesses contributes through workforce's slots: a coder worker flow, readiness context, usage readers and the `harness:` worker setting |
 
 **The shape** ([a kit](examples/kit.md), [an app installing kits](examples/app-install.md)):
@@ -129,11 +131,13 @@ below, and the examples' kit-level `resources`, `views` and `client`, stand unti
   the owning kit's setup. That replaces the circular `workerFlows: () => flows` callback. A kit
   never patches another kit's pieces and can't reach anything a kit doesn't publish. "Slot"
   already names block config fields (`ToolsSlot`, `UsesSlot`); FIX-2619 defines it with that in mind.
-- **The library half,** imported and versioned: resources, views, blocks, capabilities, the
-  client hooks. No flow is offered both imported and copied.
+- **The library half** is the kit's package, imported and versioned: its views, blocks,
+  capabilities, hooks and components, from its browser entry and `/react`. `defineKit` has no
+  `resources`, `views` or `client` field: resources and views live on the flows its install
+  returns. No flow is offered both imported and copied.
 - **The copied half is a directory the kit owns in the app, optional per kit.** Its loader reads
   it at install through shared walk primitives, under workforce's rule today: every authored file
-  is consumed or refused loudly, never skipped. The kit's `init` scaffolds starter files there,
+  is consumed or refused loudly, never skipped, and any refusal stops the app starting (FIX-2626 D2). The kit's `init` scaffolds starter files there,
   Shadcn-style; from then on the app owns them and the kit only reads them. A kit's folder
   claims only the files that kit configures: workforce's, the flows workforce runs. An app's own
   resources and flows go in its kit or in `flows:`, never in another kit's folder. Scaffolded files never
@@ -190,15 +194,15 @@ below, and the examples' kit-level `resources`, `views` and `client`, stand unti
   contract, narrow because the run handle already fixes most of it. **Readiness is one view in
   `harness-manager`:** FIX-2627 installs it through the harness kit, and FIX-2624's last PR
   imports it (writing it there first if FIX-2627 hasn't).
-- **Notes for the implementers, not gates:** FIX-2626's spec shows, on a real app, what
-  only a kit's client half removes, before the slot contract is built; the workforce dead-cast
+- **Notes for the implementers, not gates:** FIX-2626's spec showed, on a real app, what
+  only a kit removes (42 lines, its D1); the workforce dead-cast
   and callback cleanup B0 found is worth doing now, kits or not. Workforce's folder claims only
   flows workforce configures: claude-code-style's `workforce/flows/` holds the projects and
   user-marks flows too, which need a home in its kit or in `flows:` (FIX-2627, FIX-2628).
 
 **What would change my mind.** FIX-2622 tested this; outcome: [FIX-2622's entry](#fix-2622-result).
 
-![O1, decided: kits with a library half and an owned, scaffolded directory, chosen, beside fixing workforce's API. Decides it: only a kit's client half removes the adapters at the root. Price: slots are a new public contract. Locks in defineKit in core, install in the engine and workforce as the first kit. Flips if FIX-2622 shows the better API removes it all and the owner reopens O1](figures/o1-kits.svg)
+![O1, decided: kits with a library half and an owned, scaffolded directory, chosen, beside fixing workforce's API. Decides it: composition, one package reaching another through a slot. Price: slots are a new public contract. Locks in defineKit in core, install in the engine and workforce as the first kit. Flips if FIX-2622 shows the better API removes it all and the owner reopens O1](figures/o1-kits.svg)
 
 It comes down to the adapters: a better install API removes the wiring, never the read model.
 
@@ -214,9 +218,9 @@ model. This supersedes the declared `dependsOn` and drift check decided on 2026-
 |---|---|
 | **Instead of** | Keeping reads and adding a scope · declared `dependsOn` with a development- and test-time drift check, the 2026-11-10 answer |
 | **Because** | With a view, a client stops knowing topics and sessions, and "view" is the word people already reach for. FIX-2286 D1's rule is kept: one hook, storing nothing, refusing writes. Its condition ("nothing that does the same job is added beside it") is why this is a rename and not a second definer. Recording costs under 1% of a read (FIX-2621), the mind-changer the 2026-11-10 answer named, and a declared list drifts: the board's obvious one missed three of its four dependencies |
-| **Locks in** | A view has a scope (no session at user or org) and keyed rows ([example](examples/view.md)). `defineView` has no `dependsOn`; adding one later is additive. The recorder runs on every view in production. **The publish rule is host-wide:** once any registered flow declares a view, every user or org resource write publishes; an extra notice is allowed, a missed one is the failure ([FIX-1506](../../issues/FIX-1506/DECISIONS.md#decided-not-asked)). A model call in a view is refused at every scope. `reads` and scope `derived` go, with no alias (FIX-2447's rule), and "read" retires as the hook's name ([ER-9](#who-owns-what)) |
+| **Locks in** | A view has a scope (no session at user or org) and keyed rows ([example](examples/view.md)). `defineView` has no `dependsOn`; adding one later is additive. The recorder runs on every view in production. **Publishing is host-wide:** once any registered flow declares a view, every user or org resource write publishes a notice, whichever flow writes it (the default write flow and `runBy: { flow }` included), not only the writer's own flow as `derived` decides it today. An extra notice is allowed; a missed one is the failure ([FIX-1506](../../issues/FIX-1506/DECISIONS.md#decided-not-asked)). A model call in a view is refused at every scope. `reads` and scope `derived` go, with no alias (FIX-2447's rule), and "read" retires as the hook's name ([ER-9](#who-owns-what)) |
 
-**What would change my mind.** The extra notices measurably loading the bus before
+**What would change my mind.** The extra notices measurably loading the Postgres bus before
 [FIX-2625](https://linear.app/fixpoint-labs/issue/FIX-2625)'s ids narrow the re-reads, or the
 engine's recorder missing a path FIX-2621's probe reaches. Then `dependsOn` is declared, the same
 recorder runs only in tests and `fsdev dev`, and only listed resources publish.
@@ -323,7 +327,7 @@ the stage-2 specs.
 | ER-2 | A view never writes (its context refuses writes and dispatch, as a read's does today) and never calls a model. Every byte a client sees comes through a checked read or view; a notice carries ids, never rows | FIX-2623 builds · FIX-2624, FIX-2625 use | Each child's spec review; the closure |
 | ER-3 | A session-free read or view takes user and org from the verified principal, resolved through the declaring flow's effective resolver (FIX-2522's governing-flow path, `pickPrincipalResolver`), never a host fallback and never the body, query or headers (BP-031). The push mint's path user id is not that principal | FIX-2624 builds · FIX-2623 uses | FIX-2623's and FIX-2624's spec review |
 | ER-4 | No direct client-write path is added. A client writes a user or org resource by scope only through a flow: an action on its `runBy` session, the default write flow or the app's own; with no `runBy`, it can't. Schema, owner fence and `canWrite` run inside the flow ([O3](#o3)). `client.content.*` stays for session-scope collections. The content routes' user and org writes answer 501 today (`resource-routes.ts`); the skills collection's grants that reach them are the one leftover, exempt by name until [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) moves them | FIX-2624 builds · FIX-2627, FIX-2628 use | The stage-2 cross-spec review |
-| ER-5 | A kit holds only existing pieces (flows, views, resources, capabilities, blocks, workers, a client half, config, slots). It reaches another kit only through slots that kit publishes, never patches one, and a host can turn off what it contributes. Slots are few, typed, and declared only by the kit that owns the concept, each with its merge policy (a keyed map refuses duplicates, a list appends). A kit's owned directory is read through the shared walker: every file consumed or refused loudly. What a user configures is scaffolded there, never also exported. Folders: [O1](#o1) § Folders | FIX-2626 builds · FIX-2627, FIX-2628 use | FIX-2627's spec review; closure leg b |
+| ER-5 | A kit holds only existing pieces (flows carrying their views and resources, capabilities, blocks, workers, config, slots), with no client runtime: screens import its package. It reaches another kit only through slots that kit publishes, never patches one, and a host can turn off what it contributes. Slots are few, typed, and declared only by the kit that owns the concept, each with its merge policy (a keyed map refuses duplicates, a list appends). A kit's owned directory is read through the shared walker: every file consumed or refused loudly, and a refusal stops the app starting. What a user configures is scaffolded there, never also exported. Folders: [O1](#o1) § Folders | FIX-2626 builds · FIX-2627, FIX-2628 use | FIX-2627's spec review; closure leg b |
 | ER-6 | Data the server computes is typed by its view's output schema (`ViewOutput`). An app hand-writes only what its screen computes | FIX-2623 builds · FIX-2627, FIX-2628 use | FIX-2628's spec review; closure leg a |
 | ER-7 | One live read in the client: the coalescer and the path rule live in one place, and `useView` and every package watch sit on it | FIX-2551 builds · FIX-2623, FIX-2627 use | The stage-2 reuse review |
 | ER-8 | No lab adapter grows once the sibling amendments merge. A screen's new need is then a package read or view, never a new adapter verb or hand-written row type. Until FIX-2592, FIX-2616 and FIX-2369's amendments merge it is advisory, and FIX-2628 deletes what was added. It holds until that adapter is deleted ([D3](#d3)) | The coordinator (it asks for the amendments) · FIX-2628 uses | FIX-2592, FIX-2616 and FIX-2369's spec reviews, after the amendments |
@@ -360,9 +364,9 @@ Engineering calls, carried from the design review where they were decided withou
 - **FIX-2551 is a child, not absorbed.** It already says what it delivers; FIX-2623's `useView`
   builds on it.
 - **FIX-2036's deferred "Workforce browser contract for Shift Manager reads"** (overlapping
-  FIX-1672) is this epic's workforce kit client. It is folded, not filed again.
+  FIX-1672) is this epic's workforce package views and hooks. It is folded, not filed again.
 - **Out of the set, as follow-up epics filed at wrap:** moving Teammates' and Shift Manager's
-  remaining adapters onto kit clients, and serving each answer on one route only (session
+  remaining adapters onto the kit packages' views, and serving each answer on one route only (session
   expose and collection `clientData` served twice; the manifest against the snapshot; four React
   resource hooks no app calls).
 - **Sequenced after this epic:** FIX-2430. **Unrelated:** FIX-2490, FIX-1637, FIX-2331,
@@ -416,7 +420,7 @@ four lines, by the amendment that lands it.
   kit's 145 package lines to B's 34 are an upper bound. The client half and more than one kit
   were not tested ([README](../../issues/FIX-2622/poc/kit-or-api/README.md)).
 - **Changed:** FIX-2622 fired D1's mind-changer; the owner kept O1 on the client half and the
-  copied conventions (2026-11-10).
+  copied conventions (2026-11-10). FIX-2626 D1 later moved O1's case to composition ([O1](#o1)).
 
 ## Analysis
 
@@ -492,7 +496,8 @@ objective or the division.
   dependencies, a host-wide publish rule, no model calls. [ER-3](#who-owns-what): the declaring
   flow's resolver, not the push mint's path user. The no-session context is views-only. Views and
   resources feed FIX-2627, not FIX-2626. `createFlowState({ flows })` is an array. Harness
-  readiness is one view. FIX-2633, FIX-2556 and FIX-2326 are smaller than filed.
+  readiness is one view. FIX-2633, FIX-2556 and FIX-2326 are smaller than filed. FIX-2626
+  (#5064) merged: no kit client runtime and a stray folder file refuses start, so O1's case is
+  composition and the examples import from kit packages.
 
-**Open:** none at epic level; FIX-2626's D1 is open on its own spec PR ([O1](#o1)). **Decided by
-the owner:** [O3](#o3) in review; [O1](#o1), [O2](#o2), [O4](#o4) and [O5](#o5) in session.
+**Open:** none. **Decided by the owner:** [O3](#o3) in review; [O1](#o1), [O2](#o2), [O4](#o4) and [O5](#o5) in session.

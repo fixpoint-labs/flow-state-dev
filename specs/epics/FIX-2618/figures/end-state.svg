@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 474" role="img" aria-label="What&#x27;s in the box. In the box, what an app on workforce gets: views replacing flow reads, one live read in the client, resources read by scope with no session, every client write sent through the flow that runs the resource, the framework&#x27;s default write flow or its own, ids on notices, kits with requires, slots, config and a client half, and the workforce and harness kits with one shared coding worker flow. The fence: a view never writes, every new client write goes through a flow, a notice carries ids and never rows, and a kit reaches another only through its slots. Composed in by the app: its own local kit, the app flows it copied in, its screens and renderer, one config object per kit. Replaced in one line: flow reads and scope derived by a view, four own sessions by a direct read, the host&#x27;s wiring by an entry in kits, hand-written row types by ViewOutput. Not built: a third-party ecosystem, a direct client-write path, the Teammates and Shift Manager adapters, the one-route-per-answer cleanup."
+<svg viewBox="0 0 940 474" role="img" aria-label="What&#x27;s in the box. In the box, what an app on workforce gets: views replacing flow reads, one live read in the client, resources read by scope with no session, every client write sent through the flow that runs the resource, the framework&#x27;s default write flow or its own, ids on notices, kits with requires, slots and config, screens importing each kit package&#x27;s views and hooks, and the workforce and harness kits with one shared coding worker flow. The fence: a view never writes, every new client write goes through a flow, a notice carries ids and never rows, and a kit reaches another only through its slots. Composed in by the app: its own local kit, the app flows it copied in, its screens and renderer, one config object per kit. Replaced in one line: flow reads and scope derived by a view, four own sessions by a direct read, the host&#x27;s wiring by an entry in kits, hand-written row types by ViewOutput. Not built: a third-party ecosystem, a direct client-write path, the Teammates and Shift Manager adapters, the one-route-per-answer cleanup."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -67,10 +67,10 @@
     <text class="t-s" x="44" y="191">optional hints; gated on O4</text>
     <rect class="chip" x="328" y="156" width="284" height="44" rx="4"/>
     <text class="t-b" x="340" y="175">Kits · FIX-2626</text>
-    <text class="t-s" x="340" y="191">requires, slots, config, a client half</text>
+    <text class="t-s" x="340" y="191">requires, slots, config · no client runtime</text>
     <rect class="chip" x="32" y="208" width="580" height="44" rx="4"/>
     <text class="t-b" x="44" y="227">The workforce kit and the harness kit · FIX-2627</text>
-    <text class="t-s" x="44" y="243">their views and client halves; one shared coding worker flow for every harness</text>
+    <text class="t-s" x="44" y="243">their packages&#x27; views and hooks; one shared coding worker flow for every harness</text>
   </g>
 
   <g id="the-fence">
