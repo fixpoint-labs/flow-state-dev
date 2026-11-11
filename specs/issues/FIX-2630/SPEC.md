@@ -27,16 +27,20 @@ listens, and without the announcement becoming a way to assign work or start a l
 | **The real need** | The issue's *"a session can only dispatch to a known worker or message a known session. The sender has to know who cares"* (owner, 2026-11-09) |
 | **Smaller, and asked** | Only the publisher's own routines hear it: no new host door, half the need ([Q1](DECISIONS.md#q1)) |
 | **Bigger, and not this issue's** | Wildcards · a topic ACL · polling · FIX-825's reactors · filing a task (FIX-2538) |
-| **Not done if** | An undeclared topic is taken · the input names the sender · a session hears itself · a ring passes the budget · another org hears, or a session twice · a publish files a task, asks a reply, or learns who heard |
+| **Not done if** | An undeclared topic is taken · the input names the sender · a session hears itself · a ring passes the budget · a fan-out's branches together pass the budget · another org hears, or a session twice · a publish files a task, asks a reply, or learns who heard |
 
 ```mermaid
 flowchart LR
-  F["fixtures · 2 users, 1 org · a third user in another org · 5 routines on 2 topics · 1 ring of 2 routines"] --> L1["leg a · 4 publishes"]
+  F["fixtures · 2 users, 1 org · a third user in another org · 5 routines on 2 topics · 1 ring of 2 routines · 1 topic with 3 routines that pass it on"] --> L1["leg a · 4 publishes"]
   F --> L2["leg b · undeclared topic · input names a sender"]
   F --> L3["leg c · the ring"]
   L1 -->|"each routine's messages equal the oracle · publisher hears none of its own · other org hears 0"| P["PASS"]
   L2 -->|"both refused · sender is the session"| P
   L3 -->|"stops at the budget · refusal names it"| P
+  F --> L4["leg d · the fan-out"]
+  L4 -->|"paid places in the publisher's chain ≤ budget · the rest refused"| P
+  C2["control · delivery in a fresh chain"] -.-> L4
+  L4 -.->|"under the control"| X2["must FAIL · branches pass the budget together"]
   C["control · delivery placed at the owner run's hop"] -.-> L3
   L3 -.->|"under the control"| X["must FAIL · ring runs to the cap"]
 ```
@@ -44,9 +48,9 @@ flowchart LR
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/internal-events/announce-once/` · no model · the real dispatch seam and `routeServiceEvent` · verdict on the implementation PR |
-| **Signal** | (a) Each routine's messages equal the oracle. (b) 0 to the publisher. (c) 0 to the other org. (d) Undeclared topic refused twice; an input `sender` fails the schema. (e) The ring refused at hop 6, naming the budget. (f) 0 task rows, 0 reply requests, no recipient in the result |
+| **Signal** | (a) Each routine's messages equal the oracle. (b) 0 to the publisher. (c) 0 to the other org. (d) Undeclared topic refused twice; an input `sender` fails the schema. (e) The ring refused at hop 6, naming the budget. (f) 0 task rows, 0 reply requests, no recipient in the result. (g) The fan-out's paid places in the publisher's chain row never pass the budget, and every send past it is refused |
 | **Anti-game** | Assert on message-log rows and refusals, not on route calls |
-| **Control that must fail** | `owner-run-hop` (delivery at the owner run's hop, as GitHub's): (e). `free-topic`: (d). Today's `main`: (a) |
+| **Control that must fail** | `owner-run-hop` (delivery at the owner run's hop, as GitHub's): (e). `free-topic`: (d). `fresh-chain` (delivery in the owner run's chain or a new one, as GitHub's): (g). Today's `main`: (a) |
 
 ## What changes
 
@@ -90,7 +94,7 @@ flowchart LR
   V --> S["dispatch seam · internal service flow"]
   S --> R["host · routeServiceEvent · as service internal · in the sender's org"]
   R --> N["thread index · screens · cap · cursor"]
-  N --> M["each subscriber's session · once · at the event's hop plus 1"]
+  N --> M["each subscriber's session · once · in the publisher's chain · at the event's hop plus 1"]
 ```
 
 **Stays:** everything after the route, and `subscribe` and `unsubscribe` as the only writers (ER-5).
@@ -147,9 +151,11 @@ the seam rule becomes the door other "act as a teammate" features copy.
    them.** The one to weigh. If wrong: a second who-follows-what list, and a third routine
    trigger.
 2. **[D2](DECISIONS.md#d2) · The loop guard is the message budget, not a new causation
-   chain.** If wrong: a ring that alternates messages and publishes outruns both caps.
+   chain.** Amended 2026-11-11: the publish carries its chain, so every subscriber it wakes
+   pays into one budget. If wrong: a ring that alternates messages and publishes outruns both
+   caps, or a fan-out multiplies the budget by its followers.
 
-**Open, owner:** [Q1](DECISIONS.md#q1) · who hears: anyone in the org who follows the topic
-(recommended), or only the publisher's own user.
+**Open, owner:** [Q1](DECISIONS.md#q1) · who hears: only the publisher's own user (recommended
+since the amendment), or anyone in the org who follows the topic.
 
 Feature · workforce, engine · medium: one verb, one config map, one seam rule, one event field · epic FIX-2471 · after FIX-2614
