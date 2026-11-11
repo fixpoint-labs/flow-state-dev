@@ -75,8 +75,8 @@ author's notes. Then its schema claims them as ignored, by name; the rule stays.
   value's `id` is its key. The app can drop one kit's contribution, or one entry of it; its
   spelling is the implementer's.
 - **A contribution sees its own kit's merged slots.** `contributes` receives `{ config, slots }`.
-  Since `requires` is a DAG, contributions are evaluated dependents first: `d`'s fill into `c` is
-  merged before `c` contributes to `b`. FIX-2627's coding flow needs every harness, which is why.
+  Since `requires` is a DAG, contributions are evaluated dependents first: `d`'s fill into `c`,
+  and the app's `fill:` and drops for `c`'s slots, are merged before `c` contributes to `b`. FIX-2627's coding flow needs every harness, which is why.
 - **`init`** copies starter files through `fsdev ui add`'s registry copy-in, never overwriting.
   Workforce's starter set is FIX-2627's.
 - **Names.** "Kit" and "slot" are in the glossary. Public names: `defineKit`, `kits`,

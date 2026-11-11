@@ -40,10 +40,10 @@ The check reads what the running app serves and refuses, never what `defineKit` 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/kits/install-in-any-order/` (new), model `n/a`, run by the implementer with `fsdev run` at completion; verdict on the implementation PR |
-| **Signal** | Kit `b` declares a keyed and a list slot and owns a folder; `c` requires `b` and declares a slot of its own, `d` requires `c` and fills it; the app lists `[d, b, c]`. All flows served; `b`'s flow answers with `c`'s and `d`'s keyed entries and the list `[c, d]`, and `c`'s contribution to `b` carries what `d` put in `c`'s slot. Three refusals, each named: `d` repeating `c`'s key; a stray `notes.txt` in `b`'s folder; a fill by a kit that doesn't require `b`. A relative folder path, run from another directory, reads that directory's folder |
+| **Signal** | Kit `b` declares a keyed and a list slot and owns a folder; `c` requires `b` and declares a slot of its own, `d` requires `c` and fills it; the app lists `[d, b, c]`. All flows served; `b`'s flow answers with `c`'s and `d`'s keyed entries and the list `[c, d]`, and `c`'s contribution to `b` carries what `d` and the app put in `c`'s slot, less the one `d` entry the app drops. Three refusals, each named: `d` repeating `c`'s key; a stray `notes.txt` in `b`'s folder; a fill by a kit that doesn't require `b`. A relative folder path, run from another directory, reads that directory's folder |
 | **Input** | The goal's fixture kits. Also valid: a fourth kit, no folder or slots, listed first |
 | **Anti-game** | Assert on what the app serves and refuses. Never list kits in requires order: it hides an install in list order |
-| **Control that must fail** | `GOAL_CONTROL=list-order`: `b`'s slot is empty, so the keyed-entries signal fails. `GOAL_CONTROL=skip-unknown`: the app starts beside `notes.txt`, so the stray-file signal fails |
+| **Control that must fail** | `GOAL_CONTROL=list-order`: `b`'s slot is empty, so the keyed-entries signal fails. `GOAL_CONTROL=skip-unknown`: the app starts beside `notes.txt`, so the stray-file signal fails. `GOAL_CONTROL=requires-first`: `c` contributes before `d` and the app fill its slot, so the chain signal fails |
 
 ## What changes
 
