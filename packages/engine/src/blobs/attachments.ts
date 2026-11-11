@@ -200,6 +200,25 @@ export async function resolveAttachment(
   return { record, bytes, base64: () => uint8ArrayToBase64(bytes) };
 }
 
+// FIX-2522.
+/**
+ * Delete each file `owner` holds for `user`, by its reference: copies kept for
+ * a record that was never written. A reference to a file `owner` doesn't
+ * hold, or that `user` didn't upload, is left alone, so a reference handed in
+ * can delete only what the caller's own scope kept.
+ */
+export async function discardAttachments(
+  blobs: BlobStore,
+  attachments: ReadonlyArray<FileContent>,
+  scope: { owner: string; user: BlobUploader }
+): Promise<void> {
+  for (const attachment of attachments) {
+    const id = parseBlobRef(attachment.data);
+    const record = id === undefined ? undefined : await blobs.head(id);
+    if (record !== undefined && record.owner === scope.owner && uploadedBy(record, scope.user)) await blobs.delete(record.id);
+  }
+}
+
 // FIX-2522; epic FIX-2516 ER-7 and the seam "a reference's owner".
 /**
  * A copy of each file, owned by `owner`: the bytes `read` resolves, stored

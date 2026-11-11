@@ -26,6 +26,8 @@ const shot: FileContent = { type: "file", mediaType: "image/png", filename: "bug
 /** A turn's context: its files, and a keeper that copies each under a new id (or fails, or is absent). */
 function turnCtx(attachments: FileContent[], keeper: "copies" | "fails" | "none" = "copies") {
   const kept: FileContent[][] = [];
+  /** What the keeper was asked to drop again, call by call. */
+  const discarded: FileContent[][] = [];
   const ctx = {
     emit: { component: () => undefined },
     session: { identity: { type: "session", id: "s_1", userId: "alice" } },
@@ -33,23 +35,29 @@ function turnCtx(attachments: FileContent[], keeper: "copies" | "fails" | "none"
     ...(keeper === "none"
       ? {}
       : {
-          [USER_ATTACHMENT_SEAM]: async (files: ReadonlyArray<FileContent>) => {
-            if (keeper === "fails") throw new Error("The disk is full.");
-            const copies = files.map((file, i) => ({ ...file, data: toBlobRef(`b_kept${kept.length}${i}0000`) }));
-            kept.push(copies);
-            return copies;
+          [USER_ATTACHMENT_SEAM]: {
+            keep: async (files: ReadonlyArray<FileContent>) => {
+              if (keeper === "fails") throw new Error("The disk is full.");
+              const copies = files.map((file, i) => ({ ...file, data: toBlobRef(`b_kept${kept.length}${i}0000`) }));
+              kept.push(copies);
+              return copies;
+            },
+            discard: async (files: ReadonlyArray<FileContent>) => {
+              discarded.push([...files]);
+            },
           },
         }),
   } as unknown as BlockContext;
-  return { ctx, kept };
+  return { ctx, kept, discarded };
 }
 
-const board = () =>
+const board = (maxTotalTasks?: number) =>
   getOrCreateTaskCollection({
     ctx: turnCtx([]).ctx,
     backing: "state",
     state: createFakeSequencerState<Record<string, unknown>>({ tasks: {} }),
     collectionId: "desk",
+    ...(maxTotalTasks !== undefined ? { maxTotalTasks } : {}),
   });
 
 const roster: AssigneeRoster = { has: (name) => name === "writer", describe: () => "writer" };
@@ -99,6 +107,23 @@ describe("a task filed during a turn", () => {
       expect(result.error).toMatch(/^task_files_not_kept: .*Nothing was filed\.$/);
       expect(collection.list()).toHaveLength(0);
     }
+  });
+
+  // A kept copy is owned, so nothing sweeps it: a filing the board refuses
+  // must drop the copies it kept, or each refusal leaves files nobody reads.
+  it("drops the copies it kept when the board refuses the filing, and keeps a filed task's", async () => {
+    const collection = await board(1);
+    const first = turnCtx([shot]);
+    const filed = (await runForTest(createTask(collection) as never, { goal: "Fix it", assignee: "writer" } as never, first.ctx)) as Result;
+    expect(filed.ok).toBe(true);
+    expect(first.discarded).toEqual([]);
+
+    const second = turnCtx([shot]);
+    const refused = (await runForTest(createTask(collection) as never, { goal: "And this", assignee: "writer" } as never, second.ctx)) as Result;
+    expect(refused.ok).toBe(false);
+    expect(collection.list()).toHaveLength(1);
+    expect(second.discarded).toEqual(second.kept);
+    expect(collection.get(filed.taskId!)!.attachments).toEqual(first.kept[0]);
   });
 
   it("takes no files from the model's input", async () => {

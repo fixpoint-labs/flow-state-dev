@@ -410,6 +410,29 @@ describe("a line's files (FIX-2522)", () => {
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
   });
 
+  it("come back with the line when it fails after the session held it, and go with it when it is sent again", async () => {
+    const client = uploader();
+    let tries = 0;
+    const send = vi.fn(async (_message: string, held: () => void, _files: FileContent[]) => {
+      tries += 1;
+      held();
+      if (tries === 1) throw new TurnNotDelivered("refused", "no thanks");
+    });
+    render(<TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} uploader={client} send={send} />);
+    const input = screen.getByTestId("t-input") as HTMLInputElement;
+    await act(async () => paste(input, [png("bug.png")]));
+    fireEvent.change(input, { target: { value: "look" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    // Refused after it left: the line and its file are both back in the draft.
+    expect(input.value).toBe("look");
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1]![2].map((f) => f.filename)).toEqual(["bug.png"]);
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+  });
+
   it("are refused by name in a composer with nowhere to upload them", async () => {
     render(<TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} send={async () => undefined} />);
     await act(async () => paste(screen.getByTestId("t-input"), [png("bug.png")]));

@@ -83,6 +83,7 @@ export type { HarnessAttachmentSeam } from "../types/harness-attachment-seam";
 export {
   USER_ATTACHMENT_SEAM,
   UserAttachmentsUnavailableError,
+  discardAttachmentsForUser,
   keepAttachmentsForUser,
 } from "../types/user-attachment-seam";
 export type { UserAttachmentSeam } from "../types/user-attachment-seam";

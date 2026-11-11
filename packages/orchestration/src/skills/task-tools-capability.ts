@@ -55,7 +55,7 @@ import { defineCapability, handler, SuspensionTimeoutError, type DefinedCapabili
 import type { ActionConfig, BlockContext, ReadConfig } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import type { FileContent } from "@flow-state-dev/core/items";
-import { keepAttachmentsForUser } from "@flow-state-dev/core/internal";
+import { discardAttachmentsForUser, keepAttachmentsForUser } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import {
   ticketForClaim,
@@ -1325,7 +1325,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         const kept = await keepTurnFiles(ctx);
         if ("error" in kept) return kept;
         const init = kept.files.length === 0 ? checked.init : { ...checked.init, attachments: kept.files };
-        return fileNewTask(checked.followUp, async () => {
+        const result = await fileNewTask(checked.followUp, async () => {
           // On a board that starts a ready row at once, a filing starts work:
           // once per call, so a replay finds its own row (BR-15).
           const filed = dispatches
@@ -1333,6 +1333,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             : { ok: true as const, taskId: (await collection.createTask(init)).id };
           return input.held === true ? { ...filed, status: "held" as const } : filed;
         });
+        // A refusal the write answered filed no task, so its copies have no row to name them, and an
+        // owned copy is never swept: drop them. A throw leaves them, as it may have filed the task.
+        if (!result.ok) await discardAttachmentsForUser(ctx, kept.files);
+        return result;
       };
       return input.followUpOf === undefined ? oneFilingAtATime(`${ctx.request?.identity?.id ?? ""}\u0000${collection.collectionId}\u0000${collection.partition ?? ""}`, file) : file();
     },

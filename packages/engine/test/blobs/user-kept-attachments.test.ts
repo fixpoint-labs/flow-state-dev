@@ -12,7 +12,7 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { parseBlobRef } from "@flow-state-dev/core/attachments";
 import { readHarnessAttachments } from "@flow-state-dev/core/harness";
-import { keepAttachmentsForUser, UserAttachmentsUnavailableError } from "@flow-state-dev/core/internal";
+import { discardAttachmentsForUser, keepAttachmentsForUser, UserAttachmentsUnavailableError } from "@flow-state-dev/core/internal";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -54,6 +54,17 @@ function setup(withBlobs = true, auth: "host" | "flow" | "open" = "host") {
       return { ok: true };
     },
   });
+  /** What `drop` is handed: the kept files, and any other reference a test adds. */
+  const dropping: { files: FileContent[] } = { files: [] };
+  const drop = handler({
+    name: "drop",
+    inputSchema: message,
+    outputSchema: z.object({ ok: z.boolean() }),
+    execute: async (_value, ctx) => {
+      await discardAttachmentsForUser(ctx, dropping.files);
+      return { ok: true };
+    },
+  });
   const run = handler({
     name: "run",
     inputSchema: message,
@@ -76,6 +87,7 @@ function setup(withBlobs = true, auth: "host" | "flow" | "open" = "host") {
         keep: { inputSchema: message, block: keep, userMessage: (i) => i.message },
         // The line a run opens with carries the kept files, read off server-held state, never the input.
         run: { inputSchema: message, block: run, userMessage: (i) => ({ text: i.message, attachments: kept.files }) },
+        drop: { inputSchema: message, block: drop, userMessage: (i) => i.message },
       },
     })(),
   );
@@ -96,7 +108,7 @@ function setup(withBlobs = true, auth: "host" | "flow" | "open" = "host") {
     expect(response.status).toBe(201);
     return ((await response.json()) as { attachment: FileContent }).attachment;
   };
-  const send = async (user: string, session: string, action: "keep" | "run", attachments?: FileContent[]) => {
+  const send = async (user: string, session: string, action: "keep" | "run" | "drop", attachments?: FileContent[]) => {
     const response = await call("POST", `board/${session}/actions/${action}`, user, {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -114,7 +126,7 @@ function setup(withBlobs = true, auth: "host" | "flow" | "open" = "host") {
     }
     throw new Error(`request ${id} never finished`);
   };
-  return { kept, read, stores, call, upload, send };
+  return { kept, read, dropping, stores, call, upload, send };
 }
 
 describe("files kept in a person's own scope", () => {
@@ -172,6 +184,21 @@ describe("files kept in a person's own scope", () => {
     await send("bob", "s_bob", "run");
     expect(read.base64).toBeUndefined();
     expect((read.error as Error).name).toBe("HarnessAttachmentUnavailableError");
+  });
+
+  it("are dropped again by their user's run, which can drop no other file", async () => {
+    const { kept, dropping, call, upload, send } = setup();
+    const shot = await upload("alice");
+    await send("alice", "s_chat", "keep", [shot]);
+    // Bob's own kept copy, and Alice's turn file: neither is a copy of Alice's to drop.
+    const theirs = { ...kept };
+    await send("bob", "s_bob", "keep", [await upload("bob")]);
+    const bobs = kept.files;
+    dropping.files = [...theirs.files, ...bobs, shot];
+    await send("alice", "s_drop", "drop");
+    expect((await call("GET", `blobs/${parseBlobRef(theirs.files[0]!.data)!}`, "alice")).status).toBe(404);
+    expect((await call("GET", `blobs/${parseBlobRef(bobs[0]!.data)!}`, "bob")).status).toBe(200);
+    expect((await call("GET", `blobs/${parseBlobRef(shot.data)!}`, "alice")).status).toBe(200);
   });
 
   it("can't be kept on a server with no blob store, and say so", async () => {

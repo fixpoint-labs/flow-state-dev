@@ -3,8 +3,11 @@
  * The user attachment seam: how the engine hands a block a way to keep a copy
  * of files in the running person's own scope, for a record kept there that
  * outlives the turn the files came with (a task's brief on a conversation's
- * board, which sits at the user scope). Framework-facing, on `core/internal`
- * only; a block keeps files through {@link keepAttachmentsForUser}.
+ * board, which sits at the user scope), and to drop such copies again when the
+ * record they were kept for was never written. Framework-facing, on
+ * `core/internal` only; a block keeps files through
+ * {@link keepAttachmentsForUser} and drops them through
+ * {@link discardAttachmentsForUser}.
  *
  * Each file is read through the engine's one resolver for the request's
  * conversation and person, so only a file the request can read is copied,
@@ -20,12 +23,19 @@ import type { FileContent } from "../items/content";
  */
 export const USER_ATTACHMENT_SEAM: unique symbol = Symbol.for("@flow-state-dev/user-attachment-seam");
 
-/**
- * What the engine attaches under {@link USER_ATTACHMENT_SEAM}: copy each file
- * into the running person's own scope, in order, all or nothing, and resolve
- * to the copies' references.
- */
-export type UserAttachmentSeam = (files: ReadonlyArray<FileContent>) => Promise<FileContent[]>;
+/** What the engine attaches under {@link USER_ATTACHMENT_SEAM}. */
+export type UserAttachmentSeam = {
+  /**
+   * Copy each file into the running user's own scope, in order, all or
+   * nothing, and resolve to the copies' references.
+   */
+  keep: (files: ReadonlyArray<FileContent>) => Promise<FileContent[]>;
+  /**
+   * Delete copies this request's flow kept for the running user. A reference
+   * to any other file (another scope's, another user's, gone) is left alone.
+   */
+  discard: (files: ReadonlyArray<FileContent>) => Promise<void>;
+};
 
 /** Thrown when files can't be kept: the context carries no keeper (a server with no blob store, a hand-built test context). */
 export class UserAttachmentsUnavailableError extends Error {
@@ -48,7 +58,20 @@ export async function keepAttachmentsForUser(
   files: ReadonlyArray<FileContent>,
 ): Promise<FileContent[]> {
   if (files.length === 0) return [];
-  const keep = (ctx as { readonly [USER_ATTACHMENT_SEAM]?: UserAttachmentSeam })[USER_ATTACHMENT_SEAM];
-  if (keep === undefined) throw new UserAttachmentsUnavailableError();
-  return keep(files);
+  const seam = (ctx as { readonly [USER_ATTACHMENT_SEAM]?: UserAttachmentSeam })[USER_ATTACHMENT_SEAM];
+  if (seam === undefined) throw new UserAttachmentsUnavailableError();
+  return seam.keep(files);
+}
+
+/**
+ * Delete copies {@link keepAttachmentsForUser} made, for a record that was
+ * never written (a filing refused after its files were kept): a kept copy is
+ * owned, so nothing else ever sweeps it. Only the running user's copies, kept
+ * by this flow, go; any other reference is left alone. A context with no
+ * keeper kept nothing, so there is nothing to delete.
+ */
+export async function discardAttachmentsForUser(ctx: object, files: ReadonlyArray<FileContent>): Promise<void> {
+  if (files.length === 0) return;
+  const seam = (ctx as { readonly [USER_ATTACHMENT_SEAM]?: UserAttachmentSeam })[USER_ATTACHMENT_SEAM];
+  await seam?.discard(files);
 }

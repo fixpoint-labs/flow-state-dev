@@ -176,6 +176,7 @@ import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
 import {
   AttachmentUnavailableError,
   copyAttachments,
+  discardAttachments,
   resolveAttachment,
   sessionBlobOwner,
   userBlobOwner,
@@ -2988,12 +2989,16 @@ export async function createExecutionContext<
   const userAttachmentSeam: UserAttachmentSeam | undefined =
     blobs === undefined
       ? undefined
-      : (files) =>
-          copyAttachments(blobs, files, {
-            owner: userOwner,
-            send: `keep:${requestId}:${(keptSends += 1)}`,
-            read: (file) => readOnce(blobs, file)
-          });
+      : {
+          keep: (files) =>
+            copyAttachments(blobs, files, {
+              owner: userOwner,
+              send: `keep:${requestId}:${(keptSends += 1)}`,
+              read: (file) => readOnce(blobs, file)
+            }),
+          // Only what this flow kept for this user: a reference to anything else is left alone.
+          discard: (files) => discardAttachments(blobs, files, { owner: userOwner, user: runUser })
+        };
   // Evaluator strings resolve only through the flow's own resolver. When an
   // app-supplied resolver has no `resolveEvaluationModel`, the hook stays
   // absent and the evaluator refuses the string; the default resolver is

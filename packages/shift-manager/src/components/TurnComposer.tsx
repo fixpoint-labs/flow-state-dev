@@ -21,9 +21,9 @@
  * **Files go with the line.** Every composer takes files by paste,
  * the + button and a drop, through the registry's `useAttachments`: each is
  * uploaded as it is added, shown above the text with its remove button, and
- * sent beside the line as its reference. A file leaves the draft with the
- * line, once the session holds it; a line that fails keeps its files, so Retry
- * sends them again. The draft's files live as long as the composer: a reload
+ * sent beside the line as its reference. A file leaves the draft once its
+ * line is delivered; a line that fails, before or after the session held it,
+ * keeps its files, so sending it again sends them again. The draft's files live as long as the composer: a reload
  * keeps the text, not the files.
  *
  * Every composer draws through {@link ComposerShell}, v2's composer: one line,
@@ -403,8 +403,6 @@ export function TurnComposer({
       // The composer may have closed and reopened meanwhile: the stored draft goes only if it is still this line.
       clearDraft(DRAFT, draftKey, submitted);
       if (current.current === submitted) setDraft("");
-      // Its files go with it; any added since stay. A line that fails before this keeps them for Retry.
-      attachments.consume(fileIds, shownRefusals);
       onHeld?.(message);
     };
     let delivered = false;
@@ -426,6 +424,9 @@ export function TurnComposer({
     });
     if (sent) {
       leave();
+      // Its files go once it is delivered, not when the session holds it: a line that fails after
+      // it left comes back with them. Any added since stay.
+      attachments.consume(fileIds, shownRefusals);
       onDelivered?.(message);
     } else if (delivered) {
       // Delivered after the composer closed: only what is stored is left to clear, the draft and
