@@ -2798,6 +2798,13 @@ export async function createExecutionContext<
      * path is a row only its owner may read (`noticePathFor`).
      */
     const publishChange = (resourcePath: string): void => {
+      // FIX-2623 D1: a lineage-shared session resource is one resource across
+      // the lineage, but a session notice reaches only the writer's session.
+      // Every lineage member belongs to one user, so it also publishes on the
+      // user's topic, bare, which a view that read it records.
+      if (scope === "session" && hostHasViews && resolveBucketFlag("session", resourcePath) === true) {
+        publishScopeNotice("user", "resource");
+      }
       if (publishedSingleKeys.has(resourcePath)) return publishScopeNotice(scope, "resource", resourcePath);
       const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
       if (holders.length === 0) return;
@@ -3413,6 +3420,12 @@ export async function createExecutionContext<
     const scope = accessorScope[accessor];
     if (recordRead === undefined || scope === undefined) return;
     recordRead(scope === "session" ? { scope, sessionId, what: { resource: accessor } } : { scope, what: { resource: accessor } });
+    // A lineage-shared resource's change from another member of the lineage
+    // publishes on the user's topic (`publishChange`), so that is recorded too.
+    const config = sessionResourceConfigs[accessor];
+    if (scope === "session" && config !== undefined && isSharedToLineage(config)) {
+      recordRead({ scope: "user", what: { resource: accessor } });
+    }
   };
   const resourceHandle = (name: string): AnyResourceRef => {
     const handle = flatResourcesHandles[name];
