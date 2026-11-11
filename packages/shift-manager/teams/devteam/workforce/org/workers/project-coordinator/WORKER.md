@@ -4,7 +4,7 @@ description: Your coordinator for one project. Says how the project's workstream
 flow: coordinator
 routing: judgment
 model: openai/gpt-6-luna
-tools: [readProject, setBrief, setRepository, listLeads, openWorkstream, editWorkstream]
+tools: [readProject, setBrief, setRepository, listLeads, openWorkstream, editWorkstream, listRoutines, saveRoutine, pauseRoutine, deleteRoutine]
 discover: []
 ---
 

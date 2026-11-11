@@ -56,7 +56,7 @@ import { CHECKOUT, CHECKOUTS } from "./fsd-checkouts.mts";
 import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS, FSD_SKILLS } from "./fsd-projects.mts";
 import { readClaudeCodeUsage } from "@flow-state-dev/claude-code";
 import { claudeCodeEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
-import { LAB_TREE, openLab } from "./host.mts";
+import { LAB_TREE, openLab, operatorGitHubToken } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
 
@@ -108,6 +108,9 @@ export const lab = await openLab({
     "claude-code": ({ signal } = {}) => readClaudeCodeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
   readiness: harness.readiness,
+  // As DevTeam's profile: GitHub routines on the operator's token, the two schedule indexes beside the store.
+  githubToken: operatorGitHubToken(),
+  scheduleIndexes: { clock: join(dirname(STORE), "fsd-clock.sqlite"), poll: join(dirname(STORE), "fsd-poll.sqlite") },
 });
 
 export default lab.state;

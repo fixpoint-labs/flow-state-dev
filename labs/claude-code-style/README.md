@@ -122,6 +122,18 @@ are read from the environment, all optional:
 | `CLAUDE_CODE_STYLE_SETUP` | none | One command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`, with no shell |
 | `CLAUDE_CODE_STYLE_HARNESS` | the harness each coder names | `stub` runs every coding task on harness-manager's scripted coder, with no model, for a goal check |
 | `CLAUDE_CODE_STYLE_HARNESS_STEP_MS` | `2000` | With `stub`, the pause before each of the scripted coder's five steps |
+| `GITHUB_TOKEN` | what `gh auth token` answers at start | The token a routine that follows a GitHub pull request reads GitHub with, for `CLAUDE_CODE_STYLE_USER` alone; with none, GitHub routines are refused |
+
+**Routines.** Every conversation worker (the main worker, the researcher, a thread and its lead)
+can follow a GitHub pull request for you, or run something on a clock. Ask in words: *"Follow
+globex/billing#77 and tell me about every review on it."* The worker saves a routine, and each new
+review on that pull request reaches the same session as a message, once. *"What are you
+following?"* lists your routines, and you can ask it to pause or delete one. A clock routine
+(*"Every Monday at 9, check the open pull requests"*) files a task at its time. The lab polls
+GitHub, so it needs no public address, with the token of whoever runs it; the lab takes every request
+as its own user, whatever user the request names, so the token serves nobody else. The lab keeps its data in its own organization (`claude-code-style-lab`), so conversations saved before the lab named one don't open. With no token,
+a GitHub routine is refused, naming `GITHUB_TOKEN`. Clock routines need no token. Clock routines and polls tick from `clock.db` and `poll.db` in the data
+folder.
 
 *New session* lists your projects and has a *New project* form: a name and the repository its
 coding runs work on. The host allows `file://` repositories only, and the repository must ignore

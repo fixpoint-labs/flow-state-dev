@@ -56,6 +56,14 @@
  *   reads who is signed in, and each window comes from a coding run, as
  *   Claude Code reports it.
  *
+ * - **Routines.** Every conversation worker can follow a GitHub pull request
+ *   or run something on a clock when asked, and list, pause or delete what it
+ *   follows; Routines lists them. A pull request is polled (no public URL) with
+ *   `GITHUB_TOKEN`, or what `gh auth token` answers at start, for the Lab's
+ *   owner alone; with neither, a GitHub routine is refused, naming the
+ *   variable. The clock routines and the polls tick from two SQLite files
+ *   beside the store.
+ *
  * - **A store that survives a restart.** SQLite, at `DEVTEAM_STORE` or
  *   `packages/shift-manager/.fsdev/devteam.sqlite` by default. Workers the Shift
  *   Coordinator hired are read back and serve again at the next start, a fire it
@@ -77,7 +85,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
 import { claudeCodeEnv, codexEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
 import { CHECKOUT } from "./fsd-checkouts.mts";
-import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
+import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab, operatorGitHubToken } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
@@ -207,6 +215,10 @@ const lab = await openLab({
     "claude-code": ({ signal } = {}) => readClaudeCodeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
   readiness: harness.readiness,
+  // A routine that follows a GitHub pull request reads GitHub with the operator's token, for the Lab's owner alone.
+  githubToken: operatorGitHubToken(),
+  // Clock routines and GitHub's polls, each from its own file beside the store.
+  scheduleIndexes: { clock: join(dirname(STORE), "devteam-clock.sqlite"), poll: join(dirname(STORE), "devteam-poll.sqlite") },
 });
 
 export default lab.state;
