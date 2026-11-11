@@ -158,15 +158,17 @@ async function waitForExit(pid: number, withinMs: number): Promise<boolean> {
  * A stand-in for the agent CLI that starts a long-lived command of its own (a
  * `tsc --watch`, a dev server), prints that command's pid, and keeps running.
  * The command writes `sigterm` into `dir` when it is sent SIGTERM and then
- * stays up, so a spec can tell "asked to stop" from "killed".
+ * stays up, so a spec can tell "asked to stop" from "killed". The pid is
+ * printed only once the command reports its SIGTERM handler installed: a stop
+ * sent earlier would kill it by default and leave no marker to assert on.
  */
 function startsACommand(dir: string, cliIgnoresSigterm: boolean): string {
-  const grandchild = `process.on('SIGTERM',()=>require('fs').writeFileSync(${JSON.stringify(join(dir, "sigterm"))},'1'));setInterval(()=>{},1000)`;
+  const grandchild = `process.on('SIGTERM',()=>require('fs').writeFileSync(${JSON.stringify(join(dir, "sigterm"))},'1'));process.stdout.write('ready');setInterval(()=>{},1000)`;
   return [
     "const { spawn } = require('child_process');",
-    `const c = spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore' });`,
+    `const c = spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: ['ignore', 'pipe', 'ignore'] });`,
     cliIgnoresSigterm ? "process.on('SIGTERM', () => {});" : "",
-    "setTimeout(() => process.stdout.write(String(c.pid) + '\\n'), 100);",
+    "c.stdout.once('data', () => process.stdout.write(String(c.pid) + '\\n'));",
     "setInterval(() => {}, 1000);",
   ].join("\n");
 }

@@ -92,15 +92,25 @@ function makeRun(prompt) {
   };
 }
 
-/** A command that outlives a SIGTERM, as the agent's shell would leave it running. */
+/**
+ * A command that outlives a SIGTERM, as the agent's shell would leave it
+ * running. It writes its own pid file once its SIGTERM handler is installed
+ * (temp file then rename, so a reader never sees a partial write): a stop sent
+ * before then would kill it by default and leave no marker to assert on.
+ */
 function startCommand(dir) {
   const sigterm = JSON.stringify(`${dir}/sigterm`);
-  const child = spawn(
+  const pid = JSON.stringify(`${dir}/pid`);
+  spawn(
     process.execPath,
-    ["-e", `process.on('SIGTERM', () => require('fs').writeFileSync(${sigterm}, '1')); setInterval(() => {}, 1000)`],
+    [
+      "-e",
+      `const fs = require('fs'); process.on('SIGTERM', () => fs.writeFileSync(${sigterm}, '1'));` +
+        ` fs.writeFileSync(${pid} + '.tmp', String(process.pid)); fs.renameSync(${pid} + '.tmp', ${pid});` +
+        ` setInterval(() => {}, 1000)`,
+    ],
     { stdio: "ignore" },
   );
-  writeFileSync(`${dir}/pid`, String(child.pid));
 }
 
 function makeAgent(agentId) {
