@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 export type ConnectionFailure = { httpStatus?: number; message: string };
 
 /** The delay before automatic retry `attempt` (0-based): 2s, doubling, capped at 30s. */
-export function retryDelayMs(attempt: number): number {
+function retryDelayMs(attempt: number): number {
   return Math.min(30_000, 2_000 * 2 ** attempt);
 }
 

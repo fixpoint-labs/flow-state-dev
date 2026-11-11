@@ -12,7 +12,7 @@ import { wireTopicKey, type WireNotice } from "@flow-state-dev/contracts";
  * notice is kept, a different one widens it to `null` (read everything).
  * Notices with keys will union here, and only here.
  */
-export function mergeNotices(waiting: WireNotice | null, next: WireNotice | null): WireNotice | null {
+function mergeNotices(waiting: WireNotice | null, next: WireNotice | null): WireNotice | null {
   if (waiting === null || next === null) return null;
   const same =
     waiting.kind === next.kind &&

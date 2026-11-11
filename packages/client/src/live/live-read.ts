@@ -31,7 +31,7 @@ import { coalesce } from "./coalesce";
 import { mayHold } from "./paths";
 
 /** The pace a live read reads at wherever push can miss a change, unless told otherwise. */
-export const LIVE_POLL_MS = 3_000;
+const LIVE_POLL_MS = 3_000;
 
 /**
  * Which resource paths a live read hears: roots (a notice at a root or below
