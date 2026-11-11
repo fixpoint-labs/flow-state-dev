@@ -321,7 +321,12 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
    */
   const userMessage = (dispatch: TaskDispatchInput) => {
     const task = dispatch.payload as TaskWorkerInput;
-    return { text: taskMessage(task), metadata: taskBriefMetadata({ taskId: task.taskId }) };
+    return {
+      text: taskMessage(task),
+      metadata: taskBriefMetadata({ taskId: task.taskId }),
+      // The brief's files, on every run's brief line, so the model reads them with it (FIX-2522).
+      ...(task.attachments !== undefined && task.attachments.length > 0 ? { attachments: task.attachments } : {}),
+    };
   };
 
   return { block, from, userMessage, concurrency: REPLY_CONCURRENCY };

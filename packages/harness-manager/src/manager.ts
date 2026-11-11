@@ -50,12 +50,15 @@ import {
   writePullRequests,
   type PullRequestCollection,
   type PullRequestFollower,
+  harnessRunInputSchema,
+  refuseUnacceptedAttachments,
 } from "@flow-state-dev/core/harness";
 import type {
   HarnessRunOutcome,
   HarnessActivityHook,
   HarnessBlock,
   HarnessResolver,
+  HarnessRunInput,
   HarnessSessionHook,
   HarnessSteer,
   HarnessSteerHook,
@@ -2769,7 +2772,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const prepare = handler({
     name: "harness-manager-prepare",
     inputSchema: taskWorkerInputSchema,
-    outputSchema: z.object({ prompt: z.string() }),
+    outputSchema: harnessRunInputSchema,
     sequencerStateSchema: managerStateSchema,
     // The host's capabilities ride alongside the manager's own, so a phase's
     // prompt builder reads its collections off `ctx.resources` like any block.
@@ -2781,8 +2784,17 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // below would need a cast. Narrowing here keeps the option's cost at the
     // option; `createManagerCapability` carries the long form of the same
     // argument.
-    execute: async (input, ctx: BlockContext) => {
+    execute: async (input, ctx: BlockContext): Promise<HarnessRunInput> => {
       const state = managerState(harnessCtxState(ctx));
+      // FIX-2522; FIX-2519. The brief's files go to every run of the task, so
+      // a re-run sees what the first run saw. A harness that declares what it
+      // takes refuses any other type itself, by name, before its run starts;
+      // one that declares nothing is refused here, before the checkout is
+      // taken: it is never handed a file.
+      const attachments = input.attachments ?? [];
+      if (attachments.length > 0 && harnessBlock.accepts === undefined) {
+        refuseUnacceptedAttachments("This worker's harness", undefined, attachments);
+      }
 
       // **Two channels, two meanings, and they never carry each other.** The
       // board's `feedback` says why the LAST ATTEMPT FAILED; `answers` say what
@@ -2935,6 +2947,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const withSteers = steers.length === 0 ? briefed : `${briefed}\n\n${renderSteers(steers, STEERS_IN_BRIEF)}`;
       return {
         prompt: news.length === 0 ? withSteers : `${withSteers}\n\n${renderSteers(news, PULL_REQUEST_NEWS)}`,
+        ...(attachments.length > 0 ? { attachments: [...attachments] } : {}),
       };
     },
   });

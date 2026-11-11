@@ -14,7 +14,7 @@
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { ATTACHMENT_LIMITS, formatKilobytes, isAttachmentMediaType, isTextAttachmentType, normalizeMediaType, toBlobRef } from "@flow-state-dev/core/attachments";
 import type { FileContent } from "@flow-state-dev/core/items";
-import { readableIn, sessionBlobOwner } from "../blobs/attachments";
+import { readableIn, sessionBlobOwner, type BlobReadScope } from "../blobs/attachments";
 import { PdfTooManyPagesError, PdfUnreadableError, extractPdfText, pdfTextBlobId } from "../blobs/pdf-text";
 import { newBlobId } from "../blobs/shared";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
@@ -22,7 +22,7 @@ import type { HostDiskState } from "../blobs/host-disk";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import type { ResolvedPrincipal } from "../transports/types";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
-import { blobSessionId } from "./route-auth";
+import { blobSessionId, blobUserScope } from "./route-auth";
 import { getString, jsonResponse, loadCheckedSession, unknownBlobResponse } from "./route-utils";
 
 /** What the upload route reads. */
@@ -107,7 +107,7 @@ export async function handleUploadBlob(request: Request, ctx: UploadBlobContext)
   return jsonResponse(201, { attachment });
 }
 
-/** Serve a stored file's bytes to a caller who can read the session that owns it. */
+/** Serve a stored file's bytes to a caller who can read the session that owns it, or whose own scope keeps it. */
 export async function handleGetBlob(
   _request: Request,
   route: Extract<ParsedFlowRoute, { kind: "get_blob" }>,
@@ -117,16 +117,28 @@ export async function handleGetBlob(
   // Checked again here: on an app where nothing authenticates the guard read
   // no file, and a file no session in this tenant owns is no file at all.
   const sessionId = await blobSessionId(ctx.stores, route.blobId, ctx.tenantId);
-  if (sessionId === undefined) return unknownBlobResponse();
-  const session = await loadCheckedSession(ctx.stores.session, sessionId, ctx.tenantId, ctx.checkedSession);
-  if (session === undefined) return unknownBlobResponse();
+  let scope: BlobReadScope;
+  if (sessionId !== undefined) {
+    const session = await loadCheckedSession(ctx.stores.session, sessionId, ctx.tenantId, ctx.checkedSession);
+    if (session === undefined) return unknownBlobResponse();
+    // The session's owner must be the file's uploader too: a straggling claim
+    // can land in a session id between its purge and its rebirth under another
+    // person, and that person reads no file of someone else's.
+    scope = {
+      owner: sessionBlobOwner(resolveSessionStorageKey(sessionId, ctx.tenantId)),
+      user: { userId: session.userId, orgId: session.orgId ?? DEFAULT_ORG_ID }
+    };
+  } else {
+    // A file a user's own scope keeps (FIX-2522): the route guard checked
+    // the caller is that user, under the keeping flow's sign-in, when
+    // anything authenticates.
+    const keeper = await blobUserScope(ctx.stores, route.blobId, ctx.tenantId);
+    if (keeper === undefined) return unknownBlobResponse();
+    scope = { owner: [], user: keeper.user, userKept: { tenantId: ctx.tenantId } };
+  }
 
   const found = await ctx.stores.blobs.read(route.blobId);
-  // The session's owner must be the file's uploader too: a straggling claim
-  // can land in a session id between its purge and its rebirth under another
-  // person, and that person reads no file of someone else's.
-  const user = { userId: session.userId, orgId: session.orgId ?? DEFAULT_ORG_ID };
-  if (found === undefined || !readableIn(found.record, sessionBlobOwner(resolveSessionStorageKey(sessionId, ctx.tenantId)), user)) {
+  if (found === undefined || !readableIn(found.record, scope)) {
     return unknownBlobResponse();
   }
   const { record, bytes } = found;

@@ -54,6 +54,8 @@
 import { defineCapability, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
 import type { ActionConfig, BlockContext, ReadConfig } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
+import type { FileContent } from "@flow-state-dev/core/items";
+import { discardAttachmentsForUser, keepAttachmentsForUser } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import {
   ticketForClaim,
@@ -1319,18 +1321,62 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         // Recorded with the call on a board that starts work, so a replay decides as the first call did.
         const checked = await checkNewTask(ctx, collection, input, dispatches);
         if ("error" in checked) return checked;
-        return fileNewTask(checked.followUp, async () => {
-          // On a board that starts a ready row at once, a filing starts work:
-          // once per call, so a replay finds its own row (BR-15).
-          const filed = dispatches
-            ? await fileReady(ctx, collection, checked.init)
-            : { ok: true as const, taskId: (await collection.createTask(checked.init)).id };
-          return input.held === true ? { ...filed, status: "held" as const } : filed;
-        });
+        // The turn's files join the task's brief, as copies the board's scope keeps (FIX-2522).
+        const kept = await keepTurnFiles(ctx);
+        if ("error" in kept) return kept;
+        const init = kept.files.length === 0 ? checked.init : { ...checked.init, attachments: kept.files };
+        const write = () =>
+          fileNewTask(checked.followUp, async () => {
+            // On a board that starts a ready row at once, a filing starts work:
+            // once per call, so a replay finds its own row (BR-15).
+            const filed = dispatches
+              ? await fileReady(ctx, collection, init)
+              : { ok: true as const, taskId: (await collection.createTask(init)).id };
+            return input.held === true ? { ...filed, status: "held" as const } : filed;
+          });
+        // A call that kept files records its outcome, a refusal included: the refusal below drops the
+        // copies, and the keep is recorded too, so a replay that filed this time would name deleted
+        // files. It answers as the first call did instead.
+        const call = toolCallOf(ctx);
+        const result =
+          kept.files.length > 0 && call !== undefined && ctx.runOnce !== undefined
+            ? await ctx.runOnce(`fsd.briefFiles.filing:${call.logicalId}`, write)
+            : await write();
+        // A refusal the write answered filed no task, so its copies have no row to name them, and an
+        // owned copy is never swept: drop them. A throw leaves them, as it may have filed the task.
+        if (!result.ok) await discardAttachmentsForUser(ctx, kept.files);
+        return result;
       };
       return input.followUpOf === undefined ? oneFilingAtATime(`${ctx.request?.identity?.id ?? ""}\u0000${collection.collectionId}\u0000${collection.partition ?? ""}`, file) : file();
     },
   });
+
+  // FIX-2522; epic FIX-2516 ER-7.
+  /**
+   * The files the turn that files a task carried, kept for its brief: every
+   * one of them (a model sees no reference to pick among), each copied into
+   * the filer's own scope, which a conversation's board is kept in, so the
+   * turn's file and the task's go their own ways. Once per call, so a replay
+   * keeps no second copy. A turn with no files keeps none. Files that can't be
+   * kept refuse the filing by name: a task is never filed without the files
+   * the user sent for it.
+   */
+  async function keepTurnFiles(ctx: BlockContext): Promise<{ files: FileContent[] } | { ok: false; error: string }> {
+    const turn = ctx.request?.attachments ?? [];
+    if (turn.length === 0) return { files: [] };
+    const keep = () => keepAttachmentsForUser(ctx, turn);
+    const call = toolCallOf(ctx);
+    try {
+      const files = call !== undefined && ctx.runOnce !== undefined ? await ctx.runOnce(`fsd.briefFiles:${call.logicalId}`, keep) : await keep();
+      return { files };
+    } catch (error) {
+      const why = error instanceof Error ? error.message : String(error);
+      return {
+        ok: false as const,
+        error: `task_files_not_kept: the files sent with this message couldn't be kept with the task: ${why} Nothing was filed.`,
+      };
+    }
+  }
 
   // BR-15.
   /**

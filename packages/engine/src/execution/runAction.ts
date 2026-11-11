@@ -1815,6 +1815,8 @@ async function runActionAttempt<
       const echo = action.userMessage(parsedInput);
       const text = typeof echo === "string" ? echo : echo.text;
       const metadata = typeof echo === "string" ? undefined : echo.metadata;
+      // Files the flow kept itself (a task's brief files, FIX-2522), after the person's own.
+      const kept = typeof echo === "string" ? [] : (echo.attachments ?? []);
       const userItem: MessageItem = {
         id: `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         type: "message",
@@ -1827,7 +1829,7 @@ async function runActionAttempt<
         ts: Date.now(),
         ...requestTaskStamp(requestTaskId),
         // The person's files after the text, in the order attached, as references.
-        content: [{ type: "output_text", text }, ...(options.attachments ?? [])],
+        content: [{ type: "output_text", text }, ...(options.attachments ?? []), ...kept],
         ...(metadata !== undefined ? { metadata } : {})
       };
       await response.emitItemAdded(userItem);

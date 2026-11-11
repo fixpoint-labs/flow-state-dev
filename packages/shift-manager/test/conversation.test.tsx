@@ -62,6 +62,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../src/components/Conversation";
+import { flowUploader } from "../src/lib/files";
 import { RECEIVED_MESSAGE_COMPONENT, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 
 // The reviewer's conversation: the session at its derived address, where a worker's message lands too.
@@ -420,5 +421,42 @@ describe("sending", () => {
     await waitFor(() => expect((screen.getByTestId("rev-composer-input") as HTMLInputElement).value).toBe(""));
     expect(taken).toHaveBeenCalledTimes(1);
     expect(sendTurn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// A worker flow that signs in its own callers holds an upload for the user
+// its sends resolve only when the upload goes through that flow: the Lab-wide
+// upload route runs the host's sign-in, and the send would then find no file.
+describe("a line's files", () => {
+  it("upload through the worker's own flow, not the Lab-wide route", async () => {
+    const viaFlow = vi.fn(async () => ({ type: "file", mediaType: "image/png", filename: "bug.png", data: "fsd-blob:b_viaflow000001" }));
+    const viaLab = vi.fn(async () => ({ type: "file", mediaType: "image/png", filename: "bug.png", data: "fsd-blob:b_vialab0000001" }));
+    const flows: string[] = [];
+    Object.assign(lab.client, { upload: viaLab, flow: (kind: string) => (flows.push(kind), { upload: viaFlow }) });
+    try {
+      drawn([]);
+      const input = screen.getByTestId("rev-composer-input");
+      const shot = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "bug.png", { type: "image/png" });
+      await act(async () => {
+        fireEvent.paste(input, { clipboardData: { items: [{ kind: "file", getAsFile: () => shot }], files: [shot] } });
+      });
+      await waitFor(() => expect(viaFlow).toHaveBeenCalledOnce());
+      expect(viaLab).not.toHaveBeenCalled();
+      expect(flows).toContain("agent");
+    } finally {
+      delete (lab.client as Record<string, unknown>).upload;
+      delete (lab.client as Record<string, unknown>).flow;
+    }
+  });
+  // Inbox's reply and a task's composer upload through the same uploader, named by their target flow.
+  it("go to the flow a composer names, and nowhere while it names none", async () => {
+    const upload = vi.fn(async () => ({ type: "file", mediaType: "image/png", data: "fsd-blob:b_viaflow000001" }) as const);
+    const flows: string[] = [];
+    const client = { flow: (id: string) => (flows.push(id), { upload }) };
+    expect(flowUploader(client, null)).toBeNull();
+    expect(flowUploader(client, undefined)).toBeNull();
+    await flowUploader(client, "coder")!.upload({ data: new Blob(["x"]), mediaType: "image/png" });
+    expect(flows).toEqual(["coder"]);
+    expect(upload).toHaveBeenCalledOnce();
   });
 });

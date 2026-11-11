@@ -87,6 +87,7 @@ const row = (ownerSessionId: string, id: string, status: string): BoardTaskView 
   title: id,
   goal: null,
   context: null,
+  attachments: [],
   status,
   assignee: null,
   priority: null,

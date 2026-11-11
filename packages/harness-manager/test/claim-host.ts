@@ -22,7 +22,7 @@ import { z } from "zod";
 import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
-import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import type { HarnessBlock, HarnessRunInput } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
@@ -84,6 +84,8 @@ export interface SeenRun {
   cwd: string;
   prompt: string;
   resume: string | null;
+  /** The files the run was handed beside the prompt (FIX-2522), when it was handed any. */
+  attachments?: HarnessRunInput["attachments"];
 }
 
 /** Commit `count` new files in the checkout `cwd`. */
@@ -96,16 +98,16 @@ function commitIn(cwd: string, count: number, tag: string): void {
   }
 }
 
-function stubHarness(script: HarnessStep[], seen: SeenRun[]) {
+function stubHarness(script: HarnessStep[], seen: SeenRun[], accepts: HarnessBlock["accepts"]) {
   return (feeds: HarnessFeeds): HarnessBlock =>
-    handler({
+    Object.assign(handler({
       name: "claim-host-harness",
       inputSchema: harnessRunInputSchema,
       outputSchema: harnessRunHandleSchema,
       execute: async (input, ctx) => {
         const cwd = await feeds.cwd(ctx as never);
         const resume = await feeds.resume(ctx as never);
-        seen.push({ cwd, prompt: input.prompt, resume });
+        seen.push({ cwd, prompt: input.prompt, resume, ...(input.attachments !== undefined ? { attachments: input.attachments } : {}) });
         const step = script[seen.length - 1] ?? {};
         const sessionId = resume ?? `sess_${seen.length}`;
         await feeds.onSession(sessionId, ctx as never);
@@ -130,7 +132,7 @@ function stubHarness(script: HarnessStep[], seen: SeenRun[]) {
           cost: null,
         };
       },
-    }) as unknown as HarnessBlock;
+    }), accepts === undefined ? {} : { accepts }) as unknown as HarnessBlock;
 }
 
 /** The claim a test puts on the manager's input, playing the entry adapter. */
@@ -144,6 +146,8 @@ export interface HostOptions {
   /** `fixed` builds the manager on `FIXED_BOARD`; `claim` builds it with a resolver. */
   mode: "fixed" | "claim";
   script?: HarnessStep[];
+  /** The file types the stub harness says it takes. Default: none, as a harness that declares nothing. */
+  accepts?: HarnessBlock["accepts"];
   /** The phase's done-condition. Default: always done. */
   isDone?: (run: { answer?: string | null }) => boolean;
   /** Extra manager options (a judge, say). */
@@ -224,7 +228,7 @@ export function claimHost(options: HostOptions) {
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
-    harness: stubHarness(options.script ?? [], seen),
+    harness: stubHarness(options.script ?? [], seen, options.accepts),
     ...(options.manager ?? {}),
   } as never);
 
@@ -245,6 +249,7 @@ export function claimHost(options: HostOptions) {
       input: z.unknown().optional(),
       maxAttempts: z.number().optional(),
       deps: z.array(z.string()).optional(),
+      attachments: z.array(z.unknown()).optional(),
     }),
     outputSchema: z.unknown(),
     uses: [ledgerResources],
@@ -258,6 +263,7 @@ export function claimHost(options: HostOptions) {
           assignee: ASSIGNEE,
           ...(input.input !== undefined ? { input: input.input } : {}),
           ...(input.deps !== undefined ? { deps: input.deps } : {}),
+          ...(input.attachments !== undefined ? { attachments: input.attachments as never } : {}),
           maxAttempts: input.maxAttempts ?? 2,
         });
       }
@@ -469,6 +475,8 @@ export function claimHost(options: HostOptions) {
           ...(claimed.title !== undefined ? { title: claimed.title } : {}),
           attempts: claimed.attempts,
           ...(claimed.input !== undefined ? { input: claimed.input } : {}),
+          // As the board packs a run's input (`packWorkerInput`): the brief's files, every attempt.
+          ...(claimed.attachments !== undefined ? { attachments: claimed.attachments } : {}),
           ...(claimed.feedback !== undefined ? { feedback: claimed.feedback } : {}),
           ...(onInput !== null ? { claim: onInput } : {}),
         },

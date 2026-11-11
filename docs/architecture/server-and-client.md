@@ -91,7 +91,7 @@ custom) mount alongside it via the `adapters` option — see
 | DELETE | `/api/flows/sessions/:sessionId` | Delete session |
 | POST | `/api/flows/blobs` | Upload one attachment as the raw body (`content-type` is its type, `filename` query optional); `201 { attachment }` with `data: "fsd-blob:<id>"`. Checked by the host's resolver |
 | POST | `/api/flows/:flowId/blobs` | The same upload, checked by that flow's own resolver, so the file is held for the user its sends resolve |
-| GET | `/api/flows/blobs/:blobId` | The file's bytes, to a caller who can read the session that owns it; any other caller gets 404. Images inline, other types as a download, always `nosniff` |
+| GET | `/api/flows/blobs/:blobId` | The file's bytes, to a caller who can read the session that owns it, or, for a file a person's own scope keeps (a task's brief), to that person; any other caller gets 404. Images inline, other types as a download, always `nosniff` |
 
 Every route that answers with a session record (detail, listing, create, metadata edit) sends it projected the same way. Scope state is private by default, so a client receives only the fields the flow exposes, plus its readonly fields: those are the session's identity, set at create and already a listing filter. Server-side code that needs the whole record reads the session store.
 
@@ -268,6 +268,20 @@ document's text through `readAttachmentText` (`engine/src/blobs/attachment-text.
 which refuses a PDF's text over `maxTextBytes` with `pdf_text_too_large`
 before the target is called; a harness splits its turn with
 `readHarnessTurnFiles`. Text is never cut.
+
+A file can also outlive the turn it came with. A record kept at the user scope,
+such as a task's brief on a conversation's board, keeps copies of the turn's
+files through `keepAttachmentsForUser` (`core/internal`), which the engine
+answers under `USER_ATTACHMENT_SEAM`: each file is read through the same
+resolver, stored again under a new id, and claimed into the user's own scope
+(`userBlobOwner`, whose key also names the flow instance that kept it). The
+copy and the turn's file have separate owners, so deleting the conversation
+leaves the copy. A run reads its session's files and its user's own scope's,
+whichever flow kept them, so every run of a task, in whatever session or flow,
+reads the brief's files, and nobody else's run does. The read route checks the
+caller under the keeping flow's sign-in, since its address names no flow. An action hands such files
+to the line it writes through `userMessage`'s `attachments`, read off
+server-held state; they follow the person's own files on that line.
 
 ### Sessions
 

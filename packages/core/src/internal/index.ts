@@ -78,6 +78,16 @@ export type { RequestWaitOutcome, WaitOnRequestInput } from "../blocks/wait-on-r
 export { HARNESS_ATTACHMENT_SEAM } from "../types/harness-attachment-seam";
 export type { HarnessAttachmentSeam } from "../types/harness-attachment-seam";
 
+// FIX-2522.
+/** The user attachment seam: copies of a turn's files kept in the person's own scope. */
+export {
+  USER_ATTACHMENT_SEAM,
+  UserAttachmentsUnavailableError,
+  discardAttachmentsForUser,
+  keepAttachmentsForUser,
+} from "../types/user-attachment-seam";
+export type { UserAttachmentSeam } from "../types/user-attachment-seam";
+
 /** The dispatch seam: the runtime's dispatch operation, under a symbol slot. */
 export { DISPATCH_SEAM, NoDispatchSeamError, dispatchThroughSeam } from "../types/dispatch";
 export type { DispatchSeam } from "../types/dispatch";
