@@ -1,0 +1,11 @@
+// From specs/epics/FIX-2618/examples/ccs-lab.md (proposed).
+import { workerSessions, turns } from "@flow-state-dev/workforce";
+import { codingBoard, runWork } from "@flow-state-dev/harness-manager";
+import { useView, useResource, useSessionFeed } from "@flow-state-dev/react";
+import { pins } from "./resources";
+export { entriesOf, withStopped, type ThreadEntry } from "./lib/thread";
+export const useSessions = () => useView(workerSessions, {});
+export const useTasks = (sessionId: string) => useView(codingBoard, { sessionId });
+export const useTaskWork = (taskId: string) => useView(runWork, { taskId });
+export const usePins = () => useResource(pins);
+export interface ThreadView { entries: unknown[]; running: boolean }
