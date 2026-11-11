@@ -87,7 +87,7 @@ Stage 1 is specced in the spec-set PR. Stage 2 is parked until the proofs merge,
 | [FIX-2624](https://linear.app/fixpoint-labs/issue/FIX-2624) · stage 2 | Direct user and org reads; every write through `runBy`, with the default write flow and one-line client helpers ([O3](DECISIONS.md#o3)); a session-free identity read; the four workarounds deleted | The session half of the goal | Backlog |
 | [FIX-2625](https://linear.app/fixpoint-labs/issue/FIX-2625) · stage 2 · **gated** | Ids on notices | Re-reads only what changed. [O4](DECISIONS.md#o4) is decided; parked with stage 2 under [D2](DECISIONS.md#d2) | Backlog |
 | [FIX-2626](https://linear.app/fixpoint-labs/issue/FIX-2626) · stage 2 | `defineKit` and slots in `core`; install in the engine; an owned directory read by the walker lifted from workforce; config, the client half | The install half of the goal | Backlog |
-| [FIX-2627](https://linear.app/fixpoint-labs/issue/FIX-2627) · stage 2 | Workforce fully a kit (library half, `workforce/` convention, slots) and the harnesses as kits; one shared coding worker flow | Two kits, so slots meet a second consumer before they freeze | Backlog |
+| [FIX-2627](https://linear.app/fixpoint-labs/issue/FIX-2627) · stage 2 | Workforce fully a kit (library half, `workforce/` convention, slots) and the harnesses kit, harness values filling its slot; one shared coding worker flow | Two kits, so slots meet a second consumer before they freeze | Backlog |
 | [FIX-2628](https://linear.app/fixpoint-labs/issue/FIX-2628) · stage 2 | claude-code-style on kits | The worked example made real; it measures the estimates. Kept, narrowed, if the kits collapse | Backlog |
 | [FIX-2629](https://linear.app/fixpoint-labs/issue/FIX-2629) · closure · **required** | The QA run on one `main` commit: both legs, each team's journey, every child's goal check, the seams | The only child that proves an app sheds its adapter | Backlog · blocked by every other child |
 
@@ -97,8 +97,7 @@ re-read cost lands on every view, and it is gated rather than dropped. **Collaps
 owner's to pull since [O1](DECISIONS.md#o1) is decided: if
 FIX-2622 shows the wiring pain is workforce's own API, FIX-2626 and FIX-2627 leave for a
 follow-up epic, FIX-2628 narrows to moving claude-code-style onto views and direct reads with no
-kits, so leg a still passes, and FIX-2629 drops leg b. FIX-2622 showed it for the install half;
-the owner kept kits on 2026-11-10, so it is not pulled ([O1](DECISIONS.md#o1)).
+kits, so leg a still passes, and FIX-2629 drops leg b. Outcome: [FIX-2622's entry](DECISIONS.md#fix-2622-result).
 
 ## How the issues flow into each other
 

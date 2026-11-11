@@ -111,7 +111,8 @@ whole set by the spec-set author; see the set PR. One finding folded: D1.
 - **What goes to the owner.** Per the amended spec, a B-wins verdict is a reason to reopen
   [O1](../../epics/FIX-2618/DECISIONS.md#o1), not a decision. The proof tests the install half
   only. O1 rests on the client half (the adapters), which this host doesn't exercise. A second
-  kit (slots across kits, `requires`) has no consumer here either.
+  kit (slots across kits, `requires`) has no consumer here either. It went to the owner, who
+  kept kits; see [the epic's entry](../../epics/FIX-2618/DECISIONS.md#fix-2622-result).
 
 ## How it got here
 
