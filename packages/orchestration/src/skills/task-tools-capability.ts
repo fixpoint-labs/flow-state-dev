@@ -51,7 +51,7 @@
  * name rather than letting the schema drop it.
  */
 
-import { defineCapability, defineView, FlowError, handler, sequencer, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
+import { defineCapability, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
 import type { ActionConfig, BlockContext, BlockDefinition, ReadConfig } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import type { FileContent } from "@flow-state-dev/core/items";
