@@ -97,8 +97,8 @@ other way, a stretch where the goals don't cover the install every app uses.
   coordinator flows' options are config. The `harness:` setting rides the coding flow's own
   settings, and usage readers ride the harness value, so neither needs a workforce slot.
 - **A contribution sees its own kit's merged slots.** The coding flow needs every harness, so
-  slots merge dependents first and `contributes` receives `{ config, slots }`. FIX-2626 sketches
-  `contributes: ({ config })`; this is a requirement on it, raised in the cross-spec review.
+  slots merge dependents first and `contributes` receives `{ config, slots }`. FIX-2626's amendment
+  (#5085) states it, from the cross-spec review.
 - **The harness kit** is `harnesses` (the name `harnessManager` is the block's), from
   `@flow-state-dev/harness-manager/kit`, `requires: [workforce]`. Only that subpath imports
   workforce; there is no cycle (workforce never imports harness-manager).
