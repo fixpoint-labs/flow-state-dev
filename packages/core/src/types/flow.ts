@@ -24,6 +24,7 @@ import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
 import type { SessionCreateCheck } from "./session-create";
 import type { ResourceVisibilityRule } from "./resource-visibility";
+import type { ViewDefinition } from "./view";
 import type { FileContent } from "../items/content";
 
 /** Legacy scope-keyed config alias preserved for type-internal usage. */
@@ -670,6 +671,15 @@ export type FlowDefinition<
    */
   reads?: Record<string, ReadEntry>;
 
+  // FIX-2623.
+  /**
+   * The flow's views: blocks a screen watches, each with a scope (`session`,
+   * or `user` / `org` with no session) and, for a list, a row key. Declared
+   * with `defineView`. A view writes nothing and calls no model; each run's
+   * answer names the change topics its reads fall under.
+   */
+  views?: Record<string, ViewDefinition>;
+
   session?: TSession;
   request?: TRequest;
   user?: TUser;
@@ -857,6 +867,8 @@ export type FlowInstance<
   task?: TypedEntries<TaskEntry>;
   /** See {@link FlowDefinition.reads}. Absent when the flow declares none. */
   reads?: Record<string, ReadConfig>;
+  /** See {@link FlowDefinition.views}. Absent when the flow declares none. */
+  views?: Record<string, ViewDefinition>;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
@@ -939,6 +951,8 @@ export type FlowType<
   task?: TypedEntries<TaskEntry>;
   /** See {@link FlowDefinition.reads}. Absent when the flow declares none. */
   reads?: Record<string, ReadConfig>;
+  /** See {@link FlowDefinition.views}. Absent when the flow declares none. */
+  views?: Record<string, ViewDefinition>;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
