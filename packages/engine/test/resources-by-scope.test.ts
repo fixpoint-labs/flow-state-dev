@@ -496,7 +496,8 @@ describe("a send through a flow of the app's own (runBy: { flow })", () => {
   });
 });
 
-describe("security review (Cursor 5865490275): the principal comes from the flow that runs, and nothing tells a real key from an unused one", () => {
+// Cursor review 5865490275.
+describe("the principal comes from the flow that runs, and nothing tells a real key from an unused one", () => {
   const invoice = defineResource({
     ref: "invoice",
     scope: "org",
@@ -537,7 +538,7 @@ describe("security review (Cursor 5865490275): the principal comes from the flow
     return { router, stores };
   };
 
-  it("HIGH: an anonymous send through the resource is refused as a direct POST to the writer's action is, and runs nothing", async () => {
+  it("an anonymous send through the resource is refused as a direct POST to the writer's action is, and runs nothing", async () => {
     const { router, stores } = host();
     const direct = await post(router, ["billing", "actions", "refund"], {}, { input: {} });
     expect(direct.status).not.toBe(202);
@@ -548,7 +549,7 @@ describe("security review (Cursor 5865490275): the principal comes from the flow
     expect(await stores.request.list({})).toEqual([]);
   });
 
-  it("HIGH: a signed-in send runs as the principal the writer flow resolves, not the first declarer's", async () => {
+  it("a signed-in send runs as the principal the writer flow resolves, not the first declarer's", async () => {
     const { router, stores } = host();
     const res = await post(router, ["resources", "org", "invoice", "actions", "refund"], alice, { input: {} });
     expect(res.status, await res.clone().text()).toBe(202);
@@ -564,7 +565,7 @@ describe("security review (Cursor 5865490275): the principal comes from the flow
     return { status: res.status, body: (await res.text()).split(key).join("<key>") };
   }
 
-  it("MEDIUM: an anonymous probe of a real key answers exactly as an unused key, on the read and the send", async () => {
+  it("an anonymous probe of a real key answers exactly as an unused key, on the read and the send", async () => {
     const { router } = build([threadsFlow({ authenticated: true })]);
     const unusedRead = await probe(await get(router, ["resources", "user", "nope"], {}), "nope");
     const unusedSend = await probe(await post(router, ["resources", "user", "nope", "actions", "set"], {}, { input: {} }), "nope");
@@ -574,7 +575,7 @@ describe("security review (Cursor 5865490275): the principal comes from the flow
     }
   });
 
-  it("MEDIUM: an anonymous probe of a key two flows declare in disagreement, or only isolated, names no flow", async () => {
+  it("an anonymous probe of a key two flows declare in disagreement, or only isolated, names no flow", async () => {
     const other = (context: { request?: Request }) => ({ userId: context.request?.headers.get("x-other") ?? "x", orgId: ORG_A });
     const disagree = build([threadsFlow({ authenticated: true }), threadsFlow({ authenticated: true, kind: "digest", resolver: other as typeof signIn })]);
     const unused = await probe(await get(disagree.router, ["resources", "user", "nope"], {}), "nope");
@@ -585,7 +586,7 @@ describe("security review (Cursor 5865490275): the principal comes from the flow
     expect(await probe(await get(iso.router, ["resources", "user", "iso"], {}), "iso")).toEqual(unusedIso);
   });
 
-  it("MEDIUM: a write request whose session no longer resolves gets the route's ordinary unused-id answer", async () => {
+  it("a write request whose session no longer resolves gets the route's ordinary unused-id answer", async () => {
     const first = build([threadsFlow({ authenticated: true })]);
     const done = await write(first.router, first.stores, "user", "pins", alice, { input: { state: { pinned: ["x"] }, version: 0 } });
     // A mixed host (one flow signs callers in, the host resolver is the development default)
@@ -600,7 +601,7 @@ describe("security review (Cursor 5865490275): the principal comes from the flow
     }
   });
 
-  it("LOW: the identity read never hands a configured resolver the query's userId", async () => {
+  it("the identity read never hands a configured resolver the query's userId", async () => {
     // A resolver that trusts its cookie, else falls back to the body's userId.
     const lenient = (context: { request?: Request; envelope?: { metadata?: { body?: { userId?: string } } } }) => {
       const user = context.request?.headers.get("x-user") ?? context.envelope?.metadata?.body?.userId;
@@ -612,7 +613,8 @@ describe("security review (Cursor 5865490275): the principal comes from the flow
   });
 });
 
-describe("instances pinned to different users declaring one shared resource (Codex 4543388753)", () => {
+// Codex review 4543388753.
+describe("instances pinned to different users declaring one shared resource", () => {
   it("lets each user read and write through the instance pinned to them, whatever the registry's order", async () => {
     const kind = defineFlow({
       kind: "threads",
