@@ -642,8 +642,8 @@ export const ENTRIES = [
   },
   {
     term: "Kit",
-    means: "FSD's own installable unit above a flow: existing pieces (resources, views, flows, capabilities, blocks, workers, a client half), a config and slots, plus an optional folder it owns in the app, scaffolded once and read at install.",
-    decision: "Owner, 2026-11-10 (epic FIX-2618 O1, O5); FIX-2619",
+    means: "FSD's own installable unit above a flow: a config, the kits it requires, slots other kits fill, an optional folder it owns in the app, and an install that returns flows (which carry the resources, views and capabilities). Screens use a kit through its package's ordinary exports; a kit has no client half.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O1, O5); FIX-2619; FIX-2626 D1 (no kit client runtime)",
     // Never a session factory (that entry). A third-party ecosystem stays a non-goal (docs/objectives.md).
     retires: [],
   },

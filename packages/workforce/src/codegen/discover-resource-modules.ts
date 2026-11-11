@@ -36,15 +36,17 @@
 
 import path from "node:path";
 import {
-  DOCUMENT_EXTENSION,
   IGNORED_ENTRIES,
-  REFERENCES_SLOT,
-  RESOURCES_SLOT,
   classify,
   openStructuralDirectory,
   refusedSymlink,
-  siblingSlotPath,
   unreadable,
+} from "@flow-state-dev/engine/folder";
+import {
+  DOCUMENT_EXTENSION,
+  REFERENCES_SLOT,
+  RESOURCES_SLOT,
+  siblingSlotPath,
 } from "../loader";
 import { walkResourcePlaces } from "../loader/resource-walk";
 import { typescriptExtension } from "./typescript-module";

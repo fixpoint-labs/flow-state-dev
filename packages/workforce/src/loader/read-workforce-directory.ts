@@ -50,8 +50,8 @@ import {
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
-  walkTeams,
-} from "./structural-directory";
+} from "@flow-state-dev/engine/folder";
+import { walkTeams } from "./structural-directory";
 
 /** The document that describes a worker. */
 const WORKER_MD = "WORKER.md";
@@ -121,7 +121,7 @@ export async function readWorkforceDirectory(
   const workers: WorkerManifest[] = [];
   const errors: ReadWorkforceDirectoryResult["errors"] = [];
 
-  await openRoot(root);
+  await openRoot(root, "workforce directory");
 
   /** File a structural refusal met on the way to a `workers/` level. */
   const report = (at: string, error: Error): void => {

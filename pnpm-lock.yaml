@@ -2296,6 +2296,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
+      '@flow-state-dev/engine':
+        specifier: workspace:*
+        version: link:../engine
       '@flow-state-dev/orchestration':
         specifier: workspace:*
         version: link:../orchestration
@@ -2312,9 +2315,6 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
-      '@flow-state-dev/engine':
-        specifier: workspace:*
-        version: link:../engine
       '@flow-state-dev/memory':
         specifier: workspace:*
         version: link:../memory
