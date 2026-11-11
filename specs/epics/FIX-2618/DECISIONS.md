@@ -116,7 +116,7 @@ Decided by the owner, in session, 2026-11-10: kits, yes, in the shape below. It 
 |---|---|
 | **Instead of** | No new unit: fix workforce's own installation API so the host's wiring goes, and keep each app's read model |
 | **Because** | Only a kit's client half removes the adapters at the root; a better install API removes the wiring, never the read model. A capability can't do the job: it installs into one block and can't add flows or views (`define-capability.ts`) |
-| **Locks in** | A new public unit and a slot contract, built last against two kits (FIX-2626, FIX-2627). Workforce converts fully into a kit: its library half, its `workforce/` file convention and its slots (`workerFlows` among them). `createWorkerInstallation` and `hireWorkforce` become internals of its install; no app calls them |
+| **Locks in** | A new public unit and a slot contract, built last against two kits (FIX-2626, FIX-2627): **workforce**, the base, and **harnesses**, a workforce extension kit (harness-manager, with Claude Code, Codex and Cursor as its config), the owner, 2026-11-11. Workforce converts fully into a kit: its library half, its `workforce/` file convention and its slots (`workerFlows` among them). `createWorkerInstallation` and `hireWorkforce` become internals of its install; no app calls them. Harnesses contributes through workforce's slots: a coder worker flow, readiness context, usage readers and the `harness:` worker setting |
 
 **The shape** ([a kit](examples/kit.md), [an app installing kits](examples/app-install.md)):
 
@@ -156,6 +156,19 @@ Decided by the owner, in session, 2026-11-10: kits, yes, in the shape below. It 
   app, a sibling of other kits' directories, never nested in one. A kit that requires another
   (a workforce extension kit) contributes only through the slots that kit publishes, never by
   putting files in its directory. Install order comes from `requires`, not folder placement.
+- **Which kits** (the owner, in session, 2026-11-11). Harnesses, because the hosts rebuild it:
+  the coding worker flow three times (teammates `src/flows/coder.ts`, ccs
+  `workforce/flows/harness-thread.mts`, shift-manager `teams/devteam/workforce/flows/workers/coder.mts`),
+  the readiness map in four hosts, the readiness chip byte-copied into both labs. **Projects is
+  not a workforce default**: it builds in too many opinions we may want to replace, so the
+  workforce kit installs no projects flows. Harnesses doesn't require it: harness-manager takes a
+  workspace source (`localWorkspaceHost({ source })`), which a later projects kit could
+  contribute (`workforce | projects | harnesses`). Until then ccs and shift-manager keep calling
+  the project blocks directly (a note for FIX-2627). **Later candidates, not children or scope:**
+  MCP, voice, projects. **Not kits:** memory (a workforce install option or slot), orchestration
+  (workforce's foundation library), tools, patterns, thought-fabric, scheduled (workforce's install
+  may mount it), ui (how kits publish copied React), shift-manager (an app). Skills becomes one
+  only if a second app needs an app-owned `skills/` folder outside workforce.
 
 **What would change my mind.** FIX-2622 showed the better API removes everything the kit's
 install removes ([below](#what-the-end-state-poc-showed)). The owner kept O1 anyway, in session,
@@ -307,7 +320,7 @@ the stage-2 specs.
 | The loader's walk primitives (`openRoot`, `classify`, `validateSegment`, `IGNORED_ENTRIES`) | FIX-2626, FIX-2627, `packages/workforce/src/loader` | FIX-2626 lifts them to a Node-only engine subpath for every kit's owned directory; FIX-2627 leaves workforce only its own schema ([O1](#o1)) |
 | The glossary | FIX-2619, FIX-2623, FIX-2626, FIX-2600 | FIX-2619 adds the entries and narrows FIX-2246's; later children edit their own entry in their PR (FIX-2600 ER-2) |
 | `runBy` and per-service sessions | FIX-2624, FIX-2471 | FIX-2471's webhook subscriptions are a candidate consumer. Coordinate, don't fold |
-| Connectors and project scope keys | FIX-2627, FIX-2615 | A connector looks like kit config; FIX-2615 defines what a project is. FIX-2627 reads FIX-2615's answer and doesn't define one |
+| Connectors and project scope keys | FIX-2627, FIX-2615 | A connector looks like kit config; FIX-2615 defines what a project is. FIX-2627 reads FIX-2615's answer and doesn't define one. MCP is a later kit candidate; the owner is weighing holding FIX-2615 until FIX-2626 lands ([O1](#o1)) |
 
 ## Decided while drafting, recorded so no child reopens them
 
