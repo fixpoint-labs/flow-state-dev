@@ -129,11 +129,11 @@ heard. A one-follower topic still works as an address; the publisher gets nothin
 | Declared topics | Webhook bindings' schemas | **New:** one config map, read by publish and `canRead` |
 | `publishEvent`, tool and function | `sendMessage`, `dispatcher()` | **New verb** over the dispatch seam: no `to` |
 | The seam's service route | FIX-2535's webhook service route; `routeServiceEvent` | **Extends** the dispatch seam with the same route |
-| `hop` on the event | FIX-2535's `addressed` | **Extends** the event by one optional, server-set field |
+| `hop` and `chain` on the event | FIX-2535's `addressed`; FIX-1989's message chain row | **Extends** the event by two optional, server-set fields, set together; delivery pays into the publisher's existing chain row |
 
 | The debt | |
 |---|---|
-| **Adds** | One verb, one config map, one optional event field. One seam rule, the first routing a user's request starts: permanent by design, security-sensitive (FIX-2534 D2 foresaw it) |
+| **Adds** | One verb, one config map, two optional event fields (`hop`, `chain`). One seam rule, the first routing a user's request starts: permanent by design, security-sensitive (FIX-2534 D2 foresaw it) |
 | **Removes** | Nothing |
 | **Leaves** | A one-follower topic as an address: permanent by design. FIX-825's topics, if built, name theirs apart |
 
@@ -151,10 +151,10 @@ the seam rule becomes the door other "act as a teammate" features copy.
    them.** The one to weigh. If wrong: a second who-follows-what list, and a third routine
    trigger.
 2. **[D2](DECISIONS.md#d2) · The loop guard is the message budget, not a new causation
-   chain.** Amended 2026-11-11: the publish carries its chain, so every subscriber it wakes
-   pays into one budget. If wrong: a ring that alternates messages and publishes outruns both
+   chain.** Amended 2026-11-11: the publish carries its chain (FIX-1989's message chain row,
+   not a second loop guard), so every subscriber it wakes pays into one budget. If wrong: a ring that alternates messages and publishes outruns both
    caps, or a fan-out multiplies the budget by its followers.
 
 **Decided, owner:** [Q1](DECISIONS.md#q1) · who hears: only the publisher's own user, for now.
 
-Feature · workforce, engine · medium: one verb, one config map, one seam rule, one event field · epic FIX-2471 · after FIX-2614
+Feature · workforce, engine · medium: one verb, one config map, one seam rule, two event fields · epic FIX-2471 · after FIX-2614
