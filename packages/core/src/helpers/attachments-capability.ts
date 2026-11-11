@@ -13,7 +13,7 @@
  * - A context entry listing the session's newest documents from the
  *   `attachments` list that `recordAttachments` keeps.
  * - A `history` query, `earlierDocuments: "named"`: an earlier turn's document
- *   becomes one line naming it and its id, instead of FIX-2517 D1's window.
+ *   becomes one line naming it and its id, instead of the newest-files window.
  *
  * Two halves, like `historySummary`: this capability on the generator, and
  * `recordAttachments` as a step before it, the list's one writer.
@@ -105,7 +105,7 @@ export const readAttachment = handler({
   outputSchema: readAttachmentOutput,
   resources: { [ATTACHMENTS]: attachmentsCollection },
   execute: async (input, ctx): Promise<z.infer<typeof readAttachmentOutput>> => {
-    const documents = await documentsOf(ctx as BlockContext);
+    const documents = await documentsOf(ctx);
     let file: FileContent | undefined;
     if (input.id !== undefined && input.id !== "") {
       file = fileForId(input.id.trim(), documents);
@@ -167,7 +167,7 @@ async function listedDocuments(_input: unknown, ctx: BlockContext): Promise<stri
  * ```
  *
  * It declares the `attachments` list, so it installs it. A flow without it
- * keeps FIX-2517 D1's window.
+ * keeps the newest-files window.
  */
 export const attachmentsCapability = defineCapability({
   name: "attachments",

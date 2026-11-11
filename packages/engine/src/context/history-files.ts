@@ -95,7 +95,7 @@ function fileNote(file: FileContent, why: string): { type: "text"; text: string 
 // FIX-2636 D2.
 /**
  * How the history carries an earlier turn's documents: `"window"`, the newest
- * up to one message's limits (FIX-2517 D1); `"named"`, none, each named with
+ * up to one message's limits; `"named"`, none, each named with
  * its id for the model to read on request. Set by the history read's
  * `ItemQuery.earlierDocuments`.
  */
