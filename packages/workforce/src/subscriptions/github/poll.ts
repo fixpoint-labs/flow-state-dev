@@ -10,7 +10,9 @@
  *   its timeline (`assigned`, `review_requested`, `closed`, `reopened`), plus
  *   its opening.
  * - **A repository** (`github:o/r`): the issues and pull requests that moved
- *   (their opening and closing) and the repository's issue comments.
+ *   (their opening and closing), the repository's issue comments and review
+ *   comments, and the reviews of each pull request that moved (a review moves
+ *   its pull request), as a webhook puts those on the repository thread too.
  *
  * **Conditional requests.** Each list's first page is asked with the ETag the
  * last poll got for it; when every one answers `304`, the poll is
@@ -250,6 +252,13 @@ export async function pollGitHubThread(
   if (n === undefined) {
     const issues = await pages(`${repo}/issues?state=all&per_page=100${sinceParam}`, (i) => ms(i.updated_at));
     const comments = await pages(`${repo}/issues/comments?per_page=100${sinceParam}`, (c) => ms(c.updated_at));
+    const reviewComments = await pages(`${repo}/pulls/comments?per_page=100${sinceParam}`, (c) => ms(c.updated_at));
+    // GitHub lists reviews per pull request only: each pull request that moved since the mark is asked for its own.
+    const reviews: Array<[Json, Json]> = [];
+    for (const pr of issues) {
+      if (pr.pull_request === undefined || typeof pr.number !== "number") continue;
+      for (const review of await pages(`${repo}/pulls/${pr.number}/reviews?per_page=100`, (r) => ms(r.submitted_at))) reviews.push([pr, review]);
+    }
     if (moved && repository === undefined) repository = obj((await get(repo, true))?.body);
     const repoPayload: Json = repository ?? { full_name: `${owner}/${name}` };
     /** One issue read in full (the list carries no `closed_by`), once per issue and poll; `undefined` when it can't be read. */
@@ -276,6 +285,15 @@ export async function pollGitHubThread(
       if (!Number.isInteger(number)) continue;
       if (!issuesByNumber.has(number)) issuesByNumber.set(number, (await readIssue(number)) ?? { number });
       push("issue_comment", { action: "created", comment, issue: issuesByNumber.get(number)!, repository: repoPayload, sender: comment.user });
+    }
+    for (const comment of reviewComments) {
+      const number = Number(String(comment.pull_request_url ?? "").split("/").pop());
+      if (!Number.isInteger(number)) continue;
+      if (!issuesByNumber.has(number)) issuesByNumber.set(number, (await readIssue(number)) ?? { number });
+      push("pull_request_review_comment", { action: "created", comment, pull_request: issuesByNumber.get(number)!, repository: repoPayload, sender: comment.user });
+    }
+    for (const [pr, review] of reviews) {
+      if (after(ms(review.submitted_at))) push("pull_request_review", { action: "submitted", review, pull_request: pr, repository: repoPayload, sender: review.user });
     }
     return result(events);
   }
