@@ -145,7 +145,7 @@ is added ([ER-4](../../epics/FIX-2618/DECISIONS.md#who-owns-what)).
 | **Adds** | A request row per plain write, and one session per resource per writer: permanent by design ([O3](../../epics/FIX-2618/DECISIONS.md#o3)). The lab's old pins and dismissals are not migrated, by owner direction: a lab, no users' marks to keep. User and org resources readable two ways, by session and by scope, until the epic's follow-up |
 | **Leaves** | For the epic's follow-up on serving each answer once: the session-addressed `fsd.resources` API and the three collection hooks beside `useResource`; `client.userId`, the user a client claims, beside the identity read. Shift Manager reads other user and org data through the user's real sessions (manifests); its remaining adapter is a follow-up epic too. The skills collection's content-write grants, refused at 501 ([FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633)) |
 
-**Net: down.** Four helpers, two flows and a fallback go; one stock flow, one field and two
+**Net: down.** Four helpers, two flows and Shift Manager's second-org fallback go; one stock flow, one field and two
 address forms come.
 
 ## Sign off

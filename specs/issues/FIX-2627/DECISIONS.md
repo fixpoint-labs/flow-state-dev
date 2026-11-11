@@ -68,8 +68,8 @@ other way, a stretch where the goals don't cover the install every app uses.
   head. It waits on FIX-2624's first PR, which deletes the lab's pins and dismissals flows.
   In that PR: claude-code-style's `projects.mts` moves to `labs/claude-code-style/flows/`, listed
   in `flows:`; `harness-thread.mts` is deleted and its workers name `coder`; anything of
-  `pins` or `dismissals` still there moves with `projects.mts`, and so does `user-marks.mts`,
-  which FIX-2624's one-read fallback still reads; FIX-2628 deletes it with that fallback. kitchen-sink's `workforce/hire.ts` goes with its move to `kits`. Shift
+  `pins` or `dismissals` still there moves with `projects.mts`, and so does `user-marks.mts`;
+  FIX-2628 deletes it. Nothing reads old marks from it: FIX-2624 has no fallback ([amended](../FIX-2624/DECISIONS.md#how-it-got-here)). kitchen-sink's `workforce/hire.ts` goes with its move to `kits`. Shift
   Manager's fixture `flows/piece.mts` moves to the fixture's own folder.
 - **claude-code-style's host moves onto `kits` here,** since its calls go internal and the claim
   pass reaches it. FIX-2628 owns its adapter and its app kit, and may move `projects.mts` into it.
