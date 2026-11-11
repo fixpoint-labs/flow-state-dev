@@ -261,7 +261,7 @@ describe("one way to record a view's dependency", () => {
     // one, a template's scope); one that goes through the surface can't.
     const source = readFileSync(new URL("../src/context/createExecutionContext.ts", import.meta.url), "utf8");
     // The recorder is read off `options` twice (the presence check and the
-    // hand-off) and named nowhere else.
+    // call that passes it to the surface) and named nowhere else.
     expect(source.match(/[\w.]*\brecordRead\b/g)).toEqual(["options.recordRead", "options.recordRead"]);
     expect(source).toMatch(/createViewDependencies\(options\.recordRead, sessionId,/);
   });
