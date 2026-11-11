@@ -57,6 +57,13 @@ await runGoal(async (failures, tell) => {
           opened += 1;
           await openSessionOn(p, fsd(), USER, `closure-${opened}`, repo);
         },
+        // The task's card in the Background tasks pane opens its sheet, which draws the run's work.
+        async openCodingTask(p, timeout) {
+          const card = p.getByRole("complementary", { name: "Background tasks" }).locator("button[data-task-status]").first();
+          if (!(await card.waitFor({ timeout }).then(() => true, () => false))) return null;
+          await card.click();
+          return p.getByRole("dialog", { name: /^Work: / });
+        },
         async restart() {
           stopProcessGroup(lab.child);
           for (let i = 0; i < 100 && (await fetch(lab.origin).then(() => true, () => false)); i += 1) await sleep(200);

@@ -176,6 +176,12 @@ export interface Surface {
   restart?(): Promise<void>;
   /** The page path that reopens the conversation leg a sent into, after a restart. Default: the page's own URL. */
   reopenPath?(page: Page): string;
+  /**
+   * Open the coding task the hand-off filed and return its own view, where the
+   * coding run's work is drawn; null when no task shows within `timeout`.
+   * Without it, the hand-off has nothing of the coding run's to read: a FAIL.
+   */
+  openCodingTask?(page: Page, timeout: number): Promise<Locator | null>;
 }
 
 const visible = (page: Page, selector: string) => page.locator(`${selector}:visible`);
@@ -248,7 +254,7 @@ function sessionOf(request: Request): string | undefined {
 }
 
 /** Type `line` and send it with Enter; the send request, or null when none went out. */
-async function sendLine(page: Page, surface: Surface, line: string): Promise<Request | null> {
+export async function sendLine(page: Page, surface: Surface, line: string): Promise<Request | null> {
   await visible(page, '[aria-label="Uploading"]').first().waitFor({ state: "detached", timeout: 120_000 }).catch(() => undefined);
   const sent = page.waitForRequest(isSendOf(line), { timeout: 30_000 }).catch(() => null);
   await surface.box(page).fill(line);
@@ -410,8 +416,8 @@ export const handOffLine = (worker: string) =>
 
 /**
  * A coding worker sees a line's images through the task its worker files
- * (FIX-2522): two fresh images, the hand-off line, and the reply on the page
- * (the task's result, as the conversation draws it) naming both words.
+ * (FIX-2522): two fresh images, the hand-off line, and the coding task's own
+ * view (opened by the surface's `openCodingTask`) naming both words.
  * Failures are `<tag>:coding`.
  */
 export async function walkCodingHandOff(page: Page, surface: Surface, worker: string, failures: string[], tell: Tell, avoid: readonly string[]): Promise<[string, string]> {
@@ -425,7 +431,13 @@ export async function walkCodingHandOff(page: Page, surface: Surface, worker: st
     failures.push(`[${surface.tag}:coding] no send request went out`);
     return words;
   }
-  const text = await readUntilNamed((surface.replyScope ?? ((p: Page) => p.locator("body")))(page), words, line.slice(0, 30));
+  // The coding run's own view, never the conversation: the worker that files the task sees the images itself.
+  const view = surface.openCodingTask === undefined ? null : await surface.openCodingTask(page, TURN_MS);
+  if (view === null) {
+    failures.push(`[${surface.tag}:coding] no coding task was filed from the line`);
+    return words;
+  }
+  const text = await readUntilNamed(view, words);
   const named = tell.over(`${surface.tag}:coding`, words).filter((w) => text.includes(w));
   if (named.length !== 2) failures.push(`[${surface.tag}:coding] the coding run's report names ${named.length} of ${words.join(", ")}: ${JSON.stringify(text.slice(-400))}`);
   return words;

@@ -38,7 +38,7 @@ import {
   startShiftManager,
   type ServedShiftManager,
 } from "../../../lib/shift-manager.mts";
-import { controlName, draw, drawWords, harnessReadiness, missingModel, paste, pick, plantControl, readUntilNamed, refuseStubs, TURN_MS, walkSurface, type Surface } from "../legs.mts";
+import { controlName, draw, drawWords, harnessReadiness, missingModel, paste, pick, plantControl, readUntilNamed, refuseStubs, sendLine, TURN_MS, walkSurface, type Surface } from "../legs.mts";
 import { wordPng } from "../../reach-the-model/png.mts";
 
 refuseStubs();
@@ -102,8 +102,8 @@ await runGoal(async (failures, tell) => {
       await surface.open(page);
       await paste(box(page), "bug-1.png", "image/png", wordPng(words[0]));
       await pick(page, [{ name: "bug-2.png", mimeType: "image/png", buffer: Buffer.from(wordPng(words[1])) }]);
-      await box(page).fill(`File a task for the Coder titled "${marker}" with the two attached images. The task: report the word written on each image, and change no file.`);
-      await box(page).press("Enter");
+      // Wait for the send itself: leaving the page first can abort an upload or the action request.
+      if ((await sendLine(page, surface, `File a task for the Coder titled "${marker}" with the two attached images. The task: report the word written on each image, and change no file.`)) === null) return false;
       await openShiftManager(page, served.origin, "/tasks");
       const row = page.getByText(marker).first();
       if (!(await row.waitFor({ timeout: 300_000 }).then(() => true, () => false))) return false;
