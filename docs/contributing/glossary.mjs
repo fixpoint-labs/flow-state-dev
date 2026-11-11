@@ -787,7 +787,13 @@ const EXEMPTIONS = [
     path: /^labs\/teammates\/(?:src|test)\/|^labs\/teammates\/workforce\/teams\/teammates\/workers\/chief-of-staff\/WORKER\.md$/,
     line: /\bteammates\.chief-of-staff\b|^\(file path\)$/,
     rules: ["shift-coordinator-names"],
-    why: "FIX-2354: the Teammates lab's Lead keeps its stored worker id `teammates.chief-of-staff` (its folder and roster key): stored worker id — renaming strands persisted conversations (BP-030). The name a person reads is Lead",
+    why: "FIX-2354: the Teammates lab's Chief of Staff keeps its stored worker id `teammates.chief-of-staff` (its folder and roster key): stored worker id — renaming strands persisted conversations (BP-030)",
+  },
+  {
+    path: /^labs\/teammates\/workforce\/teams\/teammates\/workers\/chief-of-staff\/WORKER\.md$/,
+    line: /^name: Chief of Staff$/,
+    rules: ["shift-coordinator-prose"],
+    why: "the Teammates lab's own worker is called Chief of Staff; the Shift Coordinator decision (FIX-2244) retires that name for Shift Manager's coordinator, not for this lab",
   },
   {
     path: /^\.changeset\/fix-2614-routines\.md$/,

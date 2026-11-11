@@ -621,7 +621,8 @@ const PromptInputForm = ({
       >
         <InputGroup
           className={cn(
-            "overflow-hidden",
+            // Wrap: the strip is a full-width sibling of the textarea and the buttons, so it takes the first line and they share the next.
+            "flex-wrap overflow-hidden",
             attachments.dragging && "ring-2 ring-ring"
           )}
         >
