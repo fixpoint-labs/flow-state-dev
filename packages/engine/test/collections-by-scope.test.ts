@@ -130,11 +130,12 @@ describe("a direct read of a collection's entries", () => {
     expect(second.nextCursor).toBeUndefined();
   });
 
-  it("ignores a userId forged in the query under a resolver, and refuses a caller it doesn't sign in", async () => {
+  it("ignores a userId forged in the query under a resolver, and answers a caller it doesn't sign in as an unused key", async () => {
     const { router, stores } = buildRouter([threadsFlow()]);
     await seed(stores, "user", bob, "drafts/b", { title: "B", body: "", score: 0 });
     expect((await list(router, "user", "drafts/*", alice, "?userId=bob")).items).toEqual([]);
-    expect((await get(router, ["resources", "user", "drafts/*", "entries"], {}, "?userId=bob")).status).toBe(401);
+    // Answered as an unused key would be: an unsigned caller learns nothing about which keys exist.
+    expect((await get(router, ["resources", "user", "drafts/*", "entries"], {}, "?userId=bob")).status).toBe(404);
   });
 
   it("refuses the single-resource read of a collection, naming its entries route", async () => {
