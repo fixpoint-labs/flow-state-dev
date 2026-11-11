@@ -72,7 +72,7 @@ seven uses move to FIX-2623 by name, and this issue closes on the other twenty-s
 |---|---|
 | **Instead of** | A second hook beside today's `useResource(session, ref)` (`useScopedResource`, or a two-form overload) |
 | **Because** | One job, one hook: read one resource and write it, and `fsd.resource(ref)` is the same handle outside React. A second hook is a second way to read a resource. No app in the repository calls `useResource` (only `useResourceContent` wraps it), we're before 1.0, and FIX-2447 removes old forms with no alias. The epic's examples already name `useResource(pins)`. A collection is accepted too, so an org collection has a session-free hook |
-| **Locks in** | A breaking change to a published, documented hook, in a minor changeset with a one-line migration: `useResource(session, "soul")` becomes `useResource(soul, { session })`, and its result becomes the value with its setters instead of `{ clientData, fetchContent }`. The three collection hooks beside it stay session-addressed until the epic's follow-up on serving each answer once |
+| **Locks in** | A breaking change to a published, documented hook, in a minor changeset with a one-line migration: `useResource(session, "soul")` becomes `useResource(soul, { session })`, and its result becomes `{ value, stale }` with its setters instead of `{ clientData, fetchContent }`: the same names as `useView`. The three collection hooks beside it stay session-addressed until the epic's follow-up on serving each answer once |
 
 ![D2: one useResource that takes a resource, chosen, beside a second hook beside it. Decides it: how many hooks read one resource. Price: adopters of the old form rewrite each call. Tie: session-scope resources still come from the snapshot. Locks in a breaking change to a published hook. Flips if an adopter builds against the old form today](figures/d2-use-resource.svg)
 
@@ -130,12 +130,19 @@ answer once.
 - **Tenant** comes from the existing tenant header, as on every route (FIX-682), and is part of
   the write session's id.
 - **Notices:** a write through either flow publishes the resource's change like any action
-  write (FIX-2367). `useResource` stays current on [FIX-2551](https://linear.app/fixpoint-labs/issue/FIX-2551)'s live read ([ER-7](../../epics/FIX-2618/DECISIONS.md#who-owns-what)), with no poll of its own.
+  write (FIX-2367). The write's context loads the target resource's config, since the default
+  write flow declares none, and it publishes under FIX-2623's rule: once any registered flow
+  declares a view, every user or org resource write publishes (FIX-1506: an extra notice is
+  allowed, a missed one is the failure). `useResource` stays current on [FIX-2551](https://linear.app/fixpoint-labs/issue/FIX-2551)'s live read ([ER-7](../../epics/FIX-2618/DECISIONS.md#who-owns-what)), with no poll of its own.
 - **The lab's pins and dismissals move here,** onto user resources with `runBy: "default"`: they
   are O3's worked example and the goal check's plain write. Their first read falls back once to
   the old user-state lists (BP-030); FIX-2628 moves the declarations into the app's kit and
-  removes the fallback. This lands in the first PR, before FIX-2623 removes `reads`, so FIX-2623
-  has no pins or dismissals reads to turn into views.
+  removes the fallback. This lands in the first PR, and FIX-2623's PR that removes `reads` waits
+  on it, so FIX-2623 has no pins or dismissals reads to turn into views. The ordering is between
+  PRs, not an issue relation: FIX-2623 blocking this issue would also hold back the first PR.
+- **Harness readiness is one view, in `harness-manager`.** FIX-2627 installs it through the
+  harness kit; D1's PR imports it for claude-code-style and teammates, and writes it there if
+  FIX-2627 hasn't yet.
 - **Workforce's roster reads go to FIX-2623's roster view;** this issue takes the roster session
   off the five roster writes (`runBy: { flow }` on the workers collection) and the org lookup
   for worker session ids (the identity read).
