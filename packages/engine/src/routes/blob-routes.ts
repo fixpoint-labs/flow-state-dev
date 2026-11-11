@@ -4,13 +4,18 @@
  * /blobs/:blobId` streams the bytes back to a caller who can read the session
  * that owns the file. Both sit beside the session routes, not under a flow.
  *
+ * A document is checked before it is stored: a text file within its cap and
+ * readable as text, a PDF within its page cap, with its text stored beside it
+ * (`../blobs/pdf-text.ts`).
+ *
  * The read route serves images inline and every other type as a download,
  * always with `nosniff`, so a file can't be run as a page whatever it holds.
  */
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { ATTACHMENT_LIMITS, isAttachmentMediaType, normalizeMediaType, toBlobRef } from "@flow-state-dev/core/attachments";
+import { ATTACHMENT_LIMITS, formatKilobytes, isAttachmentMediaType, isTextAttachmentType, normalizeMediaType, toBlobRef } from "@flow-state-dev/core/attachments";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { readableIn, sessionBlobOwner, type BlobReadScope } from "../blobs/attachments";
+import { PdfTooManyPagesError, PdfUnreadableError, extractPdfText, pdfTextBlobId } from "../blobs/pdf-text";
 import { newBlobId } from "../blobs/shared";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { HostDiskState } from "../blobs/host-disk";
@@ -81,9 +86,18 @@ export async function handleUploadBlob(request: Request, ctx: UploadBlobContext)
     return jsonResponse(400, { error: "attachment_empty", message: "The upload has no bytes." });
   }
 
+  const document = await checkDocument(mediaType, bytes);
+  if (document instanceof Response) return document;
+
   const filename = cleanFilename(url.searchParams.get("filename"));
   const id = newBlobId();
-  await blobs.put({ id, bytes, mediaType, ...(filename === undefined ? {} : { filename }), uploader: { userId, orgId } });
+  const uploader = { userId, orgId };
+  // The text first: a PDF is never stored without the text a target that
+  // can't read PDFs gets in its place. A text with no PDF is swept unclaimed.
+  if (document.pdfText !== undefined) {
+    await blobs.put({ id: pdfTextBlobId(id), bytes: document.pdfText, mediaType: "text/plain", uploader });
+  }
+  await blobs.put({ id, bytes, mediaType, ...(filename === undefined ? {} : { filename }), uploader });
   const attachment: FileContent = {
     type: "file",
     mediaType,
@@ -140,6 +154,57 @@ export async function handleGetBlob(
       "cache-control": "private, no-cache"
     }
   });
+}
+
+// FIX-2520 D1, D2.
+/**
+ * A document's own limits, checked before anything is stored: a text-like
+ * file is UTF-8 text with no NUL bytes, at most `maxTextBytes`, and is
+ * refused over it, never cut; a PDF opens, has at most `maxPdfPages` pages,
+ * and its text is extracted for the targets that can't read PDFs. Returns
+ * the refusal to send, or what to store beside the file.
+ */
+async function checkDocument(mediaType: string, bytes: Uint8Array): Promise<Response | { pdfText?: Uint8Array }> {
+  if (isTextAttachmentType(mediaType)) {
+    if (bytes.byteLength > ATTACHMENT_LIMITS.maxTextBytes) {
+      return jsonResponse(413, {
+        error: "attachment_text_too_large",
+        size: bytes.byteLength,
+        limit: ATTACHMENT_LIMITS.maxTextBytes,
+        message:
+          `This file is ${formatKilobytes(bytes.byteLength)}; a text file goes in whole, up to ${formatKilobytes(ATTACHMENT_LIMITS.maxTextBytes)}. ` +
+          "Split it, or send the part that matters."
+      });
+    }
+    if (!isUtf8Text(bytes)) {
+      return jsonResponse(415, { error: "attachment_not_text", message: "This file isn't UTF-8 text, so it can't be sent as text." });
+    }
+    return {};
+  }
+  if (normalizeMediaType(mediaType) === "application/pdf") {
+    try {
+      const { text } = await extractPdfText(bytes);
+      return { pdfText: new TextEncoder().encode(text) };
+    } catch (error) {
+      if (error instanceof PdfTooManyPagesError) {
+        return jsonResponse(413, { error: "pdf_too_many_pages", pages: error.pages, limit: ATTACHMENT_LIMITS.maxPdfPages, message: error.message });
+      }
+      if (error instanceof PdfUnreadableError) return jsonResponse(415, { error: "pdf_unreadable", message: error.message });
+      throw error;
+    }
+  }
+  return {};
+}
+
+/** True when `bytes` decode as UTF-8 and hold no NUL byte, which no text file does. */
+function isUtf8Text(bytes: Uint8Array): boolean {
+  if (bytes.includes(0)) return false;
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** The request body, or `"too-large"` as soon as it passes `limit` bytes, without reading the rest. */

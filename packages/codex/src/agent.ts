@@ -30,9 +30,9 @@ import {
   formatRunDuration,
   harnessRunInputSchema,
   observedPullRequestsCollection,
-  readHarnessAttachments,
+  promptWithTurnText,
+  readHarnessTurnFiles,
   recordPullRequests as startPullRequestRecorder,
-  refuseUnacceptedAttachments,
   reportHarnessActivity,
   reportHarnessSpend,
 } from "@flow-state-dev/core/harness";
@@ -300,8 +300,10 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       // A file Codex can't take refuses the run before anything starts, and
       // every file is read before the thread is: a file that can't be read
       // stops the turn rather than running it without the file.
-      refuseUnacceptedAttachments("Codex", CODEX_ACCEPTS, input.attachments);
-      const files = await readHarnessAttachments(ctx, input.attachments);
+      // A document goes as its text after the prompt: the SDK takes no documents (FIX-2520 D1).
+      const turnFiles = await readHarnessTurnFiles("Codex", ctx, CODEX_ACCEPTS, input.attachments);
+      const files = turnFiles.files;
+      const turnPrompt = promptWithTurnText(prompt, turnFiles);
       if (recordPullRequests) startPullRequestRecorder(ctx);
 
       // Both resolved once per invocation, before anything is spawned, so the
@@ -375,8 +377,8 @@ export function codexAgent(options: CodexAgentOptions = {}) {
           const stream = await runStreamed(
             thread,
             images === undefined
-              ? prompt
-              : [{ type: "text", text: prompt }, ...images.paths.map((path) => ({ type: "local_image" as const, path }))],
+              ? turnPrompt
+              : [{ type: "text", text: turnPrompt }, ...images.paths.map((path) => ({ type: "local_image" as const, path }))],
             ctx.signal,
           );
           const iterator = stream[Symbol.asyncIterator]();

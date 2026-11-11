@@ -261,7 +261,7 @@
       "title": "Prompt Input",
       "type": "registry:component",
       "description": "Smart input with auto-resize, attachments, and submit handling. Paste, the + button or a drop attach files, each uploaded as it is added; a submitted message carries their references.",
-      "dependencies": ["@flow-state-dev/react", "lucide-react", "nanoid"],
+      "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react", "nanoid"],
       "registryDependencies": ["attachments", "button", "command", "dropdown-menu", "hover-card", "input-group", "select", "spinner", "tooltip"],
       "files": [{
         "type": "registry:component",

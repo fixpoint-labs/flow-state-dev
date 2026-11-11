@@ -33,6 +33,23 @@ app as the user that app declares: Kitchen Sink's one user, and for a lab the
 `userId` (and token, if any) its pages carry. With none declared, the panel's own
 user editor decides. It sits behind the same sign-in as everything else.
 
+## Dependencies and packages in `pnpm dev`
+
+`pnpm dev` runs `pnpm install --frozen-lockfile` before any app starts, so a pull
+that changed the lockfile is installed without a separate step. Frozen means a dev
+run never rewrites the lockfile; if the install fails (the lockfile moved under a
+`package.json` edit, say) it logs that and starts the apps on what is installed:
+run `pnpm install` by hand. The proxy listens while the install runs, so the
+landing page is up during a slow first one. The install only happens at start:
+replacing `node_modules` under a running server would break it.
+
+Workspace packages need no build here. Each one's runtime entry is its `src/`
+(`dist/` is types and publish output), so the pages bundle package source, the
+labs run it through `tsx`, and Kitchen Sink transpiles it. A package edit reaches
+a page through the page rebuild below (the build records package source files among
+the ones it was made from). A lab's server side reads package source when it
+starts, so it needs a restart.
+
 The page is a small Vite build (`pnpm build:devtool`, into `dist/`). `pnpm dev`
 rebuilds it at start and again as its source changes; `pnpm serve` serves what `pnpm build` made, and warns when
 there is none.

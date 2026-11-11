@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, onTestFinished, vi } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,17 +15,31 @@ describe("attachments on Vercel (FIX-824)", () => {
       body: new Uint8Array([1])
     });
 
-  it("tells the router its disk does not last, so a local upload is refused by name", async () => {
-    const router = createFlowApiRouter({
+  const localRouter = () =>
+    createFlowApiRouter({
       registry: createFlowRegistry(),
       stores: { ...createInMemoryStores(), blobs: createLocalBlobStore({ rootDir: mkdtempSync(join(tmpdir(), "fsd-vercel-")) }) }
     });
+
+  it("on Vercel, tells the router its disk does not last, so a local upload is refused by name", async () => {
+    vi.stubEnv("VERCEL", "1");
+    onTestFinished(() => void vi.unstubAllEnvs());
+    const router = localRouter();
     // Before the adapter serves it, the same router takes the upload.
     expect((await router.POST(upload(), { params: { path: ["blobs"] } })).status).toBe(201);
 
     const response = await createVercelHandler(router).POST(upload(), { params: Promise.resolve({ path: ["blobs"] }) });
     expect(response.status).toBe(501);
     expect(await response.json()).toMatchObject({ error: "attachments_unavailable" });
+  });
+
+  // The same handler serves `next dev` and `next start` on a machine, whose disk lasts:
+  // refusing there would leave an app on this adapter with no attachments anywhere.
+  it("served off Vercel, leaves the router's disk as lasting, so a local upload is taken", async () => {
+    vi.stubEnv("VERCEL", "");
+    onTestFinished(() => void vi.unstubAllEnvs());
+    const response = await createVercelHandler(localRouter()).POST(upload(), { params: Promise.resolve({ path: ["blobs"] }) });
+    expect(response.status).toBe(201);
   });
 });
 

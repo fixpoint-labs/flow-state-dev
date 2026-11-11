@@ -183,7 +183,9 @@ import {
   type ResolvedAttachment
 } from "../blobs/attachments";
 import type { BlobStore } from "../blobs/types";
+import type { AttachmentAccepts } from "@flow-state-dev/core/attachments";
 import { resolveHistoryFiles } from "./history-files";
+import { readAttachmentText } from "../blobs/attachment-text";
 import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
@@ -2960,8 +2962,13 @@ export async function createExecutionContext<
     read.catch(() => reads.delete(file.data));
     return read;
   };
-  resolveModel.prepareMessages = (messages: unknown[]) =>
-    resolveHistoryFiles(messages, blobs === undefined ? undefined : (file: FileContent) => readOnce(blobs, file));
+  resolveModel.prepareMessages = (messages: unknown[], target?: { accepts: AttachmentAccepts }) =>
+    resolveHistoryFiles(
+      messages,
+      blobs === undefined ? undefined : (file: FileContent) => readOnce(blobs, file),
+      target,
+      requestRef.current.attachments ?? []
+    );
   // The same reader for a harness handed the turn's files (FIX-2519), named
   // in core's terms. No blob store: no reader, and a harness refuses the files.
   const harnessAttachmentSeam: HarnessAttachmentSeam | undefined =
@@ -2979,7 +2986,9 @@ export async function createExecutionContext<
             mediaType: resolved.record.mediaType,
             ...(file.filename !== undefined ? { filename: file.filename } : {}),
             bytes: resolved.bytes,
-            base64: resolved.base64
+            base64: resolved.base64,
+            // A document's text, for a harness that doesn't read it as a file (FIX-2520).
+            text: () => readAttachmentText(file, resolved, (other: FileContent) => readOnce(blobs, other))
           };
         };
   // FIX-2522. Copies of files kept in the person's own scope, read through the

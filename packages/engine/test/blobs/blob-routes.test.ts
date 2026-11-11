@@ -4,13 +4,15 @@
  * session check; and the read route serves the bytes only to a caller who can
  * read that session. Another user's read is a 404, as for an id nobody used.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "../../src";
 import { createInMemoryStores, declareEphemeralDisk } from "../../src/host";
 import { createMemoryBlobStore } from "../../src/blobs/memory-blob-store";
-import { parseBlobRef } from "@flow-state-dev/core/attachments";
+import { ATTACHMENT_LIMITS, parseBlobRef } from "@flow-state-dev/core/attachments";
+import { pdfTextBlobId } from "../../src/blobs/pdf-text";
+import { makePdf } from "./pdf-fixture";
 import { AttachmentUnavailableError, resolveAttachment, sessionBlobOwner } from "../../src/blobs/attachments";
 
 /** Let an accepted send finish writing its session. */
@@ -130,6 +132,90 @@ describe("upload route", () => {
   });
 });
 
+// FIX-2520: what a document must be to be stored at all, refused by name at
+// upload so nothing over a limit ever reaches a send.
+describe("documents at upload", () => {
+  const text = (s: string) => new TextEncoder().encode(s);
+
+  it("takes a text-like file whole up to 200 KB, and refuses one byte over with its size, never cut", async () => {
+    const { upload } = setup();
+    const atCap = await upload("alice", new Uint8Array(ATTACHMENT_LIMITS.maxTextBytes).fill(0x61), "text/plain", "a.txt");
+    expect(atCap.status).toBe(201);
+    const over = await upload("alice", new Uint8Array(250 * 1024).fill(0x61), "text/plain", "big.txt");
+    expect(over.status).toBe(413);
+    const body = (await over.json()) as { error: string; message: string };
+    expect(body.error).toBe("attachment_text_too_large");
+    expect(body.message).toContain("250 KB");
+    expect(body.message).toContain("200 KB");
+  });
+
+  it("refuses a text-like file that is not UTF-8 text", async () => {
+    const { upload } = setup();
+    const nul = await upload("alice", text("a\u0000b"), "text/csv", "x.csv");
+    expect(nul.status).toBe(415);
+    expect(await nul.json()).toMatchObject({ error: "attachment_not_text" });
+    const latin1 = await upload("alice", new Uint8Array([0x63, 0x61, 0x66, 0xe9]), "text/plain", "x.txt");
+    expect(latin1.status).toBe(415);
+  });
+
+  it("refuses Word, Excel and PowerPoint by type", async () => {
+    const { upload } = setup();
+    const docx = await upload("alice", text("PK"), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "r.docx");
+    expect(docx.status).toBe(415);
+    expect(await docx.json()).toMatchObject({ error: "attachment_type_refused" });
+  });
+
+  it("stores a PDF's text beside it, page by page, and claims it with the PDF into the same session", async () => {
+    const { stores, upload, send } = setup();
+    const pdf = await attachmentOf(await upload("alice", makePdf(["intro", "code word TANGERINE"]), "application/pdf", "spec.pdf"));
+    const id = parseBlobRef(pdf.data)!;
+    const stored = await stores.blobs!.read(pdfTextBlobId(id));
+    expect(new TextDecoder().decode(stored!.bytes)).toBe("[page 1]\nintro\n\n[page 2]\ncode word TANGERINE");
+    expect(stored!.record.owner).toBeUndefined();
+
+    await send("alice", "s_pdf", [pdf]);
+    await settle();
+    expect((await stores.blobs!.head(pdfTextBlobId(id)))?.owner).toBe(sessionBlobOwner("s_pdf"));
+  });
+
+  it("refuses a PDF over 100 pages, and bytes that are no PDF, storing nothing", async () => {
+    const { stores, upload } = setup();
+    const put = vi.spyOn(stores.blobs!, "put");
+    const long = await upload("alice", makePdf(Array.from({ length: 101 }, (_, i) => `p${i}`)), "application/pdf", "long.pdf");
+    expect(long.status).toBe(413);
+    const body = (await long.json()) as { error: string; message: string };
+    expect(body.error).toBe("pdf_too_many_pages");
+    expect(body.message).toContain("101");
+    const junk = await upload("alice", text("%PDF-1.7\n"), "application/pdf", "junk.pdf");
+    expect(junk.status).toBe(415);
+    expect(await junk.json()).toMatchObject({ error: "pdf_unreadable" });
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  // The text kept beside a PDF is the server's, not an upload: named as a
+  // text file of its own it would go whole to a model, past the text cap.
+  it("refuses a PDF's stored text named as an attachment of its own, and claims nothing", async () => {
+    const { stores, upload, send } = setup();
+    const pdf = await attachmentOf(await upload("alice", makePdf(["x"]), "application/pdf", "r.pdf"));
+    const textId = pdfTextBlobId(parseBlobRef(pdf.data)!);
+    const refused = await send("alice", "s_side", [{ type: "file", mediaType: "text/plain", data: `fsd-blob:${textId}` }]);
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({ error: "attachment_invalid", index: 0 });
+    expect((await stores.blobs!.head(textId))?.owner).toBeUndefined();
+  });
+
+  it("deletes a PDF's text with its session", async () => {
+    const { stores, call, upload, send } = setup();
+    const pdf = await attachmentOf(await upload("alice", makePdf(["x"]), "application/pdf", "r.pdf"));
+    await send("alice", "s_gone", [pdf]);
+    await settle();
+    const textId = pdfTextBlobId(parseBlobRef(pdf.data)!);
+    expect((await stores.blobs!.head(textId))?.owner).toBe(sessionBlobOwner("s_gone"));
+    expect((await call("DELETE", "sessions/s_gone", "alice")).status).toBe(204);
+    expect(await stores.blobs!.head(textId)).toBeUndefined();
+  });
+});
+
 describe("claiming and reading", () => {
   it("serves a claimed file to its session's reader, and 404s everyone else", async () => {
     const { stores, call, upload, send } = setup();
@@ -160,7 +246,7 @@ describe("claiming and reading", () => {
 
   it("serves a document as a download, never inline", async () => {
     const { call, upload, send } = setup();
-    const pdf = await attachmentOf(await upload("alice", new TextEncoder().encode("%PDF-1.7\n"), "application/pdf", "r.pdf"));
+    const pdf = await attachmentOf(await upload("alice", makePdf(["r"]), "application/pdf", "r.pdf"));
     await send("alice", "s_doc", [pdf]);
     await settle();
     const read = await call("GET", `blobs/${parseBlobRef(pdf.data)!}`, "alice");
