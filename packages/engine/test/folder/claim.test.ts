@@ -77,6 +77,28 @@ describe("the claim pass", () => {
     expect(refused.map((report) => [report.path, report.kind])).toEqual([["linked", "symlink"]]);
   });
 
+  it("refuses a claimed file that is a symlink, so no reader follows it out of the folder", async () => {
+    const dir = folderWith(["real.txt"]);
+    const outside = folderWith(["secret.txt"]);
+    symlinkSync(join(outside, "secret.txt"), join(dir, "greeting.txt"));
+    const opened = await openKitFolder(dir, "folder");
+    opened.folder.claim("greeting.txt");
+    opened.folder.claim("real.txt");
+    const refused = await opened.unclaimed();
+    expect(refused.map((report) => [report.path, report.kind])).toEqual([["greeting.txt", "symlink"]]);
+  });
+
+  it("refuses a symlink anywhere under a claimed directory", async () => {
+    const dir = folderWith(["teams/eng/team.md"]);
+    const outside = folderWith(["secret.md"]);
+    symlinkSync(join(outside, "secret.md"), join(dir, "teams", "eng", "secret.md"));
+    const opened = await openKitFolder(dir, "folder");
+    opened.folder.claim("teams");
+    const refused = await opened.unclaimed();
+    // Claimed, so nothing in it is unclaimed; the link is still named.
+    expect(refused.map((report) => [report.path, report.kind])).toEqual([["teams/eng/secret.md", "symlink"]]);
+  });
+
   it("opens the folder through openRoot, so a missing folder is a refusal naming it", async () => {
     await expect(openKitFolder(join(tmpdir(), "fsd-claim-absent-91c2"), 'folder of kit "b"')).rejects.toThrow(
       /^Failed to read folder of kit "b"/,

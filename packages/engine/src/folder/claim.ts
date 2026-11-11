@@ -8,9 +8,11 @@
  * anything. A file the docs don't name therefore can't load nothing and say
  * nothing: the engine refuses to start the app and names it.
  *
- * The walk never follows a symlink. One that would have to be walked through
- * to reach a claim is reported as a symlink; one nothing claimed is reported
- * as unclaimed like any other entry.
+ * The walk never follows a symlink, and reports every one it meets, claimed
+ * or not: a claimed file that is a link, and a link anywhere under a claimed
+ * directory, are refused as `symlink`, so no reader that only calls
+ * `readFile` can be led out of the folder. A claimed directory is still
+ * walked for links, though nothing in it is reported as unclaimed.
  *
  * Node-only (`node:fs`).
  */
@@ -79,32 +81,36 @@ export async function openKitFolder(root: string, what: string): Promise<OpenedK
     for (const name of names.sort()) {
       if (IGNORED_ENTRIES.has(name)) continue;
       const rel = prefix === "" ? name : `${prefix}/${name}`;
-      if (covered(rel)) continue;
-      if (!holdsAClaim(rel)) {
-        reports.push({
-          path: rel,
-          kind: "unclaimed",
-          error: new Error(`"${rel}" is not used by anything that reads the ${what}. Remove it.`),
-        });
-        continue;
-      }
+      // Classified before the claim is consulted: a link is refused whether
+      // or not a reader claimed it, since claiming it is what a reader that
+      // follows it would do.
       const entry = await classify(path.join(dir, name));
       if (entry.kind === "symlink") {
         reports.push({ path: rel, kind: "symlink", error: refusedSymlink("entry", rel) });
-      } else if (entry.kind === "unreadable") {
+        continue;
+      }
+      if (entry.kind === "unreadable") {
         reports.push({ path: rel, kind: "unreadable", error: unreadable("Entry", rel, entry.error) });
-      } else if (entry.kind === "directory") {
+        continue;
+      }
+      if (covered(rel)) {
+        // Used, but still walked for links: everything under it is covered
+        // too, so only a link or an unreadable entry is reported there.
+        if (entry.kind === "directory") await walk(path.join(dir, name), rel, reports);
+        continue;
+      }
+      // A directory with a claim under it is walked; anything else unclaimed
+      // is refused here, a file a claim names a path under included (it was
+      // claimed as something it isn't).
+      if (entry.kind === "directory" && holdsAClaim(rel)) {
         await walk(path.join(dir, name), rel, reports);
+        continue;
       }
-      // A file a claim names a path *under* can't hold that claim; it was
-      // claimed as something it isn't, and is reported below as unclaimed.
-      else {
-        reports.push({
-          path: rel,
-          kind: "unclaimed",
-          error: new Error(`"${rel}" is not used by anything that reads the ${what}. Remove it.`),
-        });
-      }
+      reports.push({
+        path: rel,
+        kind: "unclaimed",
+        error: new Error(`"${rel}" is not used by anything that reads the ${what}. Remove it.`),
+      });
     }
   }
 
