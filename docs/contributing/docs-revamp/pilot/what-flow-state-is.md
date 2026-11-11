@@ -8,9 +8,9 @@ description: An app you run and own, built from kits you install and typed piece
 
 Most agent frameworks hand you parts. Flow State hands you an app.
 
-Run a starter and you have a team of AI workers, a page to talk to them on, and a backend that streams their answers, remembers what they learned, and picks up where it stopped after a crash. The code is in your repo. The data is in your database.
+Run a starter and you have a team of AI workers, which are agents you brief in plain files, and a page to talk to them on. Behind both is a backend that streams their answers, keeps what they learned, and picks a run back up where it stopped after a crash. The code is in your repo. The data is in your database.
 
-Then you change it. A worker is a Markdown file, so you rewrite its brief. A feature is a kit, so you add a line. When you want something nobody has built yet, you write it with the same typed pieces the kits are made of.
+Then you change it. A worker is a Markdown file, so you rewrite its brief. A feature is a kit, a bundle an app installs, so you add a line. When you want something nobody has built yet, you write it from blocks, the same typed pieces the kits are made of.
 
 ![The layers of a Flow State app](./figures/layers.svg)
 
@@ -18,7 +18,7 @@ Then you change it. A worker is a Markdown file, so you rewrite its brief. A fea
 
 ## A starter is a whole app
 
-A starter comes with React pages, a team of workers, and the flows they run on. Teammates is one: a small team you talk to one at a time, whose members message each other where you can see it and hand code changes to a coding agent.
+A starter comes with React pages, a team of workers, and the flows they run on. The Teammates starter is a small team you talk to one at a time. Its members message each other where you can see it, and hand code changes to a coding agent.
 
 Each worker on that team is a file like this:
 
@@ -37,7 +37,7 @@ Rewrite the brief, restart the app, and the researcher follows the new one. Add 
 
 ## A kit is a feature you install
 
-The team, the task board it shares and the coding agents it hands work to are not written into the starter. They are kits, and the starter lists them:
+The team, with the task board its members share, and the coding agents it hands work to all come from kits. The starter lists them:
 
 ```ts
 export default createFlowState({
@@ -49,13 +49,13 @@ export default createFlowState({
 });
 ```
 
-A kit brings its flows, the files it reads from your repo, and the views your pages read from it. A kit can also leave openings, called slots, for other kits to fill. `harnesses` opens a slot for coding agents and `claudeCode` fills it. Neither kit imports the other.
+A kit brings its flows, the files it reads from your repo, and its views, which are the lists and details your pages show. A kit can also leave openings, called slots, for other kits to fill. `harnesses` opens a slot for coding agents and `claudeCode` fills it. A kit names the kits whose slots it fills, and never reaches into how they work.
 
-A kit that fills a slot can open slots of its own, so features stack. An app one person built becomes the base somebody else builds on.
+A kit that fills a slot can open slots of its own, so features stack. That is how one person's app becomes the base for someone else's.
 
 ## Kits are made of flows and blocks
 
-Under every kit are flows. A flow is a set of actions served over HTTP, with typed state and a stream of results. Flows are built from blocks, and there are five kinds:
+Under every kit are flows. A flow is a backend you call over HTTP. A client runs one of its actions, such as `chat`, and the flow streams results back as it produces them and keeps typed state between calls. Flows are built from blocks, and there are five kinds:
 
 | Block | What it does |
 | --- | --- |
@@ -65,7 +65,7 @@ Under every kit are flows. A flow is a set of actions served over HTTP, with typ
 | Router | Picks one block to run |
 | Evaluator | Asks a model a typed question |
 
-Any block composes with any other. A block can also be given to a model as a tool, whatever is inside it:
+Blocks nest inside one another. Any block can also be handed to a model as a tool, a whole pipeline included:
 
 ```ts
 const research = sequencer({ name: "research" })
@@ -91,7 +91,7 @@ Every flow runs from a terminal, with no server and no browser:
 pnpm fsdev run hello-chat chat -i '{"message": "Hello!"}'
 ```
 
-The run prints what the flow produced, one JSON line per item. A coding agent can write a flow, run it, read what happened and fix it. Most people build on Flow State this way, and [Build with your coding agent](./build-with-your-coding-agent.md) sets it up.
+The run prints what happens as it happens, one JSON event per line. A coding agent can write a flow, run it, read what happened and fix it. Flow State is meant to be built this way, and [Build with your coding agent](./build-with-your-coding-agent.md) sets it up.
 
 ## Where it stands
 

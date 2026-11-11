@@ -8,7 +8,7 @@ description: A worker is a named agent you brief in a Markdown file, then talk t
 
 A worker is an agent with a name and a job. You brief it in a Markdown file, the way you would brief a new colleague: what it's for, what it can use, who it can ask for help.
 
-You can talk to a worker, or hand it a task and come back later. What it learns about you stays with you. The people you work with have rosters of their own.
+You can talk to a worker, or hand it a task and come back later. Everyone who uses the app gets their own copy of each worker, and what a copy learns about its person stays with that person.
 
 ## The file
 
@@ -25,7 +25,7 @@ request into tasks, hand them to the coder and the reviewer, and report what
 came back.
 ```
 
-Save that as `workforce/teams/engineering/workers/lead/WORKER.md` and you have a worker called `engineering.lead`. The folders give it its id. The settings between the fences say what it is and what it can reach, and `description` is the only one a file must have. Everything below the fences is its instructions.
+Save that as `workforce/teams/engineering/workers/lead/WORKER.md` and you have a worker with the id `engineering.lead`. The team and worker folders give it the id, and `name` is what people see. The settings between the `---` lines say what it is and what it can reach, and `description` is the only one a file must have. `delegates` names other workers by id. Everything below the second `---` is its instructions.
 
 Someone who doesn't write TypeScript can add a worker, or change what one has been told, by editing a document.
 
@@ -43,11 +43,11 @@ export default createFlowState({
 });
 ```
 
-The folder is read when the app starts. A file the kit can't use stops the app from starting and names the file, so a typo in a worker doesn't turn into a worker that quietly never answers.
+The folder is read when the app starts. A file the kit can't use stops the app from starting, and the error names the file.
 
 ## Talk to one
 
-A conversation with a worker is a session that names it:
+A session is one conversation or one task, with its own history. To start a conversation, ask for the session with that worker:
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
@@ -63,11 +63,11 @@ await fsd
   .send("respond", { message: "Add rate limiting to the API." }, { sessionId: session.id });
 ```
 
-`ensureWorkerSession` returns this user's conversation with that worker and creates it the first time. The worker sees the recent turns of that conversation. Nothing said there reaches any other conversation.
+`ensureWorkerSession` returns this user's conversation with that worker and creates it the first time. The worker sees the recent turns of that conversation, and those turns stay in it.
 
 ## Hand one a task
 
-A worker with `delegates` can hand work to the workers it names. The lead above doesn't write code. It files a task for `engineering.coder`, and the coder runs that task in a session of its own: the task's goal is the message, and the coder's answer is the task's result. The lead hears when it's done and carries on.
+A worker with `delegates` can hand work to the workers it names. The lead above doesn't write code. It files a task for `engineering.coder`. The coder works on it in a session of its own, with the task's goal as its message, and its answer is recorded as the task's result. When the task ends, the lead is told and carries on.
 
 The tasks sit on a [board](./tasks-and-boards.md) that belongs to the conversation, so your page can show what is waiting, running and done.
 
@@ -77,13 +77,13 @@ When you want one front door for a whole team, make it a [coordinator](../catalo
 
 ## Whose worker it is
 
-The files in your repo define the **standard** workers. Every user gets each of them, and each user's copy is theirs alone. Alice's lead answers to Alice. Bob can't open her conversations, name her lead as a delegate, or read what it remembers about her.
+The files in your repo define the **standard** workers. Every user gets each of them, and each user's set of workers is their **roster**. Take two users, Alice and Bob. Alice's lead answers to Alice. Bob can't open her conversations or read what her lead remembers about her.
 
-Nobody can edit a standard worker from inside the app. A user who wants a different one **forks** it, and gets a worker of their own that starts from the same settings. A user can also hire a worker from scratch while the app runs. Those workers are rows in that user's data. No file changes and nothing restarts.
+Nobody can edit a standard worker from inside the app. A user who wants a different one **forks** it, and gets a worker of their own that starts from the same settings. A user can also hire a worker from scratch while the app runs. Those workers belong to that user alone. No file changes and nothing restarts.
 
 ## What runs a worker
 
-Every worker runs on a flow. Leave `flow:` out of the file and it runs on the built-in agent: a model, the worker's instructions, its tools, and the conversation so far.
+Every worker runs on a flow, the piece of backend that handles each message. Leave `flow:` out of the file and it runs on the built-in agent: a model, the worker's instructions, its tools, and the conversation so far.
 
 When a worker needs to be more than a model with a brief, write a flow and name it:
 
@@ -96,13 +96,12 @@ flow: request-triage
 Answer directly when the request is about a feature that already shipped.
 ```
 
-The file stays a document somebody can edit. What changes is the machinery underneath, which can have deterministic steps, a router, or a review before anything is sent.
+A flow of your own can give the worker fixed steps, branching, or a review before anything is sent. The file remains a document anyone can edit.
 
 ## What a worker won't do
 
 - Act for anyone but its owner.
 - Carry a message between two users. Workers message other workers on the same roster.
-- Change because you edited the file while the app is running. Standard workers are read at start-up.
 
 ## Next
 

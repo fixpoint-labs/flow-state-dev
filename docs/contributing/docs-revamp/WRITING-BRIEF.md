@@ -56,9 +56,10 @@ Not: "Task board is the building block underneath Parallel Tasks, Supervisor, an
 **Say the idea in words a person would use out loud.** Introduce the API name afterwards, attached
 to the plain word.
 
-> A board is that list, stored, plus the loop that works through it.
+> A board is that list, stored, plus the loop that works through it, called the drain.
 
-`board.drain` appears two sections later, as "the loop, and it is a block too".
+The reader gets "the loop" first and the framework's word for it second. `board.drain` appears in the
+code after that, already explained.
 
 **Show it, then say what to look at.** Code comes before the paragraph about it. The paragraph
 points at two or three things in the code and stops.
@@ -68,7 +69,8 @@ opening, the figure, the code and the failure section. Do not introduce a second
 
 **State the guarantee. Leave out the machinery.**
 
-> The drain runs up to four ready tasks at a time, and two loops never get the same one.
+> The drain runs up to four ready tasks at a time unless you set another limit, and a task is only
+> ever claimed once.
 
 Not: "A claim is a single atomic compare-and-set, so two workers never run the same task."
 
