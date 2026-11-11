@@ -13,7 +13,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import { createFlowApiRouter, createFlowRegistry, disposeFlowApiRouter } from "../src";
-import { createInMemoryStores } from "../src/host";
+import { createInboundTransportHost, createInMemoryStores } from "../src/host";
+import { defaultBodyUserIdPrincipalResolver } from "../src/transports/auth/defaultBodyUserIdPrincipalResolver";
+import { asServerResourceSend, DEFAULT_WRITE_FLOW, writeSessionId } from "../src/resources/default-write-flow";
 import type { StoreRegistry } from "../src";
 
 const ORG_A = "org-a";
@@ -168,6 +170,54 @@ describe("a direct read by scope and key", () => {
     const body = (await res.json()) as { message: string };
     expect(body.message).toContain('"threads"');
     expect(body.message).toContain('"digest"');
+  });
+});
+
+describe("declarations that disagree on their resolver, one on the host fallback", () => {
+  it("refuses the read and the send (409) when one declaring flow has its own resolver and the other falls back to the host's", async () => {
+    const { router, stores } = build([threadsFlow({ authenticated: true }), threadsFlow({ authenticated: false, kind: "digest" })]);
+    const read = await get(router, ["resources", "user", "pins"], alice, "?userId=alice");
+    expect(read.status).toBe(409);
+    const body = (await read.json()) as { message: string };
+    expect(body.message).toContain('"threads"');
+    expect(body.message).toContain('"digest"');
+    const send = await post(router, ["resources", "user", "pins", "actions", "set"], alice, {
+      userId: "alice",
+      input: { state: { pinned: ["x"] }, version: 0 }
+    });
+    expect(send.status).toBe(409);
+    expect(await stores.session.list({})).toEqual([]);
+    expect(await stores.resourceState.get("user", `alice:~org:${ORG_A}`, "pins")).toBeUndefined();
+  });
+
+  it("refuses inside the default write flow too: its stand-in for the host's resolver still tells a fallback flow from a signed-in one", async () => {
+    // The write flow compares declarations with a stand-in for the host's resolver. Dispatched
+    // straight to it as the server's own send, so only the flow's own check stands between a
+    // disagreement and a write.
+    const registry = createFlowRegistry();
+    registry.register(threadsFlow({ authenticated: true }) as never);
+    registry.register(threadsFlow({ authenticated: false, kind: "digest" }) as never);
+    const stores = createInMemoryStores();
+    const host = createInboundTransportHost({ registry, stores, resolvePrincipal: defaultBodyUserIdPrincipalResolver, runtimeConfig: {} });
+    const sessionId = writeSessionId({ scope: "user", key: "pins", writer: DEFAULT_WRITE_FLOW }, { userId: "alice", orgId: ORG_A });
+    const handle = host.dispatch(
+      asServerResourceSend({
+        source: "http",
+        flowKind: DEFAULT_WRITE_FLOW,
+        action: "set",
+        input: { state: { pinned: ["x"] }, version: 0 },
+        sessionId,
+        requestId: "req_disagree",
+        orgId: ORG_A,
+        principal: { userId: "alice", orgId: ORG_A }
+      }) as never
+    );
+    await handle.accepted;
+    const settled = await settle(stores, "req_disagree");
+    expect(settled.status).toBe("failed");
+    expect(settled.result?.error?.code).toBe("not_writable");
+    expect(settled.result?.error?.message).toMatch(/"threads".*"digest"|"digest".*"threads"/);
+    expect(await stores.resourceState.get("user", `alice:~org:${ORG_A}`, "pins")).toBeUndefined();
   });
 });
 

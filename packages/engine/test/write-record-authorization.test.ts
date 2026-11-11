@@ -76,6 +76,28 @@ describe("write-record authorization", () => {
     expect(missing, "a runtime entry resolves flows without the framework's built-ins").toEqual([]);
   });
 
+  it("uses the write flow's stand-in resolver only to compare declarations, never to sign anyone in", () => {
+    // The default write flow is built where no host is (a worker), so it compares declarations
+    // against a stand-in for the host's resolver. That is safe only while the stand-in is never
+    // called and never decides who owns a record: the caller comes from the session binding the
+    // action route admitted, and a write record's governor takes the route's real host resolver.
+    const flow = readFileSync(join(__dirname, "../src/resources/default-write-flow.ts"), "utf8");
+    const body = flow.slice(flow.indexOf("function createDefaultWriteFlow("));
+    const uses = body.split("\n").filter((line) => /\bhostResolver\b/.test(line)).map((line) => line.trim());
+    expect(uses).toEqual([
+      "const hostResolver = HOST_RESOLVER_STANDIN;",
+      "const address = resolveAddress(registry, hostResolver, target.scope, target.key);"
+    ]);
+    expect(flow.match(/HOST_RESOLVER_STANDIN/g)).toHaveLength(2);
+    // `resolveAddress` compares resolvers; it never calls one.
+    const address = readFileSync(join(__dirname, "../src/resources/scope-address.ts"), "utf8");
+    const resolveBody = address.slice(address.indexOf("export function resolveAddress("), address.indexOf("export type AddressCaller"));
+    expect(resolveBody).not.toMatch(/resolver\(|hostResolver\(|resolvePrincipal\(/);
+    // The governor of a write record is handed the route's own host resolver.
+    const auth = readFileSync(join(ROUTES, "route-auth.ts"), "utf8");
+    expect(auth).toContain("writeRecordGovernor(ctx.registry, ctx.hostResolver, record)");
+  });
+
   it("guards every parsed route before authorization", () => {
     const handlers = readFileSync(join(ROUTES, "http-handlers.ts"), "utf8");
     const guard = handlers.indexOf("reservedAddressRefusal(route)");
