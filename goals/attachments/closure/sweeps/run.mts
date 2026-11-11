@@ -156,8 +156,11 @@ function rerun(label: string, script: string, env: Record<string, string> = {}):
   say(`${label}: pnpm tsx ${script}`);
   const run = spawnSync("pnpm", ["tsx", script], { cwd: REPO_ROOT, env: { ...process.env, ...env }, encoding: "utf8", timeout: 900_000 });
   const out = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
+  const lines = out.split("\n");
+  const at = lines.findIndex((line) => /^(PASS|FAIL|CAN'T TELL) —/.test(line));
   const verdict =
-    out.split("\n").find((line) => /^(PASS|FAIL|CAN'T TELL) —/.test(line)) ??
+    // The verdict line and the bullets under it.
+    (at >= 0 ? [lines[at], ...lines.slice(at + 1).filter((line) => line.startsWith("  - ")).map((line) => line.trim())].join(" ") : undefined) ??
     // A throw before a verdict: its first error line.
     `no verdict (exit ${run.status}): ${(out.split("\n").find((line) => /Error|error:/.test(line)) ?? out.slice(-400)).trim()}`;
   return { status: run.status, verdict: verdict.slice(0, 900) };
