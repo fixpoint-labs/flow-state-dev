@@ -267,10 +267,8 @@ describe("MOAT: idle containers", () => {
       await new Promise((r) => setTimeout(r, 25));
     }
 
-    const log = await calls();
-    expect(log.findLastIndex((c) => c.startsWith("run "))).toBeGreaterThan(
-      log.findLastIndex((c) => c.startsWith("destroy ")),
-    );
+    const verbs = (await calls()).map((c) => c.split(" ")[0]);
+    expect(verbs.lastIndexOf("run")).toBeGreaterThan(verbs.lastIndexOf("destroy"));
     expect(readdirSync(dir).filter((f) => f.startsWith("run-fsdev-moat-return-"))).toHaveLength(1);
     await releaseBashSandbox({ ...provider, persist: false }, ctx);
   }, 20_000);
