@@ -7,10 +7,6 @@
  *
  * A leaf module: the screen imports these definitions to read and
  * write them, the host declares them on a flow it serves.
- *
- * They used to live in your user state, written by the lab's `pins` and
- * `dismissals` flows; the host copies those old lists across once
- * ({@link LEGACY_MARK_FIELDS}).
  */
 import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -36,13 +32,3 @@ export const labDismissals = defineResource({
   client: {},
   runBy: "default",
 });
-
-// BP-030; FIX-2628 removes this with the copy.
-/**
- * The user-state fields the old `pins` and `dismissals` flows kept these in,
- * and the resource each moves to, kept so old records still read.
- */
-export const LEGACY_MARK_FIELDS = [
-  { field: "pinned", resource: labPins.ref },
-  { field: "dismissed", resource: labDismissals.ref },
-] as const;

@@ -39,7 +39,6 @@ import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { localWorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { defineHarnessThreadFlow, HARNESS_THREAD_DRAIN_MS, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
 import { defineProjectsFlow, PROJECTS_FLOW } from "./workforce/flows/projects.mts";
-import { LEGACY_MARK_FIELDS } from "./workforce/flows/user-marks.mts";
 
 /** What {@link openLab} builds the host from. */
 export interface LabOptions {
@@ -153,26 +152,6 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
     models: { default: model, intents: { utility: [options.utilityModel] } },
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
   } as never);
-  await carryLegacyMarks(flowState);
   return { flowState, readiness };
 }
 
-// BP-030; FIX-2628 removes this.
-/**
- * Copy the pins and dismissals the old `pins` and `dismissals` flows kept in
- * each user's state into the user resources that hold them now, once: a
- * resource already written is left alone, and so is one since deleted (BP-030).
- * A user's state record and their shared user resources live at the same cell
- * id.
- */
-async function carryLegacyMarks(flowState: ReturnType<typeof createFlowState>): Promise<void> {
-  const { stores } = await flowState.getRuntime();
-  for (const record of await stores.user.list()) {
-    const state = (record.state ?? {}) as Record<string, unknown>;
-    for (const { field, resource } of LEGACY_MARK_FIELDS) {
-      const list = state[field];
-      if (!Array.isArray(list) || list.length === 0) continue;
-      await stores.resourceState.set("user", record.id, resource, { [field]: [...new Set(list.map(String))] }, "absent");
-    }
-  }
-}
