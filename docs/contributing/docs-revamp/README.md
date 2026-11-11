@@ -11,8 +11,7 @@ process.
 | [`pilot/tasks-and-boards.md`](./pilot/tasks-and-boards.md) | Pilot: a concept page |
 | [`pilot/workers.md`](./pilot/workers.md) | Pilot: a concept page |
 | [`pilot/figures/`](./pilot/figures) | The three figures, in the site's drawing classes |
-| [`tools/check-page.mjs`](./tools/check-page.mjs) | Word budget, banned words, em-dashes, table length |
-| [`tools/render-figures.cjs`](./tools/render-figures.cjs) | Renders a folder of figures in light and dark, to look at them |
+| [`scripts/check-docs-page.mjs`](../../../scripts/check-docs-page.mjs) | Word budget, banned words, em-dashes, table length |
 
 ## The pages are written for the release that carries kits
 

@@ -36,8 +36,8 @@ function check(path) {
   const dashes = (text.match(/—/g) ?? []).length;
   if (dashes > 2) problems.push(`${dashes} em-dashes (limit 2)`);
   for (const table of prose.match(/(^\|.*\|\n)+/gm) ?? []) {
-    const rows = table.trim().split("\n").length - 2;
-    if (type !== "reference" && rows > 6) problems.push(`a table with ${rows} rows (limit 6)`);
+    const count = table.trim().split("\n").length - 2;
+    if (type !== "reference" && count > 6) problems.push(`a table with ${count} body lines (limit 6)`);
   }
   console.log(`${problems.length ? "FAIL" : "ok  "} ${path} (${type ?? "?"}, ${words} words)`);
   for (const problem of problems) console.log(`     ${problem}`);

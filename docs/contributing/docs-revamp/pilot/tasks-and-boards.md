@@ -64,7 +64,7 @@ A task is ready when every task in its `deps` is `completed`. The drain runs up 
 
 A failed task is marked `errored` and the board carries on with whatever else is ready. Tasks that depended on it are cancelled, so they never run.
 
-When nothing else is ready, the drain stops and says why. It ends by emitting an item, the unit a flow streams to its caller, that carries a `terminationReason`: `all-completed` when every task finished, `blocked-by-failures` when some could not. Your flow reads that and decides what to tell the user. There are a few other reasons, such as a task waiting on a person, and the reference lists them.
+When nothing else is ready, the drain stops and says why. It ends by emitting an item, the unit a flow streams to its caller, that carries a `terminationReason`: `all-completed` when every task finished, `blocked-by-failures` when some could not. Your flow reads that and decides what to tell the user. There are a few other reasons, such as a task waiting on a user, and the reference lists them.
 
 ## How long the list lasts
 

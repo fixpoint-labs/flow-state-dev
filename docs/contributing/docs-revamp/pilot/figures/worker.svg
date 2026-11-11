@@ -35,7 +35,7 @@ text{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;fon
 <line class="ln" x1="258" y1="118" x2="336" y2="118" marker-end="url(#ah)"/>
 <line class="ln" x1="258" y1="232" x2="336" y2="232" marker-end="url(#ah)"/>
 
-<text class="lb" x="340" y="36">ON EACH PERSON'S ROSTER</text>
+<text class="lb" x="340" y="36">ON EACH USER'S ROSTER</text>
 <rect class="dash" x="340" y="50" width="240" height="106"/>
 <text class="sub" x="354" y="72">Alice</text>
 <rect class="hl" x="354" y="86" width="212" height="52"/>
@@ -46,7 +46,7 @@ text{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;fon
 <rect class="thin" x="354" y="210" width="212" height="52"/>
 <text class="c" x="460" y="241" text-anchor="middle">engineering.lead</text>
 <text class="t" x="340" y="304">One file, a separate worker for</text>
-<text class="t" x="340" y="321">each person. What Alice's learns</text>
+<text class="t" x="340" y="321">each user. What Alice's learns</text>
 <text class="t" x="340" y="338">stays with Alice.</text>
 
 <line class="ln" x1="566" y1="100" x2="656" y2="78" marker-end="url(#ah)"/>

@@ -8,7 +8,7 @@ description: A worker is a named agent you brief in a Markdown file, then talk t
 
 A worker is an agent with a name and a job. You brief it in a Markdown file, the way you would brief a new colleague: what it's for, what it can use, who it can ask for help.
 
-You can talk to a worker, or hand it a task and come back later. Everyone who uses the app gets their own copy of each worker, and what a copy learns about its person stays with that person.
+You can talk to a worker, or hand it a task and come back later. Everyone who uses the app gets their own copy of each worker, and what a copy learns about its user stays with that user.
 
 ## The file
 
@@ -29,7 +29,7 @@ Save that as `workforce/teams/engineering/workers/lead/WORKER.md` and you have a
 
 Someone who doesn't write TypeScript can add a worker, or change what one has been told, by editing a document.
 
-![One worker file, a separate worker on each person's roster](./figures/worker.svg)
+![One worker file, a separate worker on each user's roster](./figures/worker.svg)
 
 *File, worker, session. Description for the site's `Figure`: On the left, a WORKER.md file in your repo, under teams/engineering/workers/lead. In the middle, two rosters, Alice's and Bob's, each holding its own engineering.lead made from that one file. On the right, where Alice's worker works: a conversation, where she talks and it answers, and a task, which it runs once and reports back on. Each conversation and each task is a session of its own.*
 
@@ -89,7 +89,7 @@ When a worker needs to be more than a model with a brief, write a flow and name 
 
 ```md
 ---
-description: Sends an incoming request to an answer or to a person.
+description: Sends an incoming request to an answer or to someone on the team.
 flow: request-triage
 ---
 

@@ -51,7 +51,7 @@ export default createFlowState({
 
 A kit brings its flows, the files it reads from your repo, and its views, which are the lists and details your pages show. A kit can also leave openings, called slots, for other kits to fill. `harnesses` opens a slot for coding agents and `claudeCode` fills it. A kit names the kits whose slots it fills, and never reaches into how they work.
 
-A kit that fills a slot can open slots of its own, so features stack. That is how one person's app becomes the base for someone else's.
+A kit that fills a slot can open slots of its own, so features stack. That is how one developer's app becomes the base for another's.
 
 ## Kits are made of flows and blocks
 

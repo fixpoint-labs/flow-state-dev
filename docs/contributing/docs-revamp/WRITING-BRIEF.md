@@ -29,8 +29,8 @@ Every page declares a `type` in its frontmatter. The type fixes its job, its len
 | `recipe` | One task | 800 | Task-shaped title, numbered steps, the finished code |
 | `reference` | Exact answers | none | Tables and signatures, no narrative |
 
-Words are counted without frontmatter, code blocks and figure descriptions. `tools/check-page.mjs`
-counts them.
+Words are counted without frontmatter, code blocks and figure descriptions.
+`scripts/check-docs-page.mjs` counts them.
 
 ### The concept outline
 
@@ -53,7 +53,7 @@ Each rule below has an example from a pilot page and the kind of sentence it rep
 
 Not: "Task board is the building block underneath Parallel Tasks, Supervisor, and Plan and Execute."
 
-**Say the idea in words a person would use out loud.** Introduce the API name afterwards, attached
+**Say the idea in words you would use out loud.** Introduce the API name afterwards, attached
 to the plain word.
 
 > A board is that list, stored, plus the loop that works through it, called the drain.
@@ -100,7 +100,7 @@ something is implemented.
 
 ## Words
 
-- **Worker** means the named agent a person talks to. A block that a board runs is "the block that
+- **Worker** means the named agent a user talks to. A block that a board runs is "the block that
   does the task", even though the option is spelled `workers`.
 - **Kit** is a feature an app installs. **Slot** is an opening a kit leaves for other kits.
 - **View** is what a screen reads. **Flow**, **action**, **block**, **session**, **resource** keep
@@ -148,11 +148,18 @@ Copy one and change it.
 Look at every figure before committing it:
 
 ```bash
-node docs/contributing/docs-revamp/tools/render-figures.cjs docs/contributing/docs-revamp/pilot/figures /tmp/figs
+S=docs/contributing/docs-revamp/pilot/figures/board.svg
+H=$(grep -oE 'viewBox="0 0 920 [0-9]+' "$S" | grep -oE '[0-9]+$')
+CH=$(ls -d /opt/pw-browsers/chromium-*/chrome-linux*/chrome | head -1)
+printf '<html><body style="margin:0;background:#f0ece1"><img src="%s" width="920"></body></html>' "$(realpath "$S")" > /tmp/light.html
+sed 's/@media (prefers-color-scheme:dark){/@media all{/' "$S" > /tmp/dark.svg
+printf '<html><body style="margin:0;background:#16150f"><img src="/tmp/dark.svg" width="920"></body></html>' > /tmp/dark.html
+for t in light dark; do "$CH" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --allow-file-access-from-files \
+  --window-size=920,$((H+20)) --screenshot=/tmp/$t.png /tmp/$t.html 2>/dev/null; done
 ```
 
-It writes `figs-light.png` and `figs-dark.png`. Check that no text crosses a border, no arrow
-crosses a label, and exactly one thing is highlighted.
+Open `/tmp/light.png` and `/tmp/dark.png`. Check that no text crosses a border, no arrow crosses a
+label, and exactly one thing is highlighted.
 
 Under the image, write one italic line: a short caption, then
 `Description for the site's Figure:` and a full description for a reader who cannot see it. On the
@@ -170,7 +177,7 @@ site these become the `caption` and `description` of `<Figure>`.
 5. **Run the checks.**
 
    ```bash
-   node docs/contributing/docs-revamp/tools/check-page.mjs path/to/page.md
+   node scripts/check-docs-page.mjs path/to/page.md
    ```
 
 6. **Fact-check** with a fresh agent that has the page and the code and nothing else. It returns
