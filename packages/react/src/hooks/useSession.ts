@@ -1624,6 +1624,19 @@ export function useSession(
             readRecordOf(requestId);
           }
         },
+        onClose: () => {
+          // The inline stream ended with no terminal event: the server cut off
+          // a reader that fell behind, or the connection ended early. The
+          // request runs on, so follow it on its own stream from the last
+          // event this view applied; that stream resumes itself from then on.
+          // A stream the view closed (a stop, a terminal status, a new
+          // request) never gets here.
+          if (streamHandleRef.current !== handle || !followingInline) return;
+          followingInline = false;
+          const last = lastStreamEventRef.current;
+          handle = follow(last?.requestId === requestId ? last.sequence : startAfter);
+          streamHandleRef.current = handle;
+        },
         onError: () => {
           // Capture the in-flight requestId BEFORE clearing the active ref so
           // the watchdog and any subsequent dismissRequest() call still have a
@@ -1646,12 +1659,13 @@ export function useSession(
         }
       };
 
-      const handle = inlineResponse !== undefined
+      const startAfter = startingAfter !== undefined ? Number(startingAfter) : undefined;
+      const follow = (after: number | undefined): RequestStreamHandle =>
+        flow.request(requestId).stream({ startingAfter: after, ...sseCallbacks });
+      let followingInline = inlineResponse !== undefined;
+      let handle: RequestStreamHandle = inlineResponse !== undefined
         ? createSSEClientFromResponse({ response: inlineResponse, ...sseCallbacks })
-        : flow.request(requestId).stream({
-            startingAfter: startingAfter !== undefined ? Number(startingAfter) : undefined,
-            ...sseCallbacks
-          });
+        : follow(startAfter);
 
       streamHandleRef.current = handle;
       streamRequestIdRef.current = requestId;

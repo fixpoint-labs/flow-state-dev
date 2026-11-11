@@ -117,6 +117,8 @@ export function createSSEStream(opts: CreateSSEStreamOptions = {}): SSEStreamHan
     if (Number.isFinite(maxBufferedBytes)) {
       const spare = writer.desiredSize ?? 0;
       // Something is waiting and this would pass the bound: end the stream.
+      // This check, not the queuing strategy (which only measures), is what
+      // delivers what is buffered and then ends with no terminal event.
       if (spare < maxBufferedBytes && chunk.byteLength > spare) {
         cleanup();
         return;
