@@ -30,7 +30,7 @@ import {
   UserBindingMismatchError
 } from "../context/binding-errors";
 import { NoSessionError } from "../context/no-session";
-import { ViewModelCallError } from "../context/view-reads";
+import { UnrecordedReadError, ViewModelCallError } from "../context/view-reads";
 import { FlowError } from "../errors/flow-error";
 import { runView, UnknownViewError } from "../execution/runView";
 import { asObject, extractTenantId, jsonResponse, loadTenantSession, parseJsonBody, unknownSessionResponse } from "./route-utils";
@@ -141,6 +141,7 @@ function viewFailureResponse(error: unknown, route: ViewRoute): Response {
   // The view's own code is wrong, not the call: 422, named.
   if (error instanceof ViewModelCallError) return jsonResponse(422, { error: "view_model_call", message: error.message });
   if (error instanceof NoSessionError) return jsonResponse(422, { error: "view_no_session", message: error.message });
+  if (error instanceof UnrecordedReadError) return jsonResponse(422, { error: "view_unrecorded_read", message: error.message });
   if (FlowError.isInstance(error)) {
     const status = error.code === "validation_error" ? 400 : error.code === "read_only" ? 409 : error.retryable ? 503 : 422;
     return jsonResponse(status, { error: error.code ?? "view_failed", message: error.message });

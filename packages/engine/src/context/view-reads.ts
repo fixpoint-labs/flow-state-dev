@@ -17,6 +17,8 @@
 import type { WireTopic } from "@flow-state-dev/core";
 import { wireTopicKey } from "@flow-state-dev/core/internal";
 import type { ModelResolver } from "@flow-state-dev/core/types";
+import type { RequestHost } from "@flow-state-dev/core/internal";
+import { NoSessionError } from "./no-session";
 
 /** One read a view's run made: a scope's state, or one of its resources by accessor. */
 export type RecordedRead =
@@ -63,6 +65,77 @@ export class ViewModelCallError extends Error {
         "watcher on every change. Compute the answer in an action, store it, and read it in the view."
     );
     this.name = "ViewModelCallError";
+  }
+}
+
+/**
+ * A view tried a read the engine can't record: no topic covers what it reads,
+ * so its watchers would never hear a change to it.
+ */
+export class UnrecordedReadError extends Error {
+  constructor(what: string) {
+    super(`A view can't ${what}: no change topic covers it, so the view's watchers would never hear it change.`);
+    this.name = "UnrecordedReadError";
+  }
+}
+
+/**
+ * Make a view's request host record or refuse each read it offers. A session
+ * read records the session it read; with no session, it refuses. Liveness
+ * reads the active-request registry, which no topic covers, so it refuses,
+ * whether or not the host offered it.
+ * The other verbs read nothing outside the run (`parentTask` has no task in a
+ * view) or write, and writes already refuse.
+ */
+export function guardViewRequestHost(host: RequestHost, record: (read: RecordedRead) => void, noSession: boolean): void {
+  const mutable = host as { -readonly [K in keyof RequestHost]: RequestHost[K] };
+  const sessions = host.sessions;
+  if (sessions !== undefined) {
+    mutable.sessions = noSession
+      ? {
+          read: async () => {
+            throw new NoSessionError("read a session");
+          },
+          history: async () => {
+            throw new NoSessionError("read a session's history");
+          }
+        }
+      : {
+          read: async (sessionId) => {
+            record({ scope: "session", sessionId, what: "state" });
+            return sessions.read(sessionId);
+          },
+          history: async (sessionId, query) => {
+            record({ scope: "session", sessionId, what: "state" });
+            return sessions.history(sessionId, query);
+          }
+        };
+  }
+  mutable.livenessOf = async () => {
+    throw new UnrecordedReadError("read requests' liveness");
+  };
+}
+
+/** Record `record` on each read of a session handle's items, metadata, window and journal. */
+export function recordSessionReads(handle: object, record: () => void): void {
+  for (const prop of ["items", "metadata", "window"] as const) {
+    const descriptor = Object.getOwnPropertyDescriptor(handle, prop);
+    if (descriptor === undefined) continue;
+    Object.defineProperty(handle, prop, {
+      enumerable: descriptor.enumerable ?? true,
+      configurable: true,
+      get: () => {
+        record();
+        return descriptor.get !== undefined ? descriptor.get.call(handle) : descriptor.value;
+      }
+    });
+  }
+  const getJournal = (handle as { getJournal?: (...args: unknown[]) => unknown }).getJournal;
+  if (typeof getJournal === "function") {
+    (handle as { getJournal: (...args: unknown[]) => unknown }).getJournal = (...args: unknown[]) => {
+      record();
+      return getJournal.apply(handle, args);
+    };
   }
 }
 

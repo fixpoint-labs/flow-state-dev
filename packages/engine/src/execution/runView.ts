@@ -25,7 +25,7 @@ import type { BlockDefinition, FlowInstance, ViewDefinition, ViewScope, WireTopi
 import type { ZodTypeAny } from "zod";
 import { createExecutionContext } from "../context/createExecutionContext";
 import { NoSessionError } from "../context/no-session";
-import { createReadRecorder, ViewModelCallError, type RecordedRead } from "../context/view-reads";
+import { createReadRecorder, UnrecordedReadError, ViewModelCallError, type RecordedRead } from "../context/view-reads";
 import { FlowError, ValidationError } from "../errors/flow-error";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
@@ -307,9 +307,9 @@ export async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
  * what a block throws; a model call or a reach for a session is the view's
  * own mistake, so it surfaces by its own name.
  */
-function viewRefusalIn(error: unknown): ViewModelCallError | NoSessionError | undefined {
+function viewRefusalIn(error: unknown): ViewModelCallError | NoSessionError | UnrecordedReadError | undefined {
   for (let cause: unknown = error, depth = 0; cause instanceof Error && depth < 8; cause = cause.cause, depth += 1) {
-    if (cause instanceof ViewModelCallError || cause instanceof NoSessionError) return cause;
+    if (cause instanceof ViewModelCallError || cause instanceof NoSessionError || cause instanceof UnrecordedReadError) return cause;
   }
   return undefined;
 }

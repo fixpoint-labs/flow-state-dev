@@ -208,7 +208,7 @@ import { PAST_TURN_STATUSES } from "../execution/past-turns";
 import { readSettledTurns, type SettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
 import { NoSessionError, noSessionHandle, noSessionRecord } from "./no-session";
-import { refusingModelResolver, ViewModelCallError } from "./view-reads";
+import { guardViewRequestHost, recordSessionReads, refusingModelResolver, ViewModelCallError } from "./view-reads";
 
 // FIX-2063.
 /**
@@ -1268,6 +1268,12 @@ export async function createExecutionContext<
           }
         })
       : undefined;
+
+  // FIX-2623 D1: the request host's reads reach stores outside `ctx.resources`
+  // and the state getters, so in a view each one is recorded or refused.
+  if (recordRead !== undefined && requestHostBuild !== undefined) {
+    guardViewRequestHost(requestHostBuild.host, recordRead, noSession);
+  }
 
   if (requestHostBuild?.livenessRefusal !== undefined) {
     // Named, not silent. An operator who never writes a capability still meets
@@ -2949,9 +2955,20 @@ export async function createExecutionContext<
         });
 
   // Populate the template resolver now that all registries exist.
+  // FIX-2623 D1: in a view, every scope searched is a dependency, the one the
+  // template was found in and each before it, and every scope when it is
+  // missing: a write to any of them changes what the view renders.
+  const templateScopes = [
+    ...(noSession ? [] : [{ scope: "session" as const, read: readSessionResourceContent }]),
+    { scope: "user" as const, read: readUserResourceContent },
+    { scope: "org" as const, read: readProjectResourceContent }
+  ];
   templateResolverRef.current = (ref: string): string | null => {
-    for (const contentFn of [readSessionResourceContent, readUserResourceContent, readProjectResourceContent]) {
-      const content = contentFn()[ref];
+    for (const { scope, read } of templateScopes) {
+      if (recordRead !== undefined) {
+        recordRead(scope === "session" ? { scope, sessionId, what: { resource: ref } } : { scope, what: { resource: ref } });
+      }
+      const content = read()[ref];
       if (typeof content === "string") return content;
     }
     return null;
@@ -3338,6 +3355,9 @@ export async function createExecutionContext<
       return sessionContainer.read();
     }
   ) as SessionScopeHandle<TSessionState>;
+  // FIX-2623 D1: in a session view, the session's items, metadata, window and
+  // journal are reads of the session too. Its topic covers every change to them.
+  if (recordRead !== undefined && !noSession) recordSessionReads(sessionHandle, () => recordRead({ scope: "session", sessionId, what: "state" }));
 
   const orgOpsEmitting =
     orgOps === undefined || orgContainer === undefined
