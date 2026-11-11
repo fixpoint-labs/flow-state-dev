@@ -22,7 +22,7 @@
  */
 import type { FileContent } from "../items/content";
 import { attachmentSentAs, normalizeMediaType, type AttachmentAccepts } from "../attachments";
-import { HARNESS_ATTACHMENT_SEAM, type HarnessAttachmentSeam } from "./harness-attachment-seam";
+import { ATTACHMENT_SEAM, type AttachmentSeam } from "./attachment-seam";
 
 /** One file's bytes, as a harness adapter hands them to its SDK. */
 export interface HarnessAttachmentBytes {
@@ -139,7 +139,7 @@ export async function readHarnessAttachments(
   attachments: ReadonlyArray<FileContent> | undefined,
 ): Promise<HarnessAttachmentBytes[]> {
   if (attachments === undefined || attachments.length === 0) return [];
-  const read = (ctx as { readonly [HARNESS_ATTACHMENT_SEAM]?: HarnessAttachmentSeam })[HARNESS_ATTACHMENT_SEAM];
+  const read = (ctx as { readonly [ATTACHMENT_SEAM]?: AttachmentSeam })[ATTACHMENT_SEAM];
   const out: HarnessAttachmentBytes[] = [];
   for (const attachment of attachments) {
     if (read === undefined) throw new HarnessAttachmentUnavailableError(attachment);

@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
 import { toBlobRef } from "@flow-state-dev/core/attachments";
 import { HarnessAttachmentRefusedError } from "@flow-state-dev/core/harness";
-import { HARNESS_ATTACHMENT_SEAM, type HarnessAttachmentSeam } from "@flow-state-dev/core/internal";
+import { ATTACHMENT_SEAM, type AttachmentSeam } from "@flow-state-dev/core/internal";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { codexAgent, INTERNAL_CODEX_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 import { TESTED_CODEX_SDK, type CodexThreadEvent, type CodexTurnInput } from "../src/types";
@@ -64,7 +64,7 @@ function scripted(opts: { throwOnRun?: Error } = {}) {
 /** A context whose request's file reader serves `files` by reference. */
 async function contextWith(files: Record<string, { mediaType: string; bytes: Uint8Array; text?: string }>) {
   const runtime = await createTestContext({});
-  const read: HarnessAttachmentSeam = async (file) => {
+  const read: AttachmentSeam = async (file) => {
     const found = files[file.data]!;
     return {
       mediaType: found.mediaType,
@@ -73,7 +73,7 @@ async function contextWith(files: Record<string, { mediaType: string; bytes: Uin
       ...(found.text !== undefined ? { text: async () => found.text! } : {}),
     };
   };
-  (runtime.ctx as unknown as Record<symbol, unknown>)[HARNESS_ATTACHMENT_SEAM] = read;
+  (runtime.ctx as unknown as Record<symbol, unknown>)[ATTACHMENT_SEAM] = read;
   return runtime.ctx as never;
 }
 

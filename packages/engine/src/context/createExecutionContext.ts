@@ -52,8 +52,8 @@ import {
   resolveAllowedActions,
   BOARD_NOTICE_SEAM,
   DISPATCH_SEAM,
-  HARNESS_ATTACHMENT_SEAM,
-  type HarnessAttachmentSeam,
+  ATTACHMENT_SEAM,
+  type AttachmentSeam,
   USER_ATTACHMENT_SEAM,
   type UserAttachmentSeam,
   REQUEST_RESUME_SEAM,
@@ -2969,9 +2969,10 @@ export async function createExecutionContext<
       target,
       requestRef.current.attachments ?? []
     );
-  // The same reader for a harness handed the turn's files (FIX-2519), named
-  // in core's terms. No blob store: no reader, and a harness refuses the files.
-  const harnessAttachmentSeam: HarnessAttachmentSeam | undefined =
+  // The same reader for a harness handed the turn's files (FIX-2519) and for
+  // the model's read of an earlier file (FIX-2636), named in core's terms.
+  // No blob store: no reader, and a harness refuses the files.
+  const attachmentSeam: AttachmentSeam | undefined =
     blobs === undefined
       ? undefined
       : async (file: FileContent) => {
@@ -3999,7 +4000,7 @@ export async function createExecutionContext<
       // A task board's change reaches this run's bus, under the
       // request's tenant. No bus (a registry no entry wrapped): no seam.
       ...(boardNoticeSeam !== undefined ? { [BOARD_NOTICE_SEAM]: boardNoticeSeam } : {}),
-      ...(harnessAttachmentSeam !== undefined ? { [HARNESS_ATTACHMENT_SEAM]: harnessAttachmentSeam } : {}),
+      ...(attachmentSeam !== undefined ? { [ATTACHMENT_SEAM]: attachmentSeam } : {}),
       ...(userAttachmentSeam !== undefined ? { [USER_ATTACHMENT_SEAM]: userAttachmentSeam } : {}),
       settings: options.settings ?? {},
       request: requestHandle,

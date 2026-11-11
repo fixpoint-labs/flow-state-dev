@@ -1,4 +1,4 @@
-// FIX-2517 D1, FIX-2520.
+// FIX-2517 D1, FIX-2520, FIX-2636.
 /**
  * The files on a person's lines, as a model call carries them.
  *
@@ -20,6 +20,12 @@
  *    headed by its name, a PDF is a file where the provider reads PDFs and
  *    its extracted text everywhere else. A file that can't be read is named
  *    instead of failing the call.
+ *
+ * A flow with the attachments capability reads its history with
+ * `earlierDocuments: "named"`: step 1 names an earlier turn's document with
+ * its id instead of keeping it. The model reads one with `readAttachment`,
+ * whose result holds the file's reference; step 2 turns that result into the
+ * document's text, for each step of the turn's tool loop.
  */
 import {
   ATTACHMENT_DOCUMENT_TYPES,
@@ -60,22 +66,65 @@ function hasFileReferences(message: unknown): message is LLMMessage & { content:
   return role === "user" && Array.isArray(content) && content.some(isFileReference);
 }
 
+/** A tool's result whose output is one document's reference (`readAttachment`'s read), as a tool loop step carries it. */
+type DocumentResult = { type: "tool-result"; output: { type: "json"; value: FileContent } };
+
+function isDocumentResult(part: unknown): part is DocumentResult {
+  if (typeof part !== "object" || part === null) return false;
+  const { type, output } = part as { type?: unknown; output?: { type?: unknown; value?: unknown } };
+  return (
+    type === "tool-result" &&
+    output?.type === "json" &&
+    isFileReference(output.value) &&
+    attachmentKind(output.value.mediaType) === "document"
+  );
+}
+
+function hasDocumentResults(message: unknown): message is LLMMessage & { content: unknown[] } {
+  if (typeof message !== "object" || message === null) return false;
+  const { role, content } = message as { role?: unknown; content?: unknown };
+  return role === "tool" && Array.isArray(content) && content.some(isDocumentResult);
+}
+
 /** The one line a model sees in place of a file it is not sent. */
 function fileNote(file: FileContent, why: string): { type: "text"; text: string } {
   const kind = attachmentKind(file.mediaType) ?? "file";
   return { type: "text", text: `[${kind}${file.filename !== undefined ? `: ${file.filename}` : ""}, ${why}]` };
 }
 
+// FIX-2636 D2.
+/**
+ * How the history carries an earlier turn's documents: `"window"`, the newest
+ * up to one message's limits (FIX-2517 D1); `"named"`, none, each named with
+ * its id for the model to read on request. Set by the history read's
+ * `ItemQuery.earlierDocuments`.
+ */
+export type EarlierDocuments = "window" | "named";
+
+/** The line a model sees in place of an earlier document it can read on request: its name, its id and the tool. */
+function readableNote(file: FileContent): { type: "text"; text: string } {
+  return fileNote(file, `id ${parseBlobRef(file.data)}, not re-sent; read it with readAttachment`);
+}
+
 /**
  * Keep the newest files up to one message's limits, walking back from the
  * newest line; name every older one on its turn. Within one line, files go in
  * the order attached. Lines without files pass through untouched.
+ *
+ * With `earlierDocuments: "named"`, a document on one of the first `earlier`
+ * messages (the earlier turns, ahead of the request's own) is named with its
+ * id instead, whatever the window holds; images keep the window.
  */
-export function budgetHistoryFiles(messages: LLMMessage[]): LLMMessage[] {
+export function budgetHistoryFiles(
+  messages: LLMMessage[],
+  options: { earlierDocuments?: EarlierDocuments; earlier?: number } = {}
+): LLMMessage[] {
   const left: Record<"image" | "document", number> = {
     image: ATTACHMENT_LIMITS.imagesPerMessage,
     document: ATTACHMENT_LIMITS.documentsPerMessage
   };
+  const named = options.earlierDocuments === "named";
+  const earlier = options.earlier ?? messages.length;
   const out = messages.slice();
   for (let i = out.length - 1; i >= 0; i -= 1) {
     const message = out[i]!;
@@ -85,6 +134,7 @@ export function budgetHistoryFiles(messages: LLMMessage[]): LLMMessage[] {
       content: message.content.map((part) => {
         if (!isFileReference(part)) return part;
         const kind = attachmentKind(part.mediaType);
+        if (named && kind === "document" && i < earlier) return readableNote(part);
         if (kind === undefined || left[kind] <= 0) return fileNote(part, "not re-sent");
         left[kind] -= 1;
         return part;
@@ -117,10 +167,16 @@ export async function resolveHistoryFiles(
   current: ReadonlyArray<FileContent>
 ): Promise<unknown[]> {
   const accepts = target?.accepts ?? UNNAMED_TARGET_ACCEPTS;
-  if (!messages.some(hasFileReferences)) return messages;
+  if (!messages.some((message) => hasFileReferences(message) || hasDocumentResults(message))) return messages;
   const sent = new Set(current.map((file) => file.data));
   const out: unknown[] = [];
   for (const message of messages) {
+    if (hasDocumentResults(message)) {
+      const content: unknown[] = [];
+      for (const part of message.content) content.push(isDocumentResult(part) ? await toReadResult(part, read) : part);
+      out.push({ ...message, content });
+      continue;
+    }
     if (!hasFileReferences(message)) {
       out.push(message);
       continue;
@@ -132,6 +188,26 @@ export async function resolveHistoryFiles(
     out.push({ ...message, content });
   }
   return out;
+}
+
+/**
+ * A document the model read in this turn's tool loop, as the call carries it:
+ * its text, headed by its name, always as text. A file that can't be read
+ * now, or whose text is over the cap, is the tool's error, not a failed call.
+ */
+async function toReadResult(part: DocumentResult, read: ReadAttachment | undefined): Promise<unknown> {
+  const file = part.output.value;
+  const failed = (why: string) => ({ ...part, output: { type: "error-text", value: `${file.filename ?? "The file"} ${why}.` } });
+  if (read === undefined) return failed("is no longer available");
+  try {
+    const text = await readAttachmentText(file, await read(file), read);
+    return { ...part, output: { type: "text", value: text } };
+  } catch (error) {
+    if (error instanceof AttachmentUnavailableError) return failed("is not in this conversation");
+    if (error instanceof AttachmentTextTooLargeError) return failed("has too much text to read");
+    if (error instanceof PdfUnreadableError || error instanceof PdfTooManyPagesError) return failed("can't be read as text");
+    throw error;
+  }
 }
 
 async function toModelPart(
