@@ -22,7 +22,6 @@ import type {
 import { getPatternPrefix, matchesPattern, resolveCollectionKey, searchProjectedRecords } from "@flow-state-dev/core/types";
 import { resolveClientData } from "@flow-state-dev/core/helpers";
 import { registryHasViews, type FlowRegistry } from "../registry/flow-registry";
-import { isSharedToLineage } from "../resources/lineage-scope";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { toBareState, toBareStates } from "../stores/resource-state-views";
 import {
@@ -56,9 +55,10 @@ import {
 import {
   readSessionScopeWithLineage,
   sessionKeyScopeId,
+  sessionKeySharesLineage,
   sessionStorageScope,
 } from "../resources/lineage-scope";
-import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
+import { noticePathFor, publishSessionResourceChange } from "../bus/scope-changes";
 
 type ResourceRouteContext = {
   registry: FlowRegistry;
@@ -90,23 +90,25 @@ type ResourceRouteContext = {
  * the bare session topic instead (`noticePathFor`). A lineage-shared key also
  * reaches the owner's user topic once the host has a view.
  */
-function publishSessionResource(ctx: ResourceRouteContext, sessionId: string, storageKey: string, collection: object): void {
-  // FIX-2623 D1: a lineage-shared row is one row across the lineage, and every
-  // member belongs to one user, so once the host has a view it also publishes
-  // on that user's topic, which a view that read it records. The one-owner rule
-  // is enforced where a lineage is inherited (see `publishChange` in
-  // `createExecutionContext.ts`).
-  const owner = ctx.checkedSession?.userId;
-  if (owner !== undefined && isSharedToLineage(collection) && registryHasViews(ctx.registry)) {
-    publishScopeChange(ctx.stores.bus, { scope: "user", id: owner, tenantId: ctx.tenantId, kind: "resource" });
-  }
+function publishSessionResource(
+  ctx: ResourceRouteContext,
+  session: SessionRecord,
+  flowResources: unknown,
+  sessionId: string,
+  storageKey: string,
+  collection: object
+): void {
+  // FIX-2623 D1: through the one publish surface. Lineage sharing is the
+  // stored key's (the same rule the write above routed by), and the owner is
+  // the session record this handler loaded.
   const resource = noticePathFor(collection, storageKey);
-  publishScopeChange(ctx.stores.bus, {
-    scope: "session",
-    id: sessionId,
+  publishSessionResourceChange(ctx.stores.bus, {
+    sessionId,
+    ownerUserId: session.userId,
     tenantId: ctx.tenantId,
-    kind: "resource",
-    ...(resource !== undefined ? { resource } : {})
+    notice: resource !== undefined ? { resource } : {},
+    lineageShared: sessionKeySharesLineage(flowResources, storageKey),
+    hostHasViews: registryHasViews(ctx.registry)
   });
 }
 
@@ -385,7 +387,7 @@ export async function handleCreateCollectionResource(
     await ctx.stores.content.set(sessionStorageScope(session, scopeId), scopeId, storageKey, content);
   }
 
-  publishSessionResource(ctx, route.sessionId, storageKey, config);
+  publishSessionResource(ctx, session, flow.resources, route.sessionId, storageKey, config);
   return jsonResponse(201, { topic: topic.trim() });
 }
 
@@ -458,7 +460,7 @@ export async function handleUpdateResourceContent(
   // Write to ContentStore (the canonical content location during execution).
   await ctx.stores.content.set(sessionStorageScope(session, scopeId), scopeId, storageKey, content);
 
-  publishSessionResource(ctx, route.sessionId, storageKey, config);
+  publishSessionResource(ctx, session, flow.resources, route.sessionId, storageKey, config);
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }
 
@@ -886,6 +888,6 @@ export async function handleDeleteCollectionResource(
   // predicate fences it, and closing it is cross-record atomicity (FIX-854).
   await ctx.stores.content.delete(sessionStorageScope(session, scopeId), scopeId, storageKey);
 
-  publishSessionResource(ctx, route.sessionId, storageKey, config);
+  publishSessionResource(ctx, session, flow.resources, route.sessionId, storageKey, config);
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }

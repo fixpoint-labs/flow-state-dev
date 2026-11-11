@@ -51,6 +51,52 @@ export function noticePathFor(collection: object | undefined, storageKey: string
   return collection === undefined || ownerKeyAdmits(collection, storageKey, undefined) ? storageKey : undefined;
 }
 
+// FIX-2623 D1.
+/**
+ * A session resource write, as every writer publishes it: a run, the
+ * resource routes, any other. The one place the lineage rule for publication
+ * lives, matching the read side's (`createViewDependencies`).
+ *
+ * - `notice`: the session topic notice, narrowed to `resource` when the row
+ *   may be named (`noticePathFor`), or `undefined` for none (a run whose
+ *   resource no view of the session reads, on a host with no view).
+ * - `lineageShared`: whether the row's storage key is lineage-shared, by the
+ *   ownership rule write routing uses (`sessionKeySharesLineage` or the
+ *   session buckets). When it is and the host has a view, the write also
+ *   publishes on the session owner's user topic, bare: every lineage member
+ *   belongs to that one user (enforced where a lineage is inherited, by the
+ *   dispatch seed and `evaluateAdoption`).
+ * - `ownerUserId`: the owner of the session record the writer holds, never a
+ *   caller-supplied or cached value.
+ */
+export function publishSessionResourceChange(
+  bus: ChangeBus | undefined,
+  change: {
+    sessionId: string;
+    ownerUserId: string;
+    tenantId: string | undefined;
+    notice: { resource?: string } | undefined;
+    lineageShared: boolean;
+    hostHasViews: boolean;
+    requestId?: string;
+  }
+): void {
+  const origin = change.requestId !== undefined ? { requestId: change.requestId } : {};
+  if (change.lineageShared && change.hostHasViews) {
+    publishScopeChange(bus, { scope: "user", id: change.ownerUserId, tenantId: change.tenantId, kind: "resource", ...origin });
+  }
+  if (change.notice !== undefined) {
+    publishScopeChange(bus, {
+      scope: "session",
+      id: change.sessionId,
+      tenantId: change.tenantId,
+      kind: "resource",
+      ...(change.notice.resource !== undefined ? { resource: change.notice.resource } : {}),
+      ...origin
+    });
+  }
+}
+
 /**
  * Publish `change` on its scope's topic. A missing bus publishes nothing;
  * a failed publish never fails the write (epic ER-6).

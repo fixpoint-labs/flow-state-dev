@@ -188,7 +188,7 @@ import type { BlobStore } from "../blobs/types";
 import type { AttachmentAccepts } from "@flow-state-dev/core/attachments";
 import { resolveHistoryFiles } from "./history-files";
 import { readAttachmentText } from "../blobs/attachment-text";
-import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
+import { noticePathFor, publishScopeChange, publishSessionResourceChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
   normalizeScopeResources,
@@ -2808,23 +2808,33 @@ export async function createExecutionContext<
      * path is a row only its owner may read (`noticePathFor`).
      */
     const publishChange = (resourcePath: string): void => {
-      // FIX-2623 D1: a lineage-shared session resource is one resource across
-      // the lineage, but a session notice reaches only the writer's session.
-      // Every lineage member belongs to one user, so it also publishes on the
-      // user's topic, bare, which a view that read it records. Enforced at the
-      // one place a lineage is inherited: a same-flow dispatch child is seeded
-      // with the parent's userId and lineageId, and a record of another user is
-      // never adopted (`create-request-host.ts` dispatchSeed, `dispatch-run.ts`
-      // evaluateAdoption). A cross-flow child and every other birth root their
-      // own lineage (`session-birth.ts`). A session always has a userId.
-      if (scope === "session" && hostHasViews && resolveBucketFlag("session", resourcePath) === true) {
-        publishScopeNotice("user", "resource");
+      // The session notice, or none, by the scope's published resources.
+      let notice: { resource?: string } | undefined;
+      if (publishedSingleKeys.has(resourcePath)) notice = { resource: resourcePath };
+      else {
+        const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
+        if (holders.length > 0) {
+          const named = holders.some((cfg) => noticePathFor(cfg, resourcePath) !== undefined);
+          notice = named ? { resource: resourcePath } : {};
+        }
       }
-      if (publishedSingleKeys.has(resourcePath)) return publishScopeNotice(scope, "resource", resourcePath);
-      const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
-      if (holders.length === 0) return;
-      const named = holders.some((cfg) => noticePathFor(cfg, resourcePath) !== undefined);
-      publishScopeNotice(scope, "resource", named ? resourcePath : undefined);
+      if (scope !== "session") {
+        if (notice !== undefined) publishScopeNotice(scope, "resource", notice.resource);
+        return;
+      }
+      // FIX-2623 D1: a session write goes through the one publish surface,
+      // which adds the owner's user topic for a lineage-shared key. Sharing is
+      // the stored key's, by the ownership rule writes route by; the owner is
+      // this session record's.
+      publishSessionResourceChange(stores.bus, {
+        sessionId,
+        ownerUserId: sessionRef.current.userId,
+        tenantId: options.tenantId,
+        notice,
+        lineageShared: reachHasFlag(scopeBuckets.session, { key: resourcePath }),
+        hostHasViews,
+        requestId: requestRef.current.id
+      });
     };
 
     // Only wire a handler when there is something to do: a live emitter

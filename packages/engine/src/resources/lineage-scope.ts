@@ -83,10 +83,18 @@ export function sessionKeyScopeId(
   storageKey: string,
   tenantId: string | undefined
 ): string {
-  const { buckets } = sessionRoutingIndex(flowResources);
-  return resolveOwnershipFlag(buckets, storageKey) === true
-    ? lineageScopeId(session)
-    : session.id;
+  return sessionKeySharesLineage(flowResources, storageKey) ? lineageScopeId(session) : session.id;
+}
+
+// FIX-2623.
+/**
+ * Whether the session storage key `storageKey` is lineage-shared: owned by a
+ * `sharedToLineage` declaration under the longest-prefix rule. The one answer
+ * write routing ({@link sessionKeyScopeId}) and change publication share, so a
+ * row is published where it is stored.
+ */
+export function sessionKeySharesLineage(flowResources: unknown, storageKey: string): boolean {
+  return reachHasFlag(sessionRoutingIndex(flowResources).buckets, { key: storageKey });
 }
 
 /**

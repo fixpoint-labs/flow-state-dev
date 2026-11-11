@@ -16,7 +16,8 @@ import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, defineResource, defineResourceCollection, defineView, handler } from "@flow-state-dev/core";
 import { requestHostOf } from "@flow-state-dev/core/internal";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { runAction } from "../src";
+import { createFlowRegistry, runAction } from "../src";
+import { handleCreateCollectionResource } from "../src/routes/resource-routes";
 import { createInMemoryBus, createInMemoryStores, type BusTopic, type ChangeNotice } from "../src/host";
 import { runView } from "../src/execution/runView";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
@@ -50,9 +51,10 @@ const rendered = {
  * rows: a list through the unshared handle returns the shared rows, which a
  * sibling writes.
  */
+const routeGrant = { content: { read: true, create: true }, state: { read: true } } as never;
 const overlap = {
-  notes: defineResourceCollection({ scope: "session", pattern: "notes/**", stateSchema: value }),
-  sharedNotes: defineResourceCollection({ scope: "session", sharedToLineage: true, pattern: "notes/shared/*", stateSchema: value })
+  notes: defineResourceCollection({ scope: "session", pattern: "notes/**", stateSchema: value, client: routeGrant }),
+  sharedNotes: defineResourceCollection({ scope: "session", sharedToLineage: true, pattern: "notes/shared/*", stateSchema: value, client: routeGrant })
 } as const;
 
 type Scope = keyof typeof direct;
@@ -255,6 +257,44 @@ describe("a view hears a change through every read path, at every scope", () => 
   });
 });
 
+describe("a browser's write through the resource routes reaches the same view", () => {
+  // Each read cell is also driven by the HTTP write path: a create from a
+  // sibling session `b`, addressed through the shared handle or through the
+  // unshared one whose pattern covers it, with and without the auth layer's
+  // checked session.
+  for (const ref of ["sharedNotes", "notes"] as const) {
+    for (const checked of [true, false]) {
+      it(`route create through ${ref} × lineage, checked session ${checked ? "given" : "absent"}`, async () => {
+        const bus = createInMemoryBus();
+        const stores = { ...createInMemoryStores(), bus };
+        await seed(stores, "root");
+        await seed(stores, "a", "root");
+        await seed(stores, "b", "root");
+        const registry = createFlowRegistry();
+        registry.register(flow);
+        const before = await runView({ flow, viewName: "overlap_lineage", input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores });
+        const heard: ChangeNotice[] = [];
+        for (const t of before.topics) {
+          const busTopic: BusTopic =
+            t.scope === "session" ? { scope: "session", id: t.id, tenantId: "" } : { scope: t.scope, id: t.scope === "user" ? "u_1" : DEFAULT_ORG_ID, tenantId: "" };
+          bus.subscribe(busTopic, (notice) => heard.push(notice));
+        }
+        const topic = ref === "notes" ? "shared/n2" : "n2";
+        const created = await handleCreateCollectionResource(
+          new Request(`http://x/sessions/b/resources/${ref}`, { method: "POST", body: JSON.stringify({ topic, content: "hi", state: { v: "web" } }) }),
+          { kind: "create_collection_item", sessionId: "b", ref },
+          { registry, stores, ...(checked ? { checkedSession: (await stores.session.get("b"))! } : {}) }
+        );
+        expect(created.status, await created.clone().text()).toBe(201);
+        await tick();
+        const after = await runView({ flow, viewName: "overlap_lineage", input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores });
+        expect(after.output).not.toEqual(before.output);
+        expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+      });
+    }
+  }
+});
+
 describe("one way to record a view's dependency", () => {
   it("the execution context hands the raw recorder only to the dependency surface", () => {
     // A read path that records by hand can forget a topic rule (the lineage
@@ -264,5 +304,21 @@ describe("one way to record a view's dependency", () => {
     // call that passes it to the surface) and named nowhere else.
     expect(source.match(/[\w.]*\brecordRead\b/g)).toEqual(["options.recordRead", "options.recordRead"]);
     expect(source).toMatch(/createViewDependencies\(options\.recordRead, sessionId,/);
+  });
+
+  it("every session resource write publishes through the one publish surface", () => {
+    // The mirror of the recorder check: a writer that publishes by hand can
+    // forget the lineage rule the read side records.
+    const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+    const routes = read("../src/routes/resource-routes.ts");
+    expect(routes).not.toMatch(/publishScopeChange\(/);
+    expect(routes).toMatch(/publishSessionResourceChange\(/);
+    const context = read("../src/context/createExecutionContext.ts");
+    const resourceNotices = context
+      .split("\n")
+      .filter((line) => /publishScopeNotice\([^)]*"resource"/.test(line) && !line.includes("function publishScopeNotice"));
+    expect(resourceNotices).toEqual([expect.stringContaining("if (notice !== undefined) publishScopeNotice(scope, \"resource\"")]);
+    expect(context).toMatch(/if \(scope !== "session"\) \{\n\s*if \(notice !== undefined\) publishScopeNotice/);
+    expect(context).toMatch(/publishSessionResourceChange\(stores\.bus,/);
   });
 });
