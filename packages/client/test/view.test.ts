@@ -1,5 +1,6 @@
+// FIX-2623.
 /**
- * Views on the client (FIX-2623): `client.view` calls the right route at the
+ * Views on the client: `client.view` calls the right route at the
  * view's scope and hands back value, topics and keys; `watchView` keeps one
  * live read per view, session and input in a client, shared by every watcher,
  * listening to the topics each answer names, with no loop of its own; a keyed

@@ -48,25 +48,35 @@ export function useView<TRef extends ViewRef>(
   const inputKey = JSON.stringify(input ?? {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const stableInput = useMemo(() => input ?? {}, [inputKey]);
-  const [state, setState] = useState<UseViewResult<ViewValueOf<TRef>>>({ value: undefined, stale: false });
+  // What was heard is tagged with the watch it belongs to, and the answer is
+  // derived from it: a disabled hook, or one watching another view, input or
+  // session, answers nothing rather than the last value as if current.
+  const watchKey = `${ref.flow}\u0000${ref.view}\u0000${sessionId ?? ""}\u0000${inputKey}`;
+  const [heard, setHeard] = useState<{ key: string; value: ViewValueOf<TRef> | undefined; stale: boolean } | undefined>(undefined);
 
   useEffect(() => {
     if (!enabled) return;
-    setState({ value: undefined, stale: false });
+    const key = watchKey;
+    const fresh = (prev: typeof heard) => (prev?.key === key ? prev : { key, value: undefined, stale: false });
     return watchView<ViewValueOf<TRef>>(
       client,
       ref,
       stableInput,
       {
-        onValue: (value) => setState((prev) => ({ ...prev, value })),
-        onStale: (stale) => setState((prev) => (prev.stale === stale ? prev : { ...prev, stale }))
+        onValue: (value) => setHeard((prev) => ({ ...fresh(prev), value })),
+        onStale: (stale) => setHeard((prev) => (fresh(prev).stale === stale ? prev : { ...fresh(prev), stale }))
       },
       {
         ...(sessionId !== undefined ? { sessionId } : {}),
         ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {})
       }
     );
-  }, [client, ref.flow, ref.view, stableInput, sessionId, enabled, pollIntervalMs]);
+    // `watchKey` names `ref`, `stableInput` and `sessionId` by value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, watchKey, enabled, pollIntervalMs]);
 
-  return state;
+  return useMemo(
+    () => (enabled && heard?.key === watchKey ? { value: heard.value, stale: heard.stale } : { value: undefined, stale: false }),
+    [enabled, heard, watchKey]
+  );
 }

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
+// FIX-2623.
 /**
- * `useView` (FIX-2623): a screen watches a view with no topics of its own.
+ * `useView`: a screen watches a view with no topics of its own.
  * Two screens watching the same view and input share one read; the value
  * follows a change notice on the topics the answer named; a failed read says
  * `stale` until one lands; unmounting the last watcher closes the
@@ -64,6 +65,36 @@ describe("useView", () => {
     expect(fake.open()).toHaveLength(1);
     b.unmount();
     expect(fake.open()).toHaveLength(0);
+  });
+
+  it("answers nothing while disabled, rather than the last value as if current", async () => {
+    const fake = fakeClient(() => ({ value: "v1", topics: [] }));
+    const hook = renderHook(({ enabled }) => useView(BOARD, undefined, { client: fake.client, pollIntervalMs: null, enabled }), {
+      initialProps: { enabled: true }
+    });
+    await flush();
+    expect(hook.result.current).toEqual({ value: "v1", stale: false });
+    hook.rerender({ enabled: false });
+    expect(hook.result.current).toEqual({ value: undefined, stale: false });
+    expect(fake.open()).toHaveLength(0);
+    hook.unmount();
+  });
+
+  it("answers nothing for a new input until its own answer lands, never the old input's", async () => {
+    const fake = fakeClient(() => ({ value: "v", topics: [] }));
+    let release: (() => void) | undefined;
+    const gated = { ...fake.client, view: (...args: Parameters<typeof fake.client.view>) => new Promise<Awaited<ReturnType<typeof fake.client.view>>>((resolve) => {
+      release = () => void fake.client.view(...args).then(resolve);
+    }) };
+    const hook = renderHook(({ team }) => useView(BOARD, { team }, { client: gated, pollIntervalMs: null }), {
+      initialProps: { team: "eng" }
+    });
+    release?.();
+    await flush();
+    expect(hook.result.current.value).toBe("v");
+    hook.rerender({ team: "ops" });
+    expect(hook.result.current).toEqual({ value: undefined, stale: false });
+    hook.unmount();
   });
 
   it("is stale while a read fails, and not once one lands", async () => {
