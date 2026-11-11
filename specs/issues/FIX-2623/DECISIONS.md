@@ -88,8 +88,8 @@ at read time, where caching it per input is acceptable.
   so `ViewOutput` is never `unknown`. Client code never imports a view's block at run time: the
   handle `useView` takes is client-safe (a type import, or a leaf ref as resources have, BP-019).
 - **Keys.** `key` is optional; with it the answer is a list and `useView` keeps rows by key.
-  Re-reading only some keys is FIX-2625's, which closes the concept doc's open question by adding
-  keys to the call beside the input.
+  Re-reading only some keys is FIX-2625's; [its D1](../FIX-2625/DECISIONS.md#d1) supersedes "keys
+  on the call": the call carries the notice that woke it, and a view's own code may answer for some rows.
 - **The convergence point** for "a view writes nothing and every read it makes is recorded" is
   the one view runner, `runRead`'s successor, with the read-only stores. Every view runs through
   it: flow `views`, `taskToolViews`, harness-manager's `changes`, and later a kit's. The recorder
