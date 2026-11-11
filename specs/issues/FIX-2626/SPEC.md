@@ -163,7 +163,7 @@ first request.
 | Issue | Must |
 |---|---|
 | **FIX-2627** | Claim the entries in workforce's folder that workforce configures, `workforce/flows/` included, and only those: an app's own resources and flows go in its own kit or in `flows:` · replace `readDeclaredRoster` with `readWorkforceFolder`, and route every reader and the `fsdev gen` walk through the claim pass · import the walk primitives from the engine, dropping them from `./loader` · declare the slots, with harnesses' keyed `harnesses` slot of `{ id, agent, readiness, pass, usage, models }` filled by two or more packages · views and hooks on a browser entry, components on `/react` · workforce's starter files · the third "slot" · take the lab's own flows out of `workforce/flows/` (below) |
-| **FIX-2628** | Build claude-code-style's kit on this `defineKit` · credit its adapter's removal per [the POC](poc/client-half/README.md), confirming or refuting the 42 kit-only lines · delete `user-marks.mts` with FIX-2624's fallback (below) |
+| **FIX-2628** | Build claude-code-style's kit on this `defineKit` · credit its adapter's removal per [the POC](poc/client-half/README.md), confirming or refuting the 42 kit-only lines · delete `user-marks.mts` (below) |
 
 claude-code-style's `labs/claude-code-style/workforce/flows/` holds five files on `main`: `pins.mts`
 and `dismissals.mts`, which FIX-2624 deletes; `harness-thread.mts`, which FIX-2627 merges into
@@ -171,8 +171,8 @@ the one coding worker flow; and `projects.mts` and `user-marks.mts`, which are t
 `projects.mts` is the app's project flow (`defineProjectBlocks`). It moves to the lab's own
 folder, listed in the host's `flows:` beside the readiness flow, before workforce's claim pass
 reaches the lab; FIX-2628 may then move it into the app's kit. `user-marks.mts` is the user state
-pins and dismissals share, and FIX-2624's one-read fallback still reads it, so FIX-2627 moves it
-out with `projects.mts` and FIX-2628 deletes it with that fallback. Then the folder holds only what workforce
+pins and dismissals share. FIX-2624 reads no old marks from it ([amended](../FIX-2624/DECISIONS.md#how-it-got-here)); FIX-2627 moves it
+out with `projects.mts` and FIX-2628 deletes it. Then the folder holds only what workforce
 claims, and the lab starts under [D2](DECISIONS.md#d2).
 
 ## Sign off

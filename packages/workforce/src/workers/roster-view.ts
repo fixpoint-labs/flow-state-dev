@@ -101,5 +101,5 @@ export function defineRosterView(installation: WorkerInstallation): RosterView {
         return [...ownEntries.filter((entry) => copies.has(entry.id)), ...standardEntries];
       }
     })
-  }) as unknown as RosterView;
+  });
 }

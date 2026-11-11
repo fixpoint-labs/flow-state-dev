@@ -56,6 +56,7 @@ export function TasksPanel({
     );
   }
   if (tasks === undefined) {
+    // Generic by design: a view answers `{ value, stale }`, with no failure reason to show.
     return (
       <p className="px-1 text-xs text-destructive" data-testid="shift-coordinator-tasks-failure">
         The tasks didn't load. They are read again on their own.
