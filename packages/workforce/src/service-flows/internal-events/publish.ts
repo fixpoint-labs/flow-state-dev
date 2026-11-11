@@ -108,7 +108,7 @@ export interface PublishingOptions {
  * Publish `input` from the running session. See the file header for what is
  * checked, and in what order.
  */
-export async function publish(ctx: BlockContext, options: PublishingOptions, input: unknown): Promise<PublishOutcome> {
+async function publish(ctx: BlockContext, options: PublishingOptions, input: unknown): Promise<PublishOutcome> {
   const parsed = publishEventInputSchema.safeParse(input);
   if (!parsed.success) {
     return { refused: `invalid_input: ${parsed.error.issues.map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`).join("; ")}. Nothing was published.` };
