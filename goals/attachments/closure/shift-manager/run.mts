@@ -27,8 +27,8 @@
  */
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
-import type { Browser, Page } from "playwright";
-import { goalTmpDir, runGoal } from "../../../lib/index.mts";
+import type { Browser, Locator, Page } from "playwright";
+import { goalTmpDir, runGoal, sleep } from "../../../lib/index.mts";
 import { launchChromium } from "../../../lib/playwright.mts";
 import {
   SHIFT_MANAGER,
@@ -38,7 +38,7 @@ import {
   startShiftManager,
   type ServedShiftManager,
 } from "../../../lib/shift-manager.mts";
-import { controlName, draw, drawWords, harnessReadiness, missingModel, paste, pick, plantControl, readUntilNamed, refuseStubs, walkSurface, type Surface } from "../legs.mts";
+import { controlName, draw, drawWords, harnessReadiness, missingModel, paste, pick, plantControl, readUntilNamed, refuseStubs, TURN_MS, walkSurface, type Surface } from "../legs.mts";
 import { wordPng } from "../../reach-the-model/png.mts";
 
 refuseStubs();
@@ -49,6 +49,20 @@ const ENV = { DEVTEAM_STORE: join(SCRATCH, "devteam.sqlite"), DEVFORCE_LAB_HARNE
 
 const say = (s: string) => console.error(`[closure shift-manager ${new Date().toISOString().slice(11, 19)}] ${s}`);
 const box = (page: Page) => page.locator('[data-testid$="-composer-input"]:visible').first();
+
+/** How often `word` occurs in `text`. */
+const count = (text: string, word: string) => text.split(word.toUpperCase()).length - 1;
+
+/** Poll `scope` until each of `words` occurs more often than in `before`, or {@link TURN_MS} passes; the words that did. */
+async function readUntilAdded(scope: Locator, words: readonly string[], before: string): Promise<string[]> {
+  let added: string[] = [];
+  for (const end = Date.now() + TURN_MS; Date.now() < end; await sleep(1_000)) {
+    const text = (await scope.innerText().catch(() => "")).toUpperCase();
+    added = words.filter((w) => count(text, w) > count(before, w));
+    if (added.length === words.length) break;
+  }
+  return added;
+}
 
 const putBack = plantControl(CONTROL);
 await runGoal(async (failures, tell) => {
@@ -119,13 +133,15 @@ await runGoal(async (failures, tell) => {
       await page.getByTestId("task-action-confirm-yes").click();
       if (!(await reaches("cancelled", 60_000))) failures.push(`[sm:re-run] "${second}" didn't end as cancelled`);
       else {
-        // Only what is drawn past this point counts, so the cancelled run's output can't pass the re-run.
-        const before = (await page.locator("body").innerText()).toUpperCase().slice(-80);
+        // Each word must be drawn in the task's session more times than before Retry, so what the cancelled
+        // run already wrote can't pass the re-run, wherever the page draws it.
+        const session = page.getByTestId("task-slot");
+        const before = (await session.innerText()).toUpperCase();
         await page.getByTestId("task-action-retry").click();
         if (!(await reaches("in_progress", 60_000))) failures.push("[sm:re-run] Retry never started a second run");
         else {
-          const read = await readUntilNamed(page.locator("body"), again, before);
-          const renamed = tell.over("sm:re-run", again).filter((w) => read.includes(w));
+          const added = await readUntilAdded(session, again, before);
+          const renamed = tell.over("sm:re-run", again).filter((w) => added.includes(w));
           if (renamed.length !== 2) failures.push(`[sm:re-run] the Retry names ${renamed.length} of ${again.join(", ")}: its brief's images didn't reach it`);
         }
       }
