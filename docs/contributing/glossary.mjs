@@ -410,15 +410,17 @@ export const ENTRIES = [
   },
   {
     term: "Session factory",
-    means: "What `defineSessionBoard` builds. Never a kit.",
-    decision: "FIX-2246",
+    means: "What `defineSessionBoard` builds. Never a kit: a kit is the installable unit (see Kit).",
+    decision: "FIX-2246; narrowed by FIX-2619 (epic FIX-2618 O5)",
     retires: [
       {
         id: "session-factory",
         check: "sweep",
         reach: "meaning",
         files: CODE_OR_PUBLISHED,
-        pattern: /\b(filing|session|task-filing|manager) kits?\b|\bthe kit('s)?\b|\b(const|this) kit\b|\bkit\.\w+/i,
+        // Only the session-factory sense. `the kit`, `const kit` / `this kit` and `kit.x` are the
+        // installable unit's ordinary spelling since O5 named it kit, so they are no longer refused.
+        pattern: /\b(filing|session|task-filing|manager) kits?\b/i,
       },
     ],
   },
@@ -623,6 +625,33 @@ export const ENTRIES = [
         pattern: /\b[Cc]hiefs? [Oo]f [Ss]taff\b|\bCoS\b/,
       },
     ],
+  },
+
+  // Views, kits and slots ---------------------------------------------------------------------
+  // Epic FIX-2618's names, landed by FIX-2619 with its concept doc,
+  // docs/internal/design/reading-writing-installing.md. Not published until the children that
+  // build them ship (FIX-2623 views, FIX-2626 kits and slots).
+  {
+    term: "View",
+    means: "The one hook that computes an answer for a screen: it has a scope (no session at user or org), declared dependencies and keyed rows, storing nothing and refusing writes.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O2, ER-1); FIX-2619",
+    // "Read" retires as the hook's name. Its matcher lands with FIX-2623, the PR that removes
+    // `reads`, so no check refuses what is still on main (epic ER-9). "View" is not retired in
+    // any other sense: `readTaskView` and "derived views" in prose stay.
+    retires: [],
+  },
+  {
+    term: "Kit",
+    means: "FSD's own installable unit above a flow: existing pieces (resources, views, flows, capabilities, blocks, workers, a client half), a config and slots, plus an optional folder it owns in the app, scaffolded once and read at install.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O1, O5); FIX-2619",
+    // Never a session factory (that entry). A third-party ecosystem stays a non-goal (docs/objectives.md).
+    retires: [],
+  },
+  {
+    term: "Slot",
+    means: "A typed, named place in a kit that only its owning kit declares, with a schema and a merge policy, and other kits fill at install. The same idea as a block's slot (`ToolsSlot`, `UsesSlot`, the context slot), one level up.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O1, ER-5); FIX-2619",
+    retires: [],
   },
 
   // Execution tiers ---------------------------------------------------------------------------

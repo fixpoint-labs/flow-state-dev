@@ -1,6 +1,6 @@
 # Resources and Client Data
 
-Resources are **concrete persisted data** attached to a scope. Client data entries are **derived views** computed from state and resources — the mechanism for exposing server-side data to clients. Together, they provide structured, typed data management within flows.
+Resources are **concrete persisted data** attached to a scope. Client data entries are projections of a scope's state and resources (`expose` and `derived`), carried in the session snapshot. They are one of two ways a flow computes what a client sees today; the other is a flow read, run on request and stored nowhere ([Reads](./flows-and-actions.md#reads)). Both run on a session. The target model, where views replace both and user and org data is read with no session, is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
 
 ## Resources
 
@@ -463,10 +463,13 @@ type PlanCtx = ContextOf<typeof planResource, "resource">;
 
 ## Client Visibility
 
-Client-facing data is exposed through two complementary mechanisms:
+Client-facing data reaches a client three ways today, each through a session:
 
-1. **Scope-level `client`** — `expose` for verbatim state fields, `derived` for views computed from scope state and resources. Best for cross-resource projections and non-resource data.
-2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Best for exposing resource data directly to clients without manual projection.
+1. **Scope-level `client`** — `expose` for verbatim state fields, `derived` for projections computed from one scope's state and resources, carried in the snapshot. Suits a small value a screen shows beside the conversation.
+2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Suits exposing resource data directly without manual projection.
+3. **Flow `reads`** — a block run on request, answered in the response and stored nowhere, refusing every write ([Reads](./flows-and-actions.md#reads)). Suits an answer computed across resources, such as a task list, that a screen re-reads when `client.subscribe` reports a change.
+
+`derived` and a read do overlapping jobs: both compute an answer for a screen. A `derived` entry sees only its own scope and is computed each time the snapshot is served (`computeClientData`, `packages/engine/src/routes/route-utils.ts`); a read takes input, sees whatever an action in that session sees, and runs only when called.
 
 ### Scope-Level Client Data
 

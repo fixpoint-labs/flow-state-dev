@@ -239,6 +239,39 @@ const flow = defineFlow({
 
 See [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
 
+## Reads
+
+A flow's `reads` are blocks an app runs on a session to watch something the flow computes, such as a conversation's task list ([FIX-2286 D1](../../specs/issues/FIX-2286/DECISIONS.md#d1)). A read is answered in the HTTP response and stored nowhere: no request record, no items, no concurrency slot, no entry in the active-request registry.
+
+```ts
+defineFlow({
+  kind: "pins",
+  user: { stateSchema: pinsUserStateSchema },
+  reads: {
+    listPins: {
+      block: handler({
+        name: "listPins",
+        inputSchema: z.object({}),
+        outputSchema: pinsSchema,
+        userStateSchema: pinsUserStateSchema,
+        execute: async (_input, ctx) => ({ pinned: ctx.user.state.pinned }),
+      }),
+    },
+  },
+  actions: { /* pin, unpin */ },
+});
+```
+
+`ReadConfig` (`packages/core/src/types/flow.ts`) takes a `block`, an optional `inputSchema` that overrides the block's, and a `description`. A read may share a name with an action.
+
+**How it runs.** `runRead` (`packages/engine/src/execution/runRead.ts`) parses the input like an action's, then runs the block through the same execution context an action gets, with `source: "read"`, so it sees the session, its resources and its user under the same binding checks. What differs is the stores it is handed: its own request record, traces and checkpoints go to an in-memory registry dropped when the read ends, the first seed of a user or org record a fresh session lacks lands there too, and every other write throws `FlowError` with code `read_only`. Dispatch is refused the same way. "Stores nothing" holds by construction, and a store method added later is refused until it is named as a read verb. A read ends like a request: its side-chain work drains and its request-end hooks run.
+
+**How it is reached.** `POST /api/flows/:flowKind/:sessionId/reads/:readName` with `{ input }`, answering `200 { output }` (`packages/engine/src/routes/read-routes.ts`). The caller is resolved and fenced as on the session's action route: a session the caller may not run in answers as an unknown one, and a session another flow instance owns answers `409`. A read can't create a session. The client calls it as `client.flow(kind).read(name, input, { sessionId })`.
+
+**Keeping a screen current.** A read has no push of its own. An app calls it again when `client.subscribe` reports a change under the topics it watches, or on a timer.
+
+**`reads` beside `derived`.** Two hooks compute what a screen shows today: a flow read, run on request, and a scope's `client.derived` entries, computed into the snapshot's `clientData` ([Resources and Client Data](./resources-and-client-data.md#client-data)). Neither reads without a session. The target model, where views replace both and run at user or org scope with no session, is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
+
 ## Flow Discovery
 
 Convention: `src/flows/**/flow.ts`
@@ -257,6 +290,7 @@ Server routes follow a canonical pattern:
 ```
 POST /api/flows/:flowKind/actions/:action
 POST /api/flows/:flowKind/:sessionId/actions/:action
+POST /api/flows/:flowKind/:sessionId/reads/:readName
 GET  /api/flows/:flowKind/requests/:requestId/stream
 ```
 
