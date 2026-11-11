@@ -42,6 +42,8 @@
     "apps/docs/src/components/**/index.tsx",
     // Vercel deploys each file under api/ as a Function; nothing imports them.
     "apps/build-site/api/*.js",
+    // The preload the super app's lab servers load with `tsx --import <path>`.
+    "apps/super-app/record-server-inputs.mjs",
 
     "examples/*/test/**/*.{test,spec}.ts",
     // Neither a package.json entry nor seeded by the Next plugin.

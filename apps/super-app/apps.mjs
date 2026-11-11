@@ -27,7 +27,7 @@ const bin = (dir, name) => join(REPO, dir, "node_modules/.bin", name);
 const RECORD_SERVER_INPUTS = join(REPO, "apps/super-app/record-server-inputs.mjs");
 
 /** Where an app's server records the files it loaded. Under `node_modules`, so it is never committed. */
-export const serverInputsDir = (id) => join(REPO, "node_modules/.cache/super-app/server-inputs", id);
+const serverInputsDir = (id) => join(REPO, "node_modules/.cache/super-app/server-inputs", id);
 
 /**
  * A `tsx` server step that records the files it loads into its app's record
