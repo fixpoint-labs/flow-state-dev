@@ -11,6 +11,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { mockGenerator } from "@flow-state-dev/testing";
 import { bootSubscriptionsHost, event, type SubscriptionsHost } from "./subscriptions-harness";
 
 let host: SubscriptionsHost | undefined;
@@ -171,5 +172,53 @@ describe("the loop guard is the message budget (D2)", () => {
     for (const o of refused) expect(o.refused).toMatch(/^budget: .* the budget is 6\./);
     const chains = new Set((await host.serviceRows("alice")).map((row) => row.chain));
     expect(chains.size).toBe(1);
+  });
+});
+
+describe("a publish repeated in one request", () => {
+  it("is one event: one id, one place paid, one message", async () => {
+    host = bootSubscriptionsHost({ internal: { topics: TOPICS } });
+    const publisher = await host.follower("alice", "eng.watcher");
+    const follower = await host.follower("alice");
+    await host.subscribe("alice", follower, { provider: "internal", thread: "internal:deploy.finished" });
+    const [first, second] = (await host.act("alice", publisher, "publishTwice", failed, "follower")).output as Array<{ published: string }>;
+    await host.settled();
+    expect(first).toEqual({ published: expect.stringMatching(/^evt_/) });
+    expect(second).toEqual(first);
+    expect(await host.heard(follower)).toHaveLength(1);
+    const runtime = await host.state.getRuntime();
+    const chains = Object.values(await runtime.stores.resourceState.getByPrefix("user", "alice:~org:acme", "workforce/message-chains/"));
+    expect(chains.map((row) => (row.state as { sent: string[] }).sent)).toEqual([[first!.published]]);
+  });
+});
+
+describe("publishEvent on a worker's turn", () => {
+  it("is a tool the worker's model calls, and its answer names no one who heard", async () => {
+    const offered: Array<{ name: string; description?: string }> = [];
+    const model = mockGenerator({
+      name: "follower-chat",
+      script: [{ toolCalls: [{ toolCallId: "1", toolName: "publishEvent", args: failed }] }, { text: "Announced." }] as never
+    });
+    const answered: unknown[] = [];
+    const next = model.next.bind(model);
+    model.next = (input, context) => {
+      for (const result of context?.toolResults ?? []) answered.push(result);
+      return next(input, context);
+    };
+    host = bootSubscriptionsHost({
+      internal: { topics: TOPICS },
+      generators: { "follower-chat": model },
+      observeTools: (block, names) => {
+        if (block === "follower-chat") offered.push(...names.map((name) => ({ name })));
+      }
+    });
+    const chat = await host.follower("alice", "eng.watcher");
+    const follower = await host.follower("alice");
+    await host.subscribe("alice", follower, { provider: "internal", thread: "internal:deploy.finished" });
+    await host.act("alice", chat, "chat", { message: "the api deploy failed; tell whoever follows deploys" }, "follower");
+    await host.settled();
+    expect(offered.map((o) => o.name)).toContain("publishEvent");
+    expect(answered).toEqual([expect.objectContaining({ toolName: "publishEvent", result: { published: expect.stringMatching(/^evt_/) } })]);
+    expect(await host.heard(follower)).toHaveLength(1);
   });
 });

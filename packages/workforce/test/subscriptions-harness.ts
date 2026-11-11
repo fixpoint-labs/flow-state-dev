@@ -117,6 +117,16 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
     internal === undefined
       ? undefined
       : handler({ name: "follower-publish", inputSchema: z.unknown(), resources: internal.resources, execute: async (input, ctx) => internal.publishEvent(ctx, input) });
+  // The same publish twice in one request: what a request repeated after a crash does.
+  const publishTwice =
+    internal === undefined
+      ? undefined
+      : handler({
+          name: "follower-publish-twice",
+          inputSchema: z.unknown(),
+          resources: internal.resources,
+          execute: async (input, ctx) => [await internal.publishEvent(ctx, input), await internal.publishEvent(ctx, input)]
+        });
   const relayTurn =
     internal === undefined || relay === undefined
       ? undefined
@@ -132,7 +142,7 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
           }
         });
   // A worker's turn on a model: one with the routines capability, one without.
-  const chat = generator({ name: "follower-chat", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, uses: [createRoutinesCapability(installation)], user: (input) => input.message, itemVisibility: { client: true, history: true } });
+  const chat = generator({ name: "follower-chat", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, uses: [createRoutinesCapability(installation), ...(internal === undefined ? [] : [internal.capability])], user: (input) => input.message, itemVisibility: { client: true, history: true } });
   const chatPlain = generator({ name: "follower-chat-plain", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, user: (input) => input.message, itemVisibility: { client: true, history: true } });
   // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, `[hold]` waits on the
   // host's hold, then `[fail]` fails the task.
@@ -163,6 +173,7 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
       chat: { inputSchema: doorInput, block: chat },
       chatPlain: { inputSchema: doorInput, block: chatPlain },
       ...(publish === undefined ? {} : { publish: { inputSchema: z.unknown(), block: publish } }),
+      ...(publishTwice === undefined ? {} : { publishTwice: { inputSchema: z.unknown(), block: publishTwice } }),
       ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
     },
     // No turn: a message lands as its items and nothing runs, so no model is asked. With a relay, the turn passes it on.
