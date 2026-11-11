@@ -10,6 +10,14 @@ A worker is an agent with a name and a job. You brief it in a Markdown file, the
 
 You can talk to a worker, or hand it a task and come back later. Everyone who uses the app gets their own copy of each worker, and what a copy learns about its user stays with that user.
 
+## If you know agents
+
+In most frameworks an agent is one thing: a model, a prompt, some tools, and a loop the framework runs for you. A worker can be exactly that, and the ones that come with Workforce are. Think of them as agents and you won't go wrong.
+
+The difference is underneath. A worker runs on a flow, and you decide what the flow is. It can be one model call. It can be several, with a plan, a draft and a review. It can be mostly plain code that asks a model one question at the end. From the outside it is the same worker either way: it has a name, you can talk to it, and you can hand it work and expect the work back.
+
+So "worker" names the job, and the flow decides how the job gets done. [What runs a worker](#what-runs-a-worker) shows how to change it.
+
 ## The file
 
 ```md title="workforce/teams/engineering/workers/lead/WORKER.md"

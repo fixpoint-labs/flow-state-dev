@@ -41,6 +41,9 @@ Words are counted without frontmatter, code blocks and figure descriptions.
 4. **Two to five sections**, one per question a reader asks next. Headings are plain statements or
    plain questions: "When a task fails", "Whose worker it is".
 5. **What it won't do.** Three bullets at most, stated flat.
+
+   Where our word differs from the industry's, an "If you know ..." section comes straight after the
+   opening (see The moves).
 6. **Next.** Two to four links, each with a clause saying what the reader gets there.
 
 ## The moves
@@ -80,6 +83,22 @@ lasts" names two storage choices. The page it replaces lists four, with their op
 **Say what a limit means for the reader.**
 
 > So a board is not a background queue.
+
+**Say where we differ from what the reader already knows.** When our word or our design departs
+from what other frameworks do, give it a short section near the top, titled for the reader:
+"If you know agents". Start with what is the same, so the reader can keep their mental model.
+Then state the one difference and what it lets them do. Do not argue for the design or compare
+products by name.
+
+> In most frameworks an agent is one thing: a model, a prompt, some tools, and a loop the framework
+> runs for you. A worker can be exactly that, and the ones that come with Workforce are.
+>
+> The difference is underneath. A worker runs on a flow, and you decide what the flow is.
+
+Use it once per page at most, and only where a reader arriving from another framework would
+otherwise map our word onto theirs and get it wrong. Candidates in the queue: blocks and "there is
+no `agent()`" (Generators and tools), kits against plugins (Kits and slots), views against
+queries or selectors (Views), the board against a job queue (Background work).
 
 **Vary the sentence length.** A short sentence after two long ones. Read the paragraph aloud. If
 every sentence lands on the same beat, break one or join two.
