@@ -833,7 +833,7 @@ describe("a default write aborted while its canWrite is pending", () => {
   // Codex review 4544189602.
   it("writes nothing once the abort lands, though canWrite then admits it", async () => {
     let release: ((ok: boolean) => void) | undefined;
-    let asked = false;
+    let called = false;
     const gated = defineResource({
       ref: "gated",
       scope: "org",
@@ -841,7 +841,7 @@ describe("a default write aborted while its canWrite is pending", () => {
       client: { expose: ["n"] },
       runBy: "default",
       canWrite: () => {
-        asked = true;
+        called = true;
         return new Promise<boolean>((resolve) => {
           release = resolve;
         });
@@ -857,8 +857,8 @@ describe("a default write aborted while its canWrite is pending", () => {
     const res = await post(router, ["resources", "org", "gated", "actions", "set"], alice, { input: { state: { n: 1 }, version: 0 } });
     expect(res.status).toBe(202);
     const { request } = (await res.json()) as { request: { id: string } };
-    for (let i = 0; i < 200 && !asked; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(asked).toBe(true);
+    for (let i = 0; i < 200 && !called; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(called).toBe(true);
     const aborted = await post(router, ["fsd-default-write", "requests", request.id, "abort"], alice, {});
     expect([200, 202, 204]).toContain(aborted.status);
     release!(true);
