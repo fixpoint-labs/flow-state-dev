@@ -17,7 +17,7 @@ import {
   type FlowStateSettings
 } from "@flow-state-dev/core";
 import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
-import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
+import { createFlowRegistry, registryHasViews, type FlowRegistry } from "../registry/flow-registry";
 import {
   createFlowApiRouter,
   disposeFlowApiRouter,
@@ -1066,6 +1066,10 @@ class InternalFlowState<TSettings extends object>
         // so wiring it anywhere later leaves one of them unable to resolve a
         // flow the process has plainly registered.
         resolveFlow: (address: string) => this.#registry.get(address),
+        // FIX-2623 D1: once any registered flow declares a view, every
+        // resource write publishes. Read per request: a flow registered
+        // later counts from its first request on.
+        hostHasViews: () => registryHasViews(this.#registry),
         ...(this.#routerRequested ? { staleSweepIntervalMs } : {})
       }
     });

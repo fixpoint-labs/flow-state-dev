@@ -8,7 +8,7 @@
 import { toError } from "@flow-state-dev/core/helpers";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import type { FlowRegistry } from "../registry/flow-registry";
+import { registryHasViews, type FlowRegistry } from "../registry/flow-registry";
 import { withResourceIndexWriter } from "../resources/resource-indexes";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
@@ -33,6 +33,7 @@ import { handleAnswerSuspension } from "./answer-routes";
 import { handleResumeSuspension } from "./resume-routes";
 import { handleGetRequestStatus } from "./request-status-routes";
 import { handleRunRead } from "./read-routes";
+import { handleRunView } from "./view-routes";
 import { handleExecuteAction } from "./action-routes";
 import {
   handleCheckInterruptedRequests,
@@ -396,6 +397,11 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   ) {
     runtimeConfig.requestHost.resolveFlow = (address: string) => options.registry.get(address);
   }
+  // Same terms for the view publish rule (FIX-2623 D1): a router mounted
+  // without a `FlowState` reads its own registry.
+  if (runtimeConfig.requestHost !== undefined && runtimeConfig.requestHost.hostHasViews === undefined) {
+    runtimeConfig.requestHost.hostHasViews = () => registryHasViews(options.registry);
+  }
 
   // Detect interrupted requests from previous runs on startup
   if (options.detectInterruptedOnStartup !== false) {
@@ -524,6 +530,16 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           seams,
           bootstrapMetadata,
           requestContext,
+          tenantIdHeader: options.tenantIdHeader
+        });
+      }
+
+      if (route.kind === "run_view") {
+        return await handleRunView(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          runtimeConfig,
           tenantIdHeader: options.tenantIdHeader
         });
       }

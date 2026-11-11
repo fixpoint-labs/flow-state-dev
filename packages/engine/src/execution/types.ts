@@ -10,6 +10,7 @@ import type {
   RetryPolicy
 } from "@flow-state-dev/core/types";
 import type { ExecutionContext } from "../context/types";
+import { NoSessionError } from "../context/no-session";
 import type { FlowError, FlowErrorScope } from "../errors/flow-error";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import type { StoreRegistry } from "../stores/types";
@@ -229,6 +230,17 @@ export type RunActionOptions<
   runtimeConfig: RuntimeConfig;
 };
 
+// FIX-2623.
+/** The run's session id, or none in a view that runs with no session. */
+function sessionIdOrNone(ctx: ExecuteBlockContext): string | undefined {
+  try {
+    return ctx.session.identity.id;
+  } catch (error) {
+    if (error instanceof NoSessionError) return undefined;
+    throw error;
+  }
+}
+
 /**
  * Builds execution metadata from context with optional caller overrides.
  */
@@ -245,7 +257,7 @@ export function createExecutionMetadata(
       ctx.user.identity.userId ??
       ctx.request.identity.userId ??
       "unknown_user",
-    sessionId: overrides.sessionId ?? ctx.session.identity.id,
+    sessionId: overrides.sessionId ?? sessionIdOrNone(ctx),
     orgId: overrides.orgId ?? ctx.request.identity.orgId,
     blockName: overrides.blockName,
     blockKind: overrides.blockKind,

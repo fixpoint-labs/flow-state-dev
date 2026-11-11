@@ -108,6 +108,17 @@ mechanisms:
     status: canonical
     doc: docs/architecture/kits.md
 
+  - id: view
+    job: Compute an answer a screen watches, at the scope its data lives in (no session at user or org), typed by its block's output schema and optionally keyed. It writes nothing and calls no model; each run records what it read, and the answer names the change topics a watcher listens to. Flow reads and a scope's client.derived are being retired into it.
+    package: "@flow-state-dev/core"
+    anchor: defineView
+    file: packages/core/src/flow/defineView.ts
+    builtOn: [flow, scope, resource]
+    overlaps:
+      - { id: resource, relation: distinct-jobs, note: "A resource is stored state a block reads; a view computes an answer from it on demand and stores nothing." }
+    status: canonical
+    doc: docs/architecture/flows-and-actions.md
+
   - id: scope
     job: The four places state and resources live (request, session, user, org). A block reads them; it does not invent another scope.
     package: "@flow-state-dev/core"

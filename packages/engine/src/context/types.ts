@@ -22,6 +22,7 @@ import type { WaitResumeOperation } from "./wait-resume-operation";
 import type { SuspendedStopDeps } from "../durability/stop-suspended";
 import type { DurabilityProvider } from "../durability/types";
 import type { RuntimeConfig } from "../runtime-config";
+import type { RecordedRead } from "./view-reads";
 
 export type RequestRuntime = {
   requestId: string;
@@ -75,6 +76,17 @@ export type CreateExecutionContextOptions<
   requestId: string;
   userId?: string;
   sessionId?: string;
+  // FIX-2623.
+  /**
+   * Build the context with no session at all, for a user or org view: no
+   * session is loaded, made or stored, no session resource is installed, and
+   * `ctx.session` refuses with `NoSessionError`. The org is the run's own.
+   */
+  noSession?: boolean;
+  /** Called with each scope state and resource a block of this run reaches. Set by the view runner. */
+  recordRead?: (read: RecordedRead) => void;
+  /** Refuse every model call with `ViewModelCallError`. Set by the view runner (D2). */
+  refuseModelCalls?: boolean;
   // FIX-1442.
   /**
    * The organization this execution runs under. **Required** —
@@ -204,6 +216,14 @@ export type RequestHostConstructionInputs = {
    * same fail-closed shape `dispatchOperation` has.
    */
   resolveFlow?: (address: string) => FlowInstance | undefined;
+  // FIX-2623 D1.
+  /**
+   * Whether any flow the host registers declares a view, read as each request
+   * starts. When it does, every resource write publishes a change notice,
+   * whichever flow writes it: a view may read any of them. Wired from the
+   * host's flow registry beside `resolveFlow`. Absent → no.
+   */
+  hostHasViews?: () => boolean;
   /** The parent-board row this request was dispatched for, stamped at spawn. */
   parentTask?: ParentTaskBinding;
   /**

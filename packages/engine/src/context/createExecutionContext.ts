@@ -205,8 +205,10 @@ import { isCollectionConfig } from "../resources/is-collection-config";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
 import { PAST_TURN_STATUSES } from "../execution/past-turns";
-import { readSettledTurns } from "./settled-turns";
+import { readSettledTurns, type SettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
+import { NoSessionError, noSessionHandle, noSessionRecord } from "./no-session";
+import { refusingModelResolver, ViewModelCallError } from "./view-reads";
 
 // FIX-2063.
 /**
@@ -729,6 +731,21 @@ export async function createExecutionContext<
     accessorScope[accessor] = scope;
   }
 
+  // FIX-2623: a user or org view has no session, so it installs none of the
+  // session's resources. Reaching for one refuses with `NoSessionError` (the
+  // flat registry below), never "not registered".
+  const noSession = options.noSession === true;
+  // FIX-2623: a view's recorder, called with each scope state and resource a
+  // block of this run reaches. Absent outside a view.
+  const recordRead = options.recordRead;
+  const sessionAccessorsWithoutSession = new Set<string>();
+  if (noSession) {
+    for (const accessor of Object.keys(sessionResourceConfigs)) {
+      sessionAccessorsWithoutSession.add(accessor);
+      delete sessionResourceConfigs[accessor];
+      delete accessorScope[accessor];
+    }
+  }
   resolveStringContentTemplates(sessionResourceConfigs);
   resolveStringContentTemplates(userResourceConfigs);
   resolveStringContentTemplates(orgResourceConfigs);
@@ -783,7 +800,7 @@ export async function createExecutionContext<
   // recorded what it handed on, so the read below sees it (FIX-2145).
   const interruptedEndingLive = isInterruptedEndingHeld(stores.request, requestId);
   const [loadedSession, loadedRequest] = await Promise.all([
-    stores.session.get(sessionKey),
+    noSession ? undefined : stores.session.get(sessionKey),
     stores.request.get(requestId)
   ]);
   if (
@@ -841,7 +858,10 @@ export async function createExecutionContext<
     // all()/client() (via priorItems) and history() (via loadLLMHistory);
     // `historyStart` names the first turn the window holds when an earlier
     // turn is out of view (FIX-1613).
-    readSettledTurns({
+    // No session, no turns: a view's history window is empty.
+    noSession
+      ? ({ window: [], retried: new Set<string>(), parked: new Set<string>(), waiting: new Set<string>(), open: [], settled: [] } as SettledTurns)
+      : readSettledTurns({
       requests: stores.request,
       scope: turnScope,
       turns: historyWindowTurns,
@@ -965,6 +985,7 @@ export async function createExecutionContext<
   // (FIX-1068), so this request cannot overwrite a concurrent first action and
   // cannot invent a second address for the same session.
   let sessionRecord =
+    noSession ? noSessionRecord() :
     loadedSession ??
     ((await ensureSessionRecord(
       stores,
@@ -996,7 +1017,7 @@ export async function createExecutionContext<
     })
     )) as typeof loadedSession & object);
 
-  ensureJournalDefaults(sessionRecord);
+  if (!noSession) ensureJournalDefaults(sessionRecord);
 
   // The binding checks run HERE, on one path, rather than inside the
   // already-existed branch. A request that loses the create race adopts the
@@ -1005,7 +1026,8 @@ export async function createExecutionContext<
   // another principal's or another tenant's session. Running them
   // unconditionally costs a comparison on the branch that built the record
   // itself, where they pass by construction, and that is the cheaper mistake.
-  {
+  // A run with no session has none to bind to.
+  if (!noSession) {
     // Flow-instance binding. A record this request loaded was checked above;
     // this is for the create-race WINNER, which a losing creator adopts
     // without ever having loaded it — and which may belong to another instance
@@ -1058,10 +1080,12 @@ export async function createExecutionContext<
   // nobody ever recorded the right one. One of those is fixed by changing the
   // request and the other only by the offline migration, so they must not share
   // an answer (BR-14).
-  if (!isOrgAttributed(sessionRecord)) {
+  // With no session, the run's own org is the org: validated by the caller's
+  // principal, and the instance pin below still runs.
+  if (!noSession && !isOrgAttributed(sessionRecord)) {
     throw new UnattributedOrgError("executing against this session");
   }
-  const sessionOrgId = sessionRecord.orgId as string;
+  const sessionOrgId = noSession ? optionsOrgId : (sessionRecord.orgId as string);
   if (optionsOrgId !== sessionOrgId) {
     throw new OrgBindingMismatchError(sessionId, sessionOrgId, optionsOrgId);
   }
@@ -1112,7 +1136,7 @@ export async function createExecutionContext<
   // an unstamped session's lineage id were its session key the two would be
   // indistinguishable — routing unshared resources into the lineage namespace
   // along with the shared ones.
-  const lineageId = resolveLineageId({ id: sessionKey, lineageId: sessionRecord.lineageId });
+  const lineageId = resolveLineageId({ id: sessionKey, lineageId: noSession ? undefined : sessionRecord.lineageId });
 
   const resolvedOrgKey = resolveOrgStorageKey(resolvedOrgId, flow);
   let orgRecord: OrgRecord | undefined = loadedOrg;
@@ -1703,7 +1727,8 @@ export async function createExecutionContext<
         flowId: flow.id,
         actionName: options.actionName,
         userId,
-        sessionId,
+        // A view with no session records none: the label is not a session.
+        ...(noSession ? {} : { sessionId }),
         tenantId: options.tenantId,
         orgId: orgRecord?.orgId,
         source: options.source,
@@ -2547,7 +2572,9 @@ export async function createExecutionContext<
     readUserState(userRef.current.state),
     userRef.current.version
   );
-  const sessionContainer = createStateContainer<TSessionState>(
+  const sessionContainer = noSession
+    ? createStateContainer<TSessionState>({} as TSessionState, 0)
+    : createStateContainer<TSessionState>(
     readSessionState(sessionRef.current.state),
     sessionRef.current.version
   );
@@ -2741,8 +2768,13 @@ export async function createExecutionContext<
     // every resource with a `client` config, and every resource of a scope
     // that declares `client.derived` (a derived value may read any of them).
     // Their changes publish on the scope's topic, stream or not.
+    // FIX-2623 D1: and every resource, at every scope, once any flow the host
+    // registers declares a view, whichever flow writes it. A view's run may
+    // read any of them, and the host can't know which in advance. An extra
+    // notice is allowed; a missed one is the failure.
     const scopeClient = scope === "session" ? flow.session?.client : scope === "user" ? flow.user?.client : flow.org?.client;
-    const everyResourcePublishes = Object.keys(scopeClient?.derived ?? {}).length > 0;
+    const everyResourcePublishes =
+      Object.keys(scopeClient?.derived ?? {}).length > 0 || options.requestHost?.hostHasViews?.() === true;
     const publishedSingleKeys = new Set<string>();
     const publishedCollections: ResourceCollectionConfig[] = [];
     for (const [accessor, cfg] of Object.entries(scopeConfigs)) {
@@ -2927,7 +2959,11 @@ export async function createExecutionContext<
 
 
 
-  const modelResolver = options.modelResolver ?? createModelResolver();
+  // FIX-2623 D2: a view calls no model. Every path to a model resolves
+  // through here, so refusing here refuses them all, by name.
+  const modelResolver = options.refuseModelCalls === true
+    ? refusingModelResolver()
+    : (options.modelResolver ?? createModelResolver());
   const tokenCounter: TokenCounter = flow.tokenCounter ?? estimateTokenCounter;
   const resolvedModelStorage = createScopedAsyncStorage<string>();
   const resolveModel = ((modelId: string, blockName?: string) => {
@@ -3124,7 +3160,10 @@ export async function createExecutionContext<
       },
       ...userOpsEmitting
     },
-    () => userContainer.read()
+    () => {
+      recordRead?.({ scope: "user", what: "state" });
+      return userContainer.read();
+    }
   ) as UserScopeHandle<TUserState>;
 
   const sessionOpsEmitting = emitWrap("session", sessionOps, sessionContainer);
@@ -3174,7 +3213,7 @@ export async function createExecutionContext<
       maxAttempts
     );
   };
-  const sessionHandle = defineStateProperty(
+  const sessionHandle = noSession ? noSessionHandle<SessionScopeHandle<TSessionState>>() : defineStateProperty(
     {
       identity: {
         type: "session" as const,
@@ -3294,7 +3333,10 @@ export async function createExecutionContext<
       },
       ...sessionOpsEmitting
     },
-    () => sessionContainer.read()
+    () => {
+      recordRead?.({ scope: "session", sessionId, what: "state" });
+      return sessionContainer.read();
+    }
   ) as SessionScopeHandle<TSessionState>;
 
   const orgOpsEmitting =
@@ -3315,7 +3357,10 @@ export async function createExecutionContext<
             },
             ...orgOpsEmitting
           },
-          () => orgContainer.read()
+          () => {
+            recordRead?.({ scope: "org", what: "state" });
+            return orgContainer.read();
+          }
         ) as OrgScopeHandle<TOrgState>);
 
   // FIX-435: build the flat ctx.resources registry by merging the per-scope
@@ -3335,19 +3380,44 @@ export async function createExecutionContext<
     const handle = (registry as Record<string, AnyResourceRef>)[accessor];
     if (handle !== undefined) flatResourcesHandles[accessor] = handle;
   }
+  // FIX-2623: in a view, every resource reached through `ctx.resources` is
+  // recorded, by accessor, against its scope. The handle handed back is the
+  // same object either way: code that keys by a handle's identity runs the
+  // same branch recorded or not (FIX-2621). Every block's context shares this
+  // one registry, so a read by a child block, a step or a capability's block
+  // is recorded too.
+  const recordResource = (accessor: string): void => {
+    const scope = accessorScope[accessor];
+    if (recordRead === undefined || scope === undefined) return;
+    recordRead(scope === "session" ? { scope, sessionId, what: { resource: accessor } } : { scope, what: { resource: accessor } });
+  };
+  const resourceHandle = (name: string): AnyResourceRef => {
+    const handle = flatResourcesHandles[name];
+    if (handle === undefined) {
+      if (sessionAccessorsWithoutSession.has(name)) throw new NoSessionError(`read the session resource "${name}"`);
+      throw new Error(`Resource "${name}" is not registered`);
+    }
+    recordResource(name);
+    return handle;
+  };
   const flatResourcesRegistry: ResourceRegistry<Record<string, AnyResourceRef>> = {
     ...flatResourcesHandles,
     get(name: string) {
-      const handle = flatResourcesHandles[String(name)];
-      if (handle === undefined) {
-        throw new Error(`Resource "${String(name)}" is not registered`);
-      }
-      return handle;
+      return resourceHandle(String(name));
     },
     list() {
+      for (const accessor of Object.keys(flatResourcesHandles)) recordResource(accessor);
       return Object.values(flatResourcesHandles);
     }
   } as ResourceRegistry<Record<string, AnyResourceRef>>;
+  if (recordRead !== undefined || noSession) {
+    for (const accessor of [...Object.keys(flatResourcesHandles), ...sessionAccessorsWithoutSession]) {
+      Object.defineProperty(flatResourcesRegistry, accessor, {
+        enumerable: true,
+        get: () => resourceHandle(accessor)
+      });
+    }
+  }
 
   // FIX-573: per-block lifecycle trace items are now driven by
   // `onBlockTraceCapture` phases (added → input → generator → output).
@@ -4343,6 +4413,11 @@ export async function createExecutionContext<
         });
       },
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal, sideChainSignalOverride?: AbortSignal) => {
+        // FIX-2623 D2: a generator is a model call. Refused before it starts,
+        // so the error names the model call, not whatever it reaches first.
+        if (options.refuseModelCalls === true && parent.kind === "generator") {
+          throw new ViewModelCallError(parent.name);
+        }
         const resolvedParent: ExecutionParent = {
           ...parent,
           parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,
