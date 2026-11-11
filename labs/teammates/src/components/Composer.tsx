@@ -1,6 +1,7 @@
 import type { FileContent } from "@flow-state-dev/core/items";
-import { clearDraft, interruptChordLabel, isSendKey, useDraft, useSubmit } from "@flow-state-dev/react";
+import { interruptChordLabel, isSendKey } from "@flow-state-dev/react";
 import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
+import { useDraftSend } from "../lib/use-draft-send";
 import { cn } from "../lib/utils";
 import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader } from "./flow-state/attachments";
 
@@ -71,7 +72,8 @@ export function Composer({
   /** Called once `prefill`'s words are in the box, for the parent to drop them. */
   onPrefilled?: () => void;
 }) {
-  const [text, setText] = useDraft("teammates:draft", sessionId);
+  const attachments = useAttachments({ client: uploader, sessionId });
+  const { text, setText, sending: busy, failure: error, submit, canSend } = useDraftSend("teammates:draft", sessionId, attachments);
   const current = useRef(text);
   current.current = text;
   const box = useRef<HTMLTextAreaElement>(null);
@@ -96,30 +98,14 @@ export function Composer({
     setText(seed.text);
     box.current?.focus();
   }, [seed]);
-  const attachments = useAttachments({ client: uploader, sessionId });
-  const { error, busy, submit } = useSubmit(async (typed: string) => {
-    // The files on screen at the press: one added while this send waits stays for the next.
-    const ids = attachments.files.map((file) => file.id);
-    const shown = attachments.refusals;
-    // A line with no files goes at once, with nothing to wait on.
-    const files = ids.length === 0 ? [] : await attachments.settle();
-    // Every file was refused while it uploaded: with no text there is nothing to send, and the lines say why.
-    if (!typed.trim() && files.length === 0) return;
-    await onSend(typed.trim(), files);
-    attachments.consume(ids, shown);
-    // The box may have closed and reopened while it ran: the stored draft goes only if it is still this line.
-    clearDraft("teammates:draft", sessionId, typed);
-    if (current.current === typed) setText("");
-  });
-  const canSend = text.trim() !== "" || attachments.files.some((file) => file.status !== "refused");
-  const send = (event?: FormEvent) => {
-    if (!canSend || busy) {
-      event?.preventDefault();
-      return;
-    }
-    void submit(event, text);
+  const send = () => {
+    if (!canSend || busy) return;
+    void submit(onSend);
   };
-  const onSubmit = (event: FormEvent) => send(event);
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    send();
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (isSendKey(event, { enterSends: true })) {
       event.preventDefault();
