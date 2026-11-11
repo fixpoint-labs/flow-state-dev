@@ -36,6 +36,8 @@ epic's proposed end state, and does FIX-2152 ER-1's path rule alone do it?
 L3 and L4 are meant to join it, so the lab keeps one inventory.
 
 **Limits.** L4 reads an allowlist of app-computed types; a reviewer adds a name to it, and
-FIX-2628's merged spec supplies the real list. L3 and L4 read text, not types: a dynamic
-`import()` or a type built by intersection passes them. The browser legs are what catch a
+FIX-2628's merged spec supplies the real list. L3 and L4 read text, not types. L3 catches named, default and
+namespace imports and `export … from` re-exports of the client; a dynamic `import()` or a type
+built by intersection still passes. A `git grep` error (not "no match") fails the run rather than
+reading as a pass, and the plant control must turn exactly L3 and L4 red (`POC_EXPECT=plant`). The browser legs are what catch a
 screen still assembling rows; this check is their static floor.

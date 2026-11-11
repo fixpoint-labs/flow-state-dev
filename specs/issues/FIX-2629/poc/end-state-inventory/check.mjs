@@ -84,10 +84,17 @@ function labRules(dir) {
   for (const x of files.filter((x) => x.kind === "ui" && /\.tsx?$/.test(x.rel))) {
     // Comments name APIs without calling them; strip them before matching.
     const src = readFileSync(x.abs, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
-    for (const m of src.matchAll(/import\s+(?!type\b)\{([^}]*)\}\s+from\s+["']@flow-state-dev\/client["']/g)) {
-      const values = m[1].split(",").map((s) => s.trim()).filter((s) => s && !s.startsWith("type "));
-      const allowed = x.rel === "src/main.tsx" ? values.filter((v) => v !== "createClient") : values;
-      if (allowed.length) f.L3.push(`${x.rel}: imports ${allowed.join(", ")} from the client`);
+    // Every value form: named, default, namespace, and re-exports (`export … from`).
+    for (const m of src.matchAll(/\b(import|export)\s+(?!type\b)([^;]*?)\s+from\s+["']@flow-state-dev\/client["']/g)) {
+      const clause = m[2].trim();
+      const values = [];
+      const braces = clause.match(/\{([^}]*)\}/);
+      if (braces) values.push(...braces[1].split(",").map((s) => s.trim()).filter((s) => s && !s.startsWith("type ")));
+      const outside = clause.replace(/\{[^}]*\}/, "").replace(/,/g, " ").trim();
+      if (outside) values.push(outside.startsWith("*") ? outside : `default ${outside}`);
+      const reexport = m[1] === "export";
+      const allowed = x.rel === "src/main.tsx" && !reexport ? values.filter((v) => v !== "createClient") : values;
+      if (allowed.length) f.L3.push(`${x.rel}: ${reexport ? "re-exports" : "imports"} ${allowed.join(", ")} from the client`);
     }
     const subs = (src.match(/\.subscribe\(/g) ?? []).length;
     const flowCalls = (src.match(/\.flow\(/g) ?? []).length;
@@ -107,7 +114,10 @@ function grepRepo(pattern, paths) {
   try {
     return execFileSync("git", ["grep", "-nE", pattern, "--", ...paths], { cwd: ROOT, encoding: "utf8", maxBuffer: 1 << 24 })
       .split("\n").filter(Boolean);
-  } catch { return []; }
+  } catch (e) {
+    if (e.status === 1) return []; // git grep: no match
+    throw e; // a bad pathspec, no repo or no git must not read as a pass
+  }
 }
 
 function repoRules() {
@@ -142,6 +152,12 @@ for (const [rule, found] of Object.entries(result)) {
   for (const line of found.slice(0, 12)) console.log(`    ${line}`);
   if (found.length > 12) console.log(`    … ${found.length - 12} more`);
   if (found.length) red++;
+}
+if (process.env.POC_EXPECT === "plant") {
+  // The planted src/glue.ts must trip exactly L3 and L4; L1 and L2 stay green.
+  const wrong = Object.entries(result).filter(([k, v]) => (["L3", "L4"].includes(k) ? v.length === 0 : v.length > 0)).map(([k]) => k);
+  console.log(wrong.length ? `EXPECT plant: not as stated: ${wrong.join(", ")}` : "EXPECT plant: L3 and L4 red, L1 and L2 green");
+  process.exit(wrong.length ? 1 : 0);
 }
 if (process.env.POC_EXPECT === "red") {
   // Today's main: ER-1's path classes (L1) pass the adapter; every other rule must catch it.

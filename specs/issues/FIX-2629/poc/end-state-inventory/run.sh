@@ -11,8 +11,8 @@ POC_EXPECT=red node "$HERE/check.mjs"; a=$?
 echo; echo "== 2. green control: the epic's proposed lab passes the lab rules"
 POC_LAB="$GREEN" POC_ONLY=lab node "$HERE/check.mjs"; b=$?
 echo; echo "== 3. negative control: src/glue.ts planted in the green lab must fail"
-POC_PLANT=1 POC_LAB="$GREEN" POC_ONLY=lab node "$HERE/check.mjs"; c=$?
+POC_EXPECT=plant POC_PLANT=1 POC_LAB="$GREEN" POC_ONLY=lab node "$HERE/check.mjs"; c=$?
 rm -rf "$GREEN"
 echo
-[ $a -eq 0 ] && [ $b -eq 0 ] && [ $c -ne 0 ] && echo "RESULT: as stated (red today, green on the proposed end state, red with a plant)" && exit 0
+[ $a -eq 0 ] && [ $b -eq 0 ] && [ $c -eq 0 ] && echo "RESULT: as stated (red today, green on the proposed end state, red with a plant)" && exit 0
 echo "RESULT: NOT as stated (1=$a 2=$b 3=$c)"; exit 1
