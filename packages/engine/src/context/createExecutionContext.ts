@@ -2764,6 +2764,9 @@ export async function createExecutionContext<
     });
   }
 
+  // FIX-2623 D1: read once per context, for all three scopes' handlers.
+  const hostHasViews = options.requestHost?.hostHasViews?.() === true;
+
   function makeResourceChangeHandler(scope: "session" | "user" | "org") {
     const scopeConfigs =
       scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs;
@@ -2780,7 +2783,7 @@ export async function createExecutionContext<
     // notice is allowed; a missed one is the failure.
     const scopeClient = scope === "session" ? flow.session?.client : scope === "user" ? flow.user?.client : flow.org?.client;
     const everyResourcePublishes =
-      Object.keys(scopeClient?.derived ?? {}).length > 0 || options.requestHost?.hostHasViews?.() === true;
+      Object.keys(scopeClient?.derived ?? {}).length > 0 || hostHasViews;
     const publishedSingleKeys = new Set<string>();
     const publishedCollections: ResourceCollectionConfig[] = [];
     for (const [accessor, cfg] of Object.entries(scopeConfigs)) {

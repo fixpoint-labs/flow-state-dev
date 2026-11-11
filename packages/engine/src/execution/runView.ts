@@ -75,6 +75,9 @@ function readOnlyRefusal(what: string): FlowError {
  * Store methods that only read. Every other method on a wrapped store is a
  * write, and refuses: a store method added later is refused until it is
  * named here, which fails closed.
+ *
+ * Maintenance: when a store gains a read method a view or read needs, add it
+ * here. Until then it is refused as a write (`read_only`).
  */
 const READ_VERBS = new Set([
   "get",
