@@ -213,7 +213,7 @@ export async function resolveFlowCaller(options: {
   flow: FlowInstance;
   action: string;
   claimedUserId: string | undefined;
-}): Promise<AddressCaller | { refused: AddressRefusal }> {
+}): Promise<AddressCaller | { refused: AddressRefusal; principal?: AddressCaller }> {
   const { flow } = options;
   const resolver = pickPrincipalResolver(options.registry, flow.id, options.hostResolver);
   const open = isDefaultBodyUserIdPrincipalResolver(resolver);
@@ -236,7 +236,10 @@ export async function resolveFlowCaller(options: {
     throw error;
   }
   if (pinRejectsCaller(flow.ownerPin, caller)) {
-    return { refused: { status: 404, code: "outside_pin", message: `Unknown flow "${flow.id}"` } };
+    return {
+      refused: { status: 404, code: "outside_pin", message: `Unknown flow "${flow.id}"` },
+      principal: { userId: caller.userId, orgId: caller.orgId }
+    };
   }
   return { userId: caller.userId, orgId: caller.orgId };
 }
@@ -247,7 +250,9 @@ export async function resolveFlowCaller(options: {
  * declarations included; agreeing ones share one) and the pin of at least one
  * declaring instance before any answer but an unused key's is given: until
  * then a real key, one only isolated copies hold, and one whose declarations
- * disagree all answer as an unused key does. The instance that governs is the
+ * disagree all answer as an unused key does. Every declaring flow must then
+ * resolve the request to one user and org (else `resolver_disagreement`), so a
+ * read and a write of the address land in one cell. The instance that governs is the
  * first shared declarer whose pin admits the caller, so instances pinned to
  * different users each serve their own; a refusal after that names a flow only
  * when every declaring instance admits the caller.
@@ -267,18 +272,38 @@ export async function admitAddress(options: {
   const flows = new Map<string, FlowInstance>();
   for (const entry of [...shared, ...isolated]) flows.set(entry.flow.id, entry.flow);
   const callers = new Map<string, AddressCaller>();
+  const principals: AddressCaller[] = [];
   let pinnedOut = false;
   for (const flow of flows.values()) {
     const caller = await resolveFlowCaller({ ...options, flow });
-    if (!("refused" in caller)) callers.set(flow.id, caller);
-    else if (caller.refused.code === "outside_pin") pinnedOut = true;
-    else return { refused: unknownRefusal(scope, key) };
+    if (!("refused" in caller)) {
+      callers.set(flow.id, caller);
+      principals.push(caller);
+    } else if (caller.refused.code === "outside_pin") {
+      pinnedOut = true;
+      principals.push(caller.principal!);
+    } else return { refused: unknownRefusal(scope, key) };
   }
   if (callers.size === 0) return { refused: unknownRefusal(scope, key) };
   const address = resolveAddress(options.registry, options.hostResolver, scope, key, (flow) => callers.has(flow.id));
   if ("refused" in address) {
     if (address.refused.status === 404 || !pinnedOut) return address;
     return { refused: { ...address.refused, message: `Resource "${key}" at ${scope} scope can't be read or written by scope.` } };
+  }
+  // One caller per address per request: every declaring flow must resolve this
+  // request to the same user and org, or a read and a write of one resource
+  // could land in two cells. Asked of the resolvers, so only a request can tell.
+  const [one] = principals;
+  if (principals.some((p) => p.userId !== one!.userId || p.orgId !== one!.orgId)) {
+    return {
+      refused: {
+        status: 500,
+        code: "resolver_disagreement",
+        message:
+          `The flows that declare resource "${key}" at ${scope} scope resolve this request to different users or orgs, ` +
+          `so there is no one caller to read or write it as. Have their resolvers agree.`
+      }
+    };
   }
   return { address, caller: callers.get(address.flow.id)! };
 }
