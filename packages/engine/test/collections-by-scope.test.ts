@@ -433,7 +433,7 @@ describe("a user entry's change notice", () => {
 describe("an entry write or delete aborted while its canWrite is pending", () => {
   // Codex review 4544189602, on entries.
   function gatedHost() {
-    const gate: { asked: boolean; release?: (ok: boolean) => void } = { asked: false };
+    const gate: { called: boolean; release?: (ok: boolean) => void } = { called: false };
     const notes = defineResourceCollection({
       pattern: "notes/*",
       scope: "org",
@@ -441,7 +441,7 @@ describe("an entry write or delete aborted while its canWrite is pending", () =>
       client: { state: { read: true } },
       runBy: "default",
       canWrite: () => {
-        gate.asked = true;
+        gate.called = true;
         return new Promise<boolean>((resolve) => {
           gate.release = resolve;
         });
@@ -456,12 +456,12 @@ describe("an entry write or delete aborted while its canWrite is pending", () =>
     return { gate, ...buildRouter([flow]) };
   }
 
-  async function abortWhileAsked(router: Router, gate: { asked: boolean; release?: (ok: boolean) => void }, action: string, input: unknown) {
+  async function abortWhileChecking(router: Router, gate: { called: boolean; release?: (ok: boolean) => void }, action: string, input: unknown) {
     const res = await post(router, ["resources", "org", "notes/*", "actions", action], alice, { input });
     expect(res.status).toBe(202);
     const { request } = (await res.json()) as { request: { id: string } };
-    for (let i = 0; i < 200 && !gate.asked; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(gate.asked).toBe(true);
+    for (let i = 0; i < 200 && !gate.called; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(gate.called).toBe(true);
     await post(router, ["fsd-default-write", "requests", request.id, "abort"], alice, {});
     gate.release!(true);
     return request.id;
@@ -469,7 +469,7 @@ describe("an entry write or delete aborted while its canWrite is pending", () =>
 
   it("creates nothing", async () => {
     const { router, stores, gate } = gatedHost();
-    const id = await abortWhileAsked(router, gate, "set", { entry: "n", state: { text: "x" }, version: 0 });
+    const id = await abortWhileChecking(router, gate, "set", { entry: "n", state: { text: "x" }, version: 0 });
     expect((await settle(stores, id)).status).toBe("aborted");
     expect(await entry(router, "org", "notes/*", "n", alice)).toBeNull();
   });
@@ -477,7 +477,7 @@ describe("an entry write or delete aborted while its canWrite is pending", () =>
   it("deletes nothing", async () => {
     const { router, stores, gate } = gatedHost();
     await seed(stores, "org", alice, "notes/n", { text: "keep" });
-    const id = await abortWhileAsked(router, gate, "delete", { entry: "n", version: 1 });
+    const id = await abortWhileChecking(router, gate, "delete", { entry: "n", version: 1 });
     expect((await settle(stores, id)).status).toBe("aborted");
     expect((await entry(router, "org", "notes/*", "n", alice))?.value).toEqual({ text: "keep" });
   });
