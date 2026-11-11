@@ -106,8 +106,14 @@ export function writeRecordGovernor(
   return { flow: writeSessionGoverningFlow(registry, hostResolver, sessionId, record) };
 }
 
-/** What a write session is for. Every part is an address, not an identity. */
-export type WriteTarget = { scope: AddressScope; key: string; writer: string };
+/**
+ * What a write session is for. Every part is an address, not an identity.
+ * `admittedBy` is the declaring instance that admitted a default write's
+ * caller (`admitAddress`), recorded so the write's records answer to that
+ * instance rather than to one recomputed later. A session made before it was
+ * recorded has none, and its records fall back to the recomputation (BP-030).
+ */
+export type WriteTarget = { scope: AddressScope; key: string; writer: string; admittedBy?: string };
 
 /** Who writes: from the verified sign-in, never the request. */
 export type Writer = { userId: string; orgId: string; tenantId?: string };
@@ -120,9 +126,10 @@ export type Writer = { userId: string; orgId: string; tenantId?: string };
  * own caller and refuses on a mismatch.
  */
 export function writeSessionId(target: WriteTarget, writer: Writer): string {
-  const encoded = Buffer.from(JSON.stringify([target.scope, target.key, target.writer]), "utf8").toString("base64url");
+  const parts = [target.scope, target.key, target.writer, ...(target.admittedBy !== undefined ? [target.admittedBy] : [])];
+  const encoded = Buffer.from(JSON.stringify(parts), "utf8").toString("base64url");
   const digest = createHash("sha256")
-    .update(JSON.stringify([writer.tenantId ?? "", writer.orgId, writer.userId, target.scope, target.key, target.writer]), "utf8")
+    .update(JSON.stringify([writer.tenantId ?? "", writer.orgId, writer.userId, ...parts]), "utf8")
     .digest("base64url")
     .slice(0, 32);
   return `${WRITE_SESSION_PREFIX}${encoded}.${digest}`;
@@ -134,10 +141,13 @@ function writeTargetOf(sessionId: string): WriteTarget | undefined {
   const encoded = sessionId.slice(WRITE_SESSION_PREFIX.length).split(".")[0] ?? "";
   try {
     const parts = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as unknown;
-    if (!Array.isArray(parts) || parts.length !== 3 || !parts.every((part) => typeof part === "string")) return undefined;
-    const [scope, key, writer] = parts as [string, string, string];
+    // Three parts: a session made before the admitting instance was recorded.
+    if (!Array.isArray(parts) || (parts.length !== 3 && parts.length !== 4) || !parts.every((part) => typeof part === "string")) {
+      return undefined;
+    }
+    const [scope, key, writer, admittedBy] = parts as [string, string, string, string | undefined];
     if (scope !== "user" && scope !== "org") return undefined;
-    return { scope, key, writer };
+    return { scope, key, writer, ...(admittedBy !== undefined ? { admittedBy } : {}) };
   } catch {
     return undefined;
   }
@@ -167,11 +177,14 @@ function writeSessionGoverningFlow(
     const writer = registry.get(target.writer);
     return writer !== undefined && writer.id !== DEFAULT_WRITE_FLOW ? writer : undefined;
   }
-  // The default write flow has no door of its own: the declaring instance
-  // whose pin admits the record's owner governs, so instances pinned to
-  // different users each govern their own writers' records.
+  // The default write flow has no door of its own: its records answer to the
+  // declaring instance that admitted the write, as recorded on the session.
+  // A session made before that was recorded falls back to the first declaring
+  // instance whose pin admits the record's owner (BP-030).
   const address = resolveAddress(registry, hostResolver, target.scope, target.key, (flow) =>
-    !pinRejectsCaller(flow.ownerPin, { userId: owner.userId ?? "", orgId: owner.orgId ?? "" })
+    target.admittedBy !== undefined
+      ? flow.id === target.admittedBy
+      : !pinRejectsCaller(flow.ownerPin, { userId: owner.userId ?? "", orgId: owner.orgId ?? "" })
   );
   return "refused" in address ? undefined : address.flow;
 }
@@ -254,8 +267,9 @@ function createDefaultWriteFlow(options: {
       if (writeSessionId(target, { userId, orgId, tenantId }) !== sessionId) {
         throw new ResourceWriteRefusedError("not_writable", "This write session is not the caller's.");
       }
+      // The instance that admitted this caller governs, as on its records.
       const address = resolveAddress(registry, hostResolver, target.scope, target.key, (flow) =>
-        !pinRejectsCaller(flow.ownerPin, { userId, orgId })
+        target.admittedBy !== undefined ? flow.id === target.admittedBy : !pinRejectsCaller(flow.ownerPin, { userId, orgId })
       );
       if ("refused" in address) throw new ResourceWriteRefusedError("not_writable", address.refused.message);
       if (address.config.runBy !== "default") {
