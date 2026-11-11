@@ -24,7 +24,7 @@ passes.**
 | **The real need** | The epic's leg a: an app on workforce is configuration, UI and small flows ([FIX-2618 goal](../../epics/FIX-2618/SPEC.md#the-goal-and-how-well-know-its-met), FIX-2152 ER-1). The owner, 2026-11-11: the lab's "projects" are misnamed; the concept is a repository |
 | **Smaller, and rejected** | "The adapter shrinks onto views, and *project* is renamed in the UI." The lab still keeps a workforce project per repository, which [O1](../../epics/FIX-2618/DECISIONS.md#o1) says is not a workforce default, and a second list beside the host's ([FIX-2592 ER-1](../../epics/FIX-2592/DECISIONS.md#who-owns-what)) |
 | **Bigger, and not this issue's** | Settings, the new-session dialog and the word in the UI (FIX-2594). Teammates' and Shift Manager's adapters (follow-up epics). A projects or repositories kit ([O1](../../epics/FIX-2618/DECISIONS.md#o1)'s later candidate) |
-| **Not done if** | `src/adapter.ts` or the fake lab survives · the lab imports any of workforce's 9 project identifiers ([POC](poc/lab-inventory/README.md)) · an app file sits in `workforce/` · the host calls `createWorkerInstallation` or `hireWorkforce`, or casts with `as never` · a lab goal fails · a run lands in a repository other than its session's · the pins fallback (FIX-2624) survives |
+| **Not done if** | `src/adapter.ts` or the fake lab survives · the lab imports any of workforce's 9 project identifiers ([POC](poc/lab-inventory/README.md)) · an app file sits in `workforce/` · the host calls `createWorkerInstallation` or `hireWorkforce`, or casts with `as never` · a lab goal fails · a run lands in a repository other than its session's |
 
 ```mermaid
 flowchart LR
@@ -113,7 +113,7 @@ A screen reads; a run finds its repository from the session that opened it or fi
 | **The job: say where a coding run works.** Mechanism row `workspace` (`localWorkspaceHost`). Searching `packages/*/src` for `RunSource`, `source`, `repository`, `project`: the `RunSource` type (`workspace/src/run-source.ts:100`), its one implementation, workforce's `projectWorkspace()`, and the host's `localRepositories` | **Builds on** `RunSource`, the closest: the app's source is its second implementation, beside `projectWorkspace()` |
 | [FIX-2618 O1](../../epics/FIX-2618/DECISIONS.md#o1), ER-1, ER-4 to ER-6, ER-8; [examples/ccs-*](../../epics/FIX-2618/examples/ccs-lab.md) | **Builds** leg a. **Amends** the examples: a repository, not `LabProject`; `projectsFlow` leaves `flows:` |
 | [FIX-2626 D1](../FIX-2626/DECISIONS.md#d1) and its [crediting table](../FIX-2626/poc/client-half/README.md) | **Confirms** 42 kit-only lines on today's `main` ([POC](poc/lab-inventory/README.md)). D1 does not reopen: no screen needs to know which kits are installed; the modes list is the app's own config |
-| [FIX-2624](../FIX-2624/DECISIONS.md) pins and dismissals on `runBy: "default"`, with a one-time fallback | **Moves** the declarations into the app kit; **removes** the fallback |
+| [FIX-2624](../FIX-2624/DECISIONS.md) pins and dismissals on `runBy: "default"`, with no fallback (removed under FIX-2624 by owner direction) | **Moves** the declarations into the app kit |
 | [FIX-2592 ER-1, ER-5](../../epics/FIX-2592/DECISIONS.md#who-owns-what): the host keeps one list; *project* survives inside the adapter and flow files | **Keeps** ER-1. **Ends** ER-5's carve-out: the adapter and the projects flow go |
 | [FIX-2152 D4](../../epics/FIX-2152/DECISIONS.md#d4) (fixtures-first adapter), ER-1 (small flows under `workforce/flows/`) | **Supersedes** D4 here, as the epic says. **Amends** ER-1's path for this lab: small flows live in the app kit, since [FIX-2626 D2](../FIX-2626/DECISIONS.md#d2) refuses them in workforce's folder |
 
@@ -127,7 +127,7 @@ A screen reads; a run finds its repository from the session that opened it or fi
 
 | The debt | |
 |---|---|
-| **Removes** | `adapter.ts` (1,642 lines) and the fake lab (728) with the `LabAdapter` seam; the host's `listed()` remap and its project options; the projects flow and 9 project identifiers, 54 token uses; the pins fallback and `user-marks.mts`; FIX-2592 ER-5's carve-out |
+| **Removes** | `adapter.ts` (1,642 lines) and the fake lab (728) with the `LabAdapter` seam; the host's `listed()` remap and its project options; the projects flow and 9 project identifiers, 54 token uses; `user-marks.mts`; FIX-2592 ER-5's carve-out |
 | **Adds** | The app kit and `src/lab.ts`, permanent: the app's own. A second `RunSource` beside `projectWorkspace()`, permanent by design: the source is where an app says where its runs work ([O1](../../epics/FIX-2618/DECISIONS.md#o1)) |
 | **Leaves** | Workforce project rows made before this lands, read once and not deleted (workforce has no delete verb, FIX-2592's *Leaves*). A project's checks: the lab runs none, as today in practice |
 

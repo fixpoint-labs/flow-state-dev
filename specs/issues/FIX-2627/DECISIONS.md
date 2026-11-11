@@ -79,8 +79,8 @@ other way, a stretch where the goals don't cover the install every app uses.
 - **Workforce adds the consult capability itself.** `consultSessionsCapability(installation)` is
   workforce's own, over its installation, and only a worker whose file picks
   `consultSessions: [consult]` is offered it. Both hosts add it to the agent flow today. So the kit
-  adds it there, its model and budget in config, and `uses` stays a plain list. A builder form of
-  `uses` that receives the installation would exist for this one capability.
+  adds it there, its model and budget in config, and `uses` stays a plain list. No builder form
+  of `uses` is built: the only capability that would need one is consult, and the kit adds that.
 - **The source-only capability.** `projectSourceCapability`'s tool body
   (`packages/workforce/src/projects/project-source.ts`) lifts into `sourceReadCapability({ workspace })`:
   the same three reads over a `WorkspaceHost`'s run source and read view, naming no project to
