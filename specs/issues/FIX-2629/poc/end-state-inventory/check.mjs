@@ -85,7 +85,7 @@ function labRules(dir) {
     // Comments name APIs without calling them; strip them before matching.
     const src = readFileSync(x.abs, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
     // Every value form: named, default, namespace, and re-exports (`export … from`).
-    for (const m of src.matchAll(/\b(import|export)\s+(?!type\b)([^;]*?)\s+from\s+["']@flow-state-dev\/client["']/g)) {
+    for (const m of src.matchAll(/\b(import|export)\s+(?!type\b)([^;'"]*?)\s+from\s+["']@flow-state-dev\/client["']/g)) {
       const clause = m[2].trim();
       const values = [];
       const braces = clause.match(/\{([^}]*)\}/);
