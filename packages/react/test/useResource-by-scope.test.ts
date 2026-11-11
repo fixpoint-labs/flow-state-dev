@@ -129,4 +129,12 @@ describe("useResource at session scope", () => {
     const single = renderHook(() => useResource(soul, { session: session as never, key: "soul" }), { wrapper });
     expect(single.result.current.value).toEqual({ mood: "calm" });
   });
+
+  it("never takes another kind's entry for a fallback name", () => {
+    // A collection under `items`, beside an unrelated single resource under `notes`.
+    const notes = { scope: "session" as const, pattern: "notes/*", ClientType: { text: "" } };
+    const session = { sessionId: "s1", snapshot: { resources: { session: { items: { count: 1 }, notes: { clientData: { other: true } } } } } };
+    const { result } = renderHook(() => useResource(notes, { session: session as never }), { wrapper });
+    expect(result.current.value).toBeNull();
+  });
 });
