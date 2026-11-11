@@ -316,14 +316,17 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
  */
 function ownerFlowOf(
   ctx: RouteAuthContext,
-  record: OwnedRecord & OrgAttributedRecord
+  record: OwnedRecord & OrgAttributedRecord,
+  unused: () => Response
 ): { flow?: FlowInstance; denied?: Response } {
   // FIX-2624: a write record answers to the sign-in of the flow that declares
   // the resource it writes, read off the record's own session id, never to the
-  // default write flow (which has no resolver) or the host's fallback.
+  // default write flow (which has no resolver) or the host's fallback. One no
+  // declaring flow governs now gets the route's answer for an id nobody used,
+  // so the answer never says the id was a write's.
   const write = writeRecordGovernor(ctx.registry, ctx.hostResolver, record);
   if (write !== undefined && write.flow === undefined) {
-    return { denied: jsonResponse(404, { error: "Unknown write session" }) };
+    return { denied: unused() };
   }
   const owner = resolveRecordOwner(ctx.registry, record);
   const flow = write?.flow ?? (owner.ok ? owner.flow : undefined);
@@ -468,7 +471,7 @@ export async function authorizeManagementRoute(
       if (session === undefined) {
         return subject.kind === "blob" ? { denied: unknownBlobResponse() } : { session: null };
       }
-      const resolved = ownerFlowOf(ctx, session);
+      const resolved = ownerFlowOf(ctx, session, () => hiddenSessionResponse(route, effective.sessionId));
       if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
       owner = session.userId;
@@ -481,7 +484,7 @@ export async function authorizeManagementRoute(
       const record = await ctx.stores.request.get(effective.requestId);
       if (record !== undefined) {
         checked = { request: record };
-        const resolved = ownerFlowOf(ctx, record);
+        const resolved = ownerFlowOf(ctx, record, () => hiddenRequestResponse(request, route, ctx.registry, effective.requestId));
         if (resolved.denied !== undefined) pendingDenial = resolved.denied;
         governing = resolved.flow;
         owner = record.userId;
@@ -509,7 +512,7 @@ export async function authorizeManagementRoute(
         }
         return ALLOWED;
       }
-      const resolved = ownerFlowOf(ctx, active);
+      const resolved = ownerFlowOf(ctx, active, () => hiddenRequestResponse(request, route, ctx.registry, effective.requestId));
       if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
       owner = active.userId;

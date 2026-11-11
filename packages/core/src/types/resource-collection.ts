@@ -552,8 +552,9 @@ export function defineResourceCollection<
  * The definition errors of `runBy` and `canWrite` on a collection: the single
  * resource's (the org rule among them), then what entries add. A client reads
  * an entry before it writes one, so the entries must be client-readable; and
- * the default write flow neither writes a collection that refuses writes nor
- * evicts, since an eviction would delete an entry the writer never named.
+ * the default write flow never evicts, since an eviction would delete an entry
+ * the writer never named (`writable: false` is refused with the single
+ * resource's errors).
  */
 function validateCollectionRunBy(config: ResourceCollectionConfig & { client?: { state?: { read?: boolean } } }): void {
   validateRunBy("defineResourceCollection()", config);
@@ -566,9 +567,6 @@ function validateCollectionRunBy(config: ResourceCollectionConfig & { client?: {
     );
   }
   if (config.runBy !== "default") return;
-  if (config.writable === false) {
-    throw new Error(`${named} sets runBy: "default" with writable: false: the default write flow would write it anyway.`);
-  }
   if (config.eviction !== undefined && config.eviction !== "none") {
     throw new Error(
       `${named} sets runBy: "default" with eviction "${config.eviction}": a client's create would evict an entry it never named.`

@@ -701,6 +701,7 @@ export function validateRunBy(
     runBy?: unknown;
     canWrite?: unknown;
     flowIsolation?: boolean;
+    writable?: boolean;
     client?: { data?: unknown };
   }
 ): void {
@@ -741,6 +742,12 @@ export function validateRunBy(
     );
   }
   if (runBy !== "default") return;
+  if (config.writable === false) {
+    throw new Error(
+      `${definer} resource "${name}" sets runBy: "default" with writable: false: the default write flow would write ` +
+        `it anyway. Drop one of the two.`
+    );
+  }
   if (config.client.data !== undefined) {
     throw new Error(
       `${definer} resource "${name}" sets runBy: "default" with a computed client.data: the default write flow can't ` +

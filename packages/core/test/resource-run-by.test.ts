@@ -85,3 +85,12 @@ describe("runBy on a resource", () => {
     ).toThrow(/"rule".*canWrite.*runBy/);
   });
 });
+
+describe("runBy: \"default\" on a read-only resource", () => {
+  it("refuses writable: false: the default write flow would write it anyway", () => {
+    // Codex P2 4543388759: a read-only resource on the default write flow took a client write.
+    expect(() =>
+      defineResource({ ref: "locked", scope: "user", stateSchema: pinsSchema, client: {}, writable: false, runBy: "default" })
+    ).toThrow(/"locked".*writable: false/);
+  });
+});
