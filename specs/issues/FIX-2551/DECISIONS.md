@@ -54,6 +54,8 @@ retry slows or caps; it doesn't go away.
 
 ## Decided, not asked
 
+### Invariants
+
 - **One convergence point.** The invariant (filter, then merge, then one read in flight and at
   most one waiting) lives in `client.live` only. Every caller passes through it:
   `useSubscription`, the two panel drivers, `useSession`'s state reads, `useLiveSessionRead`,
@@ -62,22 +64,36 @@ retry slows or caps; it doesn't go away.
   path rule is also called on streamed `resource_change` items by `useResourceCollection`; it
   uses the client's rule, not a copy. [`poc/copy-count/check.mjs`](poc/copy-count/check.mjs)
   `--after` enforces it.
+- **Internal pieces stay internal.** The coalescer and the path rule move into `packages/client`
+  and are not exported; callers move to `client.live`, not to its parts.
+- **Topics can come from the last result.** A read may return `{ value, topics }`. When that
+  set changes (deduped and sorted, so an unchanged set never churns), the live read closes its
+  subscription, mints the new one (`Subscription` has only `close()`, `push-hub.ts:58`), and
+  reads once after the new topics are held, so a change between the two is not missed. This is
+  FIX-2623's view seam, in the first shape, so it is an addition rather than a break under D1.
 - **The filter runs before the merge.** A notice no caller hears never turns a waiting read into
   a full one. That is what Shift Manager's wrapper did by hand.
 - **The merge is one function.** Same notice: kept. Different: `null`, read everything.
-  FIX-2625 changes only this function, to union keys with a cap.
+  FIX-2625 changes only this function, to union keys with a cap: it extends the merge options
+  and adds no second entry point for the same loop.
 - **The path rule is FIX-1506's, unchanged.** Bare path, unknown prefix, a pattern with no
   static prefix, `null` and `resync`: all read. Roots are passed in; how a caller learns them
   (a manifest, its own constants) stays the caller's, so the rule needs no session.
 - **Report only on change**, compared by value, as the roster watch and the labs do. A caller
   that sets state inside its read (`useSubscription`) keeps that.
+
+### Defaults and scope
+
 - **A default pace of 3 s** for the timer where push can miss a change, overridable. Today's
   callers use 1.5 s, 3 s and 30 s, and keep theirs.
 - **Both labs move now.** claude-code-style's adapter is frozen and deleted by FIX-2628, but the
   move only shrinks it (ER-8 forbids growth, not this), and it lets the inventory reach one.
 - **`useSubscription` stays public**, its signature unchanged. Whether `useView` retires it is
   FIX-2623's call.
-- **Seams.** FIX-2623 builds `useView` on `client.live` and adds no loop; if a view's notices
+
+### Seams to other issues
+
+- **Seams.** FIX-2623 builds `useView` on `client.live`, using topics from the last result, and adds no loop; if a view's notices
   need new topics, that goes through FIX-2367's ER-2, not around it. FIX-2624 makes its live
   direct reads call `client.live` and supplies roots for a user or org resource without a
   session. FIX-2625 adds keys in the merge. FIX-2466 (in development) moves more lab polls behind

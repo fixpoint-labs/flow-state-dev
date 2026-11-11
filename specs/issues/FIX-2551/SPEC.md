@@ -43,7 +43,7 @@ path. Each control breaks one half of the live read, and the signal it breaks mu
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/live-read/one-loop-every-watcher/`, no model, run by the implementer at completion, verdict in the implementation PR. With it, [`poc/copy-count/check.mjs`](poc/copy-count/check.mjs) `--after` |
-| **Signal** | Per watcher: ≤ 2 reads for 50 writes landing during one read; 0 reads for a write outside its paths; 1 read for a bare notice; last value equals the store; after one injected failure, a value lands within 2 s with no notice sent. Inventory: exactly one coalescer and one path rule, both under `packages/client/src` |
+| **Signal** | Per watcher: ≤ 2 reads for 50 writes landing during one read; 0 reads for a write outside its paths; 1 read for a bare notice; last value equals the store; after one injected failure, a value lands within 2 s with no notice sent. Inventory: exactly one coalescer and one path rule, both under `packages/client/src`. The inventory script is evidence for the premise, not a permanent gate: the implementation adds a structural one (a single coalescer module in the client, with a lint allowlist) |
 | **Input** | Writes to a watched collection from a second session. A different collection, or a burst landing during a read, must pass too |
 | **Anti-game** | Don't count `read` calls against a fake `subscribe`: that passes while a caller still loops on its own. Count requests the server answers |
 | **Control that must fail** | `GOAL_CONTROL=no-coalesce` (every notice reads at once) fails *≤ 2 reads per burst*. `GOAL_CONTROL=rule-says-no` fails *last value equals the store*. Today's `main` fails the inventory: 4 coalescers and 5 path rules outside the client (run, red) |
