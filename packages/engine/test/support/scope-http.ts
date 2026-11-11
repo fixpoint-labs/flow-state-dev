@@ -9,7 +9,7 @@ import { createInMemoryBus, createInMemoryStores } from "../../src/host";
 import type { StoreRegistry } from "../../src";
 
 export const ORG_A = "org-a";
-export const ORG_B = "org-b";
+const ORG_B = "org-b";
 
 /** Signs callers in from two headers, as a real app's session cookie would. */
 export const signIn = (context: { request?: Request }) => {
@@ -59,7 +59,7 @@ export function get(router: Router, path: string[], caller: Caller, query = ""):
   return router.GET(request, { params: { path } });
 }
 
-export function post(router: Router, path: string[], caller: Caller, body: unknown): Promise<Response> {
+function post(router: Router, path: string[], caller: Caller, body: unknown): Promise<Response> {
   const request = new Request(`http://localhost/api/flows/${path.map(encodeURIComponent).join("/")}`, {
     method: "POST",
     headers: headers(caller),
@@ -69,7 +69,7 @@ export function post(router: Router, path: string[], caller: Caller, body: unkno
 }
 
 /** Wait for a request to leave `in_progress`, and return its record. */
-export async function settle(stores: StoreRegistry, requestId: string) {
+async function settle(stores: StoreRegistry, requestId: string) {
   for (let i = 0; i < 300; i += 1) {
     const record = await stores.request.get(requestId);
     if (record !== undefined && record.status !== "in_progress") return record;
