@@ -19,9 +19,8 @@
  *
  * Limits, stated: the write goes to the store directly, as the resource routes'
  * writes do, so it publishes the scope's change notice but runs no `reactTo`
- * binding and streams no live delta. And the flow is registered in the
- * router's registry on first use, so a host whose actions run in another
- * process must register it there too ({@link createDefaultWriteFlow}).
+ * binding and streams no live delta. Every host holds the flow from the start
+ * as a built-in instance (`registerBuiltIn`), never listed.
  */
 import { createHash } from "node:crypto";
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -44,6 +43,60 @@ export const WRITE_SESSION_PREFIX = "fsd-write.";
 /** Whether `id` (bare, or tenant-namespaced as `tenant:id`) is a write session's. */
 export function isWriteSessionId(id: string): boolean {
   return id.startsWith(WRITE_SESSION_PREFIX) || id.includes(`:${WRITE_SESSION_PREFIX}`);
+}
+
+/** Marks the server's own resource send on a dispatch envelope; a symbol, so no request input carries it. */
+const SERVER_RESOURCE_SEND = Symbol.for("@flow-state-dev/engine/serverResourceSend");
+
+/** `envelope`, marked as the server's own resource send (`scope-routes.ts`). */
+export function asServerResourceSend<T extends object>(envelope: T): T {
+  return Object.assign(envelope, { [SERVER_RESOURCE_SEND]: true });
+}
+
+/** Whether `envelope` is the server's own resource send. */
+export function isServerResourceSend(envelope: object): boolean {
+  return (envelope as Record<symbol, unknown>)[SERVER_RESOURCE_SEND] === true;
+}
+
+/** A client named a write session: only the server finds or makes one. */
+export class ReservedSessionIdError extends Error {
+  readonly code = "reserved-session-id";
+  constructor(readonly sessionId: string) {
+    super(`Session "${sessionId}" is a write session, the server's to find or make: a client can't name one.`);
+    this.name = "ReservedSessionIdError";
+  }
+}
+
+/** A stored session, request or in-flight entry, as far as its writer goes. */
+type RecordFields = { flowKind?: string; flowId?: string | null; sessionId?: string | null; id?: string };
+
+/**
+ * Whether a stored record belongs to a write: the default write flow's, or one
+ * in a write session. Read from the record's own fields, never from what this
+ * process has registered.
+ */
+export function isWriteRecord(record: RecordFields): boolean {
+  if (record.flowKind === DEFAULT_WRITE_FLOW || record.flowId === DEFAULT_WRITE_FLOW) return true;
+  const sessionId = "sessionId" in record ? record.sessionId : record.id;
+  return typeof sessionId === "string" && isWriteSessionId(sessionId);
+}
+
+/**
+ * The one owner-of-record rule for writes: the flow whose sign-in governs a
+ * write record, the flow that declares the resource its write session names,
+ * read from the record's own session id. `undefined` for a record that isn't a
+ * write's. `{ flow: undefined }` for a write record no declaring flow governs
+ * now (or whose session id names no target), which every caller refuses: a
+ * write record never falls through to the host's resolver.
+ */
+export function writeRecordGovernor(
+  registry: FlowRegistry,
+  hostResolver: PrincipalResolver,
+  record: RecordFields
+): { flow: FlowInstance | undefined } | undefined {
+  if (!isWriteRecord(record)) return undefined;
+  const sessionId = "sessionId" in record ? record.sessionId ?? undefined : record.id;
+  return { flow: writeSessionGoverningFlow(registry, hostResolver, sessionId) };
 }
 
 /** What a write session is for. Every part is an address, not an identity. */
@@ -138,8 +191,8 @@ const setInput = z.object({
 });
 
 /**
- * Build the default write flow's instance over the router's registry and
- * stores. The router registers it on the first write that names it.
+ * Build the default write flow's instance over a host's registry and stores.
+ * The host holds it as a built-in (`createInboundTransportHost`).
  */
 export function createDefaultWriteFlow(options: {
   registry: FlowRegistry;

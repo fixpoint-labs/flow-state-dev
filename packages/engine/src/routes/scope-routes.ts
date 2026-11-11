@@ -30,7 +30,7 @@ import {
   resolveAddress,
   resolveAddressCaller
 } from "../resources/scope-address";
-import { createDefaultWriteFlow, DEFAULT_WRITE_FLOW, writeSessionId } from "../resources/default-write-flow";
+import { DEFAULT_WRITE_FLOW, writeSessionId } from "../resources/default-write-flow";
 
 type ScopeRouteContext = {
   host: InboundTransportHost;
@@ -150,10 +150,9 @@ export async function resolveResourceSend(
   }
   let writer: string;
   if (runBy === "default") {
+    // Held by every host from the start (`registerBuiltIn`); a hand-built registry may lack it.
     if (ctx.registry.get(DEFAULT_WRITE_FLOW) === undefined) {
-      ctx.registry.register(
-        createDefaultWriteFlow({ registry: ctx.registry, stores: ctx.stores, hostResolver: ctx.hostResolver })
-      );
+      return jsonResponse(501, { error: "no_default_write_flow", message: "This host's registry holds no default write flow." });
     }
     writer = DEFAULT_WRITE_FLOW;
   } else {

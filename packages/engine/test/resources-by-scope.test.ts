@@ -273,8 +273,9 @@ describe("a write through runBy", () => {
     expect(direct.status).toBe(404);
     const named = await post(router, ["fsd-default-write", done.sessionId!, "actions", "set"], alice, { input: { state: { pinned: [] }, version: 1 } });
     expect(named.status).toBe(404);
+    // Named as a session on the path: answered as a session nobody holds.
     const squat = await post(router, ["threads", done.sessionId!, "actions", "noop"], bob, { input: {} });
-    expect(squat.status).toBe(400);
+    expect(squat.status).toBe(404);
     expect((await read(router, "user", "pins", alice)).value).toEqual({ pinned: ["t1"] });
   });
 
@@ -285,10 +286,67 @@ describe("a write through runBy", () => {
     expect((await get(router, status, alice)).status).toBe(200);
     expect((await get(router, status, bob)).status).toBe(404);
     expect((await get(router, status, {})).status).toBe(401);
+    // No session route serves a write session, its writer included: they hear their write on its request.
     const requests = ["sessions", done.sessionId!, "requests"];
-    expect((await get(router, requests, alice)).status).toBe(200);
-    expect((await get(router, requests, bob)).status).toBe(404);
-    expect((await get(router, requests, {})).status).toBe(401);
+    for (const caller of [alice, bob, {}]) expect((await get(router, requests, caller)).status).toBe(404);
+  });
+
+  it("answers a write's records to the declaring flow on a fresh router, where no write has run in this process", async () => {
+    // Codex P1: a restarted host, or another worker, has run no write yet.
+    const first = build([threadsFlow({ authenticated: true })]);
+    const done = await write(first.router, first.stores, "user", "pins", alice, { input: { state: { pinned: ["secret"] }, version: 0 } });
+    const registry = createFlowRegistry();
+    registry.register(threadsFlow({ authenticated: true }) as never);
+    const fresh = createFlowApiRouter({ registry, stores: first.stores, staleSweepIntervalMs: 0 });
+    routers.push(fresh);
+    for (const caller of [{}, bob, { user: "mallory", org: ORG_B }]) {
+      const requests = await get(fresh, ["sessions", done.sessionId!, "requests"], caller);
+      expect(requests.status).not.toBe(200);
+      const status = await get(fresh, ["fsd-default-write", "requests", done.id, "status"], caller);
+      expect([401, 404]).toContain(status.status);
+      expect(await status.text()).not.toContain("secret");
+    }
+    expect((await get(fresh, ["fsd-default-write", "requests", done.id, "status"], alice)).status).toBe(200);
+  });
+
+  it("never lists a write's in-flight request, even to a caller the declaring flow rejects", async () => {
+    // Codex P2: the active-requests listing.
+    const { router, stores } = build([threadsFlow({ authenticated: true })]);
+    const done = await write(router, stores, "user", "pins", alice, { input: { state: { pinned: ["t"] }, version: 0 } });
+    await stores.activeRequests.register({
+      requestId: "req_write_inflight",
+      flowKind: "fsd-default-write",
+      flowId: "fsd-default-write",
+      actionName: "set",
+      sessionId: done.sessionId!,
+      userId: "alice",
+      orgId: ORG_A,
+      source: "http",
+      startedAt: Date.now()
+    } as never);
+    for (const caller of [{}, alice, bob]) {
+      const res = await get(router, ["active-requests"], caller);
+      expect(await res.text()).not.toContain("req_write_inflight");
+    }
+    // A host-level credential for Alice that the declaring flow's own resolver rejects.
+    const registry = createFlowRegistry();
+    registry.register(threadsFlow({ authenticated: true }) as never);
+    const hostSigned = createFlowApiRouter({
+      registry,
+      stores,
+      staleSweepIntervalMs: 0,
+      resolvePrincipal: (context: { request?: Request }) => {
+        const user = context.request?.headers.get("x-host-user");
+        return user == null ? null : { userId: user, orgId: ORG_A };
+      }
+    } as never);
+    routers.push(hostSigned);
+    const listing = await hostSigned.GET(
+      new Request("http://localhost/api/flows/active-requests", { headers: { "x-host-user": "alice" } }),
+      { params: { path: ["active-requests"] } }
+    );
+    expect(listing.status).toBe(200);
+    expect(await listing.text()).not.toContain("req_write_inflight");
   });
 
   it("leaves write sessions out of the session listing", async () => {

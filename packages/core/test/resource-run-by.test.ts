@@ -38,8 +38,14 @@ describe("runBy on a resource", () => {
   });
 
   it("leaves an org resource its own flow writes to that flow's rules", () => {
-    const viaFlow = defineResource({ ref: "plan", scope: "org", stateSchema: pinsSchema, runBy: { flow: "planner" } });
+    const viaFlow = defineResource({ ref: "plan", scope: "org", stateSchema: pinsSchema, client: {}, runBy: { flow: "planner" } });
     expect(viaFlow.runBy).toEqual({ flow: "planner" });
+  });
+
+  it("refuses runBy of any kind on a resource with no client config: runBy is how a client writes it, and a client can't reach one it can't see", () => {
+    expect(() => defineResource({ ref: "plan", scope: "org", stateSchema: pinsSchema, runBy: { flow: "planner" } })).toThrow(
+      /"plan".*runBy.*no client config/
+    );
   });
 
   it("refuses runBy on a session resource: a session's resources are written in that session", () => {
@@ -61,9 +67,9 @@ describe("runBy on a resource", () => {
         ref: "computed",
         scope: "user",
         stateSchema: pinsSchema,
-        client: { data: (state) => ({ count: state.pinned.length }) },
+        client: { data: (state: { pinned: string[] }) => ({ count: state.pinned.length }) },
         runBy: "default"
-      })
+      } as never)
     ).toThrow(/"computed".*client\.data/);
   });
 

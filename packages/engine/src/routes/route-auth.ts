@@ -42,7 +42,7 @@ import {
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { flowAuthenticates } from "./instance-caller";
-import { DEFAULT_WRITE_FLOW, writeSessionGoverningFlow } from "../resources/default-write-flow";
+import { DEFAULT_WRITE_FLOW, writeRecordGovernor } from "../resources/default-write-flow";
 
 /** Wiring the guard needs; all of it is already built by `createFlowRouteHandlers`. */
 export type RouteAuthContext = {
@@ -312,15 +312,15 @@ function ownerFlowOf(
   ctx: RouteAuthContext,
   record: OwnedRecord & OrgAttributedRecord
 ): { flow?: FlowInstance; denied?: Response } {
-  const owner = resolveRecordOwner(ctx.registry, record);
-  let flow = owner.ok ? owner.flow : undefined;
-  // FIX-2624: a write session answers to the sign-in of the flow that declares
-  // the resource it writes, not to the default write flow, which has none.
-  if (flow?.id === DEFAULT_WRITE_FLOW) {
-    const sessionId = (record as { sessionId?: string }).sessionId ?? (record as { id?: string }).id;
-    flow = writeSessionGoverningFlow(ctx.registry, ctx.hostResolver, sessionId);
-    if (flow === undefined) return { denied: jsonResponse(404, { error: "Unknown write session" }) };
+  // FIX-2624: a write record answers to the sign-in of the flow that declares
+  // the resource it writes, read off the record's own session id, never to the
+  // default write flow (which has no resolver) or the host's fallback.
+  const write = writeRecordGovernor(ctx.registry, ctx.hostResolver, record);
+  if (write !== undefined && write.flow === undefined) {
+    return { denied: jsonResponse(404, { error: "Unknown write session" }) };
   }
+  const owner = resolveRecordOwner(ctx.registry, record);
+  const flow = write?.flow ?? (owner.ok ? owner.flow : undefined);
   // The organization axis is checked FIRST and independently of the owner
   // (FIX-1442). A record can name its owning flow perfectly well and still
   // predate organizations entirely — which is the common case, since `flowId`
@@ -340,7 +340,7 @@ function ownerFlowOf(
       })
     };
   }
-  if (owner.ok) return { flow };
+  if (owner.ok || write !== undefined) return { flow };
   const denied = refuseUnattributedRecord(ctx.registry, record);
   return denied === undefined ? {} : { denied };
 }

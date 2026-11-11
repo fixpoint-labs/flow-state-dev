@@ -36,6 +36,7 @@ import { handleRunRead } from "./read-routes";
 import { handleExecuteAction } from "./action-routes";
 import { handleFlowIdentity, handleReadScopeResource, resolveResourceSend } from "./scope-routes";
 import { DEFAULT_WRITE_FLOW } from "../resources/default-write-flow";
+import { reservedAddressRefusal } from "./reserved-addresses";
 import {
   handleCheckInterruptedRequests,
   handleListInterruptedRequests,
@@ -461,6 +462,11 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       // the same way action dispatch does. Undefined for single-tenant
       // requests; rejected (400) inside the try if it contains ":".
       const tenantId = extractTenantId(request, options.tenantIdHeader);
+
+      // FIX-2624: no route names a write session or the default write flow,
+      // before anything else looks at either (`reserved-addresses.ts`).
+      const reserved = reservedAddressRefusal(route);
+      if (reserved !== undefined) return reserved;
 
       // Authenticate and authorize the management surface (sessions, state,
       // resources, request control, debug) before dispatching. Action routes

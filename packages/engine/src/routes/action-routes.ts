@@ -35,7 +35,7 @@ import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
 import { claimRequestAttachments } from "./attachment-claim";
 import { resolveActionCore } from "../execution/resolve-action-core";
-import { DEFAULT_WRITE_FLOW, isWriteSessionId, WRITE_SESSION_PREFIX } from "../resources/default-write-flow";
+import { asServerResourceSend, DEFAULT_WRITE_FLOW, isWriteSessionId, WRITE_SESSION_PREFIX } from "../resources/default-write-flow";
 import type { ResourceSend } from "./scope-routes";
 
 type ActionRunInput = {
@@ -214,10 +214,12 @@ export async function handleExecuteAction(
     takesFiles: resolveActionCore(flow, route.actionName, "http", undefined)?.userMessage !== undefined
   });
   if ("refused" in claimed) return claimed.refused;
-  const dispatchEnvelope = {
+  const built = {
     ...envelope,
     ...(claimed.attachments.length > 0 ? { attachments: claimed.attachments } : {})
   };
+  // Only the server's own resource send may reach the default write flow or a write session.
+  const dispatchEnvelope = resourceSend === undefined ? built : asServerResourceSend(built);
   let admitted = false;
   try {
     try {

@@ -336,8 +336,8 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
    * The flow a client's write of this user or org resource runs through:
    * `"default"` (the framework's default write flow) or `{ flow }`. Omit it and
    * a client can't write the resource. User or org scope only, and not with
-   * `flowIsolation: true`. With `"default"`, the resource must declare a
-   * `client` config the client reads it through, and no computed `client.data`.
+   * `flowIsolation: true`, and with a `client` config the client reads it
+   * through. With `"default"`, no computed `client.data`.
    */
   runBy?: ResourceRunBy;
   /**
@@ -731,13 +731,16 @@ function validateRunBy(
         `so a scope and key don't name it. Drop one of the two.`
     );
   }
-  if (runBy !== "default") return;
+  // A client config is what exposes a resource to clients at all; runBy is how
+  // a client writes one, at the version it read. One without the other is a
+  // resource a client can be told about but never reach.
   if (config.client === undefined) {
     throw new Error(
-      `${definer} resource "${name}" sets runBy: "default" with no client config: the default write flow writes only ` +
-        `what the client can read. Add client: {} (or expose / exclude).`
+      `${definer} resource "${name}" sets runBy with no client config: a client writes only what it can read. ` +
+        `Add client: {} (or expose / exclude), or drop runBy and write it from a server flow.`
     );
   }
+  if (runBy !== "default") return;
   if (config.client.data !== undefined) {
     throw new Error(
       `${definer} resource "${name}" sets runBy: "default" with a computed client.data: the default write flow can't ` +

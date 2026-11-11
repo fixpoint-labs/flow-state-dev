@@ -100,6 +100,7 @@ export function fakeClient(parts: FakeClientParts): Client {
       }) as never,
       createSession: async (options?: unknown) => call(parts.flow?.createSession, "flow.createSession", options),
       upload: async () => missing("flow.upload"),
+      identity: async () => missing("flow.identity"),
       read: (async (name: string, input: unknown, options: unknown) => call(parts.flow?.read, "flow.read", name, input, options)) as never,
       request: (id: string) => handle(address, id)
     }),
@@ -119,6 +120,7 @@ export function fakeClient(parts: FakeClientParts): Client {
       get: (_t, name: string) =>
         (parts.resources as Record<string, Fn> | undefined)?.[name] ?? (() => missing(`resources.${name}`))
     }),
+    resource: () => missing("resource"),
     requests: { interrupted: async () => missing("requests.interrupted") },
     subscribe: (topics, options) => parts.subscribe?.(topics, options) ?? { close() {} },
     // The client's own live read, over the faked subscription.

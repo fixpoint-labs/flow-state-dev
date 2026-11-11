@@ -1,6 +1,7 @@
 /**
  * HTTP route handlers for request recovery (retry + active request listing).
  */
+import { isWriteRecord } from "../resources/default-write-flow";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord, resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import type { ActiveRequestEntry, StoreRegistry } from "../stores/types";
@@ -438,6 +439,8 @@ function sweepAdmits(
   const allowed = ctx.anonymousFlowIds;
   return (entry) => {
     if (!tenantMatches(entry.tenantId, ctx.tenantId)) return false;
+    // FIX-2624: a write's request is never listed (`ownResolverVerdict`).
+    if (isWriteRecord(entry)) return false;
     if (callerOrgId !== undefined) return entry.orgId === callerOrgId;
     if (allowed === undefined) return true;
     const owner = resolveRecordOwner(ctx.registry, entry);
