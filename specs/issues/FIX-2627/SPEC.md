@@ -142,6 +142,8 @@ harness ([Decided, not asked](DECISIONS.md#decided-not-asked)).
 | Worker sessions and turns views (workforce) | `createWorkforceClient`'s `listWorkerSessions` and `findWorkerSession`; the lab adapters' turn assembly | **Re-expresses** the client's reads as views, on FIX-2623's `defineView`; the client's reads go, its writes stay |
 | `@flow-state-dev/workforce/react` | `@flow-state-dev/react/workforce` | **Moves** it, no alias, bound to the roster view |
 | `claudeCode()`, a small kit | `work-collections`, `workspace-collections` | **Composed:** installs them and fills the slot |
+| `sourceReadCapability` (workforce) | `projectSourceCapability` | **Extracted:** its tool body over a `WorkspaceHost`, with no project; `projectSourceCapability` becomes it plus the project resources |
+| `sessionFields`, one workforce config option | `workProjectId`, which the work-project action writes | **Generalises** it: a session field the app declares, written only on the server |
 
 | The debt | |
 |---|---|

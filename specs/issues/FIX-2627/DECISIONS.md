@@ -68,11 +68,29 @@ other way, a stretch where the goals don't cover the install every app uses.
   head. It waits on FIX-2624's first PR, which deletes the lab's pins and dismissals flows.
   In that PR: claude-code-style's `projects.mts` moves to `labs/claude-code-style/flows/`, listed
   in `flows:`; `harness-thread.mts` is deleted and its workers name `coder`; anything of
-  `pins`, `dismissals` or `user-marks` still there (FIX-2624 keeps a one-read fallback) moves
-  with `projects.mts`. kitchen-sink's `workforce/hire.ts` goes with its move to `kits`. Shift
+  `pins` or `dismissals` still there moves with `projects.mts`, and so does `user-marks.mts`,
+  which FIX-2624's one-read fallback still reads; FIX-2628 deletes it with that fallback. kitchen-sink's `workforce/hire.ts` goes with its move to `kits`. Shift
   Manager's fixture `flows/piece.mts` moves to the fixture's own folder.
 - **claude-code-style's host moves onto `kits` here,** since its calls go internal and the claim
   pass reaches it. FIX-2628 owns its adapter and its app kit, and may move `projects.mts` into it.
+  Until FIX-2628, the host keeps its project: `coder`'s project options set (`needsProject` and
+  the project workspace capability, as `harness-thread` has them), `projectSourceCapability({ workspace })`
+  in workforce's `uses`, and `projects.mts` in `flows:`. FIX-2628 removes all three.
+- **Workforce adds the consult capability itself.** `consultSessionsCapability(installation)` is
+  workforce's own, over its installation, and only a worker whose file picks
+  `consultSessions: [consult]` is offered it. Both hosts add it to the agent flow today. So the kit
+  adds it there, its model and budget in config, and `uses` stays a plain list. A builder form of
+  `uses` that receives the installation would exist for this one capability.
+- **The source-only capability.** `projectSourceCapability`'s tool body
+  (`packages/workforce/src/projects/project-source.ts`) lifts into `sourceReadCapability({ workspace })`:
+  the same three reads over a `WorkspaceHost`'s run source and read view, naming no project to
+  the model and installing no project resources. `projectSourceCapability` becomes that
+  capability plus the project resources. A non-coding worker in an app with no projects
+  (FIX-2628) takes the source-only one.
+- **App-declared session fields:** one workforce config option, `sessionFields`, a schema per
+  field the app declares on the agent and coordinator sessions. Server-written only: a flow on the
+  server sets it (FIX-2628's open action), never a request body, a task's input or the client
+  (BP-031). It generalises `workProjectId`, which the work-project action writes today.
 - **Workforce's slots:** `workerFlows`, keyed, filled by builders that receive the installation
   (today's `workerFlow(…)`), so no flow closes over a variable filled later; `uses`, a list of
   capabilities added to the agent and coordinator flows workforce builds. The agent and
@@ -89,11 +107,19 @@ other way, a stretch where the goals don't cover the install every app uses.
   defaulting to `id`. `codex` and `cursor` export one each; `claude-code` exports `claudeCode()`,
   a kit that installs its collections and fills the slot. A duplicate id is refused; the app can
   switch one off.
-- **Readiness** is one view in harness-manager, read from the slot, installed by the kit. If
-  FIX-2624's last PR wrote it first, this issue feeds it from the slot instead of a host map.
+- **A stub is a harness value whose `agent` is scripted** (harness-manager's scripted harness),
+  swapped in per id by the host: it switches off that id's entry and fills the scripted value
+  under the same id. The run takes the same slot, coding worker flow and board view as the real
+  one; no harness package carries a stub mode.
+- **Readiness** is one view in harness-manager, read from the slot, installed by the kit. This
+  issue is blocked by all of FIX-2624, so FIX-2624 has always written it; this issue feeds it from
+  the slot instead of a host map.
 - **The coding board view** answers a task's harness from its worker's `harness:` setting until
   its run reports one: FIX-2626 D1's 42 kit-only lines. A package that depends on both serves the
   join, so no client runtime and no slot are needed. The task row gains no field (FIX-2152 ER-9).
+  Its rows are keyed by task id, and it answers for some rows as [FIX-2625 D1](../FIX-2625/DECISIONS.md#d1)
+  allows: a notice's task ids re-run those tasks' rows; a worker's id re-runs every row of a task
+  assigned to that worker, whose harness it may change. Other views it installs stay whole.
 - **The views each kit installs:** workforce, the roster (FIX-2623's), worker sessions and turns;
   harness-manager, readiness, the coding board and a run's work (FIX-2623 moves `changes`). These
   are the rows claude-code-style reads ([FIX-2628](https://linear.app/fixpoint-labs/issue/FIX-2628)'s
@@ -113,7 +139,7 @@ other way, a stretch where the goals don't cover the install every app uses.
 - **Names.** A new name for the registered code checkout says *repository* (owner, 2026-11-11,
   FIX-2592); `workspace` stays the host type's name. *Harness* gets a glossary entry. New
   public names: `workforce`, `harnesses`, `claudeCode`, `codexHarness`, `cursorHarness`,
-  `readWorkforceFolder`, `Harness`; each enters FIX-2447's export ratchet.
+  `readWorkforceFolder`, `Harness`, `sourceReadCapability`, `sessionFields`; each enters FIX-2447's export ratchet.
 - **Changesets:** `minor` for workforce, harness-manager, claude-code, codex, cursor and react.
 
 ## Considered and dropped
@@ -128,6 +154,7 @@ other way, a stretch where the goals don't cover the install every app uses.
 | A workforce slot for the task's harness | The coding board view serves it once harness-manager depends on workforce |
 | Shift Manager on the shared flow | Its flow splits feature work from answers; that is its policy ([D1](#d1)) |
 | Partial readers kept public | A reader of part of the folder can't claim the whole of it |
+| A builder form of `uses` that receives the installation | One capability needs it, consult, and it is workforce's own: the kit adds it |
 
 ## Settled
 
