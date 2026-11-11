@@ -34,7 +34,7 @@
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else the board's `steer` |
  * | `taskActions`   | the Inbox client's `board(at)` on the session that holds the board: `cancel`, |
  * |                 | `steer`, `release` and `retry`, each the board's own action                 |
- * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }` |
+ * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }`, naming its `land` when one is given |
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state; `watchPins` is its |
  * |                 | `listPins` read, again on each state notice of your user topic             |
@@ -80,6 +80,7 @@ import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness"
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
+import type { LandedWork, ReviewAnswer, ReviewLand } from "./components/flow-state/review-hold";
 import { dismissalKey, waitingOnYou } from "./lib/columns";
 import { resultSummary } from "./lib/result-summary";
 import { firstLineOfText, NEW_SESSION_TITLE, sessionTitle } from "./lib/session-title";
@@ -200,6 +201,11 @@ export interface LabTask {
    * and it completed unreviewed, none when no review was asked.
    */
   review?: "accepted" | "deadline" | null;
+  /**
+   * For an accepted coding task, where its work went: the pull request opened, or the merge into
+   * your checkout, as the run's output records it. Absent until a landing has happened.
+   */
+  landed?: LandedWork;
   /** Steps done of total, when known. */
   steps?: { done: number; total: number };
   /** When the task last changed, in ms. */
@@ -232,6 +238,8 @@ export interface TaskWork {
   entries: ThreadEntry[];
   /** Its run's latest review stop, when it made one. */
   review?: ReviewDetail;
+  /** The id of that stop: one per review round, so an accept can tell a new round from the one it answered. */
+  reviewStop?: string;
   /** Present while the run holds items older than its first entry: adds the page before them. */
   loadEarlier?: () => Promise<void>;
   /** What its run is doing now, while the task runs. */
@@ -279,8 +287,11 @@ export interface LabAdapter {
   sayInThread(sessionId: string, taskId: string, line: string): Promise<void>;
   /** The task changes you make from an opened task, on the board of session `sessionId`. */
   taskActions(sessionId: string): TaskBoardCalls;
-  /** Accept a thread's work: answers its review wait. */
-  resolve(sessionId: string, taskId: string): Promise<void>;
+  /**
+   * Accept a thread's work: answers its review wait. `land` names how the work lands (a pull
+   * request, or a merge into your checkout); absent, the accept is plain.
+   */
+  resolve(sessionId: string, taskId: string, land?: ReviewLand): Promise<void>;
   /** Send a thread back to work: answers its review wait with your words. */
   requestChanges(sessionId: string, taskId: string, words: string): Promise<void>;
   /** Your pinned task ids. */
@@ -476,8 +487,43 @@ function onNotice<T>(
  * stops for review again.
  */
 export function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
-  const stop = [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review");
+  const stop = latestReviewStop(items);
   return (stop && reviewDetail(stop.data)) ?? undefined;
+}
+
+/** The latest review stop's item, or undefined before the run makes one. */
+const latestReviewStop = (items: readonly Item[]) => [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review");
+
+/**
+ * The id of the latest review stop: one id per review round. A run sent back, or a landing retried,
+ * stops for review again under a new id, which is how the accept tells a new round from the one it answered.
+ */
+export function reviewStopIdOf(items: readonly Item[]): string | undefined {
+  return latestReviewStop(items)?.id;
+}
+
+/**
+ * The verdict an accept sends: plain, or naming how the work lands. Without a `land` the key is
+ * absent, so a plain accept on a run that can't land reads as it always did. Exported for its tests.
+ */
+export function acceptOf(land?: ReviewLand): ReviewAnswer {
+  return land === undefined ? { verdict: "accepted" } : { verdict: "accepted", land };
+}
+
+/**
+ * Where an accepted run's work went, from its output's `landed`, or nothing when it names none
+ * readable. Exported for its tests.
+ */
+export function landedOf(value: unknown): LandedWork | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const v = value as Record<string, unknown>;
+  if (v.kind === "pull-request" && typeof v.url === "string" && typeof v.number === "number" && typeof v.branch === "string" && typeof v.base === "string") {
+    return { kind: "pull-request", url: v.url, number: v.number, branch: v.branch, base: v.base };
+  }
+  if (v.kind === "merge" && typeof v.branch === "string" && typeof v.commit === "string" && typeof v.checkout === "string" && typeof v.from === "string") {
+    return { kind: "merge", branch: v.branch, commit: v.commit, checkout: v.checkout, from: v.from };
+  }
+  return undefined;
 }
 
 const textOf = (item: Item) => (item.content ?? []).map((part) => part.text ?? "").join("");
@@ -986,18 +1032,24 @@ export function createWiredLab(fsd: Client): LabAdapter {
     return harnesses.get(task.assignee);
   };
 
-  /** How a finished coding task's review ended, from its output. Kept, since a finished task's output never changes. */
-  const reviews = new Map<string, Promise<LabTask["review"]>>();
-  const reviewOf = (sessionId: string, task: Listed) => {
-    if (!reviews.has(task.id)) {
-      reviews.set(
-        task.id,
+  /**
+   * A coding task's output as its `getTask` carries it (a `listTasks` row never does): how its review
+   * ended, and where its work landed. Kept per status, so a status change reads it again; a read that
+   * fails is tried again on the next poll.
+   */
+  const outputs = new Map<string, Promise<Record<string, unknown>>>();
+  const outputOf = (sessionId: string, task: Listed) => {
+    const key = `${task.id}#${task.attempts ?? 0}#${task.status}`;
+    return (
+      outputs.get(key) ??
+      keptUnlessFailed(
+        outputs,
+        key,
         flowOfSession(sessionId)
           .then((flow) => run(flow, sessionId, taskActionName("getTask", TASKS_BOARD), { id: task.id }))
-          .then((read) => (read.task?.output?.review as LabTask["review"]) ?? null),
-      );
-    }
-    return reviews.get(task.id)!;
+          .then((read) => (read.task?.output as Record<string, unknown> | undefined) ?? {}),
+      )
+    );
   };
 
   /**
@@ -1060,15 +1112,20 @@ export function createWiredLab(fsd: Client): LabAdapter {
         const run = { ...(typeof link?.startedAt === "number" ? { startedAt: link.startedAt } : {}), ...(leaseUntil === undefined ? {} : { leaseUntil }) };
         // The harness its run reported; until one reports, the assignee's `harness` setting.
         const harness = task.spend?.harness ?? (await harnessOf(task));
-        const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
-        const error = row.status === "errored" ? await errorOf(sessionId, task) : undefined;
         const pullRequests = await pullRequestsOf(task);
+        // A coding task's output says how its review ended and where its work landed. Landing happens on an accept,
+        // so the output is read once the run is done, or while it waits on a pull request it opened.
+        const output = harness !== undefined && (row.status === "completed" || pullRequests !== undefined) ? await outputOf(sessionId, task) : undefined;
+        const review = harness !== undefined && row.status === "completed" ? ((output?.review as LabTask["review"]) ?? null) : undefined;
+        const landed = landedOf(output?.landed);
+        const error = row.status === "errored" ? await errorOf(sessionId, task) : undefined;
         return {
           ...row,
           ...(Object.keys(run).length === 0 ? {} : { run }),
           ...(harness === undefined ? {} : { harness }),
           ...(pullRequests === undefined ? {} : { pullRequests }),
           ...(review === undefined ? {} : { review }),
+          ...(landed === undefined ? {} : { landed }),
           ...(error === undefined ? {} : { error }),
         };
       }),
@@ -1481,10 +1538,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
           }
           stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items, loadEarlier) => {
             const review = reviewStopOf(items);
+            const reviewStop = reviewStopIdOf(items);
             fed = items;
             work = {
               entries: entriesOf(items.filter((item) => item.type !== "suspension")),
               ...(review === undefined ? {} : { review }),
+              ...(reviewStop === undefined ? {} : { reviewStop }),
               ...(loadEarlier === undefined ? {} : { loadEarlier }),
             };
             tell();
@@ -1516,7 +1575,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
       release: async (id) => (await boardAt(sessionId)).release(id),
       retry: async (id) => (await boardAt(sessionId)).retry(id),
     }),
-    resolve: (sessionId, taskId) => answerReview(sessionId, taskId, { value: { verdict: "accepted" } }),
+    resolve: (sessionId, taskId, land) => answerReview(sessionId, taskId, { value: acceptOf(land) }),
     requestChanges: (sessionId, taskId, words) => answerReview(sessionId, taskId, { value: { verdict: "revise", words } }),
     // Pins are your user state: a state notice on your topic, from this tab or another, says they may have changed.
     watchPins: (onChange) => onNotice(fsd, [topic.user()], (notice) => notice.kind === "state", readPins, onChange, 3000),

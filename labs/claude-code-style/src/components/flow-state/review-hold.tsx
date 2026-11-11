@@ -64,6 +64,24 @@ export type ReviewAnswer = { verdict: "accepted"; land?: ReviewLand; words?: str
 /** Each way to land, as its button says it. */
 export const LAND_LABEL: Record<ReviewLand, string> = { "pull-request": "Open a PR", merge: "Merge locally" };
 
+/**
+ * The ways to land, with a failed landing's way first: the retry. Each way once, in the review's order.
+ * Shared by the review card and the lab's thread accept, so the two never order them differently.
+ */
+export function orderedLands(lands: readonly ReviewLand[], failed: { land: ReviewLand } | null): ReviewLand[] {
+  return failed === null ? [...lands] : [failed.land, ...lands.filter((land) => land !== failed.land)];
+}
+
+/** Why the last landing failed, in the landing's own words, or nothing when none failed. */
+export function LandFailure({ failed }: { failed: { land: ReviewLand; message: string } | null }) {
+  if (failed === null) return null;
+  return (
+    <p role="alert" data-land-failed={failed.land} className="mt-1 text-xs text-destructive [overflow-wrap:anywhere]">
+      {failed.land === "pull-request" ? "Opening the PR failed" : "Merging locally failed"}: {failed.message}
+    </p>
+  );
+}
+
 /** Where an accepted run's work went, as harness-manager's output records it. */
 export type LandedWork =
   | { kind: "pull-request"; url: string; number: number; branch: string; base: string }
@@ -213,7 +231,7 @@ export function ReviewHold({
   const canAnswer = answer !== undefined && (unanswerable === undefined || unanswerable === null);
   const lands = review?.lands ?? [];
   // A failed landing's own way goes first, as the retry.
-  const ordered = failed === null ? lands : [failed.land, ...lands.filter((land) => land !== failed.land)];
+  const ordered = orderedLands(lands, failed);
   return (
     <section
       aria-label="Ready for review"
@@ -221,11 +239,7 @@ export function ReviewHold({
       className="my-1.5 min-w-0 rounded-lg border border-success bg-success/10 px-3 py-2 text-sm [overflow-wrap:anywhere]"
     >
       <div className="font-semibold">Ready for review</div>
-      {failed === null ? null : (
-        <p role="alert" data-land-failed={failed.land} className="mt-1 text-xs text-destructive">
-          {failed.land === "pull-request" ? "Opening the PR failed" : "Merging locally failed"}: {failed.message}
-        </p>
-      )}
+      <LandFailure failed={failed} />
       {(review?.landAttempts?.length ?? 0) > 1 ? (
         <ol data-land-attempts className="mt-1 list-decimal pl-4 text-xs text-muted-foreground">
           {review!.landAttempts!.map((attempt, i) => (

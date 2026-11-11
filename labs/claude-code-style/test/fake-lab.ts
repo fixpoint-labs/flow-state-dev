@@ -34,6 +34,7 @@ import type {
   ThreadView,
   Unsubscribe,
 } from "../src/adapter";
+import type { LandedWork } from "../src/components/flow-state/review-hold";
 import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { dismissalKey, waitingOnYou } from "../src/lib/columns";
 import { toolRun } from "../src/lib/tool-steps";
@@ -111,6 +112,8 @@ const CODE_REVIEW: ReviewDetail = {
     reason: "The CHANGELOG gains one line naming Vendor C and why; nothing else in the repository changed, and the line follows the file's existing format.",
   },
   checks: null,
+  // A host that can land the work offers both ways; a review with none offers only a plain accept.
+  lands: ["pull-request", "merge"],
 };
 
 /** The run's last words, as a real one ends: a long path and its branch, unbroken. */
@@ -637,15 +640,24 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       };
     },
 
-    async resolve(sessionId, taskId) {
+    // fake: a land records where the work went, as the run's output does; a plain accept records nothing.
+    async resolve(sessionId, taskId, land) {
       const s = session(sessionId);
       const task = s.tasks.find((t) => t.id === taskId);
       if (task?.openHold?.kind !== "review") return;
+      const branch = task.reviewDetail?.branch ?? "conductor/fake/t-1--code";
+      const landed: LandedWork | undefined =
+        land === "pull-request"
+          ? { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch, base: "main" }
+          : land === "merge"
+            ? { kind: "merge", branch: "main", commit: "c15d6f098abc", checkout: "/work/relay", from: branch }
+            : undefined;
       setTask(s, taskId, {
         status: "completed",
         openHold: undefined,
         statusNote: undefined,
         review: "accepted",
+        ...(landed === undefined ? {} : { landed }),
         work: [...task.work, { kind: "assistant", id: nextId("w"), text: "Resolved. Your review accepted the work." }],
       });
     },
@@ -689,7 +701,10 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     watchTaskWork(sessionId, taskId, onChange) {
       return watch(() => {
         const task = sessions.get(sessionId)?.tasks.find((t) => t.id === taskId);
-        const work: TaskWork = { entries: task?.work ?? [], ...(task?.reviewDetail === undefined ? {} : { review: task.reviewDetail }) };
+        const work: TaskWork = {
+          entries: task?.work ?? [],
+          ...(task?.reviewDetail === undefined ? {} : { review: task.reviewDetail, reviewStop: `${task.id}-stop` }),
+        };
         onChange(work);
       });
     },

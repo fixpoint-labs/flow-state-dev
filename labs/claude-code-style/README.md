@@ -44,8 +44,10 @@ In the Projects view, the main session is a coordinator, `desk.lead`. It hands e
 threads, each a task in a session of its own, and the right pane is the status board, *Tasks*.
 
 - **Center:** your line is marked *Sent to a task*, and each thread is a compact card where the
-  lead filed it, with *View task*, *Answer* when it asks you something, and *Resolve* and
-  *Request changes* when it is ready for review. A result line's *Open task* opens the thread's
+  lead filed it, with *View task*, *Answer* when it asks you something, and, when it is ready for review, the
+  accept and *Request changes*. A coding thread's accept offers *Open a PR* and *Merge locally*, the ways its
+  review lists its work can land, and a thread with none offers *Resolve*. A landed thread shows its pull
+  request or the branch it was merged into; a landing that fails shows why, with a retry. A result line's *Open task* opens the thread's
   view, as *View task* does.
 - **Right:** the board groups threads by what you owe them: *Pinned*, *Working*, *Waiting on you*,
   *Ready for review* and *Resolved*, collapsed to a count. A column is read from the task's
@@ -192,7 +194,7 @@ change, a resource), the thread's running turn on a request notice, and pins on 
 user state. A session you open in another tab joins the list at the next reload. On a host whose
 push can miss a change, such as the SQLite store the lab runs on, each also reads at its old pace:
 the list and pins every 3 seconds, the running turn every 1.5.
-| *Resolve* and *Request changes* | the Inbox client's `answerOne` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
+| *Resolve*, *Open a PR*, *Merge locally* and *Request changes* | the Inbox client's `answerOne` on its review: `{ verdict: "accepted" }`, naming the `land` an accept takes, or `{ verdict: "revise", words }` |
 | *Pin* and *Unpin* | the lab's `pins` flow (`workforce/flows/pins.mts`), your own user state |
 | *Dismiss* | the lab's `dismissals` flow (`workforce/flows/dismissals.mts`), your own user state, kept per task attempt |
 
