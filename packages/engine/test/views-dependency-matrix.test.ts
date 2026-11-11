@@ -136,7 +136,7 @@ views.overlap_lineage = defineView({
     resources,
     execute: async (_input, ctx) => ({
       v: ((await (ctx.resources as any).notes.list()) as Array<{ path: string; state: { v: string } }>)
-        .map((row) => `${row.path}=${row.state.v}`)
+        .map((entry) => `${entry.path}=${entry.state.v}`)
         .sort()
         .join(",")
     })
