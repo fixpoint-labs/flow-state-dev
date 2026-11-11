@@ -22,7 +22,7 @@
  * session read are read for the "references, never bytes" half (ER-2).
  */
 import { randomInt } from "node:crypto";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Locator, Page, Request } from "playwright";
@@ -194,12 +194,24 @@ export async function paste(box: Locator, name: string, type: string, bytes: Uin
 
 type PickedFile = { name: string; mimeType: string; buffer: Buffer };
 
+/** One folder for every pick in this process, removed on exit: the browser may read a picked file after `setFiles`. */
+let pickRoot: string | undefined;
+function pickDir(): string {
+  if (!pickRoot) {
+    const root = mkdtempSync(join(tmpdir(), "closure-pick-"));
+    process.once("exit", () => rmSync(root, { recursive: true, force: true }));
+    pickRoot = root;
+  }
+  // Its own folder per pick, so a later pick never overwrites a file an earlier one handed over.
+  return mkdtempSync(join(pickRoot, "p-"));
+}
+
 /** Pick files with the composer's + button. */
 export async function pick(page: Page, files: PickedFile[]): Promise<void> {
   const chooser = page.waitForEvent("filechooser", { timeout: 15_000 });
   await visible(page, 'button[aria-label="Attach files"]').first().click();
   // Written to disk first: a large file handed over as a buffer is what times out `setFiles`.
-  const dir = mkdtempSync(join(tmpdir(), "closure-pick-"));
+  const dir = pickDir();
   const paths = files.map((file) => {
     const path = join(dir, file.name);
     writeFileSync(path, file.buffer);
