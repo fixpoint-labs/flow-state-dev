@@ -192,8 +192,9 @@ following it"* pause or delete one. A clock routine (*"Every Monday at 9, check 
 requests"*) files a task at its time.
 
 The lab polls GitHub; it needs no public address. It reads GitHub with the token of whoever runs
-the lab: `GITHUB_TOKEN`, or what `gh auth token` answers at start. That token serves only the
-lab's own user (`TEAMMATES_USER`). With no token, a GitHub routine is refused, naming
+the lab: `GITHUB_TOKEN`, or what `gh auth token` answers at start. The lab has one user
+(`TEAMMATES_USER`): it takes every request as that user, whatever user the request names, so
+the token serves nobody else. With no token, a GitHub routine is refused, naming
 `GITHUB_TOKEN`, and clock routines still run. Clock routines and polls tick from two SQLite files
 beside the store.
 

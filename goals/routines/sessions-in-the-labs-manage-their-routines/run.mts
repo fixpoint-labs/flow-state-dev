@@ -280,6 +280,15 @@ function rows(host: Host, prefix: string): Row[] {
   }
 }
 const ownedBy = (user: string) => (row: Row) => row.cell === user || row.cell.startsWith(`${encodeURIComponent(user)}:`);
+/** Who `sessionId` is stored as belonging to, read from the store's sessions table. */
+function sessionOwner(host: Host, sessionId: string): string | undefined {
+  const db = new Database(host.store, { readonly: true, fileMustExist: true });
+  try {
+    return (db.prepare("SELECT user_id FROM sessions WHERE id = ?").get(sessionId) as { user_id: string } | undefined)?.user_id;
+  } finally {
+    db.close();
+  }
+}
 const subscriptions = (host: Host, user: string) => rows(host, "workforce/subscriptions/").filter(ownedBy(user)).map((r) => r.state);
 const schedules = (host: Host, user: string) => rows(host, "workforce/schedules/").filter(ownedBy(user));
 /** The service's messages that landed in `sessionId`, from the message log. */
@@ -447,8 +456,17 @@ await runGoal(async (failures, tell) => {
     }
 
     // ---- (f) a second user's GitHub routine is refused, naming GITHUB_TOKEN ----
+    // A single-user lab has no second user: identity is the host's, so a request
+    // that names another user is served as the lab's own, and the token gate
+    // compares against that, never against what the request says.
     await Promise.all(
       hosts.map(async (h) => {
+        if (h.name !== "devteam") {
+          const session = (await h.as(h.second).flow(h.entry.flow).createSession({ state: { workerId: h.entry.worker } })).id;
+          const owner = sessionOwner(h, session);
+          if (owner !== h.operator) failures.push(`${h.name} f:host-identity — a session opened naming ${h.second} is stored as ${owner}'s, not ${h.operator}'s: the host took the user from the request`);
+          return;
+        }
         const session = (await h.as(h.second).flow(h.entry.flow).createSession({ state: { workerId: h.entry.worker } })).id;
         h.plan(marker(`second-${h.name}`), [{ name: "saveRoutine", args: { trigger: { event: { provider: "github", thread: h.thread, kinds: ["review"], interest: "Reviews." } } } }]);
         await h.act(h.second, h.entry.flow, session, "respond", { message: `Follow ${h.thread} for me. ${marker(`second-${h.name}`)}` });
@@ -460,7 +478,7 @@ await runGoal(async (failures, tell) => {
       })
     );
     const asSecond = stub.calls.filter((c) => c.status !== 401 && hosts.some((h) => c.token === tokenOf(h.name)));
-    evidence.push(`f: second users saved nothing; GitHub was asked ${asSecond.length} times, all on the operators' tokens`);
+    evidence.push(`f: DevTeam's second user saved nothing, and the single-user labs serve a request naming another user as their own; GitHub was asked ${asSecond.length} times, all on the operators' tokens`);
 
     // ---- (c) a review on the PR reaches that session once, within one poll of serve()'s tick ----
     const start = Date.now();

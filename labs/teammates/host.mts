@@ -491,6 +491,8 @@ export async function openTeammates(options: TeammatesOptions) {
     durable: true,
     dispatchDrainTimeoutMs,
     ...(options.staleThresholdMs === undefined ? {} : { staleSweepThresholdMs: options.staleThresholdMs }),
+    // Every request is the lab's own user, in the lab's own org, never a user the request names: the operator-only GitHub token is gated on it, and serve()'s tick, which names no user, is admitted as it. A configured resolver can't claim the development org, so the lab names its own.
+    resolvePrincipal: () => ({ userId: options.userId, orgId: "teammates-lab" }),
     devtool: { userId: options.userId },
     // A consult reads on `intent/utility`: a smaller model than the workers answer on.
     models: { default: options.model, intents: { utility: [UTILITY_MODEL] } },

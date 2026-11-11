@@ -130,9 +130,9 @@ globex/billing#77 and tell me about every review on it."* The worker saves a rou
 review on that pull request reaches the same session as a message, once. *"What are you
 following?"* lists your routines, and you can ask it to pause or delete one. A clock routine
 (*"Every Monday at 9, check the open pull requests"*) files a task at its time. The lab polls
-GitHub, so it needs no public address, with the token of whoever runs it; that token serves only
-the lab's own user, and anyone else's GitHub routine is refused, naming `GITHUB_TOKEN`. Clock
-routines need no token. Clock routines and polls tick from `clock.db` and `poll.db` in the data
+GitHub, so it needs no public address, with the token of whoever runs it; the lab takes every request
+as its own user, whatever user the request names, so the token serves nobody else. With no token,
+a GitHub routine is refused, naming `GITHUB_TOKEN`. Clock routines need no token. Clock routines and polls tick from `clock.db` and `poll.db` in the data
 folder.
 
 *New session* lists your projects and has a *New project* form: a name and the repository its

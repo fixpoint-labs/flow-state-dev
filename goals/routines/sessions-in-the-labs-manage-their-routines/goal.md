@@ -12,7 +12,7 @@
 - **(c)** a stub review reaches the session exactly once within one poll period of `serve()`'s tick (stored message-log entries from `service:github`);
 - **(d)** paused, a review reaches nothing; resumed, the next one arrives once; deleted, the next one reaches nothing and the routine is not listed;
 - **(e)** at the clock's next due time, the clock routine files one task (none before);
-- **(f)** a second user's GitHub routine saves nothing, and their session names `GITHUB_TOKEN`;
+- **(f)** on DevTeam, a second user's GitHub routine saves nothing, and their session names `GITHUB_TOKEN`; on Teammates and Claude Code Style, which have one user, a session opened naming another user is stored as the lab's own (the host takes no user from the request);
 - **(g)** on a real model, asked in words: a live routine on the PR is stored, the worker calls `listRoutines` when asked what it follows, and when asked to stop, no live routine is left.
 
 A failure of a tick-driven signal (c, d resumed, e) says why. It reports the host's answer to the tick's own headers on the schedule listing, a read that runs the same principal resolver as a dispatch. For (e) it also reports the clock routine's row in the clock index.
@@ -31,9 +31,6 @@ An environment whose `FSDEV_DEFAULT_MODEL`/`FSDEV_INTENT_*` name an id the resol
 - `GOAL_CONTROL=no-clock-index` gives the roster no clock index. Must FAIL **(e)**.
 - `GOAL_CONTROL=shared-token` lends the operator's token to every user. Must FAIL **(f)**.
 
-**Open (blocks PASS):**
-- **Teammates and Claude Code Style configure no principal resolver.** `serve()`'s tick sends no user, and the default resolver refuses it with 401 "Action request requires non-empty userId". Their (c), (d) resumed and (e) fail, and each failure prints that 401. They go green once the tick is admitted (the fix to `serve()`'s tick, decided separately).
-
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
@@ -46,3 +43,5 @@ An environment whose `FSDEV_DEFAULT_MODEL`/`FSDEV_INTENT_*` name an id the resol
 | 2026-11-11 | rebased on 650474a4 (with FIX-2674) | scripted | FAIL | All three hosts. DevTeam passes (a)–(f). Teammates and Claude Code Style pass (a), (b) and (f), and fail (c), (d) resumed and (e), each printing "serve()'s tick is refused by this host: … 401 Action request requires non-empty userId". The clock index failure is gone. |
 | 2026-11-11 | rebased on 650474a4 | scripted | FAIL (expected) | `GOAL_CONTROL=no-clock-index` on DevTeam: (e) 0 tasks before, 0 after; "the host keeps no clock index; the tick is admitted". |
 | 2026-11-11 | rebased on 650474a4 | scripted | FAIL (expected) | `GOAL_CONTROL=shared-token` on DevTeam: (f) u_devforce_member saved `github:initech/tps-reports#9`, and the refusal doesn't name GITHUB_TOKEN. |
+| 2026-11-11 | 1c899b66 + labs' resolver | scripted | FAIL (expected) | Before the resolver, Teammates and Claude Code Style: (f) host-identity, a session opened naming another user is stored as that user's. |
+| 2026-11-11 | 1c899b66 + labs' resolver | scripted | PASS | `GOAL_HOSTS=teammates,claude-code-style`: (a)–(f) pass. Each lab resolves every request to its own user in its own org, so serve()'s tick is admitted and (c), (d) resumed and (e) go green. |

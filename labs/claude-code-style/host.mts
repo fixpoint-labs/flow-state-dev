@@ -236,6 +236,8 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
     // A shutdown waits for a coding run still going, its checks and judge too (FIX-2484).
     dispatchDrainTimeoutMs: HARNESS_THREAD_DRAIN_MS,
     ...stale,
+    // Every request is the lab's own user, in the lab's own org, never a user the request names: the operator-only GitHub token is gated on it, and serve()'s tick, which names no user, is admitted as it. A configured resolver can't claim the development org, so the lab names its own.
+    resolvePrincipal: () => ({ userId: options.userId, orgId: "claude-code-style-lab" }),
     devtool: { userId: options.userId },
     // A consult of another conversation reads on `intent/utility`, a smaller model.
     models: { default: model, intents: { utility: [options.utilityModel] } },
