@@ -1021,6 +1021,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     coderWorker: options.coderWorkerId,
     resources,
     catalog: { updateWorkstream: workstreamBlocks.updateWorkstreamTool },
+    // The EM is a worker you talk to, so it manages its routines too: its file names the four tools.
+    uses: [createRoutinesCapability(installation)],
     ...(options.fileBeforeAsking === true ? { fileBeforeAsking: true } : {}),
   });
   // The EM worker the lab's doors and its ask run as, read off the tree. Two
