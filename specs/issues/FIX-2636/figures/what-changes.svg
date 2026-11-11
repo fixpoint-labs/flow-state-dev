@@ -1,0 +1,87 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="FIX-2636 before and after. Left, today: the history build re-sends the newest five documents in full on every call and names older ones, which the model cannot read. Right, after, in a flow with the attachments capability: the history build names every earlier document in one line with its id; the capability lists the session&#x27;s files from FIX-2634&#x27;s list; the list is capped, and an older file is read by name; the model calls readAttachment with an id or a name; the tool&#x27;s recorded output is a reference; the model call resolves it through the one resolver to the text in the blob store, for that turn only."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .head   { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .old    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .same   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-bn   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; font-weight:600; }
+    .t-bg   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .arrow  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .gonel  { stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; fill:none; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+  <g id="today">
+    <text class="t-lbl" x="24" y="30">TODAY · EVERY FLOW</text>
+    <rect class="old" x="24" y="44" width="430" height="64" rx="5"/>
+    <text class="t-lbl" x="38" y="62">HISTORY BUILD · FIX-2517 D1</text>
+    <text class="t-b" x="38" y="81">Newest 5 documents re-sent in full</text>
+    <text class="t-s" x="38" y="97">every call, asked about or not</text>
+    <path class="arrow" d="M239 108 L239 134 M235 132 L239 138 L243 132"/>
+    <rect class="old" x="24" y="140" width="430" height="64" rx="5"/>
+    <text class="t-lbl" x="38" y="158">OLDER DOCUMENTS</text>
+    <text class="t-b" x="38" y="177">[document: q3.pdf, not re-sent]</text>
+    <text class="t-s" x="38" y="193">a name the model cannot open</text>
+    <path class="arrow" d="M239 204 L239 230 M235 228 L239 234 L243 228"/>
+    <rect class="same" x="24" y="236" width="430" height="64" rx="5"/>
+    <text class="t-lbl" x="38" y="254">THE MODEL</text>
+    <text class="t-b" x="38" y="273">Asks the person to attach it again</text>
+    <text class="t-s" x="38" y="289">nothing to read it with</text>
+    <rect class="same" x="24" y="316" width="430" height="64" rx="5"/>
+    <text class="t-lbl" x="38" y="334">PAST THE HISTORY WINDOW</text>
+    <text class="t-b" x="38" y="353">No trace of the file</text>
+    <text class="t-s" x="38" y="369">FIX-2634&#x27;s list has no reader</text>
+  </g>
+  <g id="after">
+    <text class="t-lbl" x="486" y="30">AFTER · A FLOW WITH attachmentsCapability</text>
+    <rect class="new" x="486" y="44" width="430" height="64" rx="5"/>
+    <text class="t-lbl" x="500" y="62">HISTORY BUILD · ONE PLACE</text>
+    <text class="t-b" x="500" y="81">Earlier document: one line with its id</text>
+    <text class="t-s" x="500" y="97">in full only on the turn it was sent or read</text>
+    <path class="arrow" d="M701 108 L701 134 M697 132 L701 138 L705 132"/>
+    <rect class="new" x="486" y="140" width="430" height="64" rx="5"/>
+    <text class="t-lbl" x="500" y="158">CAPABILITY CONTEXT</text>
+    <text class="t-b" x="500" y="177">The session&#x27;s files, from FIX-2634&#x27;s list</text>
+    <text class="t-s" x="500" y="193">newest first, capped · older ones by name</text>
+    <path class="arrow" d="M701 204 L701 230 M697 228 L701 234 L705 228"/>
+    <rect class="new" x="486" y="236" width="430" height="64" rx="5"/>
+    <text class="t-lbl" x="500" y="254">THE MODEL</text>
+    <text class="t-b" x="500" y="273">readAttachment({ id } or { name })</text>
+    <text class="t-s" x="500" y="289">recorded output: the reference, never the text</text>
+    <path class="arrow" d="M701 300 L701 326 M697 324 L701 330 L705 324"/>
+    <rect class="new" x="486" y="332" width="430" height="64" rx="5"/>
+    <text class="t-lbl" x="500" y="350">THE MODEL CALL · prepareMessages</text>
+    <text class="t-b" x="500" y="369">One resolver · session check · blob store</text>
+    <text class="t-s" x="500" y="385">the text, for this call only · ER-2 holds</text>
+    <text class="t-s" x="486" y="424">Without the capability: the left column, unchanged. Images keep their window.</text>
+  </g>
+</svg>
