@@ -522,18 +522,23 @@ describe("the principal comes from the flow that runs, and nothing tells a real 
     authentication: { requireUser: false, defaultUserId: "visitor" }
   } as never)();
   const billing = defineFlow({ kind: "billing", resources: { invoice }, actions: { refund: { block: refund } } } as never)();
-  /** Signs a user in from a header, or answers the org alone; names the flow it resolved for. */
+  /** Signs a user in from a header, or answers the org alone. */
   const orgOnly = (context: { request?: Request; envelope?: { flowKind?: string } }) => {
+    const user = context.request?.headers.get("x-user");
+    return user == null ? { orgId: ORG_A } : { userId: user, orgId: ORG_A };
+  };
+  /** A misconfigured resolver: the same request is a different user at each flow. */
+  const perFlow = (context: { request?: Request; envelope?: { flowKind?: string } }) => {
     const user = context.request?.headers.get("x-user");
     return user == null ? { orgId: ORG_A } : { userId: `${user}@${context.envelope?.flowKind}`, orgId: ORG_A };
   };
-  const host = () => {
+  const host = (resolvePrincipal: typeof orgOnly = orgOnly) => {
     refunds.length = 0;
     const registry = createFlowRegistry();
     registry.register(app as never);
     registry.register(billing as never);
     const stores = createInMemoryStores();
-    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, resolvePrincipal: orgOnly } as never);
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, resolvePrincipal } as never);
     routers.push(router);
     return { router, stores };
   };
@@ -549,25 +554,42 @@ describe("the principal comes from the flow that runs, and nothing tells a real 
     expect(await stores.request.list({})).toEqual([]);
   });
 
-  it("a signed-in send runs as the principal the writer flow resolves, not the first declarer's", async () => {
+  it("a signed-in send runs the writer's action as the one caller every declaring flow resolves, and reads back its write", async () => {
     const { router, stores } = host();
     const res = await post(router, ["resources", "org", "invoice", "actions", "refund"], alice, { input: {} });
     expect(res.status, await res.clone().text()).toBe(202);
     const { request } = (await res.json()) as { request: { id: string } };
     const done = await settle(stores, request.id);
     expect(done.status, JSON.stringify(done.result)).toBe("completed");
-    expect(done.userId).toBe("alice@billing");
-    expect(refunds).toEqual(["alice@billing"]);
+    expect(done.userId).toBe("alice");
+    expect(refunds).toEqual(["alice"]);
+    expect((await get(router, ["resources", "org", "invoice"], alice)).status).toBe(200);
+  });
+
+  it("refuses a request its declaring flows resolve to different users, read and send alike, and runs nothing", async () => {
+    // Codex review 4544082020: a send stored under alice@billing and a read admitted through `app`
+    // read alice@app, so the resource could not read back its own write.
+    const { router, stores } = host(perFlow);
+    const send = await post(router, ["resources", "org", "invoice", "actions", "refund"], alice, { input: {} });
+    expect(send.status).toBe(500);
+    expect(((await send.json()) as { error: string }).error).toBe("resolver_disagreement");
+    const read = await get(router, ["resources", "org", "invoice"], alice);
+    expect(read.status).toBe(500);
+    expect(await stores.request.list({})).toEqual([]);
+    expect(refunds).toEqual([]);
+    // An unsigned caller still learns nothing: the unused key's answer.
+    const unused = await get(router, ["resources", "org", "nope"], {});
+    const anonymous = await get(router, ["resources", "org", "invoice"], {});
+    expect(anonymous.status).toBe(unused.status);
   });
 
   it("serves a named writer's request to its writer through the writer flow's sign-in: status and stream", async () => {
-    // Codex 4543542971: the record's governor picked the first declarer (`app`), so the writer's own
-    // status read resolved as alice@app and was refused.
+    // Codex 4543542971: the record's governor picked the first declarer (`app`), not the writer.
     const { router, stores } = host();
     const res = await post(router, ["resources", "org", "invoice", "actions", "refund"], alice, { input: {} });
     const { request } = (await res.json()) as { request: { id: string } };
     const done = await settle(stores, request.id);
-    expect(done.userId).toBe("alice@billing");
+    expect(done.userId).toBe("alice");
     const status = await get(router, ["billing", "requests", request.id, "status"], alice);
     expect(status.status, await status.clone().text()).toBe(200);
     const stream = await get(router, ["billing", "requests", request.id, "stream"], alice);
@@ -701,7 +723,7 @@ describe("what a direct read projects: the session snapshot's own builder", () =
 
 describe("a default write's records answer to the instance that admitted it", () => {
   // Codex review 4543985105.
-  it("serves the writer's status through that instance, even when another declarer's pin also admits the record's owner", async () => {
+  it("refuses a write its declaring instances resolve to different users, rather than let them govern it apart", async () => {
     const kind = defineFlow({
       kind: "board",
       cardinality: "collection",
@@ -720,11 +742,14 @@ describe("a default write's records answer to the instance that admitted it", ()
     const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0, resolvePrincipal: perFlow } as never);
     routers.push(router);
     const caller = { user: "b", org: ORG_A };
-    const done = await write(router, stores, "user", "pins", caller, { input: { state: { pinned: ["x"] }, version: 0 } });
-    expect(done.status, JSON.stringify(done.result)).toBe("completed");
-    expect(done.userId).toBe("b");
-    const status = await get(router, ["fsd-default-write", "requests", done.id, "status"], caller);
-    expect(status.status, await status.clone().text()).toBe(200);
+    // Before one caller per address, the write landed as b through board.b and its status read was
+    // governed through board.a (as a) and refused. Now the request has no one caller, so nothing runs.
+    const res = await post(router, ["resources", "user", "pins", "actions", "set"], caller, {
+      input: { state: { pinned: ["x"] }, version: 0 }
+    });
+    expect(res.status).toBe(500);
+    expect(((await res.json()) as { error: string }).error).toBe("resolver_disagreement");
+    expect(await stores.request.list({})).toEqual([]);
   });
 });
 
