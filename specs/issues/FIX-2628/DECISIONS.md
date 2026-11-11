@@ -80,9 +80,9 @@ It comes down to the sibling's approval: the screens are the same, so reopening 
 - **Old sessions keep their repository.** A session opened on a project before this lands is
   read once: its project's repository, if the host lists it (BP-030). Otherwise it shows no
   repository and asks. The read goes when the adapter's last caller does.
-- **The pins fallback goes.** FIX-2624's one-time read of the old user-state lists is removed,
-  as FIX-2624 says, with `user-marks.mts`, which FIX-2627 moved out of `workforce/flows/`. A
-  person who never opened the lab between the two loses old pins: a local lab.
+- **`user-marks.mts` goes**, which FIX-2627 moved out of `workforce/flows/`. There is no pins
+  fallback left to remove: FIX-2624 dropped it by owner direction (the lab's old marks are not
+  migrated; [FIX-2624](../FIX-2624/DECISIONS.md#how-it-got-here), amended 2026-11-11).
 - **No "no repository" refusal at filing.** Today the board refuses a coding task in a session
   with no project before it files it. Every session now opens on a repository (FIX-2592 ER-6),
   so the run source's refusal at run start is the one check, and the row shows it.

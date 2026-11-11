@@ -86,7 +86,7 @@ const PROJECT_TOKENS = ["setWorkProject", "needsProject", "listProjects", "creat
 const FLOW_FILES = {
   "pins.mts": "FIX-2624: a user resource on runBy \"default\"; FIX-2628 moves the declaration into the app kit",
   "dismissals.mts": "FIX-2624: the same",
-  "user-marks.mts": "the schema pins and dismissals share; FIX-2627 moves it out, FIX-2628 deletes it with FIX-2624's fallback",
+  "user-marks.mts": "the schema pins and dismissals share; FIX-2627 moves it out, FIX-2628 deletes it",
   "harness-thread.mts": "FIX-2627: merged into the one coding worker flow",
   "projects.mts": "moved out before the claim pass (FIX-2627's PR); FIX-2628 replaces it with the app kit's repositories",
 };
