@@ -3,14 +3,13 @@
  * user's conversations with one, from an app.
  *
  * Built on the one client (`createClient`), with no endpoint of its own. The
- * user's roster is read through a session of the roster flow (one per user),
- * which declares the two worker collections; a worker's sessions are listed by
- * their readonly `workerId` and created with it as initial state, which the
- * worker flow's create check confirms.
- *
- * The roster is the roster flow's roster view, read at user scope with no
+ * user's roster is the roster flow's roster view, read at user scope with no
  * session. `watchRoster` follows it through the client's shared view watch
  * (`watchView`, on `client.live`): the view's answer names the topics it read.
+ * A session of the roster flow (one per user) is still made for what writes
+ * through it and for the organization it was created in. A worker's sessions
+ * are listed by their readonly `workerId` and created with it as initial
+ * state, which the worker flow's create check confirms.
  *
  * Isomorphic: no Node built-ins, so the browser entry exports it too.
  */
@@ -265,8 +264,6 @@ const WORKER_ONLY: ReadonlySet<string> = new Set([WORKER_ID_STATE_KEY]);
 const ACTION_POLL_MS = 100;
 const ACTION_TIMEOUT_MS = 30_000;
 
-/** The storage roots of the two collections a roster is read from. */
-
 /**
  * Build a workforce client over the one client, as that client's user.
  *
@@ -280,7 +277,7 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
    * by listing, and created without an id when there is none: the client
    * can't derive an id that includes the organization before it knows which
    * one the server binds it to. Two first calls at once may create two; either
-   * reads the same roster.
+   * writes the same roster.
    */
   let rosterSession: Promise<{ id: string; orgId: string }> | undefined;
   const roster = (): Promise<{ id: string; orgId: string }> =>

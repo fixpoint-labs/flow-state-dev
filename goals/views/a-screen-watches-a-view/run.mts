@@ -162,6 +162,11 @@ async function legacyRoster(client: Client): Promise<Array<{ id: string; flow: s
   return [...own.map((item) => entry(item, false)).filter((e) => !standardIds.has(e.id)), ...standard.map((item) => entry(item, true))];
 }
 
+// Leg a's claim is "the same workers, with no session": which workers, on which
+// flow, standard or not. Full row parity (names, teams, settings, the edited
+// copy's projection) is out of its scope: workforce's roster tests
+// (worker-roster.test.ts, roster-shown-settings.test.ts) hold the row contents,
+// read through the view.
 const shape = (entries: ReadonlyArray<{ id: string; flow: string; standard: boolean }>) =>
   entries.map(({ id, flow, standard }) => `${id}:${flow}:${standard}`).sort();
 
