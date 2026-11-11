@@ -162,7 +162,7 @@ answer once.
   lookups and 7 reads by action** (2026-11-11, `main` at `f0b34c52`, [`poc/helper-inventory/`](poc/helper-inventory/README.md)),
   plus 31 lines of the helpers themselves and 22 that pass their ids along. The checker
   classifies every line the search finds and fails on one it can't; its planted control
-  (`POC_PLANT=1`) fails as it must. Re-run it before D1's PR: it should find only *unrelated*.
+  (`POC_PLANT=1`) fails as it must. Before D1's PR, run it with `POC_EXPECT=gone`, which passes only when every hit is *unrelated* (today it fails, listing the 86 helper lines that remain).
 
 ## Analysis
 

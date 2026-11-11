@@ -7,6 +7,7 @@ default build, test and lint run: nothing under `specs/` is in a package's vites
 ```bash
 bash specs/issues/FIX-2624/poc/helper-inventory/run.sh              # PASS on main
 POC_PLANT=1 bash specs/issues/FIX-2624/poc/helper-inventory/run.sh  # the planted control: must FAIL
+POC_EXPECT=gone bash specs/issues/FIX-2624/poc/helper-inventory/run.sh  # after deletion: passes only when every hit is unrelated (fails today)
 ```
 
 ## The question

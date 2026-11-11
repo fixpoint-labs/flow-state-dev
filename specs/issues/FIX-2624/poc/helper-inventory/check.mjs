@@ -111,10 +111,18 @@ if (unclassified.length > 0) {
   console.log(`\nFAIL: ${unclassified.length} unclassified use(s):`);
   for (const h of unclassified) console.log(`  ${h.file}:${h.line}  ${h.text.trim()}`);
 }
-if (stale.length > 0) {
+// POC_EXPECT=gone is the after-deletion check: rules that match nothing are expected then, and
+// any hit outside `unrelated` means a helper use survived.
+const expectGone = process.env.POC_EXPECT === "gone";
+const live = Object.entries(byClass).filter(([c, hits]) => c !== "unrelated" && hits.length > 0);
+if (expectGone && live.length > 0) {
+  failed = true;
+  console.log(`\nFAIL: helper uses remain: ${live.map(([c, h]) => `${c}=${h.length}`).join(", ")}`);
+}
+if (!expectGone && stale.length > 0) {
   failed = true;
   console.log(`\nFAIL: ${stale.length} stale rule(s), matching nothing:`);
   for (const [prefix, re] of stale) console.log(`  ${prefix}  ${re}`);
 }
 if (failed) process.exit(1);
-console.log("\nPASS: every use classified, every rule still matches.");
+console.log(expectGone ? "\nPASS: no helper use remains; every hit is unrelated." : "\nPASS: every use classified, every rule still matches.");
