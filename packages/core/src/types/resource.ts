@@ -741,6 +741,19 @@ function validateRunBy(
         `Add client: {} (or expose / exclude), or drop runBy and write it from a server flow.`
     );
   }
+  // A client reads a single resource's state only through expose or exclude
+  // (or a computed data) — the session snapshot carries none otherwise — and
+  // a client writes it at what it read: with nothing to read, an update would
+  // write back nothing. A collection reads its entries through
+  // `client.state.read` instead, checked where it is defined.
+  const projects =
+    Array.isArray(config.client.expose) || Array.isArray(config.client.exclude) || config.client.data !== undefined;
+  if (config.pattern === undefined && !projects) {
+    throw new Error(
+      `${definer} resource "${name}" sets runBy with a client config that projects no state: a client reads none ` +
+        `of it, so it has nothing to write back. Add expose or exclude.`
+    );
+  }
   if (runBy !== "default") return;
   if (config.writable === false) {
     throw new Error(
@@ -752,16 +765,6 @@ function validateRunBy(
     throw new Error(
       `${definer} resource "${name}" sets runBy: "default" with a computed client.data: the default write flow can't ` +
         `write back through a computed projection. Use expose or exclude, or write it through runBy: { flow }.`
-    );
-  }
-  // A client reads a single resource's state only through expose or exclude
-  // (the session snapshot carries none otherwise), and the default write flow
-  // writes only what the client reads. A collection reads its entries through
-  // `client.state.read` instead, checked where it is defined.
-  if (config.pattern === undefined && !Array.isArray(config.client.expose) && !Array.isArray(config.client.exclude)) {
-    throw new Error(
-      `${definer} resource "${name}" sets runBy: "default" with a client config that projects no state: the client ` +
-        `reads none of it, so the default write flow could write none of it. Add expose or exclude.`
     );
   }
   if (config.scope === "org" && config.canWrite === undefined) {

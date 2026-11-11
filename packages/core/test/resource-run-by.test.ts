@@ -38,7 +38,7 @@ describe("runBy on a resource", () => {
   });
 
   it("leaves an org resource its own flow writes to that flow's rules", () => {
-    const viaFlow = defineResource({ ref: "plan", scope: "org", stateSchema: pinsSchema, client: {}, runBy: { flow: "planner" } });
+    const viaFlow = defineResource({ ref: "plan", scope: "org", stateSchema: pinsSchema, client: { expose: ["pinned"] }, runBy: { flow: "planner" } });
     expect(viaFlow.runBy).toEqual({ flow: "planner" });
   });
 
@@ -90,7 +90,7 @@ describe("runBy: \"default\" on a read-only resource", () => {
   it("refuses writable: false: the default write flow would write it anyway", () => {
     // Codex P2 4543388759: a read-only resource on the default write flow took a client write.
     expect(() =>
-      defineResource({ ref: "locked", scope: "user", stateSchema: pinsSchema, client: {}, writable: false, runBy: "default" })
+      defineResource({ ref: "locked", scope: "user", stateSchema: pinsSchema, client: { expose: ["pinned"] }, writable: false, runBy: "default" })
     ).toThrow(/"locked".*writable: false/);
   });
 });
@@ -101,5 +101,14 @@ describe("runBy: \"default\" needs a state projection", () => {
     expect(() => defineResource({ ref: "blind", scope: "user", stateSchema: pinsSchema, client: {}, runBy: "default" })).toThrow(
       /"blind".*expose or exclude/
     );
+  });
+});
+
+describe("runBy: { flow } needs a state projection too", () => {
+  it("refuses a client config that projects no state: a client's update would read nothing and write it back", () => {
+    // Gitar review 4543814746.
+    expect(() =>
+      defineResource({ ref: "blindFlow", scope: "org", stateSchema: pinsSchema, client: {}, runBy: { flow: "planner" } })
+    ).toThrow(/"blindFlow".*expose or exclude/);
   });
 });

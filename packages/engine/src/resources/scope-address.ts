@@ -16,6 +16,7 @@
  * later change.
  */
 import type { FlowInstance, JsonObject, JsonValue, ResourceConfig } from "@flow-state-dev/core/types";
+import { hasClientProjection } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { PrincipalResolutionError } from "../transports/errors";
@@ -137,7 +138,9 @@ export function resolveAddress(
   // The declarations agree, so any of them answers; the one that governs is
   // the first `governs` admits (the caller's or the record owner's instance).
   const governing = shared.find((entry) => governs(entry.flow));
-  if (first.config.client === undefined || governing === undefined) {
+  // A single resource the session snapshot projects no state for (no client
+  // config, or a content-only one) has nothing a direct read could serve.
+  if (first.config.client === undefined || !hasClientProjection(first.config.client) || governing === undefined) {
     return { refused: { status: 404, code: "unknown_resource", message: `Unknown resource "${key}" at ${scope} scope` } };
   }
   return { scope, key, flow: governing.flow, config: first.config };

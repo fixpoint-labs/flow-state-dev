@@ -424,6 +424,14 @@ export interface FlowStateRuntime {
   runtimeConfig: RuntimeConfig;
   /** Interactive-harness defaults forwarded from `createFlowState` options. */
   chat?: { default?: string };
+  // FIX-2624.
+  /**
+   * The host-level resolver the router's host is given (`createFlowState`'s
+   * `resolvePrincipal`, else the development resolver). A worker hands it to
+   * the built-in flows it holds, so the default write flow decides whether
+   * two declarations agree exactly as the host does.
+   */
+  resolvePrincipal: NonNullable<CreateFlowApiRouterOptions["resolvePrincipal"]>;
 }
 
 /**
