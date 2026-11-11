@@ -17,7 +17,10 @@
  * Each row's runs share one session, and each service's routings another, so
  * a busy thread doesn't store a new session per event.
  *
- * Not a `RequestHost` verb: nothing a running request holds can start one.
+ * Not a `RequestHost` verb: nothing a running request holds can start one,
+ * except through the dispatch seam's one service route
+ * ({@link createServiceRouteOperation}, FIX-2630), which fires only the
+ * dispatching request's own user's runs.
  */
 import type { ExecutionResult } from "../execution/types";
 import { resolveSharedUserCellKey, tenantMatches } from "../stores/scope-keys";
@@ -37,8 +40,8 @@ export interface OwnerRun {
   readonly rowKey: string;
 }
 
-/** Why a run did not start. */
-export type OwnerRunRefusal = "no_resource" | "other_org" | "other_tenant" | "disabled";
+/** Why a run did not start. `other_user`: the routing fires only one user's runs, and this one names another (FIX-2630 Q1). */
+export type OwnerRunRefusal = "no_resource" | "other_org" | "other_tenant" | "disabled" | "other_user";
 
 /** What a fire came to. */
 export type OwnerRunFired =
@@ -93,6 +96,9 @@ export type MalformedOwnerRun = { readonly value: unknown; readonly reason: stri
 
 /** What {@link routeServiceEvent} came to: the service entry's result, and each run it named. */
 export interface RoutedServiceEvent {
+  /** The routing request, and the session it ran in. */
+  readonly requestId: string;
+  readonly sessionId: string;
   readonly output: unknown;
   readonly error?: unknown;
   /**
@@ -149,6 +155,8 @@ async function fireOne(host: Pick<InboundTransportHost, "dispatch" | "stores">, 
  *
  * @param service.principal The service's own identity in the org (`service:github`). It reads no user's cell.
  * @param options.concurrency The most runs started at once: 8 by default.
+ * @param options.owner Fire only the runs whose owner is this user; any other is refused `other_user` and never fired
+ *   (a publish's routing, which reaches only its sender's own user: FIX-2630 Q1).
  */
 export async function routeServiceEvent(
   host: Pick<InboundTransportHost, "dispatch" | "stores">,
@@ -158,21 +166,23 @@ export async function routeServiceEvent(
     readonly input: unknown;
     readonly principal: InternalPrincipal;
   },
-  options: { readonly concurrency?: number } = {}
+  options: { readonly concurrency?: number; readonly owner?: string } = {}
 ): Promise<RoutedServiceEvent> {
   const { userId, orgId } = service.principal;
+  const sessionId = `service-route:${[orgId, userId, service.flowKind].map(encodeURIComponent).join(":")}`;
   const handle = dispatchInternalAs(host, {
     flowKind: service.flowKind,
     entry: service.entry,
     input: service.input,
     as: service.principal,
-    sessionId: `service-route:${[orgId, userId, service.flowKind].map(encodeURIComponent).join(":")}`,
+    sessionId,
     metadata: { serviceRoute: { entry: service.entry } }
   });
   const result = await handle.finished;
-  if (result.error !== undefined) return { output: result.output, error: result.error, ownerRuns: [], malformed: [] };
+  const routing = { requestId: handle.requestId, sessionId };
+  if (result.error !== undefined) return { ...routing, output: result.output, error: result.error, ownerRuns: [], malformed: [] };
   const named = (result.output as { ownerRuns?: unknown } | undefined)?.ownerRuns;
-  if (!Array.isArray(named)) return { output: result.output, incomplete: true, ownerRuns: [], malformed: [] };
+  if (!Array.isArray(named)) return { ...routing, output: result.output, incomplete: true, ownerRuns: [], malformed: [] };
   const runs: OwnerRun[] = [];
   const malformed: MalformedOwnerRun[] = [];
   for (const value of named) {
@@ -183,9 +193,58 @@ export async function routeServiceEvent(
   const ownerRuns: RoutedOwnerRun[] = new Array(runs.length);
   let next = 0;
   const worker = async () => {
-    for (let i = next++; i < runs.length; i = next++) ownerRuns[i] = await fireOne(host, runs[i]!);
+    for (let i = next++; i < runs.length; i = next++) {
+      const run = runs[i]!;
+      ownerRuns[i] = options.owner !== undefined && run.owner.userId !== options.owner ? { run, refused: "other_user" } : await fireOne(host, run);
+    }
   };
   const width = Math.max(1, Math.min(options.concurrency ?? DEFAULT_OWNER_RUN_CONCURRENCY, runs.length));
   await Promise.all(Array.from({ length: width }, worker));
-  return { output: result.output, ownerRuns, malformed };
+  return { ...routing, output: result.output, ownerRuns, malformed };
+}
+
+// FIX-2630 D1, Q1.
+/** One dispatch to a service route, as the seam resolved it: the sender's identity, never the payload's. */
+export interface ServiceRouteDispatch {
+  /** The service flow's exact address, and its routing entry. */
+  readonly flowKind: string;
+  readonly entry: string;
+  /** The provider the route runs as: `service:<provider>`. */
+  readonly provider: string;
+  /** The event. Its `sender` is replaced with {@link sender}'s session. */
+  readonly input: unknown;
+  /** The dispatching request's server-derived identity. */
+  readonly sender: { readonly userId: string; readonly orgId: string; readonly sessionId: string };
+}
+
+/** What a service route came to: routed (its runs fired or refused), or not, and why. */
+export type ServiceRouted = { readonly ok: true; readonly requestId: string; readonly sessionId: string } | { readonly ok: false; readonly detail: string };
+
+/** The host operation the dispatch seam hands a service route to. */
+export type ServiceRouteOperation = (route: ServiceRouteDispatch) => Promise<ServiceRouted>;
+
+/**
+ * The seam's service route, over `host`: the event, its `sender` stamped as
+ * the dispatching session (role `member`, its own name kept), routed through
+ * {@link routeServiceEvent} as `service:<provider>` in the sender's org, with
+ * only the sender's own user's runs fired (own-user first, FIX-2630 Q1).
+ * Resolves once every run is fired or refused. A routing that failed or never
+ * finished is not routed.
+ */
+export function createServiceRouteOperation(host: Pick<InboundTransportHost, "dispatch" | "stores">): ServiceRouteOperation {
+  return async (route) => {
+    const event = typeof route.input === "object" && route.input !== null ? (route.input as Record<string, unknown>) : {};
+    const named = (event.sender as { name?: unknown } | undefined)?.name;
+    const input = { ...event, sender: { id: route.sender.sessionId, name: typeof named === "string" ? named : "", role: "member" } };
+    const routed = await routeServiceEvent(
+      host,
+      { flowKind: route.flowKind, entry: route.entry, input, principal: { userId: `service:${route.provider}`, orgId: route.sender.orgId } },
+      { owner: route.sender.userId }
+    );
+    if (routed.error !== undefined) {
+      return { ok: false, detail: `the routing failed: ${routed.error instanceof Error ? routed.error.message : JSON.stringify(routed.error)}` };
+    }
+    if (routed.incomplete === true) return { ok: false, detail: "the routing stopped before it finished" };
+    return { ok: true, requestId: routed.requestId, sessionId: routed.sessionId };
+  };
 }

@@ -45,6 +45,7 @@ import {
   type DispatchOperation,
   type DispatchedRun
 } from "../context/dispatch-operation";
+import { createServiceRouteOperation } from "../durability/owner-runs";
 import type { InboundTransportHost } from "../transports/types";
 import type { StoreRegistry } from "../stores/types";
 import { withResourceIndexWriter } from "../resources/resource-indexes";
@@ -1104,6 +1105,11 @@ class InternalFlowState<TSettings extends object>
   #installDispatchOperation(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
     const requestHost = runtimeConfig.requestHost;
     if (requestHost === undefined) return;
+    // FIX-2630: the seam's service route, over the same host, closed with admission as a dispatch is.
+    requestHost.serviceRoute ??= (route) => {
+      if (this.#disposed) return Promise.resolve({ ok: false, detail: "the runtime is shutting down and is no longer routing work" });
+      return createServiceRouteOperation(this.#hostForRequestHostOperations(runtimeConfig, stores))(route);
+    };
     if (requestHost.dispatchOperation !== undefined) return;
 
     let operation: DispatchOperation | undefined;
