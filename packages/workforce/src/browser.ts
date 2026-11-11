@@ -27,6 +27,8 @@ export {
   type WorkforceClient,
   type WorkforceClientSource
 } from "./workers/client";
+export { rosterView } from "./workers/roster-view-ref";
+export type { RosterView } from "./workers/roster-view";
 export {
   deriveWorkerSessionId,
   isDerivedWorkerSessionId,

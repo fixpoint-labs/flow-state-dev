@@ -143,6 +143,10 @@ export const TASK_ID_STATE_KEY = "taskId";
  */
 export const ROSTER_FLOW = "workforce-roster";
 
+// FIX-2623.
+/** The roster view's name on the roster flow (`defineRosterView`). */
+export const ROSTER_VIEW = "roster";
+
 // FIX-1802.
 /**
  * The session-state field that names the flow a task session's filer runs

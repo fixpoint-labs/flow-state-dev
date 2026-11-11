@@ -26,7 +26,8 @@ import { defineWorkerInventoryCollection } from "../inventory/collections";
 import { workerMessagesResources } from "../messages/message-log";
 import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
-import { ROSTER_FLOW } from "./keys";
+import { ROSTER_FLOW, ROSTER_VIEW } from "./keys";
+import { defineRosterView } from "./roster-view";
 
 /**
  * Define the roster flow over `installation`. Register what it returns.
@@ -54,6 +55,8 @@ export function defineWorkerRosterFlow(
     },
     ...(routines === undefined ? {} : { schedules: routines.schedules }),
     ...(routines?.seed === undefined ? {} : { request: { onStarted: routines.seed } }),
-    actions
+    actions,
+    // FIX-2623: the roster, answered at user scope with no session.
+    views: { [ROSTER_VIEW]: defineRosterView(installation) }
   });
 }
