@@ -227,6 +227,13 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly doneTransientIds = new Set<string>();
   /** Items dropped from `itemsById`; keeps `getItemCount()` monotonic. */
   private evictedItemCount = 0;
+  /**
+   * Per id, the token of its latest `item.added` / `item.done` emission. An
+   * `item.updated` patch does not bump it, so it never hides a completion
+   * from `retainDoneItem`.
+   */
+  private readonly emissionTokens = new Map<string, number>();
+  private nextEmissionToken = 0;
   private onLogEvent?: (eventType: string, detail: Record<string, unknown>) => void;
   private droppedBufferedEvents = 0;
   private readonly eventObservers: Array<(event: RequestStreamEventWithId) => void> = [];
@@ -435,6 +442,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       applyItemSeam(this.internalSeams, item, "item.added")
     );
     this.itemsById.set(interceptedItem.id, interceptedItem);
+    this.emissionTokens.set(interceptedItem.id, ++this.nextEmissionToken);
     // A re-added item (keyed replace-on-emit) is in progress again.
     this.doneTransientIds.delete(interceptedItem.id);
     this.fanoutItemEvent(interceptedItem, "added");
@@ -465,13 +473,15 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       applyItemSeam(this.internalSeams, item, "item.done")
     );
     this.itemsById.set(interceptedItem.id, interceptedItem);
+    const token = ++this.nextEmissionToken;
+    this.emissionTokens.set(interceptedItem.id, token);
     this.fanoutItemEvent(interceptedItem, "done");
     const event = await this.appendEvent<ItemDoneEvent>({
       type: "item.done",
       item: asWireItem(interceptedItem)
     });
     this.itemHooks?.onItemDone?.(interceptedItem);
-    this.retainDoneItem(interceptedItem);
+    this.retainDoneItem(interceptedItem, token);
     return event;
   }
 
@@ -985,12 +995,14 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * are never dropped. Runs after the item's events are delivered and logged,
    * so only the in-memory view is affected.
    *
-   * `emitItemDone` awaits its event before calling this, and a newer emission
-   * may have replaced the same (keyed) id meanwhile. That newer emission owns
-   * the id's bookkeeping, so a stale completion changes nothing.
+   * `emitItemDone` awaits its event before calling this, and a newer
+   * `item.added` / `item.done` may have taken the same (keyed) id meanwhile.
+   * That emission owns the id's bookkeeping, so a stale completion (`token`
+   * no longer the id's latest) changes nothing. An `item.updated` patch in
+   * between does not count.
    */
-  private retainDoneItem(item: RuntimeItem): void {
-    if (this.itemsById.get(item.id) !== item) return;
+  private retainDoneItem(item: RuntimeItem, token: number): void {
+    if (this.emissionTokens.get(item.id) !== token) return;
     this.doneTransientIds.delete(item.id);
     if (item.transient !== true) return;
     this.doneTransientIds.add(item.id);
@@ -998,6 +1010,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     const oldest = this.doneTransientIds.values().next().value as string;
     this.doneTransientIds.delete(oldest);
     this.itemsById.delete(oldest);
+    this.emissionTokens.delete(oldest);
     this.evictedItemCount += 1;
   }
 

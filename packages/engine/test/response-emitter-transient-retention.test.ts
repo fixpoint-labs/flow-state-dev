@@ -197,4 +197,35 @@ describe("ResponseEmitter done-transient retention", () => {
     const kept = emitter.getItems().find((item) => item.id === keyed);
     expect(kept?.transient).toBe(false);
   });
+  it("still evicts a done transient item that was updated while its completion was awaiting", async () => {
+    // An `item.updated` is a patch, not a replacement: it must not take the
+    // item out of eviction, or it would stay in memory for good.
+    let release!: () => void;
+    let holdNext = true;
+    const emitter = createResponseEmitter({
+      requestId: "req_test",
+      maxBufferSize: 1,
+      onEvent: (event) => {
+        if (holdNext && event.type === "item.done") {
+          holdNext = false;
+          return new Promise<void>((resolve) => (release = resolve));
+        }
+      }
+    });
+
+    const patched = "item_t_patched";
+    await emitter.emitItemAdded(transientItem(0, patched));
+    const done = emitter.emitItemDone(transientItem(0, patched));
+    await emitter.emitItemUpdated(patched, { data: { n: 99 } });
+    release();
+    await done;
+
+    for (let i = 1; i <= 3; i += 1) {
+      await emitter.emitItemAdded(transientItem(i));
+      await emitter.emitItemDone(transientItem(i));
+    }
+
+    expect(emitter.getItems().some((item) => item.id === patched)).toBe(false);
+    expect(emitter.getItems()).toHaveLength(1);
+  });
 });
