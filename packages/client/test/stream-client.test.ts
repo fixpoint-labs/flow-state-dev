@@ -681,6 +681,28 @@ describe("request.stream — a stream that ends before the request does", () => 
     }
   });
 
+  it("keeps following a quiet live request whose connections carry only heartbeats", async () => {
+    // A long tool step emits no events; the server pings, and a host that caps
+    // response length ends each connection. That is a live request, not an
+    // empty answer, so it must not use up the give-up budget.
+    const bodies = [
+      ...Array.from({ length: 7 }, () => ": ping\n\n"),
+      frame(8, "request.completed", { status: "completed" })
+    ];
+    const fetcher = vi.fn<ClientFetch>(async () => sse(bodies.shift() ?? ""));
+    const onRequestStatus = vi.fn();
+    const onError = vi.fn();
+
+    const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", startingAfter: 7, fetcher, onRequestStatus, onError });
+    await vi.waitFor(() => expect(onRequestStatus).toHaveBeenCalled());
+    await flushSSE();
+
+    expect(fetcher).toHaveBeenCalledTimes(8);
+    expect(onRequestStatus).toHaveBeenCalledWith(expect.objectContaining({ type: "request.completed" }));
+    expect(onError).not.toHaveBeenCalled();
+    handle.close();
+  });
+
   it("does not reconnect once closed locally", async () => {
     const fetcher = vi.fn<ClientFetch>(async () => sse(frame(1, "request.created", { status: "in_progress" })));
     const handle = requestStream({ url: "/api/flows/demo/requests/req_1/stream", fetcher });

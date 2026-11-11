@@ -185,10 +185,10 @@ function endsRequestStream(event: RequestStreamEvent): boolean {
  * The server can end the stream before the request ends, with no terminal
  * status: it cuts off a reader that falls too far behind, and a host can end
  * a long response. The stream then resumes after the last event it delivered:
- * at once after a connection that delivered something, otherwise after the
- * client's backoff, and it gives up with `onError` after
- * {@link REQUEST_STREAM_MAX_EMPTY_CONNECTIONS} connections in a row that
- * delivered nothing. An error answer (a 404 for a request that is not there,
+ * at once after a connection that delivered something or carried a heartbeat
+ * (the request was alive), otherwise after the client's backoff, and it gives
+ * up with `onError` after {@link REQUEST_STREAM_MAX_EMPTY_CONNECTIONS}
+ * connections in a row that delivered nothing and carried no heartbeat. An error answer (a 404 for a request that is not there,
  * say) or a failed connection is reported with `onError` and not retried.
  */
 export function openRequestStream(
@@ -213,6 +213,10 @@ export function openRequestStream(
 
   const connect = async (): Promise<void> => {
     let delivered = false;
+    // A heartbeat means the server was following a live request on this
+    // connection: a host that caps response length ending it is not an empty
+    // answer, so it does not use up the give-up budget.
+    let alive = false;
     const failed = await consumeSSE({
       fetcher,
       url: target.url(startingAfter),
@@ -229,6 +233,7 @@ export function openRequestStream(
         }
 
         if (frame.comment === true) {
+          alive = true;
           options.onHeartbeat?.();
           return;
         }
@@ -268,7 +273,7 @@ export function openRequestStream(
     });
 
     if (closed || ended || failed) return;
-    if (delivered) {
+    if (delivered || alive) {
       emptyConnections = 0;
       void connect();
       return;
