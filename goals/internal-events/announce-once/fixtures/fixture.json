@@ -1,0 +1,41 @@
+{
+  "orgs": { "alice": "acme", "bob": "acme", "carol": "globex" },
+  "budget": 6,
+  "topics": {
+    "deploy.finished": { "kinds": ["succeeded", "failed"], "data": ["service", "sha"], "description": "A deploy ended." },
+    "report.ready": { "kinds": ["weekly"], "data": ["url"], "description": "A report is ready to read." },
+    "ring.ping": { "kinds": ["ping"], "description": "One half of a ring." },
+    "ring.pong": { "kinds": ["pong"], "description": "The other half of a ring." },
+    "fan.out": { "kinds": ["passed"], "description": "Passed on by whoever hears it." }
+  },
+  "publisher": { "label": "pub", "user": "alice", "worker": "eng.watcher" },
+  "routines": [
+    { "label": "pub", "user": "alice", "topic": "deploy.finished" },
+    { "label": "r-failed", "user": "alice", "topic": "deploy.finished", "kinds": ["failed"] },
+    { "label": "r-report", "user": "alice", "topic": "report.ready" },
+    { "label": "r-teammate", "user": "bob", "topic": "deploy.finished" },
+    { "label": "r-other-org", "user": "carol", "topic": "deploy.finished" }
+  ],
+  "publishes": [
+    { "topic": "deploy.finished", "kind": "failed", "title": "api deploy failed", "text": "The api deploy failed at migrate.", "data": { "service": "api", "sha": "4f2c" } },
+    { "topic": "deploy.finished", "kind": "succeeded", "title": "web deploy ok", "text": "The web deploy finished.", "data": { "service": "web", "sha": "9a1b" } },
+    { "topic": "report.ready", "kind": "weekly", "title": "weekly report", "text": "This week's numbers are in.", "data": { "url": "https://reports.example/w45" } },
+    { "topic": "deploy.finished", "kind": "failed", "title": "api deploy failed again", "text": "The retry failed too.", "data": { "service": "api", "sha": "77de" } }
+  ],
+  "undeclared": { "topic": "deploy.finshed", "kind": "failed", "title": "typo", "text": "A misspelt topic." },
+  "ring": {
+    "start": { "topic": "ring.ping", "kind": "ping", "title": "ping", "text": "Start the ring." },
+    "routines": [
+      { "label": "ring-a", "user": "alice", "topic": "ring.ping", "passes": { "topic": "ring.pong", "kind": "pong" } },
+      { "label": "ring-b", "user": "alice", "topic": "ring.pong", "passes": { "topic": "ring.ping", "kind": "ping" } }
+    ]
+  },
+  "fan": {
+    "start": { "topic": "fan.out", "kind": "passed", "title": "fan out", "text": "Pass this on." },
+    "routines": [
+      { "label": "fan-1", "user": "alice", "topic": "fan.out", "passes": { "topic": "fan.out", "kind": "passed" } },
+      { "label": "fan-2", "user": "alice", "topic": "fan.out", "passes": { "topic": "fan.out", "kind": "passed" } },
+      { "label": "fan-3", "user": "alice", "topic": "fan.out", "passes": { "topic": "fan.out", "kind": "passed" } }
+    ]
+  }
+}
