@@ -23,7 +23,7 @@ export {
   type InternalServiceFlow,
   type InternalServiceFlowOptions
 } from "./internal-events/service-flow";
-export { publishEventInputSchema, type PublishEventInput, type PublishOutcome } from "./internal-events/publish";
+export { type PublishOutcome } from "./internal-events/publish";
 export { type InternalTopic, type InternalTopics } from "./internal-events/topics";
 export {
   DEFAULT_SUBSCRIPTION_CAP_PER_HOUR,

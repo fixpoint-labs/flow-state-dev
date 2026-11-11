@@ -41,7 +41,7 @@ const PUBLISH_EVENT_TOOL = "publishEvent";
 const TURN_PUBLISHED_STATE = "workforcePublished";
 
 /** What a publish takes. Strict: no sender, no recipient, no hop. */
-export const publishEventInputSchema = z
+const publishEventInputSchema = z
   .object({
     topic: z.string().min(1).describe("One of the declared topics, as the list below names it."),
     kind: z.string().min(1).describe("One of the topic's kinds."),
@@ -51,7 +51,7 @@ export const publishEventInputSchema = z
   })
   .strict();
 
-export type PublishEventInput = z.infer<typeof publishEventInputSchema>;
+type PublishEventInput = z.infer<typeof publishEventInputSchema>;
 
 /** What a publish came to: the event's id, or why nothing was published. Never who heard. */
 export type PublishOutcome = { readonly published: string } | { readonly refused: string };
