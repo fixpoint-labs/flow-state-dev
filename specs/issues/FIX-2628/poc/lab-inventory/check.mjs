@@ -134,7 +134,8 @@ function check({ files, flows }, expect) {
       for (const raw of m[2].split(",")) {
         const name = raw.replace(/^\s*type\s+/, "").split(/\s+as\s+/)[0].trim();
         if (name === "") continue;
-        if (!(name in FATES)) problems.push(`no fate: ${name} (${rel})`);
+        // After the move the lab imports new kit pieces; only the project concept may not remain.
+        if (!(name in FATES) && expect !== "gone") problems.push(`no fate: ${name} (${rel})`);
         if (!seen.has(name)) seen.set(name, new Set());
         seen.get(name).add(rel);
       }
@@ -145,7 +146,8 @@ function check({ files, flows }, expect) {
       const owner = [...text.matchAll(IMPORT)].find((i) => m.index > i.index && m.index < i.index + i[0].length);
       if (owner === undefined) loose.push(text.slice(Math.max(0, m.index - 40), m.index + m[0].length + 1).replace(/\s+/g, " "));
     }
-    if (loose.length !== (NON_IMPORT[rel]?.count ?? 0)) problems.push(`unparsed workforce import: ${rel}: ${loose.join(" | ")}`);
+    const allowed = NON_IMPORT[rel]?.count ?? 0;
+    if (expect === "gone" ? loose.length > allowed : loose.length !== allowed) problems.push(`unparsed workforce import: ${rel}: ${loose.join(" | ")}`);
   }
   for (const name of Object.keys(FATES)) if (!seen.has(name) && expect !== "gone") problems.push(`stale fate row: ${name} is imported nowhere`);
   for (const name of seen.keys()) if (name in FATES) byFate[FATES[name]] += 1;
@@ -243,6 +245,11 @@ function controls() {
   const gone = check(base, "gone");
   if (gone.problems.length === 0) throw new Error("control expect-gone: today's main passed POC_EXPECT=gone, it must fail");
   console.log(`control expect-gone on today's main: fails as it must (${gone.problems.length} problems, first: ${gone.problems[0]})`);
+  // The done state must be reachable: no adapter, no workforce/flows/, new kit imports and no project tokens.
+  const after = { files: new Map([[`${LAB}/src/lab.ts`, 'import { workforce, useTasks } from "@flow-state-dev/workforce";\n']]), flows: [] };
+  const done = check(after, "gone");
+  if (done.problems.length > 0) throw new Error(`control expect-gone after-state: a correct after-state failed: ${done.problems.join("; ")}`);
+  console.log("control expect-gone after-state: passes as it must (new kit imports allowed)");
 }
 
 if (process.argv.includes("--controls")) {

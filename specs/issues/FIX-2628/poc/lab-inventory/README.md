@@ -53,6 +53,10 @@ flows and a 158-line host. Today: 1,642, 503 in five, 160.
 4. Deleting `projects.mts` stops it (`stale fate row`), so the table can't rot.
 5. `POC_EXPECT=gone` fails on today's `main`: 9 project imports, 54 project tokens, the
    adapter, and five files in `workforce/flows/`.
+6. A correct after-state passes `POC_EXPECT=gone`: a lab with no adapter, no `workforce/flows/`
+   and new kit imports (`workforce`, `useTasks`). In gone mode an identifier with no fate is
+   allowed and `NON_IMPORT` counts are maximums; only the project concept, project tokens, the
+   adapter and `workforce/flows/` fail it.
 
 ## What it does not cover
 
