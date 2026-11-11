@@ -42,6 +42,17 @@ describe("bare-block entries", () => {
     expect(flow().reads?.view).toEqual({ block: plain });
   });
 
+  it("accepts a bare block as an instance's action override", () => {
+    const flow = defineFlow({ kind: "bare-override", actions: { chat } });
+    const actions: Record<string, ActionConfig> = flow({ actions: { extra: plain } }).actions;
+    expect(actions.extra).toEqual({ block: plain });
+  });
+
+  it("still mints a definition that carries no actions map", () => {
+    const flow = defineFlow({ kind: "no-actions-map" } as never);
+    expect(Object.keys((flow as unknown as () => { actions: object })().actions)).toEqual([]);
+  });
+
   it("still refuses an entry that is neither a block nor `{ block }`", () => {
     expect(() =>
       defineFlow({ kind: "bad-read", actions: {}, reads: { view: {} as never } })

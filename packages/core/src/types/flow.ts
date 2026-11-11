@@ -327,13 +327,14 @@ export type ActionEntry<TBlock extends BlockDefinition = BlockDefinition> =
   | TBlock
   | ActionConfig<TBlock>;
 
+/** One entry as `defineFlow` publishes it: a bare block as `{ block }`. Distributes over an optional entry's `undefined`. */
+type NormalizedEntry<TEntry> = TEntry extends BlockDefinition
+  ? ActionConfig<TEntry>
+  : Extract<TEntry, ActionConfig | undefined>;
+
 /** An `actions` map as `defineFlow` publishes it: each bare block as `{ block }`. */
 export type NormalizedActions<TActions extends Record<string, ActionEntry>> = {
-  [K in keyof TActions]: TActions[K] extends BlockDefinition
-    ? ActionConfig<TActions[K]>
-    : TActions[K] extends ActionConfig
-      ? TActions[K]
-      : never;
+  [K in keyof TActions]: NormalizedEntry<TActions[K]>;
 };
 
 // FIX-2286.
@@ -786,7 +787,11 @@ export type FlowInstanceOptions<
   config?: FlowConfigInput<TConfigSchema>;
   requireUser?: boolean;
   authentication?: AuthenticationConfig;
-  actions?: Partial<TActions> & Record<string, ActionConfig>;
+  /**
+   * Per-instance action overrides, merged over the definition's. Each is a
+   * block, or `{ block, ... }`; an existing action keeps its block's type.
+   */
+  actions?: { [K in keyof TActions]?: TActions[K] | TActions[K]["block"] } & Record<string, ActionEntry>;
   session?: TSession;
   request?: TRequest;
   user?: TUser;

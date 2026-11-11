@@ -21,7 +21,7 @@
  * an app that lists every flow's sessions filters this flow kind out.
  */
 import { defineFlow } from "@flow-state-dev/core";
-import type { ActionConfig, BlockDefinition, SchedulesConfig } from "@flow-state-dev/core/types";
+import type { ActionEntry, BlockDefinition, SchedulesConfig } from "@flow-state-dev/core/types";
 import { defineWorkerInventoryCollection } from "../inventory/collections";
 import { workerMessagesResources } from "../messages/message-log";
 import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
@@ -40,7 +40,7 @@ import { ROSTER_FLOW } from "./keys";
  */
 export function defineWorkerRosterFlow(
   installation: WorkerInstallation,
-  actions: Record<string, ActionConfig> = {},
+  actions: Record<string, ActionEntry> = {},
   routines?: { resources: Record<string, unknown>; schedules: SchedulesConfig; seed?: BlockDefinition<any, any> }
 ) {
   return defineFlow({

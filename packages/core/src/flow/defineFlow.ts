@@ -578,7 +578,9 @@ function mergeActions(
   overrideActions: AnyFlowInstanceOptions["actions"],
   flowTools: ToolsConfig | undefined
 ): AnyActions {
-  const merged: AnyActions = toEntries<ActionConfig>(baseActions);
+  // `?? {}`: a definition built without `actions` (some hosts mint one) spread
+  // to an empty map before entries were normalized, and still does.
+  const merged: AnyActions = toEntries<ActionConfig>(baseActions ?? {});
 
   if (overrideActions !== undefined) {
     for (const [actionName, overrideAction] of Object.entries(overrideActions)) {
@@ -586,13 +588,14 @@ function mergeActions(
         continue;
       }
 
+      const override = toEntry<ActionConfig>(overrideAction);
       const existing = merged[actionName];
       merged[actionName] =
         existing === undefined
-          ? overrideAction
+          ? override
           : {
               ...existing,
-              ...overrideAction
+              ...override
             };
     }
   }
