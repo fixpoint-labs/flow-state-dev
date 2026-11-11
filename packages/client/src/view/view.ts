@@ -103,7 +103,7 @@ function stableJson(value: unknown): unknown {
 }
 
 /** A keyed answer with each row that didn't change kept as the object watchers already hold. */
-function keepRows(shared: Pick<Shared, "byKey">, result: ViewResult): unknown {
+function keepUnchangedEntries(shared: Pick<Shared, "byKey">, result: ViewResult): unknown {
   if (result.keys === undefined || !Array.isArray(result.value)) return result.value;
   const next = new Map<string, { json: string; entry: unknown }>();
   const value = result.value.map((entry, index) => {
@@ -144,7 +144,7 @@ export function watchView<TValue = unknown>(
         topicsFromResult: true,
         read: async () => {
           const result = await client.view(ref, input, callOptions);
-          return { value: keepRows(entry, result), topics: result.topics };
+          return { value: keepUnchangedEntries(entry, result), topics: result.topics };
         },
         onValue: (value) => {
           entry.current = { value };
