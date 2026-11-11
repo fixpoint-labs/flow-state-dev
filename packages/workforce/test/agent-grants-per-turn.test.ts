@@ -82,7 +82,7 @@ describe("agent's document grants on one copy for every worker (BR-24)", () => {
     const copy = agent({ id: "agent" }) as unknown as FlowInstance;
     const seen: Seen = [];
     const state = createFlowState({
-      flows: { agent: copy },
+      flows: [copy],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({ generators: { "agent-answer": scripted(seen) }, policy: "allow" })
     });

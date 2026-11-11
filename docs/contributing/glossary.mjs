@@ -642,8 +642,8 @@ export const ENTRIES = [
   },
   {
     term: "Kit",
-    means: "FSD's own installable unit above a flow: existing pieces (resources, views, flows, capabilities, blocks, workers, a client half), a config and slots, plus an optional folder it owns in the app, scaffolded once and read at install.",
-    decision: "Owner, 2026-11-10 (epic FIX-2618 O1, O5); FIX-2619",
+    means: "FSD's own installable unit above a flow: a config, the kits it requires, slots other kits fill, an optional folder it owns in the app, and an install that returns flows (which carry the resources, views and capabilities). Screens use a kit through its package's ordinary exports; a kit has no client half.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O1, O5); FIX-2619; FIX-2626 D1 (no kit client runtime)",
     // Never a session factory (that entry). A third-party ecosystem stays a non-goal (docs/objectives.md).
     retires: [],
   },
@@ -651,6 +651,14 @@ export const ENTRIES = [
     term: "Slot",
     means: "A typed, named place in a kit that only its owning kit declares, with a schema and a merge policy, and other kits fill at install. The same idea as a block's slot (`ToolsSlot`, `UsesSlot`, the context slot), one level up.",
     decision: "Owner, 2026-11-10 (epic FIX-2618 O1, ER-5); FIX-2619",
+    retires: [],
+  },
+  {
+    term: "Live read",
+    means: "`client.live`: keep a screen current on change notices. It filters the notices a screen hears, merges them, runs one read at a time with at most one waiting, reports a value only when it changed, and retries a failed read on its own. Every watch in the framework and its apps is one; a view's hook builds on it.",
+    decision: "Owner, 2026-11-11 (FIX-2551 D1, epic FIX-2618 ER-7)",
+    // Not published until the release that ships `client.live`. Nothing is retired: `subscribe`
+    // stays the lower-level call a live read rides, and "coalesced read" was never a public name.
     retires: [],
   },
 

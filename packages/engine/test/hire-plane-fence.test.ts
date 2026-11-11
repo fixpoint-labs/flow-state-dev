@@ -166,7 +166,7 @@ const ALICE_PROMPT = "ALICE-PRIVATE: my research assistant";
 
 async function boot(stores = inMemoryStores(), options: { debug?: boolean } = {}) {
   const state = createFlowState({
-    flows: { app: appFlow() },
+    flows: [appFlow()],
     resolvePrincipal: verified.resolvePrincipal,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),

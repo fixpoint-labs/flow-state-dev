@@ -72,7 +72,7 @@ function lab(readers: Record<string, HarnessUsageReader>, timeoutMs?: number) {
       raw: { block: raw },
     },
   } as never)({ id: "usage-flow" } as never);
-  const state = createFlowState({ flows: { "usage-flow": flow }, stores: { test: { primary: inMemoryStores() } }, defaultProfile: "test" } as never);
+  const state = createFlowState({ flows: [flow], stores: { test: { primary: inMemoryStores() } }, defaultProfile: "test" } as never);
   const act = async (actionName: string, input: unknown, userId = "alice", orgId = "org_1"): Promise<any> => {
     const rt = (await (state as any).getRuntime()) as { stores: unknown; runtimeConfig: object };
     const result = (await runAction({

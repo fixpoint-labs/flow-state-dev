@@ -43,7 +43,7 @@ afterEach(async () => {
 /** A host holding one item per topic, each with its own content. */
 async function hostWithItems() {
   const flowState = createFlowState({
-    flows: { files: filesFlow },
+    flows: [filesFlow],
     modelResolver: createMockModelResolver({}),
     stores: { default: { primary: inMemoryStores() } },
   });

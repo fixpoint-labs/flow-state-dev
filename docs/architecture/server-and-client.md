@@ -230,7 +230,7 @@ the moment they hand them on. The first is the model call: the run's
 `resolveAttachment` and sends it inline as an image or file part. The second
 is a coding harness's turn. `HarnessRunInput.attachments` carries the turn's
 files as references only, and its schema refuses bytes. The engine fills
-`HARNESS_ATTACHMENT_SEAM` on the block's context
+`ATTACHMENT_SEAM` on the block's context
 (`engine/src/context/createExecutionContext.ts`) with the same read-once
 resolver, bound to the request's session and person. A harness reads
 through `readHarnessAttachments`, so it can read only that session's files.
@@ -245,6 +245,19 @@ named on its turn as `[image: shot.png, not re-sent]`, and one
 that can no longer be read as `no longer available`; a reference never reaches
 a provider. Re-sent files are billed as input on every call; prompt caching is
 what keeps that cheap.
+
+A generator that installs `attachmentsCapability` (`@flow-state-dev/core/attachments`,
+beside `recordAttachments`) reads its history with `ItemQuery.earlierDocuments:
+"named"`: an earlier turn's document is not re-sent but named with its id
+(`[document: q3.pdf, id b_…, not re-sent; read it with readAttachment]`), and
+images keep the window. The capability's context lists the session's newest
+documents from the `attachments` list; its `readAttachment` tool takes an id or
+a name (matched against the whole list) and reads through `ATTACHMENT_SEAM`, so
+a file not this session's answers "not in this conversation". The tool's output,
+recorded on its `tool_output` item, is the file's reference only. The model call
+resolves a tool result whose output is a document's reference to its text
+(`resolveHistoryFiles`), on every step of that turn's tool loop; a later turn's
+history replays the reference, not the text.
 
 A document reaches each target as that target reads it
 (`attachmentSentAs` in `@flow-state-dev/contracts/attachments`). A text-like

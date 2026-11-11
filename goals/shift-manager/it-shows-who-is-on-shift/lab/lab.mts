@@ -234,7 +234,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
     [INVENTORY_WRITER_FLOW]: writer,
   };
   const flowState = createFlowState({
-    flows,
+    flows: Object.values(flows),
     stores: { default: { primary: inMemoryStores() } },
     durable: true,
     devtool: { userId: SHIFT_LAB_USER_ID },

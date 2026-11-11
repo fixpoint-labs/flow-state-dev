@@ -7,6 +7,6 @@ import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import intentChat from "./src/flows/intent-chat/flow";
 
 export default createFlowState({
-  flows: { "intent-chat": intentChat },
+  flows: [intentChat],
   stores: { default: { primary: inMemoryStores() } },
 });

@@ -320,7 +320,7 @@ function host(options: { script: Step[]; stopsOnAbort?: boolean; declares?: bool
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "steer-host" } as never);
   const state = createFlowState({
-    flows: { "steer-host": flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,

@@ -25,7 +25,7 @@ const flow = defineFlow({ kind: "probe", actions: { probe: { block: probe } } })
 
 async function probeWith(options: { durable: boolean; router: boolean; sweepIntervalMs?: number }) {
   const state = createFlowState({
-    flows: { probe: flow },
+    flows: [flow],
     stores: { default: { primary: inMemoryStores() } },
     durable: options.durable,
     ...(options.sweepIntervalMs !== undefined ? { durabilityRetention: { sweepIntervalMs: options.sweepIntervalMs } } : {})

@@ -17,7 +17,7 @@ import knowledgeHubFlow from "./src/flow";
 import path from "node:path";
 
 export default createFlowState({
-  flows: { "knowledge-hub": knowledgeHubFlow },
+  flows: [knowledgeHubFlow],
   // Fail closed: mount the MCP endpoint (POST /mcp/knowledge-hub) only
   // when the bearer secret is set — belt-and-suspenders on top of the flow's
   // throwing resolver. No secret ⇒ no MCP endpoint at all, CLI-only.

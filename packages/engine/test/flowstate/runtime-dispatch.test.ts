@@ -251,7 +251,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("runtime-dispatch", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -332,7 +332,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     } as unknown as WorkerAdapter;
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default"),
       worker
@@ -378,7 +378,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("worker-only-dispatch", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default"),
       worker: stubWorker("worker-only")
@@ -410,7 +410,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("runtime-then-router", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -443,7 +443,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("runtime-drain", observed, { coreDelayMs: 60 });
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -473,7 +473,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("runtime-dispatch-only", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default"),
       // Router-less but queue-routed: the start operation is wired (this runtime
@@ -513,7 +513,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
       });
 
       const state = createFlowState({
-        flows: { detaching: flow },
+        flows: [flow],
         stores: { default: { primary: inMemoryStores() } },
         modelResolver: markerResolver("app-default"),
         // Short budget so the test measures the bound rather than the default.
@@ -569,7 +569,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
           coreNeverSettles: true
         });
         const state = createFlowState({
-          flows: { detaching: flow },
+          flows: [flow],
           stores: { default: { primary: inMemoryStores() } },
           modelResolver: markerResolver("app-default"),
           dispatchDrainTimeoutMs: budget
@@ -615,7 +615,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     });
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -636,7 +636,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("runtime-quiet", observed, { coreDelayMs: 30 });
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -678,7 +678,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     });
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default"),
       // Immediate shutdown: the ceiling wins, so nothing is waited for. The
@@ -751,7 +751,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
 
       const adapter = closingStores(inMemoryStores());
       const state = createFlowState({
-        flows: { detaching: flow },
+        flows: [flow],
         stores: { default: { primary: adapter } },
         modelResolver: markerResolver("app-default"),
         dispatchDrainTimeoutMs: 0
@@ -811,7 +811,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("admission-closed", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -840,7 +840,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("runtime-config-inherit", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -882,7 +882,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     });
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -932,7 +932,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("router-first-drain", observed, { coreDelayMs: 60 });
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -977,7 +977,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const flow = detachingFlow("router-first", observed);
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default")
     });
@@ -1022,7 +1022,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const adapter = inMemoryStores();
 
     const first = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: adapter } }
     });
     const runtime = await first.getRuntime();
@@ -1059,7 +1059,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
 
     // The later invocation. `getRouter()` is never called — that is the point.
     const second = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: adapter } }
     });
     await second.getRuntime();
@@ -1168,7 +1168,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     };
 
     const state = createFlowState({
-      flows: { detaching: detachingFlow("sweep-race", { children: [] }) },
+      flows: [detachingFlow("sweep-race", { children: [] })],
       stores: { default: { primary: adapter } }
     });
 
@@ -1211,7 +1211,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     const perRequestRegistered: Promise<unknown>[] = [];
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default"),
       onBackgroundWork: (p) => {
@@ -1281,7 +1281,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     } as unknown as WorkerAdapter;
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: markerResolver("app-default"),
       worker
@@ -1353,7 +1353,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     };
 
     const state = createFlowState({
-      flows: { detaching: flow },
+      flows: [flow],
       stores: { default: { primary: adapter } },
       dispatchDrainTimeoutMs: 50
     });

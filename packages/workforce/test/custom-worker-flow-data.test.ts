@@ -67,7 +67,7 @@ function host() {
   });
   flows = { research };
   const copy = research() as unknown as FlowInstance;
-  return { copy, state: createFlowState({ flows: { research: copy }, stores: { default: { primary: inMemoryStores() } } }) };
+  return { copy, state: createFlowState({ flows: [copy], stores: { default: { primary: inMemoryStores() } } }) };
 }
 
 describe("a custom worker flow's data (D6)", () => {

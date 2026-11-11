@@ -61,7 +61,7 @@ describe("a resumed turn on the shared agent copy", () => {
     flows = { agent };
     const copy = agent({ id: "agent" }) as unknown as FlowInstance;
     const state = createFlowState({
-      flows: { agent: copy },
+      flows: [copy],
       stores: { default: { primary: inMemoryStores() } },
       durable: true,
       modelResolver: scripted()

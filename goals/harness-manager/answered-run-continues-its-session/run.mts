@@ -61,7 +61,6 @@ import {
   GIT_TIMEOUT_MS,
 } from "@flow-state-dev/harness-manager/checkout";
 import {
-  HARNESS_GOAL_FLOW_KIND,
   harnessGoalFlow,
   positiveIntFromEnv,
   requireSourceRepo,
@@ -261,7 +260,7 @@ await runGoal(async (failures) => {
     }
 
     state = createFlowState({
-      flows: { [HARNESS_GOAL_FLOW_KIND]: built.flow },
+      flows: [built.flow],
       modelResolver: Object.assign(neverResolvesAModel, {
         resolveId: neverResolvesAModel,
       }) as never,

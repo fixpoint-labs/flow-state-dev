@@ -80,7 +80,7 @@ export async function openDesk(root: string) {
     [INVENTORY_WRITER_FLOW]: writer,
   };
   const flowState = createFlowState({
-    flows,
+    flows: Object.values(flows),
     stores: { default: { primary: inMemoryStores() } },
     durable: true,
     modelResolver: createModelResolver(),

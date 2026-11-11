@@ -284,7 +284,7 @@ function lab(options: {
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "host-flow" } as never);
   const state = createFlowState({
-    flows: { "host-flow": flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,

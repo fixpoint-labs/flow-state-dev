@@ -357,7 +357,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean;
     [INVENTORY_WRITER_FLOW]: writer,
   };
   const flowState = createFlowState({
-    flows,
+    flows: Object.values(flows),
     stores: { default: { primary: inMemoryStores() } },
     devtool: { userId: RUN_LAB_USER_ID },
     // An asking run suspends until a user answers, which needs durable execution.

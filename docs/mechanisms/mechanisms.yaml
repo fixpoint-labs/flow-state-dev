@@ -86,6 +86,28 @@ mechanisms:
     status: canonical
     doc: docs/architecture/flows-and-actions.md
 
+  - id: kit-folder
+    job: Read a folder an app hands a kit without following a symlink, and refuse every entry no reader claimed. The walk primitives (classify, openRoot, openStructuralDirectory and the refusal wordings) on the Node-only engine/folder subpath, and the claim pass createFlowState runs over each kit's folder.
+    package: "@flow-state-dev/engine"
+    anchor: openRoot
+    file: packages/engine/src/folder/walk.ts
+    builtOn: []
+    overlaps: []
+    status: canonical
+    doc: docs/architecture/kits.md
+
+  - id: kit
+    job: Install a feature into an app with one config object. A kit declares the kits it requires, the slots other kits fill, an optional folder it owns, and an install that returns flows; createFlowState({ kits }) orders them, merges slots and reads each folder through the claim pass.
+    package: "@flow-state-dev/core"
+    anchor: defineKit
+    file: packages/core/src/kit/define-kit.ts
+    builtOn: [flow, kit-folder]
+    overlaps:
+      - { id: capability, relation: distinct-jobs, note: "A capability installs into one block; a kit installs flows into an app and can declare slots." }
+      - { id: workforce, relation: distinct-jobs, note: "hireWorkforce wires one feature by hand; workforce becomes a kit (FIX-2627), and hireWorkforce an internal." }
+    status: canonical
+    doc: docs/architecture/kits.md
+
   - id: scope
     job: The four places state and resources live (request, session, user, org). A block reads them; it does not invent another scope.
     package: "@flow-state-dev/core"
@@ -308,7 +330,7 @@ mechanisms:
     doc: packages/engine/README.md
 
   - id: push-delivery
-    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change.
+    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change. `client.live`, the live read, is the one loop every screen runs on it, which filters the notices it hears (the path rule), merges them, keeps one read in flight and at most one waiting, reports on change, and retries a failed read on the client's backoff.
     package: "@flow-state-dev/engine"
     anchor: enablePushDelivery
     file: packages/engine/src/push/push-delivery.ts
@@ -610,7 +632,7 @@ mechanisms:
     package: "@flow-state-dev/workforce"
     anchor: readWorkforce
     file: packages/workforce/src/loader/read-workforce.ts
-    builtOn: [workforce]
+    builtOn: [workforce, kit-folder]
     overlaps: []
     status: canonical
     doc: packages/workforce/README.md

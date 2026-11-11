@@ -20,7 +20,7 @@ const noopFlow = defineFlow({
 })();
 
 function flows() {
-  return { noop: noopFlow };
+  return [noopFlow];
 }
 
 /** An in-memory adapter that counts dispose() calls. */
@@ -42,6 +42,26 @@ afterEach(() => {
 });
 
 describe("createFlowState — construction validation", () => {
+  it("takes its flows as a list, each served under its own id", () => {
+    const other = defineFlow({ kind: "other-flow", actions: {} })();
+    const fs = createFlowState({
+      flows: [noopFlow, other],
+      stores: { dev: { primary: inMemoryStores() } }
+    });
+    expect(fs.meta.flowKeys).toEqual(["noop-flow", "other-flow"]);
+  });
+
+  it("refuses the keyed record it used to take, naming the list form", () => {
+    // A JavaScript caller, or a cast, can still hand over the old shape. It is
+    // refused by name rather than failing as "not iterable" deep inside.
+    expect(() =>
+      createFlowState({
+        flows: { noop: noopFlow } as never,
+        stores: { dev: { primary: inMemoryStores() } }
+      })
+    ).toThrow(/`flows` is a list of flows/);
+  });
+
   it("throws synchronously when stores declares no profile", () => {
     expect(() =>
       createFlowState({ flows: flows(), stores: {} })
@@ -66,10 +86,8 @@ describe("createFlowState — construction validation", () => {
         dev: { primary: inMemoryStores() }
       }
     });
-    // The registered instance's ID — the string a caller can actually address
-    // — not the arbitrary key the `flows` record filed it under. This fixture
-    // is the case that shows the difference: the record key is `noop` and
-    // nothing has ever answered to it.
+    // The registered instance's id, the string a caller addresses: its
+    // `flow.id`, which defaults to its `kind`.
     expect(fs.meta.flowKeys).toEqual(["noop-flow"]);
     expect(fs.meta.profileKeys).toEqual(["prod", "dev"]);
     expect(fs.meta.declaredSlots).toEqual({

@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { createLabAdapter, toBoardTask } from "../src/adapter";
+import { liveOver } from "./live-over";
 
 /**
  * A client that takes every board action, answering `answer`, and keeps each one sent.
@@ -137,6 +138,9 @@ describe("a task's brief, which the board's list read leaves out", () => {
     let listed: Record<string, unknown> = { id: "task_1", title: stored.title, goal: stored.goal, assignee: stored.assignee, status: "in_progress", attempts: 1 };
     const subscriptions: Array<(notice: unknown) => void> = [];
     const client = {
+      get live() {
+        return liveOver(this as never);
+      },
       subscribe: (_topics: unknown, options: { onChange: (notice: unknown) => void }) => (subscriptions.push(options.onChange), { close() {} }),
       sessions: {
         state: async () => ({ at: 1, sessionCreatedAt: 1, items: [item], pagination: { hasMore: false, nextOffset: 1 } }),
@@ -182,6 +186,9 @@ describe("a task retried after its run ended", () => {
     let listed: Record<string, unknown> = { ...failed, error: undefined };
     const subscriptions: Array<(notice: unknown) => void> = [];
     const client = {
+      get live() {
+        return liveOver(this as never);
+      },
       subscribe: (_topics: unknown, options: { onChange: (notice: unknown) => void }) => (subscriptions.push(options.onChange), { close() {} }),
       sessions: {
         state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: history[id] ?? [], pagination: { hasMore: false, nextOffset: (history[id] ?? []).length } }),

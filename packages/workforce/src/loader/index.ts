@@ -95,20 +95,9 @@ export {
   type ReadPackagesDirectoryResult,
 } from "./read-packages-directory";
 
-export {
-  IGNORED_ENTRIES,
-  classify,
-  openRoot,
-  openStructuralDirectory,
-  refusedSymlink,
-  unreadable,
-  walkTeams,
-  type Entry,
-  type EntryKind,
-  type OpenedDirectory,
-  type PathReport,
-  type WalkedTeam,
-} from "./structural-directory";
+// The walk primitives under `walkTeams` (`classify`, `openRoot`,
+// `IGNORED_ENTRIES`, ...) are the engine's: `@flow-state-dev/engine/folder`.
+export { walkTeams, type WalkedTeam } from "./structural-directory";
 
 export { validateSegment, type SegmentLabel } from "./segments";
 

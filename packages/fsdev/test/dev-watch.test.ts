@@ -49,7 +49,7 @@ if (readFileSync(new URL("./tree/a/WORKER.md", import.meta.url), "utf8").include
   throw new Error("tree/a/WORKER.md is broken");
 }
 const flowState = createFlowState({
-  flows: { hello: flow },
+  flows: [flow],
   modelResolver: createMockModelResolver({}),
   stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(createInMemoryStores()) } } },
 });

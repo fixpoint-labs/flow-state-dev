@@ -403,7 +403,7 @@ export function claimHost(options: HostOptions) {
   } as never)({ id: "claim-host" } as never);
   const stores = options.restartOf?.stores ?? inMemoryStores();
   const state = createFlowState({
-    flows: { "claim-host": flow },
+    flows: [flow],
     stores: { test: { primary: stores } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,

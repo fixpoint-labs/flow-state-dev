@@ -29,6 +29,8 @@ import {
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
+} from "@flow-state-dev/engine/folder";
+import {
   validateSegment,
   type SegmentLabel,
 } from "../loader";
@@ -182,7 +184,7 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
   // Before anything below it is opened. Absent FOLDERS are silent, because an
   // app may have no custom code of that kind; an absent ROOT is a wiring
   // mistake, and the two must not read the same.
-  await openRoot(root);
+  await openRoot(root, "workforce directory");
 
   const files: DiscoveredFile[] = [];
   const searched: string[] = [];

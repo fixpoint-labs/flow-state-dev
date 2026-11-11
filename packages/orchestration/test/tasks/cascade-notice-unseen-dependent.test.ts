@@ -165,7 +165,7 @@ describe.each(STORES)("a failure-cascaded dependent is heard once by its filer (
     const claimedYet = new Promise<void>((resolve) => (claimed = resolve));
     const gate = { wait: new Promise<void>((resolve) => (release = resolve)), claimed: () => claimed() };
     const flow = cascadeFlow(heard, gate);
-    const state = createFlowState({ flows: { "cascade-board": flow }, stores: { default: { primary: await stores() } }, durable: true });
+    const state = createFlowState({ flows: [flow], stores: { default: { primary: await stores() } }, durable: true });
     await state.getRouter();
     const runtime = await state.getRuntime();
     const act = async (actionName: string, sessionId: string, input: unknown = {}) => {

@@ -54,7 +54,7 @@ async function boot() {
   let host: InboundTransportHost | undefined;
   const stores = inMemoryStores();
   const state = createFlowState({
-    flows: { svc },
+    flows: [svc],
     stores: { default: { primary: stores } },
     resolvePrincipal: () => null,
     adapters: [{ source: "test", createBindings: (h: InboundTransportHost) => ((host = h), {}) }]

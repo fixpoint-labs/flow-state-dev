@@ -161,6 +161,28 @@ describe("useSession live · other sessions' scope changes", () => {
     expect(result.current.snapshot?.clientData).toEqual({ org: { plan: "pro" } });
   });
 
+  it("reads state again on its own after a failed state read, with no further notice: push runs no timer to recover on", async () => {
+    const { result } = await mountLive();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      sessionsMock.state.mockRejectedValueOnce(new Error("store offline"));
+      sessionsMock.state.mockResolvedValue(snapshot({ clientData: { org: { plan: "pro" } } }));
+      await hear({ topic: topic.org(), kind: "state", origin: { requestId: "req_elsewhere" } });
+      expect(stateOnlyReads()).toHaveLength(1);
+      expect(result.current.snapshot?.clientData).toEqual({ org: { plan: "free" } });
+
+      // No notice: the live read's retry, 1 s after the failure, is what reads.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      await flush();
+      expect(stateOnlyReads()).toHaveLength(2);
+      expect(result.current.snapshot?.clientData).toEqual({ org: { plan: "pro" } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("skips a notice its own request made: its own stream already carried the change (D2)", async () => {
     const { result, announced } = await mountLive();
     flowMock.send.mockResolvedValue(

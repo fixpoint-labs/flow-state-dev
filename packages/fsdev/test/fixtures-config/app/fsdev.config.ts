@@ -73,7 +73,7 @@ const genFlow = defineFlow({
 })();
 
 const flowState = createFlowState({
-  flows: { gen: genFlow },
+  flows: [genFlow],
   modelResolver: recordingResolver,
   stores: { default: { primary: stashingStores() } },
 });

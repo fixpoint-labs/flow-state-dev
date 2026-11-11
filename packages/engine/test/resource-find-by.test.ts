@@ -67,7 +67,7 @@ async function boot(flows: Record<string, unknown> = { ledger: ledgerFlow() }) {
   const adapter = inMemoryStores();
   const raw = await adapter.resolve(["primary"]);
   const state = createFlowState({
-    flows: flows as never,
+    flows: Object.values(flows as never),
     stores: { default: { primary: adapter } },
     modelResolver: createMockModelResolver({}),
   });
@@ -372,7 +372,7 @@ describe("startup check on index declarations", () => {
   };
   const start = (flows: Record<string, unknown>) =>
     createFlowState({
-      flows: flows as never,
+      flows: Object.values(flows as never),
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({}),
     });

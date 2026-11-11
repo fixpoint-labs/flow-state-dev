@@ -112,7 +112,7 @@ async function boot(kind: string, options: { runner?: FlowRunner } = {}) {
   const observed: Observed = { runs: [] };
   const { flow, release } = guardedFlow(kind, observed);
   const state = createFlowState({
-    flows: { [kind]: flow },
+    flows: [flow],
     stores: { default: { primary: inMemoryStores() } },
     ...(options.runner !== undefined ? { runner: options.runner } : {})
   });
@@ -377,7 +377,7 @@ describe("a failed enqueue-time materialization gives a `reject` key back", () =
       }
     })({ id: kind });
     const state = createFlowState({
-      flows: { [kind]: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } }
     });
     const runtime = await state.getRuntime();

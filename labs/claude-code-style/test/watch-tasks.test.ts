@@ -8,12 +8,16 @@
 import { describe, expect, it } from "vitest";
 import type { Client, SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
 import { createWiredLab, type LabTask } from "../src/adapter";
+import { liveOver } from "./live-over";
 
 function fakeClient() {
   const reads: string[] = [];
   const subscriptions: Array<{ topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean }> = [];
   let status = "in_progress";
   const client = {
+    get live() {
+      return liveOver(this as never);
+    },
     subscribe: (topics: readonly WireTopic[], options: SubscribeOptions) => {
       const entry = { topics, options, closed: false };
       subscriptions.push(entry);

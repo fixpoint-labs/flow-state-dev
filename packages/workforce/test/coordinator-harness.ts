@@ -245,7 +245,7 @@ export function bootHost(options: HostOptions = {}) {
         });
   const judgment = options.judgment ?? mockGenerator({ script: [] });
   const state = createFlowState({
-    flows: instances,
+    flows: Object.values(instances),
     stores: { default: { primary: stores } },
     ...(options.durable === true ? { durable: true } : {}),
     modelResolver: createMockModelResolver({

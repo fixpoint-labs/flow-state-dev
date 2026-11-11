@@ -110,3 +110,13 @@ describe("BoardColumns live", () => {
     expect(host.reads()).toBe(2);
   });
 });
+
+describe("a live panel whose read failed", () => {
+  it("reads again on its own within 2 s, with no notice, and draws what lands (D2)", async () => {
+    const host = hostClient("workforce/workers/*", "roster");
+    host.client.resources.listCollectionResources.mockRejectedValueOnce(new Error("down"));
+    render(createElement(Roster, { sessionId: SESSION, client: host.client as never, live: true }));
+    await waitFor(() => expect(host.reads()).toBe(1));
+    await waitFor(() => expect(host.reads()).toBe(2), { timeout: 2_000 });
+  });
+});

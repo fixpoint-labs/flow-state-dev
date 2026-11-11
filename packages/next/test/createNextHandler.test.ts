@@ -61,7 +61,7 @@ describe("createNextHandler — integration", () => {
     })();
 
     const flowstate = createFlowState({
-      flows: { nextTest: flow },
+      flows: [flow],
       stores: { default: { primary: inMemoryStores() } }
     });
 

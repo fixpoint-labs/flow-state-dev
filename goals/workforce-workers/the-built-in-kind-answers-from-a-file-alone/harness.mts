@@ -145,7 +145,7 @@ async function main(): Promise<void> {
   // AND registers each flow's declared resources (the built-in kind declares a
   // skills collection), then resolves the same HTTP router.
   const flowState = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { dev: { primary: inMemoryStores() } },
     modelResolver,
   } as never);
@@ -266,7 +266,7 @@ async function main(): Promise<void> {
   // is a real failure mode rather than an impossibility.
   {
     const afterState = createFlowState({
-      flows: Object.fromEntries(returned.map((copy) => [copy.id, copy])),
+      flows: returned,
       stores: { dev: { primary: inMemoryStores() } },
       modelResolver,
     } as never);

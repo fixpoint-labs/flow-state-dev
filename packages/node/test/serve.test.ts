@@ -165,7 +165,7 @@ describe("serve — FlowState lifecycle", () => {
   it("reports 503 while stores initialize, then 200 once ready", async () => {
     const adapter = gatedAdapter();
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: adapter } },
     });
@@ -186,7 +186,7 @@ describe("serve — FlowState lifecycle", () => {
 
   it("returns 500 from /healthz when initialization fails permanently", async () => {
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: failingAdapter() } },
     });
@@ -204,7 +204,7 @@ describe("serve — FlowState lifecycle", () => {
     const adapter = gatedAdapter();
     adapter.release();
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: adapter } },
     });
@@ -221,7 +221,7 @@ describe("serve — FlowState lifecycle", () => {
     const adapter = gatedAdapter();
     adapter.release();
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: adapter } },
     });
@@ -277,7 +277,7 @@ describe("serve — static assets", () => {
       }),
     };
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
       adapters: [adapter],
@@ -305,7 +305,7 @@ describe("serve — static assets", () => {
     await writeFile(join(dir, "app.js"), "console.log('hi')");
     const adapter = gatedAdapter();
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: adapter } },
     });
@@ -344,7 +344,7 @@ describe("serve — static assets", () => {
       }),
     };
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: store } },
       adapters: [adapter],
@@ -588,7 +588,7 @@ describe("serve() — pageHandler", () => {
       }),
     };
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: store } },
       adapters: [adapter],

@@ -36,7 +36,7 @@ async function boot() {
   const copy = agent({ id: "agent" }) as unknown as FlowInstance;
   const drawerKeys: string[] = [];
   const state = createFlowState({
-    flows: { agent: copy },
+    flows: [copy],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: {

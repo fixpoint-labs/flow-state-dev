@@ -23,7 +23,7 @@ const stubModelResolver = (() => undefined) as never;
 
 function build(devtool?: { userId?: string; bearerToken?: string }) {
   return createFlowState({
-    flows: { noop: noopFlow },
+    flows: [noopFlow],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: stubModelResolver,
     devtool

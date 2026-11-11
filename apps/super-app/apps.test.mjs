@@ -42,3 +42,18 @@ describe("pnpm dev's page builds", () => {
     assert.match(readFileSync(join(REPO, "apps/super-app/vite.config.ts"), "utf8"), /recordBuildInputs\(/);
   });
 });
+
+describe("pnpm dev's lab servers", () => {
+  it("record what they load, so a change to it can be offered as a restart; Kitchen Sink's doesn't need to", () => {
+    for (const app of APPS) {
+      const server = app.run.dev.filter((s) => !s.background).at(-1);
+      if (app.kind === "next") {
+        assert.equal(server.serverInputs, undefined, `${app.id}: next dev reloads itself`);
+        continue;
+      }
+      assert.ok(server.serverInputs !== undefined, `${app.id}'s server step records nothing, so it is never marked changed`);
+      assert.equal(server.args[0], "--import", `${app.id}: the recording preload must be tsx's first argument`);
+      assert.equal(server.env?.SUPER_APP_SERVER_INPUTS, server.serverInputs);
+    }
+  });
+});

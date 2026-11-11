@@ -72,7 +72,7 @@ const texts = (feed: SessionFeed): string[] =>
 describe("a session feed on a real host", () => {
   it("hears another client's turn, keeps its own sent answer, and says lapsed when the host goes and live when it is back", async () => {
     const flowState = createFlowState({
-      flows: { notes: notesFlow },
+      flows: [notesFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
     });
@@ -120,7 +120,7 @@ describe("a session feed on a real host", () => {
 
   it("opens a long session on its newest items and loads earlier ones back to the first, while the session goes on", async () => {
     const flowState = createFlowState({
-      flows: { notes: notesFlow },
+      flows: [notesFlow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
     });

@@ -32,7 +32,7 @@ function doublerFlow() {
         })
     }
   })();
-  return { kind, flows: { [kind]: flow } };
+  return { kind, flows: [flow] };
 }
 
 /** An in-memory adapter that records what it resolved and whether it was disposed. */

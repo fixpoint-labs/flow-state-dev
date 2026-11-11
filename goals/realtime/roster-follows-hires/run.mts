@@ -69,20 +69,25 @@ const IDLE_MS = 10_000;
 const ORG = "acme";
 
 const PATCHES: Record<string, ModulePatch[]> = {
-  // The watch reads once, at start: every notice and every tick is ignored.
+  // The watch reads once, at start: it hears no topic and keeps no timer.
   "read-once": [
     {
       module: "packages/workforce/src/workers/client.ts",
-      from: String.raw`if \(rosterMayHaveChanged\(notice\)\) reads\.request\(\);`,
-      to: "void notice;",
+      from: String.raw`fsd\.live\(\[topic\.user\(\)\], \{`,
+      to: "fsd.live([], { pollIntervalMs: null,",
     },
   ],
-  // A timer of the watch's own beside its subscription, as a view that kept a poll would.
+  // A timer of the watch's own beside its live read, as a view that kept a poll would.
   timer: [
     {
       module: "packages/workforce/src/workers/client.ts",
-      from: String.raw`const subscription = fsd\.subscribe\(\[topic\.user\(\)\], \{`,
-      to: "const ownTimer = setInterval(() => reads.request(), ROSTER_POLL_MS); void ownTimer; const subscription = fsd.subscribe([topic.user()], {",
+      from: String.raw`fsd\.live\(\[topic\.user\(\)\], \{`,
+      to: "((own) => (setInterval(() => own.refresh(), 3_000), own))(fsd.live([topic.user()], {",
+    },
+    {
+      module: "packages/workforce/src/workers/client.ts",
+      from: String.raw`\}\)\.close,`,
+      to: "})).close,",
     },
   ],
   // The rail's coordinators kept by hand, as `SHELL_COORDINATORS` was.

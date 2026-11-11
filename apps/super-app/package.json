@@ -9,7 +9,7 @@
     "build:devtool": "vite build",
     "dev": "node run.mjs dev",
     "serve": "node run.mjs serve",
-    "test": "node --test proxy.test.mjs settings.test.mjs button.test.mjs apps.test.mjs reclaim.test.mjs rebuild.test.mjs workspace.test.mjs src/injected-config.test.mjs",
+    "test": "node --test proxy.test.mjs settings.test.mjs button.test.mjs apps.test.mjs reclaim.test.mjs rebuild.test.mjs lifecycle.test.mjs record-server-inputs.test.mjs workspace.test.mjs src/injected-config.test.mjs",
     "typecheck": "node ../../scripts/typecheck.mjs"
   },
   "dependencies": {

@@ -90,10 +90,17 @@ const packageRules = {
   // `client` is allowed for `createWorkforceClient`, which finds and starts a
   // worker's sessions over the session client (FIX-1788). The client is
   // isomorphic and imports only core and contracts, so this adds no cycle.
+  //
+  // The one engine import is its Node-only `folder` subpath: the walk
+  // primitives every reader of a kit's folder shares, which moved there from
+  // workforce's loader so the kit system does not depend on one kit
+  // (FIX-2626). It imports only core types and node:fs, never the runtime,
+  // so the rest of the engine stays denied.
   workforce: {
     allow: new Set(["contracts", "core", "orchestration", "client"]),
     typeOnly: new Set([]),
-    deny: new Set(["engine", "react", "patterns"])
+    deny: new Set(["engine", "react", "patterns"]),
+    allowSubpaths: new Set(["@flow-state-dev/engine/folder"])
   }
 };
 
@@ -196,6 +203,11 @@ for (const pkg of packages) {
       const targetPkg = resolveWorkspacePackage(specifier);
 
       if (targetPkg === undefined || targetPkg === pkg) {
+        continue;
+      }
+      // A subpath a package's rules name exactly is allowed on its own, and
+      // adds no edge: it stands outside the target's runtime.
+      if (rules.allowSubpaths?.has(specifier)) {
         continue;
       }
 

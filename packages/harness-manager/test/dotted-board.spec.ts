@@ -172,7 +172,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "dotted-board-host" } as never);
   const state = createFlowState({
-    flows: { "dotted-board-host": flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,

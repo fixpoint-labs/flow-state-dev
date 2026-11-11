@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { createWiredLab, type LabTask } from "../src/adapter";
+import { liveOver } from "./live-over";
 
 type Sent = { flow: string; action: string; input: Record<string, unknown>; sessionId: string };
 
@@ -20,6 +21,9 @@ function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Rec
   const sent: Sent[] = [];
   const outputs = new Map<string, Record<string, unknown>>();
   const client = {
+    get live() {
+      return liveOver(this as never);
+    },
     subscribe: () => ({ close: () => {} }),
     sessions: {
       get: async (id: string) => ({ id, flowKind: "agent", flowId: "agent", state: {} }),

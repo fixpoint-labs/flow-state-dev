@@ -114,7 +114,7 @@ async function startApp(resolver: ModelResolver) {
   };
   const copies = hireWorkforce(installation) as FlowInstance[];
   const state: FlowState = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { default: { primary: inMemoryStores() } },
     resolvePrincipal: () => ({ userId: OWNER, orgId: ORG }),
     modelResolver: resolver

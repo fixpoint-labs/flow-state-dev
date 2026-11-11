@@ -15,7 +15,7 @@ import {
   readHarnessTurnFiles,
   refuseUnacceptedAttachments,
 } from "@flow-state-dev/core/harness";
-import { HARNESS_ATTACHMENT_SEAM, type HarnessAttachmentSeam } from "@flow-state-dev/core/internal";
+import { ATTACHMENT_SEAM, type AttachmentSeam } from "@flow-state-dev/core/internal";
 import type { FileContent } from "@flow-state-dev/core/items";
 
 const shot: FileContent = { type: "file", mediaType: "image/png", data: toBlobRef("b_shot0001"), filename: "shot.png" };
@@ -63,12 +63,12 @@ describe("a harness run's files", () => {
 
   it("are read through the engine's seam, in order, and not without one", async () => {
     const asked: string[] = [];
-    const read: HarnessAttachmentSeam = async (file) => {
+    const read: AttachmentSeam = async (file) => {
       asked.push(file.filename ?? "");
       return { mediaType: file.mediaType, bytes: new Uint8Array([1]), base64: () => "AQ==" };
     };
     const second = { ...shot, filename: "second.png" };
-    const files = await readHarnessAttachments({ [HARNESS_ATTACHMENT_SEAM]: read }, [shot, second]);
+    const files = await readHarnessAttachments({ [ATTACHMENT_SEAM]: read }, [shot, second]);
     expect(asked).toEqual(["shot.png", "second.png"]);
     expect(files.map((file) => file.base64())).toEqual(["AQ==", "AQ=="]);
 
@@ -78,14 +78,14 @@ describe("a harness run's files", () => {
 });
 
 describe("a turn's files, split by what the harness reads", () => {
-  const seam: HarnessAttachmentSeam = async (file) => ({
+  const seam: AttachmentSeam = async (file) => ({
     mediaType: file.mediaType,
     ...(file.filename !== undefined ? { filename: file.filename } : {}),
     bytes: new Uint8Array([1]),
     base64: () => "AQ==",
     text: async () => `### ${file.filename}\ncode word for ${file.filename}`,
   });
-  const ctx = { [HARNESS_ATTACHMENT_SEAM]: seam };
+  const ctx = { [ATTACHMENT_SEAM]: seam };
 
   it("hands on the files it reads, and the rest as their text in the order attached", async () => {
     const turn = await readHarnessTurnFiles("Codex", ctx, ["image/png"], [shot, spec, notes]);
@@ -101,16 +101,16 @@ describe("a turn's files, split by what the harness reads", () => {
 
   it("refuses before reading anything, and names a document with no way to read its text", async () => {
     const asked: string[] = [];
-    const counting: HarnessAttachmentSeam = async (file) => {
+    const counting: AttachmentSeam = async (file) => {
       asked.push(file.filename ?? "");
       return seam(file);
     };
     await expect(
-      readHarnessTurnFiles("Codex", { [HARNESS_ATTACHMENT_SEAM]: counting }, ["image/png"], [spec, photo]),
+      readHarnessTurnFiles("Codex", { [ATTACHMENT_SEAM]: counting }, ["image/png"], [spec, photo]),
     ).rejects.toBeInstanceOf(HarnessAttachmentRefusedError);
     expect(asked).toEqual([]);
-    const textless: HarnessAttachmentSeam = async (file) => ({ mediaType: file.mediaType, bytes: new Uint8Array([1]), base64: () => "AQ==" });
-    await expect(readHarnessTurnFiles("Codex", { [HARNESS_ATTACHMENT_SEAM]: textless }, ["image/png"], [spec])).rejects.toBeInstanceOf(
+    const textless: AttachmentSeam = async (file) => ({ mediaType: file.mediaType, bytes: new Uint8Array([1]), base64: () => "AQ==" });
+    await expect(readHarnessTurnFiles("Codex", { [ATTACHMENT_SEAM]: textless }, ["image/png"], [spec])).rejects.toBeInstanceOf(
       HarnessAttachmentUnavailableError,
     );
   });

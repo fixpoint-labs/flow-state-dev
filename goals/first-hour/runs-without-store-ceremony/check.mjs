@@ -121,7 +121,7 @@ export const tally = defineFlow({
 `;
 const config = (stores, imports = "") =>
   `import { createFlowState } from "@flow-state-dev/engine";\n${imports}import { tally } from "./flow.mjs";\n` +
-  `export default createFlowState({ flows: { tally }${stores ? `, stores: ${stores}` : ""} });\n`;
+  `export default createFlowState({ flows: [tally]${stores ? `, stores: ${stores}` : ""} });\n`;
 
 function app(project, name, cfg) {
   const dir = join(project, name);
@@ -180,7 +180,7 @@ function signalC(project) {
     let bus; try { ({ createInMemoryBus: bus } = await import("@flow-state-dev/engine/host")); } catch {}
     const busAdapter = { capabilities: ["bus"], resolve: async () => ({ bus: bus ? bus() : undefined }) };
     const blobs = { capabilities: ["blobs"], resolve: async () => ({}) };
-    const s = createFlowState({ flows: {}, stores: { default: { primary: inMemoryStores(), bus: busAdapter, blobs } } });
+    const s = createFlowState({ flows: [], stores: { default: { primary: inMemoryStores(), bus: busAdapter, blobs } } });
     await s.ready(); await s.dispose(); console.log("constructed");`], project);
   if (!ok.out.includes("constructed")) f.push(`primary, bus and blobs: did not construct: ${ok.err.slice(-300)}`);
   if (named !== 2) f.push(`retired slots named by the compiler: ${named} of 2`);

@@ -42,7 +42,7 @@
  * |                 | `listPins` read, again on each state notice of your user topic             |
  * | `watchDismissed`, `dismiss` | the lab's `dismissals` flow, your own user state, read the way pins are |
  *
- * Every watch reads on a change, through `onNotice`.
+ * Every watch reads on a change, through the client's live read (`client.live`).
  */
 import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, type Client, type ClientFetch, type SessionConnectionStatus, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
@@ -386,14 +386,14 @@ const BOARD_LEDGERS = ["tasks", "plan"] as const;
 
 /**
  * A write to the plan a harness records (core's `observed-plan` rows and its
- * `observed-plan-list` markers). A row only its owner may read is published
- * unnamed, so an unnamed resource notice reads too.
+ * `observed-plan-list` markers), as a live read hears it. A row only its owner
+ * may read is published unnamed, and the live read hears an unnamed resource
+ * notice whatever its paths say.
  */
-const isPlanWrite = (notice: WireNotice): boolean =>
-  notice.kind === "resource" &&
-  (notice.topic.resource === undefined ||
-    notice.topic.resource.startsWith(`${OBSERVED_PLAN}/`) ||
-    notice.topic.resource.startsWith(`${OBSERVED_PLAN_LIST}/`));
+const PLAN_WRITES = {
+  hear: (notice: WireNotice) => notice.kind === "resource",
+  paths: [OBSERVED_PLAN, OBSERVED_PLAN_LIST],
+};
 
 /**
  * A read again after a failed one, 1 s and doubling to 30 s, the shape of the
@@ -420,77 +420,8 @@ function retryAfterFailure(again: () => void): { failed(): void; succeeded(): vo
   };
 }
 
-/**
- * Read `read` now, and again whenever a notice under `topics` passes `hears`
- * reporting a value only when it changed.
- * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
- * and one waiting for any number of notices. Wherever push can miss a change,
- * `client.subscribe` reads every `everyMs` instead, so the view keeps no
- * timer of its own. A failed read tries again on its own ({@link retryAfterFailure}).
- * A read still out when the watch stops reports nothing. `onStale` hears `true`
- * when a read fails and `false` when one succeeds after it.
- */
-function onNotice<T>(
-  fsd: Client,
-  topics: readonly WireTopic[],
-  hears: (notice: WireNotice) => boolean,
-  read: () => Promise<T>,
-  onChange: (value: T) => void,
-  everyMs = READ_EVERY_MS,
-  onStale?: (stale: boolean) => void,
-): Unsubscribe {
-  let live = true;
-  let stale = false;
-  let last: string | undefined;
-  let running = false;
-  let queued = false;
-  const retry = retryAfterFailure(() => void tick());
-  const tick = async (): Promise<void> => {
-    if (!live) return;
-    if (running) {
-      queued = true;
-      return;
-    }
-    running = true;
-    try {
-      const value = await read();
-      retry.succeeded();
-      const key = JSON.stringify(value);
-      if (live && key !== last) {
-        last = key;
-        onChange(value);
-      }
-      if (live && stale) {
-        stale = false;
-        onStale?.(false);
-      }
-    } catch (error) {
-      console.warn("[claude-code-style]", error);
-      if (live) retry.failed();
-      if (live && !stale) {
-        stale = true;
-        onStale?.(true);
-      }
-    }
-    running = false;
-    if (queued) {
-      queued = false;
-      void tick();
-    }
-  };
-  const subscription = fsd.subscribe(topics, {
-    onChange: (notice) => {
-      if (notice === null || notice.kind === "resync" || hears(notice)) void tick();
-    },
-    pollIntervalMs: everyMs,
-  });
-  void tick();
-  return () => {
-    live = false;
-    retry.stop();
-    subscription.close();
-  };
-}
+/** A live read's failure, logged; the read tries again on its own (`client.live`). */
+const logFailedRead = (error: unknown): void => console.warn("[claude-code-style]", error);
 
 /**
  * A run's latest review stop, read with harness-manager's browser reader, or
@@ -1477,11 +1408,8 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
       stopWatchers.set(sessionId, watchers.add(tell));
       // A turn starts and ends as a request: a request notice on the session's topic. Never on
       // `items`, which a streaming reply sends once per stored chunk.
-      const stopTurns = onNotice(
-        fsd,
-        [topic.session(sessionId)],
-        (notice) => notice.kind === "request",
-        async (): Promise<TurnsRead> => {
+      const stopTurns = fsd.live([topic.session(sessionId)], {
+        read: async (): Promise<TurnsRead> => {
           // One read of the latest requests, newest updated first, answers all three: the running turn
           // is among them, so are the stopped turns, and so is the turn a failed line could retry.
           const [recent, threads] = await Promise.all([fsd.sessions.requests(sessionId, { limit: RECENT_TURNS }), isThreads(sessionId)]);
@@ -1490,12 +1418,15 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
           const turns = recent.filter((request) => TURN_ACTIONS.has(request.actionName)).sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
           return { turns, turn: turnsRunningIn(recent)[0], threads, retryable };
         },
-        (next) => {
+        onValue: (next) => {
           turnOf = next;
           build();
           tell();
         },
-      );
+        hear: (notice) => notice.kind === "request",
+        pollIntervalMs: READ_EVERY_MS,
+        onError: logFailedRead,
+      }).close;
       return () => {
         watchers.delete(tell);
         if (threadFeeds.get(sessionId) === feed) threadFeeds.delete(sessionId);
@@ -1507,7 +1438,13 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
     // The board's notices (FIX-2429): the topics are narrowed to the ledgers the read returns,
     // so every notice on them is the board's, and a reply streaming in the session never wakes it.
     watchTasks: (sessionId, onChange, onStale) =>
-      onNotice(fsd, BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), () => true, () => boardOf(sessionId), onChange, TASKS_EVERY_MS, onStale),
+      fsd.live(BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), {
+        read: () => boardOf(sessionId),
+        onValue: onChange,
+        pollIntervalMs: TASKS_EVERY_MS,
+        onStale: onStale,
+        onError: logFailedRead,
+      }).close,
     // Shown only inside the tasks pane or the threads board, whose watch keeps `runSessionOf` current.
     watchTaskWork: (_sessionId, taskId, onChange) => {
       // The task's run session is known once the board has listed it, and a re-run moves it: follow
@@ -1552,16 +1489,16 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
           streamed = items;
           tell();
         });
-        const stopPlan = onNotice(
-          fsd,
-          [topic.session(runSession)],
-          isPlanWrite,
-          async () => (await readRecordedWork(fsd, { sessionId: runSession, requestId })).plan?.rows.map(({ title, status }) => ({ title, status })) ?? null,
-          (rows) => {
+        const stopPlan = fsd.live([topic.session(runSession)], {
+          read: async () => (await readRecordedWork(fsd, { sessionId: runSession, requestId })).plan?.rows.map(({ title, status }) => ({ title, status })) ?? null,
+          onValue: (rows) => {
             plan = rows ?? undefined;
             tell();
           },
-        );
+          ...PLAN_WRITES,
+          pollIntervalMs: READ_EVERY_MS,
+          onError: logFailedRead,
+        }).close;
         stopRun = () => {
           stopCalls();
           stopPlan();
@@ -1626,7 +1563,13 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
     resolve: (sessionId, taskId, land) => answerReview(sessionId, taskId, { value: acceptOf(land) }),
     requestChanges: (sessionId, taskId, words) => answerReview(sessionId, taskId, { value: { verdict: "revise", words } }),
     // Pins are your user state: a state notice on your topic, from this tab or another, says they may have changed.
-    watchPins: (onChange) => onNotice(fsd, [topic.user()], (notice) => notice.kind === "state", readPins, onChange, 3000),
+    watchPins: (onChange) => fsd.live([topic.user()], {
+      read: readPins,
+      onValue: onChange,
+      hear: (notice) => notice.kind === "state",
+      pollIntervalMs: 3000,
+      onError: logFailedRead,
+    }).close,
     pin: async (taskId) => {
       await pinsDo("pin", { taskId });
     },
@@ -1634,7 +1577,13 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
       await pinsDo("unpin", { taskId });
     },
     // Read the way pins are: your dismissals are your user state.
-    watchDismissed: (onChange) => onNotice(fsd, [topic.user()], (notice) => notice.kind === "state", readDismissed, onChange, 3000),
+    watchDismissed: (onChange) => fsd.live([topic.user()], {
+      read: readDismissed,
+      onValue: onChange,
+      hear: (notice) => notice.kind === "state",
+      pollIntervalMs: 3000,
+      onError: logFailedRead,
+    }).close,
     dismiss: async (task) => {
       await run("dismissals", await ownSession("dismissals"), "dismiss", { key: dismissalKey(task) });
     },

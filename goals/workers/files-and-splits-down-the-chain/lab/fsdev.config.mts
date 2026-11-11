@@ -256,7 +256,7 @@ const resolvePrincipal = async (context: unknown) => {
 };
 
 export default engine.createFlowState({
-  flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+  flows: copies,
   stores: { default: { primary: sqliteStores({ filename: STORE }) } },
   modelResolver,
   resolvePrincipal,

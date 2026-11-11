@@ -48,7 +48,7 @@ describe("createFlowState — router option forwarding", () => {
   it("forwards resolvePrincipal, staleSweepIntervalMs and staleSweepThresholdMs", async () => {
     const resolvePrincipal = vi.fn(async () => ({ userId: "system", orgId: "org_test" }));
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: stubModelResolver,
       resolvePrincipal,
@@ -65,7 +65,7 @@ describe("createFlowState — router option forwarding", () => {
 
   it("forwards queuedGraceMs to the router AND resolves it onto the shared config", async () => {
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: stubModelResolver,
       queuedGraceMs: 30 * 60_000
@@ -87,7 +87,7 @@ describe("createFlowState — router option forwarding", () => {
 
   it("defaults the shared config's grace to ten minutes when unset", async () => {
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: stubModelResolver
     });
@@ -100,7 +100,7 @@ describe("createFlowState — router option forwarding", () => {
   it("forwards durabilityRetention into the runtimeConfig bundle", async () => {
     const retention = { sweepIntervalMs: 1234, batchLimit: 7 };
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: stubModelResolver,
       durabilityRetention: retention
@@ -112,7 +112,7 @@ describe("createFlowState — router option forwarding", () => {
 
   it("builds a durabilityProvider from resolved stores when durable: true", async () => {
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: stubModelResolver,
       durable: true
@@ -127,7 +127,7 @@ describe("createFlowState — router option forwarding", () => {
 
   it("leaves durabilityProvider undefined when durable is unset", async () => {
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: stubModelResolver
     });
@@ -138,7 +138,7 @@ describe("createFlowState — router option forwarding", () => {
 
   it("omits the options when unset (router defaults apply)", async () => {
     const fs = createFlowState({
-      flows: { noop: noopFlow },
+      flows: [noopFlow],
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: stubModelResolver
     });

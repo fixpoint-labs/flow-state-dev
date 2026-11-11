@@ -99,7 +99,7 @@ async function drain(stream: ReadableStream<Uint8Array> | null): Promise<string>
 describe("V1 · a flow registered after construction is served by the SAME router", () => {
   it("404s, then serves, then 404s again — one router object throughout", async () => {
     const flowstate = createFlowState({
-      flows: { resident },
+      flows: [resident],
       stores: { dev: { primary: inMemoryStores() } },
     });
 
@@ -134,7 +134,7 @@ describe("V1 · a flow registered after construction is served by the SAME route
 
   it("meta.flowKeys tracks the registry, not the construction options", async () => {
     const flowstate = createFlowState({
-      flows: { resident },
+      flows: [resident],
       stores: { dev: { primary: inMemoryStores() } },
     });
 

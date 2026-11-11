@@ -20,7 +20,7 @@ const noopFlow = defineFlow({
 })();
 
 function flows() {
-  return { noop: noopFlow };
+  return [noopFlow];
 }
 
 /** An in-memory adapter that counts resolve() (store-init) calls. */

@@ -68,7 +68,7 @@ const ACME_PIN = { orgId: "acme", userId: OPERATOR };
  */
 async function boot(hostResolver?: ResolvePrincipalFn) {
   const state = createFlowState({
-    flows: { app: appFlow() as FlowInstance },
+    flows: [appFlow() as FlowInstance],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({ policy: "allow" }),
     ...(hostResolver === undefined ? {} : { resolvePrincipal: hostResolver }),

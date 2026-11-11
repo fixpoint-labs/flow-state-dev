@@ -38,7 +38,7 @@ const board = taskBoard({ name: BOARD, collection: tasks, workers: noopWorker })
 const flow = defineFlow({ kind: FLOW, actions: { ...taskToolActions(board) } } as never);
 
 const state = createFlowState({
-  flows: { [FLOW]: flow },
+  flows: [flow],
   logger: silentLogger,
   resolvePrincipal: (context: any) => {
     const user = context.request?.headers.get("x-user");

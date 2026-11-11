@@ -277,7 +277,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "held-flow" } as never);
   const state = createFlowState({
-    flows: { "held-flow": flow },
+    flows: [flow],
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 90_000,

@@ -30,7 +30,7 @@ afterEach(async () => {
 /** A host with no sign-in, holding one session each for Alice and Bob. */
 async function hostWithTwoUsers(): Promise<string> {
   const flowState = createFlowState({
-    flows: { notes: notesFlow },
+    flows: [notesFlow],
     modelResolver: createMockModelResolver({}),
     stores: { default: { primary: inMemoryStores() } },
   });

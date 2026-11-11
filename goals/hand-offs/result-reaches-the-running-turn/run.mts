@@ -247,7 +247,7 @@ async function startApp(resolver: ModelResolver, timing: Timing) {
     resolver
   );
   state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { default: { primary: inMemoryStores() } },
     resolvePrincipal: (context: { request?: Request }) => {
       const user = context.request?.headers.get("x-user");

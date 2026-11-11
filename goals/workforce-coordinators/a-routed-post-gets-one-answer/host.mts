@@ -161,7 +161,7 @@ export async function startRoutedHost(tree: string, seams: HostSeams = {}): Prom
 
   const route = scriptedRoute();
   const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: copies,
     stores: { default: { primary: inMemoryStores() } },
     // Who every request is, and the org its sessions bind to. Ignores the
     // request: one caller, and a body read would be caller-controlled identity.

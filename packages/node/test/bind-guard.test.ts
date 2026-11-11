@@ -32,7 +32,7 @@ function pingFlow(kind: string, authenticated: boolean) {
 
 function flowState(flows: Record<string, ReturnType<typeof pingFlow>>) {
   return createFlowState({
-    flows,
+    flows: Object.values(flows),
     modelResolver: createMockModelResolver({}),
     stores: { default: { primary: inMemoryStores() } },
   });
@@ -111,7 +111,7 @@ describe("assertNetworkBindIsAuthenticated", () => {
       },
     })();
     const fs = createFlowState({
-      flows: { explicitDefault: flow },
+      flows: [flow],
       modelResolver: createMockModelResolver({}),
       stores: { default: { primary: inMemoryStores() } },
     });
