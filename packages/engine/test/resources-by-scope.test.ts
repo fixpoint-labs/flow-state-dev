@@ -867,3 +867,20 @@ describe("a default write aborted while its canWrite is pending", () => {
     expect(await read(router, "org", "gated", alice)).toEqual({ scope: "org", key: "gated", value: { n: 0 }, version: 0 });
   });
 });
+
+describe("two routers over one registry and two stores", () => {
+  // Codex review 4544289843: the built-in default write flow kept the first router's stores.
+  it("lands each router's write in its own stores", async () => {
+    const registry = createFlowRegistry();
+    registry.register(threadsFlow({ authenticated: true }) as never);
+    const first = createInMemoryStores();
+    const second = createInMemoryStores();
+    const one = createFlowApiRouter({ registry, stores: first, staleSweepIntervalMs: 0 });
+    const two = createFlowApiRouter({ registry, stores: second, staleSweepIntervalMs: 0 });
+    routers.push(one, two);
+    const done = await write(two, second, "user", "pins", alice, { input: { state: { pinned: ["two"] }, version: 0 } });
+    expect(done.status, JSON.stringify(done.result)).toBe("completed");
+    expect((await read(two, "user", "pins", alice)).value).toEqual({ pinned: ["two"] });
+    expect((await read(one, "user", "pins", alice)).value).toEqual({ pinned: [] });
+  });
+});

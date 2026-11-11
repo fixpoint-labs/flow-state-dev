@@ -34,6 +34,8 @@ import {
 } from "../errors/flow-error";
 import { runResourceCAS } from "../stores/resource-cas";
 import { createStateContainer } from "../stores/state-container";
+import { builtInHostOf } from "../context/built-in-host";
+import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { PrincipalResolver } from "../transports/types";
@@ -278,16 +280,16 @@ async function persistAtVersion(options: {
 
 // FIX-2624.
 /**
- * Hold the framework's own flows (the default write flow) in `registry`, over
- * `stores`. Every runtime entry that resolves flows from a registry calls it:
- * the inbound host and a queue worker, so a write never depends on which
- * process runs it. `hostResolver` is the host-level resolver that entry's host
- * is given (the development resolver when none is): the default write flow
- * decides whether two declarations agree with it, as the route does. Idempotent.
+ * Hold the framework's own flows (the default write flow) in `registry`. Every
+ * runtime entry that resolves flows from a registry calls it: the inbound host
+ * and a queue worker, so a write never depends on which process runs it. The
+ * flows capture nothing of a host: they read the stores and host resolver of
+ * the runtime running them off their context (`built-in-host.ts`), so one
+ * instance serves every host that shares the registry. Idempotent.
  */
-export function installBuiltIns(registry: FlowRegistry, stores: StoreRegistry, hostResolver: PrincipalResolver): void {
+export function installBuiltIns(registry: FlowRegistry): void {
   if (registry.registerBuiltIn === undefined || registry.get(DEFAULT_WRITE_FLOW) !== undefined) return;
-  registry.registerBuiltIn(createDefaultWriteFlow({ registry, stores, hostResolver }));
+  registry.registerBuiltIn(createDefaultWriteFlow({ registry }));
 }
 
 const setInput = z.object({
@@ -298,22 +300,22 @@ const setInput = z.object({
 });
 
 /**
- * Build the default write flow's instance over a host's registry and stores.
- * The host holds it as a built-in (`createInboundTransportHost`).
+ * Build the default write flow's instance over a registry. Its stores and host
+ * resolver are the running runtime's, read off the context each run.
  */
-function createDefaultWriteFlow(options: {
-  registry: FlowRegistry;
-  stores: StoreRegistry;
-  hostResolver: PrincipalResolver;
-}): FlowInstance {
-  // The host resolver only decides whether the declarations agree, never who the
-  // caller is: that is the session binding the action route admitted.
-  const { registry, stores, hostResolver } = options;
+function createDefaultWriteFlow(options: { registry: FlowRegistry }): FlowInstance {
+  const { registry } = options;
   const set = handler({
     name: "fsd-default-write-set",
     inputSchema: setInput,
     outputSchema: z.object({ version: z.number() }),
     execute: async (input, ctx) => {
+      // This runtime's stores and host resolver; the host resolver only decides whether the
+      // declarations agree, never who the caller is (that is the session binding the action route admitted).
+      const host = builtInHostOf(ctx);
+      if (host === undefined) throw new ResourceWriteRefusedError("not_writable", "The default write flow runs only in an engine context.");
+      const stores = host.stores;
+      const hostResolver = host.hostResolver ?? defaultBodyUserIdPrincipalResolver;
       const sessionId = ctx.session.identity.id;
       const target = writeTargetOf(sessionId);
       // The session record's binding: the caller the action route resolved and admitted.

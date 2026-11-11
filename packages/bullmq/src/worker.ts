@@ -99,13 +99,15 @@ const CANCELLED = Symbol("cancelled");
  * connection (constructing a BullMQ `Worker` connects eagerly).
  */
 export function createFlowJobProcessor(deps: FlowWorkerDeps) {
-  const { registry, runtimeConfig, bridge, onItem, leaseBackend, deferPatienceMs } = deps;
+  const { registry, bridge, onItem, leaseBackend, deferPatienceMs } = deps;
+  // The framework's own flows read the host's resolver off their context (FIX-2624).
+  const runtimeConfig = { ...deps.runtimeConfig, hostResolver: deps.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver };
   // A raw registry's writes publish on the bus (FIX-2426), including the
   // settles this processor writes itself, beside runAction.
   const stores = withChangeBus(deps.stores);
   // The framework's own flows (the default write flow), which a host holds
   // too: a job addressed to one resolves here whether or not a host was built.
-  installBuiltIns(registry, stores, deps.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver);
+  installBuiltIns(registry);
 
   /**
    * Give a place back, best effort: a place that cannot be given back lapses

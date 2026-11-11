@@ -25,6 +25,7 @@ import type { DurabilityProvider } from "./durability/types";
 import type { DurabilityRetentionConfig } from "./durability/durability-sweeper";
 import type { ErrorCaptureHandler } from "./errors/error-capture";
 import type { RequestHostConstructionInputs } from "./context/types";
+import type { PrincipalResolver } from "./transports/types";
 
 export interface RuntimeConfig {
   modelResolver?: ModelResolver;
@@ -81,6 +82,14 @@ export interface RuntimeConfig {
    * then throws by name rather than failing as `undefined is not a function`.
    */
   requestHost?: RequestHostConstructionInputs;
+  // FIX-2624.
+  /**
+   * The host-level resolver this runtime's host is given. Set by the router
+   * and the queue worker, never by an app: the framework's own flows read it
+   * off the context they run in (`built-in-host.ts`), so a built-in instance
+   * held once per registry never answers to another host's resolver.
+   */
+  hostResolver?: PrincipalResolver;
   // FIX-999.
   /**
    * Resolved queued grace, carried here because three shipped paths

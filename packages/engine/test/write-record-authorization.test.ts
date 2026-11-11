@@ -49,7 +49,7 @@ describe("write-record authorization", () => {
     // The host does; so must anything else that runs actions on a registry it resolves itself
     // (a queue worker), or a job addressed to the default write flow is an unknown flow there.
     const host = readFileSync(join(__dirname, "../src/transports/host/createInboundTransportHost.ts"), "utf8");
-    expect(host).toContain("installBuiltIns(registry, stores, resolvePrincipal)");
+    expect(host).toContain("installBuiltIns(registry)");
     const packages = join(__dirname, "../..");
     const entries: string[] = [];
     const walk = (dir: string): void => {
@@ -78,10 +78,14 @@ describe("write-record authorization", () => {
 
   it("gives the default write flow the host's own resolver, and uses it only to compare declarations", () => {
     // The route and the default write flow reach one verdict on whether declarations agree
-    // (`declarationsAgree`, through `resolveAddress`), so both are given the same host resolver:
-    // the host passes its own, the worker the one its deployment's host is given.
-    const host = readFileSync(join(__dirname, "../src/transports/host/createInboundTransportHost.ts"), "utf8");
-    expect(host).toContain("installBuiltIns(registry, stores, resolvePrincipal)");
+    // (`declarationsAgree`, through `resolveAddress`), so both use the same host resolver. The
+    // built-in flow captures none at install (one instance serves every host sharing a registry):
+    // it reads the running runtime's off its context, which the router and the worker set.
+    const router = readFileSync(join(ROUTES, "http-handlers.ts"), "utf8");
+    expect(router).toMatch(/const runtimeConfig: RuntimeConfig = \{[^}]*\bhostResolver\b/);
+    const context = readFileSync(join(__dirname, "../src/context/createExecutionContext.ts"), "utf8");
+    expect(context).toContain("hostResolver: options.effectiveRuntimeConfig?.hostResolver");
+    expect(context.match(/attachBuiltInHost\((rootContext|childContext), builtInHost\)/g)?.length).toBe(2);
     // Every worker adapter createFlowState starts hands the worker the host's resolver, from the
     // runtime it is given: no caller supplies it, and a new adapter can't leave it out.
     const packages = join(__dirname, "../..");
@@ -95,16 +99,18 @@ describe("write-record authorization", () => {
     expect(adapters.length).toBeGreaterThan(0);
     for (const file of adapters) expect(readFileSync(file, "utf8"), file).toContain("resolvePrincipal: rt.resolvePrincipal");
     const worker = readFileSync(join(__dirname, "../../bullmq/src/worker.ts"), "utf8");
-    expect(worker).toContain("installBuiltIns(registry, stores, deps.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver)");
+    expect(worker).toContain("installBuiltIns(registry)");
+    expect(worker).toContain("hostResolver: deps.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver");
     // Inside the flow it reaches nothing but the agreement check: never a caller, never an owner.
     const flow = readFileSync(join(__dirname, "../src/resources/default-write-flow.ts"), "utf8");
     const body = flow.slice(flow.indexOf("function createDefaultWriteFlow("));
     const uses = body.split("\n").filter((line) => /\bhostResolver\b/.test(line)).map((line) => line.trim());
     expect(uses).toEqual([
-      "hostResolver: PrincipalResolver;",
-      "const { registry, stores, hostResolver } = options;",
+      "const hostResolver = host.hostResolver ?? defaultBodyUserIdPrincipalResolver;",
       "const address = resolveAddress(registry, hostResolver, target.scope, target.key, (flow) =>"
     ]);
+    // And no store but the running runtime's.
+    expect(body).not.toMatch(/options\.stores|\bstores\s*[,:]\s*StoreRegistry/);
     // `resolveAddress` compares resolvers; it never calls one.
     const address = readFileSync(join(__dirname, "../src/resources/scope-address.ts"), "utf8");
     const compare = address.slice(address.indexOf("export function resolveAddress("), address.indexOf("export type AddressCaller"));
