@@ -45,3 +45,4 @@ An environment whose `FSDEV_DEFAULT_MODEL`/`FSDEV_INTENT_*` name an id the resol
 | 2026-11-11 | rebased on 650474a4 | scripted | FAIL (expected) | `GOAL_CONTROL=shared-token` on DevTeam: (f) u_devforce_member saved `github:initech/tps-reports#9`, and the refusal doesn't name GITHUB_TOKEN. |
 | 2026-11-11 | 1c899b66 + labs' resolver | scripted | FAIL (expected) | Before the resolver, Teammates and Claude Code Style: (f) host-identity, a session opened naming another user is stored as that user's. |
 | 2026-11-11 | 1c899b66 + labs' resolver | scripted | PASS | `GOAL_HOSTS=teammates,claude-code-style`: (a)–(f) pass. Each lab resolves every request to its own user in its own org, so serve()'s tick is admitted and (c), (d) resumed and (e) go green. |
+| 2026-11-11 | 67e42e07 | scripted | PASS | All three hosts: (a)–(f) pass. |
