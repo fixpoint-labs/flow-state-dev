@@ -70,7 +70,6 @@ function researchFlow(installation: WorkerInstallation) {
     resources: { ...installation.resources },
     actions: {
       respond: {
-        inputSchema: door,
         userMessage: (input: { message: string }) => input.message,
         block: handler({
           name: "research-run",
@@ -82,9 +81,7 @@ function researchFlow(installation: WorkerInstallation) {
           },
         }),
       },
-      reassign: {
-        inputSchema: z.object({ to: z.string() }).strict(),
-        block: handler({
+      reassign: handler({
           name: "research-reassign",
           inputSchema: z.object({ to: z.string() }).strict(),
           execute: async (input, ctx) => {
@@ -92,7 +89,6 @@ function researchFlow(installation: WorkerInstallation) {
             return { reassigned: input.to };
           },
         }),
-      },
     },
   });
 }
@@ -115,9 +111,9 @@ export function appFlows(workers: WorkerManifest[], control: Control): FlowInsta
 
   const { hire, fork, fire } = createWorkerHireBlocks(bound);
   const roster = defineWorkerRosterFlow(bound, {
-    hire: { inputSchema: hire.inputSchema, block: hire },
-    fork: { inputSchema: fork.inputSchema, block: fork },
-    fire: { inputSchema: fire.inputSchema, block: fire },
+    hire,
+    fork,
+    fire,
   });
   return [agent({ id: "agent" }), research(), roster()] as unknown as FlowInstance[];
 }

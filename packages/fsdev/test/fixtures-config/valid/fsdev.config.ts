@@ -16,10 +16,7 @@ const echoHandler = handler({
 const echoFlow = defineFlow({
   kind: "echo",
   actions: {
-    respond: {
-      inputSchema: z.object({ message: z.string() }),
-      block: echoHandler,
-    },
+    respond: echoHandler,
   },
 })();
 

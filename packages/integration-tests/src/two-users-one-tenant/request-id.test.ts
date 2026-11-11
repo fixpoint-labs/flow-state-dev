@@ -25,7 +25,6 @@ const notes = defineFlow({
   kind: "notes",
   actions: {
     write: {
-      inputSchema: noteSchema,
       userMessage: (input: { text: string }) => input.text,
       block: handler({
         name: "notes-write",
@@ -35,7 +34,6 @@ const notes = defineFlow({
       })
     },
     writeQueued: {
-      inputSchema: noteSchema,
       userMessage: (input: { text: string }) => input.text,
       concurrency: { policy: "queue", key: "session" },
       block: handler({

@@ -36,7 +36,6 @@ const REQUEST_ID = "req_client_chosen";
 function flowCapturing(seen: string[]) {
   const input = z.object({ text: z.string() });
   const run = {
-    inputSchema: input,
     block: handler({
       name: "incarnation-capture",
       inputSchema: input,

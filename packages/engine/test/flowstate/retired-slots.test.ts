@@ -26,10 +26,7 @@ const withScheduler: CapabilitySlotMap = { primary: inMemoryStores(), scheduler:
 const flow = defineFlow({
   kind: "slots-flow",
   actions: {
-    ping: {
-      inputSchema: z.object({}),
-      block: handler({ name: "ping", inputSchema: z.object({}), execute: () => ({ ok: true }) })
-    }
+    ping: handler({ name: "ping", inputSchema: z.object({}), execute: () => ({ ok: true }) })
   }
 })();
 

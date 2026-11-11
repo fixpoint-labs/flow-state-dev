@@ -72,7 +72,7 @@ function setup(options: Options = {}) {
     kind: "with-block",
     actions: {
       send: { ...send, block: sequencer({ name: "chat", inputSchema: input }).tap(recordAttachments).step(reply) },
-      tamper: { inputSchema: input, block: tamper }
+      tamper
     }
   })();
   const without = defineFlow({

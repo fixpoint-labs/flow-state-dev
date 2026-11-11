@@ -17,15 +17,12 @@ const flow = defineFlow({
   kind: "state-write-keeps-ref-items",
   request: { stateSchema: z.object({ phase: z.string().default("idle") }) },
   actions: {
-    run: {
-      inputSchema: z.object({}),
-      block: handler({
+    run: handler({
         name: "noop",
         inputSchema: z.object({}),
         outputSchema: z.object({}),
         execute: () => ({})
       })
-    }
   }
 })();
 

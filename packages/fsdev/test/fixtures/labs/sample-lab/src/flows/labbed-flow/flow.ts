@@ -17,10 +17,7 @@ const labbedHandler = handler({
 const labbedFlow = defineFlow({
   kind: "labbed",
   actions: {
-    process: {
-      inputSchema: z.object({ value: z.string() }),
-      block: labbedHandler,
-    },
+    process: labbedHandler,
   },
 });
 

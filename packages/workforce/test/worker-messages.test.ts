@@ -939,7 +939,7 @@ describe("who can be messaged", () => {
         kind: "coder",
         configSchema: workerConfigSchema(),
         session: installation.session(),
-        actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: handler({ name: "coder-run", inputSchema: door, execute: (i) => i }) } },
+        actions: { respond: { userMessage: (i: { message: string }) => i.message, block: handler({ name: "coder-run", inputSchema: door, execute: (i) => i }) } },
         internal: { actions: hearsMessages(installation, "coder", "task-sessions") }
       })
     };
@@ -959,7 +959,7 @@ describe("who can be messaged", () => {
         kind: "coder",
         configSchema: workerConfigSchema(),
         session: installation.session(),
-        actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: handler({ name: "coder-run", inputSchema: door, execute: (i) => i }) } },
+        actions: { respond: { userMessage: (i: { message: string }) => i.message, block: handler({ name: "coder-run", inputSchema: door, execute: (i) => i }) } },
         internal: { actions: hearsMessages(installation, "coder", "task-sessions") }
       })
     };

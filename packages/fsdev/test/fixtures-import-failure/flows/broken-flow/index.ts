@@ -19,10 +19,7 @@ const fallbackHandler = handler({
 const fallbackFlow = defineFlow({
   kind: "broken-fallback",
   actions: {
-    respond: {
-      inputSchema: z.object({ message: z.string() }),
-      block: fallbackHandler,
-    },
+    respond: fallbackHandler,
   },
 });
 

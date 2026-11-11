@@ -49,15 +49,12 @@ describe("a settled request's items on SQLite", () => {
     const flow = defineFlow({
       kind: "settled-items",
       actions: {
-        answer: {
-          inputSchema: z.object({}),
-          block: handler({
+        answer: handler({
             name: "answer-door",
             inputSchema: z.object({}),
             outputSchema: z.object({ outcome: z.string() }),
             execute: async () => ({ outcome: "declined" })
           })
-        }
       }
     })({ id: "settled-items" });
 

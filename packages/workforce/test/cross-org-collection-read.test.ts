@@ -149,7 +149,6 @@ function harnessOver(router: any): Harness {
 
 /** A flow carrying one public no-op, so a session can be opened on it. */
 const noopAction = {
-  inputSchema: z.object({}),
   block: handler({
     name: "noop",
     inputSchema: z.object({}),

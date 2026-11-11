@@ -30,7 +30,7 @@ function scheduledApp() {
   const flow = defineFlow({
     kind: "ticked",
     actions: {
-      noop: { inputSchema: z.object({}), block: handler({ name: "ticked-noop", inputSchema: z.object({}), execute: () => ({}) }) }
+      noop: handler({ name: "ticked-noop", inputSchema: z.object({}), execute: () => ({}) })
     },
     schedules: { index: { claimDue: async (now: number) => (claims.push(now), []) } }
   })();
@@ -55,7 +55,7 @@ describe("serve() ticks a flow's schedule index", () => {
     let claims = 0;
     const flow = defineFlow({
       kind: "stalled",
-      actions: { noop: { inputSchema: z.object({}), block: handler({ name: "stalled-noop", inputSchema: z.object({}), execute: () => ({}) }) } },
+      actions: { noop: handler({ name: "stalled-noop", inputSchema: z.object({}), execute: () => ({}) }) },
       // A store that stopped answering: the claim never settles.
       schedules: { index: { claimDue: () => ((claims += 1), new Promise<never>(() => undefined)) } }
     })();

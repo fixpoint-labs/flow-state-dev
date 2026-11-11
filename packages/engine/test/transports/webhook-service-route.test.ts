@@ -64,8 +64,8 @@ const svc = defineFlow({
   },
   internal: {
     actions: {
-      route: { inputSchema: eventSchema, block: route },
-      deliver: { inputSchema: z.object({ note: z.string() }), block: deliver }
+      route,
+      deliver
     }
   }
 })();

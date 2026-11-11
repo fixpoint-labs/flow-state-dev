@@ -83,7 +83,7 @@ function guardedFlow(kind: string, observed: Observed) {
   const flow = defineFlow({
     kind,
     actions: {
-      hold: { block: hold, inputSchema: z.object({}).passthrough() },
+      hold,
       deliver: { block: deliver },
       spawn: { block: spawn }
     },

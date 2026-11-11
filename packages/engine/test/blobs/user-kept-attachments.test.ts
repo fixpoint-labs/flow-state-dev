@@ -84,10 +84,10 @@ function setup(withBlobs = true, auth: "host" | "flow" | "open" = "host") {
       kind: "board",
       ...(auth === "flow" ? { authentication: { resolvePrincipal: byHeader } } : {}),
       actions: {
-        keep: { inputSchema: message, block: keep, userMessage: (i) => i.message },
+        keep: { block: keep, userMessage: (i) => i.message },
         // The line a run opens with carries the kept files, read off server-held state, never the input.
-        run: { inputSchema: message, block: run, userMessage: (i) => ({ text: i.message, attachments: kept.files }) },
-        drop: { inputSchema: message, block: drop, userMessage: (i) => i.message },
+        run: { block: run, userMessage: (i) => ({ text: i.message, attachments: kept.files }) },
+        drop: { block: drop, userMessage: (i) => i.message },
       },
     })(),
   );
@@ -262,7 +262,7 @@ describe("a kept file whose keeping flow is gone", () => {
       defineFlow({
         kind: "desk",
         authentication: { resolvePrincipal: byHeader },
-        actions: { noop: { inputSchema: message, block: handler({ name: "noop", inputSchema: message, outputSchema: message, execute: (value) => value }) } },
+        actions: { noop: handler({ name: "noop", inputSchema: message, outputSchema: message, execute: (value) => value }) },
       })(),
     );
     const router = createFlowApiRouter({ registry, stores });

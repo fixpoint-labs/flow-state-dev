@@ -9,15 +9,12 @@ import { z } from "zod";
 const echoFlow = defineFlow({
   kind: "echo",
   actions: {
-    respond: {
-      inputSchema: z.object({ message: z.string() }),
-      block: handler({
+    respond: handler({
         name: "echo-handler",
         inputSchema: z.object({ message: z.string() }),
         outputSchema: z.object({ reply: z.string() }),
         execute: async (input) => ({ reply: `Echo: ${input.message}` }),
       }),
-    },
   },
 })();
 

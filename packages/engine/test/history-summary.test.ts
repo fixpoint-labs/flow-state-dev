@@ -69,7 +69,7 @@ function chatFlow(options: { window: number; summarize?: ReturnType<typeof foldi
   return defineFlow({
     kind: "summary-chat",
     session: { historyWindow: { turns: options.window } },
-    actions: { run: { inputSchema: z.string(), block, userMessage: (input: string) => input } }
+    actions: { run: { block, userMessage: (input: string) => input } }
   })();
 }
 
@@ -269,7 +269,6 @@ describe("historySummary on the engine", () => {
       session: { historyWindow: { turns: 4 } },
       actions: {
         run: {
-          inputSchema: z.string(),
           block: sequencer({ name: "chat", inputSchema: z.string() }).tap(overtaken).tap(earlier.fold).step(answer),
           userMessage: (input: string) => input
         }
@@ -409,7 +408,6 @@ describe("historySummary on the engine", () => {
       session: { historyWindow: { turns: 4 } },
       actions: {
         run: {
-          inputSchema: z.string(),
           block: sequencer({ name: "chat", inputSchema: z.string() }).tap(settles).tap(earlier.fold).step(answer),
           userMessage: (input: string) => input
         }
@@ -462,7 +460,6 @@ describe("historySummary on the engine", () => {
       session: { historyWindow: { turns: 4 } },
       actions: {
         run: {
-          inputSchema: z.string(),
           block: sequencer({ name: "chat", inputSchema: z.string() }).tap(resumed).tap(earlier.fold).step(answer),
           userMessage: (input: string) => input
         }

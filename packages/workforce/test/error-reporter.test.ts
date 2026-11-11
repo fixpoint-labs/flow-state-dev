@@ -114,7 +114,7 @@ function breakerFlow(installation: WorkerInstallation) {
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources },
     internal: { actions: hearsMessages(installation, "breaker") },
-    actions: { respond: { inputSchema: z.object({ message: z.string() }), block: door, userMessage: (i: { message: string }) => i.message } }
+    actions: { respond: { block: door, userMessage: (i: { message: string }) => i.message } }
   });
 }
 

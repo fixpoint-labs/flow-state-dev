@@ -18,7 +18,7 @@ describe("defineFlow mcp config validation", () => {
       defineFlow({
         kind: "demo",
         actions: {
-          run: { inputSchema: z.object({}), block: noopBlock }
+          run: noopBlock
         }
       })
     ).not.toThrow();
@@ -30,7 +30,7 @@ describe("defineFlow mcp config validation", () => {
         kind: "demo",
         mcp: { enabled: true },
         actions: {
-          run: { inputSchema: z.object({}), block: noopBlock }
+          run: noopBlock
         }
       })
     ).toThrow(/exposes action "run" via MCP but the action has no description/);
@@ -42,7 +42,7 @@ describe("defineFlow mcp config validation", () => {
         kind: "demo",
         mcp: { enabled: true },
         actions: {
-          run: { inputSchema: z.object({}), block: noopBlock, description: "   " }
+          run: { block: noopBlock, description: "   " }
         }
       })
     ).toThrow(/no description/);
@@ -55,7 +55,6 @@ describe("defineFlow mcp config validation", () => {
         mcp: { enabled: true },
         actions: {
           run: {
-            inputSchema: z.object({}),
             block: noopBlock,
             description: "Run the thing."
           }
@@ -71,12 +70,10 @@ describe("defineFlow mcp config validation", () => {
         mcp: { enabled: true },
         actions: {
           run: {
-            inputSchema: z.object({}),
             block: noopBlock,
             description: "Public."
           },
           internal: {
-            inputSchema: z.object({}),
             block: noopBlock,
             mcp: { enabled: false }
           }
@@ -91,7 +88,6 @@ describe("defineFlow mcp config validation", () => {
       mcp: { enabled: true, exposeResources: false },
       actions: {
         run: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "Run."
         }

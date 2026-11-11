@@ -108,7 +108,7 @@ function probeFlow(kind: string, seen: Seen, ask: string[]) {
 
   return defineFlow({
     kind,
-    actions: { run: { inputSchema: z.object({}), block: probe } },
+    actions: { run: probe },
     internal: { actions: { work: { block: work } } },
     request: { heartbeatIntervalMs: 10_000 }
   })();

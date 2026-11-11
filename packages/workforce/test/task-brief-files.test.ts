@@ -53,7 +53,7 @@ function lookerFlow(installation: WorkerInstallation, seen: Seen[]) {
     session: installation.session(),
     resources: { ...installation.resources, ...conversationLedgerResources, ...workerMessagesResources },
     internal: { actions: hearsMessages(installation, "looker") },
-    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    actions: { respond: { block: door, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "looker-task", turn }) } },
   } as never);
 }

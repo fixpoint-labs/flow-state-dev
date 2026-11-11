@@ -127,7 +127,7 @@ function detachingFlow(
 
   return defineFlow({
     kind,
-    actions: { launch: { inputSchema: z.object({}), block: launcher } },
+    actions: { launch: launcher },
     internal: { actions: { core: { block: core } } },
     ...(options.concurrency !== undefined
       ? { request: { concurrency: options.concurrency } }

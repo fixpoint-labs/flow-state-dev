@@ -125,7 +125,7 @@ describe("FIX-744: parallel distinct-key collection writes survive in cache", ()
 
     const flow = defineFlow({
       kind: "fix744-fanout",
-      actions: { run: { inputSchema: z.array(z.number()), block: pipeline } }
+      actions: { run: pipeline }
     })();
 
     const stores = createInMemoryStores();

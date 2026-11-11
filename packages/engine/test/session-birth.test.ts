@@ -109,9 +109,9 @@ function flows(): Harness {
       serverOwned: ["delegates"]
     },
     actions: {
-      whoami: { inputSchema: z.object({}).passthrough(), block: whoAmI },
-      delegate: { inputSchema: z.object({ to: z.array(z.string()) }), block: writeDelegates },
-      move: { inputSchema: z.object({ to: z.string() }), block: moveWorker }
+      whoami: whoAmI,
+      delegate: writeDelegates,
+      move: moveWorker
     },
     internal: { actions: { work: { block: handler({ name: "bound-work", execute: () => ({}) }) } } },
     // `from` with a gate that lets every task through: what is under test is
@@ -128,7 +128,7 @@ function flows(): Harness {
   const plain = defineFlow({
     kind: "plain",
     actions: {
-      whoami: { inputSchema: z.object({}).passthrough(), block: whoAmI }
+      whoami: whoAmI
     },
     internal: { actions: { work: { block: handler({ name: "plain-work", execute: () => ({}) }) } } }
   })({ id: "plain" }) as unknown as FlowInstance;

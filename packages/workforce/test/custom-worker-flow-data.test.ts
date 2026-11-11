@@ -63,7 +63,7 @@ function host() {
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources },
     internal: { actions: hearsMessages(installation, "research") },
-    actions: { respond: { inputSchema: input, block: door, userMessage: (i: { message: string }) => i.message } }
+    actions: { respond: { block: door, userMessage: (i: { message: string }) => i.message } }
   });
   flows = { research };
   const copy = research() as unknown as FlowInstance;

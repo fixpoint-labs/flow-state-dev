@@ -32,7 +32,6 @@ const ORG = "org_shared";
 
 const input = z.object({ text: z.string() });
 const run = {
-  inputSchema: input,
   userMessage: (value: { text: string }) => value.text,
   block: handler({ name: "owner-fence-run", inputSchema: input, execute: () => ({}) })
 };

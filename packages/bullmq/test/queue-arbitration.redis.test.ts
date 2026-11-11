@@ -78,7 +78,7 @@ function sessionFlow(kind: string, spans: Span[]) {
   return defineFlow({
     kind,
     actions: {
-      work: { block: work, inputSchema: z.object({ tag: z.string(), holdMs: z.number().optional() }) },
+      work,
       deliver: { block: deliver }
     },
     internal: { actions: { work: { block: work } } },
@@ -124,8 +124,8 @@ function conversationFlow(kind: string, spans: Span[]) {
   return defineFlow({
     kind,
     actions: {
-      reply: { block: turn, inputSchema: input, concurrency: "hold" },
-      notice: { block: turn, inputSchema: input, concurrency: "defer" }
+      reply: { block: turn, concurrency: "hold" },
+      notice: { block: turn, concurrency: "defer" }
     }
   })({ id: kind });
 }

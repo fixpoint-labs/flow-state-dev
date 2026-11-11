@@ -17,10 +17,7 @@ const nestedHandler = handler({
 const nestedFlow = defineFlow({
   kind: "nested",
   actions: {
-    process: {
-      inputSchema: z.object({ value: z.string() }),
-      block: nestedHandler,
-    },
+    process: nestedHandler,
   },
 });
 

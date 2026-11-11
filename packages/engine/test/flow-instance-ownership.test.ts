@@ -36,10 +36,7 @@ const reviewDefinition = defineFlow({
   kind: "review",
   cardinality: "collection",
   actions: {
-    run: {
-      inputSchema: z.object({}),
-      block: handler({ name: "review-run", inputSchema: z.object({}), execute: () => ({}) })
-    }
+    run: handler({ name: "review-run", inputSchema: z.object({}), execute: () => ({}) })
   },
   session: { stateSchema: z.object({ marker: z.string().nullable().default(null) }) }
 });
@@ -48,9 +45,7 @@ function review(options: { id: string }): FlowInstance {
   return reviewDefinition({
     id: options.id,
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({
+      run: handler({
           name: `review-run-${options.id}`,
           inputSchema: z.object({}),
           execute: async (_input, ctx) => {
@@ -58,7 +53,6 @@ function review(options: { id: string }): FlowInstance {
             return {};
           }
         })
-      }
     }
   }) as unknown as FlowInstance;
 }
@@ -69,10 +63,7 @@ const queuedDefinition = defineFlow({
   cardinality: "collection",
   request: { concurrency: { policy: "queue", key: "session" } },
   actions: {
-    run: {
-      inputSchema: z.object({}),
-      block: handler({ name: "queued-run", inputSchema: z.object({}), execute: () => ({}) })
-    }
+    run: handler({ name: "queued-run", inputSchema: z.object({}), execute: () => ({}) })
   }
 });
 
@@ -85,10 +76,7 @@ function secureReview(kind: string) {
     kind,
     cardinality: "collection",
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({ name: `${kind}-run`, inputSchema: z.object({}), execute: () => ({}) })
-      }
+      run: handler({ name: `${kind}-run`, inputSchema: z.object({}), execute: () => ({}) })
     },
     authentication: {
       resolvePrincipal: (context) => {

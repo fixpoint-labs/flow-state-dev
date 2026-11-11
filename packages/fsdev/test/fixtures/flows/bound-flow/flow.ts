@@ -17,9 +17,7 @@ const sessionStateSchema = z.object({
 const boundFlow = defineFlow({
   kind: "bound",
   actions: {
-    who: {
-      inputSchema: z.object({}),
-      block: handler({
+    who: handler({
         name: "bound-who",
         inputSchema: z.object({}),
         outputSchema: z.object({ workerId: z.string().nullable() }),
@@ -27,7 +25,6 @@ const boundFlow = defineFlow({
           workerId: (ctx.session.state as { workerId?: string }).workerId ?? null,
         }),
       }),
-    },
   },
   session: {
     stateSchema: sessionStateSchema,

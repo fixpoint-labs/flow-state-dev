@@ -44,10 +44,7 @@ describe("the activator with no evaluator", () => {
       kind: "activator-without-evaluator",
       resources: { skills: defineSkillsCollection({ scope: "session" }) },
       actions: {
-        run: {
-          inputSchema: z.object({ message: z.string() }),
-          block: sequencer({ name: "turn", inputSchema: z.object({ message: z.string() }) }).step(activator),
-        },
+        run: sequencer({ name: "turn", inputSchema: z.object({ message: z.string() }) }).step(activator),
       },
     })();
 

@@ -17,10 +17,7 @@ const helperFirstHandler = handler({
 const helperFirstFlow = defineFlow({
   kind: "helper-first",
   actions: {
-    respond: {
-      inputSchema: z.object({ message: z.string() }),
-      block: helperFirstHandler,
-    },
+    respond: helperFirstHandler,
   },
 });
 

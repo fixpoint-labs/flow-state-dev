@@ -45,7 +45,7 @@ function boot(options: { flowIsolation?: boolean } = {}) {
     kind: "notes",
     cardinality: "collection",
     resources: { notes },
-    actions: { write: { inputSchema: z.object({}), block: write } },
+    actions: { write },
   });
 
   const registry = createFlowRegistry();
@@ -139,7 +139,7 @@ describe("CollectionHookContext.cell with overlapping collections", () => {
     const flow = defineFlow({
       kind: "sched",
       resources: { all, priv },
-      actions: { write: { inputSchema: z.object({}), block: write } },
+      actions: { write },
     })() as FlowInstance;
     const stores = createInMemoryStores();
     const result = await runAction({

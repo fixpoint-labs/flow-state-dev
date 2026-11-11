@@ -21,14 +21,11 @@ function pingFlow(kind: string, authenticated: boolean) {
         }
       : {}),
     actions: {
-      ping: {
-        inputSchema: z.object({}).passthrough(),
-        block: handler({
+      ping: handler({
           name: "ping",
           inputSchema: z.object({}).passthrough(),
           execute: () => undefined,
         }),
-      },
     },
   })();
 }
@@ -106,14 +103,11 @@ describe("assertNetworkBindIsAuthenticated", () => {
       kind: "explicit-default",
       authentication: { resolvePrincipal: defaultBodyUserIdPrincipalResolver },
       actions: {
-        ping: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
+        ping: handler({
             name: "ping",
             inputSchema: z.object({}).passthrough(),
             execute: () => undefined,
           }),
-        },
       },
     })();
     const fs = createFlowState({

@@ -130,7 +130,7 @@ describe("the inventory row says whether a worker's door takes a task", () => {
     kind: "desk",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    actions: { respond: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message } }
+    actions: { respond: { block: echo, userMessage: (i: { message: string }) => i.message } }
   });
 
   it("is true for the built-in agent door and false for a door that hasn't opted in", async () => {

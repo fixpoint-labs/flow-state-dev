@@ -46,15 +46,12 @@ function secureFlow(kind = "secure") {
   return defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({
+      run: handler({
           name: `${kind}-run`,
           inputSchema: z.object({}),
           outputSchema: z.object({}),
           execute: () => ({})
         })
-      }
     },
     authentication: {
       resolvePrincipal: (context) => {
@@ -72,15 +69,12 @@ function openFlow(kind = "open") {
   return defineFlow({
     kind,
     actions: {
-      run: {
-        inputSchema: z.object({}),
-        block: handler({
+      run: handler({
           name: `${kind}-run`,
           inputSchema: z.object({}),
           outputSchema: z.object({}),
           execute: () => ({})
         })
-      }
     }
   })();
 }

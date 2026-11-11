@@ -56,9 +56,7 @@ function parkingFlow(park: Park & { markStarted: () => void }, selfCompleteMs: n
   return defineFlow({
     kind: FLOW_KIND,
     actions: {
-      run: {
-        inputSchema: z.unknown(),
-        block: handler({
+      run: handler({
           name: "park",
           inputSchema: z.unknown(),
           outputSchema: z.string(),
@@ -81,7 +79,6 @@ function parkingFlow(park: Park & { markStarted: () => void }, selfCompleteMs: n
             return outcome;
           }
         })
-      }
     }
   })({ id: FLOW_KIND });
 }

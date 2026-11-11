@@ -89,6 +89,12 @@ actions: {
 - Action input validation runs before any block execution
 - `userMessage` is optional — omit it for system triggers or background tasks
 
+### Bare-block entries
+
+An entry that sets nothing beyond its block is the block itself: `actions: { chat, summarize }`. The same holds for `reads`, `internal.actions`, `task.actions` and an instance's `actions` override. `defineFlow` turns each bare block into `{ block }` once, in `normalizeFlowConfig`, so every reader past it (the runtime, HTTP, MCP, the devtool) sees only the object form, and `NormalizedActions` gives the client the same input typing as `{ block }`. Webhook bindings and schedules have no bare form: each always carries `input` or `cron`.
+
+The same normalize step resolves an action's (and a read's) `description` to `action.description ?? block.description`, so MCP's tool text and its definition-time check read one value. An action's own description still wins; set one when a public MCP tool needs wording the block's doesn't have.
+
 ### When to override `inputSchema`
 
 `inputSchema` is optional because every block already carries its own. Override it when the action's public contract should diverge from the block's:

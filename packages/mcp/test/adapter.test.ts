@@ -43,7 +43,6 @@ function buildFlow() {
         description: "Record a payment for an invoice."
       },
       privateInternal: {
-        inputSchema: z.object({}),
         block: noopBlock,
         mcp: { enabled: false }
       }
@@ -142,7 +141,6 @@ describe("resolveExposedActions", () => {
       mcp: { enabled: true },
       actions: {
         recordPayment: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "Record a payment.",
           mcp: { name: "log-payment" }
@@ -160,12 +158,10 @@ describe("resolveExposedActions", () => {
       mcp: { enabled: true },
       actions: {
         recordPayment: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "A."
         },
         record_payment: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "B."
         }
@@ -182,12 +178,10 @@ describe("resolveExposedActions", () => {
       mcp: { enabled: true },
       actions: {
         recordPayment: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "A."
         },
         otherAction: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "B.",
           mcp: { name: "record_payment" }
@@ -509,7 +503,7 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
     const flow = defineFlow({
       kind: "no-mcp",
       actions: {
-        run: { inputSchema: z.object({}), block: noopBlock }
+        run: noopBlock
       }
     });
     const adapter = createMcpTransportAdapter();
@@ -694,18 +688,15 @@ describe("MCP adapter — mcp.session directive → dispatch sessionId", () => {
       mcp: { enabled: true },
       actions: {
         stateless: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "No session directive — a fresh ephemeral session per call."
         },
         openContext: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "Mints a fresh conv_ id.",
           mcp: { session: "conv_*" }
         },
         constantPrefix: {
-          inputSchema: z.object({}),
           block: noopBlock,
           description: "Template with no * — token is appended.",
           mcp: { session: "ctx" }

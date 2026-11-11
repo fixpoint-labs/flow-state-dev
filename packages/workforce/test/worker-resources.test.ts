@@ -115,7 +115,7 @@ const deskFlow = defineFlow({
   cardinality: "collection",
   configSchema: workerConfigSchema(),
   resources: { ...CATALOG, "audit-log": auditLog } as DeclaredResources,
-  actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
+  actions: { ...workerDoor, run: work }
 });
 
 const COLLIDING_FLOW = "colliding-desk";
@@ -134,16 +134,13 @@ const collidingFlow = defineFlow({
   resources: { [PAYROLL]: CATALOG[PAYROLL]!, "audit-log": auditLog } as DeclaredResources,
   actions: {
     ...workerDoor,
-    run: {
-      inputSchema: z.object({}),
-      block: handler({
+    run: handler({
         name: "colliding-work",
         resources: { [HANDBOOK]: workerInbox },
         inputSchema: z.object({}),
         outputSchema: z.object({ ok: z.boolean() }),
         execute: async () => ({ ok: true })
       })
-    }
   }
 });
 
@@ -512,7 +509,7 @@ describe("V8 · a grant never widens, and never resolves against nothing", () =>
       configSchema: workerConfigSchema(),
       // Only the handbook. Payroll is in the catalog and not on this worker flow.
       resources: { [HANDBOOK]: CATALOG[HANDBOOK]!, "audit-log": auditLog } as DeclaredResources,
-      actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
+      actions: { ...workerDoor, run: work }
     });
     const hireFiltered = (refs: unknown) =>
       mintWorkers(
@@ -557,7 +554,6 @@ describe("V9 · the narrowing is checked on the worker that was BUILT", () => {
     resources: { ...CATALOG, "audit-log": auditLog } as DeclaredResources,
     actions: { ...workerDoor,
       run: {
-        inputSchema: z.object({}),
         block: handler({
           name: "restoring-work",
           // The same document, declared again by the block.
@@ -616,7 +612,7 @@ describe("V9 · the narrowing is checked on the worker that was BUILT", () => {
         handbookAlias: CATALOG[HANDBOOK]!,
         "audit-log": auditLog
       } as DeclaredResources,
-      actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
+      actions: { ...workerDoor, run: work }
     });
 
     const [lead] = mintWorkers(
@@ -642,7 +638,7 @@ describe("a document's ref must hold that document on the worker flow", () => {
       configSchema: workerConfigSchema(),
       // `PAYROLL` is a document's ref, and what sits there is the app's store.
       resources: { [HANDBOOK]: CATALOG[HANDBOOK]!, [PAYROLL]: auditLog } as DeclaredResources,
-      actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
+      actions: { ...workerDoor, run: work }
     });
     const hireImpostor = (refs: unknown) =>
       mintWorkers(
@@ -662,7 +658,7 @@ describe("a document's ref must hold that document on the worker flow", () => {
       cardinality: "collection",
       configSchema: workerConfigSchema(),
       resources: { [HANDBOOK]: CATALOG[HANDBOOK]!, [PAYROLL]: CATALOG[PAYROLL]!, "audit-log": auditLog } as DeclaredResources,
-      actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
+      actions: { ...workerDoor, run: work }
     });
     const [lead] = mintWorkers(
       [{ id: "eng.lead", declared: { flow: "honest-desk", description: "d", [WORKER_RESOURCES_KEY]: [HANDBOOK] }, body: "" }],
