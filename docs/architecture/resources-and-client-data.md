@@ -411,7 +411,7 @@ A view and a read do overlapping jobs: both compute an answer for a screen. A vi
 
 ### Scope-Level Client Data
 
-A scope's `client` block projects state and resources from that single scope. The result is served grouped by scope:
+A scope's `client` block names the state fields it exposes (`expose`), from that single scope. The result is served grouped by scope:
 
 ```
 GET /api/flows/sessions/:sessionId/state
@@ -422,8 +422,8 @@ Returns scope-level client data grouped by scope:
 ```json
 {
   "clientData": {
-    "session": { "modeStatus": { "currentMode": "chat" } },
-    "user": { "preferences": { "displayName": "User" } }
+    "session": { "messageCount": 3 },
+    "user": { "displayName": "User" }
   }
 }
 ```
@@ -470,7 +470,7 @@ The snapshot includes a `resources` key with metadata and `clientData` only — 
 
 ```json
 {
-  "clientData": { "session": { "modeStatus": {...} } },
+  "clientData": { "session": { "messageCount": 3 } },
   "resources": {
     "session": {
       "soul": { "clientData": { "displayTone": "Direct" } },

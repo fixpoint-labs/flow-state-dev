@@ -103,8 +103,9 @@ const myFlow = defineFlow({
   actions: {
     chat: { inputSchema, block: chatPipeline, userMessage: (i) => i.message }
   },
-  session: { stateSchema, resources: { ... }, client: { expose: [...], derived: { ... } } },
-  user: { stateSchema, client: { derived: { ... } } },
+  session: { stateSchema, resources: { ... }, client: { expose: [...] } },
+  user: { stateSchema, client: { expose: [...] } },
+  views: { ... },   // a value computed for a screen: defineView({ scope, block })
 });
 ```
 
