@@ -136,6 +136,36 @@ describe("files in a teammate's composer", () => {
     expect(sends[0].attachments.map((file) => file.filename)).toEqual(["bug.png"]);
   });
 
+  it("still sends a line pressed while its upload ran after you open another teammate, with no error in the new box", async () => {
+    let finish: () => void = () => {};
+    const { adapter, sends } = recording();
+    const held: LabAdapter = {
+      ...adapter,
+      upload: async (request) => {
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        return adapter.upload(request);
+      },
+    };
+    render(<App adapter={held} />);
+    const box = await open();
+    paste(box, png("bug.png"));
+    fireEvent.change(box, { target: { value: "Look at this" } });
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    // Each teammate's conversation is its own composer: opening researcher leaves Lead's send to finish.
+    fireEvent.click(screen.getByRole("navigation", { name: "Workers" }).querySelector<HTMLElement>('[data-worker="researcher"]')!);
+    const other = (await screen.findByLabelText("Message researcher")).closest("form")!;
+    await act(async () => finish());
+    // The line goes with the file it was pressed with, and researcher's box shows no failure of Lead's.
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0].attachments.map((file) => file.filename)).toEqual(["bug.png"]);
+    expect(within(other).queryByRole("alert")).toBeNull();
+    expect(within(other).queryByRole("img")).toBeNull();
+  });
+
   it("puts + in the Tab order, and Backspace in an empty box takes the last file off", async () => {
     render(<App adapter={recording().adapter} />);
     const box = await open();
