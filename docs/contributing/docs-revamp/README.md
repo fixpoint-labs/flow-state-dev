@@ -27,6 +27,8 @@ these against what shipped:
 - The `kits: [...]` snippets in `what-flow-state-is.md` and `workers.md`, and each kit's config keys.
   The specs disagree on whether `workforce(...)` needs a model (`model` in `docs/architecture/kits.md`,
   `agent: { model }` in the FIX-2627 spec); the pages show `directory` alone.
+- `harnesses({ workspace: "./workspace" })`: the spec names the `workspace` key and not the shape of its
+  value.
 - `tools: [search, fetch]` in the researcher file in `what-flow-state-is.md` works only where the app's
   tool catalog has both names.
 - "A file the kit can't use stops the app from starting and names the file" in `workers.md`.

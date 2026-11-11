@@ -1,6 +1,7 @@
 /**
  * Mechanical checks for one docs-revamp page: its word count against the budget
- * for its `type`, the words the writing standard bans, em-dashes, and long tables.
+ * for its `type`, the words the writing standard bans, em-dashes, long tables, and
+ * TypeScript examples that do not name their file.
  *
  *   node check-page.mjs <page.md> [more.md ...]
  *
@@ -28,6 +29,8 @@ function check(path) {
   const problems = [];
   if (!type) problems.push("no `type` in frontmatter");
   else if (BUDGET[type] && words > BUDGET[type]) problems.push(`${words} words, budget ${BUDGET[type]}`);
+  const untitled = (raw.match(/^```tsx?(?![^\n]*title=)[^\n]*$/gm) ?? []).length;
+  if (untitled) problems.push(`${untitled} ts code block(s) with no title="path"`);
   const text = prose.replace(/`[^`]*`/g, "");
   for (const word of BANNED) {
     const hits = text.match(new RegExp(`\\b${word}\\b`, "gi"));

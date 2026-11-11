@@ -86,6 +86,37 @@ every sentence lands on the same beat, break one or join two.
 
 **Stop when the point is made.** No closing line that sums up the section.
 
+## Code examples
+
+Every example belongs to one made-up app, and that app follows the layout we want readers to copy.
+
+```text
+fsdev.config.ts                               the app: its kits, flows and stores
+workforce/
+  teams/<team>/workers/<name>/WORKER.md       one worker
+src/
+  flows/<flow>/flow.ts                        one flow: defineFlow and its actions
+  flows/<flow>/blocks/<block>.ts              one block per file
+  flows/<flow>/tools/<tool>.ts                a block a model calls as a tool
+  lib/<name>.ts                               client-side helpers
+  app/                                        pages
+```
+
+- **Name the file.** Every code block opens with its path: ` ```ts title="src/flows/research/flow.ts" `.
+  A worker file is titled with its path under `workforce/`.
+- **No phantom names.** Every identifier a block uses is imported or declared in that block.
+  Framework names come from their package. App names come from a relative path in the layout above:
+  `import { analyst } from "./blocks/analyst";`.
+- **One export per block file,** named after the file: `blocks/plan-queries.ts` exports `planQueries`.
+- **No free variables.** A value the caller supplies, such as `userId`, is a function parameter.
+  Do not leave it floating.
+- **A page does not have to show every file it imports.** It does have to say what the imported
+  thing is, in a clause: "`analyst` and `writer` are blocks ... Each lives in its own file beside
+  the flow."
+- A block that continues an earlier one repeats the title and says "continued" in the prose.
+
+`scripts/check-docs-page.mjs` fails a `ts` or `tsx` block with no title.
+
 ## What goes to Reference
 
 Move a sentence to Reference when any of these is true:
@@ -188,7 +219,7 @@ site these become the `caption` and `description` of `<Figure>`.
 ## Before you call it done
 
 - The first two paragraphs make sense to someone who has never heard of the framework.
-- Every code block would run if pasted, or is plainly a fragment of the one above it.
+- Every code block has its path as a title, and every name in it is imported or declared there.
 - No table has more than six rows.
 - No sentence contains *now*, *no longer*, *still*, *deliberately*, *simply*, *just*, *powerful*,
   *seamless*, *robust*, *first-class*.

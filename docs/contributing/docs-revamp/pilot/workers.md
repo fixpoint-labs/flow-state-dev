@@ -12,7 +12,7 @@ You can talk to a worker, or hand it a task and come back later. Everyone who us
 
 ## The file
 
-```md
+```md title="workforce/teams/engineering/workers/lead/WORKER.md"
 ---
 name: Engineering Lead
 description: Breaks a request into tasks and reports what came back.
@@ -25,7 +25,7 @@ request into tasks, hand them to the coder and the reviewer, and report what
 came back.
 ```
 
-Save that as `workforce/teams/engineering/workers/lead/WORKER.md` and you have a worker with the id `engineering.lead`. The team and worker folders give it the id, and `name` is what people see. The settings between the `---` lines say what it is and what it can reach, and `description` is the only one a file must have. `delegates` names other workers by id. Everything below the second `---` is its instructions.
+That file gives you a worker with the id `engineering.lead`. The team and worker folders give it the id, and `name` is what people see. The settings between the `---` lines say what it is and what it can reach, and `description` is the only one a file must have. `delegates` names other workers by id. Everything below the second `---` is its instructions.
 
 Someone who doesn't write TypeScript can add a worker, or change what one has been told, by editing a document.
 
@@ -37,7 +37,10 @@ Someone who doesn't write TypeScript can add a worker, or change what one has be
 
 Workers come with the Workforce kit. Point it at the folder:
 
-```ts
+```ts title="fsdev.config.ts"
+import { createFlowState } from "@flow-state-dev/engine";
+import { workforce } from "@flow-state-dev/workforce";
+
 export default createFlowState({
   kits: [workforce({ directory: "./workforce" })],
 });
@@ -49,18 +52,18 @@ The folder is read when the app starts. A file the kit can't use stops the app f
 
 A session is one conversation or one task, with its own history. To start a conversation, ask for the session with that worker:
 
-```ts
+```ts title="src/lib/ask-lead.ts"
 import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
-const fsd = createClient({ userId, baseUrl });
-const workforce = createWorkforceClient(fsd);
+export async function askLead(userId: string, message: string) {
+  const fsd = createClient({ userId, baseUrl: "" }); // "" is this page's own origin
+  const workforce = createWorkforceClient(fsd);
 
-const session = await workforce.ensureWorkerSession({ worker: "engineering.lead" });
+  const session = await workforce.ensureWorkerSession({ worker: "engineering.lead" });
 
-await fsd
-  .flow(session.flowKind)
-  .send("respond", { message: "Add rate limiting to the API." }, { sessionId: session.id });
+  return fsd.flow(session.flowKind).send("respond", { message }, { sessionId: session.id });
+}
 ```
 
 `ensureWorkerSession` returns this user's conversation with that worker and creates it the first time. The worker sees the recent turns of that conversation, and those turns stay in it.
@@ -87,7 +90,7 @@ Every worker runs on a flow, the piece of backend that handles each message. Lea
 
 When a worker needs to be more than a model with a brief, write a flow and name it:
 
-```md
+```md title="workforce/teams/support/workers/triage/WORKER.md"
 ---
 description: Sends an incoming request to an answer or to someone on the team.
 flow: request-triage
@@ -96,7 +99,7 @@ flow: request-triage
 Answer directly when the request is about a feature that already shipped.
 ```
 
-A flow of your own can give the worker fixed steps, branching, or a review before anything is sent. The file remains a document anyone can edit.
+The flow itself lives at `src/flows/request-triage/flow.ts`, and it can give the worker fixed steps, branching, or a review before anything is sent. The file remains a document anyone can edit.
 
 ## What a worker won't do
 

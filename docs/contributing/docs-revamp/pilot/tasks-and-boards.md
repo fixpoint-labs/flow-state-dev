@@ -16,9 +16,11 @@ A board is that list, stored, plus the loop that works through it, called the dr
 
 ## The smallest board
 
-```ts
+```ts title="src/flows/research/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { analyst } from "./blocks/analyst";
+import { writer } from "./blocks/writer";
 
 const board = taskBoard({
   name: "competitor-research",
@@ -42,7 +44,7 @@ export default defineFlow({
 })();
 ```
 
-`analyst` and `writer` are blocks, the framework's units of work: a model call, a function, or a chain of them. `workers` maps each `assignee` name to the block that does that kind of task.
+`analyst` and `writer` are blocks, the framework's units of work: a model call, a function, or a chain of them. Each lives in its own file beside the flow. `workers` maps each `assignee` name to the block that does that kind of task.
 
 `board.drain` is the drain, and it is a block too. Here the flow exposes it as an action named `run` that a client can call. It could as easily be one step in a longer chain.
 
@@ -56,7 +58,7 @@ When `compare` runs, its block receives what the three research tasks produced o
 | `goal` | What to do, in words |
 | `assignee` | Which block does it |
 | `deps` | The tasks that must be `completed` first |
-| `status` | `pending`, then `in_progress`, then `completed` or `errored` |
+| `status` | `pending`, then `in_progress`, then `completed` or `errored`. `cancelled` when a task it depends on failed |
 
 A task is ready when every task in its `deps` is `completed`. The drain runs up to four ready tasks at a time unless you set another limit, and a task is only ever claimed once.
 

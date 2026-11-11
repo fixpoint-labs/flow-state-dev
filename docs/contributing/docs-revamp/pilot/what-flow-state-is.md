@@ -22,7 +22,7 @@ A starter comes with React pages, a team of workers, and the flows they run on. 
 
 Each worker on that team is a file like this:
 
-```md
+```md title="workforce/teams/teammates/workers/researcher/WORKER.md"
 ---
 name: researcher
 description: Finds facts for the team and says where each one came from.
@@ -39,11 +39,16 @@ Rewrite the brief, restart the app, and the researcher follows the new one. Add 
 
 The team, with the task board its members share, and the coding agents it hands work to all come from kits. The starter lists them:
 
-```ts
+```ts title="fsdev.config.ts"
+import { claudeCode } from "@flow-state-dev/claude-code";
+import { createFlowState } from "@flow-state-dev/engine";
+import { harnesses } from "@flow-state-dev/harness-manager";
+import { workforce } from "@flow-state-dev/workforce";
+
 export default createFlowState({
   kits: [
     workforce({ directory: "./workforce" }),
-    harnesses({ workspace }),
+    harnesses({ workspace: "./workspace" }),
     claudeCode(),
   ],
 });
@@ -67,13 +72,18 @@ Under every kit are flows. A flow is a backend you call over HTTP. A client runs
 
 Blocks nest inside one another. Any block can also be handed to a model as a tool, a whole pipeline included:
 
-```ts
+```ts title="src/flows/research/blocks/assistant.ts"
+import { generator, sequencer } from "@flow-state-dev/core";
+import { planQueries } from "./plan-queries";
+import { runSearches } from "./run-searches";
+import { summarize } from "./summarize";
+
 const research = sequencer({ name: "research" })
   .step(planQueries)   // a generator: the model writes search queries
   .step(runSearches)   // a handler: your code calls the search API
   .step(summarize);    // a generator again
 
-const assistant = generator({
+export const assistant = generator({
   name: "assistant",
   model: "openai/gpt-6-luna",
   prompt: "You help the user research a topic.",
