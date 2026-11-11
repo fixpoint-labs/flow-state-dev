@@ -531,7 +531,8 @@ describe("a step is the worker's: the tools settle no step, and nothing else fil
   });
 });
 
-describe("a step reaches whoever watches the board's view (FIX-2623 D1)", () => {
+// FIX-2623 D1.
+describe("a step reaches whoever watches the board's view", () => {
   // The board's watchers no longer name the plan ledger's topic: they hear the
   // topics the view's answer names, from what its run read. A step is an entry
   // on the plan ledger (user scope), so its write has to publish on one of them,
