@@ -380,6 +380,13 @@ export async function walkSurface(page: Page, surface: Surface, d: Draw, failure
   await refusedWith("photo.heic isn't supported", () => paste(surface.box(page), "photo.heic", "image/heic", new Uint8Array(64)));
   page.off("request", watch);
   if (actions.length > 0) fail("refused", `${actions.length} action request(s) went out while only attaching: ${actions.join(", ")}`);
+  // Leave the box empty: a leg run after this one on the same composer attaches its own files.
+  for (let i = 0; i < 20; i += 1) {
+    const remove = page.getByRole("button", { name: /^Remove / }).first();
+    if (!(await remove.isVisible().catch(() => false))) break;
+    await remove.click();
+  }
+  if (await page.getByRole("button", { name: /^Remove / }).first().isVisible().catch(() => false)) fail("refused", "the attached files couldn't be taken off the box after leg c");
 
   evidence.push(`${surface.tag}: a ${JSON.stringify(replyA.slice(-60))}`);
   return { replyA };

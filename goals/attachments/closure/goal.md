@@ -14,7 +14,7 @@
 | Kitchen Sink, Claude Code page | `ks-cc` | a, b, c | |
 | Kitchen Sink, Codex page | `ks-cx` | a, b, c | b from the PDF's extracted text (FIX-2520 D1) |
 | Kitchen Sink, Cursor page | `ks-cu` | a, b, c | b from the PDF's extracted text |
-| Shift Manager, the Shift Coordinator | `sm` | a, b, c | a task filed from a line with two images: its run and a Retry each name both (`sm:task-run`, `sm:re-run`) |
+| Shift Manager, the Shift Coordinator | `sm` | a, b, c | a task filed from a line with two images: its run names both (`sm:task-run`); a second such task, cancelled mid-run, names both again on Retry (`sm:re-run`) |
 | The Claude Code-style lab, main session | `cc-style` | a, b, c | the main session hands the images to a Claude Code run (`cc-style:coding`) |
 | The Teammates lab, Chief of Staff | `teammates` | a, b, c | the Chief of Staff hands the images to the Claude Code teammate (`teammates:coding`) |
 

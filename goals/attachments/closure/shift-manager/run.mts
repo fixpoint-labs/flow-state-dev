@@ -81,40 +81,55 @@ await runGoal(async (failures, tell) => {
     say("the Shift Coordinator: legs a, b, c");
     await walkSurface(page, surface, d, failures, tell, evidence);
 
-    // ---- a task filed with a screenshot: its run, then a re-run, each names both words
-    say("a task filed with two images, its run and its re-run");
+    // ---- a task filed with two images: its run names both. A second task is cancelled mid-run and Retried:
+    // the board offers Retry only on a failed or cancelled task, so that is the re-run a person has.
+    say("a task filed with two images: its run, then a cancelled task's Retry");
+    const fileTask = async (marker: string, words: readonly string[]) => {
+      await surface.open(page);
+      await paste(box(page), "bug-1.png", "image/png", wordPng(words[0]));
+      await pick(page, [{ name: "bug-2.png", mimeType: "image/png", buffer: Buffer.from(wordPng(words[1])) }]);
+      await box(page).fill(`File a task for the Coder titled "${marker}" with the two attached images. The task: report the word written on each image, and change no file.`);
+      await box(page).press("Enter");
+      await openShiftManager(page, served.origin, "/tasks");
+      const row = page.getByText(marker).first();
+      if (!(await row.waitFor({ timeout: 300_000 }).then(() => true, () => false))) return false;
+      await row.click();
+      return true;
+    };
+    const status = page.getByTestId("task-action-row");
+    const reaches = (state: string, timeout: number) =>
+      page.locator(`[data-testid="task-action-row"][data-status="${state}"]`).waitFor({ timeout }).then(() => true, () => false);
+
     const words = drawWords(d.words);
     const marker = `closure-${randomBytes(3).toString("hex")}`;
-    await surface.open(page);
-    await paste(box(page), "bug-1.png", "image/png", wordPng(words[0]));
-    await pick(page, [{ name: "bug-2.png", mimeType: "image/png", buffer: Buffer.from(wordPng(words[1])) }]);
-    await box(page).fill(`File a task for the Coder titled "${marker}" with the two attached images. The task: report the word written on each image, and change no file.`);
-    await box(page).press("Enter");
-    await openShiftManager(page, served.origin, "/tasks");
-    const row = page.getByText(marker).first();
-    if (!(await row.waitFor({ timeout: 300_000 }).then(() => true, () => false))) {
-      failures.push(`[sm:task-run] no task "${marker}" was filed from the line`);
-    } else {
-      await row.click();
+    if (!(await fileTask(marker, words))) failures.push(`[sm:task-run] no task "${marker}" was filed from the line`);
+    else {
       const first = await readUntilNamed(page.locator("body"), words);
       const named = tell.over("sm:task-run", words).filter((w) => first.includes(w));
       if (named.length !== 2) failures.push(`[sm:task-run] the task's run names ${named.length} of ${words.join(", ")}: ${JSON.stringify(first.slice(-300))}`);
-      const retry = page.getByTestId("task-action-retry");
-      if (!(await retry.waitFor({ timeout: 300_000 }).then(() => true, () => false))) failures.push("[sm:re-run] the task never ended, so it can't be run again");
+      evidence.push(`sm:task ${marker} ${words.join("/")}`);
+    }
+
+    const again = drawWords(d.words);
+    const second = `closure-${randomBytes(3).toString("hex")}`;
+    if (!(await fileTask(second, again))) failures.push(`[sm:re-run] no task "${second}" was filed from the line`);
+    else if (!(await reaches("in_progress", 300_000))) failures.push(`[sm:re-run] "${second}" never started running (status ${await status.getAttribute("data-status").catch(() => "none")})`);
+    else {
+      await page.getByTestId("task-action-cancel").click();
+      await page.getByTestId("task-action-confirm-yes").click();
+      if (!(await reaches("cancelled", 60_000))) failures.push(`[sm:re-run] "${second}" didn't end as cancelled`);
       else {
-        await retry.click();
-        // The re-run has started once Retry is gone, and ended once it is back: either wait running out fails the leg.
-        const started = await retry.waitFor({ state: "hidden", timeout: 60_000 }).then(() => true, () => false);
-        const ended = started && (await retry.waitFor({ timeout: 300_000 }).then(() => true, () => false));
-        if (!ended) failures.push(`[sm:re-run] Retry ${started ? "started a second run that never ended" : "never started a second run"}`);
+        // Only what is drawn past this point counts, so the cancelled run's output can't pass the re-run.
+        const before = (await page.locator("body").innerText()).toUpperCase().slice(-80);
+        await page.getByTestId("task-action-retry").click();
+        if (!(await reaches("in_progress", 60_000))) failures.push("[sm:re-run] Retry never started a second run");
         else {
-          // Only what is drawn past the first run's report counts, so its words still on the page can't pass the re-run.
-          const again = await readUntilNamed(page.locator("body"), words, first.slice(-80));
-          const renamed = tell.over("sm:re-run", words).filter((w) => again.includes(w));
-          if (renamed.length !== 2) failures.push(`[sm:re-run] the re-run names ${renamed.length} of ${words.join(", ")}: its brief's images didn't reach it`);
+          const read = await readUntilNamed(page.locator("body"), again, before);
+          const renamed = tell.over("sm:re-run", again).filter((w) => read.includes(w));
+          if (renamed.length !== 2) failures.push(`[sm:re-run] the Retry names ${renamed.length} of ${again.join(", ")}: its brief's images didn't reach it`);
         }
       }
-      evidence.push(`sm:task ${marker} ${words.join("/")}`);
+      evidence.push(`sm:re-run ${second} ${again.join("/")}`);
     }
   } finally {
     await browser?.close();
