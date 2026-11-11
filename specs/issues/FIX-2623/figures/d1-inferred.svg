@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 476" role="img" aria-label="D1, how a view knows what it depends on. Chosen: recorded from what each run read. Instead of: dependsOn declared by the author and checked in tests. It comes down to whether the list can be wrong: recorded, it is what the run read, on every branch in production; declared, the board's obvious list missed three of four. Price: the recorder runs on every view run, under 1 percent, and a flow with a view publishes every resource change. Another session's data: recorded names the topics the run reached; a declared list can't name sessions in advance. Locks in no dependsOn on defineView, addable later. Flips if the extra notices load the bus, or the engine's recorder misses a path a probe reaches"
+<svg viewBox="0 0 940 476" role="img" aria-label="D1, how a view knows what it depends on. Chosen: recorded from what each run read. Instead of: dependsOn declared by the author and checked in tests. It comes down to whether the list can be wrong: recorded, it is what the run read, on every branch in production; declared, the board's obvious list missed three of four. Price: the recorder runs on every view run, under 1 percent, and once a host has a view every user or org resource write publishes. Another session's data: recorded names the topics the run reached; a declared list can't name sessions in advance. Locks in no dependsOn on defineView, addable later. Flips if the extra notices load the bus, or the engine's recorder misses a path a probe reaches"
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -79,8 +79,8 @@
     <text class="t-lbl" x="32" y="280">NOTICES</text>
     <text class="t-lbl" x="32" y="293">SENT</text>
     <text class="mark minus" x="228" y="282">−</text>
-    <text class="t-b" x="248" y="281">Every resource change</text>
-    <text class="t-s" x="248" y="299">in a flow with a view, as derived</text>
+    <text class="t-b" x="248" y="281">Every user or org write</text>
+    <text class="t-s" x="248" y="299">once any flow has a view</text>
     <text class="mark plus" x="592" y="282">+</text>
     <text class="t-b" x="612" y="281">Only what views list</text>
     <text class="t-s" x="612" y="299">a narrower publish set</text>
