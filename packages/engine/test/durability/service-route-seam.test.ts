@@ -20,12 +20,21 @@ import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import type { DispatchOutcome } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { createFlowState, inMemoryStores, resolveUserStorageKey, runAction } from "../../src";
+import type { StoreRegistry } from "../../src/stores/types";
 
 const ORG = "acme";
 
 type Seen = { routedAs: string[]; routedSender: unknown[]; routedOwner: unknown[]; delivered: Array<{ as: string; note: string }> };
 
-type Gates = { route?: Promise<void>; deliver?: Promise<void>; routeThrows?: boolean; deliverHangs?: boolean; drainMs?: number };
+type Gates = {
+  route?: Promise<void>;
+  deliver?: Promise<void>;
+  routeThrows?: boolean;
+  deliverHangs?: boolean;
+  drainMs?: number;
+  /** Holds the routing request's registration, and so its acceptance; `registering` is called when it is reached. */
+  accept?: { opened: Promise<void>; registering: () => void };
+};
 
 function boot(gates: Gates = {}) {
   const seen: Seen & { aborted: string[] } = { routedAs: [], routedSender: [], routedOwner: [], delivered: [], aborted: [] };
@@ -87,6 +96,26 @@ function boot(gates: Gates = {}) {
   markDispatcher(publish, { type: "internal", action: "route", flowKind: "svc" });
   const pub = defineFlow({ kind: "pub", actions: { publish: { inputSchema: z.object({ runs: z.array(z.any()) }), block: publish } } })();
   const stores = inMemoryStores();
+  if (gates.accept !== undefined) {
+    const accept = gates.accept;
+    const resolve = stores.resolve.bind(stores);
+    let patched = false;
+    stores.resolve = async (slots) => {
+      const registry = (await resolve(slots)) as StoreRegistry;
+      if (!patched) {
+        patched = true;
+        const register = registry.activeRequests.register.bind(registry.activeRequests);
+        registry.activeRequests.register = async (entry) => {
+          if (entry.sessionId?.startsWith("service-route:") === true) {
+            accept.registering();
+            await accept.opened;
+          }
+          return register(entry);
+        };
+      }
+      return registry;
+    };
+  }
   const state = createFlowState({
     flows: { svc, pub },
     stores: { default: { primary: stores } },
@@ -203,6 +232,23 @@ describe("the dispatch seam's service route", () => {
     deliver.open();
     await disposing;
     expect(seen.delivered).toEqual([{ as: "alice", note: "own" }]);
+  });
+
+  // A dispose that starts while the routing waits to be accepted must still wait for it, not close the stores under it.
+  it("holds dispose for a routing still waiting to be accepted", async () => {
+    const accept = gate();
+    const reached = gate();
+    const { seen, state, pub } = boot({ accept: { opened: accept.opened, registering: reached.open } });
+    await aliceSubscription(state);
+    const publishing = publishAs(state, pub, [run("alice", ORG, "own", "t1")]);
+    await reached.opened;
+    let deliveredAtDispose: unknown;
+    const disposing = state.dispose().then(() => (deliveredAtDispose = [...seen.delivered]));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    accept.open();
+    await disposing;
+    await publishing;
+    expect(deliveredAtDispose).toEqual([{ as: "alice", note: "own" }]);
   });
 
   // Answered on acceptance, a routing that breaks later is not the publisher's to hear, so it must reach the log.

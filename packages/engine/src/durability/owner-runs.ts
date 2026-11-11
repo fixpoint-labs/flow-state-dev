@@ -309,24 +309,35 @@ export function createServiceRouteOperation(
     let started: StartedRouting;
     try {
       started = startRouting(host, service);
-      if (started.handle.accepted !== undefined) await started.handle.accepted;
     } catch (error) {
       return { ok: false, detail: `the routing was not accepted: ${error instanceof Error ? error.message : String(error)}` };
     }
     const requestId = started.handle.requestId;
-    const finished = fireRouted(host, service, started, { owner })
-      .then((routed) => {
-        reportRouting(host, route.provider, routed);
-        for (const fired of routed.ownerRuns) {
-          if (fired.requestId === undefined || fired.finished === undefined) continue;
-          options.onRouting?.({ requestId: fired.requestId, sessionId: ownerRunSessionId(fired.run), finished: fired.finished.catch(() => undefined) });
-        }
-        return Promise.allSettled(routed.ownerRuns.map((run) => run.finished));
-      })
-      .catch((error: unknown) => {
-        host.logger?.error?.("service routing failed", { provider: route.provider, requestId, error: error instanceof Error ? error.message : String(error) });
-      });
+    const accepted = Promise.resolve(started.handle.accepted);
+    // Handed to the drain before acceptance is awaited: a shutdown that starts meanwhile still waits for it.
+    const finished = accepted.then(
+      () =>
+        fireRouted(host, service, started, { owner })
+          .then((routed) => {
+            reportRouting(host, route.provider, routed);
+            for (const fired of routed.ownerRuns) {
+              if (fired.requestId === undefined || fired.finished === undefined) continue;
+              options.onRouting?.({ requestId: fired.requestId, sessionId: ownerRunSessionId(fired.run), finished: fired.finished.catch(() => undefined) });
+            }
+            return Promise.allSettled(routed.ownerRuns.map((run) => run.finished));
+          })
+          .catch((error: unknown) => {
+            host.logger?.error?.("service routing failed", { provider: route.provider, requestId, error: error instanceof Error ? error.message : String(error) });
+          }),
+      // Not accepted: the publisher hears it below.
+      () => undefined
+    );
     options.onRouting?.({ requestId, sessionId: started.sessionId, finished });
+    try {
+      await accepted;
+    } catch (error) {
+      return { ok: false, detail: `the routing was not accepted: ${error instanceof Error ? error.message : String(error)}` };
+    }
     return { ok: true, requestId: started.handle.requestId, sessionId: started.sessionId };
   };
 }
