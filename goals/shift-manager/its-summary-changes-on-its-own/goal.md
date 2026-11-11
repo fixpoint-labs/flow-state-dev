@@ -33,3 +33,6 @@
 | 2026-11-04 | same | n/a | FAIL (expected) | `every-kind`: `c:as-short`, 65 reads for 200 items against 5 for 2 |
 | 2026-11-04 | same | n/a | FAIL (expected) | `own-sessions`: `b:idle-0-reads`, 40 reads over 10 s idle |
 | 2026-11-04 | same | n/a | FAIL (expected) | `no-poll`: `d:ask-within-poll`, the count never moved within 33 s |
+| 2026-11-11 | claude/fix-2551-impl (pre-push) | n/a | PASS | The snapshot is `client.live` now, its filter in `hear`/`paths`. a: 123 ms · a2: 81 ms · b: 0 reads over 10 s idle · c: 4 reads for 200 items, 4 for 2 · d: 28442 ms |
+| 2026-11-11 | claude/fix-2551-impl (pre-push) | n/a | FAIL (expected) | `no-subscribe` (patch moved to the live read's effect): `a:ask-within-1s` |
+| 2026-11-11 | claude/fix-2551-impl (pre-push) | n/a | FAIL (expected) | `no-poll` (`pollIntervalMs: null`): `d:ask-within-poll` |
