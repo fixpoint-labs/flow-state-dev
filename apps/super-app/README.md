@@ -48,11 +48,44 @@ Workspace packages need no build here. Each one's runtime entry is its `src/`
 labs run it through `tsx`, and Kitchen Sink transpiles it. A package edit reaches
 a page through the page rebuild below (the build records package source files among
 the ones it was made from). A lab's server side reads package source when it
-starts, so it needs a restart.
+starts, so it needs a restart: see [Server changes](#server-changes).
 
 The page is a small Vite build (`pnpm build:devtool`, into `dist/`). `pnpm dev`
 rebuilds it at start and again as its source changes; `pnpm serve` serves what `pnpm build` made, and warns when
 there is none.
+
+## Server changes
+
+A lab's pages rebuild as their source changes, but its server loads its code
+(flows, config, and the package source they use) once, when it starts. In
+`pnpm dev`, each lab's server records the files it loaded, with a hash of each,
+as it loads them. When one of those files now holds different content, the lab
+is marked **changed**: on its landing page card, as `changed: true` in
+`/devtool/apps.json`, and as an orange "Server code changed · Restart" pill
+beside the DevTool button on the lab's own pages. A file the server never loaded
+(a page component) doesn't mark it, and neither does a save that leaves a file's
+content as it was.
+
+**Restart** (on the card or the pill) asks first, then restarts that lab's server
+alone: its whole process group is stopped, its port freed, and the server step
+started again. Anything in flight in that lab stops with it: a coding run, a
+turn, a stream a page was reading. The page build isn't run again (the rebuild
+watcher keeps the pages current), and the other apps keep running with their
+state. Nothing restarts on its own: the labs' coding agents write into this
+repository, and an automatic restart would kill their runs. The card's button is
+there whenever the lab can be restarted, changed or not, so a lab whose server
+stopped on a bad edit can be started again once it's fixed.
+
+The button sends `POST /__super/restart/<id>` with an `x-super-app-restart: 1`
+header, behind the same sign-in as everything else. A request without the header
+is refused, so a form on another page can't trigger one. Only the labs can be
+restarted, and only in `pnpm dev`: Kitchen Sink's `next dev` reloads itself.
+
+The record is written by a preload on the server step
+(`record-server-inputs.mjs`, `tsx --import`) into
+`node_modules/.cache/super-app/server-inputs/<id>/build-inputs.json`, the same
+shape as a page build's record. `lifecycle.mjs` checks it and runs the restart.
+Files a server reads without importing them (a `WORKER.md`) aren't recorded.
 
 ## Settings
 
@@ -128,7 +161,8 @@ port.
   `vite build --watch` held about 1.5GB a page and grew with each rebuild until
   it ran out of heap. Vite's dev client loads from absolute
   paths that can't live under a prefix. Kitchen Sink keeps `next dev` HMR. A
-  lab's server side (its flows and config) isn't watched: that needs a restart.
+  lab's server side is never restarted for you: it is marked changed and waits
+  for its Restart button ([Server changes](#server-changes)).
 - The button is an inline script, so a `Content-Security-Policy` an app sets
   that forbids inline scripts would stop it showing, with no error on the page.
   None of the hosted apps sets one.
