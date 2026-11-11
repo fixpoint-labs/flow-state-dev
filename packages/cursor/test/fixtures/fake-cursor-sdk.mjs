@@ -17,8 +17,12 @@
  * - `steer` / `steer-refuse`: stream one message, then wait for a steer; it
  *   answers `complete_delivered` (or `revert_to_followup`), and the run ends
  *   with a message carrying the line it took.
+ * - `command-hang` / `command-finish`: start a long-lived command (a dev
+ *   server, a watcher) that writes its pid to `$COMMAND_DIR/pid` and, when sent
+ *   SIGTERM, writes `$COMMAND_DIR/sigterm` and stays up; then behave as `hang`,
+ *   or finish.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
 function makeRun(prompt) {
@@ -45,6 +49,13 @@ function makeRun(prompt) {
         yield { type: "thinking", text: "working" };
         const line = await steeredLine;
         yield { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: `took: ${line}` }] } };
+        return;
+      }
+      if (prompt === "command-hang" || prompt === "command-finish") {
+        startCommand(process.env.COMMAND_DIR);
+        yield { type: "thinking", text: "working" };
+        if (prompt === "command-hang") await cancelled;
+        else yield { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "done" }] } };
         return;
       }
       if (prompt === "hang") {
@@ -79,6 +90,17 @@ function makeRun(prompt) {
       release();
     },
   };
+}
+
+/** A command that outlives a SIGTERM, as the agent's shell would leave it running. */
+function startCommand(dir) {
+  const sigterm = JSON.stringify(`${dir}/sigterm`);
+  const child = spawn(
+    process.execPath,
+    ["-e", `process.on('SIGTERM', () => require('fs').writeFileSync(${sigterm}, '1')); setInterval(() => {}, 1000)`],
+    { stdio: "ignore" },
+  );
+  writeFileSync(`${dir}/pid`, String(child.pid));
 }
 
 function makeAgent(agentId) {

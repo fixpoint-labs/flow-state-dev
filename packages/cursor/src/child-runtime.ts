@@ -29,6 +29,16 @@
  * `send`, the child streams `{ event: "message" }` for each run message, then
  * `{ event: "end" }` or `{ event: "stream-error" }`. The parent closing the
  * channel tells the child to close the agent and exit.
+ *
+ * Off Windows the child leads its own process group, so the commands the
+ * agent started are in it too. Closing a run that was cancelled (a stop) also
+ * sends the group `SIGTERM`, which the child takes as the same close, and once
+ * the close grace runs out sends the group `SIGKILL`, whether or not the
+ * child itself has gone. Closing a run that finished signals nothing; only a
+ * child still running past the grace is killed, with its group. On Windows
+ * there is no group: the grace kill reaches the child alone. A child in its
+ * own group no longer receives a terminal's Ctrl-C aimed at the server; it
+ * exits when the server does because the IPC channel closes.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -53,6 +63,9 @@ const CHILD_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "..", "runtim
 /** How long a closed agent's process gets to exit on its own before it is killed. */
 const CLOSE_GRACE_MS = 10_000;
 
+/** Whether the child gets its own process group (`detached`), which is every platform but Windows. */
+const OWN_GROUP = process.platform !== "win32";
+
 /** How much of the child's stderr a failure message carries. */
 const STDERR_TAIL_BYTES = 2_000;
 
@@ -72,6 +85,15 @@ function rebuildError(data: { name?: string; message?: string; code?: string }):
   return err;
 }
 
+/** Send `signal` to process group `pid`. Quiet when the group has already gone. */
+function signalGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    // Group already gone.
+  }
+}
+
 /** A live child process and the requests waiting on it. */
 class ChildRuntime {
   private readonly child: ChildProcess;
@@ -83,6 +105,8 @@ class ChildRuntime {
   private streamDone = false;
   private streamError: Error | null = null;
   private wake: (() => void) | null = null;
+  /** Set once the run was cancelled: closing is then a stop, which ends the process group. */
+  private stopping = false;
 
   constructor(options: ChildRuntimeOptions) {
     // `spawn` of this Node with an IPC channel, which is what `fork` does with
@@ -94,6 +118,7 @@ class ChildRuntime {
       env: { ...options.env },
       stdio: ["ignore", "ignore", "pipe", "ipc"],
       serialization: "advanced",
+      detached: OWN_GROUP,
     });
     this.child.stderr?.setEncoding("utf8");
     this.child.stderr?.on("data", (chunk: string) => {
@@ -112,6 +137,7 @@ class ChildRuntime {
 
   /** Ask the child to do `op`, and wait for its answer. */
   request(op: string, payload: Record<string, unknown> = {}): Promise<unknown> {
+    if (op === "cancel") this.stopping = true;
     if (this.failure !== null) return Promise.reject(this.failure);
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
@@ -142,11 +168,24 @@ class ChildRuntime {
     }
   }
 
-  /** Close the channel, which tells the child to close the agent and exit. */
+  /**
+   * Close the channel, which tells the child to close the agent and exit. A
+   * stop also asks the whole group to stop now and kills it past the grace.
+   */
   close(): void {
     if (this.child.connected) this.child.disconnect();
+    const pid = this.child.pid;
+    if (OWN_GROUP && this.stopping && pid !== undefined) {
+      // Not cleared on the child's exit: what the agent started can outlive it.
+      signalGroup(pid, "SIGTERM");
+      setTimeout(() => signalGroup(pid, "SIGKILL"), CLOSE_GRACE_MS).unref();
+      return;
+    }
     if (this.child.exitCode === null && this.child.signalCode === null) {
-      const timer = setTimeout(() => this.child.kill("SIGKILL"), CLOSE_GRACE_MS);
+      const timer = setTimeout(() => {
+        if (OWN_GROUP && pid !== undefined) signalGroup(pid, "SIGKILL");
+        else this.child.kill("SIGKILL");
+      }, CLOSE_GRACE_MS);
       timer.unref();
       this.child.once("exit", () => clearTimeout(timer));
     }
