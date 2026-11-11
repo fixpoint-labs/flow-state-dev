@@ -193,7 +193,7 @@ export type Place = { readonly ok: true; readonly id: string; readonly chain: st
  * if the chain has no place left, so a refused send spends nothing. A `given`
  * id already paid for (a send repeated after a crash) pays nothing
  * again: neither count takes it twice. A publish pays here too, once however
- * many hear it (FIX-2630 D2).
+ * many hear it.
  */
 export async function payPlace(ctx: BlockContext, installation: WorkerInstallation, given: string | undefined): Promise<Place> {
   const limits = messageLimitsOf(installation);

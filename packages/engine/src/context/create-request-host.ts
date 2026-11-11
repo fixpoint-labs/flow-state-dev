@@ -27,7 +27,7 @@
  *    run-time half of the same rule, reached only by a dispatch the walk could
  *    not see (a carried core). For a **cross-instance** address it is the only
  *    half there is: `defineFlow` holds one flow's maps. An `internal` entry
- *    marked `service` (a publish, FIX-2630) stops here: it is routed as the
+ *    marked `service` (a publish) stops here: it is routed as the
  *    service through `serviceRoute`, with this session as the event's sender
  *    and only this user's runs fired, and starts no request as this sender.
  * 2. **Resolve the session.** A `key` derives a child of the running session

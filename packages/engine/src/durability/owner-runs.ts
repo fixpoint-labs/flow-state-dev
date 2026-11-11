@@ -19,7 +19,7 @@
  *
  * Not a `RequestHost` verb: nothing a running request holds can start one,
  * except through the dispatch seam's one service route
- * ({@link createServiceRouteOperation}, FIX-2630), which fires only the
+ * ({@link createServiceRouteOperation}), which fires only the
  * dispatching request's own user's runs.
  */
 import type { ExecutionResult } from "../execution/types";
@@ -40,7 +40,7 @@ export interface OwnerRun {
   readonly rowKey: string;
 }
 
-/** Why a run did not start. `other_user`: the routing fires only one user's runs, and this one names another (FIX-2630 Q1). */
+/** Why a run did not start. `other_user`: the routing fires only one user's runs, and this one names another. */
 export type OwnerRunRefusal = "no_resource" | "other_org" | "other_tenant" | "disabled" | "other_user";
 
 /** What a fire came to. */
@@ -156,7 +156,7 @@ async function fireOne(host: Pick<InboundTransportHost, "dispatch" | "stores">, 
  * @param service.principal The service's own identity in the org (`service:github`). It reads no user's cell.
  * @param options.concurrency The most runs started at once: 8 by default.
  * @param options.owner Fire only the runs whose owner is this user; any other is refused `other_user` and never fired
- *   (a publish's routing, which reaches only its sender's own user: FIX-2630 Q1).
+ *   (a publish's routing, which reaches only its sender's own user).
  */
 export async function routeServiceEvent(
   host: Pick<InboundTransportHost, "dispatch" | "stores">,
@@ -228,7 +228,7 @@ export type ServiceRouteOperation = (route: ServiceRouteDispatch) => Promise<Ser
  * the dispatching session (role `member`, its own name kept, else the
  * sender's flow kind), routed through
  * {@link routeServiceEvent} as `service:<provider>` in the sender's org, with
- * only the sender's own user's runs fired (own-user first, FIX-2630 Q1).
+ * only the sender's own user's runs fired (own-user first).
  * Resolves once every run is fired or refused. A routing that failed or never
  * finished is not routed.
  */

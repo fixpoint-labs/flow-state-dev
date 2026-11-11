@@ -23,12 +23,13 @@
  * - `addressed`: the event asks the app's agent (it mentions, assigns or
  *   requests review from a handle the app names). The provider's judgment
  *   from the raw payload, set by its `normalize`; never model input.
- * - `hop` and `chain` (FIX-2630 D2): where a published event stands in its
- *   publisher's exchange, the publishing turn's hop count and the message
- *   chain it pays into. Set together, and only by a publish; a webhook's
+ * - `hop` and `chain`: where a published event stands in its publisher's
+ *   exchange: the message chain the publish paid its place in, and the hop
+ *   one before that place. Set together, and only by a publish; a webhook's
  *   `normalize` and a poll never set them. A delivery of an event that
- *   carries them lands in that chain at `hop + 1`; one with neither reads as
- *   hop 0 and no chain, as before (BP-030).
+ *   carries them lands in that chain at `hop + 1`, where a message sent in
+ *   the publish's place would; one with neither reads as hop 0 and no
+ *   chain, as before.
  */
 import { z } from "zod";
 
@@ -69,7 +70,7 @@ export const subscriptionEventSchema = z
     closes: z.literal(true).optional(),
     /** The event asks the app's agent: it mentions, assigns or requests review from one of the app's agent handles. */
     addressed: z.literal(true).optional(),
-    /** The publishing turn's hop count. With `chain`, only on a published event. */
+    /** One before the place the publish paid in `chain`: its deliveries land at `hop + 1`. With `chain`, only on a published event. */
     hop: z.number().int().min(0).optional(),
     /** The message chain the publish paid its place in. With `hop`, only on a published event. */
     chain: z.string().min(1).optional()
