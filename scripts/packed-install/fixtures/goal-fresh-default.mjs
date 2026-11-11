@@ -75,7 +75,7 @@ const flow = defineFlow({
   session: { stateSchema: z.object({ flowMode: z.string().default("from-flow") }) },
   actions: { read: { inputSchema: z.object({}), block: read } },
 })();
-const flowState = createFlowState({ flows: { [KIND]: flow }, stores: { default: { primary: inMemoryStores() } } });
+const flowState = createFlowState({ flows: [flow], stores: { default: { primary: inMemoryStores() } } });
 const server = await serve(flowState, { port: 0, host: "127.0.0.1", handleSignals: false });
 const base = `http://127.0.0.1:${server.port}`;
 try {

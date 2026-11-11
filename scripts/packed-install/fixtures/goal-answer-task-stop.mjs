@@ -112,7 +112,7 @@ const flow = defineFlow({
 // `durable: true` keeps stops over in-memory stores; without it `suspendForUser`
 // throws for want of durable execution, on any version.
 const flowState = createFlowState({
-  flows: { [KIND]: flow },
+  flows: [flow],
   stores: { default: { primary: inMemoryStores() } },
   durable: true,
 });

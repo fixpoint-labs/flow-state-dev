@@ -56,7 +56,7 @@ const flow = defineFlow({
 // for want of durable execution before the reason is read, and this would fail
 // for the wrong reason on any version.
 const flowState = createFlowState({
-  flows: { "goal-human-approval": flow },
+  flows: [flow],
   stores: { default: { primary: inMemoryStores() } },
   durable: true,
 });
