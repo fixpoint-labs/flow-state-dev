@@ -212,7 +212,8 @@ export function defineScheduledWork(installation: WorkerInstallation, index?: Sc
     resolve: createResourceCollectionScheduleResolver({
       collection: resources[SCHEDULES_RESOURCE],
       blocks: { [TASK_SCHEDULE_HANDLER]: scheduledTaskBlock(installation) }
-    })
+    }),
+    ...(index === undefined ? {} : { index })
   };
   return {
     /** The schedule collection and the fired records, for the roster flow's `resources`. */
