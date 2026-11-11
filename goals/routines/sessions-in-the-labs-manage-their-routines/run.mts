@@ -22,6 +22,8 @@ import { selectHarness } from "../../../packages/shift-manager/teams/devteam/har
 import { startStubGitHub, type StubPull } from "./stub-github.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
+/** `GOAL_LEG=scripted` runs legs a–f alone, `GOAL_LEG=real` leg g alone; unset, both. A control runs a–f. */
+const LEG = CONTROL !== "" ? "scripted" : (process.env.GOAL_LEG ?? "");
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("routines-in-the-labs");
 const HOSTS = ["labs/teammates/host.mts", "labs/claude-code-style/host.mts", "packages/shift-manager/teams/devteam/host.mts"];
 
@@ -73,7 +75,8 @@ interface Fixture {
   realModel: { follow: string; list: string; stop: string };
 }
 const F = loadFixture<Fixture>(import.meta.url, "hosts.json");
-const NAMES = Object.keys(F.hosts) as HostName[];
+/** `GOAL_HOSTS=devteam` (comma-separated) runs those hosts alone; unset, all three. */
+const NAMES = (process.env.GOAL_HOSTS?.split(",") ?? Object.keys(F.hosts)) as HostName[];
 const threadOf = (pr: StubPull) => `github:${pr.owner}/${pr.repo}#${pr.number}`;
 const tokenOf = (name: HostName) => `tok-${name}`;
 
@@ -132,8 +135,11 @@ function scriptedHost(evaluateTo?: string) {
   const turn = ({ said, step }: ScriptedCall): ScriptedStep => {
     const asked = lastUserLine(said);
     const plan = plans.find((p) => asked.includes(p.marker));
+    if (process.env.GOAL_DEBUG) console.error("TURN", step, plan?.marker, asked.slice(0, 160));
     if (plan === undefined) return { text: "Noted." };
-    return step < plan.calls.length ? { call: plan.calls[step]! } : { text: "Done." };
+    // The calls this turn already made: the tool calls after its line (a step count spans earlier turns on some flows).
+    const made = (asked.match(/"type":"tool-call"/g) ?? []).length;
+    return made < plan.calls.length ? { call: plan.calls[made]! } : { text: "Done." };
   };
   // The labs' own scripted model (`labs/test-support`), loaded as CommonJS: it sits under no `type: module` package.
   const { scriptedModels } = ((contract as { default?: typeof contract }).default ?? contract) as typeof contract;
@@ -166,6 +172,8 @@ interface Host {
   second: string;
   /** The SQLite file the host's stores keep everything in. */
   store: string;
+  /** The SQLite file the host's clock routines are indexed in, which `serve()`'s tick claims from. */
+  clockIndex: string;
   runtime: () => Promise<{ stores: { request: { list(q: object): Promise<Array<{ status: string; finalizedAtMs?: number | null }>> } } }>;
   served: ServeHandle;
   as(user: string): Client;
@@ -183,6 +191,7 @@ async function openHost(name: HostName, dir: string, stub: { apiUrl: string }, s
   const model = scripted ? { modelResolver: script.resolver } : {};
   let state: any;
   let store: string;
+  let clockIndex: string;
   let operator = entry.operator ?? "";
   let second = entry.second ?? "";
   let bearer: Record<string, string> = {};
@@ -191,12 +200,15 @@ async function openHost(name: HostName, dir: string, stub: { apiUrl: string }, s
     execFileSync("git", ["init", "-q", workdir]);
     writeFileSync(join(workdir, ".gitignore"), "**/.fsdev/\n");
     store = join(dir, "teammates.sqlite");
+    clockIndex = join(dir, "teammates-clock.sqlite");
     state = await openTeammates({ store, model: "openai/gpt-6-luna", userId: operator, workdir, runsRoot: join(dir, "runs"), scriptedHarnessStepMs: 50, ...model, ...github } as never);
   } else if (name === "claude-code-style") {
     store = join(dir, "lab.db");
+    clockIndex = join(dir, "clock.db");
     state = (await openClaudeCodeStyle({ data: dir, userId: operator, model: "openai/gpt-6-luna", utilityModel: "openai/gpt-6-luna", repositories: [], scriptedStepMs: 50, ...model, ...github } as never)).flowState;
   } else {
     store = join(dir, "devteam.sqlite");
+    clockIndex = join(dir, "devteam-clock.sqlite");
     const harness = selectHarness("stub");
     operator = LAB_USERS.owner.userId;
     second = LAB_USERS.member.userId;
@@ -231,7 +243,7 @@ async function openHost(name: HostName, dir: string, stub: { apiUrl: string }, s
     const found = (await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 100 })).find((r) => r.id === sent.id);
     return (found?.result as { output?: unknown } | undefined)?.output;
   };
-  return { name, entry, thread: threadOf(entry.pr), operator, second, store: store!, runtime: () => state.getRuntime(), served, as, act, plan: script.plan };
+  return { name, entry, thread: threadOf(entry.pr), operator, second, store: store!, clockIndex: clockIndex!, runtime: () => state.getRuntime(), served, as, act, plan: script.plan };
 }
 
 /** Until nothing the host started is still running, read twice. */
@@ -281,6 +293,84 @@ const heard = (host: Host, sessionId: string, text: string) => serviceMessages(h
 const tasksFor = (host: Host, goal: string) =>
   rows(host, "").filter((r) => /(^|\/)tasks?\//.test(r.key) && r.state?.goal === goal);
 
+// ---- why a tick did nothing -------------------------------------------------
+
+/**
+ * Whether `serve()`'s tick gets past `host`'s principal resolver for `flow`:
+ * the schedule listing, which runs the same resolver a dispatch does, asked
+ * with the tick's own headers (`CRON_SECRET` as the bearer when set, no user).
+ * A read: nothing is dispatched. Only said in a failure, so a reader sees why.
+ */
+async function tickRefusal(host: Host, flow: string): Promise<string | undefined> {
+  const secret = process.env.CRON_SECRET;
+  const res = await fetch(`http://127.0.0.1:${host.served.port}/api/flows/${flow}/schedules`, {
+    headers: secret === undefined || secret === "" ? {} : { authorization: `Bearer ${secret}` }
+  });
+  if (res.ok) return undefined;
+  return `serve()'s tick is refused by this host: its schedule route answers the tick's headers ${res.status} ${(await res.text()).slice(0, 160)}`;
+}
+
+/** The clock routine's row in `host`'s clock index: when it is due next, or that there is none. */
+function clockIndexRow(host: Host, key: string): string {
+  const db = new Database(host.clockIndex, { readonly: true, fileMustExist: true });
+  try {
+    const row = db.prepare("SELECT next_fire_at FROM schedule_index WHERE key = ?").get(key) as { next_fire_at: number } | undefined;
+    if (row === undefined) return `the clock index holds no "${key}"`;
+    return `the clock index holds "${key}" due ${new Date(row.next_fire_at).toISOString()}${row.next_fire_at <= Date.now() ? ", never claimed" : ""}`;
+  } finally {
+    db.close();
+  }
+}
+
+/** What a failure of a tick-driven signal adds: the tick's refusal, when the host refuses it. */
+const whyNot = async (host: Host, flow: string) => (await tickRefusal(host, flow)) ?? "the tick is admitted";
+
+// ---- (g) a real model, asked in words ---------------------------------------
+
+/** Every tool call `sessionId`'s items record, by tool name, read as `user`. */
+async function toolCalls(host: Host, user: string, sessionId: string): Promise<string[]> {
+  const state = (await host.as(user).sessions.state(sessionId, { includeItems: true, limit: 500 })) as { items?: Array<Record<string, any>> } | undefined;
+  // A tool that ran leaves its result as a `tool_output` item named for its block.
+  return (state?.items ?? []).filter((item) => item.type === "tool_output" && typeof item.blockName === "string").map((item) => item.blockName as string);
+}
+
+/**
+ * Each host on the real model: the operator asks its worker, in words, to
+ * follow the PR, to say what it follows, and to stop. Graded on what the store
+ * holds after each line, and on the worker's own recorded calls for the list,
+ * never on what the model answered.
+ */
+async function realModelLeg(stub: { apiUrl: string }, failures: string[], evidence: string[]) {
+  const said: string[] = [];
+  for (const name of NAMES) {
+    const h = await openHost(name, join(SCRATCH, "real", name), stub, false);
+    try {
+      const session = (await h.as(h.operator).flow(h.entry.flow).createSession({ state: { workerId: h.entry.worker } })).id;
+      const line = (template: string) => template.replace("{thread}", h.thread);
+      await h.act(h.operator, h.entry.flow, session, "respond", { message: line(F.realModel.follow) });
+      await settled(h);
+      const followed = subscriptions(h, h.operator).filter((s) => s.thread === h.thread && s.enabled === true && s.madeBy?.by === "worker");
+      if (followed.length !== 1) {
+        failures.push(`${h.name} g:saved — asked in words, the worker saved ${followed.length} live routines on ${h.thread} (stored: ${JSON.stringify(subscriptions(h, h.operator).map((s) => [s.thread, s.enabled]))})`);
+        continue;
+      }
+      const listsBefore = (await toolCalls(h, h.operator, session)).filter((t) => t === "listRoutines").length;
+      await h.act(h.operator, h.entry.flow, session, "respond", { message: line(F.realModel.list) });
+      await settled(h);
+      const listsAfter = (await toolCalls(h, h.operator, session)).filter((t) => t === "listRoutines").length;
+      if (listsAfter <= listsBefore) failures.push(`${h.name} g:listed — asked what it follows, the worker never called listRoutines`);
+      await h.act(h.operator, h.entry.flow, session, "respond", { message: line(F.realModel.stop) });
+      await settled(h);
+      const left = subscriptions(h, h.operator).filter((s) => s.thread === h.thread && s.enabled !== false);
+      if (left.length !== 0) failures.push(`${h.name} g:deleted — asked to stop, ${left.length} routines on ${h.thread} are still live`);
+      else said.push(h.name);
+    } finally {
+      await h.served.close();
+    }
+  }
+  evidence.push(`g: on the real model, ${said.join(", ") || "no host"} saved, listed and deleted a routine when asked in words`);
+}
+
 // ---- the run ----------------------------------------------------------------
 
 const marker = (what: string) => `[${what}]`;
@@ -302,6 +392,14 @@ await runGoal(async (failures, tell) => {
     pulls: NAMES.map((name) => F.hosts[name].pr)
   });
   const evidence: string[] = [];
+  if (LEG !== "scripted") {
+    try {
+      await realModelLeg(stub, failures, evidence);
+    } finally {
+      if (LEG === "real") await stub.close();
+    }
+    if (LEG === "real") return { failures, evidence: evidence.join("; ") };
+  }
   const hosts: Host[] = [];
   try {
     for (const name of NAMES) hosts.push(await openHost(name, join(SCRATCH, name), stub, true));
@@ -369,7 +467,7 @@ await runGoal(async (failures, tell) => {
     await beat(hosts, start + 5 * 60_000 + 5_000);
     for (const h of hosts) {
       const n = heard(h, conversations.get(h.name)!, F.reviews.first);
-      if (n !== 1) failures.push(`${h.name} c:heard-once — the first review reached the session ${n} times within one poll (messages: ${JSON.stringify(serviceMessages(h, conversations.get(h.name)!).map((m) => m.text))})`);
+      if (n !== 1) failures.push(`${h.name} c:heard-once — the first review reached the session ${n} times within one poll; ${await whyNot(h, "github-service")}`);
     }
     const polled = tell.over("c · GitHub calls as the operators", stub.calls.filter((c) => c.path.includes("/reviews")));
     evidence.push(`c: ${polled.length} review reads on the operators' tokens`);
@@ -380,6 +478,7 @@ await runGoal(async (failures, tell) => {
       await h.act(h.operator, h.entry.flow, conversations.get(h.name)!, "respond", { message: `${what} the ${h.thread} routine. ${marker(`${what}-${h.name}`)}` });
     };
     await Promise.all(hosts.map((h) => toolTurn(h, "pause", { name: "pauseRoutine", args: { id: madeEvent.get(h.name), paused: true } })));
+    if (process.env.GOAL_DEBUG) for (const h of hosts) console.error("PAUSED?", h.name, JSON.stringify(subscriptions(h, h.operator)));
     for (const h of hosts) stub.review(h.entry.pr, F.reviewer.login, F.reviewer.association, `${F.reviews.whilePaused} (${h.name})`);
     await beat(hosts, Date.now() + 5 * 60_000 + 5_000);
     for (const h of hosts) {
@@ -391,7 +490,7 @@ await runGoal(async (failures, tell) => {
     await beat(hosts, Date.now() + 5 * 60_000 + 5_000);
     for (const h of hosts) {
       const n = heard(h, conversations.get(h.name)!, F.reviews.afterResume);
-      if (n !== 1) failures.push(`${h.name} d:resumed-hears — a review after the resume reached the session ${n} times`);
+      if (n !== 1) failures.push(`${h.name} d:resumed-hears — a review after the resume reached the session ${n} times; ${await whyNot(h, "github-service")}`);
     }
     const tasksBefore = hosts.map((h) => tasksFor(h, F.clock.goal).length);
     await Promise.all(hosts.map((h) => toolTurn(h, "delete", { name: "deleteRoutine", args: { id: madeEvent.get(h.name) } })));
@@ -404,9 +503,9 @@ await runGoal(async (failures, tell) => {
       if (heard(h, session, F.reviews.afterDelete) !== 0) failures.push(`${h.name} d:deleted-hears-nothing — a review after the delete reached the session`);
       const routines = await listed(h);
       if (routines.some((r) => r.id === madeEvent.get(h.name))) failures.push(`${h.name} d:deleted-not-listed — ${madeEvent.get(h.name)} still listed`);
-      if (heard(h, session, F.reviews.first) !== 1) failures.push(`${h.name} c:heard-once — the first review reached the session ${heard(h, session, F.reviews.first)} times by the end`);
+      if (heard(h, session, F.reviews.first) !== 1) failures.push(`${h.name} c:heard-once — the first review reached the session ${heard(h, session, F.reviews.first)} times by the end; ${await whyNot(h, "github-service")}`);
       const filed = tasksFor(h, F.clock.goal);
-      if (tasksBefore[i] !== 0 || filed.length !== 1) failures.push(`${h.name} e:files-one-task — ${tasksBefore[i]} tasks before the clock was due, ${filed.length} after`);
+      if (tasksBefore[i] !== 0 || filed.length !== 1) failures.push(`${h.name} e:files-one-task — ${tasksBefore[i]} tasks before the clock was due, ${filed.length} after; ${clockIndexRow(h, F.clock.name)}; ${await whyNot(h, ROSTER_FLOW)}`);
     }
     evidence.push("c–e: each session heard the first review once, nothing while paused, the review after the resume once, nothing after the delete; the clock routine filed one task at its time");
   } finally {
