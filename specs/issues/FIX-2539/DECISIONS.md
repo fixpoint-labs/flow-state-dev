@@ -108,6 +108,13 @@ no fresh sub-agent was available in this session.
 6. **Ergonomics:** ask in words; one environment variable.
 7. **Concerns:** a shared index file misfires silently. Recorded above.
 
+## Notes from review
+
+For the implementer, from Cursor's review of #5072 (round 1):
+
+- Goal check 2: compose the child runners with a shared fixture boot where they allow it. Do not spawn each child's `run.mts` with its own boot one after another, or the closure check becomes a long serial suite.
+- The routines wiring (goal check 1) can land and be verified before FIX-2647 and FIX-2648. Only the closure verdict (goal check 2) waits on them.
+
 ## How it got here
 
 - **Draft** — the epic's closure plus the owner's fold of FIX-2670 (2026-11-11). The closure

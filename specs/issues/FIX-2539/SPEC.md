@@ -60,13 +60,13 @@ Each row is something a person relies on, in all three hosts. No package changes
 
 ```diff
  // each host: labs/teammates, labs/claude-code-style, shift-manager's devteam
-+const github = githubSubscriptionProvider({ token: operatorTokenFor(labUser) })  // D3
++const github = githubSubscriptionProvider({ token: … })  // D3: GITHUB_TOKEN, else one `gh auth token` read at start
  flows = {
    agent: defineAgentWorkerFlow({ installation, …,
 -    uses: [ … ],
 +    uses: [ …, createRoutinesCapability(installation) ],                          // D2
    }),
-   coordinator: defineCoordinatorFlow({ installation, …,                           // where a host has one
+   coordinator: defineCoordinatorFlow({ installation, …,                           // CCS and devteam only; Teammates has none. Never `routines: true` here
 -    agent: { … },
 +    agent: { …, uses: [ …, createRoutinesCapability(installation) ] },
    }),
@@ -75,7 +75,7 @@ Each row is something a person relies on, in all three hosts. No package changes
 +const copies = hireWorkforce(installation, { routines: {
 +  index: createSQLiteScheduleIndex(clockDb),           // clock routines
 +  providers: [github],
-+  poll: { index: createSQLiteScheduleIndex(pollDb) },   // its own file: one index ticks one flow
++  poll: { index: createSQLiteScheduleIndex(pollDb) },   // a different SQLite file from clockDb: one index ticks one flow
 +} })
 +const service = githubServiceFlow({ provider: github, installation, poll: true })
  createFlowState({
@@ -133,7 +133,7 @@ Every box is a piece the epic's children shipped; the hosts add wiring.
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | The same eight lines of wiring in three hosts. Glue; a fourth copy earns a helper |
+| **Adds** | The same wiring in three hosts (a few dozen lines with imports, two database files and the token). Glue; a fourth copy earns a helper |
 | **Leaves** | Two polling providers share an index (FIX-2649) · webhook-poll parity (FIX-2650) · per-user tokens · Shift Manager opening the labs, unchecked · epic ER-7 reads open |
 
 **Net: flat.** No package surface; three hosts gain the same short wiring.
@@ -145,7 +145,7 @@ firing by polling, and the epic's legs and 5× bar on one commit. If wrong: the 
 tools nobody can fire.
 
 **[The debt](#whats-already-here-and-the-debt), net flat:** no package change; three copies of
-eight lines. If wrong: a fourth host copies it before a helper exists.
+a few dozen lines. If wrong: a fourth host copies it before a helper exists.
 
 1. **[D1](DECISIONS.md#d1) · The closure re-runs every child's goal check on one commit and adds
    only what none proves.** If wrong: a bug seen only when legs share a fixture stays hidden.
