@@ -1,12 +1,13 @@
 /**
- * Convenience hook that fetches resource content immediately and exposes loading state.
- *
- * Combines useResource's `fetchContent()` with automatic invocation on mount and
- * session/ref changes. Useful when content is always needed right away.
+ * Convenience hook that fetches a session resource's content immediately and
+ * exposes loading state: the resource's client data from the session snapshot,
+ * and its rendered content (prefetched in the snapshot, else fetched), on mount
+ * and on session/ref changes. Useful when content is always needed right away.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useResource } from "./useResource";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionView } from "./useSession";
+import { useClient } from "../internal/useClient";
+import { findSnapshotResource } from "../internal/findSnapshotResource";
 
 /**
  * Return type for useResourceContent — content fetched eagerly.
@@ -30,7 +31,19 @@ export function useResourceContent(
   session: SessionView,
   ref: string
 ): UseResourceContentResult {
-  const { clientData, fetchContent } = useResource(session, ref);
+  const resources = useClient().resources;
+  const entry = useMemo(
+    () => findSnapshotResource(session.snapshot?.resources, ref, "single"),
+    [session.snapshot?.resources, ref]
+  );
+  const clientData = entry?.clientData ?? null;
+  const fetchContent = useCallback(async (): Promise<string | null> => {
+    const sessionId = session.sessionId;
+    if (!sessionId) return null;
+    // Content prefetched in the snapshot is returned as it is.
+    if (entry?.content !== undefined) return entry.content;
+    return (await resources.getResourceContent(sessionId, ref)).content;
+  }, [session.sessionId, ref, resources, entry?.content]);
   const [content, setContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const fetchIdRef = useRef(0);

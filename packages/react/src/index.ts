@@ -35,7 +35,9 @@ export {
 
 export {
   useResource,
-  type UseResourceResult
+  type UseResourceResult,
+  type UseScopeCollectionResult,
+  type UseScopeResourceResult
 } from "./hooks/useResource";
 
 export {
