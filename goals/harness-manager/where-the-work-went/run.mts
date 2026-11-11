@@ -28,7 +28,7 @@ import {
   untilIdle,
   type ModulePatch,
 } from "../../lib/index.mts";
-import { HARNESS_GOAL_FLOW_KIND, harnessGoalFlow } from "../host.mts";
+import { harnessGoalFlow } from "../host.mts";
 
 const fixture = loadFixture<{ sessionSubjects: string[]; taskSubject: string; issue: string; phase: string; epic: string }>(
   import.meta.url,
