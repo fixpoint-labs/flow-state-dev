@@ -21,7 +21,7 @@
  * @see `./harness.ts` for the run input and the block's `accepts`.
  */
 import type { FileContent } from "../items/content";
-import { attachmentSentAs, normalizeMediaType, type AttachmentAccepts } from "../attachments";
+import { attachmentSentAs, normalizeMediaType, type AttachmentAccepts } from "@flow-state-dev/contracts/attachments";
 import { ATTACHMENT_SEAM, type AttachmentSeam } from "./attachment-seam";
 
 /** One file's bytes, as a harness adapter hands them to its SDK. */

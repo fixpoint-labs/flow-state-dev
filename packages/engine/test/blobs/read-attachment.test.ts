@@ -1,8 +1,9 @@
+// FIX-2636 D1.
 /**
- * The model reads an earlier file on request (spec FIX-2636).
+ * The model reads an earlier file on request.
  *
- * A tool's recorded output holds a file's reference and name, never its text
- * (D1). The model call resolves that reference to the file's text on each step
+ * A tool's recorded output holds a file's reference and name, never its text.
+ * The model call resolves that reference to the file's text on each step
  * of a tool loop, through the one resolver, so the text exists only in the
  * call to the provider.
  *

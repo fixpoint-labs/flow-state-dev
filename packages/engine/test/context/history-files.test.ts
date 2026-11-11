@@ -356,7 +356,8 @@ describe("an earlier turn's documents, named for the model to read on request", 
     expect(parts(messages[2])[1]).toEqual({ type: "text", text: `### today.csv\n${String.fromCharCode(4, 5)}` });
   });
 
-  it("keeps FIX-2517 D1's window for a read that does not ask", async () => {
+  // FIX-2517 D1.
+  it("keeps the newest-documents window for a read that does not ask", async () => {
     const { add } = filesFixture();
     const q3 = await add("application/pdf", "q3.pdf");
     const prior = [turn("r1", [userLine("r1", "the report", [q3], 100) as unknown as OutputItem], 100)];
