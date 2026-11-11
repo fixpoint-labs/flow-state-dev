@@ -563,7 +563,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           host,
           registry: options.registry,
           stores,
-          hostResolver
+          hostResolver,
+          tenantIdHeader: options.tenantIdHeader
         });
       }
 

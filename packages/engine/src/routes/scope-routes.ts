@@ -115,7 +115,7 @@ const ENTRY_LIST_MAX_LIMIT = 200;
 export async function handleReadScopeEntries(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "list_scope_entries" | "read_scope_entry" }>,
-  ctx: ScopeRouteContext
+  ctx: ScopeRouteContext & { tenantIdHeader?: string }
 ): Promise<Response> {
   if (!isAddressScope(route.scope)) {
     return jsonResponse(400, { error: "invalid_scope", message: `Scope "${route.scope}" is not "user" or "org"` });
@@ -145,7 +145,13 @@ export async function handleReadScopeEntries(
   });
   const projected = isProjectedResourceCollection(config)
     ? buildProjectedResourceContextFromSession(
-        { userId: caller.userId, orgId: caller.orgId, flowKind: address.flow.id },
+        // The tenant from the tenant header, as every route takes it (FIX-682), never the body.
+        {
+          userId: caller.userId,
+          orgId: caller.orgId,
+          tenantId: extractTenantId(request, ctx.tenantIdHeader),
+          flowKind: address.flow.id
+        },
         address.scope,
         "",
         request.signal

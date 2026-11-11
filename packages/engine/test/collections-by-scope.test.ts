@@ -319,3 +319,87 @@ describe("the change notice an entry write publishes", () => {
     ]);
   });
 });
+
+describe("a projected collection read by entry", () => {
+  // Codex review 4543906399.
+  it("hands its backing the requesting tenant, from the tenant header every route takes", async () => {
+    const { defineProjectedResourceCollection } = await import("@flow-state-dev/core");
+    const positions = defineProjectedResourceCollection({
+      pattern: "positions/*",
+      scope: "user",
+      stateSchema: z.object({ qty: z.number() }),
+      client: { state: { read: true } },
+      read: async ({ ctx }: { ctx: { tenantId?: string } }) => (ctx.tenantId === "t1" ? { qty: 1 } : null),
+      search: async ({ ctx }: { ctx: { tenantId?: string } }) => ({
+        hits: ctx.tenantId === "t1" ? [{ key: "a", state: { qty: 1 } }] : []
+      })
+    } as never);
+    const flow = defineFlow({
+      kind: "desk",
+      resources: { positions },
+      actions: { noop: { block: noop } },
+      authentication: { resolvePrincipal: signIn }
+    } as never)();
+    const { router } = buildRouter([flow]);
+    const at = (tenant: string, path: string[]) =>
+      router.GET(
+        new Request(`http://localhost/api/flows/${path.map(encodeURIComponent).join("/")}`, {
+          headers: { "x-user": "alice", "x-org": ORG_A, "x-tenant-id": tenant }
+        }),
+        { params: { path } }
+      );
+    const one = ["resources", "user", "positions/*", "entries", "a"];
+    expect(((await (await at("t1", one)).json()) as { value?: unknown } | null)?.value).toEqual({ qty: 1 });
+    expect(await (await at("t2", one)).json()).toBeNull();
+    const list = ["resources", "user", "positions/*", "entries"];
+    expect(((await (await at("t1", list)).json()) as { items: unknown[] }).items).toHaveLength(1);
+    expect(((await (await at("t2", list)).json()) as { items: unknown[] }).items).toHaveLength(0);
+  });
+});
+
+describe("an entry's content on delete", () => {
+  // Codex review 4543906405.
+  it("goes with the entry, so a recreated key starts with none", async () => {
+    const { router, stores } = buildRouter([threadsFlow()]);
+    const cell = resolveResourceScopeId({ userId: "alice", orgId: ORG_A }, { id: "threads" }, "user", false);
+    await seed(stores, "user", alice, "drafts/a", { title: "A", body: "", score: 0 });
+    await stores.content.set("user", cell, "drafts/a", "the old body");
+    const deleted = await sendEntry(router, stores, "user", "drafts/*", "delete", alice, { entry: "a", version: 1 });
+    expect(deleted.status, JSON.stringify(deleted.result)).toBe("completed");
+    const again = await sendEntry(router, stores, "user", "drafts/*", "set", alice, { entry: "a", state: { title: "A", body: "" }, version: 0 });
+    expect(again.status, JSON.stringify(again.result)).toBe("completed");
+    expect(await stores.content.get("user", cell, "drafts/a")).toBeUndefined();
+  });
+});
+
+describe("a collection's cap on entries written through the default write flow", () => {
+  // Gitar review 4543837880.
+  it("counts every entry in the org's cell, whoever owns it", async () => {
+    const seats = defineResourceCollection({
+      pattern: "seats/[owner]/[id]",
+      scope: "org",
+      ownerWrites: { param: "owner" },
+      stateSchema: z.object({ label: z.string().default("") }),
+      client: { state: { read: true } },
+      maxInstances: 2,
+      runBy: "default",
+      canWrite: () => true
+    });
+    const flow = defineFlow({
+      kind: "threads",
+      resources: { seats },
+      actions: { noop: { block: noop } },
+      authentication: { resolvePrincipal: signIn }
+    } as never)();
+    const { router, stores } = buildRouter([flow]);
+    const create = (caller: Caller, id: string) =>
+      sendEntry(router, stores, "org", "seats/[owner]/[id]", "set", caller, {
+        entry: `${ownerSegment(caller.user!)}/${id}`,
+        state: { label: id },
+        version: 0
+      });
+    expect((await create(alice, "a")).status).toBe("completed");
+    expect((await create(bob, "b")).status).toBe("completed");
+    expect(errorCode(await create(alice, "c"))).toBe("write_refused");
+  });
+});

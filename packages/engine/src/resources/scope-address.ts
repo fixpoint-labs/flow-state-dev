@@ -373,6 +373,19 @@ export async function readEntry(
   return stored === undefined ? undefined : { state: stored.state, version: stored.version };
 }
 
+/** Every stored row of the caller's cell under the collection's prefix, with no owner fence: for counts. */
+export async function readCell(
+  stores: Pick<StoreRegistry, "resourceState">,
+  address: ResolvedAddress & { collection: true },
+  caller: AddressCaller
+): Promise<Record<string, { state: JsonObject; version: number }>> {
+  const cell = addressCellId(address, caller);
+  const prefix = getPatternPrefix(address.config.pattern);
+  return prefix
+    ? await stores.resourceState.getByPrefix(address.scope, cell, `${prefix}/`)
+    : await stores.resourceState.getAll(address.scope, cell);
+}
+
 /**
  * Every stored entry of the caller's cell the owner fence admits to them,
  * sorted by storage key, each with its version.
@@ -382,12 +395,7 @@ export async function readEntries(
   address: ResolvedAddress & { collection: true },
   caller: AddressCaller
 ): Promise<Array<{ storageKey: string; state: JsonObject; version: number }>> {
-  const cell = addressCellId(address, caller);
-  const prefix = getPatternPrefix(address.config.pattern);
-  const stored = prefix
-    ? await stores.resourceState.getByPrefix(address.scope, cell, `${prefix}/`)
-    : await stores.resourceState.getAll(address.scope, cell);
-  return Object.entries(stored)
+  return Object.entries(await readCell(stores, address, caller))
     .filter(([key]) => matchesPattern(address.config.pattern, key))
     .filter(([key]) => ownerKeyAdmits(address.config, key, caller.userId))
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))

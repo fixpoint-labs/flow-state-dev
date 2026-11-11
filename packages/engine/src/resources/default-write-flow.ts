@@ -37,12 +37,13 @@ import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
 import { pinRejectsCaller } from "../context/instance-pin";
 import { parseResourceWriteState } from "./normalize-resource-state";
 import { ownerWriteRefusal } from "./owner-private";
+import { countInstances } from "../context/resource-registry";
 import { isProjectedResourceCollection } from "./internal";
 import {
   addressCellId,
   entryStorageKey,
   readAddressed,
-  readEntries,
+  readCell,
   resolveAddress,
   type AddressScope,
   type ResolvedAddress
@@ -380,9 +381,10 @@ function createDefaultWriteFlow(options: {
     const current = await stores.resourceState.get(target.scope, write.cell, storageKey);
     const currentVersion = current?.version ?? 0;
     if (input.version !== currentVersion) throw stale(storageKey, currentVersion, input.version);
+    // The cap counts every instance in the cell, whoever owns it, as a run's create does
+    // (`countInstances`); like it, the count is read before the write, not locked.
     if (current === undefined && config.maxInstances !== undefined) {
-      const held = await readEntries(stores, address, caller);
-      if (held.length >= config.maxInstances) {
+      if (countInstances(config.pattern, await readCell(stores, address, caller)) >= config.maxInstances) {
         throw new ResourceWriteRefusedError(
           "write_refused",
           `Collection "${config.pattern}" holds its ${config.maxInstances} entries: delete one first.`
@@ -441,6 +443,9 @@ function createDefaultWriteFlow(options: {
       }
       const deleted = await stores.resourceState.delete(write.target.scope, write.cell, storageKey, input.version);
       if (!deleted.ok) throw raced(storageKey, deleted.conflict.currentVersion);
+      // The entry's content goes with it, as the resource routes' and a run's deletes do,
+      // so a key created again starts with none.
+      await stores.content.delete(write.target.scope, write.cell, storageKey);
       publish(write, noticePathFor(config, storageKey), ctx.request.identity.id);
       return { version: deleted.version };
     }
