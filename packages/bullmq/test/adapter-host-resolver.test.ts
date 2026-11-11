@@ -14,7 +14,8 @@ import { z } from "zod";
 import type { Job } from "bullmq";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import type { FlowJobData, FlowWorkerDeps } from "../src/types";
+import type { FlowJobData } from "../src/types";
+import type { FlowWorkerDeps } from "../src/worker";
 
 // Some test runner (the CLI, CI) can set this to a value core refuses; these
 // flows run no model.
