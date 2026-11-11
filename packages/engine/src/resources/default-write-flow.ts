@@ -401,7 +401,7 @@ function createDefaultWriteFlow(options: {
     }
     const written = await stores.resourceState.set(target.scope, write.cell, storageKey, next, input.version);
     if (!written.ok) throw raced(storageKey, written.conflict.currentVersion);
-    publish(write, noticePathFor(config, storageKey), requestId);
+    publish(write, noticePathFor(config, storageKey, write.target.scope), requestId);
     return { version: written.version };
   };
 
@@ -446,7 +446,7 @@ function createDefaultWriteFlow(options: {
       // The entry's content goes with it, as the resource routes' and a run's deletes do,
       // so a key created again starts with none.
       await stores.content.delete(write.target.scope, write.cell, storageKey);
-      publish(write, noticePathFor(config, storageKey), ctx.request.identity.id);
+      publish(write, noticePathFor(config, storageKey, write.target.scope), ctx.request.identity.id);
       return { version: deleted.version };
     }
   });

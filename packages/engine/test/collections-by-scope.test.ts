@@ -403,3 +403,27 @@ describe("a collection's cap on entries written through the default write flow",
     expect(errorCode(await create(alice, "c"))).toBe("write_refused");
   });
 });
+
+describe("a user entry's change notice", () => {
+  // Cursor review 4543992817: the user topic is the user's in every org, while the cell is per org.
+  it("names no entry, so a page in the user's other org learns no key from a write in this one", async () => {
+    const { router, stores } = buildRouter([threadsFlow()]);
+    const heard: ChangeNotice[] = [];
+    // Alice's page in org B listens on her user topic, the same topic in every org.
+    stores.bus.subscribe({ scope: "user", id: "alice", tenantId: "" }, (notice) => heard.push(notice));
+    const set = await sendEntry(router, stores, "user", "drafts/*", "set", alice, { entry: "secret-plan", state: { title: "x", body: "" }, version: 0 });
+    expect(set.status, JSON.stringify(set.result)).toBe("completed");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(heard.length).toBeGreaterThan(0);
+    expect(heard.every((notice) => notice.topic.resource === undefined)).toBe(true);
+    expect(JSON.stringify(heard)).not.toContain("secret-plan");
+  });
+
+  it("is chosen in one place for every writer: a run's write and the default write flow's", async () => {
+    const { noticePathFor } = await import("../src/bus/scope-changes");
+    expect(noticePathFor(drafts, "drafts/secret-plan", "user")).toBeUndefined();
+    // An org entry and a session entry keep their path; a single resource's key is the same for everyone.
+    expect(noticePathFor(projects, "projects/p", "org")).toBe("projects/p");
+    expect(noticePathFor(undefined, "pins", "user")).toBe("pins");
+  });
+});
