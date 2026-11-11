@@ -111,7 +111,7 @@ export function writeRecordGovernor(
  * `admittedBy` is the declaring instance that admitted a default write's
  * caller (`admitAddress`), recorded so the write's records answer to that
  * instance rather than to one recomputed later. A session made before it was
- * recorded has none, and its records fall back to the recomputation (BP-030).
+ * recorded has none, and its records fall back to the recomputation.
  */
 export type WriteTarget = { scope: AddressScope; key: string; writer: string; admittedBy?: string };
 
