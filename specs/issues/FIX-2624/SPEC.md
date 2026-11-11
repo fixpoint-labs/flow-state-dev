@@ -79,7 +79,7 @@ passes through a flow.
 + const { userId, orgId } = await fsd.flow("threads").identity();   // no session, under that flow's sign-in
 
 - const { clientData } = useResource(session, "pins");
-+ const { value, update } = useResource(pins);                      // D2: no session at user or org
++ const { value, stale, update } = useResource(pins);                      // D2: no session at user or org
 ```
 
 **Docs:** update `resources/client-access` (reading by scope; the reshaped `useResource`; the
