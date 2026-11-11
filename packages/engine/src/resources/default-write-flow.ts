@@ -60,7 +60,6 @@ export function isServerResourceSend(envelope: object): boolean {
 
 /** A client named a write session: only the server finds or makes one. */
 export class ReservedSessionIdError extends Error {
-  readonly code = "reserved-session-id";
   constructor(readonly sessionId: string) {
     super(`Session "${sessionId}" is a write session, the server's to find or make: a client can't name one.`);
     this.name = "ReservedSessionIdError";
@@ -143,7 +142,7 @@ function writeTargetOf(sessionId: string): WriteTarget | undefined {
  * host's fallback, the bug class of a route with no flow behind it. `undefined` when `sessionId` is no
  * write session, or its resource is declared nowhere now.
  */
-export function writeSessionGoverningFlow(
+function writeSessionGoverningFlow(
   registry: FlowRegistry,
   hostResolver: PrincipalResolver,
   sessionId: string | undefined
