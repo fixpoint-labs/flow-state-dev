@@ -3,7 +3,7 @@
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
 
 A flow can be started from outside the runtime in many ways: an HTTP request, a webhook, a
-schedule, an MCP client, a chat platform, another session's event. This project makes all of them
+schedule, an MCP client, another session's announcement. This project makes all of them
 one shape, so the runtime below never knows which one it was, and makes an outside event reach the
 sessions that asked for it without a model reading every event. The entry points shipped as loose
 issues before epics existed. The first epic, FIX-2471, built the routing and wrapped on
@@ -14,8 +14,8 @@ issues before epics existed. The first epic, FIX-2471, built the routing and wra
 | | |
 |---|---|
 | **Winning when** | Every entry point is an `InboundTransportAdapter`, so adding one changes nothing below it. An outside event reaches exactly the sessions that subscribed to it, and only users who can read its thread, with no model reading every event. A developer can build the cross-transport stories from the docs alone |
-| **The read** | Three counts. Entry points on the contract: HTTP, webhooks, schedules, MCP and chat, 5 shipped. Cross-transport stories buildable from the docs alone: 0 proven, because the docs (FIX-453) are not written. The cost claim, routing's tokens against a coordinator that reads every event: never measured, now FIX-2694 |
-| **Now** | 1 done · 0 in flight · 0 not filed. Routing proved on one `main` commit, all seven goal checks PASS. Fourteen loose issues remain open, none yet an epic |
+| **The read** | Three counts. Entry points on the contract: HTTP, webhooks, schedules and MCP, 4 shipped (chat shipped as FIX-638 and FIX-1330 removed it; platform events ride webhooks). Cross-transport stories buildable from the docs alone: 0 proven, because the docs (FIX-453) are not written. The cost claim, routing's tokens against a coordinator that reads every event: never measured, now FIX-2694 |
+| **Now** | Counted once, in [the epics table](#the-epics--derived-live-2026-11-11). Routing proved on one `main` commit, all seven goal checks PASS; the open work is loose issues, none yet an epic |
 | **Kill line** | If FIX-2694 measures a coordinator that reads every event at under 5× routing's tokens, routing by subscription is not earning its layer. What changes is FIX-2471's [D1](../../../specs/epics/FIX-2471/DECISIONS.md#d1), not the transports |
 
 ![The territory: entry points, routing and routines owned here; messages, hosts and the principal assembled from elsewhere; outbound, the rest of MCP, durable suspend, the trust boundary and push to screens outside the fence](figures/territory.svg)
@@ -52,6 +52,12 @@ processes inherit host secrets.
 - **Not the rest of MCP.** The flow-as-MCP-server transport shipped here (FIX-22). Consuming
   other servers and hardening the server on real clients are the MCP project's.
 - **Not durable suspend.** A flow that waits on a callback across a restart is FIX-140/FIX-141.
-- **Not a router that reads every event.** See [decided once](DECISIONS.md#decided-once).
+- **Not a notification transport.** FIX-441's cross-flow bus (`.notify(topic)` with separate
+  NotificationFlow subscribers), which the original pitch counted as an entry point, was canceled
+  on 2026-08-24 as superseded by Relay (FIX-1197), and its subscriber half FIX-825 on 2026-11-09.
+  A session that announces something now publishes a topic through workforce's internal service
+  flow (FIX-2630), and routines hear it through the same subscription routing as an outside
+  event. No `notification` adapter exists.
+- **Not a router that reads every event.** See FIX-2471's [D1](../../../specs/epics/FIX-2471/DECISIONS.md#d1).
 - **Not push to screens.** The realtime bus (FIX-2367) tells a screen to read again; it is not an
   entry point.

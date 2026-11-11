@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 430" role="img" aria-label="The territory. Owned by this project, above the fence: the entry points on one contract (HTTP, webhooks, schedules, MCP, chat), routing an outside event to the sessions that asked for it, and routines that react on their own. Assembled but owned elsewhere: messages and the coordinator, the hosts, the principal. Outside the fence: outbound transports, consuming MCP servers, durable suspend, the trust boundary, and push to screens."
+<svg viewBox="0 0 940 430" role="img" aria-label="The territory. Owned by this project, above the fence: the entry points on one contract (HTTP, webhooks, schedules, MCP), routing an outside event to the sessions that asked for it, and routines that react on their own. Assembled but owned elsewhere: messages and the coordinator, the hosts, the principal. Outside the fence: outbound transports, consuming MCP servers, durable suspend, the trust boundary, and push to screens."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -27,8 +27,8 @@
       <rect class="own" x="16" y="34" width="292" height="132" rx="5"/>
       <text class="t-lbl" x="30" y="54">ENTRY POINTS</text>
       <text class="t-b" x="30" y="76">One contract, one runtime below</text>
-      <text class="t-s" x="30" y="100">HTTP · webhooks · schedules</text>
-      <text class="t-s" x="30" y="116">MCP · chat platforms</text>
+      <text class="t-s" x="30" y="100">HTTP · webhooks</text>
+      <text class="t-s" x="30" y="116">schedules · MCP</text>
       <text class="t-s" x="30" y="132">source on every request</text>
       <text class="t-s" x="30" y="152">shipped before epics</text>
     </g>
