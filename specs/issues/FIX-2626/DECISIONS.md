@@ -71,11 +71,16 @@ author's notes. Then its schema claims them as ignored, by name; the rule stays.
   (FIX-2622). One per kit, siblings; two kits on one folder are refused.
 - **Slots.** Filled by the app or a kit that requires the owner, directly or not. Keyed refuses a
   duplicate, naming both; a list appends in install order (`requires`, then the app's list), the
-  app's entries last. The app can drop one kit's contribution; its shape is the implementer's.
+  app's entries last. The app fills with `fill: { [kit.slots.x]: [...] }`; in a keyed slot each
+  value's `id` is its key. The app can drop one kit's contribution, or one entry of it; its
+  spelling is the implementer's.
+- **A contribution sees its own kit's merged slots.** `contributes` receives `{ config, slots }`.
+  Since `requires` is a DAG, contributions are evaluated dependents first: `d`'s fill into `c` is
+  merged before `c` contributes to `b`. FIX-2627's coding flow needs every harness, which is why.
 - **`init`** copies starter files through `fsdev ui add`'s registry copy-in, never overwriting.
   Workforce's starter set is FIX-2627's.
 - **Names.** "Kit" and "slot" are in the glossary. Public names: `defineKit`, `kits`,
-  `requires`, `slots`, `contributes`, `directory`; `defineKit` enters FIX-2447's export ratchet.
+  `requires`, `slots`, `contributes`, `directory`, `fill`; `defineKit` enters FIX-2447's export ratchet.
 - **`flows` is an array** (the owner's direction on #5064, 2026-11-11). The registry keys by
   `flow.id`; the keyed record goes with no alias, and its call sites move in their own PR.
 - **Sequencing.** Nothing here needs views or `runBy` resources. FIX-2623 and FIX-2624 block
@@ -131,6 +136,11 @@ agent: this dispatch has no sub-agent tool. One finding folded: D1.
 
 ## How it got here
 
+- **Amended** (FIX-2618's cross-spec review, 2026-11-11). A contribution sees its own kit's merged
+  slots, evaluated dependents first; the app fill is `fill:`, keyed by each value's `id`; the app
+  can drop one entry of a contribution; a goal signal for the chain. The host sketch takes the
+  owner's O1 shape. FIX-2627 moves the lab's own flows, `user-marks.mts` included; FIX-2628
+  deletes `user-marks.mts`.
 - **Merged** (#5064). The owner approved D1 and D2 as written and directed `flows: [readiness, context]`.
   This follow-up makes `flows` an array, drops "a client half" from the title, and aligns with
   wave A's review: workforce claims only what it configures.

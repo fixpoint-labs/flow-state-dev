@@ -40,7 +40,7 @@ The check reads what the running app serves and refuses, never what `defineKit` 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/kits/install-in-any-order/` (new), model `n/a`, run by the implementer with `fsdev run` at completion; verdict on the implementation PR |
-| **Signal** | Kit `b` declares a keyed and a list slot and owns a folder; `c` requires `b`, `d` requires `c`; the app lists `[d, b, c]`. All flows served; `b`'s flow answers with `c`'s and `d`'s keyed entries and the list `[c, d]`. Three refusals, each named: `d` repeating `c`'s key; a stray `notes.txt` in `b`'s folder; a fill by a kit that doesn't require `b`. A relative folder path, run from another directory, reads that directory's folder |
+| **Signal** | Kit `b` declares a keyed and a list slot and owns a folder; `c` requires `b` and declares a slot of its own, `d` requires `c` and fills it; the app lists `[d, b, c]`. All flows served; `b`'s flow answers with `c`'s and `d`'s keyed entries and the list `[c, d]`, and `c`'s contribution to `b` carries what `d` put in `c`'s slot. Three refusals, each named: `d` repeating `c`'s key; a stray `notes.txt` in `b`'s folder; a fill by a kit that doesn't require `b`. A relative folder path, run from another directory, reads that directory's folder |
 | **Input** | The goal's fixture kits. Also valid: a fourth kit, no folder or slots, listed first |
 | **Anti-game** | Assert on what the app serves and refuses. Never list kits in requires order: it hides an install in list order |
 | **Control that must fail** | `GOAL_CONTROL=list-order`: `b`'s slot is empty, so the keyed-entries signal fails. `GOAL_CONTROL=skip-unknown`: the app starts beside `notes.txt`, so the stray-file signal fails |
@@ -61,8 +61,9 @@ A host, and the two kits it installs (FIX-2627 writes the real ones):
 - const copies = hireWorkforce(installation);
 - createFlowState({ flows: Object.fromEntries([...copies, readiness, context].map((c) => [c.id, c])), stores });
 + createFlowState({
-+   kits: [harnesses({ claudeCode: {}, codex: {} }), workforce({ directory: options.tree, model })],  // any order
-+   flows: [readiness, context],                                                                     // the app's own, by id
++   kits: [claudeCode(), harnesses({ workspace }), workforce({ directory: options.tree, model })],  // any order
++   fill: { [harnesses.slots.harnesses]: [codexHarness(), cursorHarness()] },                     // the app's fill, keyed by id
++   flows: [readiness, context],                                                                   // the app's own, by id
 +   stores,
 + });
 ```
@@ -79,7 +80,8 @@ export const workforce = defineKit({
 export const harnesses = defineKit({
   name: "harnesses",
   requires: [workforce],
-  contributes: ({ config }) => ({ [workforce.slots.workerFlows]: { coder: coderFlow(config) } }),
+  slots: { harnesses: slot.keyed(harnessSchema) },                     // filled by claudeCode() and the app
+  contributes: ({ config, slots }) => ({ [workforce.slots.workerFlows]: { coder: coderFlow(config, slots.harnesses) } }),
   install: ({ config }) => ({ flows: [readinessFlow(config)] }),
 });
 ```
@@ -160,8 +162,8 @@ first request.
 
 | Issue | Must |
 |---|---|
-| **FIX-2627** | Claim the entries in workforce's folder that workforce configures, `workforce/flows/` included, and only those: an app's own resources and flows go in its own kit or in `flows:` · replace `readDeclaredRoster` with `readWorkforceFolder`, and route every reader and the `fsdev gen` walk through the claim pass · import the walk primitives from the engine, dropping them from `./loader` · declare the slots, with harnesses' keyed `harnesses` slot of `{ id, agent, readiness, pass, usage, models }` filled by two or more packages · views and hooks on a browser entry, components on `/react` · workforce's starter files · the third "slot" |
-| **FIX-2628** | Build claude-code-style's kit on this `defineKit` · credit its adapter's removal per [the POC](poc/client-half/README.md), confirming or refuting the 42 kit-only lines · take the lab's own flows out of `workforce/flows/` (below) |
+| **FIX-2627** | Claim the entries in workforce's folder that workforce configures, `workforce/flows/` included, and only those: an app's own resources and flows go in its own kit or in `flows:` · replace `readDeclaredRoster` with `readWorkforceFolder`, and route every reader and the `fsdev gen` walk through the claim pass · import the walk primitives from the engine, dropping them from `./loader` · declare the slots, with harnesses' keyed `harnesses` slot of `{ id, agent, readiness, pass, usage, models }` filled by two or more packages · views and hooks on a browser entry, components on `/react` · workforce's starter files · the third "slot" · take the lab's own flows out of `workforce/flows/` (below) |
+| **FIX-2628** | Build claude-code-style's kit on this `defineKit` · credit its adapter's removal per [the POC](poc/client-half/README.md), confirming or refuting the 42 kit-only lines · delete `user-marks.mts` with FIX-2624's fallback (below) |
 
 claude-code-style's `labs/claude-code-style/workforce/flows/` holds five files on `main`: `pins.mts`
 and `dismissals.mts`, which FIX-2624 deletes; `harness-thread.mts`, which FIX-2627 merges into
@@ -169,8 +171,8 @@ the one coding worker flow; and `projects.mts` and `user-marks.mts`, which are t
 `projects.mts` is the app's project flow (`defineProjectBlocks`). It moves to the lab's own
 folder, listed in the host's `flows:` beside the readiness flow, before workforce's claim pass
 reaches the lab; FIX-2628 may then move it into the app's kit. `user-marks.mts` is the user state
-pins and dismissals share, so it goes with them in FIX-2624; whatever resource replaces it is
-declared on an app flow and moves the same way. Then the folder holds only what workforce
+pins and dismissals share, and FIX-2624's one-read fallback still reads it, so FIX-2627 moves it
+out with `projects.mts` and FIX-2628 deletes it with that fallback. Then the folder holds only what workforce
 claims, and the lab starts under [D2](DECISIONS.md#d2).
 
 ## Sign off
