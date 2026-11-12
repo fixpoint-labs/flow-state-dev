@@ -83,7 +83,7 @@ A flow exposes a block as an action, a call a client can make. `defineFlow({ kin
 
 ## Blocks inside blocks
 
-The page's real point is the last two rows. A sequencer and a router do no work of their own. They arrange other blocks, and because they are blocks, they nest. `handleTicket` could be a step in a longer sequencer, or the block a router picks.
+Look at the last two rows. A sequencer and a router do no work of their own. They arrange other blocks, and because they are blocks, they nest. `handleTicket` could be a step in a longer sequencer, or the block a router picks.
 
 A router returns one of the blocks it lists, chosen by your code. Every route takes the router's input and returns its output, so a sequencer can treat the router as one step.
 

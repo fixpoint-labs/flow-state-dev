@@ -46,7 +46,8 @@ Words are counted without frontmatter, code blocks and figure descriptions.
    opening (see The moves).
 6. **Next.** Two to four links, each with a clause saying what the reader gets there. Link to
    pages by the names in "What to write next", as `./kebab-case-title.md`, whether or not they
-   exist yet.
+   exist yet. A concept page may end with one link to its Reference page, as
+   `../reference/<topic>.md`.
 
 ## The moves
 
@@ -145,7 +146,8 @@ src/
   sentence: "In `handleTicket`, `pickReply` takes the place of `draftReply`." "Add
   `tools: [lookUpOrder]` to `draftReply`."
 - **A concept page shows four code blocks at most.** The smallest example is one to three files.
-  A reader should be able to hold all the code on the page in their head.
+  A reader should be able to hold all the code on the page in their head. A short call written
+  inline in a sentence does not count.
 
 `scripts/check-docs-page.mjs` fails a `ts` or `tsx` block with no title.
 
