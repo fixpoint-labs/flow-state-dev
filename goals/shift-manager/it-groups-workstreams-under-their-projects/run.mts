@@ -371,7 +371,7 @@ type Entry = {
   updatedAt: string;
 };
 /**
- * The Lab's project setup, as its projects flow answers `projectSetup`; the
+ * The Lab's project setup, as its projects flow's `projectSetup` view answers it; the
  * workers the tree declares that can lead a workstream: on a lead flow
  * (`agent` or `em`), listing delegates; and of them the EM, the lead the boot
  * opens its workstreams under and the HTTP legs open theirs under.
@@ -403,11 +403,11 @@ async function leadsOf(): Promise<{ leads: string[]; lead: string }> {
 
 /** The Lab's project setup: the standard worker behind a project, as the Lab names it, and the tree's leads. */
 async function readSetup(owner: LabApi): Promise<Setup> {
-  const session = await owner.createSession(PROJECTS_FLOW);
-  const answered = await owner.act(PROJECTS_FLOW, session, "projectSetup", {});
-  const { projectCoordinator } = (answered.output ?? {}) as { projectCoordinator?: unknown };
-  if (answered.status !== "completed" || typeof projectCoordinator !== "string") {
-    throw new Error(`the Lab names no project setup: ${answered.status} ${JSON.stringify(answered.output ?? answered.error)}`);
+  // The projects flow's `projectSetup` view, read with no session.
+  const answered = await owner.call("POST", `/${PROJECTS_FLOW}/views/projectSetup`, { userId: owner.user.userId, input: {} });
+  const { projectCoordinator } = (answered.body?.output ?? {}) as { projectCoordinator?: unknown };
+  if (answered.status !== 200 || typeof projectCoordinator !== "string") {
+    throw new Error(`the Lab names no project setup: ${answered.status} ${JSON.stringify(answered.body)}`);
   }
   return { projectCoordinator, coordinatorFlow: await flowOf(projectCoordinator), ...(await leadsOf()) };
 }

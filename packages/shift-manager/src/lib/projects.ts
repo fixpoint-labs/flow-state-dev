@@ -11,8 +11,8 @@
  *
  * **The project setup.** Which flow writes workstreams, and the standard
  * worker each user talks to a project through, their project coordinator.
- * Shift Manager doesn't name it: the Lab's projects flow answers
- * `projectSetup` with it, read once per connection.
+ * Shift Manager doesn't name it: the Lab's projects flow answers its
+ * `projectSetup` view with it, read with no session, once per connection.
  *
  * Shift Manager opens no workstream itself. The user asks their project
  * coordinator for the work, and the coordinator opens one with a lead from
@@ -27,10 +27,9 @@ import {
   type ParsedWorkstreamEntry,
   type ProjectProgress,
 } from "@flow-state-dev/workforce/browser";
-import { runAction } from "./action";
-import type { Client } from "@flow-state-dev/client";
+import { viewRef, type Client } from "@flow-state-dev/client";
 import { useLab } from "./lab-data";
-import { describeFailure, PROJECT_READER_FLOW, readerSessionId, toProject, type Failure, type Project, type ProjectVisibility } from "./reads";
+import { describeFailure, PROJECT_READER_FLOW, toProject, type Failure, type Project, type ProjectVisibility } from "./reads";
 
 /** A project's address: where it lives, and its id. */
 export type ProjectAddress = { visibility: ProjectVisibility; id: string };
@@ -68,14 +67,14 @@ export type ProjectRead = {
 
 /** What the Lab's projects flow says about its project setup. */
 export type ProjectSetup = {
-  /** The flow `openWorkstream`, `updateWorkstream` and `projectSetup` are actions of. */
+  /** The flow `openWorkstream` and `updateWorkstream` are actions of, and the setup a view of. */
   flow: string;
   /** The standard worker each user's project coordinator runs as, or `null`. */
   projectCoordinator: string | null;
 };
 
-/** The action the Lab's projects flow names its setup on. */
-export const PROJECT_SETUP_ACTION = "projectSetup";
+/** The view the Lab's projects flow names its setup on. */
+export const PROJECT_SETUP_VIEW = "projectSetup";
 
 /** Rows per page: the collection route's maximum. */
 const PAGE_SIZE = 200;
@@ -172,18 +171,19 @@ const setups = new WeakMap<Client, Promise<ProjectSetup | null>>();
 
 /**
  * The Lab's project setup, from its projects flow: the flow among the Lab's
- * that answers `projectSetup` and opens workstreams. `null` for a Lab with no
- * such flow. Read once per connection; a failed read is read again next time.
+ * that opens workstreams, and its `projectSetup` view, read with no session.
+ * `null` for a Lab with no such flow. Read once per connection; a failed read
+ * is read again next time.
  */
 export function readProjectSetup(client: Client): Promise<ProjectSetup | null> {
   let read = setups.get(client);
   if (read === undefined) {
     read = (async () => {
       const flows = await client.flows();
-      const flow = flows.find((entry) => entry.actions.includes(PROJECT_SETUP_ACTION) && entry.actions.includes("openWorkstream"));
+      const flow = flows.find((entry) => entry.actions.includes("openWorkstream"));
       if (flow === undefined) return null;
-      const { output } = await runAction(client, flow.id, readerSessionId(client.userId, flow.id), PROJECT_SETUP_ACTION, {});
-      const answer = (output ?? {}) as { projectCoordinator?: unknown };
+      const { value } = await client.view(viewRef(flow.id, PROJECT_SETUP_VIEW), {});
+      const answer = (value ?? {}) as { projectCoordinator?: unknown };
       return {
         flow: flow.id,
         projectCoordinator: typeof answer.projectCoordinator === "string" ? answer.projectCoordinator : null,

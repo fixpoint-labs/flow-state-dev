@@ -48,7 +48,7 @@ import {
   type FlowState
 } from "@flow-state-dev/engine";
 import { ensureSessionRecord, type PrincipalResolver } from "@flow-state-dev/engine/host";
-import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
+import { defineCapability, defineView, handler, sequencer } from "@flow-state-dev/core";
 import {
   encodeUserSegment,
   type BlockContext,
@@ -300,24 +300,31 @@ async function loadTree(root: string): Promise<DeclaredRoster> {
 }
 
 /**
- * The projects flow's action that names this Lab's project setup, for Shift
+ * The projects flow's view that names this Lab's project setup, for Shift
  * Manager: it doesn't name the project coordinator itself, and reads it here.
  */
-export const PROJECT_SETUP_ACTION = "projectSetup";
+export const PROJECT_SETUP_VIEW = "projectSetup";
 
 /** The projects flow's action that answers how much of each harness's subscription is used. */
 export const HARNESS_USAGE_ACTION = "harnessUsage";
 
+// FIX-2624.
 /**
- * The project setup as the projects flow answers it: the installation's
- * project coordinator, or `null` when the tree doesn't declare one.
+ * The project setup as a user-scope view, read with no session: the worker
+ * each person's project coordinator runs as (`projectCoordinator`), or `null`
+ * when the tree declares none. The Lab's configuration, the same for every
+ * caller; it reads no resource, so its answer names no topic.
  */
-function projectSetup(installation: WorkerInstallation) {
-  return handler({
-    name: "devforce-project-setup",
-    inputSchema: z.object({}).strict(),
-    outputSchema: z.object({ projectCoordinator: z.string().nullable() }),
-    execute: () => ({ projectCoordinator: installation.projectCoordinator()?.worker ?? null }),
+export function projectSetupView(projectCoordinator: () => string | null) {
+  return defineView({
+    scope: "user",
+    block: handler({
+      name: "devforce-project-setup",
+      description: "Name this Lab's project setup: the worker each user's project coordinator runs as.",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ projectCoordinator: z.string().nullable() }),
+      execute: () => ({ projectCoordinator: projectCoordinator() }),
+    }),
   });
 }
 
@@ -1239,11 +1246,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     actions: {
       ...projectBlocks.actions,
       ...workstreamBlocks.actions,
-      [PROJECT_SETUP_ACTION]: {
-        block: projectSetup(installation),
-        description:
-          "Name this Lab's project setup: the worker each user's project coordinator runs as.",
-      },
       // How much of each harness's subscription the caller has used. Here
       // because Shift Manager reads this flow first, so the Usage view and a
       // worker call one address.
@@ -1253,7 +1255,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     },
     // Which harnesses can run here: what the start logged, read again on `{ refresh: true }`.
     // A view, read with no session (`harnessReadinessViewRef(PROJECTS_FLOW)`).
-    views: options.readiness === undefined ? {} : { readiness: harnessReadinessView(options.readiness) },
+    views: {
+      // Which worker each person's project coordinator runs as.
+      [PROJECT_SETUP_VIEW]: projectSetupView(() => installation.projectCoordinator()?.worker ?? null),
+      ...(options.readiness === undefined ? {} : { readiness: harnessReadinessView(options.readiness) }),
+    },
   } as never)();
 
   const latencyEnv = process.env.DEVFORCE_LAB_WRITE_LATENCY_MS;
