@@ -20,7 +20,7 @@ const BANNED = [
 function check(path) {
   const raw = readFileSync(path, "utf8");
   const front = raw.match(/^---\n([\s\S]*?)\n---\n/);
-  const type = front?.[1].match(/^type:\s*(\S+)/m)?.[1];
+  const type = front?.[1].match(/^type:\s*["']?([\w-]+)["']?\s*$/m)?.[1];
   const prose = raw
     .replace(/^---\n[\s\S]*?\n---\n/, "")
     .replace(/```[\s\S]*?```/g, "")
@@ -28,6 +28,7 @@ function check(path) {
   const words = prose.split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
   const problems = [];
   if (!type) problems.push("no `type` in frontmatter");
+  else if (type !== "reference" && !BUDGET[type]) problems.push(`unknown \`type\` "${type}"`);
   else if (BUDGET[type] && words > BUDGET[type]) problems.push(`${words} words, budget ${BUDGET[type]}`);
   const untitled = (raw.match(/^```tsx?(?![^\n]*title=)[^\n]*$/gm) ?? []).length;
   if (untitled) problems.push(`${untitled} ts code block(s) with no title="path"`);
