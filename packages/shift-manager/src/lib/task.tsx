@@ -13,8 +13,8 @@
  * on a row still queued or running, it is re-read the same way until the row
  * links the next attempt; the screen then follows that run. A row in any other
  * state is not re-read. A task the board doesn't hold (a stale link, a deleted
- * task, a mistyped address) gets no notice, so it is read on its own a few
- * times more ({@link MISSING_READS_AT_MOST}), then called missing. A failed
+ * task, a mistyped address) waits the same way, on the same reads, for
+ * {@link MISSING_FOR_MS} at most, then is called missing. A failed
  * re-read stops the wait and shows the failure;
  * Retry reads the board once, now, and waits again if the row still waits. A
  * board whose read failed shows that failure, never "no such task".
@@ -40,15 +40,16 @@ import { interruptRun, readRunRecord, resolveRunFlow, RunReadError, type OpenRun
 export const REREAD_EVERY_MS = 2_000;
 
 /**
- * How many more board reads, {@link REREAD_EVERY_MS} apart, a task the board
- * doesn't hold gets before the screen says so: about 10 s. A row nobody
- * writes sends no notice, so these reads are the screen's own, push or not.
- * The screen is opened from a row or a `task-change` item, so a real task is
- * on the board once its filing request commits, well inside that; anything
- * still missing then is a stale link, a deleted task or a mistyped address.
- * A row that exists waits for its link on notices, with no bound.
+ * How long a task the board doesn't hold is waited for before the screen says
+ * so. Filing it is a row write, which publishes a board notice, and where push
+ * can miss one the board is re-read at {@link REREAD_EVERY_MS}: so the wait
+ * needs no reads of its own, only this deadline. The screen is opened from a
+ * row or a `task-change` item, so a real task is on the board once its filing
+ * request commits, well inside it; anything still missing then is a stale
+ * link, a deleted task or a mistyped address. A row that exists waits for its
+ * link with no bound.
  */
-export const MISSING_READS_AT_MOST = 5;
+export const MISSING_FOR_MS = 10_000;
 
 /** The session a board ref names as its holder: everything before its last dot. */
 export function holderSessionOf(boardRef: string): string {
@@ -81,7 +82,7 @@ export type TaskView = {
   rowFailure: Failure | undefined;
   /** The row is being re-read while its link is awaited. */
   waiting: boolean;
-  /** The board doesn't hold the task: its bounded re-read ended without the row. */
+  /** The board doesn't hold the task: its wait's deadline passed with no read finding the row. */
   gaveUp: boolean;
   retryRow(): void;
   run: RunState;
@@ -146,8 +147,8 @@ export function TaskProvider({
   const fromSnapshot = useMemo(() => allTasks(snapshot).filter((r) => r.boardRef === boardRef), [snapshot, boardRef]);
   const [boardRows, setBoardRows] = useState<BoardTaskView[]>(fromSnapshot);
   const [rowFailure, setRowFailure] = useState<Failure | undefined>(undefined);
-  // Board reads, of the bounded series, that landed without the row.
-  const [misses, setMisses] = useState(0);
+  // The missing row's deadline passed with no read finding it.
+  const [missedOut, setMissedOut] = useState(false);
   // Set by a re-read someone asked for (a board action in the frame, or Retry):
   // a row that comes back pending with no run is then followed until the board
   // hands it to one, which a Release or a Retry leaves to its next dispatch pass.
@@ -156,7 +157,7 @@ export function TaskProvider({
   useEffect(() => {
     setBoardRows(fromSnapshot);
   }, [fromSnapshot, taskId]);
-  useEffect(() => setMisses(0), [boardRef, taskId]);
+  useEffect(() => setMissedOut(false), [boardRef, taskId]);
 
   const row = boardRows.find((r) => r.id === taskId);
   // A board the Lab doesn't attach is named at once, with no read (BR-2). A
@@ -259,18 +260,16 @@ export function TaskProvider({
   const awaitingDispatch = following && row !== undefined && row.status === "pending" && row.run === null;
   const missing = row === undefined;
   useEffect(() => {
-    if (!missing) setMisses(0);
+    if (!missing) setMissedOut(false);
   }, [missing]);
-  const gaveUp = boardKnown && missing && boardFailure === undefined && misses >= MISSING_READS_AT_MOST;
+  const gaveUp = boardKnown && missing && boardFailure === undefined && missedOut;
   const waiting = boardKnown && (awaitingLink(row) || awaitingNextRun || awaitingDispatch) && boardFailure === undefined && !gaveUp;
-  // A missing row's own bounded series: each read that lands without it counts.
+  // A missing row's deadline: a timer only, so the board's reads stay the subscription's.
   useEffect(() => {
     if (!waiting || !missing) return;
-    const timer = setTimeout(() => {
-      void readBoardNow().then(() => setMisses((n) => n + 1));
-    }, REREAD_EVERY_MS);
+    const timer = setTimeout(() => setMissedOut(true), MISSING_FOR_MS);
     return () => clearTimeout(timer);
-  }, [waiting, missing, misses, readBoardNow]);
+  }, [waiting, missing]);
   useEffect(() => {
     if (!waiting) return;
     const watching = client.live([topic.session(holder, { resource: CONVERSATION_BOARD_COLLECTION })], {
@@ -349,10 +348,10 @@ export function TaskProvider({
     rowFailure: boardFailure,
     waiting,
     gaveUp,
-    // A read now; the screen waits again if the row still waits, a missing one for a fresh series.
+    // A read now; the screen waits again if the row still waits, a missing one for a fresh deadline.
     retryRow: () => {
       setFollowing(true);
-      setMisses(0);
+      setMissedOut(false);
       void readBoardNow();
     },
     run,
