@@ -47,8 +47,8 @@ it("answers each person the machine's readiness rows from the projects flow, Re-
     readiness,
   });
   served = await serveLab(lab.state);
-  const registry = await stores.resolve();
-  const sessionIds = async () => (await registry.session.list({ parentage: "all" } as never)).map((session) => session.id).sort();
+  const runtime = await lab.state.getRuntime();
+  const sessionIds = async () => (await runtime.stores.session.list({ parentage: "all" } as never)).map((session) => session.id).sort();
   const before = await sessionIds();
   const ref = harnessReadinessViewRef(PROJECTS_FLOW);
   const clientOf = (who: { userId: string; bearer: string }) => connect({ userId: who.userId, baseUrl: served!.baseUrl, bearerToken: who.bearer });

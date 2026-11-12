@@ -28,6 +28,12 @@ import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 /** The roster view's route: the one call the Lab reads the user's own workers by. */
 const ROSTER_VIEW_ROUTE = `/api/flows/${rosterView.flow}/views/${rosterView.view}`;
 
+/** The identity read the organization comes from: the roster flow's. */
+const IDENTITY_READ = `/api/flows/${ROSTER_FLOW}/identity`;
+
+/** The worker inventory's read by org scope. */
+const INVENTORY_READ = `/api/flows/resources/org/${encodeURIComponent("inventory/workers/*")}/entries`;
+
 /** The one session open a first visit makes: a reading session on the roster flow. */
 const READER_OPENS = ["/api/flows/workforce-roster/sessions"];
 
@@ -128,25 +134,32 @@ describe("the refusal (V2, BR-3)", () => {
     expect(snapshot.inventory.ok).toBe(true);
   });
 
-  it("refuses a Lab that names no organization for the user, and reads nothing from the tree", async () => {
-    // The Lab opens nothing at boot and serves no reader flow to open one on,
-    // so the user holds no session and nothing the Lab serves says which
-    // organization they are in.
+  // FIX-2624: the organization is the identity read's, under the roster flow's sign-in.
+  it("refuses a Lab that serves no roster flow to name the user's organization, and reads nothing from the tree", async () => {
     const { baseUrl } = await lab({ conversations: false });
     const seen: string[] = [];
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       seen.push(`${init?.method ?? "GET"} ${url.pathname}`);
-      if (READER_OPENS.includes(url.pathname)) return new Response(JSON.stringify({ error: "no flow" }), { status: 404 });
+      if (url.pathname === IDENTITY_READ) return new Response(JSON.stringify({ error: `Unknown flow "${ROSTER_FLOW}"` }), { status: 404 });
       return real(input, init);
     });
     const snapshot = await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.refused?.message).toMatch(/no organization/);
     expect(snapshot.refused?.message).toContain(ASK_LAB_USER_ID);
-    expect(seen.slice(0, 1)).toEqual(["GET /api/flows/sessions"]);
-    expect(seen.slice(1, 2)).toEqual(READER_OPENS.map((path) => `POST ${path}`));
-    expect(seen.slice(2).every((s) => s === "GET /api/flows/sessions")).toBe(true);
+    expect(seen.slice(0, 2)).toEqual(["GET /api/flows/sessions", `GET ${IDENTITY_READ}`]);
+    expect(seen).toHaveLength(2);
+  });
+
+  it("reads the organization through the roster flow's identity read, never off a session", async () => {
+    const { baseUrl } = await lab({ bearer: "ask-lab-secret", orgId: "org_identity" });
+    const seen = countRequests();
+    const snapshot = loaded(await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" })).read());
+    expect(snapshot.orgId).toBe("org_identity");
+    expect(seen).toContain(`GET ${IDENTITY_READ}`);
+    // No session is read for its organization.
+    expect(seen.filter((line) => /^GET \/api\/flows\/sessions\/[^/]+$/.test(line))).toEqual([]);
   });
 
   // FIX-1752: projects are org-wide, so a user the Lab verifies reaches them on a first
@@ -200,35 +213,27 @@ describe("the refusal (V2, BR-3)", () => {
     expect(readers[0]!.id).not.toBe(readerSessionId(ASK_LAB_USER_ID, ROSTER_FLOW));
   });
 
-  it("a user with no session whose reading sessions are refused gets the Lab's refusal, and nothing else is read", async () => {
+  it("a user the roster flow's sign-in refuses gets the Lab's refusal, and nothing else is read", async () => {
     const { baseUrl } = await lab({ conversations: false });
     const seen: string[] = [];
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       seen.push(`${init?.method ?? "GET"} ${url.pathname}`);
-      if (READER_OPENS.includes(url.pathname)) return new Response(JSON.stringify({ error: "not in this Lab" }), { status: 403 });
+      if (url.pathname === IDENTITY_READ) return new Response(JSON.stringify({ error: "not in this Lab" }), { status: 403 });
       return real(input, init);
     });
     const snapshot = await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.refused).toMatchObject({ httpStatus: 403, message: "not in this Lab" });
-    expect(seen.slice(0, 1)).toEqual(["GET /api/flows/sessions"]);
-    expect(seen.slice(1, 2)).toEqual(READER_OPENS.map((path) => `POST ${path}`));
-    expect(seen.slice(2).every((s) => s === "GET /api/flows/sessions")).toBe(true);
+    expect(seen).toEqual(["GET /api/flows/sessions", `GET ${IDENTITY_READ}`]);
   });
 
-  it("refuses when the user's session carries no organization", async () => {
+  it("refuses when the identity read names no organization", async () => {
     const { baseUrl } = await lab();
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      const response = await real(input, init);
-      if (!/\/api\/flows\/sessions\/[^/]+$/.test(new URL(String(input instanceof Request ? input.url : input)).pathname)) {
-        return response;
-      }
-      const body = (await response.json()) as { session?: Record<string, unknown> } & Record<string, unknown>;
-      const strip = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== "orgId"));
-      const stripped = body.session === undefined ? strip(body) : { ...body, session: strip(body.session) };
-      return new Response(JSON.stringify(stripped), { status: 200, headers: { "content-type": "application/json" } });
+      if (new URL(String(input instanceof Request ? input.url : input)).pathname !== IDENTITY_READ) return real(input, init);
+      return new Response(JSON.stringify({ userId: ASK_LAB_USER_ID }), { status: 200, headers: { "content-type": "application/json" } });
     });
     const snapshot = await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.unreachable).toBeUndefined();
@@ -300,7 +305,8 @@ describe("one read per resource (V3, BR-11)", () => {
     expect(snapshot.asks.ok).toBe(true);
   });
 
-  it("reads the worker inventory once, through one of the user's own sessions whose flow declares it", async () => {
+  // FIX-2624.
+  it("reads the worker inventory once, by org scope, through no session", async () => {
     const { baseUrl } = await lab();
     const seen = countRequests();
     const snapshot = loaded(await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read());
@@ -308,10 +314,11 @@ describe("one read per resource (V3, BR-11)", () => {
     expect(snapshot.inventory.value.workers.map((worker) => worker.id).sort()).toEqual(
       ["ops.asker", "ops.desk", "ops.helper", "ops.loner", "ops.side"],
     );
-    expect(await workerReads(baseUrl, snapshot, seen)).toHaveLength(1);
+    expect(seen.filter((line) => line === `GET ${INVENTORY_READ}`)).toHaveLength(1);
+    expect(await workerReads(baseUrl, snapshot, seen)).toEqual([]);
   });
 
-  it("reads it for a user who holds only a worker's session, through a session of theirs that declares it", async () => {
+  it("reads it for a user who holds only a worker's session", async () => {
     const { baseUrl } = await lab();
     const other = connect({ baseUrl, userId: "u_other" });
     await other.flow(ASKER_FLOW).createSession({ sessionId: "s_other_asker", state: { workerId: "ops.asker" } });
@@ -320,7 +327,7 @@ describe("one read per resource (V3, BR-11)", () => {
     if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
     expect(snapshot.inventory.value.workers.map((worker) => worker.id)).toContain("ops.asker");
     expect(snapshot.sessions.map((session) => session.id)).toContain("s_other_asker");
-    expect(await workerReads(baseUrl, snapshot, seen)).toHaveLength(1);
+    expect(seen.filter((line) => line === `GET ${INVENTORY_READ}`)).toHaveLength(1);
   });
 
   it("a Lab booted without its inventory fails TEAMS by name, and nothing else", async () => {
@@ -335,7 +342,7 @@ describe("one read per resource (V3, BR-11)", () => {
     expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
   });
 
-  it("a Lab whose flows declare no inventory still reads the organization off the user's sessions", async () => {
+  it("a Lab whose flows declare no inventory still reads the organization", async () => {
     const { baseUrl } = await lab({ inventoryDeclared: false });
     const snapshot = loaded(await createLabReader(connect({ baseUrl, userId: ASK_LAB_USER_ID })).read());
     if (snapshot.inventory.ok) throw new Error("the inventory loaded");

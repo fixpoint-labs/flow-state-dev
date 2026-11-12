@@ -76,8 +76,8 @@ describe("readProjectSetup on the DevTeam Lab", () => {
     cleanups.push(() => lab.dispose());
     const served: ServedLab = await serveLab(lab.state);
     cleanups.push(() => served.handle.close());
-    const registry = await stores.resolve();
-    const sessionIds = async () => (await registry.session.list({ parentage: "all" } as never)).map((session) => session.id).sort();
+    const runtime = await lab.state.getRuntime();
+    const sessionIds = async () => (await runtime.stores.session.list({ parentage: "all" } as never)).map((session) => session.id).sort();
     const before = await sessionIds();
 
     const client = connect({ userId: LAB_USERS.member.userId, baseUrl: served.baseUrl, bearerToken: LAB_USERS.member.bearer });
