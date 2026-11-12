@@ -256,9 +256,11 @@ function rewriteRows(match: (url: string) => boolean, edit: (rows: Array<Record<
     const url = String(input instanceof Request ? input.url : input);
     const response = await real(input, init);
     if (!match(url) || !response.ok) return response;
-    const body = (await response.json()) as { items: Array<{ clientData: Record<string, unknown> }> };
-    const edited = edit(body.items.map((i) => i.clientData));
-    body.items = edited.map((clientData, n) => ({ ...(body.items[n] ?? body.items[0]!), clientData }));
+    // A session-addressed page carries each row as `clientData`; a page read by scope, as `value`.
+    const body = (await response.json()) as { items: Array<Record<string, Record<string, unknown>>> };
+    const field = body.items[0] !== undefined && "value" in body.items[0] && !("clientData" in body.items[0]) ? "value" : "clientData";
+    const edited = edit(body.items.map((i) => i[field]!));
+    body.items = edited.map((row, n) => ({ ...(body.items[n] ?? body.items[0]!), [field]: row }));
     return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
   });
 }
