@@ -21,7 +21,8 @@
  * | `watchConnection`   | the same feed's connection state: `live`, `lapsed` once a retry has failed…  |
  * | `answerApproval`    | the request's `answer`: approve or reject a `user_approval` stop             |
  * | `retry`             | the request's `retry()` on the conversation's flow: a failed turn again      |
- * | `watchTalk`         | the user's message log (`workforceMessages`), as `sendMessage` writes it     |
+ * | `watchTalk`         | the user's message log (`workforceMessages`), as `sendMessage` writes it,    |
+ * |                     | on each notice of a row in it under the user's scope                         |
  * | `watchActivity`     | `listSessionRequests` on the worker's conversation, on each request notice   |
  * | `watchWindow`       | the last answering request's `historyStart`, and the session's `historySummary` |
  * |                     | on each request notice and each notice of that resource                      |
@@ -47,7 +48,7 @@
  * |                     | `working-status`), and harness-manager's browser `readRecordedWork`, for the |
  * |                     | plan its harness recorded, read on each write to it                          |
  *
- * `watchTalk` still reads on a clock (`poll`); every other watch reads on a change.
+ * Every watch reads on a change; at `POLL_MS` only wherever push can miss one.
  *
  * A received message is drawn from its own item (`workforce:received`), which
  * carries its message id, so the pending line joins the log to the
@@ -71,6 +72,7 @@ import {
   type WireTopic,
 } from "@flow-state-dev/client";
 import { isSuspensionWait, type FileContent, type OutputItem } from "@flow-state-dev/core/items";
+import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
@@ -79,6 +81,7 @@ import {
   delegateAnswerOf,
   RECEIVED_MESSAGE_COMPONENT,
   SEND_MESSAGE_TOOL,
+  WORKER_MESSAGES_PATTERN,
   WORKER_MESSAGES_RESOURCE,
   workerMessageResourceStateSchema,
   type RosterEntry,
@@ -672,30 +675,6 @@ export function windowMarkOf(items: readonly Item[], entries: readonly Conversat
   const drawn = new Set(entries.map((e) => e.id));
   const first = items.slice(from).find((i) => drawn.has(i.id));
   return first === undefined ? undefined : { firstVerbatimEntryId: first.id, summarized: read.summaryComplete !== false && folded >= 0 && folded >= start };
-}
-
-/** Read `read` now and every `everyMs` until stopped; a failed read keeps the last value. */
-function poll<T>(read: () => Promise<T>, onValue: (value: T) => void, everyMs = POLL_MS): Unsubscribe {
-  let live = true;
-  let last = "";
-  const tick = async () => {
-    try {
-      const value = await read();
-      const seen = JSON.stringify(value);
-      if (live && seen !== last) {
-        last = seen;
-        onValue(value);
-      }
-    } catch (error) {
-      console.error("teammates: a read failed", error);
-    }
-    if (live) timer = setTimeout(() => void tick(), everyMs);
-  };
-  let timer = setTimeout(() => void tick(), 0);
-  return () => {
-    live = false;
-    clearTimeout(timer);
-  };
 }
 
 /** A live read's failure, logged; the read tries again on its own (`client.live`). */
@@ -1447,8 +1426,9 @@ export function createLabAdapter(client: Client = connect(), connection: LabConn
       };
     },
     watchTalk(worker, onChange) {
-      return poll(
-        async () => {
+      // The log is the user's: a message sent from any session writes its row under the user's scope.
+      return client.live([topic.user()], {
+        read: async () => {
           const { sessionId } = await anyConversation();
           const rows = await readEveryCollectionPage(client.resources, sessionId, WORKER_MESSAGES_RESOURCE);
           return rows
@@ -1469,8 +1449,12 @@ export function createLabAdapter(client: Client = connect(), connection: LabConn
               ...(m.status === "delivered" ? { delivered: true } : {}),
             }));
         },
-        onChange,
-      );
+        onValue: onChange,
+        hear: (notice) => notice.kind === "resource",
+        paths: [getPatternPrefix(WORKER_MESSAGES_PATTERN)],
+        pollIntervalMs: POLL_MS,
+        onError: logFailedRead,
+      }).close;
     },
     watchActivity(worker, onChange) {
       // A worker that takes tasks only has no conversation: it is idle here. One that has one is
