@@ -1,6 +1,6 @@
 # FIX-2696 · Decisions
 
-[Spec](SPEC.md) · **Decisions**
+[Spec](SPEC.md) · **Decisions** · [Sitemap](SITEMAP/README.md)
 
 ## The tree
 
@@ -24,6 +24,8 @@ flowchart TD
 Start, Concepts, Catalog, Build and Reference replace today's eleven sidebar groups. The story runs starter, kit, flow, block. "Advanced" goes away as a category; its twenty pages regroup by the reader's job.
 
 **Why.** The audit found the landing page and the docs describe different products, and that the reading path has no end. *If wrong:* a restructure is redirects and a sidebar file; the pages survive.
+
+**The page plan.** [`SITEMAP/`](SITEMAP/README.md) names every page of the five sections: its job, its contents, its cold-read questions, a brief for each figure, its examples, what it leaves to Reference, its sources today and the issue that writes it. The owner signs it off with this PR. It is the page plan every writing child works from; adding, dropping or re-homing a page is an amendment to it first. It plans 108 hand-written pages and about 95,200 words, against the estimates of about 75 and about 90,000 the epic was filed with; Start + Concepts is 25,900 against the 30,000 target. Its three questions for the owner are at the end of its index.
 
 ## D2 · Pages are written for the release that carries kits, and ship in one cutover · decided by the owner, 2026-11-11
 
@@ -55,7 +57,7 @@ figures:  brief ─ draw ─ render light + dark ─ figure lint ─ compare wit
 9. **Cold read** by at least two readers.
 10. **The owner reads** the first two pages of each section, then a sample.
 
-**Figures run as their own track.** One shared style in which each mark has one meaning, taken from the published site figures: hatching is "outlives the request", a dashed outline is "lasts one action run", the highlighter is the one idea. Every figure has a key. Each starts from a figure brief, is rendered in light and dark, passes a figure lint (no hex colours, no `<style>` block, a key present) and is checked by eye against two published figures. Across all pages, `polish-docs` runs once at cutover (FIX-2705).
+**Figures run as their own track.** One shared style in which each mark has one meaning, taken from the published site figures: hatching is "outlives the request", a dashed outline is "lasts one action run", the highlighter is the one idea. Every figure has a key. Each starts from a figure brief, is rendered in light and dark, passes a figure lint (no hex colours, no `<style>` block, a key present) and is checked by eye against two published figures. The style is written down in [`figures/FIGURES.md`](../../../docs/contributing/docs-revamp/figures/FIGURES.md): the marks and their meanings, the key, the canvas, the render script, the `Figure` markup, sixteen lint rules for FIX-2697 to implement, and the three pilot figures redrawn as exemplars. Across all pages, `polish-docs` runs once at cutover (FIX-2705).
 
 FIX-2697 owns the loop and runs it as a workflow script, so no pass can be skipped, with a per-page record of each pass. The steps are in [`WRITING-BRIEF.md`](../../../docs/contributing/docs-revamp/WRITING-BRIEF.md) → "Writing a page, step by step".
 
@@ -115,19 +117,20 @@ About 330,000 words leave the reading path. Much is regenerated as reference. So
 
 | Area | Owner |
 |---|---|
-| Page types, budgets, the concept outline, the concept/reference contract (D6), code-example rules, ER-9, the hardened checker, the figure style, lint and key, the ten-pass workflow script with its per-page record, cold-read questions | FIX-2697 (today: `WRITING-BRIEF.md`) |
-| Generated reference, READMEs | FIX-2698 |
-| Tabular behaviour reference, including the rows the depth pass moves off pages; Upgrading | FIX-2699 |
+| Page types, budgets, the concept outline, the concept/reference contract (D6), code-example rules, ER-9, the hardened checker, the figure style and key (today: `figures/FIGURES.md`), the figure lint built from its rules, the ten-pass workflow script with its per-page record, cold-read questions | FIX-2697 (today: `WRITING-BRIEF.md`) |
+| Generated reference (27 package sections in the sitemap), READMEs | FIX-2698 |
+| Tabular behaviour reference (sitemap R-01 to R-43), including the rows the depth pass moves off pages; Upgrading | FIX-2699 |
 | Machine-readable output | FIX-2700 |
-| Concepts pages, and redrawing the pilot figures in the shared style | FIX-2701 |
-| Start pages | FIX-2702 |
-| Catalog pages, the kit-page template, the "From the community" shelf and the objectives edit (O1) | FIX-2703 |
-| Tutorials and recipes, consolidated with `polish-docs` | FIX-2704 |
+| Concepts pages (sitemap C-01 to C-23), and redrawing the Blocks figure in the shared style; the three pilot figures are redrawn | FIX-2701 |
+| Start pages (sitemap S-1 to S-5) | FIX-2702 |
+| Catalog pages (sitemap K-01 to K-43), the kit-page template, the "From the community" shelf and the objectives edit (O1) | FIX-2703 |
+| Tutorials and recipes (sitemap B-01 to B-37), consolidated with `polish-docs` | FIX-2704 |
+| The page plan ([`SITEMAP/`](SITEMAP/README.md)): which pages exist and where each topic lives | This spec; a child proposes a change as an amendment |
 | Navigation, redirects, removing old pages, reconciling kit claims, the `polish-docs` pass over the whole set, the first-hour goals | FIX-2705 |
 
 **Rules every child obeys**
 
-- **ER-1 · A fact has one home.** Every other page links to it.
+- **ER-1 · A fact has one home.** Every other page links to it. The sitemap's one-home table names the home of each duplicated topic.
 - **ER-2 · Nothing lands under `apps/docs/{docs,guides,blog}` before FIX-2705.** (D3)
 - **ER-3 · Every page passes `scripts/check-docs-page.mjs` and `scripts/check-retired-terms.mjs`.**
 - **ER-4 · Every code example names its file, imports or declares every name it uses, in the one example-app layout the brief defines, and type-checks against the real or specified surface.** No phantom names. (D6)
@@ -159,6 +162,8 @@ About 330,000 words leave the reading path. Much is regenerated as reference. So
 ## How it got here
 
 Four readers audited all 193 pages on 2026-11-11 for duplication, concept-versus-reference mix, voice and the first-hour path. The full findings, the proposed structure, the fate of every section and a verdict for every page are retained in [`analysis/RECOMMENDATION.md`](analysis/RECOMMENDATION.md). Three pilot pages set the voice. A fourth page, Blocks, was then written by a smaller model from the brief alone to test whether the brief was enough; what it exposed went back into the brief.
+
+The page plan and the figure rules were written on 2026-11-12, after the owner asked for every page to be named and for one figure language before more pages were drafted. The three pilot figures were redrawn to the rules, and the pilot pages moved to the site's `Figure` markup.
 
 No end-state POC was built; the pilots and the Blocks run stand in for it.
 
