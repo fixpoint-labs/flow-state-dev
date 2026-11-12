@@ -49,26 +49,43 @@ export type HarnessUsage = {
 };
 
 /**
- * Whether `error` says this Lab serves no such usage: no flow declares it
- * (404), or the collection's writer flow isn't registered here (409).
+ * Whether `error` says this Lab serves no such usage: no flow declares it or
+ * the view (404), or, on Re-check, a collection whose writer flow isn't
+ * registered here (409 `runby_flow_missing`). Every other refusal is a failure
+ * the screen shows.
  */
-function servesNone(error: unknown): boolean {
-  return error instanceof ClientHttpError && (error.status === 404 || error.status === 409);
+function servesNone(error: unknown, onRecheck: boolean): boolean {
+  if (!(error instanceof ClientHttpError)) return false;
+  if (error.status === 404) return true;
+  return onRecheck && error.status === 409 && (error.body as { error?: unknown } | undefined)?.error === "runby_flow_missing";
 }
 
 /**
  * Re-check, then the usage rows. `null` when this Lab serves no usage. Re-check
  * asks each harness at most once a minute per user, so a re-read within the
- * minute answers the stored rows.
+ * minute answers the stored rows. A Re-check that fails (a 5xx, a refused
+ * caller, the network) never hides them: they come back with why as each row's
+ * `refreshError`, as a failed refresh's do. A 409 other than a missing writer
+ * flow is thrown, for the screen to show.
  */
 export async function readHarnessUsageView(client: Client): Promise<HarnessUsage[] | null> {
+  let recheckFailure: string | null = null;
   try {
     await recheckHarnessUsage(client);
-    return toHarnessUsage((await client.view(harnessUsageViewRef(), {})).value);
   } catch (error) {
-    if (servesNone(error)) return null;
+    if (servesNone(error, true)) return null;
+    // A conflict is the Lab's set-up, not a missed attempt: the screen shows it.
+    if (error instanceof ClientHttpError && error.status === 409) throw error;
+    recheckFailure = describeFailure(error).message;
+  }
+  let harnesses: HarnessUsage[];
+  try {
+    harnesses = toHarnessUsage((await client.view(harnessUsageViewRef(), {})).value);
+  } catch (error) {
+    if (servesNone(error, false)) return null;
     throw error;
   }
+  return recheckFailure === null ? harnesses : harnesses.map((usage) => ({ ...usage, refreshError: recheckFailure }));
 }
 
 /** The view's rows, as sent. A row that isn't one is left out. */
@@ -148,12 +165,12 @@ export function toWorkerUsage(output: unknown): WorkerUsage[] {
   return Array.isArray(rows) ? rows.filter((row): row is WorkerUsage => typeof (row as WorkerUsage)?.worker === "string") : [];
 }
 
-/** Each worker's usage over the last `days` UTC days. `null` when this Lab keeps no roster flow. */
+/** Each worker's usage over the last `days` UTC days. `null` when this Lab keeps no roster flow (404). */
 export async function readWorkerUsageView(client: Client, days: number): Promise<WorkerUsage[] | null> {
   try {
     return toWorkerUsage((await client.view(workerUsageView, { days })).value);
   } catch (error) {
-    if (servesNone(error)) return null;
+    if (servesNone(error, false)) return null;
     throw error;
   }
 }

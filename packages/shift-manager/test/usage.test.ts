@@ -3,6 +3,7 @@
  * The rows themselves are the Lab's; these only name them.
  */
 import { describe, expect, it } from "vitest";
+import { ClientHttpError, type Client } from "@flow-state-dev/client";
 import {
   ageLabel,
   billingLabel,
@@ -12,11 +13,14 @@ import {
   harnessName,
   levelLabel,
   percentLabel,
+  readHarnessUsageView,
+  readWorkerUsageView,
   tokensLabel,
   toHarnessUsage,
   toWorkerUsage,
   USAGE_PERIODS,
   windowName,
+  type HarnessUsage,
 } from "../src/lib/usage";
 
 describe("Usage labels", () => {
@@ -110,5 +114,53 @@ describe("Usage by worker labels", () => {
       ...USAGE_PERIODS.map((p) => p.label),
     ].join(" ");
     expect(words).not.toMatch(/left|remaining|limit/i);
+  });
+});
+
+/**
+ * The usage reads over a fake connection: what Re-check and the views answer.
+ * A Lab with no usage reads as `null`; any other refusal reaches the screen as
+ * a failure; and a Re-check that fails never hides the stored rows.
+ */
+const STORED: HarnessUsage = {
+  harness: "codex",
+  status: "windows",
+  reason: null,
+  plan: "pro",
+  windows: [],
+  checkedAt: 1,
+  ageMs: 0,
+  refreshError: null,
+};
+
+function fakeLab(answers: { recheck?: () => Promise<unknown>; view?: () => Promise<unknown> }) {
+  return {
+    userId: "alice",
+    resource: () => ({ send: answers.recheck ?? (async () => ({ asked: [] })) }),
+    view: async () => ({ value: await (answers.view ?? (async () => ({ harnesses: [STORED], workers: [] })))(), topics: [] }),
+  } as unknown as Client;
+}
+
+const refused = (status: number, error: string) => async () => {
+  throw new ClientHttpError(`Request failed (${status})`, { status, body: { error, message: error } });
+};
+
+describe("the usage reads", () => {
+  it("read as no usage only when nothing serves it: a 404, or a Re-check whose writer flow isn't registered", async () => {
+    expect(await readHarnessUsageView(fakeLab({ recheck: refused(404, "unknown_resource") }))).toBeNull();
+    expect(await readHarnessUsageView(fakeLab({ recheck: refused(409, "runby_flow_missing") }))).toBeNull();
+    expect(await readHarnessUsageView(fakeLab({ view: refused(404, "unknown_view") }))).toBeNull();
+    expect(await readWorkerUsageView(fakeLab({ view: refused(404, "unknown_view") }), 7)).toBeNull();
+  });
+
+  it("pass any other 409 on to the screen, from Re-check and from either view", async () => {
+    await expect(readHarnessUsageView(fakeLab({ recheck: refused(409, "declarations_disagree") }))).rejects.toThrow(/409/);
+    await expect(readHarnessUsageView(fakeLab({ view: refused(409, "declarations_disagree") }))).rejects.toThrow(/409/);
+    await expect(readWorkerUsageView(fakeLab({ view: refused(409, "runby_flow_missing") }), 7)).rejects.toThrow(/409/);
+  });
+
+  it("still answer the stored rows when Re-check fails, with why beside them", async () => {
+    const harnesses = await readHarnessUsageView(fakeLab({ recheck: refused(500, "store offline") }));
+    expect(harnesses).toEqual([{ ...STORED, refreshError: "store offline" }]);
   });
 });
