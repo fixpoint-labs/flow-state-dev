@@ -344,7 +344,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     ),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");
-      return typeof user === "string" ? { userId: user, orgId: ORG } : null;
+      // A second organization, for a check that one user's two orgs never meet.
+      return typeof user === "string" ? { userId: user, orgId: context.request?.headers.get("x-org") ?? ORG } : null;
     }
   } as never);
 
@@ -393,14 +394,14 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   };
 
   /** Run an action on `flow` as `userId`, in process. */
-  const act = async (userId: string, sessionId: string, actionName: string, input: unknown, flow = "coordinator") => {
+  const act = async (userId: string, sessionId: string, actionName: string, input: unknown, flow = "coordinator", orgId = ORG) => {
     const runtime = await state.getRuntime();
     return (await runAction({
       flow: instances[flow]!,
       actionName,
       input,
       userId,
-      orgId: ORG,
+      orgId,
       sessionId,
       stores: runtime.stores,
       runtimeConfig: { ...runtime.runtimeConfig }

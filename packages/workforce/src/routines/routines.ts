@@ -24,10 +24,10 @@
  * or changed. The config owns its settings: the user may pause it, and save and
  * delete refuse naming why. A seed keeps a pause.
  */
-import { defineCapability, handler } from "@flow-state-dev/core";
+import { defineCapability, defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
 import { deepEqual, updateStateWith, type UpdateStateRunner } from "@flow-state-dev/core/helpers";
 import { retryOnConflict } from "../projects/cas-retry";
-import type { ActionConfig, BlockContext } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { ScheduleIndex } from "@flow-state-dev/scheduled/collection";
 import { z } from "zod";
 import { deriveWorkerSessionId } from "../workers/derive-session-id";
@@ -40,7 +40,6 @@ import {
   nextRunOf,
   scheduleKeyOf,
   scheduledTaskInputSchema,
-  scheduleResources,
   type StoredSchedule
 } from "../schedules/scheduled-work";
 import { subscriptionResources, subscriptionsOf, type SubscriptionResourceState } from "../subscriptions/rows";
@@ -64,7 +63,8 @@ import {
   ROUTINE_VERBS
 } from "./keys";
 import { listedRoutineSchema, routineMakerSchema, type ListedRoutine, type RoutineMaker } from "./listed-routine";
-import { routineIndexOf, routineProvidersOf } from "./routines-options";
+import { routineProvidersOf } from "./routines-options";
+import { routineResourcesOf } from "./routine-resources";
 import { installationPolling, pollingOn, type SubscriptionPolling } from "../subscriptions/poll";
 
 // ---- inputs ------------------------------------------------------------------
@@ -280,10 +280,74 @@ async function listRoutinesOf(ctx: BlockContext, caller: Caller): Promise<Listed
   const clocks = (await schedulesOf(ctx).list()).map((ref) => listedClock(scheduleKeyOf(ref.path), ref.state));
   // Paused event routines list; ended ones don't.
   const events = (await subscriptionsOf(ctx).list()).map((ref) => ref.state).filter((subscription) => subscription.enabled || isPaused(subscription)).map(listedEvent);
+  return inListOrder([...clocks, ...events].filter((r) => reaches(caller, r.worker)));
+}
+
+/** Routines in the list's order: clock soonest next run first, then event, each by name, then id. */
+function inListOrder(routines: ListedRoutine[]): ListedRoutine[] {
   const due = (r: ListedRoutine) =>
     "clock" in r.trigger ? (r.trigger.clock.nextRunAt === null ? Number.MAX_SAFE_INTEGER : Date.parse(r.trigger.clock.nextRunAt)) : Number.POSITIVE_INFINITY;
   const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-  return [...clocks, ...events].filter((r) => reaches(caller, r.worker)).sort((a, b) => due(a) - due(b) || order(a.name, b.name) || order(a.id, b.id));
+  return routines.sort((a, b) => due(a) - due(b) || order(a.name, b.name) || order(a.id, b.id));
+}
+
+/** The declared entries that apply to `caller`: every entry with no owner, and those it owns. */
+const entriesFor = (declared: readonly DeclaredRoutine[], caller: { userId?: string; orgId?: string }) =>
+  declared.filter((entry) => entry.owner === undefined || (entry.owner.userId === caller.userId && entry.owner.orgId === caller.orgId));
+
+// FIX-2624.
+/**
+ * The user's routines as the `routines` view answers them: every stored one,
+ * and each of the app's declared routines not stored for them yet, as the
+ * seed would write it. So a declared routine lists before the user's first
+ * request seeds it, and never twice. Reads only.
+ */
+async function listWithDeclared(ctx: BlockContext, declared: readonly DeclaredRoutine[], caller: { userId?: string; orgId?: string }): Promise<ListedRoutine[]> {
+  const stored = await listRoutinesOf(ctx, { by: "user" });
+  const unseeded: ListedRoutine[] = [];
+  for (const entry of entriesFor(declared, caller)) {
+    const key = await declaredRoutineKey(entry.id);
+    const madeBy: RoutineMaker = { by: "app", entry: entry.id };
+    const trigger = triggerSchema.parse(entry.trigger);
+    if ("clock" in trigger) {
+      if ((await schedulesOf(ctx).getOptional(key))?.state != null) continue;
+      unseeded.push(
+        listedClock(key, {
+          cron: trigger.clock.cron,
+          input: scheduledTaskInputSchema.parse(entry.task),
+          kind: TASK_SCHEDULE_HANDLER,
+          enabled: true,
+          metadata: { madeBy },
+          ...(trigger.clock.timezone === undefined ? {} : { timezone: trigger.clock.timezone }),
+          ...(entry.description === undefined ? {} : { description: entry.description })
+        } as StoredSchedule)
+      );
+      continue;
+    }
+    // A stored subscription under the key, live, paused or ended, is the routine's state: an ended one lists nothing.
+    if ((await subscriptionsOf(ctx).getOptional(key))?.state != null) continue;
+    const event = trigger.event;
+    unseeded.push({
+      id: `${EVENT_ROUTINE_PREFIX}${key}`,
+      name: event.thread.trim(),
+      worker: entry.worker!,
+      paused: false,
+      madeBy,
+      trigger: { event: { provider: event.provider, thread: event.thread.trim(), ...(event.kinds === undefined ? {} : { kinds: event.kinds }), screens: event.screens ?? [], interest: event.interest } }
+    });
+  }
+  return inListOrder([...stored, ...unseeded]);
+}
+
+const routinesViewOutputSchema = z.object({ routines: z.array(listedRoutineSchema) });
+
+/** The `routines` view, as the roster flow serves it. Import as a type in client code. */
+export type RoutinesViewDefinition = ViewDefinition<BlockDefinition<z.ZodObject<Record<string, never>>, typeof routinesViewOutputSchema>, "user">;
+
+/** The caller a user-scope view runs for: its verified user and the org the request was admitted under. */
+function viewCaller(ctx: BlockContext): { userId?: string; orgId?: string } {
+  const identity = (ctx.request as { identity?: { userId?: string; orgId?: string } } | undefined)?.identity;
+  return { userId: identity?.userId, orgId: identity?.orgId };
 }
 
 /** A routine id's trigger and key, or `undefined` when it names neither. */
@@ -480,9 +544,7 @@ export async function seedDeclaredRoutines(
   const outcome: SeedOutcome = { written: [], unchanged: [], refused: [] };
   const identity = ctx.session.identity as { userId?: string; orgId?: string };
   if (identity.userId === undefined || identity.orgId === undefined) return outcome;
-  const entries = (options.declared ?? []).filter(
-    (entry) => entry.owner === undefined || (entry.owner.userId === identity.userId && entry.owner.orgId === identity.orgId)
-  );
+  const entries = entriesFor(options.declared ?? [], identity);
   const keys = new Set<string>();
   for (const entry of entries) {
     const key = await declaredRoutineKey(entry.id);
@@ -656,7 +718,8 @@ const capabilityByInstallation = new WeakMap<object, unknown>();
 
 function buildWorkerRoutineVerbs(installation: WorkerInstallation) {
   // The poll schedules are declared whether or not the app polls: a worker flow is built before `hireWorkforce` says.
-  const resources = { ...scheduleResources(routineIndexOf(installation)), ...subscriptionResources, ...installationPolling(installation).resources };
+  // The installation's own definitions, so a flow that declares these and `installation.resources` declares one of each.
+  const resources = routineResourcesOf(installation);
   const deps: VerbDeps = {
     get providers() {
       return routineProvidersOf(installation);
@@ -736,5 +799,17 @@ export function defineRoutineActions(installation: WorkerInstallation, options: 
     resources: all as never,
     execute: async (_input, ctx) => seedDeclaredRoutines(ctx, installation, options)
   });
-  return { actions, seed, resources: all };
+  // FIX-2624: the list, as a view with no session, the app's declared routines joined in.
+  const view = defineView({
+    scope: "user",
+    description: blocks.listRoutines.description,
+    block: handler({
+      name: "workforce-routines",
+      inputSchema: z.object({}),
+      outputSchema: routinesViewOutputSchema,
+      resources: all as never,
+      execute: async (_input, ctx) => ({ routines: await listWithDeclared(ctx, options.declared ?? [], viewCaller(ctx)) })
+    })
+  }) as RoutinesViewDefinition;
+  return { actions, seed, view, resources: all };
 }

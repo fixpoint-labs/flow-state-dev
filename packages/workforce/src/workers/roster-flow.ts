@@ -23,7 +23,9 @@
  * an app that lists every flow's sessions filters this flow kind out.
  */
 import { defineFlow } from "@flow-state-dev/core";
+import type { ViewDefinition } from "@flow-state-dev/core";
 import type { ActionEntry, BlockDefinition, SchedulesConfig } from "@flow-state-dev/core/types";
+import { ROUTINES_VIEW } from "../routines/keys";
 import { defineWorkerInventoryCollection } from "../inventory/collections";
 import { workerMessagesResources } from "../messages/message-log";
 import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
@@ -39,13 +41,13 @@ import { defineWorkerUsageView } from "./worker-usage";
  * @param actions Actions to mount on it, such as the hire, fork, edit and fire
  *   blocks (`createWorkerHireBlocks`). Omitted, it reads and writes nothing.
  * @param routines The routine collections, the resolver clock fires go
- *   through (`defineScheduledWork`), and the declared routines' seed, run as
- *   each request starts. Omitted, it keeps no routines.
+ *   through (`defineScheduledWork`), the declared routines' seed, run as each
+ *   request starts, and the `routines` view. Omitted, it keeps no routines.
  */
 export function defineWorkerRosterFlow(
   installation: WorkerInstallation,
   actions: Record<string, ActionEntry> = {},
-  routines?: { resources: Record<string, unknown>; schedules: SchedulesConfig; seed?: BlockDefinition<any, any> }
+  routines?: { resources: Record<string, unknown>; schedules: SchedulesConfig; seed?: BlockDefinition<any, any>; view?: ViewDefinition }
 ) {
   return defineFlow({
     kind: ROSTER_FLOW,
@@ -61,6 +63,11 @@ export function defineWorkerRosterFlow(
     actions,
     // FIX-2623: the roster, answered at user scope with no session. FIX-2624:
     // and what each of the user's workers spent, the same way.
-    views: { [ROSTER_VIEW]: defineRosterView(installation), [WORKER_USAGE_VIEW]: defineWorkerUsageView(installation) }
+    views: {
+      [ROSTER_VIEW]: defineRosterView(installation),
+      [WORKER_USAGE_VIEW]: defineWorkerUsageView(installation),
+      // FIX-2624: the user's routines, the app's declared ones joined in.
+      ...(routines?.view === undefined ? {} : { [ROUTINES_VIEW]: routines.view })
+    }
   });
 }
