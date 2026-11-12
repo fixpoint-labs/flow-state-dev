@@ -1,0 +1,29 @@
+**R1.** An app is one server plus the pages that talk to it. It has a host file (the one call that builds the server), React pages that read and write through typed hooks, and a store for sessions, state and tasks. The builder owns it, and one server can serve many users.
+
+**R2.** A kit is one feature packaged so an app installs it with a single config object. It has a name, config, requires, slots, contributions, an optional folder and an install step. It is imported in one half (the package with its flows, views, hooks, blocks and components) and owned in the other (the folder it scaffolds into the app).
+
+**R3.** A flow is what the server serves. It has an id and declares actions (the only way in, each running one root block), state at session, user or org scope, resources, capabilities and views. Each id is registered once, and many sessions can be opened against one flow.
+
+**R4.** A block is a typed unit of work with an input shape, an output shape and something that runs. There are exactly five kinds: handler, generator, evaluator, sequencer and router. A tool a model can call is an ordinary block.
+
+**R5.**
+(a) A worker's instructions: the body of its `WORKER.md` in the kit folder (owned).
+(b) A whole feature such as coding agents: a kit. Install the harnesses kit in the host file. Write your own kit only if two apps will share the feature.
+(c) One step inside how a request is handled: edit that block in your own flow.
+
+**P1.1** Edit the body of the researcher's `WORKER.md` (in the `workforce/` folder) to say it should not guess prices and should cite the source of each fact. No TypeScript is needed, because the first rows of the "which one to change" table never touch code.
+
+**P1.2** The page does not give a full recipe for the `claudeCode` kit, and says today it is not built (there is no kit definition in `packages/claude-code`). As the target model describes it: list `harnesses` in the host file (it requires workforce, which installs first regardless of order) and add `claudeCode`, which requires harnesses and puts the claude-code harness into the harnesses slot. Harnesses puts the `coder` flow into workforce's worker-flows slot. A worker's `WORKER.md` then names `flow: coder` and `harness:` with the harness's name. The page's example uses `codex`, so the exact name for Claude Code is a guess on my part. The page does not say how to configure `claudeCode`.
+
+**P1.3**
+(a) Call a model: generator.
+(b) Run your own code: handler.
+(c) Pick one of several blocks: router.
+
+**Terms I had to guess the meaning of:**
+- "Lab" in the Shift Manager sense is described only as "the server one config file exports," and I am not sure what that means in practice.
+- "Capability" is defined only as a bundle of tools, state and context. How it is declared is unclear.
+- "Evaluator" is defined only as "a model's judgment of something."
+- "Goal" and "goal fixture" (under `goals/`) are never explained.
+- "Fill" is clear in use, but I inferred the details of how it interacts with the "switch off a contribution" mechanism.
+- "Trace per attempt" and "attempt number" are not explained.

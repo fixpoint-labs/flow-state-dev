@@ -1,0 +1,9 @@
+R1 0 Says page doesn't define app
+R2 1 Installable, adds flows, declares fillable slots
+R3 0.5 Misses HTTP calls, streaming, typed state
+R4 0.5 Typed unit right; omits flows built from, kinds
+R5 0 (a) wrong, (b) right, (c) hedged; fails
+P2.1 0.5 Right outcomes, but reason wording hedged oddly
+P2.2 0.5 Right on storage and re-drain; scope omitted
+P2.3 0.5 Dependency listing right; misses input.deps keyed
+SCORE 3.5 / 8

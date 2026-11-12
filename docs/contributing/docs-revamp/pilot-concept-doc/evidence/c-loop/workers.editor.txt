@@ -1,0 +1,63 @@
+VERDICT: REVISE
+
+FINDINGS (most severe first)
+
+1. workers.md:21 — Unobservable/leaked authoring note
+   Quote: "Description for the site's Figure: A dashed box labelled Alice's roster holds four boxes in a row…"
+   Why: A production-pipeline instruction sits inside the caption. The reader sees a stray "Description for the site's Figure:" and a paragraph that repeats the picture. If it is meant as alt text, it doesn't belong in the visible italic caption.
+   Fix: Move it to the image alt text, shortened. Keep a one-line caption: "*Alice's workers on top, the installation's flows below.*"
+
+2. workers.md:51 — Counted preamble
+   Quote: "Look at three things."
+   Why: It announces a count, and the list that follows isn't three parallel things.
+   Fix: Cut it. Start with "`description` is the only required line…"
+
+3. workers.md:57 — Counted preamble
+   Quote: "Two places."
+   Why: Same tell.
+   Fix: Cut. "A **standard worker** is…" can open the paragraph directly.
+
+4. workers.md:13 — Diff narrative / unexplained internal
+   Quote: "so a worker can be hired, edited and fired while the app runs"
+   Why: Hire, edit and fire are used before they're defined. This is minor. The sentence works as a pointer.
+   Fix: Taste. Optionally add "(see below)".
+
+5. workers.md:57 — Mechanism as reassurance
+   Quote: "Every user sees the same one, and nothing stores it: the files are read each time"
+   Why: "Read each time" is the mechanism. The guarantee is the next clause, that a changed file changes the worker.
+   Fix: "Every user sees the same one. A changed file changes the worker for everyone who hasn't edited it."
+
+6. workers.md:76 — Mechanism and design defense
+   Quote: "There is one registered copy of each flow… Memory, tools and how it answers belong to the flow, in one place."
+   Why: The first sentence repeats the figure's heading. The second explains why the design is shaped this way.
+   Fix: Keep "Alice's `researcher`, Alice's `writer` and Bob's `researcher` all run on the same `agent`." Cut the two sentences around it.
+
+7. workers.md:97 — Mechanism
+   Quote: "The server fixes the worker when it creates the session, and a later turn can't name a different one."
+   Why: It's phrased as an implementation fact. The reader-facing behavior is that a session stays with its worker.
+   Fix: "A session stays with the worker it was created for."
+
+8. workers.md:114 — Anticipated objection
+   Quote: "Another user's worker is not on the roster, so it gets the answer a worker that doesn't exist gets."
+   Why: "The answer a worker that doesn't exist gets" is an unexplained internal. The reader doesn't know what that answer is.
+   Fix: Name the actual error, for example "…is refused as unknown."
+
+9. workers.md:118–123 — Triumphant closer
+   Quote: "What it gets you" bullets
+   Why: The last bullet is a mild escalation, and the bullets restate earlier sections. Taste, but this is the only section that repeats earlier content.
+   Fix: Trim to the first two, or cut the section.
+
+10. Em-dash density: none found. Fine.
+
+11. workers-roster.svg:61, the figure — consistency
+    Quote: "Each worker names one flow. Bob's researcher is the file's, on the same agent flow."
+    Why: Alice's roster is drawn, but Bob appears only in the footnote. This is fine as a caption but depends on the page's cast paragraph. The figure has no arrows distinguishing "edited" from the file, only the highlight chip. Acceptable.
+    Fix: None required.
+
+SUSPECTED INACCURACIES
+- workers.md:51 — "Leave `flow:` out and the worker runs on the built-in `agent` flow", but the example sets `flow: agent` and the figure draws `researcher` pointing at `agent`. This is consistent, but the page never says the default is `agent` before the example uses it explicitly. Writer to verify.
+- workers.md:9 vs 74 — "A flow, the code that runs a session" vs "ordinary flow that meets three conditions". Writer to verify that the three-conditions list matches the reference.
+- workers.md:63 — "On a standard worker it creates the user's own copy under the same id." The "Hire … that names a standard worker's id is refused" rule at line 66 is consistent. The Fork row says the copy is of "another worker's configuration", so it's unclear whether forking a standard worker works. Writer to verify.
+
+OFFERED CONTEXT DECLINED
+- None offered. I read only workers.md, its figure `workers-roster.svg` (the other files in `figures/` were not opened), and the user-docs standard.

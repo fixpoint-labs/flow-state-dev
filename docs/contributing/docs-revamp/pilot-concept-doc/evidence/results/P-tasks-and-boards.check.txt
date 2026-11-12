@@ -1,0 +1,8 @@
+FAIL /tmp/claude-0/-home-user-flow-state-dev/5f124f94-c1af-571f-8b2a-38d6390fd212/scratchpad/blind/P-tasks-and-boards.md (?, 5798 words)
+     no `type` in frontmatter
+     "now" ×3
+     "still" ×11
+     a table with 10 body lines (limit 6)
+     a table with 25 body lines (limit 6)
+     a table with 12 body lines (limit 6)
+exit 1

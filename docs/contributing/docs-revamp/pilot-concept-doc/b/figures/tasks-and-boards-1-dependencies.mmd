@@ -1,0 +1,4 @@
+flowchart LR
+  R["research · researcher (board worker)"] -->|"draft starts only when research is completed"| D["draft · writer (board worker)"]
+  D -->|"polish starts only when draft is completed"| P["polish · writer (board worker)"]
+  R -.->|"research errors or is cancelled"| X["draft and polish are cancelled · labelled skipped"]

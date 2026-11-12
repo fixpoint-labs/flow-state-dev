@@ -1,0 +1,43 @@
+I found one wrong claim and three I could not verify. I checked about 45 claims against `packages/orchestration`; the kits specs weren't needed because the page makes no kits-release claims. I couldn't run anything, so every verdict is from reading the code.
+
+**1. WRONG claims**
+
+| Claim | Why it is wrong | Evidence |
+|---|---|---|
+| "Only a user can retry an errored or cancelled task. Code can't." | The collection's `retry(id)` method is a public API that app code can call. The code calls it "A person's or an app's move" and says the task tools offer it "as an action only". The restriction is that the model-facing tools can't retry. App code can. | `tasks/collection/types.ts:675-693`, `skills/task-tools-capability.ts:2141-2154` |
+
+**2. UNSUPPORTED claims**
+
+| Claim | Where I looked |
+|---|---|
+| "`cancelled`: the filer, the app or a cascade cancelled it" | The cascade is confirmed (`cascade.ts`). I didn't find a place that lists the filer and the app as the cancellers. |
+| "After a crash, work can run twice, and only the second result counts" | Lease reclaim and claim tickets exist (`tasks/collection/internal.ts:1131`, `StaleTaskClaimError` in `task-board/task-entry.ts`). I didn't trace the stale-settle path to confirm the first run's result is dropped. |
+| The link target `../reference/task-board.md` and the `./figures/…svg` file | Neither is in `packages/`. |
+
+Two wording notes, not counted as wrong:
+- The `filedUnder` server-only field holds tenant and org. The page says only "which org".
+- `board-meta.ts:201-217` has two reasons the page's table omits: `dispatched` and `waiting-on-an-event`.
+
+**3. RIGHT claims** (38 in total; ten representative ones)
+
+1. Import paths `@flow-state-dev/orchestration/task-board` and `/tasks` are both exported: `package.json:36-43`.
+2. `defineTaskCollection({ id, scope })` exists, and the scope can be `"session"`, `"user"` or `"org"`: `define-task-collection.ts:104-115,202`.
+3. `taskBoard({ name, collection, workers })` takes a registry keyed by assignee, and the handle has `.drain` and `.capability`: `task-board/index.ts:584,606,668`.
+4. `createTasks(TaskInit[])` is on the collection ref, and `TaskInit` has `maxAttempts`: `tasks/collection/types.ts:598`, `task-init.ts:47`.
+5. There are exactly six statuses, and `completed` is final with no transitions out: `tasks/schema/task-status.ts:11-18,67-74`.
+6. The default lease is two minutes (`DEFAULT_LEASE_DURATION_MS = 120_000`, `internal.ts:1131`), and the types doc says the default is two minutes. Lease renewal is `startLeaseRenewal`.
+7. The default is 4 drain workers (`concurrency = 4`, `task-board/index.ts:687`).
+8. Filing refusals are a dependency not on the board, a dependency that ended, a loop, and a duplicate id. Nothing is written when one fires: `tasks/collection/filing.ts:18-46,264-332`.
+9. A cascade cancels dependents with the `skipped` label and records `causedBy`: `tasks/collection/cascade.ts:30-31,80-94`.
+10. Termination reasons `all-completed`, `blocked-by-failures`, `retry-budget-exhausted` and `waiting-on-a-user`. `errored`, `cancelled` and `held` rows give "blocked": `board-meta.ts:201-234`. `maxTotalRetries` is a board option: `task-board/index.ts:461`.
+
+Others that held:
+- A failure's `error` becomes the next attempt's `feedback` (`internal.ts:483`).
+- A hold resumes on the same attempt (`holds.ts:240`).
+- The Inbox exists (`inbox/`).
+- The four server-only fields are `claimedBy`, `createdBy`, `filer` and `filedUnder` (`change-event.ts:140`).
+- `defineFlow` accepts `requireUser` (`core/src/flow/defineFlow.ts:1294`).
+- Mid-drain enqueues are picked up (`task-board/index.ts:5-20`).
+
+TOTALS right=38 wrong=1 unsupported=3
+exit 0

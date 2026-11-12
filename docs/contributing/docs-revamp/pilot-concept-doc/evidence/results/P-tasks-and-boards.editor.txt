@@ -1,0 +1,59 @@
+VERDICT: REVISE
+
+I read only `user-docs.md` and the page. No implementation context was handed over, so none was declined. The page is written as a contributor concept doc, but held to the user-docs standard it carries internals, decision logs and diff narrative a reader would trip on.
+
+FINDINGS (most severe first)
+1. page:388-403, 328-334, 368-375 — Unobservable claims / diff narrative
+   Quote: "`taskToolReads` still exists beside it (`skills/task-tools-capability.ts:2480`)" · "20 files under `packages/` contain the string" · "276 under `packages/`"
+   Why: A reader can't confirm file paths, line numbers or file counts by calling the API. "Today", "still" and "Old → New" assume a before-state the reader never had.
+   Fix: Move the whole "differs today" block, both migration and retired-term tables, to a contributor-only doc. Keep any user-facing "if you stored `blocked`, it reads as `held`" as a short, labelled migration note.
+
+2. page:290-308, 377-386, 269, 187 — Design defense
+   Quote: "**Recommend board.** It is the name already used by the package, the glossary and the screens." · "The word 'delegation' here is the board's mode, and has nothing to do with a Workforce coordinator's delegates." · "Open. Recommend no rename now."
+   Why: These sections argue naming and scope calls with a reviewer who isn't reading. The reader wants behavior. "Open in Decisions" and `[ ]` checkboxes are a process log.
+   Fix: Cut "Naming debates" and "Decisions" from the reader page. Keep the vocabulary table. At 187, state the mode and drop the disclaimer.
+
+3. page:200, 319, 138 — Mechanism as reassurance
+   Quote: "The debt is written in the same write as the ending, so a crash between the two cannot lose it. The next touch of the board pays any debt that is still due." · "one atomic step"
+   Why: This is the "same atomic write" tell almost word for word. "Debt" and "touch" are unexplained internals.
+   Fix: "If the process crashes after a task ends, its dependents are still cancelled." Drop "atomic" and rule 6's mechanism.
+
+4. page:271 — Diff narrative / mechanism
+   Quote: "**What this replaces.** Today each app writes its own read of the board… Shift Manager's reads file is 1,109 lines (the kit epic's figure)… once a host has any view, every user or org resource write publishes a notice"
+   Why: It describes a before-state and cites an epic and a file size. The last clause is plumbing the reader can't observe.
+   Fix: Cut the paragraph. If useful, say: "A board view lets a screen watch a board without naming topics."
+
+5. page:21 — Counted preamble, and the count is wrong
+   Quote: "Six words from the rest of the framework appear below."
+   Why: The paragraph defines about a dozen terms (block, flow, session, scope, collection, kit, slot, harness, entry, topic, open…). It's also a wall of definitions in one block.
+   Fix: Drop the count. Define each term where it first appears, or turn the paragraph into a short table.
+
+6. page:17, 21, 41 — Term used before it's introduced
+   Quote: "Workforce words (roster, delegate, coordinator) appear only in passing"
+   Why: Workforce is never defined, yet "launch coordinator" is the central actor in the cast and the walkthrough. "Only in passing" is false. The reader can't tell what a Workforce worker is.
+   Fix: Define Workforce and coordinator in one plain sentence at first use, or use a plain actor ("an agent") in the cast.
+
+7. page:82, 208, 328 — Counted preambles
+   Quote: "Bounded by three limits" · "kept from running in two different ways. The first… The second…" · "Today that applies to three"
+   Why: Announcing the count before the list is the clearest machine tell.
+   Fix: Say the items without the count. At 208, lead with what each one is.
+
+8. page:263-267, 7 — Roadmap mixed into description
+   Quote: "A dashed box is planned, not built."
+   Why: The reader can't tell which parts of the model exist. The page describes a release the reader may not be on.
+   Fix: Describe shipped behavior only. Put planned pieces in the contributor doc.
+
+9. page:212, 214, 232 — Vague words
+   Quote: "A person's line or a delivered message ends it" · "a 'no answer came' line is sent" · "a worker's payload"
+   Why: "Line" and "payload" are undefined. A reader can't tell what a "line" is or what the payload holds.
+   Fix: Name the thing: "a reply from a person", "a timeout message", "the data attached to the task".
+
+SUSPECTED INACCURACIES
+- page:76 vs 208 — "*Held* is the filer saying 'don't start this yet' and nothing else", but a `held` task can also carry holds (222). Check the wording.
+- page:183 — "Blocked by failures" is listed as covering held tasks, while "Waiting on a user" covers holds. Confirm which reason a `held`-status task with no hold gets.
+- page:254, 267 vs 392 — The board view is called planned, yet `taskToolViews` is said to exist. Confirm what is built.
+
+OFFERED CONTEXT DECLINED
+- None offered.
+
+EDITOR verdict=REVISE findings=9

@@ -1,0 +1,23 @@
+The page is at `out/c/tasks-and-boards.md`, a concept page. `node scripts/check-docs-page.mjs` passes at **1,238 words** against the 1,500 budget. The figure is `out/c/figures/tasks-and-boards-launch.svg`, and I rendered it and looked at it.
+
+**What the page covers.** It is built on Alice's launch board (research, draft, polish).
+- **Figure:** Alice's collection holds the three tasks as a chain. Bob's collection sits outside it.
+- **Code:** three blocks, none reprinted. They are the board with `defineTaskCollection` and `taskBoard`, a handler that files the tasks through `launchBoard.capability`, and the flow.
+- **Sections:** a short "If you know job queues", then what a task is, how a task starts, how a board stops, what happens when a task needs a user's answer, and who can see a board. After those come "What it gets you", "What it won't do", and Next.
+
+**Left out for lack of room or a surface in the example.** These go to Reference:
+- Plan versus delegation mode, claim orders, and the 100/500/50 limits.
+- Steers, the `taskToolActions` screen actions, and the board view and kit install story (planned; no observable surface yet).
+- The three-recovery limit and the claim ticket.
+- The `blocked` → `held` shape change.
+
+**Where the code differed from the model.**
+- **Filing refusals.** The model says a refused write is always a returned value. In code, `createTask` and `createTasks` throw `TaskFilingRefusedError`, naming the rule. Only the task-tool and action path returns `{ ok: false, error }`. The page says "refused" and nothing is filed, without saying which.
+- **Claim order.** `docs/orchestration/task-board.md` says the default is `claimOrder: "topological"`. The code defaults to `"fifo"`. I did not touch that page. It needs correcting.
+- **Hold-answer deadline.** I did not check the host deadline for unanswered holds, so the page doesn't mention it.
+
+**Unverified.**
+- **Retired-terms script:** `node scripts/check-retired-terms.mjs` failed with `ERR_MODULE_NOT_FOUND`, because the sandbox has no `node_modules`. I grepped for the retired words by hand and changed every "person" to "user". The script itself was not run.
+- **Examples:** I checked them against the exported signatures (`taskBoard`, `defineTaskCollection`, `createTasks`, the `defineFlow` shape) but did not compile them.
+- **Next links:** `./workers-and-coordinators.md` and `./scopes-and-resources.md` are guessed page names, and `./goal-seek-loop.md` and `../reference/task-board.md` may not exist at those paths. Check that all four resolve.
+exit 0

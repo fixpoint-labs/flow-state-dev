@@ -1,0 +1,47 @@
+VERDICT: REVISE
+
+FINDINGS (most severe first)
+1. page:59 — Counted preamble
+   Quote: "Users change their workers four ways:"
+   Why: Announcing a count before a list is the clearest machine tell.
+   Fix: "Users change their workers by hiring, forking, editing and firing:" or just lead into the list.
+
+2. page:72 — Counted preamble + design defense + unexplained internals
+   Quote: "An ordinary flow that meets three conditions, so the framework can treat any worker alike. It accepts a worker's standard configuration. … And it keeps a worker's state private to the user."
+   Why: It has a count, a rationale ("so the framework can treat…") and two undefined phrases. "Standard configuration" is never specified and "state private to the user" can't be checked from the API. "And it keeps…" also wobbles as a sentence.
+   Fix: "A worker flow is a flow that accepts the settings a `WORKER.md` carries and has a public `respond` action taking `{ message }`." Say what "private state" means for the reader, or link to the reference.
+
+3. page:68 — Unobservable claim
+   Quote: "The roster is computed from both sources and never stored."
+   Why: A reader can't confirm "never stored" through the API. It describes mechanism, not behavior.
+   Fix: "The roster lists the standard workers plus the user's own. An edited standard worker appears once, as the user's copy, on its team, with an edited flag."
+
+4. page:74 — Ambiguous list
+   Quote: "The framework ships `agent`, a coordinator flow, and `coder`, which runs a task…"
+   Why: It reads as `agent` being the coordinator flow. The `coordinator` flow used on line 106 is never named here.
+   Fix: "The framework ships three flows: `agent`, `coordinator` and `coder`." Then describe each. Or list them as bullets, avoiding the count.
+
+5. page:116 — Unexplained internals
+   Quote: "A worker with the task tools files a **task** on its board… The delegate works it in a session of its own and settles the row."
+   Why: "Task tools", "board" and "row" are undefined here, and "settles the row" is jargon. A reader can't tell what comes back to the sender.
+   Fix: Say what the sender sees when the delegate finishes (the task's status or result), and drop "row".
+
+6. page:13 — Design defense and vague pointer
+   Quote: "We say worker because the flow behind it may be a fixed workflow rather than a model choosing its own steps. … (see below)"
+   Why: The first sentence justifies the vocabulary to a reader who isn't disputing it. "See below" doesn't say where.
+   Fix: "A worker is what other frameworks call an agent. Its configuration is data, so it can be hired, edited and fired while the app runs (see *Where does a worker come from?*)."
+
+7. page:97 — Unclear behavior
+   Quote: "Asking again returns the same session, and two asks at once end on one."
+   Why: "End on one" is vague. It's unclear whether it means one session is created or whether the second call fails.
+   Fix: "Two simultaneous calls return the same session."
+
+SUSPECTED INACCURACIES
+- page:51 — `description` is said to be the only required line, but the example includes `name`. The writer should check that `name` is optional.
+- page:66, 127 — "skill" is used as a settable, resolvable thing. Skills appear nowhere else on the page and are never introduced. This may be a missing explanation or a stray term.
+- page:38, 132 — "one line in its config" and "one line in `fsdev.config.ts`" describe a multi-line call. Also, `kits` and the `agent: { model }` option are never explained on this page.
+
+OFFERED CONTEXT DECLINED
+- None offered.
+
+EDITOR verdict=REVISE findings=7

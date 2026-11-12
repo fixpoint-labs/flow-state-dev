@@ -1,0 +1,32 @@
+I wrote `out/c/workers.md` (type `concept`). `check-docs-page.mjs` passes at **1,229 words** (budget 1,500). I couldn't run `check-retired-terms.mjs`: it failed with a module-not-found error before checking anything.
+
+The figure is `out/c/figures/workers-roster.svg`. I rendered it with headless Chromium and looked at it. It shows Alice's roster of four workers, each pointing at one of the three installation-wide flows.
+
+The page follows the concept outline, using the cast and the `launch` example from the agreed model. It has four code blocks:
+- `researcher`'s `WORKER.md`
+- `fsdev.config.ts`
+- `src/lib/ask-worker.ts`, which finds the worker's session and calls `respond`
+- `launch`'s `WORKER.md`, with its `delegates` list
+
+**Verified against the code**
+- `ensureWorkerSession({ worker })` exists on `WorkforceClient`.
+- `hire`, `fork`, `edit`, `fire` and `reset` exist on `WorkforceClient`.
+
+**Left as in the model, not checked against code**
+- `flow: coordinator` is the key for the built-in coordinator flow. I took it from the model.
+- `fsd.flow(kind).send("respond", ...)` and `kits: [workforce(...)]` are written from the planned surface.
+- `askWorker` imports `WorkforceClient` from `@flow-state-dev/workforce/browser`, which is the planned browser entry. The type is defined in `packages/workforce/src/workers/client.ts`, and I didn't check that it is exported from that entry.
+
+**Left out**
+- Roles (contributor, manager, coordinator), the fixed list of settings the framework supplies, the standard-worker-only flow option, and the slot tables. The page mentions the supplied settings and the slots only in passing.
+- The `Decisions: to confirm` points about whether an edited `researcher` resolves to Alice's copy when `launch` delegates, and whether editing a standard worker stays as it is. These are open, so the page doesn't state either.
+- Why standard workers aren't stored, and the cost list for kits.
+
+**Where the code differs from the model**
+- The code in `packages/workforce/src/workers/client.ts` is wider than the model. `WorkforceClient` also has workstreams, projects, standing rules and delegate or task session criteria. The page leaves these out.
+- The kit surface (`workforce({ directory })`) isn't in the repo yet, as the brief said.
+
+**Links**
+- `./kits.md`, `./flows.md` and `./sessions.md` are links to pages that may not exist yet.
+- `../reference/workers.md` is a Reference page that may not exist yet.
+exit 0

@@ -1,0 +1,9 @@
+FAIL /tmp/claude-0/-home-user-flow-state-dev/5f124f94-c1af-571f-8b2a-38d6390fd212/scratchpad/blind/S-what-flow-state-is.md (?, 4553 words)
+     no `type` in frontmatter
+     2 ts code block(s) with no title="path"
+     "still" ×3
+     a table with 7 body lines (limit 6)
+     a table with 9 body lines (limit 6)
+     a table with 22 body lines (limit 6)
+     a table with 14 body lines (limit 6)
+exit 1

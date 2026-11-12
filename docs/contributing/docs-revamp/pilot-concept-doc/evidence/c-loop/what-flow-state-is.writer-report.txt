@@ -1,0 +1,22 @@
+The page is written. `node scripts/check-docs-page.mjs` passes at **768 words** against the 800 budget.
+
+**Files**
+- `out/c/what-flow-state-is.md` is the page, `type: start`. It follows one app, Desk, which Alice builds and Bob uses. It shows the `fsdev.config.ts` host file and one `WORKER.md`. Then come the imported-or-owned figure, a six-row "Which layer to change" table and the starter, a short "What you get", two limits, and four links.
+- `out/c/figures/what-flow-state-is-desk.svg` is the figure: Desk's imported packages on the left, Alice's owned files on the right, with `fsdev.config.ts` highlighted. I rendered it in headless Chromium and checked it by eye. Its caption and description sit under the image in the page.
+
+**Things to know**
+- **Retired-terms check not run.** `scripts/check-retired-terms.mjs` fails with `ERR_MODULE_NOT_FOUND` because this copy lacks a module it imports. I grepped for *person*, *member*, *plugin*, *extension*, *pack*, *add-on* and *lab* and found one *person*, which I changed to "someone who signs in".
+- **Left out from the agreed model:**
+  - Store configuration, because the planned surface has no `stores` option in the example.
+  - The `codex`/`cursor` fill, since the planned host file only has `claudeCode()`. The worker is `fixer` on `harness: claude-code` instead.
+  - Folding "starter or kit?" and "why not a capability or plugin" into the page. The first is covered by one sentence on starters. The second is design argument.
+- **Taken from the agreed model and planned surface, not verified.** I read `define-kit.ts` and the checker and did not open the workforce, harnesses or claude-code packages.
+  - The `claude-code` harness id.
+  - `flow: coder` and `harness:` as `WORKER.md` frontmatter keys.
+  - The readiness failure message for a machine that isn't set up for Claude Code.
+  - `agent` as the default flow for a worker with no `flow:`.
+  - The unused-file startup error.
+- **Imports.** `triage` is imported from `./src/flows/triage/flow`, per the layout, and described in a clause as Alice's own flow.
+- **Links.** `./kits.md`, `./workers.md`, `./flows.md` and `./blocks.md` don't exist yet.
+- **Code versus the model.** I found no contradictions in the parts I checked. The `defineKit` and `slot` JSDoc matches the model's slot behavior, and its `install` returning flows matches the `harnesses` description.
+exit 0

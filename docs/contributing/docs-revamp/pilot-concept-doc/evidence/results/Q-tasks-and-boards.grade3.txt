@@ -1,0 +1,9 @@
+R1 0 answer says page does not say
+R2 0 answer says page does not say
+R3 0 answer says page does not say
+R4 0.5 block-as-task-handler right, general definition missing
+R5 0 answer says page does not say
+P2.1 0.5 others continue, but compare skipped not cancelled
+P2.2 1 needs another drain; persistence via scope matches
+P2.3 0 says page does not say deps
+SCORE 2 / 8
