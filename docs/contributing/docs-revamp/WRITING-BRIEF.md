@@ -37,12 +37,13 @@ Words are counted without frontmatter, code blocks and figure descriptions.
 1. **Opening**, two short paragraphs, no heading. A situation the reader has been in, then the idea
    in plain words.
 2. **A figure**, when the idea has a shape (see Figures).
-3. **What it gets you.** Why the thing exists: what the reader gets by using it that they would
-   not get from plain code. Three or four short points, each one something they can observe, each
-   tied to the page's example. See "Say what it buys the reader" in The moves.
-4. **The smallest working example**, with a few sentences that point at the parts.
-5. **Two to five sections**, one per question a reader asks next. Headings are plain statements or
+3. **The smallest working example**, with a few sentences that point at the parts.
+4. **Two to five sections**, one per question a reader asks next. Headings are plain statements or
    plain questions: "When a task fails", "Whose worker it is".
+5. **What it gets you.** Why the thing exists: what the reader gets by using it that they would
+   not get from plain code. Three or four short points, each one something they can observe, each
+   tied to the page's example. It comes after the explanation, so the what is told in one piece
+   and the why does not interrupt it. See "Say what it buys the reader" in The moves.
 6. **What it won't do.** Three bullets at most, stated flat.
 
    Where our word differs from the industry's, an "If you know ..." section comes straight after the
@@ -63,8 +64,9 @@ Each rule below has an example from a pilot page and the kind of sentence it rep
 Not: "Task board is the building block underneath Parallel Tasks, Supervisor, and Plan and Execute."
 
 **Say what it buys the reader.** A page that defines a thing and shows its code has not yet said
-why anyone would use it. Before the first code, say what the reader gets. Name consequences they
-can see, in the page's example, and leave the mechanism out.
+why anyone would use it. Once the reader has seen what the thing is, say what they get. Name
+consequences they can see, in the page's example, and leave the mechanism out. Finish the what
+first: a why placed in the middle of the explanation breaks it in two.
 
 > **A finished block is a checkpoint.** Its output is recorded. On a store that persists, such as
 > SQLite or Postgres, a run that dies after `cleanMessage` picks up at `draftReply`. The message is
@@ -275,7 +277,7 @@ site these become the `caption` and `description` of `<Figure>`.
 ## Before you call it done
 
 - The first two paragraphs make sense to someone who has never heard of the framework.
-- The page says why the thing exists, before its first code block.
+- The page says why the thing exists, after it has finished saying what the thing is.
 - Every code block has its path as a title, and every name in it is imported or declared there.
 - No table has more than six rows.
 - No sentence contains *now*, *no longer*, *still*, *deliberately*, *simply*, *just*, *powerful*,
