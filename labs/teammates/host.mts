@@ -23,8 +23,8 @@
  * - **Readiness** (harness-manager's `harnessReadiness`, one check per
  *   harness from its integration): read once at start and logged as a table,
  *   put in the workers' context so Lead files coding work only on a
- *   ready harness, and served as the `harness-readiness` flow's `read` action,
- *   which `{ refresh: true }` reads again.
+ *   ready harness, and served as the `harness-readiness` flow's `readiness`
+ *   view, read with no session, which `{ refresh: true }` reads again.
  * - **The working folder** is one git checkout the operator names. It is the
  *   host's constant run source, so every coding run and every read of the
  *   workers' source tools works in it. There are no projects: no worker has a
@@ -32,7 +32,8 @@
  *   operator also names its checks (`checks`), the commands a coding run's
  *   worktree must pass before its task is done, and a `setup` command each
  *   fresh worktree runs first so the checks find what they need.
- * - **The lab's context** (the `lab-context` flow's `read` action): the
+ * - **The lab's context** (the `lab-context` flow's `context` view, read with
+ *   no session): the
  *   working folder, the model, the default harness, which workers each worker
  *   hands work to, and, when the folder doesn't ignore `.fsdev/`, the same
  *   problem a coding run's checkout would be refused with (checked at start,
@@ -54,7 +55,7 @@ import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkCodexReadiness, CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, defineView, handler } from "@flow-state-dev/core";
 import { harnessEnv } from "@flow-state-dev/core/harness";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import type { BlockContext, ModelResolver } from "@flow-state-dev/core/types";
@@ -66,8 +67,8 @@ import {
   formatHarnessReadiness,
   harnessDrainBudgetMs,
   harnessReadiness,
-  harnessReadinessAction,
   harnessReadinessCapability,
+  harnessReadinessView,
   scriptedHarness,
   resolveOwnership,
   type HarnessReadinessRead,
@@ -200,9 +201,9 @@ const HARNESSES: Record<string, Harness> = {
     } as never) as unknown as HarnessBlock,
 };
 
-/** The flow whose `read` action returns the harnesses' readiness rows. */
+/** The flow whose `readiness` view answers the harnesses' readiness rows. */
 const READINESS_FLOW = "harness-readiness";
-/** The flow whose `read` action returns what the lab works on and with (`labContextSchema`). */
+/** The flow whose `context` view answers what the lab works on and with (`labContextSchema`). */
 const LAB_CONTEXT_FLOW = "lab-context";
 
 /** What the page's context strip and first run read: the lab's settings and the declared delegates. */
@@ -218,6 +219,30 @@ const labContextSchema = z.object({
   /** Each worker's declared delegates, by worker id: ids, or `"all"`. A worker with none is absent. */
   delegates: z.record(z.string(), z.union([z.literal("all"), z.array(z.string())])),
 });
+
+// FIX-2624.
+/**
+ * The lab's context as a user-scope view: what the page's context strip and
+ * first run read, with no session. The answer is the host's settings, the same
+ * for every caller; it reads no resource, so it names no topic.
+ *
+ * @param read The lab's settings, as the host holds them.
+ */
+export function labContextView(read: () => Promise<z.infer<typeof labContextSchema>>) {
+  return defineView({
+    scope: "user",
+    block: handler({
+      name: "lab-context",
+      description: "What the lab works on and with: the working folder and its problem if any, the model, the default harness, and each worker's delegates.",
+      inputSchema: z.object({}),
+      outputSchema: labContextSchema,
+      execute: read,
+    }),
+  });
+}
+
+/** The lab-context view, for the page's `viewRef` (a type import: the page holds no block). */
+export type LabContextView = ReturnType<typeof labContextView>;
 
 /** Each harness's readiness check, over the environment its runs get. */
 function teammatesReadiness(): HarnessReadinessRead {
@@ -459,27 +484,19 @@ export async function openTeammates(options: TeammatesOptions) {
   const service = githubServiceFlow({ provider: github, installation, poll: true }) as unknown as { id: string };
   const readinessFlow = defineFlow({
     kind: READINESS_FLOW,
-    actions: { read: harnessReadinessAction(readiness) },
+    views: { readiness: harnessReadinessView(readiness) },
   } as never)({ id: READINESS_FLOW } as never) as { id: string };
 
   const contextFlow = defineFlow({
     kind: LAB_CONTEXT_FLOW,
-    actions: {
-      read: {
-        description: "What the lab works on and with: the working folder and its problem if any, the model, the default harness, and each worker's delegates.",
-        block: handler({
-          name: "lab-context",
-          inputSchema: z.object({}),
-          outputSchema: labContextSchema,
-          execute: async () => ({
-            folder: workdir,
-            folderProblem: await folderProblem,
-            model: options.model,
-            harness: defaultHarness,
-            delegates,
-          }),
-        }),
-      },
+    views: {
+      context: labContextView(async () => ({
+        folder: workdir,
+        folderProblem: await folderProblem,
+        model: options.model,
+        harness: defaultHarness,
+        delegates,
+      })),
     },
   } as never)({ id: LAB_CONTEXT_FLOW } as never) as { id: string };
 

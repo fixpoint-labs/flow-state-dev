@@ -157,7 +157,7 @@ Coding harnesses on this machine:
 ```
 
 Lead sees the same rows, so it starts coding tasks only on an agent marked ✓ and tells
-you what to run for one that isn't. The `harness-readiness` flow's `read` action returns the rows,
+you what to run for one that isn't. The `harness-readiness` flow's `readiness` view returns the rows,
 and `{ refresh: true }` checks again. A task on an agent last read as not ready is checked once
 more before it starts, so signing in after the lab started works without a restart. If it still
 isn't ready, the task fails at once with a line that names the agent and what to run, such as
