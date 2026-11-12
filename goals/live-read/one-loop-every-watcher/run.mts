@@ -2,7 +2,7 @@
  * live read › one loop, every watcher (FIX-2551).
  *
  * One `serve()` host on a bound port with Kitchen Sink's workforce tree and
- * claude-code-style's `pins` flow, on the crossing double, so push covers
+ * claude-code-style's pins resource, on the crossing double, so push covers
  * every topic and no timer runs. Five watchers, each through its own caller's
  * code, each on its own credential so its reads are counted at its fetcher
  * (requests the server answers, never `read` calls against a fake):
@@ -15,7 +15,7 @@
  *
  * Alice's other tab writes:
  *
- *   a  — a burst: 50 hires (the roster) and 50 pins (your user state), each
+ *   a  — a burst: 50 hires (the roster) and 50 pins (your user resource), each
  *        landing while every watcher's read is held in flight. Each watcher
  *        of what changed reads at most twice for its burst; each watcher of
  *        the other makes 0 reads; once quiet, each shows what the store holds.
@@ -47,7 +47,8 @@ import { buildKitchenSinkWorkforce } from "../../../apps/kitchen-sink/workforce/
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { createLabAdapter, type LabWorker } from "../../../labs/teammates/src/adapter.ts";
 import { createWiredLab } from "../../../labs/claude-code-style/src/adapter.ts";
-import { definePinsFlow, PINS_FLOW } from "../../../labs/claude-code-style/workforce/flows/pins.mts";
+import { defineFlow } from "@flow-state-dev/core";
+import { labPins } from "../../../labs/claude-code-style/workforce/flows/user-marks.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("live-read-one-loop");
@@ -105,7 +106,7 @@ const tokenOf = (w: Watcher) => `tok-${w}`;
 /** Whether `url` is one read of what watcher `w` shows: the roster's own collection, a snapshot's first request, the pins read. */
 function isReadOf(w: Watcher, url: string): boolean {
   if (w === "sm") return url.includes("/sessions") && url.includes("dispatch-runs");
-  if (w === "cc") return url.includes("listPins");
+  if (w === "cc") return url.includes("/resources/user/lab-pins");
   return url.includes("workforceWorkers") && !url.includes("workforceStandardWorkers");
 }
 
@@ -139,7 +140,8 @@ async function host(): Promise<Host> {
   const { copies } = await buildKitchenSinkWorkforce();
   const registry = createFlowRegistry();
   for (const copy of copies) registry.register(copy);
-  registry.register(definePinsFlow() as never);
+  // The lab's pins: a user resource the host declares, written through the default write flow.
+  registry.register(defineFlow({ kind: "projects", resources: { labPins }, actions: {} } as never)() as never);
   const stores: StoreRegistry = { ...createInMemoryStores(), bus: crossingBus() };
   const router = createFlowApiRouter({
     registry,
@@ -266,9 +268,8 @@ const tabWorkforce = createWorkforceClient(tab);
 await tabWorkforce.roster();
 const [rosterSession] = await tab.sessions.list({ flowKind: ROSTER_FLOW, userId: "alice" });
 if (rosterSession === undefined) throw new Error("setup: alice has no roster session");
-const pinsSession = (await tab.flow(PINS_FLOW).createSession()).id;
 const hire = (id: string) => tab.flow(ROSTER_FLOW).send("hire", { id, flow: "agent", description: id }, { sessionId: rosterSession.id }).then((sent) => sent.result());
-const pin = (id: string) => tab.flow(PINS_FLOW).send("pin", { taskId: id }, { sessionId: pinsSession }).then((sent) => sent.result());
+const pin = (id: string) => tab.resource(labPins).update((s) => ({ pinned: [...s.pinned, id] }));
 
 const unmount = mount(on, rosterSession.id);
 try {
@@ -300,12 +301,8 @@ try {
     const n = reads.get(w)!.filter((at) => at >= roster.from && at < pins.from).length;
     check(`a:burst ${w}`, n >= 1 && n <= MAX_READS_PER_BURST, `${n} reads for ${BURST} hires`);
     const m = reads.get(w)!.filter((at) => at >= pins.from).length;
-    // The snapshot hears each request in every session it lists, the pins session included: a pin
-    // is a change it shows (Inbox, the session's last turn), so its pins burst is a burst too.
-    if (w === "sm") {
-      check("a:burst sm (pins)", m >= 1 && m <= MAX_READS_PER_BURST, `${m} reads for ${BURST} pins, a request each in a session it lists`);
-      continue;
-    }
+    // A pin runs in its writer's write session, which no listing shows (FIX-2624), so the
+    // snapshot has nothing of it to read: the pins burst is unrelated to it too.
     check(`a:unrelated ${w}`, m === 0, `${m} reads for ${BURST} pins${m > 0 ? ` (at +${reads.get(w)!.filter((at) => at >= pins.from).map((at) => at - pins.from).join(", +")} ms; burst took ${pins.done - pins.from} ms)` : ""}`);
   }
   {
@@ -316,7 +313,7 @@ try {
   }
 
   const storeRoster = (await tabWorkforce.roster()).filter((e) => !e.standard).map((e) => e.id).sort();
-  const storePins = [...((await tab.flow(PINS_FLOW).read<{ pinned: string[] }>("listPins", {}, { sessionId: pinsSession })).pinned)].sort();
+  const storePins = [...(await tab.resource(labPins).state()).pinned].sort();
   check("a:equals-store rp", rpCount === storeRoster.length, `drew ${rpCount} rows for ${storeRoster.length} workers`);
   for (const w of ["rw", "tm"] as const) {
     const ids = shown.get(w)!.ids;
@@ -326,7 +323,7 @@ try {
   check("a:equals-store cc", JSON.stringify(shown.get("cc")!.ids) === JSON.stringify(storePins), `shows ${shown.get("cc")!.ids.length} of ${storePins.length} pins`);
 
   // b — one failed read each, woken by one write, and then no notice: the roster's watchers by a
-  // hire, then the pins' watcher by a pin (the snapshot hears that pin too, so it goes second).
+  // hire, then the pins' watcher by a pin.
   const recover = async (who: readonly Watcher[], write: () => Promise<unknown>, shows: (w: Watcher) => boolean) => {
     for (const w of who) failNext.add(w);
     const failedAt = Date.now();

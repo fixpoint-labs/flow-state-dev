@@ -1,3 +1,4 @@
+// fallow-ignore-file duplicate-export -- each lab is its own app, and its host exposes the same openLab and operatorGitHubToken as the others on purpose.
 /**
  * The lab's server, put together from package pieces: the workers in
  * `workforce/`, the built-in agent flow with memory composed in, the lab's one
@@ -22,8 +23,8 @@
  * - **Readiness** (harness-manager's `harnessReadiness`, one check per
  *   harness from its integration): read once at start and logged as a table,
  *   put in the workers' context so Lead files coding work only on a
- *   ready harness, and served as the `harness-readiness` flow's `read` action,
- *   which `{ refresh: true }` reads again.
+ *   ready harness, and served as the `harness-readiness` flow's `readiness`
+ *   view, read with no session, which `{ refresh: true }` reads again.
  * - **The working folder** is one git checkout the operator names. It is the
  *   host's constant run source, so every coding run and every read of the
  *   workers' source tools works in it. There are no projects: no worker has a
@@ -31,25 +32,33 @@
  *   operator also names its checks (`checks`), the commands a coding run's
  *   worktree must pass before its task is done, and a `setup` command each
  *   fresh worktree runs first so the checks find what they need.
- * - **The lab's context** (the `lab-context` flow's `read` action): the
+ * - **The lab's context** (the `lab-context` flow's `context` view, read with
+ *   no session): the
  *   working folder, the model, the default harness, which workers each worker
  *   hands work to, and, when the folder doesn't ignore `.fsdev/`, the same
  *   problem a coding run's checkout would be refused with (checked at start,
  *   never fatal). The page draws its context strip and first-run lines from it.
  * - **Teammates** you hire from the page are rows of your own roster, written
  *   through the roster flow `hireWorkforce` registers; nothing restarts.
+ * - **Routines**: Lead, researcher and writer hold the routine tools, so you
+ *   can ask one to follow a GitHub pull request or to do something on a clock,
+ *   and to list, pause or delete what it follows. A pull request's events are
+ *   polled (no public URL) on the operator's own GitHub token, for the
+ *   operator alone; `fsdev dev` ticks the polls and the clock routines, each
+ *   from a SQLite file of its own beside the store.
  *
  * Durable, on SQLite: a worker message a busy host turned away is sent again
  * on its session's wake, and a restart keeps every conversation.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkCodexReadiness, CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, defineView, handler } from "@flow-state-dev/core";
 import { harnessEnv } from "@flow-state-dev/core/harness";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
-import type { ModelResolver } from "@flow-state-dev/core/types";
+import type { BlockContext, ModelResolver } from "@flow-state-dev/core/types";
 import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { checkCursorReadiness, CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {
@@ -58,22 +67,28 @@ import {
   formatHarnessReadiness,
   harnessDrainBudgetMs,
   harnessReadiness,
-  harnessReadinessAction,
   harnessReadinessCapability,
+  harnessReadinessView,
   scriptedHarness,
   resolveOwnership,
   type HarnessReadinessRead,
 } from "@flow-state-dev/harness-manager";
 import { createFlowState } from "@flow-state-dev/engine";
 import { system } from "@flow-state-dev/memory";
-import { sqliteStores } from "@flow-state-dev/store-sqlite";
+import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
+import { createSQLiteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
+import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
+import Database from "better-sqlite3";
 import { utility } from "@flow-state-dev/core";
 import { fetch, search } from "@flow-state-dev/tools";
 import {
   AGENT_FLOW,
   consultSessionsCapability,
+  createRoutinesCapability,
   createWorkerInstallation,
   defineAgentWorkerFlow,
+  githubServiceFlow,
+  githubSubscriptionProvider,
   hireWorkforce,
   projectSourceTools,
 } from "@flow-state-dev/workforce";
@@ -132,6 +147,14 @@ export interface TeammatesOptions {
   staleThresholdMs?: number;
   /** Resolves every model the host calls, in place of the gateway: the contract tests pass a scripted one. Absent: the gateway. */
   modelResolver?: ModelResolver;
+  /**
+   * The operator's GitHub token ({@link operatorGitHubToken}): a GitHub routine
+   * reads GitHub with it, for {@link userId} only. Absent: a GitHub routine is
+   * refused, naming `GITHUB_TOKEN`; clock routines still run.
+   */
+  githubToken?: string;
+  /** GitHub's REST API root. Absent: GitHub's own. A goal check names its stub. */
+  githubApiUrl?: string;
 }
 
 /** How long a coding run's checks may take together. */
@@ -178,9 +201,9 @@ const HARNESSES: Record<string, Harness> = {
     } as never) as unknown as HarnessBlock,
 };
 
-/** The flow whose `read` action returns the harnesses' readiness rows. */
+/** The flow whose `readiness` view answers the harnesses' readiness rows. */
 const READINESS_FLOW = "harness-readiness";
-/** The flow whose `read` action returns what the lab works on and with (`labContextSchema`). */
+/** The flow whose `context` view answers what the lab works on and with (`labContextSchema`). */
 const LAB_CONTEXT_FLOW = "lab-context";
 
 /** What the page's context strip and first run read: the lab's settings and the declared delegates. */
@@ -196,6 +219,30 @@ const labContextSchema = z.object({
   /** Each worker's declared delegates, by worker id: ids, or `"all"`. A worker with none is absent. */
   delegates: z.record(z.string(), z.union([z.literal("all"), z.array(z.string())])),
 });
+
+// FIX-2624.
+/**
+ * The lab's context as a user-scope view: what the page's context strip and
+ * first run read, with no session. The answer is the host's settings, the same
+ * for every caller; it reads no resource, so it names no topic.
+ *
+ * @param read The lab's settings, as the host holds them.
+ */
+export function labContextView(read: () => Promise<z.infer<typeof labContextSchema>>) {
+  return defineView({
+    scope: "user",
+    block: handler({
+      name: "lab-context",
+      description: "What the lab works on and with: the working folder and its problem if any, the model, the default harness, and each worker's delegates.",
+      inputSchema: z.object({}),
+      outputSchema: labContextSchema,
+      execute: read,
+    }),
+  });
+}
+
+/** The lab-context view, for the page's `viewRef` (a type import: the page holds no block). */
+export type LabContextView = ReturnType<typeof labContextView>;
 
 /** Each harness's readiness check, over the environment its runs get. */
 function teammatesReadiness(): HarnessReadinessRead {
@@ -273,6 +320,47 @@ export function checkCommands(value: string | undefined): string[] | undefined {
     if (problem !== undefined) throw new Error(`TEAMMATES_CHECKS: ${problem}`);
   }
   return commands;
+}
+
+/**
+ * The operator's GitHub token: `GITHUB_TOKEN`, else what `gh auth token`
+ * answers, read once at start and never from a request. `undefined` when
+ * neither has one.
+ */
+export function operatorGitHubToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const named = env.GITHUB_TOKEN?.trim();
+  if (named !== undefined && named !== "") return named;
+  try {
+    const signedIn = execFileSync("gh", ["auth", "token"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).trim();
+    return signedIn === "" ? undefined : signedIn;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * GitHub for routines, read with the operator's token and for the operator
+ * alone: a GitHub routine another user asks for, or one asked for with no
+ * token, is refused naming `GITHUB_TOKEN`, and the token is never lent.
+ */
+function operatorGitHub(operator: string, token: string | undefined, apiUrl: string | undefined) {
+  const reads = (ctx: BlockContext) => (ctx.session.identity as { userId?: string }).userId === operator;
+  const github = githubSubscriptionProvider({ token: (ctx) => (reads(ctx) ? token : undefined), ...(apiUrl === undefined ? {} : { apiUrl }) });
+  return {
+    ...github,
+    async canRead(key: string, ctx: BlockContext) {
+      if (token === undefined) throw new Error("GitHub routines need GITHUB_TOKEN: set it, or sign in with `gh auth login`, and start the lab again. Nothing was saved.");
+      if (!reads(ctx)) throw new Error(`GitHub routines read GitHub with this lab's GITHUB_TOKEN, which serves only ${operator}. Nothing was saved.`);
+      return github.canRead(key, ctx);
+    },
+  };
+}
+
+/** A schedule index in a SQLite file of its own: the index has one table, and one index ticks one flow. */
+function scheduleIndexAt(filename: string) {
+  const db = new Database(filename);
+  initializeSchema(db);
+  return createSQLiteScheduleIndex(db);
 }
 
 /**
@@ -362,6 +450,8 @@ export async function openTeammates(options: TeammatesOptions) {
           consultSessionsCapability(installation),
           // Which harnesses can run here, so a coding task is filed only on a ready one.
           harnessReadinessCapability(readiness),
+          // List, save, pause and delete routines: offered to a worker whose file picks `routines: [tools]` (each one here).
+          createRoutinesCapability(installation),
         ],
         beforeAnswer: earlier.fold,
         afterAnswer: mem.captureFromItems,
@@ -379,39 +469,47 @@ export async function openTeammates(options: TeammatesOptions) {
       checks,
     }),
   };
-  const copies = hireWorkforce(installation) as Array<{ id: string }>;
+  // Clock routines and GitHub's polls tick from two files beside the store (`fsdev dev` ticks both).
+  const beside = (index: string) => options.store.replace(/(\.[^./\\]+)?$/, `-${index}$1`);
+  const clockDb = beside("clock");
+  const pollDb = beside("poll");
+  const github = operatorGitHub(options.userId, options.githubToken, options.githubApiUrl);
+  const copies = hireWorkforce(installation, {
+    routines: {
+      index: scheduleIndexAt(clockDb),
+      providers: [github],
+      poll: { index: scheduleIndexAt(pollDb) },
+    },
+  }) as Array<{ id: string }>;
+  const service = githubServiceFlow({ provider: github, installation, poll: true }) as unknown as { id: string };
   const readinessFlow = defineFlow({
     kind: READINESS_FLOW,
-    actions: { read: harnessReadinessAction(readiness) },
+    views: { readiness: harnessReadinessView(readiness) },
   } as never)({ id: READINESS_FLOW } as never) as { id: string };
 
   const contextFlow = defineFlow({
     kind: LAB_CONTEXT_FLOW,
-    actions: {
-      read: {
-        description: "What the lab works on and with: the working folder and its problem if any, the model, the default harness, and each worker's delegates.",
-        block: handler({
-          name: "lab-context",
-          inputSchema: z.object({}),
-          outputSchema: labContextSchema,
-          execute: async () => ({
-            folder: workdir,
-            folderProblem: await folderProblem,
-            model: options.model,
-            harness: defaultHarness,
-            delegates,
-          }),
-        }),
-      },
+    views: {
+      context: labContextView(async () => ({
+        folder: workdir,
+        folderProblem: await folderProblem,
+        model: options.model,
+        harness: defaultHarness,
+        delegates,
+      })),
     },
   } as never)({ id: LAB_CONTEXT_FLOW } as never) as { id: string };
 
   const state = createFlowState({
-    flows: [...copies, readinessFlow, contextFlow],
+    flows: [...copies, service, readinessFlow, contextFlow],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
+    // The route `serve()`'s tick dispatches each due clock routine and poll to.
+    adapters: [createScheduledTransportAdapter()],
     durable: true,
     dispatchDrainTimeoutMs,
     ...(options.staleThresholdMs === undefined ? {} : { staleSweepThresholdMs: options.staleThresholdMs }),
+    // Every request is the lab's own user, in the lab's own org, never a user the request names: the operator-only GitHub token is gated on it, and serve()'s tick, which names no user, is admitted as it. A configured resolver can't claim the development org, so the lab names its own.
+    resolvePrincipal: () => ({ userId: options.userId, orgId: "teammates-lab" }),
     devtool: { userId: options.userId },
     // A consult reads on `intent/utility`: a smaller model than the workers answer on.
     models: { default: options.model, intents: { utility: [UTILITY_MODEL] } },

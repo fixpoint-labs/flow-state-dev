@@ -661,6 +661,20 @@ export const ENTRIES = [
     // stays the lower-level call a live read rides, and "coalesced read" was never a public name.
     retires: [],
   },
+  {
+    term: "Direct read",
+    means: "Reading a user or org resource, or a collection's entries, by its scope and key, with no session: `client.resource(def)`. The caller is resolved through the sign-in of the flow that declares the resource, and the answer is the resource's client projection and its version. No block runs.",
+    decision: "Owner, 2026-11-11 (epic FIX-2618 O3, ER-3; FIX-2624)",
+    // Own, lab and reader session retire with FIX-2624's last PR, scoped to apps and labs (the
+    // engine's and orchestration's `ownSession` options mean a run's own session).
+    retires: [],
+  },
+  {
+    term: "Default write flow",
+    means: "The framework's flow that writes a user or org resource, or sets and deletes a collection's entries, marked `runBy: \"default\"`: it checks the schema, the owner and the resource's `canWrite`, and writes at the version the client read, in a write session the server keeps for that writer.",
+    decision: "Owner, 2026-11-11 (epic FIX-2618 O3, ER-4; FIX-2624)",
+    retires: [],
+  },
 
   // Execution tiers ---------------------------------------------------------------------------
   {

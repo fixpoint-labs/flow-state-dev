@@ -383,7 +383,8 @@ describe("once a host has a view, every resource write publishes", () => {
     const bus = createInMemoryBus();
     const heard = hear(bus, userTopic);
     await write(bus, true);
-    expect(heard.filter((n) => n.kind === "resource").map((n) => n.topic.resource)).toEqual(["pins/p1"]);
+    // A user entry's notice names no path: the user topic spans the user's orgs (FIX-2624).
+    expect(heard.filter((n) => n.kind === "resource").map((n) => n.topic.resource)).toEqual([undefined]);
   });
 
   it("publishes nothing for it on a host with no view", async () => {
@@ -404,6 +405,6 @@ describe("once a host has a view, every resource write publishes", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     await tick();
-    expect(heard.filter((n) => n.kind === "resource").map((n) => n.topic.resource)).toContain("pins/p2");
+    expect(heard.filter((n) => n.kind === "resource")).toHaveLength(1);
   });
 });

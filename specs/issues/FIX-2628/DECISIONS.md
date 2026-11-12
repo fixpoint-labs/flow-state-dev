@@ -80,9 +80,12 @@ It comes down to the sibling's approval: the screens are the same, so reopening 
 - **Old sessions keep their repository.** A session opened on a project before this lands is
   read once: its project's repository, if the host lists it (BP-030). Otherwise it shows no
   repository and asks. The read goes when the adapter's last caller does.
-- **`user-marks.mts` goes**, which FIX-2627 moved out of `workforce/flows/`. There is no pins
-  fallback left to remove: FIX-2624 dropped it by owner direction (the lab's old marks are not
-  migrated; [FIX-2624](../FIX-2624/DECISIONS.md#how-it-got-here), amended 2026-11-11).
+- **Pins and dismissals move into the app kit, as they are.** FIX-2624 made them user
+  resources (`labPins`, `labDismissals` in `user-marks.mts`) that the screen reads and writes with
+  no session, and deleted the old pins and dismissals flows. Today the projects flow declares
+  them, so the declarations move to the app kit when that flow goes. Nothing reads the old
+  user-state marks: FIX-2624 copies none over, by owner direction
+  ([FIX-2624](../FIX-2624/DECISIONS.md#how-it-got-here), amended 2026-11-11).
 - **No "no repository" refusal at filing.** Today the board refuses a coding task in a session
   with no project before it files it. Every session now opens on a repository (FIX-2592 ER-6),
   so the run source's refusal at run start is the one check, and the row shows it.
@@ -145,3 +148,6 @@ fresh agent: this dispatch has no sub-agent tool. One finding folded: the storag
 - **Draft** — leg a of the epic, on FIX-2626's `defineKit` and FIX-2627's kits, with the owner's
   naming call made a decision: the lab's working place is the workspace host's repository, not a
   workforce project (D1). FIX-2626's 42 kit-only lines are confirmed on today's `main`.
+- **Amended 2026-11-11, from FIX-2624's implementation (#5111)** — pins and dismissals are user
+  resources declared on the projects flow, with no legacy copy, so `user-marks.mts` moves into
+  the app kit rather than going, and nothing here removes a fallback.

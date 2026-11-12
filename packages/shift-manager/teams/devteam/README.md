@@ -182,6 +182,24 @@ DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/shift-manager sta
 A row the run leaves unfinished goes back to `pending` with its reason, and waits for the next
 drain of the EM's board. Nothing in the served lab drains it again on its own.
 
+### Routines
+
+Every conversation worker (the Shift Coordinator, a project coordinator, a lead, the Researcher,
+Triage) can follow a GitHub pull request or run something on a clock. Ask in words, in any
+session with one: *"Follow initech/tps-reports#9 and tell me about every review on it."* The worker
+saves a routine, and each new review on that pull request reaches the same session as a message,
+once. *"What are you following?"* lists your routines, and you can ask it to pause or delete one; a
+clock routine files a task at its time. Shift Manager's Routines lists them too. The coders and the
+EM hold none.
+
+Both profiles poll GitHub, so the Lab needs no public address. They read GitHub with the token of
+whoever runs the Lab: `GITHUB_TOKEN`, or what `gh auth token` answers at start. That token serves
+the Lab's owner alone; anyone else's GitHub routine is refused, and with no token every GitHub
+routine is refused, each naming `GITHUB_TOKEN`. Clock routines need no token. Clock routines and
+polls tick from two SQLite files beside the store (`devteam-clock.sqlite` and
+`devteam-poll.sqlite`, or `fsd-clock.sqlite` and `fsd-poll.sqlite`). `serve()`'s tick reaches the
+Lab with `CRON_SECRET` as its bearer; the Lab makes one for its process when none is set.
+
 ## What the gate found
 
 The manager reads a run's `status` for success and then asks the phase's

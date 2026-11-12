@@ -67,6 +67,7 @@ import {
 } from "@flow-state-dev/core/internal";
 import type { BlockContext, BlockOutputHint, EmitMessageOptions, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
+import { attachBuiltInHost } from "./built-in-host";
 import {
   createScopePersist,
   createScopeReread,
@@ -1452,6 +1453,8 @@ export async function createExecutionContext<
   // The (user, org) every user- and org-scoped resource bucket derives from:
   // a user bucket is the user's cell in the session's org (FIX-1790).
   const cellIdentity = { userId, orgId: resolvedOrgId };
+  // FIX-2624: what a built-in flow reads off its context: this runtime's stores and host resolver.
+  const builtInHost = { stores, hostResolver: options.effectiveRuntimeConfig?.hostResolver };
 
   // Per scope: which storage keys (singles) and collection prefixes carry the
   // scope's storage-routing flag. Built once from the full config maps so any
@@ -2815,7 +2818,7 @@ export async function createExecutionContext<
       else {
         const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
         if (holders.length > 0) {
-          const named = holders.some((cfg) => noticePathFor(cfg, resourcePath) !== undefined);
+          const named = holders.some((cfg) => noticePathFor(cfg, resourcePath, scope) !== undefined);
           notice = named ? { resource: resourcePath } : {};
         }
       }
@@ -4653,6 +4656,7 @@ export async function createExecutionContext<
           total: () => requestSpendLedger.total()
         };
         (childContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
+        attachBuiltInHost(childContext, builtInHost);
         // FIX-663: re-attach the background signal on every scope so nested
         // `.sideChain()` dispatches can read it (the dispatch site reads
         // `ctx._requestSideChainSignal`, not `ctx.signal`).
@@ -5029,6 +5033,7 @@ export async function createExecutionContext<
     }
   };
   (rootContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
+  attachBuiltInHost(rootContext, builtInHost);
   // FIX-751: bind the live context so reactive dispatchers can run blocks
   // in-session via `executeBlock`. Set after construction since the handlers
   // (wired into the registries above) close over `reactiveCtxRef`.

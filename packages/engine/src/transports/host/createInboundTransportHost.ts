@@ -11,6 +11,13 @@
  * (`resolveInProcessPrincipal`), through the same code, and this
  * module is the only place `source: "cli"` can be produced.
  */
+import {
+  installBuiltIns,
+  DEFAULT_WRITE_FLOW,
+  isServerResourceSend,
+  isWriteSessionId,
+  ReservedSessionIdError
+} from "../../resources/default-write-flow";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { SessionCreateRefusedError } from "../../context/session-birth";
 import type { FlowRegistry } from "../../registry/flow-registry";
@@ -434,11 +441,29 @@ export async function resolveInProcessPrincipal(
  * `InboundDispatchHandle` lets the adapter consume the live stream synchronously
  * (HTTP+SSE) or await `finished` for a final result (webhook, schedule).
  */
+// FIX-2624.
+/**
+ * Refuse a dispatch, from any transport, that names a write session or the
+ * default write flow, unless it is the server's own resource send. The
+ * default write flow answers as an address this process does not hold.
+ */
+function refuseReservedAddress(envelope: InboundRequestEnvelope): void {
+  if (isServerResourceSend(envelope)) return;
+  if (envelope.flowKind === DEFAULT_WRITE_FLOW) throw new UnknownFlowError(envelope.flowKind);
+  if (envelope.sessionId !== undefined && isWriteSessionId(envelope.sessionId)) {
+    throw new ReservedSessionIdError(envelope.sessionId);
+  }
+}
+
 export function createInboundTransportHost(
   options: CreateInboundTransportHostOptions
 ): InboundTransportHost {
   refuseRetiredDispatcherOption(options, "createInboundTransportHost");
   const { registry, stores, resolvePrincipal, runtimeConfig } = options;
+  // FIX-2624: the default write flow is the framework's, held from the start
+  // on every host, so a write record never depends on a first write having
+  // registered it in this process.
+  installBuiltIns(registry);
   const { onBackgroundWork, maxResponseBufferSize, maxRecordedValueBytes, defaultSseHeartbeatMs } =
     runtimeConfig;
 
@@ -688,6 +713,7 @@ export function createInboundTransportHost(
   };
 
   const dispatch = (envelope: InboundRequestEnvelope): InboundDispatchHandle => {
+    refuseReservedAddress(envelope);
     // Exact instance address: a singleton's kind, or a collection member's
     // explicit id. The address travels on `flowKind` unchanged; the records
     // written below carry the resolved instance's actual kind and its id.
@@ -1531,6 +1557,7 @@ export function createInboundTransportHost(
   const validateDispatch = async (
     envelope: InboundRequestEnvelope
   ): Promise<void> => {
+    refuseReservedAddress(envelope);
     const flow = registry.get(envelope.flowKind);
     if (flow === undefined) {
       throw new UnknownFlowError(envelope.flowKind);
