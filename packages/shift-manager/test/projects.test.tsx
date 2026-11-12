@@ -87,7 +87,7 @@ describe("PROJECTS (BR-22, D3)", () => {
   });
 
   // FIX-2624.
-  it("a member who holds no session reads the projects by scope, and the read makes none", async () => {
+  it("a user who holds no session reads the projects by scope, and the read makes none", async () => {
     const { baseUrl } = await lab();
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
     const client = connect({ userId: OTHER, baseUrl });
