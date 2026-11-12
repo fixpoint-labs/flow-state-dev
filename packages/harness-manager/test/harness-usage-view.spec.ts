@@ -84,8 +84,8 @@ describe("usage, read as a view and re-checked through its writer flow", () => {
     }
     expect(codex.calls).toEqual(["alice", "bob", "carol"]);
     for (const caller of ["alice", "bob", "carol"] as const) {
-      const [row] = (await clientOf(caller).view(harnessUsageViewRef(), {})).value.harnesses;
-      expect(row).toMatchObject({ harness: "codex", status: "windows", plan: `plan-${caller}` });
+      const [codexUsage] = (await clientOf(caller).view(harnessUsageViewRef(), {})).value.harnesses;
+      expect(codexUsage).toMatchObject({ harness: "codex", status: "windows", plan: `plan-${caller}` });
     }
     // The reads made none; each writer's one session is the server's write session, never the client's.
     const sessions = await stores.session.list({ parentage: "all" } as never);

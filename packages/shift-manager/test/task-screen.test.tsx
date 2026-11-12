@@ -260,7 +260,7 @@ function rewriteRows(match: (url: string) => boolean, edit: (rows: Array<Record<
     const body = (await response.json()) as { items: Array<Record<string, Record<string, unknown>>> };
     const field = body.items[0] !== undefined && "value" in body.items[0] && !("clientData" in body.items[0]) ? "value" : "clientData";
     const edited = edit(body.items.map((i) => i[field]!));
-    body.items = edited.map((row, n) => ({ ...(body.items[n] ?? body.items[0]!), [field]: row }));
+    body.items = edited.map((entry, n) => ({ ...(body.items[n] ?? body.items[0]!), [field]: entry }));
     return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
   });
 }

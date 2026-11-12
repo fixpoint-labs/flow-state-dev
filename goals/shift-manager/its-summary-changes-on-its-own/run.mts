@@ -60,7 +60,7 @@ import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, sleep, type ModulePatch } from "../../lib/index.mts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { runAction } from "../../../packages/shift-manager/src/lib/action.ts";
-import { readHarnessUsageRows } from "../../../packages/shift-manager/src/lib/usage.ts";
+import { readHarnessUsageView } from "../../../packages/shift-manager/src/lib/usage.ts";
 import { readerSessionId } from "../../../packages/shift-manager/src/lib/reads.ts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -321,7 +321,7 @@ function mountProvider(on: Host) {
       if (loaded === undefined) return;
       shown.push({ at: Date.now(), readAt: loaded.readAt, needsYou: loaded.inbox.ok ? loaded.inbox.value.length : undefined, sessions: loaded.sessions.map((s) => s.id) });
       void runAction(client, PROBE_FLOW, readerSessionId(client.userId, PROBE_FLOW), LIST_ROUTINES_ACTION, {}).catch(() => {});
-      void readHarnessUsageRows(client).catch(() => {});
+      void readHarnessUsageView(client).catch(() => {});
     }, [loaded, client]);
     return null;
   }

@@ -209,9 +209,9 @@ describe("per-worker token usage", () => {
       await turn("bob", "coder");
       await turn("carol", "em", CLAUDE_PLAN);
       const before = await sessionIds();
-      expect((await usage("alice")).map((row) => [row.worker, row.tokens.input])).toEqual([["coder", 1004]]);
-      expect((await usage("bob")).map((row) => [row.worker, row.tokens.input])).toEqual([["coder", 4]]);
-      expect((await usage("carol")).map((row) => [row.worker, row.tokens.input])).toEqual([["em", 1004]]);
+      expect((await usage("alice")).map((spent) => [spent.worker, spent.tokens.input])).toEqual([["coder", 1004]]);
+      expect((await usage("bob")).map((spent) => [spent.worker, spent.tokens.input])).toEqual([["coder", 4]]);
+      expect((await usage("carol")).map((spent) => [spent.worker, spent.tokens.input])).toEqual([["em", 1004]]);
       expect(await sessionIds()).toEqual(before);
     } finally {
       await h.state.dispose();

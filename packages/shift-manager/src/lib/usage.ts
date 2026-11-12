@@ -58,10 +58,10 @@ function servesNone(error: unknown): boolean {
 
 /**
  * Re-check, then the usage rows. `null` when this Lab serves no usage. Re-check
- * asks each harness at most once a minute per person, so a re-read within the
+ * asks each harness at most once a minute per user, so a re-read within the
  * minute answers the stored rows.
  */
-export async function readHarnessUsageRows(client: Client): Promise<HarnessUsage[] | null> {
+export async function readHarnessUsageView(client: Client): Promise<HarnessUsage[] | null> {
   try {
     await recheckHarnessUsage(client);
     return toHarnessUsage((await client.view(harnessUsageViewRef(), {})).value);
@@ -94,7 +94,7 @@ export function useHarnessUsage(readAt: number): {
   const [reads, setReads] = useState(0);
   useEffect(() => {
     let closed = false;
-    readHarnessUsageRows(client)
+    readHarnessUsageView(client)
       .then((read) => {
         if (closed) return;
         setRows(read);
@@ -149,7 +149,7 @@ export function toWorkerUsage(output: unknown): WorkerUsage[] {
 }
 
 /** Each worker's usage over the last `days` UTC days. `null` when this Lab keeps no roster flow. */
-export async function readWorkerUsageRows(client: Client, days: number): Promise<WorkerUsage[] | null> {
+export async function readWorkerUsageView(client: Client, days: number): Promise<WorkerUsage[] | null> {
   try {
     return toWorkerUsage((await client.view(workerUsageView, { days })).value);
   } catch (error) {
@@ -179,7 +179,7 @@ export function useWorkerUsage(
   const [reads, setReads] = useState(0);
   useEffect(() => {
     let closed = false;
-    readWorkerUsageRows(client, days)
+    readWorkerUsageView(client, days)
       .then((rows) => {
         if (!closed) setRead({ days, rows });
       })

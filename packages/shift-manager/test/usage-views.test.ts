@@ -5,7 +5,7 @@
  * collection, and each worker's spend through the roster flow's view.
  *
  * What matters: a read finds or makes no session, Re-check asks a harness at
- * most once a minute per person, and each person reads their own rows.
+ * most once a minute per user, and each user reads their own.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,7 +15,7 @@ import type { HarnessUsageReader } from "@flow-state-dev/core/harness";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { connect } from "../src/lib/connection";
-import { readHarnessUsageRows, readWorkerUsageRows } from "../src/lib/usage";
+import { readHarnessUsageView, readWorkerUsageView } from "../src/lib/usage";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { serveLab } from "./helpers/serve-lab";
 
@@ -44,7 +44,7 @@ async function servedLab(usage?: Record<string, HarnessUsageReader>) {
 }
 
 describe("Usage on the DevTeam Lab, with no reader session", () => {
-  it("re-checks and reads each person's own harness rows, once a minute, with only the server's write session made", async () => {
+  it("re-checks and reads each user's own harness usage, once a minute, with only the server's write session made", async () => {
     let asking = "";
     const asked: string[] = [];
     const codex: HarnessUsageReader = async () => {
@@ -61,15 +61,15 @@ describe("Usage on the DevTeam Lab, with no reader session", () => {
 
     for (const user of [LAB_USERS.member, LAB_USERS.owner]) {
       asking = user.userId;
-      const rows = await readHarnessUsageRows(clientOf(user));
-      expect(rows?.map((row) => [row.harness, row.status, row.plan])).toEqual([["codex", "windows", `plan-${user.userId}`]]);
+      const harnesses = await readHarnessUsageView(clientOf(user));
+      expect(harnesses?.map((usage) => [usage.harness, usage.status, usage.plan])).toEqual([["codex", "windows", `plan-${user.userId}`]]);
     }
     // Reading again within the minute asks nobody, and still answers the stored rows.
     asking = LAB_USERS.member.userId;
-    expect((await readHarnessUsageRows(clientOf(LAB_USERS.member)))?.[0]?.plan).toBe(`plan-${LAB_USERS.member.userId}`);
+    expect((await readHarnessUsageView(clientOf(LAB_USERS.member)))?.[0]?.plan).toBe(`plan-${LAB_USERS.member.userId}`);
     expect(asked).toEqual([LAB_USERS.member.userId, LAB_USERS.owner.userId]);
 
-    // No reader or usage session: each person's one new session is the server's write session.
+    // No reader or usage session: each user's one new session is the server's write session.
     const added = (await sessions()).filter((s) => !before.some((b) => b.id === s.id));
     expect(added.map((s) => s.userId).sort()).toEqual([LAB_USERS.owner.userId, LAB_USERS.member.userId].sort());
     for (const session of added) expect(session.id).toContain("fsd-write.");
@@ -78,7 +78,7 @@ describe("Usage on the DevTeam Lab, with no reader session", () => {
   it("reads each worker's spend through the roster flow's view and makes no session", async () => {
     const { sessions, clientOf } = await servedLab();
     const before = await sessions();
-    expect(await readWorkerUsageRows(clientOf(LAB_USERS.member), 7)).toEqual([]);
+    expect(await readWorkerUsageView(clientOf(LAB_USERS.member), 7)).toEqual([]);
     expect(await sessions()).toEqual(before);
   }, 60_000);
 });
