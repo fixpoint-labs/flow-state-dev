@@ -12,8 +12,7 @@
  * - {@link formatHarnessReadiness}, the start log's table and the
  *   coordinator's context, from one formatter so the two never disagree;
  * - {@link harnessReadinessView}, the user-scope view a screen draws chips
- *   from, read with no session, with Re-check as `{ refresh: true }`, and
- *   {@link harnessReadinessAction}, the same read as a flow-level action;
+ *   from, read with no session, with Re-check as `{ refresh: true }`;
  * - {@link harnessReadinessCapability}, a context entry a host adds to its
  *   coordinator's `uses`, so work is filed only on a ready harness;
  * - `refusal(harness)`, a coding flow's gate before a task starts.
@@ -231,29 +230,6 @@ export function formatHarnessReadiness(rows: readonly HarnessReadinessView[]): s
     return `${row.unanswered ? "?" : "✗"} ${row.label}: ${withStop(row.reason ?? "its check failed")}${remedyOf(row)}`;
   });
   return ["Coding harnesses on this machine:", ...lines].join("\n");
-}
-
-/**
- * The readiness read, as one flow-level action a host puts on a flow:
- * `actions: { harnessReadiness: harnessReadinessAction(readiness) }`. A screen
- * reads {@link harnessReadinessView} instead, with no session.
- *
- * Input `{ refresh?: boolean }`; `refresh: true` is Re-check. Output
- * `{ harnesses }`, one {@link HarnessReadinessView} per harness. Zero-model.
- */
-// FIX-2624: Shift Manager's devteam still reads this through its projects flow; it moves to the view with that flow's reads.
-export function harnessReadinessAction(readiness: HarnessReadinessRead) {
-  return {
-    description:
-      "Which coding harnesses can run on this machine, and what to do about one that can't. " +
-      "`refresh: true` checks them again.",
-    block: handler({
-      name: "harness-readiness",
-      inputSchema: z.object({ refresh: z.boolean().optional() }),
-      outputSchema: z.object({ harnesses: z.array(harnessReadinessViewSchema) }),
-      execute: async (input) => ({ harnesses: await readiness.read({ refresh: input.refresh === true }) }),
-    }),
-  };
 }
 
 /** What the readiness view takes: `refresh: true` is Re-check. */

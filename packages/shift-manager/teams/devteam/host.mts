@@ -59,7 +59,7 @@ import type { HarnessBlock, HarnessUsageReader } from "@flow-state-dev/core/harn
 import {
   commandCheck,
   harnessDrainBudgetMs,
-  harnessReadinessAction,
+  harnessReadinessView,
   harnessUsageAction,
   resolveOwnership,
   upgradeKeptTurns,
@@ -307,13 +307,6 @@ export const PROJECT_SETUP_ACTION = "projectSetup";
 
 /** The projects flow's action that answers how much of each harness's subscription is used. */
 export const HARNESS_USAGE_ACTION = "harnessUsage";
-
-/**
- * The projects flow's action that answers which coding harnesses can run on
- * this machine, each with what to run when it can't; `{ refresh: true }`
- * checks again.
- */
-export const HARNESS_READINESS_ACTION = "harnessReadiness";
 
 /**
  * The project setup as the projects flow answers it: the installation's
@@ -573,7 +566,7 @@ export interface OpenLabOptions {
   usage?: Readonly<Record<string, HarnessUsageReader>>;
   /**
    * Which coding harnesses can run on this machine (`startHarness`'s read),
-   * served as `harnessReadiness` on the projects flow. Absent: no such action.
+   * served as the projects flow's `readiness` view. Absent: no such view.
    */
   readiness?: HarnessReadinessRead;
   /**
@@ -1255,11 +1248,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       // because Shift Manager reads this flow first, so the Usage view and a
       // worker call one address.
       [HARNESS_USAGE_ACTION]: harnessUsageAction({ readers: options.usage ?? {} }),
-      // Which harnesses can run here, beside it: what the start logged, read again on request.
-      ...(options.readiness === undefined ? {} : { [HARNESS_READINESS_ACTION]: harnessReadinessAction(options.readiness) }),
       // How many tokens each of the caller's workers used, beside it (FIX-2145).
       [WORKER_USAGE_ACTION]: workerUsageAction(installation),
     },
+    // Which harnesses can run here: what the start logged, read again on `{ refresh: true }`.
+    // A view, read with no session (`harnessReadinessViewRef(PROJECTS_FLOW)`).
+    views: options.readiness === undefined ? {} : { readiness: harnessReadinessView(options.readiness) },
   } as never)();
 
   const latencyEnv = process.env.DEVFORCE_LAB_WRITE_LATENCY_MS;

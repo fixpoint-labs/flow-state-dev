@@ -324,7 +324,6 @@ export {
 // ── Which harnesses can run on this machine ─────────────────────────────────
 export {
   harnessReadiness,
-  harnessReadinessAction,
   harnessReadinessCapability,
   harnessReadinessView,
   harnessReadinessViewSchema,
