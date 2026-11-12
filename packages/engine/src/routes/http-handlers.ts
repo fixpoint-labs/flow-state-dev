@@ -33,7 +33,6 @@ import { handleAbortRequest } from "./abort-routes";
 import { handleAnswerSuspension } from "./answer-routes";
 import { handleResumeSuspension } from "./resume-routes";
 import { handleGetRequestStatus } from "./request-status-routes";
-import { handleRunRead } from "./read-routes";
 import { handleRunView } from "./view-routes";
 import { handleExecuteAction } from "./action-routes";
 import { handleFlowIdentity, handleReadScopeEntries, handleReadScopeResource, resolveResourceSend } from "./scope-routes";
@@ -606,16 +605,6 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "run_view") {
         return await handleRunView(request, route, {
-          host,
-          registry: options.registry,
-          stores,
-          runtimeConfig,
-          tenantIdHeader: options.tenantIdHeader
-        });
-      }
-
-      if (route.kind === "run_read") {
-        return await handleRunRead(request, route, {
           host,
           registry: options.registry,
           stores,

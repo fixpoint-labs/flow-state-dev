@@ -87,7 +87,7 @@ export const notesApp = defineFlow({
   resources,
   user: {
     stateSchema: z.object({ marker: z.string().nullable().default(null) }),
-    client: { derived: { mine: (ctx) => ({ marker: (ctx.state as { marker?: string | null }).marker ?? null }) } },
+    client: { expose: ["marker"] },
   },
   actions: {
     save,

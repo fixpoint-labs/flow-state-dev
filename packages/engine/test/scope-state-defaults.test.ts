@@ -317,11 +317,11 @@ const reader = handler({
 
 const blockDefaultsFlow = defineFlow({
   kind: "block-defaults",
-  session: { client: { derived: { countSeen: ({ state }: { state: { count?: number } }) => state.count ?? "absent" } } },
+  session: { client: { expose: ["count"] } },
   actions: { read: reader }
 })();
 
-async function runRead(stores: ReturnType<typeof createInMemoryStores>, sessionId: string) {
+async function runReaderAction(stores: ReturnType<typeof createInMemoryStores>, sessionId: string) {
   const result = await runAction({
     orgId: ORG,
     flow: blockDefaultsFlow,
@@ -339,7 +339,7 @@ async function runRead(stores: ReturnType<typeof createInMemoryStores>, sessionI
 
 describe("defaults a block or a capability declares", () => {
   it("read on a fresh session, user and org with no restating on the flow", async () => {
-    expect(await runRead(createInMemoryStores(), "sess_block_fresh")).toEqual({
+    expect(await runReaderAction(createInMemoryStores(), "sess_block_fresh")).toEqual({
       count: 0,
       tags: ["new"],
       theme: "light",
@@ -355,7 +355,7 @@ describe("defaults a block or a capability declares", () => {
       { id: USER_KEY, userId: USER, state: { otherFlow: 1 }, version: 0, createdAt: 0, updatedAt: 0 },
       "any"
     );
-    await runRead(stores, "sess_block_stored");
+    await runReaderAction(stores, "sess_block_stored");
     const session = await stores.session.get("sess_block_stored");
     await stores.session.set(
       "sess_block_stored",
@@ -363,7 +363,7 @@ describe("defaults a block or a capability declares", () => {
       "any"
     );
 
-    expect(await runRead(stores, "sess_block_stored")).toMatchObject({ count: 0, tags: ["kept"], theme: "light" });
+    expect(await runReaderAction(stores, "sess_block_stored")).toMatchObject({ count: 0, tags: ["kept"], theme: "light" });
     expect((await stores.user.get(USER_KEY))?.state).toMatchObject({ otherFlow: 1 });
   });
 
@@ -385,8 +385,8 @@ describe("defaults a block or a capability declares", () => {
     const state = await router.GET(new Request("http://localhost/api/flows/sessions/sess_block_route/state"), {
       params: { path: ["sessions", "sess_block_route", "state"] }
     });
-    const body = (await state.json()) as { clientData: { session: { countSeen: unknown } } };
-    expect(body.clientData.session.countSeen).toBe(0);
+    const body = (await state.json()) as { clientData: { session: { count?: unknown } } };
+    expect(body.clientData.session.count).toBe(0);
   });
 });
 

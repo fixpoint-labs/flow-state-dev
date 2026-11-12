@@ -1,0 +1,9 @@
+R1 0 says page doesn't say
+R2 0.5 partly: config listing, slots; no flows
+R3 0 describes worker flow, not backend unit
+R4 0 says page doesn't say
+R5 0.5 only (a) right
+P3.1 1 correct: private per user
+P3.2 1 edit makes own copy, fork, hire
+P3.3 0 says page doesn't say
+SCORE 3 / 8

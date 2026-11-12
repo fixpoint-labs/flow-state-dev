@@ -230,11 +230,7 @@ describe("defineFlow", () => {
         kind: "user-clientdata-with-no-user",
         requireUser: false,
         user: {
-          client: {
-            derived: {
-              displayName: () => "anon"
-            }
-          }
+          client: { expose: ["displayName"] }
         },
         actions: {
           run: {
@@ -985,39 +981,32 @@ describe("defineFlow", () => {
   });
 
   describe("scope client config normalization (FIX-505)", () => {
-    it("accepts client.expose + client.derived and exposes a normalized client", () => {
+    it("accepts client.expose and exposes it on the instance", () => {
       const flow = defineFlow({
         kind: "ccnorm-1",
         actions: {},
         session: {
-          stateSchema: z.object({
-            count: z.number().default(0),
-            name: z.string().default("")
-          }),
-          client: {
-            expose: ["count"],
-            derived: { greeting: (ctx) => `hi ${(ctx.state as { name?: string }).name ?? ""}` }
-          }
+          stateSchema: z.object({ count: z.number().default(0) }),
+          client: { expose: ["count"] }
         }
       });
       expect(flow.session?.client?.expose).toEqual(["count"]);
-      expect(typeof flow.session?.client?.derived?.greeting).toBe("function");
     });
 
-    it("throws when expose and derived share a name", () => {
-      expect(() =>
-        defineFlow({
-          kind: "ccnorm-4",
-          actions: {},
-          session: {
-            stateSchema: z.object({ count: z.number().default(0) }),
-            client: {
-              expose: ["count"],
-              derived: { count: () => 99 }
-            }
-          }
-        })
-      ).toThrow(/overlapping names in expose and derived/);
+    // FIX-2623: `derived` is removed. A flow written for it is refused by
+    // name at definition, at every scope, rather than its values silently
+    // never reaching the client (BP-030).
+    it.each(["session", "user", "org"] as const)("refuses a %s.client.derived, naming views", (scope) => { // retired-name-refusal: the removed key, refused
+      const legacy = { client: { derived: { greeting: () => "hi" } } } as never; // retired-name-refusal: the removed key, refused
+      expect(() => defineFlow({ kind: `derived-${scope}`, actions: {}, [scope]: legacy })).toThrow(
+        new RegExp(`${scope}\\.client declares "derived", which was removed\\. Declare a view`)
+      );
+    });
+
+    it("refuses an empty derived too: the key itself is the removed shape", () => {
+      expect(() => defineFlow({ kind: "derived-empty", actions: {}, session: { client: { derived: {} } } as never })).toThrow( // retired-name-refusal: the removed key, refused
+        /session\.client declares "derived"/
+      );
     });
 
     it("throws when expose names a key not on stateSchema (introspectable)", () => {

@@ -2788,16 +2788,13 @@ export async function createExecutionContext<
     const scopeStorageKeys = resourceStorageKeys(scopeConfigs);
 
     // FIX-1506: the resources whose change another session's view may read —
-    // every resource with a `client` config, and every resource of a scope
-    // that declares `client.derived` (a derived value may read any of them).
-    // Their changes publish on the scope's topic, stream or not.
+    // every resource with a `client` config. Their changes publish on the
+    // scope's topic, stream or not.
     // FIX-2623 D1: and every resource, at every scope, once any flow the host
     // registers declares a view, whichever flow writes it. A view's run may
     // read any of them, and the host can't know which in advance. An extra
     // notice is allowed; a missed one is the failure.
-    const scopeClient = scope === "session" ? flow.session?.client : scope === "user" ? flow.user?.client : flow.org?.client;
-    const everyResourcePublishes =
-      Object.keys(scopeClient?.derived ?? {}).length > 0 || hostHasViews;
+    const everyResourcePublishes = hostHasViews;
     const publishedSingleKeys = new Set<string>();
     const publishedCollections: ResourceCollectionConfig[] = [];
     for (const [accessor, cfg] of Object.entries(scopeConfigs)) {

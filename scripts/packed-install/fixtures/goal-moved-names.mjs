@@ -5,23 +5,21 @@
  * changelog rule is `gradeMovedNames` in goal.mjs.
  *
  * Inputs, from the environment:
- *   FSD_J5_OLD   — the folder holding the install upgraded from (the pinned
- *                  published tarballs); this folder holds the tarballs under test;
- *   FSD_J5_SPECS — JSON `{ old: { [pkg]: string[] }, new: { [pkg]: string[] } }`,
- *                  every specifier each installed package's exports map offers,
- *                  as `run.mjs` expands it.
+ *   FSD_J5_OLD      — the folder holding the install upgraded from (the pinned
+ *                     published tarballs); this folder holds the tarballs under test;
+ *   FSD_J5_PACKAGES — JSON `{ old: string[], new: string[] }`, the package
+ *                     names installed on each side, whose roots are read.
  *
  * What it does: lists every name on each package root on both sides; the
  * names the old root has and the new root lacks are the dropped names. It
  * writes an upgrade app importing every dropped name from its old root, which
  * must compile, and import, on the old install first (a broken app would
  * otherwise read as a refusal); then compiles the same app here and records,
- * per name, whether it fails, and on which of its package's other entries it
- * now resolves (its homes).
+ * per name, whether it fails.
  *
- * Prints `moved-names: data <json>` with `{ names: [{ pkg, name, homes,
- * failsOnNew }] }`, or `moved-names: FAIL at <step>: …` when the app does not
- * compile or import on the old install. Anything else is the harness's `error`.
+ * Prints `moved-names: data <json>` with `{ names: [{ pkg, name, failsOnNew }] }`,
+ * or `moved-names: FAIL at <step>: …` when the app does not compile or import
+ * on the old install. Anything else is the harness's `error`.
  */
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
@@ -30,7 +28,7 @@ import ts from "typescript";
 
 const OLD = process.env.FSD_J5_OLD;
 const NEW = process.cwd();
-const specs = JSON.parse(process.env.FSD_J5_SPECS);
+const packages = JSON.parse(process.env.FSD_J5_PACKAGES);
 
 const OPTIONS = {
   module: ts.ModuleKind.NodeNext,
@@ -42,8 +40,7 @@ const OPTIONS = {
 };
 
 /** specifier → Map<name, isValue>, or null when the specifier has no declarations. */
-function exportsIn(dir, bySpec) {
-  const list = Object.values(bySpec).flat();
+function exportsIn(dir, list) {
   const probe = join(dir, "moved-names.probe.ts");
   writeFileSync(probe, `${list.map((s, i) => `import * as m${i} from "${s}";`).join("\n")}\nexport {};\n`);
   const program = ts.createProgram([probe], OPTIONS);
@@ -88,13 +85,13 @@ function compile(dir, byPkg) {
   return { errors: diagnostics.map((d) => ts.flattenDiagnosticMessageText(d.messageText, " ")), failing };
 }
 
-const oldExports = exportsIn(OLD, specs.old);
-const newExports = exportsIn(NEW, specs.new);
+const oldExports = exportsIn(OLD, packages.old);
+const newExports = exportsIn(NEW, packages.new);
 
 /** pkg → [{ name, isValue }] dropped from the root. */
 const dropped = {};
-for (const pkg of Object.keys(specs.old)) {
-  if (!specs.new[pkg]) continue;
+for (const pkg of packages.old) {
+  if (!packages.new.includes(pkg)) continue;
   const before = oldExports.get(pkg);
   const after = newExports.get(pkg) ?? new Map();
   if (!before) continue;
@@ -141,11 +138,5 @@ if (missing.length > 0) {
 const { failing } = compile(NEW, byPkg);
 const names = [];
 for (const [pkg, list] of Object.entries(dropped))
-  for (const { name } of list)
-    names.push({
-      pkg,
-      name,
-      homes: specs.new[pkg].filter((s) => s !== pkg && newExports.get(s)?.has(name)),
-      failsOnNew: failing.has(`${pkg} ${name}`),
-    });
+  for (const { name } of list) names.push({ pkg, name, failsOnNew: failing.has(`${pkg} ${name}`) });
 console.log(`moved-names: data ${JSON.stringify({ names })}`);

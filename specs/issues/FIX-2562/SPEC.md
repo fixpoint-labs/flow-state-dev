@@ -10,7 +10,7 @@
 | **installs from npm and copies an example out** | The quick start throws at `fsdev run`; an example copied out of the repo doesn't run | Leg a runs the quick start; the `first-hour.example.*` cells run every example from a directory outside the repo, on the tarballs |
 | **autocompletes a root in an editor** | Harness and PR vocabulary on core's root; tracker ids in hovers | The *Surface* cells hold each owned root to its documented names, and the *Leakage* cells scan every installed `.d.ts` for ids. An `/internal` path may still be offered; [epic D2](../../epics/FIX-2447/DECISIONS.md#d2-completions) holds it by the import census and the path name |
 | **reads an action's output, or unit-tests an approval step** | Lists requests and searches the pages; `testFlow` can't suspend | `onepath.output-read`: one `sent.result()` call returns the output, read by request id. The testing package's own goal check, re-run in item 3, answers a `ctx.suspendForUser` stop in a `testFlow` test |
-| **upgrades a 0.4.0 project** | Old code that passes `human_approval` compiles and loses its Inbox item | Journey j5 walks every moved name: the changelog names its new home. No alias, refusal or old-shape reader is left to check ([epic D4](../../epics/FIX-2447/DECISIONS.md#d4)) beyond [the four D4 keeps](../../epics/FIX-2447/DECISIONS.md#kept-refusals): `human_approval` throws, naming `user_approval`, and its *Shims* cells grade that (amended Nov 10) |
+| **upgrades a 0.4.0 project** | Old code that passes `human_approval` compiles and loses its Inbox item | Journey j5 walks every moved name: each fails to compile from its old root, and the changelog carries one line saying how many exports the roots lost (amended Nov 12, [D1](DECISIONS.md#d1)). No alias, refusal or old-shape reader is left to check ([epic D4](../../epics/FIX-2447/DECISIONS.md#d4)) beyond [the four D4 keeps](../../epics/FIX-2447/DECISIONS.md#kept-refusals): `human_approval` throws, naming `user_approval`, and its *Shims* cells grade that (amended Nov 10) |
 
 ## The goal, and how we'll know it's met
 
@@ -49,7 +49,7 @@ two children's code. Each control breaks a named assertion, not just its leg.
 | **Signal** | Every manifest row PASS, with assertion ids printed. The [journey](#the-journeys) passes. Every row in [the sweep](DECISIONS.md#the-plan-in-full) is two-sided |
 | **Input** | The packed tarballs of every published package at the pinned commit, installed into an empty ESM project by the packer `changeset publish` uses. j5 also installs the published 0.4.0 tarballs by integrity hash. A different valid input is another example, another root or another moved name: each must pass |
 | **Anti-game** | Assert on the installed project only: no import from the repo, and the packed-install resolution guard stays on. The closure adds rows and changes no assertion or expectation to get green. A journey that duplicates a manifest cell or a child's goal check is that cell or check, not a second one. A README that lists every export in bulk is not documentation: the closure reports it as a *Surface* finding, as the epic's export check refuses a list the same diff writes |
-| **Control that must fail** | FIX-2564's goal control, `run.mjs --control=adopter-goal` (`main` at `ebec5326` packed, and the 0.4.0 tarballs): every manifest row FAILs. The journey has nothing to fail on at that control, so it gets a planted one: `j5:moved-name-named` with one moved name's changelog line removed. It must FAIL |
+| **Control that must fail** | FIX-2564's goal control, `run.mjs --control=adopter-goal` (`main` at `ebec5326` packed, and the 0.4.0 tarballs): every manifest row FAILs. The journey has nothing to fail on at that control, so it gets a planted one: `j5:moved-name-named` with the changelog's summary line removed (amended Nov 12; it was one moved name's line). It must FAIL for every package that lost a name |
 
 ### The journeys
 
@@ -66,7 +66,7 @@ table](../../epics/FIX-2447/SPEC.md#five-teams-before-and-after) is still walked
 
 | Assertion | Passes when |
 |---|---|
-| `j5:moved-name-named` | The upgrade fixture, a small app written against 0.4.0 that compiles and runs on the 0.4.0 tarballs first, is reinstalled on the pinned tarballs. Each moved root name in it fails to compile, and the package's changelog line names its new home ([Q1](DECISIONS.md#q1), answered break: no `@deprecated` alias). No single child sees every move, so only the closure can walk them all |
+| `j5:moved-name-named` | The upgrade fixture, a small app written against 0.4.0 that compiles and runs on the 0.4.0 tarballs first, is reinstalled on the pinned tarballs. Each moved root name in it fails to compile ([Q1](DECISIONS.md#q1), answered break: no `@deprecated` alias), and every package that lost one carries the changelog's summary line, which states the real count of exports the roots lost (amended Nov 12: the owner chose one summary line over a line per name, [D1](DECISIONS.md#d1)). No single child sees every move, so only the closure can walk them all |
 
 ## What changes
 

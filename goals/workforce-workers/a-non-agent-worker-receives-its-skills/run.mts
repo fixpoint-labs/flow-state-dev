@@ -95,10 +95,10 @@ async function ranOn(router: Router, sessionId: string) {
   });
   const body = (await res.json()) as {
     clientData?: {
-      session?: { ran?: { skills?: string[] | null; desk?: string | null; hasSeatSkills?: boolean | null; runs?: number } };
+      session?: { skills?: string[] | null; desk?: string | null; hasSeatSkills?: boolean | null; runs?: number };
     };
   };
-  return { status: res.status, ...(body.clientData?.session?.ran ?? {}) };
+  return { status: res.status, ...(body.clientData?.session ?? {}) };
 }
 
 async function settled(stores: StoreRegistry, requestId: string): Promise<string | undefined> {

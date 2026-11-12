@@ -37,8 +37,10 @@ If you later deploy that app to Vercel, add `@flow-state-dev/vercel` and switch 
 
 For development:
 ```bash
-pnpm add -D @flow-state-dev/testing @flow-state-dev/fsdev
+pnpm add -D @flow-state-dev/testing @flow-state-dev/fsdev --allow-build=better-sqlite3
 ```
+
+The CLI's default store is SQLite, and pnpm 10 builds the `better-sqlite3` native module only when you allow it. `--allow-build` needs pnpm 10.4 or later; on pnpm 9, leave the flag off, and npm, yarn and bun need no flag.
 
 ---
 

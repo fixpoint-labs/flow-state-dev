@@ -1,0 +1,49 @@
+VERDICT: REVISE
+
+FINDINGS (most severe first)
+1. tasks-and-boards.md:17 — Production note left in the page
+   Quote: "*Alice's launch tasks sit in her scope… Description for the site's Figure: A large solid box labelled "Alice's user scope" holds…*"
+   Why: A reader sees a drafting instruction ("Description for the site's Figure:") followed by a prose re-description of the diagram. The first sentence is the real caption.
+   Fix: Keep only "Alice's launch tasks sit in her scope, each one waiting on the one before." Move the long description into the image's alt text, or cut it.
+
+2. tasks-and-boards.md:77 — Counted preamble
+   Quote: "Look at three things."
+   Why: It announces a count and then lists the things.
+   Fix: Cut it. Start with "The collection's `scope: "user"` decides who can read the tasks…"
+
+3. tasks-and-boards.md:13 — Counted preamble
+   Quote: "Two things differ."
+   Why: Same tell.
+   Fix: "Tasks can wait on other tasks, so a board is a plan and not only a queue. It also knows when it is finished and tells you why it stopped."
+
+4. tasks-and-boards.md:111 — Undefined term in the stop-reason table
+   Quote: "The board's cap on failure retries refused a retry"
+   Why: The page only mentions `maxAttempts` per task. A "board cap on failure retries" is never introduced, so the reader can't tell what sets it or how it differs from `maxAttempts`.
+   Fix: Say where the cap is set and how it relates to `maxAttempts`, or point to the reference page.
+
+5. tasks-and-boards.md:86 — Unexplained status
+   Quote: "`held` | Filed with "don't start yet" until someone releases it"
+   Why: Nothing in the task fields or the example shows how to file a held task or who releases it. The "hold" section later describes a different route to the same state.
+   Fix: Say how a task becomes held, or link to the hold section.
+
+6. tasks-and-boards.md:125 — Claim about mechanism
+   Quote: "It has no way to name itself the filer or to take a claim."
+   Why: The first half is behavior. The second half describes what a model can't do, and a reader can't confirm that by calling the API. Four hidden fields are listed without saying which ones are hidden from a model and which only from the browser.
+   Fix: State the guarantee once: "Task tools can't set the filer, session, org or claim."
+
+7. tasks-and-boards.md:92 — Ambiguous pronoun
+   Quote: "Your code can't do it for them."
+   Why: "Do it" and "them" are unclear.
+   Fix: "Only a user can retry an errored or cancelled task. Code can't."
+
+8. tasks-and-boards.md:119, 123 — Unintroduced terms
+   Quote: "takes its next turn on the same attempt" · "the flow's resource rules"
+   Why: "Turn" and "resource rules" are never defined, and org scope is mentioned before it is explained.
+   Fix: Use plain wording, such as "resumes as the same attempt", and link scopes at first mention.
+
+SUSPECTED INACCURACIES
+- tasks-and-boards.md:129 — "She can cancel polish, or edit it before it starts." The page never shows the API for editing a task. The writer should verify that editing exists.
+- tasks-and-boards.md:98 — The refusal list says an already-filed task id is refused, but a retry of the same `createTasks` call isn't addressed. Check that "nothing is filed" holds for it.
+
+OFFERED CONTEXT DECLINED
+- None offered. I read only the page, its figure, and user-docs.md.

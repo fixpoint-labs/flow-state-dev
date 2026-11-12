@@ -99,7 +99,7 @@ export { afterTaskCheck, STEER_TURN_DUE_MS } from "./task-board/task-request";
 export { TASK_SESSION_TASK_KEY } from "./task-board/task-turn";
 
 // The task tools' and skills' pieces a worker flow composes itself.
-export { taskToolsForTurn, taskToolReads, STATUS_NOTE_LIMIT, readTaskView } from "./skills/task-tools-capability";
+export { taskToolsForTurn, STATUS_NOTE_LIMIT, readTaskView } from "./skills/task-tools-capability";
 export { taskToolViews } from "./skills/views/task-list-view";
 export { taskToolSuffix } from "./skills/task-tool-suffix";
 export {

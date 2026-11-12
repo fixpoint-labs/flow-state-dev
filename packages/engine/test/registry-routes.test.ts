@@ -48,25 +48,16 @@ function makeClientDataFlow(kind: string, id = kind): FlowInstance {
       }
     },
     session: {
-      client: {
-        derived: {
-          sessionInfo: () => ({ ready: true })
-        }
-      }
+      stateSchema: z.object({ sessionInfo: z.object({ ready: z.boolean() }).default({ ready: true }) }),
+      client: { expose: ["sessionInfo"] }
     },
     user: {
-      client: {
-        derived: {
-          userInfo: () => ({ active: true })
-        }
-      }
+      stateSchema: z.object({ userInfo: z.object({ active: z.boolean() }).default({ active: true }) }),
+      client: { expose: ["userInfo"] }
     },
     org: {
-      client: {
-        derived: {
-          orgInfo: () => ({ configured: true })
-        }
-      }
+      stateSchema: z.object({ orgInfo: z.object({ configured: z.boolean() }).default({ configured: true }) }),
+      client: { expose: ["orgInfo"] }
     }
   })({
     id
@@ -506,19 +497,11 @@ describe("createFlowApiRouter", () => {
       },
       user: {
         stateSchema: z.object({ nickname: z.string().optional() }),
-        client: {
-          derived: {
-            userLabel: (ctx) => ({ nickname: ctx.state.nickname })
-          }
-        }
+        client: { expose: ["nickname"] }
       },
       org: {
         stateSchema: z.object({ title: z.string().optional() }),
-        client: {
-          derived: {
-            orgLabel: (ctx) => ({ title: ctx.state.title })
-          }
-        }
+        client: { expose: ["title"] }
       }
     })({ id: "isolated-state-route" });
 
@@ -562,8 +545,8 @@ describe("createFlowApiRouter", () => {
     expect(body.state).toBeUndefined();
     expect(body.internalState).toBeUndefined();
     expect(body.clientData).toMatchObject({
-      user: { userLabel: { nickname: "Ada" } },
-      org: { orgLabel: { title: "Project Ada" } }
+      user: { nickname: "Ada" },
+      org: { title: "Project Ada" }
     });
     expect(await stores.user.get("user_iso_state")).toBeUndefined();
     expect(await stores.org.get(DEFAULT_ORG_ID)).toBeUndefined();
@@ -761,14 +744,7 @@ describe("createFlowApiRouter", () => {
       },
       session: {
         stateSchema: z.object({ count: z.number().default(0) }),
-        client: {
-          derived: {
-            summary: (ctx) => ({
-              totalCount: (ctx.state as { count?: number }).count ?? 0,
-              label: `Count is ${(ctx.state as { count?: number }).count ?? 0}`
-            })
-          }
-        }
+        client: { expose: ["count"] }
       }
     })();
 
@@ -802,13 +778,10 @@ describe("createFlowApiRouter", () => {
 
     expect(stateBody.clientData).toBeDefined();
     expect(stateBody.clientData.session).toBeDefined();
-    expect(stateBody.clientData.session!.summary).toEqual({
-      totalCount: 5,
-      label: "Count is 5"
-    });
+    expect(stateBody.clientData.session!.count).toBe(5);
   });
 
-  it("computes client.expose and client.derived from session state", async () => {
+  it("computes client.expose from session state", async () => {
     const flow = defineFlow({
       kind: "stateful-client",
       actions: {
@@ -826,12 +799,7 @@ describe("createFlowApiRouter", () => {
       },
       session: {
         stateSchema: z.object({ count: z.number().default(0) }),
-        client: {
-          expose: ["count"],
-          derived: {
-            label: (ctx) => `Count is ${(ctx.state as { count?: number }).count ?? 0}`
-          }
-        }
+        client: { expose: ["count"] }
       }
     })();
 
@@ -861,10 +829,7 @@ describe("createFlowApiRouter", () => {
     };
     expect(body.state).toBeUndefined();
     expect(body.internalState).toBeUndefined();
-    expect(body.clientData.session).toEqual({
-      count: 7,
-      label: "Count is 7"
-    });
+    expect(body.clientData.session).toEqual({ count: 7 });
   });
 
   it("returns resource clientData in session state response", async () => {
