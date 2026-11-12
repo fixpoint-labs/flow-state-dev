@@ -1760,8 +1760,6 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       [SET_WORK_PROJECT_ACTION]: setWorkProjectAction,
       ...(routineActions ?? {})
     },
-    // The task list, read with nothing stored (FIX-2286).
-    reads: sessionBoard.reads,
     // The task list as a session view, watched with `useView` (FIX-2623).
     views: sessionBoard.views,
     internal: {

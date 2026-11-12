@@ -151,7 +151,7 @@ function clientOf(on: Host): { client: Client; reads: Read[] } {
     baseUrl: on.base,
     fetcher: (input, init) => {
       const url = String(input instanceof Request ? input.url : input);
-      const isRead = (init?.method ?? "GET") === "GET" || url.includes("/reads/");
+      const isRead = (init?.method ?? "GET") === "GET" || url.includes("/views/");
       if (isRead && !url.includes("/stream") && !url.includes("/capabilities")) reads.push({ at: Date.now(), url });
       return fetch(input, { ...init, headers: { ...(init?.headers as Record<string, string>), authorization: "Bearer tok-alice" } });
     },

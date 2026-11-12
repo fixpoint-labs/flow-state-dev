@@ -90,7 +90,6 @@ import {
   payBoardDebts,
   settlePassWake,
   taskToolsForTurn,
-  taskToolReads,
   taskToolViews,
   afterTaskCheck,
   TaskWriteRefusedError,
@@ -2066,12 +2065,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     planned: planning.planned,
     /** The task tools as public actions, `<tool>_tasks`. */
     actions: taskToolActions(CONVERSATION_LEDGER_ID, resolver, roster, { dispatches: true }),
-    // FIX-2286.
-    /**
-     * The task list as a read, `listTasks_tasks`: the action's rows,
-     * stored nowhere. Spread into the flow's `reads` beside `actions`.
-     */
-    reads: taskToolReads(CONVERSATION_LEDGER_ID, readResolver),
     // FIX-2623.
     /** The task list as a session view, `listTasks_tasks`: the same rows, watched with `useView`. For the flow's `views`. */
     views: taskToolViews(CONVERSATION_LEDGER_ID, readResolver),

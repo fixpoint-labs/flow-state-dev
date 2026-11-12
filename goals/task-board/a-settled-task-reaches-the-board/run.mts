@@ -224,7 +224,7 @@ function buildHost(name: string, stores: StoreAdapter): FlowState {
       resources: { ...installation.resources, ...board.resources },
       request: { onStarted: resolveWorker(kind) },
       actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
-      reads: { ...board.reads },
+      views: { ...board.views },
       internal: { actions: board.entries(turn as never) },
       task: { actions: { work: workerTaskEntry({ name: `board-notices-${kind}-task`, turn: turn as never }) } }
     } as never);
@@ -279,7 +279,7 @@ function tab(on: Host) {
   const counted = { reads: 0 };
   const fetcher: ClientFetch = (input, init) => {
     const url = String(input);
-    if (url.includes("/reads/listTasks_tasks") || /\/resources\/tasks(\?|$)/.test(url)) counted.reads += 1;
+    if (url.includes("/views/listTasks_tasks") || /\/resources\/tasks(\?|$)/.test(url)) counted.reads += 1;
     return fetch(input, { ...init, headers: { ...(init?.headers as Record<string, string>), authorization: `Bearer ${TOKEN}` } });
   };
   return { client: createClient({ userId: USER, baseUrl: on.base, fetcher }), counted };

@@ -13,7 +13,6 @@
  * the session's own state. A miss here sends D1 back to the owner.
  */
 import { describe, expect, it } from "vitest";
-import { defineView } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { runView, type RecordedRead } from "@flow-state-dev/engine/internal";
 import { taskToolViews } from "@flow-state-dev/orchestration/internal";
@@ -34,12 +33,10 @@ describe("the board's list, run as a session view", () => {
       await host.settled();
 
       const runtime = await host.state.getRuntime();
+      // The coordinator's own board view, as a screen watches it.
       const coordinator = runtime.registry.get("coordinator")!;
-      const block = coordinator.reads![LIST]!.block;
-      const flow = { ...coordinator, views: { board: defineView({ scope: "session", block }) } } as FlowInstance;
-
-      const answer = await runView({ flow, viewName: "board", input: {}, userId: "alice", orgId: ORG, sessionId: conv, stores: runtime.stores });
-      expect((answer.output as { tasks: unknown[] }).tasks).toHaveLength(1);
+      const answer = await runView({ flow: coordinator, viewName: LIST, input: {}, userId: "alice", orgId: ORG, sessionId: conv, stores: runtime.stores });
+      expect(answer.output as unknown[]).toHaveLength(1);
 
       // FIX-2621's four, and nothing the run didn't reach: the task ledger and
       // the plan ledger (user-scope cells, reached through the board's

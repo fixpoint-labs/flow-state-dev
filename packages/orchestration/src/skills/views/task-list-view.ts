@@ -10,7 +10,8 @@
 import { defineView, FlowError, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { listedTaskSchema, listTasksBlockFor, type TaskCollectionResolver } from "../task-tools-capability";
+import { listTasksBlockFor, type TaskCollectionResolver } from "../task-tools-capability";
+import { listedTaskSchema } from "../task-listing";
 
 /** One board's task list as a session view: its rows, keyed by task id. See {@link taskToolViews}. */
 function taskListView(collectionId: string, resolve: TaskCollectionResolver) {

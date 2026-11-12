@@ -131,55 +131,51 @@ describe("a style named on the action input", () => {
 
 describe("a style stored on a session written before the shed", () => {
   /**
-   * The real projection off the real flow, not a copy of it.
+   * The real view off the real flow, not a copy of it.
    *
    * `modeStatus` is the one surface that reads `session.state.thinkingStyle`
    * raw: the engine fills in `stateSchema`'s defaults on load but keeps a
    * stored value as stored, and `resolveThinkingStyle` overwrites the value
    * every turn before the router reads it. So a check aimed at a turn
    * would pass whether or not the fold exists. This one is aimed at the
-   * projection, which is where the stored value actually escapes to a
-   * browser.
+   * view, which is where the stored value actually escapes to a browser.
    */
-  const modeStatus = (
-    chatAgentFlow as unknown as {
-      session?: { client?: { derived?: Record<string, (ctx: unknown) => unknown> } };
-    }
-  ).session?.client?.derived?.modeStatus;
+  const view = chatAgentFlow.views?.modeStatus;
 
-  /** A stored session as the projection reads it: the schema's defaults, then what was stored. */
-  const loaded = (stored: Record<string, unknown>) => ({ state: { ...sessionStateSchema.parse({}), ...stored } });
+  /** The view's answer for a stored session: the schema's defaults, then what was stored. */
+  const modeStatus = async (stored: Record<string, unknown>) => {
+    const result = await testBlock(view!.block, {
+      input: {},
+      session: { state: { ...sessionStateSchema.parse({}), ...stored } },
+    });
+    expect(result.error).toBeNull();
+    return result.output as { thinkingStyle: string | null };
+  };
 
   it("is wired to the flow at all", () => {
     // Guards the rest of this block: if `modeStatus` is ever renamed or
     // dropped, the checks below would silently stop reading anything.
-    expect(typeof modeStatus).toBe("function");
+    expect(view?.kind).toBe("view");
   });
 
   it.each(REMOVED_STYLES.filter((s) => s !== "auto"))(
     "reports default rather than %s",
     async (style) => {
-      const out = (await modeStatus!(loaded({ mode: "ask", thinkingStyle: style }))) as {
-        thinkingStyle: string | null;
-      };
+      const out = await modeStatus({ mode: "ask", thinkingStyle: style });
 
       expect(out.thinkingStyle).toBe("default");
-      // Red state: drop `coalesceThinkingStyle` from the projection in
-      // `flows/chat-agent/flow.ts` and this reports "supervisor".
+      // Red state: drop `coalesceThinkingStyle` from the view in
+      // `flows/chat-agent/views.ts` and this reports "supervisor".
     },
   );
 
   it("passes a surviving style through untouched, and reports null for none", async () => {
     for (const style of RESOLVED_THINKING_STYLES) {
-      const out = (await modeStatus!(loaded({ mode: "ask", thinkingStyle: style }))) as {
-        thinkingStyle: string | null;
-      };
+      const out = await modeStatus({ mode: "ask", thinkingStyle: style });
       expect(out.thinkingStyle).toBe(style);
     }
 
-    const fresh = (await modeStatus!(loaded({ mode: "ask" }))) as {
-      thinkingStyle: string | null;
-    };
+    const fresh = await modeStatus({ mode: "ask" });
     expect(fresh.thinkingStyle).toBeNull();
   });
 

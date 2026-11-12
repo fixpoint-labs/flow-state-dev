@@ -216,7 +216,7 @@ function buildHost(stores: StoreAdapter): { state: FlowState; flows: Record<stri
       resources: { ...installation.resources, ...board.resources, ...(kind === "desk" ? { inventoryWorkers: defineWorkerInventoryCollection() } : {}) },
       request: { onStarted: resolveWorker(kind) },
       actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
-      reads: { ...board.reads },
+      views: { ...board.views },
       internal: { actions: board.entries(turn as never) },
       task: { actions: { work: workerTaskEntry({ name: `summary-${kind}-task`, turn: turn as never }) } },
     } as never);

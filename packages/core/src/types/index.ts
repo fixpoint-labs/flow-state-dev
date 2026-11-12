@@ -84,18 +84,14 @@ export {
 
 export type {
   ActionConfig,
-  ReadConfig,
   ActionEntry,
   NormalizedActions,
-  ReadEntry,
   TypedEntries,
   ActionCore,
   UserMessageEcho,
   ActionMcpConfig,
   CostEstimator,
   ModelUsageEntry,
-  ClientDataComputeFn,
-  ClientDataContext,
   FlowActionBlock,
   FlowActionInput,
   FlowConfigInput,

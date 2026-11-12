@@ -104,6 +104,11 @@ lab fails. That re-opens FIX-2500 late, at wrap, by one issue.
   and evaluators, and Claude Code, run on one Haiku model on Anthropic directly. The control and
   the cut run use the same model, so they stay comparable. Each sheet records its model, and the
   verdict refuses a pass whose sheets mix models.
+- **Length text left the sweep (owner, Nov 12).** FIX-2498's behaviour section ("answers fit
+  the ask", the shared length guidance) was cut because the sizing ask passed everywhere
+  without it. Epic ER-3 removes an app's own line only when a layer replaces it, and nothing
+  now replaces a length line, so the sweep keeps its date and "done" checks and no longer
+  flags lines like "in a sentence or two" in a `WORKER.md`.
 
 ## Considered and dropped
 

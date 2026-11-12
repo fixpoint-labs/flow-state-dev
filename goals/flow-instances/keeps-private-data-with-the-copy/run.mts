@@ -96,9 +96,8 @@ async function markersFromState(
   sessionId: string,
 ): Promise<{ user: unknown; org: unknown; status: number }> {
   const { status, body } = await get(router, ["sessions", sessionId, "state"]);
-  const data = (body as { clientData?: { user?: { seen?: { marker?: unknown } }; org?: { seen?: { marker?: unknown } } } })
-    .clientData;
-  return { status, user: data?.user?.seen?.marker, org: data?.org?.seen?.marker };
+  const data = (body as { clientData?: { user?: { marker?: unknown }; org?: { marker?: unknown } } }).clientData;
+  return { status, user: data?.user?.marker, org: data?.org?.marker };
 }
 
 /** A single resource's rendered content through the public read route. */

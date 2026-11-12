@@ -5,13 +5,13 @@
  * view keeps its fallback timer, and three React views rendered in this
  * process (react-dom over a happy-dom document; Node's own `fetch` and
  * `WebSocket`). Each view is `useSession(id, { live: true })` with the hooks
- * an app already uses: `useClientData` for org and user state (an org
- * `client.derived` license count among them) and `useResourceCollectionList`
+ * an app already uses: `useClientData` for org and user state,
+ * `useView` for an org view's license count, and `useResourceCollectionList`
  * for the org's licenses. Every assertion reads what a view rendered, or the
  * reads its own fetcher made.
  *
  *   a  — user A patches org state and adds an org license; user B's view of
- *        another session shows the plan, the derived count and the row
+ *        another session shows the plan, the view's count and the row
  *        within 1 s. A desk added to a second collection runs no read of
  *        B's licenses.
  *   b  — A patches user state; A's second tab, on another session, shows it
@@ -31,9 +31,9 @@ import { z } from "zod";
 import { Window } from "happy-dom";
 import { createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { defineFlow, defineResourceCollection, defineView, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createClient } from "@flow-state-dev/client";
+import { createClient, viewRef } from "@flow-state-dev/client";
 import {
   createFlowApiRouter,
   createFlowRegistry,
@@ -49,6 +49,7 @@ import {
   useClientData,
   useResourceCollectionList,
   useSession,
+  useView,
   type SessionView
 } from "@flow-state-dev/react";
 import { crossingBus } from "../../lib/crossing-bus.mts";
@@ -112,7 +113,7 @@ const happy = new Window();
 Object.assign(globalThis, { window: happy, document: happy.document, IS_REACT_ACT_ENVIRONMENT: false });
 
 // ---------------------------------------------------------------------------
-// The app: org and user state, an org license collection with a derived count,
+// The app: org and user state, an org license collection with a count view,
 // and a second org collection
 // ---------------------------------------------------------------------------
 
@@ -130,6 +131,19 @@ const desks = defineResourceCollection({
   client: { state: { read: true } }
 });
 
+/** The org's license count, as a view: what a screen watches beside the org's state. */
+const licenseCountView = defineView({
+  scope: "org",
+  block: handler({
+    name: "license-count",
+    inputSchema: z.object({}),
+    outputSchema: z.number(),
+    resources: { licenses },
+    execute: async (_input, ctx) => ctx.resources.licenses.count()
+  })
+});
+const LICENSE_COUNT = viewRef<typeof licenseCountView>("desk", "licenseCount");
+
 function deskFlow(): FlowInstance {
   const act = (name: string, execute: (input: { value: string }, ctx: any) => Promise<unknown>) =>
     handler({ name, inputSchema: z.object({ value: z.string() }), outputSchema: z.object({}).passthrough(), execute });
@@ -138,11 +152,9 @@ function deskFlow(): FlowInstance {
     resources: { licenses, desks },
     org: {
       stateSchema: z.object({ plan: z.string().default("free") }),
-      client: {
-        expose: ["plan"],
-        derived: { licenseCount: async ({ resources }) => (resources.licenses as { count(): Promise<number> }).count() }
-      }
+      client: { expose: ["plan"] }
     },
+    views: { licenseCount: licenseCountView },
     user: {
       stateSchema: z.object({ theme: z.string().default("light") }),
       client: { expose: ["theme"] }
@@ -216,12 +228,13 @@ function mountView(name: string, on: Host, userId: string, token: string, sessio
 
   function Screen() {
     const session = useSession(sessionId, { flowKind: "desk", live });
-    const { org, user } = useClientData(session, { org: ["plan", "licenseCount"], user: ["theme"] });
+    const { org, user } = useClientData(session, { org: ["plan"], user: ["theme"] });
+    const { value: licenseCount } = useView(LICENSE_COUNT);
     const list = useResourceCollectionList<{ name: string }>(session, "licenses");
     current = session;
     const row: Omit<Shown, "at"> = {
       plan: org.plan,
-      licenseCount: org.licenseCount,
+      licenseCount,
       theme: user.theme,
       licenses: list.items.map((item) => item.topic).sort()
     };
@@ -320,7 +333,7 @@ await runGoal(async (failures, tell) => {
     const viewA2 = mountView("A's second tab", on, "alice", "tok-alice", sA2, true);
     const viewB = mountView("B", on, "bob", "tok-bob", sB, true);
     views.push(viewA2, viewB);
-    // The derived count renders once the first snapshot lands; org and user
+    // The count renders once the view first answers; org and user
     // state read as unset until someone writes them.
     const ready = await until(() => viewB.shown.some((r) => r.licenseCount === 0) && viewA2.shown.some((r) => r.licenseCount === 0), 5_000);
     if (!ready) failures.push("setup: the views never rendered their first snapshot");
@@ -345,7 +358,7 @@ await runGoal(async (failures, tell) => {
         else if (ms >= BOUND_MS) failures.push(`a:within-1s: B's view showed A's ${what} change ${ms} ms after saved (bound ${BOUND_MS})`);
       }
       if (graded.length === 3 && graded.every((ms) => ms < BOUND_MS)) {
-        evidence.push(`a: B shows plan ${lat.plan} ms, license row ${lat.row} ms, derived count ${lat.count} ms after saved`);
+        evidence.push(`a: B shows plan ${lat.plan} ms, license row ${lat.row} ms, count ${lat.count} ms after saved`);
       }
 
       // A change to a second collection runs no read of B's licenses.

@@ -28,8 +28,6 @@ import type {
   ActionConfig,
   ActionEntry,
   NormalizedActions,
-  ReadConfig,
-  ReadEntry,
   FlowDefinition,
   FlowInstance,
   FlowInstanceOptions,
@@ -79,8 +77,9 @@ type ScopeWithClient = {
 };
 
 /**
- * Validate a scope's `client` config. Throws on an `expose`/`derived` name
- * collision, or an `expose` key that isn't on the scope state schema.
+ * Validate a scope's `client` config. Throws on a `derived` key, which was
+ * removed (a view replaces it), or an `expose` key that isn't on the scope
+ * state schema.
  *
  * Validation only — nothing is rewritten, so the merged config the caller
  * already holds is the one the instance carries.
@@ -95,19 +94,16 @@ function validateScopeClientConfig(
   const client = config.client;
   if (client === undefined) return;
 
-  const exposeNames = client.expose ?? [];
-  const derivedNames = client.derived === undefined ? [] : Object.keys(client.derived);
-
-  if (exposeNames.length > 0 && derivedNames.length > 0) {
-    const exposeSet = new Set(exposeNames);
-    const collisions = derivedNames.filter((n) => exposeSet.has(n));
-    if (collisions.length > 0) {
-      throw new Error(
-        `Flow "${flowKind}" ${scope}.client has overlapping names in expose and derived: ` +
-        `${collisions.join(", ")}. Pick one per name.`
-      );
-    }
+  // Refused loudly, not ignored: a flow written for `derived` would otherwise
+  // define cleanly and its values would never reach the client (BP-030).
+  if (Object.hasOwn(client, "derived")) {
+    throw new Error(
+      `Flow "${flowKind}" ${scope}.client declares "derived", which was removed. Declare a view instead: ` +
+      `views: { name: defineView({ scope: "${scope}", block }) } in defineFlow, read with useView or client.view.`
+    );
   }
+
+  const exposeNames = client.expose ?? [];
 
   if (exposeNames.length > 0) {
     const knownKeys = introspectStateKeys(config.stateSchema);
@@ -853,29 +849,19 @@ function typedEntries<TEntry extends { block: BlockDefinition }>(
   return toEntries<TEntry>(value.actions);
 }
 
-// FIX-2286.
+// FIX-2623; BP-030.
 /**
- * Validate the flow's `reads` at definition time: each is an object
- * with a block, so a read with none fails here by name rather than as a
- * property read on `undefined` when an app calls it.
+ * A flow's `reads` is removed: views replace it. Refused by name, so a flow
+ * written for it fails at definition rather than defining cleanly and serving
+ * nothing at the route it used to.
  */
-function validateReads(
-  kind: string,
-  declared: Record<string, ReadEntry> | undefined
-): Record<string, ReadConfig> | undefined {
-  if (declared === undefined) return undefined;
-  if (typeof declared !== "object" || declared === null) {
-    throw new Error(`Flow "${kind}" declares "reads" that is not a map of name to a block.`);
+function rejectReads(kind: string, definition: object): void {
+  if (Object.hasOwn(definition, "reads")) {
+    throw new Error(
+      `Flow "${kind}" declares "reads", which was removed. Declare each as a view instead: ` +
+        `views: { name: defineView({ scope: "session", block }) } in defineFlow, read with useView or client.view.`
+    );
   }
-  const reads: Record<string, ReadConfig> = {};
-  for (const [name, value] of Object.entries(declared)) {
-    const read = toEntry<ReadConfig>(value);
-    if (typeof read !== "object" || read === null || !isBlockDefinition(read.block)) {
-      throw new Error(`Flow "${kind}" read "${name}" has no block. A read is a block, or \`{ block }\`.`);
-    }
-    reads[name] = withResolvedDescription(read);
-  }
-  return reads;
 }
 
 // FIX-2623.
@@ -1310,10 +1296,7 @@ function validateRequireUserFalseConsistency(
     );
   }
   const userClient = user?.client;
-  const userHasClient =
-    userClient !== undefined &&
-    ((userClient.expose?.length ?? 0) > 0 ||
-      Object.keys(userClient.derived ?? {}).length > 0);
+  const userHasClient = userClient !== undefined && (userClient.expose?.length ?? 0) > 0;
   if (userHasClient) {
     throw new Error(
       `Flow "${flowKind}" sets requireUser: false but declares user.client. ` +
@@ -1500,15 +1483,12 @@ function normalizeFlowConfig(
   validateEntryMaps(kind, declaredInternal, declaredTaskEntries);
   const internal = withFlowToolsEntries(declaredInternal, tools);
   const declaredTasks = withFlowToolsEntries(declaredTaskEntries, tools);
-  const reads = validateReads(kind, definition.reads);
-  // A read's block is a root like an action's: its resources register on the
+  rejectReads(kind, definition);
+  // A view's block is a root like an action's: its resources register on the
   // flow, and a dispatcher it reaches is checked. It never dispatches (its
   // context refuses), but an unknown address is still a definition error.
   const views = validateViews(kind, definition.views);
-  const readBlocks = [
-    ...Object.values(reads ?? {}).map((read) => read.block),
-    ...Object.values(views ?? {}).map((view) => view.block)
-  ];
+  const viewBlocks = Object.values(views ?? {}).map((view) => view.block);
 
   // Enumerated once by `actionBlocks` and walked by one `walkBlockGraph`, so
   // no collector can see a different edge set (three hand-rolled walks was how
@@ -1532,7 +1512,7 @@ function normalizeFlowConfig(
   // (the board's ledger) count.
   const reachable = walkBlockGraph([
     ...actionBlocks(actions, internal, declaredTasks, webhooks, schedules, requestMerged),
-    ...readBlocks
+    ...viewBlocks
   ]);
 
   const task = resolveDispatchTargets(kind, reachable, internal, declaredTasks);
@@ -1548,7 +1528,7 @@ function normalizeFlowConfig(
 
   const declaredBlocks = [
     ...actionBlocks(actions, internal, task, webhooks, schedules, requestMerged),
-    ...readBlocks
+    ...viewBlocks
   ];
 
   // Resources are collected off the same walk, taken from `declaredBlocks`
@@ -1619,7 +1599,6 @@ function normalizeFlowConfig(
     actions,
     ...(internal !== undefined ? { internal: { actions: internal } } : {}),
     ...(task !== undefined ? { task: { actions: task } } : {}),
-    ...(reads !== undefined ? { reads } : {}),
     ...(views !== undefined ? { views } : {}),
     session,
     request: requestMerged,
@@ -1709,7 +1688,6 @@ export function defineFlow<
     // unmirrored one.
     ...(baseInstance.internal !== undefined ? { internal: baseInstance.internal } : {}),
     ...(baseInstance.task !== undefined ? { task: baseInstance.task } : {}),
-    ...(baseInstance.reads !== undefined ? { reads: baseInstance.reads } : {}),
     ...(baseInstance.views !== undefined ? { views: baseInstance.views } : {}),
     session: baseInstance.session as TSession,
     request: baseInstance.request as TRequest,

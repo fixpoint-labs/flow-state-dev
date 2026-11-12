@@ -24,7 +24,7 @@ the app.**
 | **The real need** | The epic's outcome: a user of any of the four apps gets a finished answer sized to the ask with the evidence it checked, without each app writing that guidance ([epic goal](../../epics/FIX-2490/SPEC.md#the-goal-and-how-well-know-its-met), [Q1](../../epics/FIX-2490/DECISIONS.md#q1)) |
 | **Smaller, and rejected** | "Each child's tests pass." Every layer can pass its own test while no worker in an app ever says the date. The epic names this as *not done if* |
 | **Bigger, and not this issue's** | "Workers feel smarter." An eval of about 10 tasks per app; the epic's D2 rules it out |
-| **Not done if** | The scripts ran on fewer than 3 runs, or on one app · a control never failed · an ask passed on a run where its mechanism did not fire · an app's WORKER.md carries date, "done" or length text the closure's sweep finds · the wrap set a switch the defaults should carry |
+| **Not done if** | The scripts ran on fewer than 3 runs, or on one app · a control never failed · an ask passed on a run where its mechanism did not fire · an app's WORKER.md carries date or "done" text the closure's sweep finds · the wrap set a switch the defaults should carry |
 
 ```mermaid
 flowchart LR

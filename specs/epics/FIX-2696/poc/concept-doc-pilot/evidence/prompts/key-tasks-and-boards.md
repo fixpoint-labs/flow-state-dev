@@ -1,0 +1,3 @@
+P2.1 The failed task is marked errored. The other two research tasks carry on to completion. compare is cancelled and never runs. The loop stops when nothing else can run, reporting that it was blocked by failures (a termination reason such as blocked-by-failures).
+P2.2 Not by itself: nothing runs it until something runs the board's loop (the drain) again; a board is not a background queue. To last across requests the tasks must be stored in a resource in session, user or org scope rather than the default per-request storage.
+P2.3 Its block receives the dependencies' outputs on its input, keyed by task id (`input.deps`).

@@ -65,15 +65,7 @@ export function defineCallerAgent(installation: WorkerInstallation) {
     internal: { actions: hearsMessages(installation, "agent") },
     session: {
       ...session,
-      client: {
-        derived: {
-          ran: (ctx: { state: { instructions?: string | null; desk?: string | null; runs?: number } }) => ({
-            instructions: ctx.state.instructions ?? null,
-            desk: ctx.state.desk ?? null,
-            runs: ctx.state.runs ?? 0
-          })
-        }
-      }
+      client: { expose: ["instructions", "desk", "runs"] }
     }
   });
 }

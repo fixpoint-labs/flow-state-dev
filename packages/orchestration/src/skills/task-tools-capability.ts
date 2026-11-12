@@ -52,7 +52,7 @@
  */
 
 import { defineCapability, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
-import type { ActionConfig, BlockContext, BlockDefinition, ReadConfig } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { discardAttachmentsForUser, keepAttachmentsForUser } from "@flow-state-dev/core/internal";
@@ -63,7 +63,6 @@ import {
   lockedFields,
   taskSchema,
   taskSpendView,
-  taskSpendViewSchema,
   TaskCapExceededError,
   TaskFilingRefusedError,
   type Task,
@@ -76,7 +75,6 @@ import {
   type TaskWriteOutcome,
   type TaskWriteDeclineReason,
   openHolds,
-  taskHoldSchema,
   type QuestionAnswer,
   type QuestionInit,
   type OwnHold,
@@ -108,6 +106,7 @@ import {
 } from "../tasks/helpers/wait-on-task";
 import { cancelAndResume } from "../tasks/helpers/user-stop";
 import { taskToolSuffix } from "./task-tool-suffix";
+import { listTasksOutputSchema, waitingShape } from "./task-listing";
 
 /** A filing's question as the board keeps it: a plain string is a question. */
 function askOf(question: string | { kind: "question" | "confirm"; prompt: string; onNo?: "cancel" | "continue" }): QuestionInit {
@@ -982,75 +981,6 @@ interface BuildTaskToolsOptions {
  * a question or a confirm on the row, or a task run's stop, each with what
  * it asks and when it falls due. One shape for every stop.
  */
-const waitingShape = {
-  keptOpenBy: z.enum(["suspended", "filed", "steer"]).optional(),
-  /** What the task waits on now, oldest first; absent when nothing does. Answer a question with `updateTask({ id, answers, message })`. */
-  holds: z.array(taskHoldSchema).optional(),
-};
-
-// FIX-2623.
-/**
- * One task as `listTasks` lists it: its status note, never its output. The
- * board's task-list view answers a list of these, keyed by `id`.
- */
-const listedTaskSchema = z.object({
-  id: z.string(),
-  goal: z.string(),
-  /** The short label the task was filed under, when it has one. */
-  title: z.string().optional(),
-  status: z.string(),
-  assignee: z.string().optional(),
-  attempts: z.number(),
-  /** Its worker's last one-line progress note, when it reported one. */
-  statusNote: z.string().optional(),
-  /** The task whose request filed it, when a task did. */
-  filedByTask: z.string().optional(),
-  // The run working the task, or the one that last worked it: a
-  // reader opens it from here (FIX-1668). Absent until a run starts.
-  run: taskSchema.shape.run,
-  // FIX-2288.
-  /**
-   * What the task's runs spent: the harness and model
-   * running it and its tokens, `null` when it never ran in a request
-   * of its own. On the board's action only: a model's tool reads none.
-   */
-  spend: taskSpendViewSchema.nullable().optional(),
-  /**
-   * When the row was last written (epoch ms), so a client holding the
-   * row from another source too keeps the newer copy. Board action only.
-   */
-  updatedAt: z.number().optional(),
-  /**
-   * When the task was filed, when its run first started, and when it
-   * ended (epoch ms), as the row records them, so a reader can show
-   * how long a task has run and order tasks by when they ended. On
-   * the board's action only, like `spend`; the last two are absent
-   * until they happen.
-   */
-  createdAt: z.number().optional(),
-  startedAt: z.number().optional(),
-  completedAt: z.number().optional(),
-  /** A request is waiting on this task's ending (`getTask` with `wait`). */
-  waitedOn: z.literal(true).optional(),
-  /**
-   * A running row's lease deadline (epoch ms), as the board holds it,
-   * so a reader tells a run that stopped answering by the board's own
-   * rule, `leaseLapsed`. Absent while no claim holds the row. On the
-   * board's action only, like `spend`.
-   */
-  leaseUntil: z.number().optional(),
-  ...waitingShape,
-  // FIX-2086.
-  /** The latest completed follow-up in its chain, by id; read its output with getTask. */
-  current: z.object({ id: z.string() }).optional(),
-});
-/** What `listTasks` answers: the rows, or the board's refusal. */
-const listTasksOutputSchema = z.union([
-  z.object({ ok: z.literal(true), tasks: z.array(listedTaskSchema) }),
-  z.object({ ok: z.literal(false), error: z.string() }),
-]);
-
-
 function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskToolsOptions = {}) {
   const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false } = options;
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
@@ -2463,32 +2393,10 @@ export function taskToolActions(
   );
 }
 
-// FIX-2286.
-/**
- * A durable ledger's task list as a flow `reads` map:
- * `listTasks_<suffix>`, answering exactly what the `listTasks_<suffix>` action
- * answers for the same board, from the same list code, and storing nothing.
- * Spread it into `defineFlow`'s `reads` so an app can watch a session's board
- * without a request per look.
- *
- * `resolve` is the read's own resolver: it must reach the board the action's
- * does and write nothing on the way, since a read's context refuses every
- * write. A resolver that repairs or starts rows as it goes (a board's touch)
- * is the action's, not this one's. Only the list is a read: `getTask` can
- * wait, which holds a wait slot on the row.
- */
-export function taskToolReads(
-  collectionId: string,
-  resolve: TaskCollectionResolver,
-): Record<string, ReadConfig> {
-  const listTasks = listTasksBlockFor(collectionId, resolve);
-  return { [listTasks.name]: { block: listTasks, description: listTasks.description } };
-}
-
 /**
  * One board's `listTasks_<suffix>` as the board's actions build it
- * (`claimless`), typed by its output. The block the board's task-list view
- * (`views/task-list-view.ts`) runs, and the read beside it.
+ * (`claimless`), typed by its output: the block the board's task-list view
+ * (`views/task-list-view.ts`) runs.
  */
 export function listTasksBlockFor(collectionId: string, resolve: TaskCollectionResolver) {
   const listTasks = buildTaskTools(resolve, {
@@ -2499,5 +2407,3 @@ export function listTasksBlockFor(collectionId: string, resolve: TaskCollectionR
   return listTasks;
 }
 
-/** One task as the board's list answers it. */
-export { listedTaskSchema };

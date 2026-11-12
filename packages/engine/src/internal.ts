@@ -7,7 +7,6 @@
  * only with a README entry.
  */
 export { encodeStreamEvent } from "./streaming";
-export { runRead, type RunReadOptions } from "./execution";
 export { runView, type RunViewOptions, type ViewAnswer } from "./execution";
 export type { RecordedRead } from "./context/view-reads";
 export {

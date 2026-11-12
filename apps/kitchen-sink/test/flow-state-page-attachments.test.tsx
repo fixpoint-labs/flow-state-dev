@@ -71,7 +71,7 @@ vi.mock("@flow-state-dev/react", async (importOriginal) => {
       createSession: async () => undefined,
     }),
     useSession: () => session,
-    useClientData: () => ({ data: undefined }),
+    useView: () => ({ value: undefined, stale: false }),
     useResourceCollectionList: () => ({ items: [], error: undefined }),
     useJumpToLatest: () => ({ ref: () => undefined, atEnd: true, jump: () => undefined, sent: () => undefined, mine: () => ({}) }),
   };

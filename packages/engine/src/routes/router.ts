@@ -139,14 +139,6 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       actionName: p.actionName
     }))
   ],
-  run_read: [
-    entry("POST", "/:flowKind/:sessionId/reads/:readName", (p) => ({
-      kind: "run_read",
-      flowKind: p.flowKind,
-      sessionId: p.sessionId,
-      readName: p.readName
-    }))
-  ],
   // FIX-2624: a user or org resource by scope and key, with no session. A read
   // answers from the store; a send is the action route with the resource
   // named where a session id goes, run by the flow its `runBy` names.

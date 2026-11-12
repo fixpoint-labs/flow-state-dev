@@ -1,0 +1,308 @@
+# Figures for the docs
+
+One visual language for every figure in the new docs. A reader who has learned a mark on one page
+can read it on every other page, because each mark means one thing site-wide.
+
+This file is the home of the figure rules. [`WRITING-BRIEF.md`](../WRITING-BRIEF.md) says when a
+page needs a figure; this file says how to draw, check and embed one. FIX-2697 turns
+[the lint rules](#lint-rules) into a check.
+
+| Here | What it is |
+| --- | --- |
+| [What the marks mean](#what-the-marks-mean) | The patterns, and the one meaning each has |
+| [The key](#the-key) | Required on every figure |
+| [Anatomy and canvas](#anatomy-and-canvas) | Sizes, columns, text |
+| [Light and dark](#light-and-dark) | Why a figure carries no colour |
+| [The figure brief](#the-figure-brief) | What to write before drawing |
+| [Render it and look at it](#render-it-and-look-at-it) | `render.sh`, and what to check |
+| [On the page](#on-the-page) | The `Figure` component |
+| [Lint rules](#lint-rules) | For FIX-2697 to implement |
+| [Exemplars](#exemplars) | The three pilot figures, redrawn |
+
+## Where the style comes from
+
+Nothing here is new. The marks are the site's drawing classes, defined once in
+[`labs/design-system/page.css`](../../../../labs/design-system/page.css) under `.drawing` and
+published as `@flow-state-dev/design-system/page.css`. The site inlines each SVG through
+[`apps/docs/src/components/Figure`](../../../../apps/docs/src/components/Figure/index.tsx), so the
+drawing takes the page's fonts and colour tokens. `apps/docs/scripts/lint-brand.mjs` already
+fails a published figure that carries a colour, a `<style>` block or an unknown class.
+
+The meanings come from the thirteen figures published today. All thirteen key their hatching as
+`OUTLIVES THE REQUEST`. Compare a new figure against two of them:
+`apps/docs/docs/fundamentals/state-scopes.svg` and `flow-type-instance-session.svg`.
+
+## What the marks mean
+
+| Mark | How it is drawn | Means, on every page | Key label |
+| --- | --- | --- | --- |
+| **Hatching** | A 10-unit band, `fill="url(#hatch)"`, across the top of a box | The thing is stored and outlives the request | `OUTLIVES THE REQUEST`, always these words |
+| **Dashed outline** | `class="dash"` on a box or a lifeline | The thing lasts one action run and is gone | `LASTS ONE ACTION RUN`, always these words |
+| **Highlighter** | One `class="hl"` fill, with `on-hl` on the text over it | The one idea a reader should leave with | The idea, in the figure's words: `CANNOT START YET` |
+| **Arrow** | `class="ln"` with `marker-end="url(#ah)"` | One relation, read from the thing that acts to the thing acted on | The verb: `FILLS A SLOT`, `READS` |
+| **Dashed arrow** | `class="ln-dash"` with the arrowhead | The relation holds only under a condition | Starts with `ONLY`: `ONLY WHEN EXPOSED` |
+| **Red** | `x` beside `ln`, `t` or `plate`, ending in a bar and no arrowhead | An exception: refused, cannot read, failed | The exception: `REFUSED` |
+| **Layer boxes** | Full-width `solid` boxes stacked 16 apart, labelled `01 ·`, `02 ·` from the top | Each layer is built from the one below it | None: the numbers carry it |
+| **A box in a box** | A `thin` box inside a `solid` one | A part inside a thing | None |
+| **Boxes side by side** | `solid` boxes in columns | Separate things; none sits inside another | None |
+
+Three rules follow.
+
+- **A mark asserts; its absence asserts nothing.** A `solid` box says "this exists" and makes no
+  claim about how long it lasts. When the figure is about lifetimes, give every box its lifetime
+  mark.
+- **Never borrow a mark.** Dashed does not mean optional, planned, or "someone else's". Hatching
+  does not mean a container, a file, or "final". If no mark fits, use words.
+- **One highlighter per figure,** and it can be a small part: one row, one name.
+
+A box cannot be both hatched and dashed. An arrow that means two relations is two arrows, each
+numbered with a plate, or a key label that names both: `TURNS INTO · WORKS IN`.
+
+## The key
+
+Every figure ends with a key: one row at the bottom that shows each mark the figure uses and says
+what it means here. It is a `<g id="key">`, the last element in the file.
+
+```svg
+<g id="key">
+<line class="ln" x1="28" y1="436" x2="54" y2="436" marker-end="url(#ah)"/>
+<text class="lb" x="62" y="440">THE DRAIN WORKS A TASK</text>
+<line class="dash" x1="259" y1="436" x2="285" y2="436"/>
+<text class="lb" x="293" y="440">LASTS ONE ACTION RUN</text>
+<rect fill="url(#hatch)" x="475" y="430" width="26" height="11"/><rect class="thin" x="475" y="430" width="26" height="11"/>
+<text class="lb" x="509" y="440">OUTLIVES THE REQUEST</text>
+<rect class="hl" x="691" y="430" width="26" height="11"/>
+<text class="lb" x="725" y="440">CANNOT START YET</text>
+</g>
+```
+
+- An entry is a sample, 26 wide, then an `lb` label in capitals 8 units to its right. Leave 32
+  between entries.
+- The key lists every arrow, hatching, dashed outline, highlighter and red mark the figure uses,
+  and nothing it does not use.
+- Order: arrows, dashed, hatching, highlighter, red.
+- Boxes, rules and text need no entry.
+
+## Anatomy and canvas
+
+A figure has up to three bands, top to bottom:
+
+1. **The drawing.** Boxes, arrows and short labels.
+2. **Notes**, optional. A full-width `hi` rule, then numbered sentences (`n` for the number, `t`
+   for the text), 25 apart. A note explains a numbered plate on an arrow, or states the one thing
+   the drawing cannot show. Four at most.
+3. **The key.** 27 below the last note, or below a `hi` rule when there are no notes.
+
+| | Value |
+| --- | --- |
+| Canvas | `viewBox="0 0 920 H"`. Grow down, never wider |
+| Height | 300 to 600 is usual. Past 720, split the figure in two |
+| Margins | 28 left and right, 24 top, 22 under the key's baseline |
+| Columns | One of 864. Two of 420, gap 24. Three of 272, gap 24. Four of 204, gap 16 |
+| Layer stack | Boxes 560 wide at x=28; a sentence beside each at x=612 |
+| Inside a box | Text starts 14 in. The first label sits 22 below the top edge, or 32 below a hatched one |
+| Arrow gap | 36 or more between boxes; 110 when the arrow carries a plate |
+
+**Text** is monospace, never wraps, and never rotates. Break lines yourself, 16 or 17 apart.
+
+| Class | Use | Size | Units per character |
+| --- | --- | --- | --- |
+| `lb` | What kind of thing this is, in capitals | 10 | 7.5 |
+| `nm` | A thing's name | 15 | 9 |
+| `sub` | A quiet second line | 10.5 | 6.3 |
+| `c` | Code, ids, values | 12.5 | 7.5 |
+| `t` | A sentence, set outside the boxes or in a note | 12 | 7.2 |
+| `n` | A note's number | 11 | 6.6 |
+| `plate` | A number or word set on an arrow, over a `ground` rect | 10.5 | 7.3 |
+
+A line of text ends at least 12 units inside its box, and no later than x=892.
+
+**Lines.** `solid` outlines a thing. `thin` outlines a part, and closes a hatched band. `hi` is a
+rule between rows. `ln` is an arrow. Arrows run horizontally or vertically, start and end on a box
+edge, and pass through gaps, never over text. A plate is a `ground` rect 15 tall with the `plate`
+text centred on it; `01` takes a rect 24.6 wide.
+
+**Words.** Labels are fragments a reader could say aloud. The page's example appears by name
+(`acme`, `engineering.lead`). No option names unless the page teaches them. No sentence addressed
+to the writer or the reviewer: anything in the drawing is for the reader.
+
+**The two definitions** every figure starts with, unchanged:
+
+```svg
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+```
+
+## Light and dark
+
+A figure file holds shapes, classes and text. It holds no colour, no font and no `<style>`
+block. `page.css` gives every class its Paper value and its Night value from the same tokens
+the page uses, so one file draws correctly in both.
+
+- Text over the highlighter takes `on-hl`. The highlighter is the same yellow in both modes, and
+  without `on-hl` the text turns pale on it at night.
+- The only fills are `hl`, `ground` under a plate, `ink` on an arrowhead or a dot, and the hatch.
+  Do not cover a line with a filled shape.
+- A file like this shows as black shapes when opened on its own or on GitHub. That is expected.
+  To see it, render it.
+
+## The figure brief
+
+Write this before drawing, and keep it in the page's record. The page plan in
+[`SITEMAP/`](../../../../specs/epics/FIX-2696/SITEMAP/README.md) has one for every planned figure.
+
+| Line | Example, for the board figure |
+| --- | --- |
+| **The one idea** | A board is a stored list and a loop that works through it |
+| **What it adds over the prose** | Shows the two side by side with different lifetimes: what is left when the request ends |
+| **The parts, named from the page's example** | The list with `acme`, `globex`, `initech`, `compare`; the drain's three steps |
+| **Marks** | Hatching on the list; dashed outline on the drain; arrows for claim and record; highlighter on `compare` |
+| **Layout** | Two columns with an arrow gap; notes; key |
+
+If the idea needs two sentences, it is two figures.
+
+## Render it and look at it
+
+```bash
+docs/contributing/docs-revamp/figures/render.sh docs/contributing/docs-revamp/pilot/figures/board.svg
+```
+
+[`render.sh`](./render.sh) inlines the file into a page that loads `page.css`, as the site does,
+and writes `rendered/<name>.light.png` and `rendered/<name>.dark.png` with headless Chromium. Pass
+a second argument to write somewhere else.
+
+Open both images and check, in each:
+
+1. No text crosses a box edge or the right margin.
+2. No arrow crosses a label, and each arrowhead touches the box it points at.
+3. Exactly one thing is highlighted, and its text is readable in both modes.
+4. Every mark in the drawing is in the key, with the right words.
+5. Set it beside the two published figures. Same marks, same line weights, same type sizes.
+6. Read the figure without the page. The one idea should be recoverable from it.
+
+Then run the site's brand lint on the file. It runs from `apps/docs` and takes file paths:
+
+```bash
+pnpm --filter @flow-state-dev/docs exec node scripts/lint-brand.mjs "$PWD/docs/contributing/docs-revamp/pilot/figures/board.svg"
+```
+
+## On the page
+
+A figure goes on the page through the site's `Figure` component, as on every published page:
+
+```mdx
+import Figure from "@site/src/components/Figure";
+import Board from "./figures/board.svg";
+
+<Figure svg={Board} caption="A board is a list and a loop" description={"On the left, the list of tasks …"} />
+```
+
+- **`caption`** is the figure's title: a short noun phrase or statement, no full stop, 60
+  characters or fewer. The component numbers it.
+- **`description`** says in full what the drawing shows, for a reader who cannot see it. It
+  names every part and every mark's meaning, and the one idea.
+- Nothing else. No italic line under the figure, and no note about how the figure will be
+  embedded. A sentence the reader needs beside the figure is ordinary prose.
+- The imports go under the frontmatter. `scripts/check-docs-page.mjs` leaves imports and
+  `<Figure … />` lines out of the word count.
+
+The pages sit outside the site until cutover, so GitHub shows the component as text. The rendered
+images under [`rendered/`](./rendered) are what a reviewer looks at.
+
+## Lint rules
+
+For FIX-2697. Rules 1 to 5 are what `apps/docs/scripts/lint-brand.mjs` checks today; point it at
+the revamp figures. Rules 6 to 16 are new. Like the brand lint, the check first runs against
+fixtures that break each rule and fails if a rule does not fire.
+
+**Banned constructs**
+
+1. No `<style>`, `style=`, `<title>` or `<desc>`.
+2. No colour literal anywhere: hex, `rgb()`, `hsl()` or a colour name. The only `fill` attribute
+   allowed is `fill="url(#hatch)"`.
+3. Every `class` is one `page.css` defines under `.drawing`.
+4. No `stroke-width`, `stroke-dasharray` or `font-family` attribute. Classes set them.
+5. No `<image>`, `<foreignObject>`, `<a>`, `<script>`, `<tspan>`, gradient, filter, `opacity`,
+   `transform` on text, or `textLength`.
+6. `<defs>` holds exactly the `hatch` pattern and the `ah` marker, as printed above.
+
+**Canvas and text**
+
+7. The root is `viewBox="0 0 920 H"` with whole-number `H`, and has no `width` or `height`.
+8. Every `<text>` has exactly one of `lb`, `nm`, `sub`, `c`, `t`, `n`, `plate`, with `on-hl` or
+   `x` as the only additions. `lb` and `plate` text is capitals.
+9. Text fits. Width is characters times the class's units per character. The line ends at or
+   before x=892, and 12 or more inside the smallest box that holds its start point.
+10. An `ln` or `ln-dash` runs only horizontally or vertically: a `<line>` with one coordinate
+    fixed, or a `<path>` of `M`, `H` and `V`.
+
+**The key**
+
+11. Exactly one `<g id="key">`, and it is the last element. Each entry is one sample followed by
+    one `lb` label.
+12. Each mark used outside the key has an entry, and each entry's mark is used outside the key:
+
+    | Used outside the key | Sample in the key | Label |
+    | --- | --- | --- |
+    | `fill="url(#hatch)"` | A hatched rect | Exactly `OUTLIVES THE REQUEST` |
+    | `class="dash"` | A `dash` line | Exactly `LASTS ONE ACTION RUN` |
+    | `class="hl"` | An `hl` rect | Any; five words or fewer |
+    | `ln` with a marker | An `ln` line with the marker | Any |
+    | `ln-dash` | An `ln-dash` line | Starts with `ONLY` |
+    | `x` | An `ln x` line | Any |
+
+**Pattern meanings**
+
+13. Hatching is a band and nothing else: a rect 10 tall that shares its `x`, `y` and `width`
+    with a `solid` or `thin` rect. Never a whole-shape fill, and never on a `dash` rect.
+14. At most one `hl` shape outside the key. `on-hl` appears only on text inside it.
+15. One numbering. Plates numbered `01`, `02` on arrows each have a note with the same `n`, and
+    notes count up from `01` without a gap. Numbers are not used for anything else, except the
+    `01 ·` prefix on layer labels, which a figure with numbered notes does not use.
+16. On the page: every figure is a `<Figure svg caption description />`. The caption is 60
+    characters or fewer with no closing full stop, the description is 30 words or more, and no
+    line contains "Description for the site's".
+
+Not lintable, so the cold read and the reviewer check it: that hatching and dashes are used
+where their meaning is true, and that the highlighted thing is the page's one idea.
+
+## Exemplars
+
+The three pilot figures, redrawn to these rules. Each passes the brand lint with no findings
+and was rendered and read in both modes. `pages/figures/blocks.svg` has not been redrawn;
+FIX-2701 redraws it with its page.
+
+### Layer boxes: `pilot/figures/layers.svg`
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="rendered/layers.dark.png">
+  <img src="rendered/layers.light.png" alt="Five stacked layers: a starter, kits, flows, blocks and the engine. Kits is highlighted, and arrows show one kit filling a slot another opened." width="920">
+</picture>
+
+Five layers, numbered from the top, with the verb for each in its label. The arrows have one
+meaning, and the key says it. Nothing is hatched or dashed, because the figure makes no claim
+about lifetimes. There are no notes, since the sentence beside each layer does that job.
+
+### Hatching and dashes: `pilot/figures/board.svg`
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="rendered/board.dark.png">
+  <img src="rendered/board.light.png" alt="A hatched list of four tasks beside a dashed drain. Two numbered arrows run from the drain to the list, and the compare row is highlighted." width="920">
+</picture>
+
+The list is hatched and the drain is dashed, so the figure shows what is left when the request
+ends. The two arrows carry plates, and notes 01 and 02 explain them. Note 04 states the default
+the drawing does not show.
+
+### Columns and copies: `pilot/figures/worker.svg`
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="rendered/worker.dark.png">
+  <img src="rendered/worker.light.png" alt="A WORKER.md file on the left, two hatched rosters in the middle each holding engineering.lead, and Alice's hatched sessions on the right." width="920">
+</picture>
+
+Three columns of separate things. The file is `solid` and unhatched: it is code in the repo, and
+the hatching is kept for what the app stores. The highlighter marks one user's copy, which is
+the idea the page turns on.
