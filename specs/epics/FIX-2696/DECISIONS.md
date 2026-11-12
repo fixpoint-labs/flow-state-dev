@@ -8,7 +8,7 @@
 flowchart TD
   D1["D1 · Five sections, told from the app down"] --> D2["D2 · Written for the kits release, one cutover"]
   D2 --> D3["D3 · Pages wait in docs/contributing until cutover"]
-  D1 --> D4["D4 · A smaller model writes; the loop checks"]
+  D1 --> D4["D4 · docs-writer writes from a fact sheet; the loop checks"]
   D1 --> D5["D5 · Reference is generated"]
   D1 --> O1["O1 · Open · what we promise about sharing kits"]
   D2 --> O2["O2 · Open · lead with starters"]
@@ -31,9 +31,11 @@ Pages describe Workforce, the harnesses and Claude Code as kits an app installs.
 
 The repo's rule is that user docs change only at release, and CI enforces it. Writing in the contributor folder keeps every PR mergeable and keeps unreleased surface off the site. FIX-2705 moves the pages under `apps/docs/` in one release-docs pass.
 
-## D4 · A smaller model writes each page; two checkers review it; the writer revises · tried on Blocks, 2026-11-12
+## D4 · The `docs-writer` agent writes each page from a fact sheet; two checkers review it; the writer revises · tried on Blocks, 2026-11-12
 
-The loop is: write from the brief, fact-check against the code with a type-check of the examples, prose-check, revise. On the Blocks page the first draft needed the review round, mostly for scope and density, and the revision stood beside the pilots. A person reads each Concepts page cold before it merges.
+The loop is: a fresh `docs-writer`, on a smaller model, collects the page's fact sheet (`<page>.facts.md`) and writes from the brief; a fresh agent fact-checks against the code with a type-check of the examples; `docs-editor` prose-checks; the writer revises. On the Blocks page the first draft needed the review round, mostly for scope and density, and the revision stood beside the pilots. A person reads each Concepts page cold before it merges.
+
+**Why `docs-writer`, not a second writer.** The pages are user docs written by agents that hold the spec. `docs-writer` is the agent whose reading list keeps design context out of a page, and the fact sheet is its surface brief. A separate writer with its own reading list would be a second way to write user docs, and the Blocks run showed the gap: its fact sheet cites `CLAUDE.md` and an architecture doc, and the brief's queue pointed the Views page at `docs/internal/`. ER-9 closes it.
 
 ## D5 · The API reference is generated from doc comments
 
@@ -70,15 +72,15 @@ About 330,000 words leave the reading path. Much is regenerated as reference. So
 
 | Area | Owner |
 |---|---|
-| Page types, budgets, the concept outline, code-example rules | FIX-2697 (today: `WRITING-BRIEF.md`) |
+| Page types, budgets, the concept outline, code-example rules, the writing loop and ER-9 | FIX-2697 (today: `WRITING-BRIEF.md`) |
 | Generated reference, READMEs | FIX-2698 |
 | Tabular behaviour reference, Upgrading | FIX-2699 |
 | Machine-readable output | FIX-2700 |
 | Concepts pages | FIX-2701 |
 | Start pages | FIX-2702 |
 | Catalog pages, the kit-page template | FIX-2703 |
-| Tutorials and recipes | FIX-2704 |
-| Navigation, redirects, removing old pages, reconciling kit claims | FIX-2705 |
+| Tutorials and recipes, consolidated with `polish-docs` | FIX-2704 |
+| Navigation, redirects, removing old pages, reconciling kit claims, the `polish-docs` pass over the whole set, the first-hour goals | FIX-2705 |
 
 **Rules every child obeys**
 
@@ -90,12 +92,15 @@ About 330,000 words leave the reading path. Much is regenerated as reference. So
 - **ER-6 · Where our word differs from the industry's, the page says so once**, in an "If you know ..." section: what is the same first, then the one difference.
 - **ER-7 · No option tables, error cases or migration notes outside Reference.**
 - **ER-8 · Kit names, config keys and import paths in a page are reconciled against the shipped surface at FIX-2705**, not before.
+- **ER-9 · A fact sheet cites only what `docs-writer` may read**: the exported surface and its doc comments, tests and `goals/`, examples, existing user docs. Never `specs/`, `docs/internal/`, `CLAUDE.md`, a pull request or a commit. (D4)
 
 ## Coordination seams
 
 - **FIX-2618 and FIX-2627.** Workforce and the harnesses become kits there. FIX-2703 waits on FIX-2627 for the real install lines.
 - **The release-docs process.** FIX-2705 is one release-docs pass, larger than usual. The pending changesets' docs lines are folded into the new pages, not the old ones.
 - **`docs/contributing/glossary.mjs`.** "Worker" means the named agent a user talks to; "person" and "member" are retired where a user or worker is meant. A page that coins or retires a public term edits the glossary in the same PR.
+- **FIX-2638.** It clears first-hour part (f) through changeset `Docs:` lines on today's pages. Those lines fold into the new pages, like every pending changeset's.
+- **FIX-601.** The launch IA issue in the Public Launch project. This epic covers its scope; whether to close it is the owner's call.
 - **Starter install.** Product work O2 depends on; not in this set.
 - **The Claude Code-style starter's name.** Needed before its Catalog page.
 
@@ -112,4 +117,8 @@ About 330,000 words leave the reading path. Much is regenerated as reference. So
 
 Four readers audited all 193 pages on 2026-11-11 for duplication, concept-versus-reference mix, voice and the first-hour path. The full findings, the proposed structure, the fate of every section and a verdict for every page are retained in [`analysis/RECOMMENDATION.md`](analysis/RECOMMENDATION.md). Three pilot pages set the voice. A fourth page, Blocks, was then written by a smaller model from the brief alone to test whether the brief was enough; what it exposed went back into the brief.
 
-Not done for this spec: the `analysis` pass and the end-state POC that an epic spec normally carries. The pilots and the Blocks run stand in for the POC.
+No end-state POC was built; the pilots and the Blocks run stand in for it.
+
+## Analysis · 2026-11-12 · watermark 2026-11-10
+
+**Right approach, with changes.** Prior art agrees with the shape: LangChain's docs split tutorials and concepts from a separate generated reference, and both it and [Mastra](https://mastra.ai/docs/getting-started/build-with-ai) serve `llms.txt` and per-page Markdown. Reuse moved three things. The writer step is now `docs-writer` (D4, ER-9). The one-home consolidation is `polish-docs`. The closure tests are goals under `goals/first-hour/`, where FIX-2452's failing check already reads these pages. `concept-doc` is a different job, an internal model doc that feeds user docs, so its rules are cited and nothing is added. Linear since the watermark added FIX-601 and FIX-2638 as seams, and nothing that changes the division into issues. The rest went to the children as notes: Mastra skips `llms-full.txt` as too large to help, so FIX-2700 tests both; a newcomer meets capability and kit as two installable things, so FIX-2701's pages say when to pick which. The pass ran in the epic agent's own context, with no fresh analyst and no `adhd` run, because that session had no way to dispatch one. Re-run it independently if the owner wants that check.

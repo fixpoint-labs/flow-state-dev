@@ -31,9 +31,11 @@ flowchart LR
   D["llms-full.txt"] --> E["Coding agent writes a flow<br/>that runs, without reading source"]
 ```
 
-The left path is the human test and the right path is the agent test. The closure issue (FIX-2705) runs both. The control that must fail: the same cold read against today's site, where the path to a running app is five pages long.
+The left path is the human test and the right path is the agent test. The closure issue (FIX-2705) writes both as goals under `goals/first-hour/`, each with a control that must fail: the same cold read against today's site, where the path to a running app is five pages long.
 
-Measures the closure issue also checks: no concept page over 1,500 words; every topic in the duplication table of [`analysis/RECOMMENDATION.md`](analysis/RECOMMENDATION.md) has one home; every old URL redirects.
+Measures the closure issue also checks: no concept page over 1,500 words; every topic in the duplication table of [`analysis/RECOMMENDATION.md`](analysis/RECOMMENDATION.md) has one home; every old URL redirects; `goals/first-hour/runs-without-store-ceremony` passes its part (f), which fails today on the pages this epic rewrites.
+
+**The project objective it serves.** Goal 1 in [`docs/objectives.md`](../../../docs/objectives.md), *validate through real usage*: real apps start from the docs. It closes a small part of that gap. On the lead measure it turns one failing goal green (first-hour, part f, unless FIX-2638's release gets there first) and adds two to the corpus; it does not prove any app runs on a real model.
 
 ## What's in the box
 
@@ -78,14 +80,14 @@ flowchart LR
   K["FIX-2627 · workforce and harnesses as kits"] -.-> G
   B["FIX-2698 · generated reference"] --> I["FIX-2705 · cutover"]
   C["FIX-2699 · tabular reference"] --> I
-  D["FIX-2700 · docs for agents"]
+  D["FIX-2700 · docs for agents"] --> I
   E --> I
   F --> I
   G --> I
   H --> I
 ```
 
-FIX-2697 hands every writing issue its rules. FIX-2700 is site code and can ship on its own. Everything else lands together at FIX-2705.
+FIX-2697 hands every writing issue its rules. FIX-2700 is site code and can merge on its own, but the closure run needs it: it delivers the `llms-full.txt` the agent test reads. Everything else lands together at FIX-2705.
 
 ## What stays as it is
 
@@ -97,7 +99,11 @@ FIX-2697 hands every writing issue its rules. FIX-2700 is site code and can ship
 ## What's already here, and the debt
 
 **Builds on**
-- The release-docs pipeline (a writer that sees only the public surface, an editor kept ignorant of the implementation). The epic's writing loop is that pipeline plus a fact check with a type-check.
+- The release-docs pipeline. The writing loop is its `docs-writer` agent, given a fact sheet as its surface brief, and its `docs-editor` agent, plus a fact check with a type-check ([D4](DECISIONS.md)).
+- The `polish-docs` skill, which release-docs already runs. FIX-2704 and FIX-2705 use it to give each topic one home. It edits presentation, never facts, so what is deleted is decided by FIX-2699 and O3 first.
+- The `concept-doc` skill's rules for building a model up part by part, one cast of examples, and one claim per figure. The concept-page outline in the brief cites them rather than restating them.
+- `goals/first-hour/`, the home of first-hour goal checks. The closure's two tests go there.
+- Two earlier sidebar reorganizations, FIX-266 (March) and FIX-495 (May), and the launch IA issue FIX-601, still in Backlog. This epic supersedes FIX-601's scope; it keeps their lesson that a regrouping alone does not last, which is why it adds page types and a checker.
 - The rule that every exported API has a doc comment, which is what makes generated reference possible.
 - The redirects plugin, already installed on the site.
 - PR 5126: three pilot pages, the brief, the checker, and one Concepts page written from the brief.

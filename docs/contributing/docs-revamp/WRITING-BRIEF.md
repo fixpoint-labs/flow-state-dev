@@ -34,6 +34,10 @@ Words are counted without frontmatter, code blocks and figure descriptions.
 
 ### The concept outline
 
+For building a model up part by part, keeping one cast of examples and giving each figure one
+claim, follow [`concept-doc`](../../../.agents/skills/concept-doc/SKILL.md) → "Writing rules".
+Its shape is for internal model docs; a concept page uses this outline.
+
 1. **Opening**, two short paragraphs, no heading. A situation the reader has been in, then the idea
    in plain words.
 2. **A figure**, when the idea has a shape (see Figures).
@@ -253,9 +257,12 @@ site these become the `caption` and `description` of `<Figure>`.
 
 ## Writing a page, step by step
 
-1. **Collect the facts.** Read the existing page or pages on the topic, the package's exported
-   surface, and one example that uses it (`examples/`, `labs/`). Write down, with file and line,
-   every fact the page will state. Do not read specs, pull requests or commit messages.
+1. **Collect the facts.** The writer is a fresh [`docs-writer`](../../../.claude/agents/docs-writer.md)
+   agent, and this list is its surface brief. Read the existing page or pages on the topic, the
+   package's exported surface and its doc comments, its tests, and one example that uses it
+   (`examples/`, `labs/`). Write down, with file and line, every fact the page will state, in
+   `<page>.facts.md` beside the page. Cite nothing `docs-writer` may not read: no specs,
+   `docs/internal/`, `CLAUDE.md`, pull requests or commit messages.
 2. **Choose the example.** One concrete scenario with names in it.
 3. **Write the opening and the outline** before anything else. If the opening needs a framework
    term to make sense, start again.
@@ -309,7 +316,7 @@ In reading order. Each line names the page and where its facts are today.
 5. **Sessions, items and streaming**: `apps/docs/docs/streaming/overview.md`, `emitting-items.md`
 6. **State and scopes**: `apps/docs/docs/fundamentals/state-and-scopes.md`
 7. **Resources**: `apps/docs/docs/resources/overview.md`, `storage.md`
-8. **Views**: `docs/internal/design/reading-writing-installing.md`, `packages/core/src/flow/defineView.ts`
+8. **Views**: `packages/core/src/flow/defineView.ts` and its doc comments and tests
 9. **Capabilities**: `apps/docs/docs/fundamentals/capabilities.md`
 10. **Kits and slots**: `docs/architecture/kits.md`, `goals/kits/install-in-any-order/`
 11. **Background work**: `apps/docs/guides/background-work.md`
