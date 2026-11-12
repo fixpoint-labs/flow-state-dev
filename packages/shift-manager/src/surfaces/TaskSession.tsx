@@ -52,16 +52,7 @@ export function TaskSession() {
       case "none":
         return (
           <EmptyState title="No run has started for this task" testId="session-no-run">
-            {task.waiting
-              ? "Its run hasn't started yet. The screen checks again every 2 seconds for up to a minute."
-              : task.gaveUp
-                ? "Its run still hasn't started. The screen stopped checking."
-                : "A run shows here once a worker starts on it."}
-            {task.gaveUp ? (
-              <button type="button" className="ml-1 font-medium underline" onClick={task.retryRow} data-testid="session-retry">
-                Retry
-              </button>
-            ) : null}
+            {task.waiting ? "Its run hasn't started yet. It shows here as soon as the board links it." : "A run shows here once a worker starts on it."}
           </EmptyState>
         );
       case "resolving":
