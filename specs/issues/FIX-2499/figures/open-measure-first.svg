@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Q1, open: build tool guidance now, or first measure Kitchen Sink. Recommended: measure Kitchen Sink first. Instead of: build now. It comes down to the first row: measured first, the implementation PR has a control that can fail, or the layer is cut; built now, Teammates and Shift Manager already pass, so nothing may fail. The price is the second row: a search key and about a day before work starts, against starting today. Third row, a tie: the design is the same either way. Locks in: Kitchen Sink decides whether the layer is built. Flips if the field is wanted whatever the closure shows."
+<svg viewBox="0 0 940 420" role="img" aria-label="Q1, open: build tool guidance now, or first measure Kitchen Sink. Recommended: measure Kitchen Sink first. Instead of: build now. It comes down to the first row: measured first, the implementation PR has a control that can fail, or the layer is cut; built now, Teammates and Shift Manager already pass on main, so nothing may fail. The price is the second row: a search key and about a day before work starts, against starting today. Third row, a tie: the design is the same either way. Locks in: Kitchen Sink decides whether the layer is built. Flips if the field is wanted whatever the closure shows."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -59,7 +59,7 @@
     <text class="t-s" x="248" y="179">or the kill line cuts the layer</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Maybe none</text>
-    <text class="t-s" x="612" y="179">Teammates 8/8, Shift Manager 10/10 on main</text>
+    <text class="t-s" x="612" y="179">Teammates 3/3 + 5/5, Shift Manager 5/5 on main</text>
   </g>
 
   <g id="row-2">

@@ -13,9 +13,10 @@
 | **writes a tool** | Puts usage advice in the description, read by every holder | Writes `guidance`; a line naming another tool prints only when that tool is held too |
 | **uses `search()` in a generator outside workforce** | The description only | The same lines, on by default ([D2](DECISIONS.md#d2)). `describeTools: false` drops them with the list |
 
-**Read the hardest line first.** On today's `main` the closure's knowledge ask already passes in
-Teammates (8 of 8 runs) and Shift Manager (10 of 10). Only Kitchen Sink can still show this layer
-is needed, and it has not been measured ([Q1](DECISIONS.md#q1)).
+**Read the hardest line first.** On today's `main` the closure's knowledge ask, run with the
+closure's own driver, already passes in Teammates (3 of 3, then 5 of 5) and Shift Manager (5 of
+5). Only Kitchen Sink can still show this layer is needed, and it has not been measured
+([Q1](DECISIONS.md#q1)).
 
 ## The goal, and how we'll know it's met
 
