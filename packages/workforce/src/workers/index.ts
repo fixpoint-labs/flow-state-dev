@@ -65,7 +65,6 @@ export { workerConfigOf } from "./verified-worker";
 export {
   readWorkerUsage,
   recordWorkerSpend,
-  defineWorkerUsageView,
   workerSpendHook,
   workerUsageCollection,
   workerUsageStateSchema,
