@@ -41,7 +41,7 @@ import { harnessEnv } from "@flow-state-dev/core/harness";
 import type { BlockContext, ModelResolver } from "@flow-state-dev/core/types";
 import { checkCursorReadiness, CURSOR_PASS } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
-import { ASK_MARKER_IGNORED, harnessReadiness, harnessReadinessAction, type HarnessReadinessRead } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_IGNORED, harnessReadiness, harnessReadinessView, type HarnessReadinessRead } from "@flow-state-dev/harness-manager";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { createSQLiteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
@@ -216,7 +216,7 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
     codex: { label: "Codex", check: (o) => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000, signal: o?.signal }) },
     cursor: { label: "Cursor", check: () => checkCursorReadiness(harnessEnv({ pass: CURSOR_PASS })) },
   });
-  const readinessFlow = defineFlow({ kind: "harness-readiness", actions: { read: harnessReadinessAction(readiness) } } as never)({
+  const readinessFlow = defineFlow({ kind: "harness-readiness", views: { readiness: harnessReadinessView(readiness) } } as never)({
     id: "harness-readiness",
   } as never) as { id: string };
 

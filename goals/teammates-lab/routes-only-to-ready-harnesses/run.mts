@@ -10,7 +10,7 @@
  * login).
  *
  * - *start log*: the server's log has the Codex row, naming `codex login`.
- * - *re-check*: the `harness-readiness` flow's `read` returns Codex not ready
+ * - *re-check*: the `harness-readiness` flow's readiness view returns Codex not ready
  *   with a remedy; after the SDK's own program logs in with a dummy key into
  *   that `CODEX_HOME`, `{ refresh: true }` returns it ready.
  * - *routes*: asked to have Codex change the README, Lead files no
@@ -29,6 +29,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { createClient } from "@flow-state-dev/client";
 import { findCodexProgram } from "@flow-state-dev/codex";
+import { harnessReadinessViewRef } from "@flow-state-dev/harness-manager/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import {
   assertPatched,
@@ -71,15 +72,9 @@ const PATCHES = CONTROLS[CONTROL]!;
 
 type Row = { harness: string; ready: boolean; reason: string | null; remedy: string | null };
 
-/** The `read` action's rows, checked again when `refresh` is set. */
+/** The readiness view's rows, read with no session, checked again when `refresh` is set. */
 async function readRows(fsd: Fsd, refresh: boolean): Promise<Row[]> {
-  const session = ((await fsd.flow(READINESS).createSession()) as { id: string }).id;
-  const sent = await fsd.flow(READINESS).send("read", refresh ? { refresh: true } : {}, { sessionId: session });
-  const done = (await sent.wait()) as { id?: string; status?: string };
-  const requests = (await fsd.sessions.requests(session, { limit: 10, includeResultOutput: true })) as Array<{ id: string; result?: { output?: { harnesses?: Row[] } } }>;
-  const rows = requests.find((request) => request.id === done.id)?.result?.output?.harnesses;
-  if (done.status !== "completed" || rows === undefined) throw new Error(`setup: the readiness read ended ${JSON.stringify(done).slice(0, 400)}`);
-  return rows;
+  return (await fsd.view(harnessReadinessViewRef(READINESS), refresh ? { refresh: true } : {})).value;
 }
 
 /** Log Codex in with a dummy key, through the SDK's own program, into `codexHome`. */

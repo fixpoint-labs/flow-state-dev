@@ -44,7 +44,7 @@
  * - The run record collection, so a host can build a status surface. A run's
  *   question holds its task on the board, so a host reads questions there.
  * - `harnessReadiness`, which harnesses can run on this machine, read once
- *   at start and again on request, with its action, its coordinator context
+ *   at start and again on request, with its user-scope view, its action, its coordinator context
  *   capability and its formatter.
  * - `harnessUsageAction`, the one query for how much of each harness's
  *   subscription a person has used, and the collection behind it.
@@ -326,6 +326,7 @@ export {
   harnessReadiness,
   harnessReadinessAction,
   harnessReadinessCapability,
+  harnessReadinessView,
   harnessReadinessViewSchema,
   formatHarnessReadiness,
   READINESS_CHECK_TIMEOUT_MS,
@@ -333,6 +334,7 @@ export {
   type HarnessReadinessOptions,
   type HarnessReadinessRead,
   type HarnessReadinessView,
+  type HarnessReadinessViewDefinition,
   type HarnessReadinessSlot,
   type ReadReadinessOptions,
 } from "./readiness";
