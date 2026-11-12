@@ -53,17 +53,27 @@ function scratchTree(): void {
   // The store and root links are shared; each workspace folder's own links are copied, so a
   // workspace dependency (`../../core`) resolves inside the scratch tree, not here.
   symlinkSync(join(REPO_ROOT, "node_modules"), join(tree, "node_modules"));
-  for (const parent of ["packages", "apps"]) {
-    for (const name of readdirSync(join(REPO_ROOT, parent))) {
-      const from = join(REPO_ROOT, parent, name, "node_modules");
-      if (!existsSync(from) || !existsSync(join(tree, parent, name))) continue;
-      cpSync(from, join(tree, parent, name, "node_modules"), {
-        recursive: true,
-        verbatimSymlinks: true,
-        filter: (src) => !src.includes(`${join(parent, name, "node_modules", ".cache")}`),
-      });
-    }
+  for (const folder of workspaceFolders()) {
+    const from = join(REPO_ROOT, folder, "node_modules");
+    if (!existsSync(from) || !existsSync(join(tree, folder))) continue;
+    cpSync(from, join(tree, folder, "node_modules"), {
+      recursive: true,
+      verbatimSymlinks: true,
+      // A build cache would make the scratch build a warm one.
+      filter: (src) => !src.startsWith(join(from, ".cache")),
+    });
   }
+}
+
+/** Every workspace folder `pnpm-workspace.yaml` names (`dir/*` globs one level). */
+function workspaceFolders(): string[] {
+  const globs = [...readFileSync(join(REPO_ROOT, "pnpm-workspace.yaml"), "utf8").matchAll(/^\s*-\s*(\S+)\s*$/gm)].map((m) => m[1]);
+  return globs.flatMap((glob) => {
+    if (!glob.endsWith("/*")) return [glob];
+    const parent = glob.slice(0, -2);
+    if (!existsSync(join(REPO_ROOT, parent))) return [];
+    return readdirSync(join(REPO_ROOT, parent)).map((name) => join(parent, name));
+  });
 }
 
 /** Adds the marker as the first sentence of the doc comment directly above `name`'s declaration. */
@@ -80,8 +90,8 @@ function mark({ file, name, kind, slug }: Marked): string | undefined {
   return undefined;
 }
 
-/** Runs the site build in the scratch tree; returns its exit code and combined output. */
-function buildSite(env: Record<string, string>): { code: number; output: string } {
+/** Runs the site build in the scratch tree; returns its exit code and combined output, also kept in `<leg>.log`. */
+function buildSite(leg: string, env: Record<string, string>): { code: number; output: string; log: string } {
   rmSync(site, { recursive: true, force: true });
   const run = spawnSync("pnpm", ["exec", "docusaurus", "build", "--out-dir", site], {
     cwd: join(tree, "apps", "docs"),
@@ -89,7 +99,10 @@ function buildSite(env: Record<string, string>): { code: number; output: string 
     encoding: "utf8",
     maxBuffer: 256 * 1024 * 1024,
   });
-  return { code: run.status ?? 1, output: `${run.stdout}\n${run.stderr}` };
+  const output = `${run.stdout}\n${run.stderr}`;
+  const log = join(scratch, `${leg}.log`);
+  writeFileSync(log, output);
+  return { code: run.status ?? 1, output, log };
 }
 
 /** Every HTML file under `dir`. */
@@ -123,8 +136,8 @@ await runGoal((failures, tell) => {
     const setup = fixture.exports.map(mark).filter((e): e is string => e !== undefined);
     if (setup.length > 0) return { failures: setup.map((e) => `setup: ${e}`), evidence: "" };
 
-    const a = buildSite({});
-    if (a.code !== 0) failures.push(`a · site-builds: the build exited ${a.code}: ${a.output.trim().split("\n").slice(-12).join(" | ")}`);
+    const a = buildSite("a", {});
+    if (a.code !== 0) failures.push(`a · site-builds: the build exited ${a.code}; its output is ${a.log}`);
     tell.over("a · built site HTML pages", htmlFiles(site));
     let carried = 0;
     for (const { slug, name } of fixture.exports) {
@@ -140,11 +153,11 @@ await runGoal((failures, tell) => {
     // Leg b: a package that can't be read fails the build, by name. Types are not rebuilt,
     // so the deleted declaration stays deleted.
     rmSync(join(tree, fixture.unreadable.remove), { force: true });
-    const b = buildSite({ FSD_API_REFERENCE_SKIP_TYPES: "1" });
+    const b = buildSite("b", { FSD_API_REFERENCE_SKIP_TYPES: "1" });
     tell.over("b · build output lines", b.output.split("\n").filter((l) => l.trim() !== ""));
     if (b.code === 0) failures.push(`b · fails-naming-the-package: the build passed with ${fixture.unreadable.remove} deleted`);
     else if (!b.output.includes(`cannot read ${fixture.unreadable.name}`)) {
-      failures.push(`b · fails-naming-the-package: the build failed without naming ${fixture.unreadable.name}`);
+      failures.push(`b · fails-naming-the-package: the build failed without naming ${fixture.unreadable.name}; its output is ${b.log}`);
     }
 
     return {
