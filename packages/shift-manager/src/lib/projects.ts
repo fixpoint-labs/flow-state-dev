@@ -19,7 +19,7 @@
  * their roster.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { topic, type LiveRead, type SessionSummary } from "@flow-state-dev/client";
+import { topic, viewRef, type Client, type LiveRead, type SessionSummary } from "@flow-state-dev/client";
 import {
   parseWorkstreamEntry,
   projectProgress,
@@ -27,7 +27,6 @@ import {
   type ParsedWorkstreamEntry,
   type ProjectProgress,
 } from "@flow-state-dev/workforce/browser";
-import { viewRef, type Client } from "@flow-state-dev/client";
 import { useLab } from "./lab-data";
 import { describeFailure, PROJECT_READER_FLOW, toProject, type Failure, type Project, type ProjectVisibility } from "./reads";
 
