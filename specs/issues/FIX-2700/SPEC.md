@@ -35,10 +35,10 @@ The check reads the built output, the same files the site serves. Today's build 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/docs-for-agents/serves-every-page-as-markdown/` · model n/a · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | For every HTML page in the build: a `.md` sibling exists, contains no JSX tag, and its prose words match the HTML's main text to within 2%; `llms.txt` lists it. 100% of pages |
+| **Signal** | For every HTML page in the build: the file its Markdown URL maps to exists (the page's URL plus `.md`, under `build/`; [decided, not asked](DECISIONS.md#decided-not-asked)), contains no JSX tag, and its prose words match the HTML's main text to within 2%; `llms.txt` lists it. 100% of pages |
 | **Input** | Today's built site. After cutover the same check runs on the new pages; a page with a `Figure`, a table and a code tab must pass |
 | **Anti-game** | Don't assert on the plugin's config or its list of routes. Walk the build's HTML files and look for each one's twin |
-| **Control that must fail** | Today's `main`, which must FAIL on *`.md` sibling exists*, 0% |
+| **Control that must fail** | Today's `main`, which must FAIL on *Markdown file exists*, 0% |
 
 ## What changes
 

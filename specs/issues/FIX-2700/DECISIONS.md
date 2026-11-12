@@ -58,8 +58,10 @@ It comes down to the meantime: holding the files leaves agents scraping the same
   tab. A component with no mapping fails the build, so a new one can't leak JSX.
 - **`llms.txt` follows the llmstxt.org layout:** the site title, a one-line summary, then one
   list per sidebar section, each entry a Markdown link with the page's description.
-- **The URL is the page's URL plus `.md`**, and the `.md` file sits beside `index.html` in the
-  build, so any static host serves it.
+- **The URL is the page's URL plus `.md`**, and the file's path in the build is that URL: the
+  Markdown for `/docs/intro` is `build/docs/intro.md`, beside the `intro/` directory, not inside
+  it next to `intro/index.html` (Docusaurus writes each page as `<path>/index.html`). A page
+  whose URL ends in `/` uses `index.md` in that directory. Any static host then serves it.
 
 ## Considered and dropped
 
