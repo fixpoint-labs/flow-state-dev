@@ -41,10 +41,10 @@ afterEach(async () => {
   host = undefined;
 });
 
-function boot() {
+function boot(declared: DeclaredRoutine[] = DECLARED) {
   host = bootSubscriptionsHost({
     adapters: [createScheduledTransportAdapter()],
-    hire: { routines: { providers: [github], declared: DECLARED } }
+    hire: { routines: { providers: [github], declared } }
   });
   return host;
 }
@@ -201,5 +201,17 @@ describe("the routines view and its writes", () => {
     const writers = (await runtime.stores.session.list({ parentage: "all" } as never)).filter((s) => s.flowKind === ROSTER_FLOW);
     expect(writers.map((s) => s.userId).sort()).toEqual(["alice", "bob"]);
     for (const session of writers) expect(session.id).toContain("fsd-write.");
+  });
+
+  it("leaves out a declared event routine the seed would refuse: its hearer isn't on the roster", async () => {
+    const ghost: DeclaredRoutine = { id: "ghost-reviews", trigger: { event: { provider: "github", thread: PR, interest: "reviews" } }, worker: "eng.ghost" };
+    const h = boot([...DECLARED, ghost]);
+    const listed = async () => (await clientOf(h, "alice").view(routinesView, {})).value.routines.map((r) => r.madeBy?.entry).sort();
+    // Listed before any request: only the two the seed would write.
+    expect(await listed()).toEqual(["api-reviews", "weekly-adoption"]);
+    // The seed refuses the ghost, and the view still leaves it out.
+    await workerTurn(h, "alice");
+    expect(await listed()).toEqual(["api-reviews", "weekly-adoption"]);
+    expect(Object.keys(await storedRoutines(h, "alice"))).toHaveLength(2);
   });
 });

@@ -50,6 +50,8 @@ import {
   seedSubscription,
   subscribe,
   subscribeInputSchema,
+  subscriptionInputRefusal,
+  unmatchedRefusal,
   unsubscribe,
   type SubscribeInput,
   type SubscribeTarget,
@@ -302,7 +304,13 @@ const entriesFor = (declared: readonly DeclaredRoutine[], caller: { userId?: str
  * seed would write it. So a declared routine lists before the user's first
  * request seeds it, and never twice. Reads only.
  */
-async function listWithDeclared(ctx: BlockContext, declared: readonly DeclaredRoutine[], caller: { userId?: string; orgId?: string }): Promise<ListedRoutine[]> {
+async function listWithDeclared(
+  ctx: BlockContext,
+  installation: WorkerInstallation,
+  options: Pick<RoutinesOptions, "providers" | "declared">,
+  caller: { userId?: string; orgId?: string }
+): Promise<ListedRoutine[]> {
+  const declared = options.declared ?? [];
   const stored = await listRoutinesOf(ctx, { by: "user" });
   const unseeded: ListedRoutine[] = [];
   for (const entry of entriesFor(declared, caller)) {
@@ -327,6 +335,8 @@ async function listWithDeclared(ctx: BlockContext, declared: readonly DeclaredRo
     // A stored subscription under the key, live, paused or ended, is the routine's state: an ended one lists nothing.
     if ((await subscriptionsOf(ctx).getOptional(key))?.state != null) continue;
     const event = trigger.event;
+    // One the seed would refuse never fires, so it isn't listed.
+    if ((await declaredEventRefusal(ctx, installation, options.providers ?? [], event, entry.worker!)) !== undefined) continue;
     unseeded.push({
       id: `${EVENT_ROUTINE_PREFIX}${key}`,
       name: event.thread.trim(),
@@ -384,14 +394,41 @@ const targetOf = (subscription: SubscriptionResourceState): SubscribeTarget => (
   ...(subscription.tenantId === undefined ? {} : { tenantId: subscription.tenantId })
 });
 
+/** The worker an event routine's events reach, on the running user's roster and able to run, or why not. */
+async function rosterHearer(ctx: BlockContext, installation: WorkerInstallation, worker: string): Promise<{ flow: string } | { refused: string }> {
+  const found = await installation.rosterWorker(ctx, worker);
+  if (found === undefined) return { refused: `no_worker: no worker "${worker}" on your roster.` };
+  if (found.problem !== undefined) return { refused: `no_worker: worker "${worker}" can't run: ${found.problem}.` };
+  return { flow: found.flow };
+}
+
+// FIX-2624.
+/**
+ * Why the seed would refuse a declared event routine for the running user,
+ * read without a session: its hearer (`rosterHearer`) and its settings
+ * (`subscriptionInputRefusal`, `unmatchedRefusal`), the checks the seed's own
+ * write runs. Not whether the user can read the thread: that asks the provider
+ * as the user, which a view doesn't. `undefined` when the seed would write it.
+ */
+async function declaredEventRefusal(
+  ctx: BlockContext,
+  installation: WorkerInstallation,
+  providers: readonly SubscriptionProvider[],
+  event: z.infer<typeof eventTriggerSchema>,
+  worker: string
+): Promise<string | undefined> {
+  const found = await rosterHearer(ctx, installation, worker);
+  if ("refused" in found) return found.refused;
+  return subscriptionInputRefusal(providers, event) ?? unmatchedRefusal(event, found.flow);
+}
+
 /**
  * The running user's conversation with `worker`: the address their own
  * message reaches, derived on the server, never from the input.
  */
 async function conversationWith(ctx: BlockContext, installation: WorkerInstallation, worker: string): Promise<SubscribeTarget | { refused: string }> {
-  const found = await installation.rosterWorker(ctx, worker);
-  if (found === undefined) return { refused: `no_worker: no worker "${worker}" on your roster.` };
-  if (found.problem !== undefined) return { refused: `no_worker: worker "${worker}" can't run: ${found.problem}.` };
+  const found = await rosterHearer(ctx, installation, worker);
+  if ("refused" in found) return found;
   const identity = ctx.session.identity as { userId?: string; orgId?: string };
   if (identity.userId === undefined || identity.orgId === undefined) return { refused: "no_identity: a routine needs a user and an organization." };
   const sessionId = await deriveWorkerSessionId({ userId: identity.userId, orgId: identity.orgId, flow: found.flow, criteria: { worker } });
@@ -808,7 +845,7 @@ export function defineRoutineActions(installation: WorkerInstallation, options: 
       inputSchema: z.object({}),
       outputSchema: routinesViewOutputSchema,
       resources: all as never,
-      execute: async (_input, ctx) => ({ routines: await listWithDeclared(ctx, options.declared ?? [], viewCaller(ctx)) })
+      execute: async (_input, ctx) => ({ routines: await listWithDeclared(ctx, installation, options, viewCaller(ctx)) })
     })
   }) as RoutinesViewDefinition;
   return { actions, seed, view, resources: all };
