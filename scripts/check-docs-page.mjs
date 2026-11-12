@@ -269,10 +269,11 @@ function sidecarsUnder(dir) {
  * in the change whose page is gone. A git failure other than the base having no record throws.
  */
 function changedSince(ref) {
-  const git = (...a) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  // LC_ALL=C keeps git's messages in English, so the stderr match below holds in any locale.
+  const git = (...a) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, LC_ALL: "C" } });
   const script = relative(ROOT, fileURLToPath(import.meta.url));
   const paths = script.startsWith("..") ? [PAGES, SITEMAP] : [PAGES, SITEMAP, script];
-  const changed = git("diff", "--name-only", ref, "HEAD", "--", ...paths).split("\n").filter(Boolean);
+  const changed = git("diff", "--name-only", "--no-renames", ref, "HEAD", "--", ...paths).split("\n").filter(Boolean);
   const inPages = changed.filter((f) => f.startsWith(`${PAGES}/`) && f.endsWith(".md"));
   const named = inPages.map((f) => join(ROOT, f.replace(SIDECAR, ".md")));
   const all = changed.some((f) => !f.startsWith(`${PAGES}/`)) ? pagesUnder(join(ROOT, PAGES)) : [];

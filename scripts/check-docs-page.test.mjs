@@ -367,6 +367,14 @@ describe("check-docs-page", () => {
       change({ [at("a.record.md")]: record("C-07") });
     });
 
+    it("fails a change that moves a page's record to a new page, on the page it left", () => {
+      // Same content, so git pairs the delete and the add as a rename.
+      const res = change({ [at("a.record.md")]: null, [at("n.md")]: page("N", "Fine."), [at("n.record.md")]: record("C-07") });
+      assert.equal(res.status, 1, res.out);
+      assert.match(res.out, /FAIL docs\/contributing\/docs-revamp\/pages\/a\.md[\s\S]*no record/);
+      change({ [at("a.record.md")]: record("C-07"), [at("n.md")]: null, [at("n.record.md")]: null });
+    });
+
     it("fails a change that deletes a page and leaves its record", () => {
       const res = change({ [at("a.md")]: null });
       assert.equal(res.status, 1, res.out);
