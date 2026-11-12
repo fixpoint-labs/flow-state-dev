@@ -7,8 +7,8 @@
  *
  *   node scripts/check-docs-page.mjs <page.md> [more.md ...]
  *
- * Exits 1 when any page fails. Frontmatter, code blocks and figure descriptions
- * are not counted as words.
+ * Exits 1 when any page fails. Frontmatter, code blocks, MDX imports and figures
+ * (a `<Figure … />` line, with its caption and description) are not counted as words.
  */
 import { readFileSync } from "node:fs";
 
@@ -26,7 +26,9 @@ function check(path) {
   const prose = raw
     .replace(/^---\n[\s\S]*?\n---\n/, "")
     .replace(/```[\s\S]*?```/g, "")
-    .replace(/^\*.*Description for the site's `?Figure`?:.*\*$/gm, "");
+    .replace(/^\*.*Description for the site's `?Figure`?:.*\*$/gm, "")
+    .replace(/^<Figure\b.*\/>$/gm, "")
+    .replace(/^import .* from "[^"]+";$/gm, "");
   const words = prose.split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
   const problems = [];
   if (!type) problems.push("no `type` in frontmatter");

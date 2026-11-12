@@ -3,8 +3,9 @@
 How to write a page for the new docs. Read the three pilot pages first; they set the voice, and
 this brief explains what they are doing so the next page can do the same. On depth and figures
 this brief wins: the pilots and [`pages/blocks.md`](./pages/blocks.md) predate the
-concept/reference contract below, and carry mechanism, a "What it won't do" section and `<style>`
-blocks that later pages do not.
+concept/reference contract below, and carry mechanism and a "What it won't do" section that later
+pages do not. The pilots' figures have been redrawn to [`figures/FIGURES.md`](./figures/FIGURES.md);
+the Blocks figure has not.
 
 - [`pilot/what-flow-state-is.md`](./pilot/what-flow-state-is.md): a Start page
 - [`pilot/tasks-and-boards.md`](./pilot/tasks-and-boards.md): a concept page about a mechanism
@@ -75,7 +76,7 @@ Its shape is for internal model docs; a concept page uses this outline.
    Where our word differs from the industry's, an "If you know ..." section comes straight after the
    opening (see The moves).
 7. **Next.** Two to four links, each with a clause saying what the reader gets there. Link to
-   pages by the names in "What to write next", as `./kebab-case-title.md`, whether or not they
+   pages by their slugs in the page plan, as `./kebab-case-title.md`, whether or not they
    exist yet. One of them is the page's Reference page, as `../reference/<topic>.md`, where the
    detail the page left out lives.
 
@@ -236,67 +237,21 @@ a sentence would not.
 
 A figure shows one idea, and the page's example appears in it by name (`acme`, `engineering.lead`).
 
-Every figure follows one style: the site's drawing system, as its published figures use it
-(`apps/docs/docs/fundamentals/state-scopes.svg` and `flow-type-instance-session.svg` are the two
-to compare against). Each mark has one meaning on every page:
+Every figure follows one visual language, and [`figures/FIGURES.md`](./figures/FIGURES.md) is its
+home: what each mark means on every page, the key every figure carries, the canvas and text
+sizes, how to render a figure in light and dark and what to check, the `Figure` markup on the
+page, and the lint rules. Read it before drawing. The three marks a writer plans with:
 
-| Mark | Means |
+| Mark | Means, on every page |
 | --- | --- |
-| Hatching (`fill="url(#hatch)"`) | Outlives the request |
-| Dashed outline (`dash`) | Lasts one action run |
-| The highlighter (`hl`) | The one idea a reader should leave with |
+| Hatching | Outlives the request |
+| Dashed outline | Lasts one action run |
+| The highlighter | The one idea a reader should leave with |
 
-Every figure carries a key that names each mark it uses, as the published figures do. The pilot
-figures predate this style; FIX-2701 redraws them.
-
-- **Canvas:** `viewBox="0 0 920 H"`. Margins of 28. Grow down, never wider.
-- **Classes only, no colours.** The site themes them for light and dark.
-
-  | Class | Use |
-  | --- | --- |
-  | `solid` | The outline of a thing |
-  | `dash` | Something that lasts one action run. Draw a boundary such as "one user" with `thin` |
-  | `thin` | A part inside a thing |
-  | `hi` | A rule between rows |
-  | `ln` | An arrow or connector, with `marker-end="url(#ah)"` |
-  | `hl` | The one idea a reader should leave with, which can be a small part. One per figure. Text on it takes `on-hl` |
-  | `lb` | A small capital label: what kind of thing this is |
-  | `nm` | A thing's name |
-  | `c` | Code, ids, values |
-  | `sub` | A quiet second line |
-  | `t` | A sentence of explanation, set outside the boxes |
-
-- **Text is monospace and does not wrap.** Break lines yourself. Allow 7.5 units a character for
-  `c`, 7.2 for `t`, 6.3 for `sub`, 9 for `nm`. A line must end at least 12 units inside its box.
-- **Arrows start and end on a box edge** and run through gaps, never over text.
-- **Labels are sentence fragments a reader could say.** No option names unless the page teaches
-  them.
-- **No hex colours and no `<style>` block.** The site styles every class. The figure lint
-  (FIX-2697) fails a figure with either, or with no key.
-
-Each figure starts from a figure brief: the one idea, the parts and their names from the page's
-example, and which marks it uses. Render it in light and dark and look at it, then set it beside
-the two published figures above: same marks, same weight, same type. Until FIX-2697's renderer
-supplies the site's styles, the command below renders a pilot figure from its `<style>` block:
-
-```bash
-S=docs/contributing/docs-revamp/pilot/figures/board.svg
-H=$(grep -oE 'viewBox="0 0 920 [0-9]+' "$S" | grep -oE '[0-9]+$')
-CH=${CHROME:-$(ls -d /opt/pw-browsers/chromium-*/chrome-linux*/chrome 2>/dev/null | head -1)}
-[ -x "$CH" ] || echo "no Chromium found: set CHROME to a Chromium or Chrome binary" >&2
-printf '<html><body style="margin:0;background:#f0ece1"><img src="%s" width="920"></body></html>' "$(realpath "$S")" > /tmp/light.html
-sed 's/@media (prefers-color-scheme:dark){/@media all{/' "$S" > /tmp/dark.svg
-printf '<html><body style="margin:0;background:#16150f"><img src="/tmp/dark.svg" width="920"></body></html>' > /tmp/dark.html
-for t in light dark; do "$CH" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --allow-file-access-from-files \
-  --window-size=920,$((H+20)) --screenshot=/tmp/$t.png /tmp/$t.html 2>/dev/null; done
-```
-
-Set `S` to the figure you are checking. Open `/tmp/light.png` and `/tmp/dark.png`. Check that no text crosses a border, no arrow crosses a
-label, and exactly one thing is highlighted.
-
-Under the image, write one italic line: a short caption, then
-`Description for the site's Figure:` and a full description for a reader who cannot see it. On the
-site these become the `caption` and `description` of `<Figure>`.
+Each figure starts from a figure brief: the one idea, what it adds over the prose, the parts
+named from the page's example, and which marks it uses. The page plan in
+[`SITEMAP/`](../../../specs/epics/FIX-2696/SITEMAP/README.md) has a brief for every planned figure.
+The three pilot figures are redrawn as the exemplars; `pages/figures/blocks.svg` is not yet.
 
 ## Writing a page, step by step
 
@@ -375,21 +330,9 @@ Use these as models for the types the pilots do not cover.
 
 ## What to write next
 
-In reading order. Each line names the page and where its facts are today.
-
-1. **Blocks**: `apps/docs/docs/fundamentals/blocks.md` (its opening and the five kinds; the rest is Reference)
-2. **Generators and tools**: `apps/docs/guides/building-agents.md`
-3. **Composition**: `apps/docs/docs/sequencers/overview.md`, `composing-blocks.md`
-4. **Flows and actions**: `apps/docs/docs/fundamentals/flows.md`, `actions.md`
-5. **Sessions, items and streaming**: `apps/docs/docs/streaming/overview.md`, `emitting-items.md`
-6. **State and scopes**: `apps/docs/docs/fundamentals/state-and-scopes.md`
-7. **Resources**: `apps/docs/docs/resources/overview.md`, `storage.md`
-8. **Views**: `packages/core/src/flow/defineView.ts` and its doc comments and tests
-9. **Capabilities**: `apps/docs/docs/fundamentals/capabilities.md`
-10. **Kits and slots**: `docs/architecture/kits.md`, `goals/kits/install-in-any-order/`
-11. **Background work**: `apps/docs/guides/background-work.md`
-12. **Pausing, resuming and surviving a crash**: `apps/docs/docs/advanced/durable-execution.md`
-13. **Coding harnesses**: `apps/docs/docs/tools/coding-agents.md`
-
-The remaining concept pages (Serving flows, Persistence, Auth and tenancy, Models) and the Catalog
-follow the same steps.
+The page plan is [`specs/epics/FIX-2696/SITEMAP/`](../../../specs/epics/FIX-2696/SITEMAP/README.md):
+every page of the new site, with its contents, its cold-read questions, a brief for each figure,
+its examples, the Reference pages it links to and where its facts are today. Write Start and
+Concepts in its reading order. A page's entry is the starting point for its fact sheet (pass 1)
+and its cold-read questions (pass 2), and a fact sheet may cite only what ER-9 allows, whatever an
+entry's Sources line names.

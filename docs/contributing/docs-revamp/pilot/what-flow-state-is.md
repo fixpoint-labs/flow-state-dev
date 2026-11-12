@@ -4,6 +4,9 @@ type: start
 description: An app you run and own, built from kits you install and typed pieces you can write yourself.
 ---
 
+import Figure from "@site/src/components/Figure";
+import Layers from "./figures/layers.svg";
+
 # What Flow State is
 
 Most agent frameworks hand you parts. Flow State hands you an app.
@@ -12,9 +15,9 @@ Run a starter and you have a team of AI workers, which are agents you brief in p
 
 Then you change it. A worker is a Markdown file, so you rewrite its brief. A feature is a kit, a bundle an app installs, so you add a line. When you want something nobody has built yet, you write it from blocks, the same typed pieces the kits are made of.
 
-![The layers of a Flow State app](./figures/layers.svg)
+<Figure svg={Layers} caption="What an app is made of" description={"Five layers, top to bottom. A starter, which you run: pages, a team of workers and config, all in your repo; you change a worker by editing its Markdown file. Kits, which you install: a feature in one line of config. An arrow means a kit fills a slot the other kit opened: claudeCode fills one in harnesses, and harnesses fills one in workforce. Kits are highlighted as the layer where features stack. Flows, which you call: actions, views, state and resources; every feature is a flow you can run from a terminal. Blocks, which you write: generator, handler, sequencer, router and evaluator, with one typed contract. The engine, which runs them: it serves, streams, stores and resumes; it comes with the framework and you host it."} />
 
-*What an app is made of. You start at the top and go down only as far as you need. Description for the site's `Figure`: Five layers, top to bottom. A starter: pages, a team of workers and config, all in your repo; you change a worker by editing its Markdown file. Kits: a feature in one line of config; the claude-code kit fills a slot the harnesses kit opened, and harnesses fills one that workforce opened. Flows: actions, views, state and resources; every feature is a flow you can run from a terminal. Blocks: generator, handler, sequencer, router and evaluator, with one typed contract. Under all of them, the engine serves, streams, stores and resumes.*
+You start at the top and go down only as far as you need.
 
 ## A starter is a whole app
 

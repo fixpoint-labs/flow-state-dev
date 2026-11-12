@@ -10,10 +10,13 @@ process.
 | [`pilot/what-flow-state-is.md`](./pilot/what-flow-state-is.md) | Pilot: the first page of Start |
 | [`pilot/tasks-and-boards.md`](./pilot/tasks-and-boards.md) | Pilot: a concept page |
 | [`pilot/workers.md`](./pilot/workers.md) | Pilot: a concept page |
-| [`pilot/figures/`](./pilot/figures) | The three figures, in the site's drawing classes |
+| [`pilot/figures/`](./pilot/figures) | The three figures, redrawn to the figure rules: the exemplars |
+| [`figures/FIGURES.md`](./figures/FIGURES.md) | The figure rules: what each mark means, the key, canvas sizes, light and dark, the lint rules |
+| [`figures/render.sh`](./figures/render.sh) | Renders a figure as the site draws it, light and dark, into [`figures/rendered/`](./figures/rendered) |
+| [`specs/epics/FIX-2696/SITEMAP/`](../../../specs/epics/FIX-2696/SITEMAP/README.md) | The page plan: every page of the new site, with its contents, questions, figures, examples and sources |
 | [`pages/`](./pages) | Pages written through the brief's writing loop, in the order of its queue, with their figures in `pages/figures/`. First: [`blocks.md`](./pages/blocks.md) |
 | `pages/*.facts.md` | A page's fact sheet: every fact the page states, with file and line, collected before drafting (step 1 of the loop). The page states nothing that is not on it. Never published |
-| [`scripts/check-docs-page.mjs`](../../../scripts/check-docs-page.mjs) | Word budget, banned words, em-dashes, table length |
+| [`scripts/check-docs-page.mjs`](../../../scripts/check-docs-page.mjs) | Word budget, banned words, em-dashes, table length, code titles |
 
 ## The pages are written for the release that carries kits
 
@@ -40,7 +43,7 @@ these against what shipped:
 
 ## Moving a page to the site
 
-1. Change the image line to the site's `Figure`: import the SVG, pass the short caption as
-   `caption` and the text after "Description for the site's `Figure`:" as `description`.
-2. Delete the `<style>` block from the SVG. The site's drawing styles replace it.
-3. Fix the links for the page's real location.
+1. Fix the links for the page's real location.
+2. Nothing to do for figures drawn to [`figures/FIGURES.md`](./figures/FIGURES.md): the page
+   already uses the site's `Figure`, and the SVG carries no styles. `pages/blocks.md` and its
+   figure predate that; FIX-2701 brings them over.

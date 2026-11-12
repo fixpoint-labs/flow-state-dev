@@ -4,6 +4,9 @@ type: concept
 description: A worker is a named agent you brief in a Markdown file, then talk to or hand tasks.
 ---
 
+import Figure from "@site/src/components/Figure";
+import Worker from "./figures/worker.svg";
+
 # Workers
 
 A worker is an agent with a name and a job. You brief it in a Markdown file, the way you would brief a new colleague: what it's for, what it can use, who it can ask for help.
@@ -37,9 +40,7 @@ That file gives you a worker with the id `engineering.lead`. The team and worker
 
 Someone who doesn't write TypeScript can add a worker, or change what one has been told, by editing a document.
 
-![One worker file, a separate worker on each user's roster](./figures/worker.svg)
-
-*File, worker, session. Description for the site's `Figure`: On the left, a WORKER.md file in your repo, under teams/engineering/workers/lead. In the middle, two rosters, Alice's and Bob's, each holding its own engineering.lead made from that one file. On the right, where Alice's worker works: a conversation, where she talks and it answers, and a task, which it runs once and reports back on. Each conversation and each task is a session of its own.*
+<Figure svg={Worker} caption="One file, a worker on each user's roster" description={"On the left, a WORKER.md file in your repo, at workforce/teams/engineering/workers/lead. In the middle, two rosters, Alice's and Bob's, each holding its own engineering.lead made from that one file; Alice's is highlighted as one user's own worker. On the right, Alice's sessions, where her worker works: a conversation, where she talks and it answers, and a task, which it runs and reports back on. Each is a session of its own. The rosters and the sessions are hatched: they outlive the request."} />
 
 ## Install the roster
 

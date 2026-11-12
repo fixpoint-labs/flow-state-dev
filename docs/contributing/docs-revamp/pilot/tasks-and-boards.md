@@ -4,15 +4,16 @@ type: concept
 description: A board is a stored list of tasks and the loop that works through it, in dependency order.
 ---
 
+import Figure from "@site/src/components/Figure";
+import Board from "./figures/board.svg";
+
 # Tasks and boards
 
 Some work is a list. Research three competitors, then write the comparison. The three can run at once. The comparison has to wait for all of them, and if one fails you want to know before the writer starts.
 
 A board is that list, stored, plus the loop that works through it, called the drain. You add tasks and say which ones depend on which. The drain takes whatever is ready and runs it. It stops when every task is done or nothing left can run.
 
-![A board: a stored list of tasks, and a drain that works through it](./figures/board.svg)
-
-*A board is a list and a loop. Description for the site's `Figure`: On the left, the stored list of tasks: acme is completed, globex and initech are in progress, and compare is pending because it waits on the other three. On the right, the drain, which runs inside a request: it claims a ready task, runs its block, records the result, and repeats. Several of these loops run at once, and they stop when every task is done or nothing left can run.*
+<Figure svg={Board} caption="A board is a list and a loop" description={"On the left, the list of tasks, stored here on a resource, so it is hatched: it outlives the request. acme is completed, globex and initech are in progress, and compare is pending because it waits on the other three; that row is highlighted as the one that cannot start yet. On the right, the drain, board.drain, drawn with a dashed outline because it lasts one action run. It claims a ready task, runs its block, records the result, and does that again until nothing is ready. Two arrows run from the drain to the list, one for the claim and one for the recorded result. When the drain ends the list stays, and a task added later waits for the next drain. Stored on the request instead, which is the default, the list ends when that request does."} />
 
 ## The smallest board
 
