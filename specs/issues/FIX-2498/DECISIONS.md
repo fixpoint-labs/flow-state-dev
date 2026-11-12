@@ -66,6 +66,11 @@ the user's zone is worth a client change, and that is its own issue.
   conversation's project when one is set. A field the turn can't read is left out, never
   guessed. No clock time: it would change each turn and no ask needs it. The framework has no
   user name; an app that has one adds it as a line.
+- **Where the fields come from (BP-031):** the user is read only from
+  `ctx.session.identity.userId` (the resolved principal), and the project only from the
+  session's readonly `projectId`. Nothing comes from the message, `metadata`, or a list of
+  the org's projects. A test renders the block for two users in two orgs and asserts that
+  each prompt holds only its own session's id, project and skill text.
 - **"Started on" is dropped** from the folded FIX-2497. No ask measures it and a block can't read
   when its session began.
 - **Every worker gets both sections**: with or without an installation, and on the
