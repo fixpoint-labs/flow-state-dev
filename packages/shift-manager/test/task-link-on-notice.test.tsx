@@ -55,7 +55,7 @@ const client = {
 };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client, reader }) }));
 
-import { MISSING_READS_AT_MOST, TaskProvider, useTask, type TaskView } from "../src/lib/task";
+import { MISSING_FOR_MS, TaskProvider, useTask, type TaskView } from "../src/lib/task";
 import { TaskFrame } from "../src/surfaces/TaskFrame";
 import { GAPS } from "../src/gaps";
 
@@ -135,7 +135,7 @@ describe("a task waiting on its run link", () => {
 });
 
 describe("a task the attached board doesn't hold", () => {
-  it("is called missing after a bounded series of board reads that land without it, and Retry reads again", async () => {
+  it("is called missing once its deadline passes with no read finding it, reads nothing of its own while it waits, and Retry reads again", async () => {
     // A stale link, a deleted task or a mistyped address: push brings no notice for a row nobody writes.
     vi.useFakeTimers({ shouldAdvanceTime: true });
     board = [];
@@ -145,24 +145,44 @@ describe("a task the attached board doesn't hold", () => {
         <TaskFrame tab="session" gaps={GAPS} />
       </TaskProvider>,
     );
-    // Each read's re-render schedules the next, so the clock moves a step at a time.
-    for (let step = 0; step < 15; step++) {
-      await vi.advanceTimersByTimeAsync(2_100);
-      await settle();
-    }
+    await settle();
+    // Short of the deadline it still waits, on the subscription's connect read alone:
+    // the deadline is a timer, never a second reader beside the subscription's poll.
+    await vi.advanceTimersByTimeAsync(MISSING_FOR_MS - 1_000);
+    await settle();
+    expect(last().waiting).toBe(true);
+    expect(document.querySelector("[data-testid='task-missing']")).toBeNull();
+    expect(boardReads).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(2_000);
     await waitFor(() => expect(document.querySelector("[data-testid='task-missing']")?.textContent).toMatch(/holds no task "t1"/));
-    // The connect's read, then the bounded series.
-    expect(boardReads).toBe(1 + MISSING_READS_AT_MOST);
     expect(last().waiting).toBe(false);
-    for (let step = 0; step < 10; step++) {
-      await vi.advanceTimersByTimeAsync(2_100);
-      await settle();
-    }
-    expect(boardReads).toBe(1 + MISSING_READS_AT_MOST);
+    expect(boardReads).toBe(1);
+    await vi.advanceTimersByTimeAsync(20_000);
+    await settle();
+    expect(boardReads).toBe(1);
 
     // Filed after all: Retry reads the board once more and finds it.
     board = [boardTask(null)];
     (document.querySelector("[data-testid='task-missing-retry']") as HTMLButtonElement).click();
     await waitFor(() => expect(last().row?.id).toBe("t1"));
+  });
+
+  it("finds a task filed during the wait by the board notice its filing publishes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    board = [];
+    render(
+      <TaskProvider snapshot={snapshot} boardRef={BOARD} taskId="t1">
+        <Probe />
+      </TaskProvider>,
+    );
+    await settle();
+    await vi.advanceTimersByTimeAsync(3_000);
+    board = [boardTask(null)];
+    hear(boardNotice);
+    await waitFor(() => expect(last().row?.id).toBe("t1"));
+    await vi.advanceTimersByTimeAsync(MISSING_FOR_MS);
+    await settle();
+    expect(last().gaveUp).toBe(false);
   });
 });
