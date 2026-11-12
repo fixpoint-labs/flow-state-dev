@@ -102,7 +102,7 @@ Describe the runtime once, then mount it with one catch-all route. That route gi
 
 ```ts title="lib/flowstate.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import chatFlow from "@/flows/hello-chat/flow";
+import chatFlow from "../src/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({
   flows: { chatFlow },
@@ -185,7 +185,15 @@ Open the page and start chatting. Behind the scenes you have streaming over SSE 
 
 ## Skip the React layer
 
-You don't need a server or UI to try a flow. The CLI runs it directly and streams NDJSON to stdout:
+You don't need a server or UI to try a flow. The CLI runs it directly and streams NDJSON to stdout. It reads your app's models and stores from an `fsdev.config.ts` at the project root, which default-exports the same `flowstate` the route uses:
+
+```ts title="fsdev.config.ts"
+import { flowstate } from "./lib/flowstate";
+
+export default flowstate;
+```
+
+Without that file, the CLI never sees the `intent/chat` list from step 4 and the run stops with `unresolved_intent`.
 
 ```bash
 pnpm fsdev run hello-chat chat -i '{"message": "Hello!"}'
