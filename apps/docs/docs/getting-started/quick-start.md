@@ -21,7 +21,7 @@ pnpm add @flow-state-dev/core @flow-state-dev/engine @flow-state-dev/next @flow-
 pnpm add -D @flow-state-dev/fsdev --allow-build=better-sqlite3
 ```
 
-The CLI's default store is SQLite, and pnpm builds the `better-sqlite3` native module only when you allow it. npm, yarn and bun build it without the flag.
+The CLI's default store is SQLite, and pnpm builds the `better-sqlite3` native module only when you allow it (`--allow-build` needs pnpm 10.4 or later). npm, yarn and bun build it without the flag.
 
 Add the SDK package for whichever provider you have a key for. The framework loads it from your app, so at least one has to be installed:
 
