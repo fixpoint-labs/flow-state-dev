@@ -44,7 +44,9 @@ Words are counted without frontmatter, code blocks and figure descriptions.
 
    Where our word differs from the industry's, an "If you know ..." section comes straight after the
    opening (see The moves).
-6. **Next.** Two to four links, each with a clause saying what the reader gets there.
+6. **Next.** Two to four links, each with a clause saying what the reader gets there. Link to
+   pages by the names in "What to write next", as `./kebab-case-title.md`, whether or not they
+   exist yet.
 
 ## The moves
 
@@ -103,6 +105,13 @@ queries or selectors (Views), the board against a job queue (Background work).
 **Vary the sentence length.** A short sentence after two long ones. Read the paragraph aloud. If
 every sentence lands on the same beat, break one or join two.
 
+**Only explain what the page shows.** A section about an API needs that API in the page's example.
+If the example has no evaluator, the page gives evaluators one sentence and a link. It does not
+describe their options.
+
+**Say a thing once.** If a limit is stated where it first matters, it does not come back in
+"What it won't do". That list is for limits the page has not already stated.
+
 **Stop when the point is made.** No closing line that sums up the section.
 
 ## Code examples
@@ -132,7 +141,11 @@ src/
 - **A page does not have to show every file it imports.** It does have to say what the imported
   thing is, in a clause: "`analyst` and `writer` are blocks ... Each lives in its own file beside
   the flow."
-- A block that continues an earlier one repeats the title and says "continued" in the prose.
+- **Do not reprint a file to change one line.** Show the new file, then say the change in a
+  sentence: "In `handleTicket`, `pickReply` takes the place of `draftReply`." "Add
+  `tools: [lookUpOrder]` to `draftReply`."
+- **A concept page shows four code blocks at most.** The smallest example is one to three files.
+  A reader should be able to hold all the code on the page in their head.
 
 `scripts/check-docs-page.mjs` fails a `ts` or `tsx` block with no title.
 
@@ -143,7 +156,8 @@ Move a sentence to Reference when any of these is true:
 - It is one of more than three options.
 - It describes what happens in a race, a retry, or a crash halfway through.
 - It names an error code, a status the reader has not met yet, or a field they do not set.
-- A reader would only need it after something went wrong.
+- A reader would only need it after something went wrong. "The router throws when ..." is
+  Reference. "Every route takes the router's input" is the page.
 
 Cut a sentence when it says what the framework used to do, why a design was chosen, or how
 something is implemented.
@@ -183,7 +197,7 @@ Copy one and change it.
   | `thin` | A part inside a thing |
   | `hi` | A rule between rows |
   | `ln` | An arrow or connector, with `marker-end="url(#ah)"` |
-  | `hl` | The one thing the figure is about. One per figure. Text on it takes `on-hl` |
+  | `hl` | The one idea a reader should leave with, which can be a small part. One per figure. Text on it takes `on-hl` |
   | `lb` | A small capital label: what kind of thing this is |
   | `nm` | A thing's name |
   | `c` | Code, ids, values |
@@ -235,9 +249,12 @@ site these become the `caption` and `description` of `<Figure>`.
    ```
 
 6. **Fact-check** with a fresh agent that has the page and the code and nothing else. It returns
-   each claim that is not true, with file and line.
+   each claim that is not true, with file and line, and type-checks the page's code against the
+   package source.
 7. **Prose-check** with the `docs-editor` agent.
-8. **Read it aloud once.** Fix anything you would not say to a colleague.
+8. **Revise from both sets of findings**, then run the checks in step 5 again. Take every factual
+   correction. Take a prose finding unless it would undo something this brief asks for.
+9. **Read it aloud once.** Fix anything you would not say to a colleague.
 
 ## Before you call it done
 
@@ -266,7 +283,7 @@ Use these as models for the types the pilots do not cover.
 
 In reading order. Each line names the page and where its facts are today.
 
-1. **Blocks**: `apps/docs/docs/fundamentals/blocks.md` (keep the first fifth)
+1. **Blocks**: `apps/docs/docs/fundamentals/blocks.md` (its opening and the five kinds; the rest is Reference)
 2. **Generators and tools**: `apps/docs/guides/building-agents.md`
 3. **Composition**: `apps/docs/docs/sequencers/overview.md`, `composing-blocks.md`
 4. **Flows and actions**: `apps/docs/docs/fundamentals/flows.md`, `actions.md`
