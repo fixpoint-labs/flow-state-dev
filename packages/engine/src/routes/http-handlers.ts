@@ -36,6 +36,9 @@ import { handleGetRequestStatus } from "./request-status-routes";
 import { handleRunRead } from "./read-routes";
 import { handleRunView } from "./view-routes";
 import { handleExecuteAction } from "./action-routes";
+import { handleFlowIdentity, handleReadScopeResource, resolveResourceSend } from "./scope-routes";
+import { DEFAULT_WRITE_FLOW } from "../resources/default-write-flow";
+import { reservedAddressRefusal } from "./reserved-addresses";
 import {
   handleCheckInterruptedRequests,
   handleListInterruptedRequests,
@@ -281,12 +284,14 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     options.runtimeConfig.defaultSseHeartbeatMs !== undefined
       ? options.runtimeConfig.defaultSseHeartbeatMs
       : DEFAULT_SSE_HEARTBEAT_MS;
+  const hostResolver = options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver;
   const runtimeConfig: RuntimeConfig = {
     ...options.runtimeConfig,
-    defaultSseHeartbeatMs
+    defaultSseHeartbeatMs,
+    // FIX-2624: the framework's own flows read this host's resolver off their context.
+    hostResolver
   };
 
-  const hostResolver = options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver;
   const push = createPushState(stores.bus);
   const hostDisk = createHostDiskState();
 
@@ -467,6 +472,11 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       // requests; rejected (400) inside the try if it contains ":".
       const tenantId = extractTenantId(request, options.tenantIdHeader);
 
+      // FIX-2624: no route names a write session or the default write flow,
+      // before anything else looks at either (`reserved-addresses.ts`).
+      const reserved = reservedAddressRefusal(route);
+      if (reserved !== undefined) return reserved;
+
       // Authenticate and authorize the management surface (sessions, state,
       // resources, request control, debug) before dispatching. Action routes
       // resolve their own principal inside `handleExecuteAction` and are
@@ -538,6 +548,50 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           requestContext,
           tenantIdHeader: options.tenantIdHeader
         });
+      }
+
+      // FIX-2624: user and org resources with no session.
+      if (route.kind === "read_scope_resource") {
+        return await handleReadScopeResource(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          hostResolver
+        });
+      }
+
+      if (route.kind === "flow_identity") {
+        return await handleFlowIdentity(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          hostResolver
+        });
+      }
+
+      if (route.kind === "send_resource") {
+        const send = await resolveResourceSend(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          hostResolver,
+          tenantIdHeader: options.tenantIdHeader
+        });
+        if (send instanceof Response) return send;
+        return await handleExecuteAction(
+          request,
+          { kind: "execute_action", flowKind: send.flowKind, actionName: route.actionName, sessionId: send.sessionId },
+          {
+            host,
+            registry: options.registry,
+            stores,
+            seams,
+            bootstrapMetadata,
+            requestContext,
+            tenantIdHeader: options.tenantIdHeader
+          },
+          send
+        );
       }
 
       if (route.kind === "run_view") {
@@ -951,7 +1005,9 @@ async function flowsForCaller(
   registry: FlowRegistry,
   callerFor: InstanceCallerResolver
 ): Promise<FlowInstance[]> {
-  const flows = registry.list();
+  // FIX-2624: the default write flow runs only on a send addressed to a
+  // resource, so it is no flow a client lists.
+  const flows = registry.list().filter((flow) => flow.id !== DEFAULT_WRITE_FLOW);
   if (!flows.some((flow) => flow.ownerPin !== undefined)) return flows;
 
   const visible: FlowInstance[] = [];

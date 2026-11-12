@@ -269,6 +269,9 @@ export type {
   ResourceRef,
   ResourceRefOptions,
   ResourceRegistry,
+  ResourceCanWrite,
+  ResourceRunBy,
+  ResourceWriteCheck,
   StateOf
 } from "./resource";
 export type { ResourceVisibility, ResourceVisibilityRule, ResourceVisibilityTarget } from "./resource-visibility";

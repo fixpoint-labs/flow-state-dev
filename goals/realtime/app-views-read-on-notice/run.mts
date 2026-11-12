@@ -36,7 +36,7 @@ import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
-import { definePinsFlow } from "../../../labs/claude-code-style/workforce/flows/pins.mts";
+import { labPins } from "../../../labs/claude-code-style/workforce/flows/user-marks.mts";
 import { createWiredLab, type ThreadView } from "../../../labs/claude-code-style/src/adapter.ts";
 import { createLabAdapter, type ConversationView } from "../../../labs/teammates/src/adapter.ts";
 import { followSessionItems, type SessionItems } from "../../../packages/shift-manager/src/lib/run.ts";
@@ -124,7 +124,8 @@ type Host = { handle: ServeHandle; base: string; stores: StoreRegistry };
 async function host(bus: "default" | "not-crossing"): Promise<Host> {
   const registry = createFlowRegistry();
   registry.register(deskFlow());
-  registry.register(definePinsFlow()() as unknown as FlowInstance);
+  // The lab's pins: a user resource the host declares, written through the default write flow.
+  registry.register(defineFlow({ kind: "projects", resources: { labPins }, actions: {} } as never)() as unknown as FlowInstance);
   const memory = createInMemoryStores();
   const notCrossing = crossingBus();
   notCrossing.setCrossing(false);
@@ -236,7 +237,6 @@ await runGoal(async (failures, tell) => {
     const writer = clientOf(on).client;
     const sessionId = (await writer.flow("desk").createSession()).id;
     await (await writer.flow("desk").send("respond", { message: "hello" }, { sessionId })).wait();
-    const pinsSession = (await writer.flow("pins").createSession()).id;
     const views = mountViews(on, sessionId);
     closers.push(views.close);
     await delay(1_500);
@@ -251,7 +251,7 @@ await runGoal(async (failures, tell) => {
       const answering = await firstAt(views.shown.tmConversation, (v) => v.running, startedAt - 50, 3_000);
       const doneAt = await requestDone(on, sent.id);
       const reply = await firstAt(views.shown.smItems, (v) => v.items.some((i) => JSON.stringify(i).includes("slow 0")), doneAt - 50, 3_000);
-      await writer.flow("pins").send("pin", { taskId: "t1" }, { sessionId: pinsSession }).then((s) => s.wait());
+      await writer.resource(labPins).update((s) => ({ pinned: [...s.pinned, "t1"] }));
       const pinnedAt = Date.now();
       const pin = await firstAt(views.shown.ccPins, (v) => v.includes("t1"), pinnedAt - 200, 3_000);
       const lat: Record<string, number | undefined> = {
@@ -317,11 +317,10 @@ await runGoal(async (failures, tell) => {
       const w = clientOf(plain).client;
       const s = (await w.flow("desk").createSession()).id;
       await (await w.flow("desk").send("respond", { message: "hello" }, { sessionId: s })).wait();
-      const ps = (await w.flow("pins").createSession()).id;
       const fallback = mountViews(plain, s);
       closers.push(fallback.close);
       await delay(1_500);
-      await w.flow("pins").send("pin", { taskId: "t9" }, { sessionId: ps }).then((x) => x.wait());
+      await w.resource(labPins).update((s) => ({ pinned: [...s.pinned, "t9"] }));
       const pinnedAt = Date.now();
       const pin = await firstAt(fallback.shown.ccPins, (v) => v.includes("t9"), 0, 3_000 + BOUND_MS + 500);
       const sent = await w.flow("desk").send("respond", { message: "slow", holdMs: 3_000 }, { sessionId: s });

@@ -35,15 +35,15 @@
   <rect class="bg" x="0" y="0" width="940" height="420"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">OPEN · FOR THE OWNER</text>
+    <text class="t-lbl" x="32" y="32">DECIDED · THE OWNER, 2026-11-11</text>
     <text class="t-q" x="32" y="52">An org resource with no write rule: who may write it?</text>
   </g>
   <g id="options">
     <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
     <text class="t-h c-code" x="228" y="112">Nobody, until it sets canWrite</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="592" y="93">THE OTHER OPTION</text>
+    <text class="t-tag c-mute" x="592" y="93">REJECTED</text>
     <text class="t-h c-lost" x="592" y="112">Every member of the org</text>
   </g>
   <g id="row-decides">
