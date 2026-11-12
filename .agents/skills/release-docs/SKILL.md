@@ -73,6 +73,9 @@ and the public surface. Never the spec narrative, never a changeset's issue ids.
    code here.
 
 Package READMEs are in scope: their API sections go through the same pair.
+Until the docs cutover, a package README also has a cut copy at
+`docs/contributing/docs-revamp/readmes/<dir>.md`: an edit to the long one lands in both, or CI's
+`check-cut-readmes.mjs` fails the PR.
 
 ## 5. Read it as a set
 

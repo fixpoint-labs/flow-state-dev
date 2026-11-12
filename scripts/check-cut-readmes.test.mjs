@@ -17,6 +17,7 @@ import {
   shapeProblems,
   unsyncedReadmes,
 } from "./check-cut-readmes.mjs";
+import { rootReport } from "./check-root-exports.mjs";
 import { fsReader, overlayReader } from "./mechanism-exports.mjs";
 
 const real = fsReader(ROOT);
@@ -70,11 +71,20 @@ test("a long README edited without its cut copy is refused; both, or no cut copy
   assert.deepEqual(unsyncedReadmes(["packages/core/src/index.ts"], hasCut), []);
 });
 
-test("the export listing reads the cut copy in the long README's place", () => {
-  const today = readmeOnlyExports(real);
-  assert.ok(today.some((e) => e.pkg === "@flow-state-dev/core"), "core has names only its long README clears");
-  // Plant: core's cut copy says everything the long README says. Then no core name is listed.
-  const same = readmeOnlyExports(overlayReader(real, { [`${CUT_DIR}/core.md`]: real("packages/core/README.md") }));
-  assert.equal(same.filter((e) => e.pkg === "@flow-state-dev/core").length, 0);
-  assert.ok(same.some((e) => e.pkg === "@flow-state-dev/workforce"), "other packages are still read");
+test("the export listing reads the cut copy in the long README's place", (t) => {
+  // A root name nothing clears today, that the cut copy doesn't name. Planted into the long
+  // README alone, it is cleared there and not by the cut copy, so it must be listed.
+  const pick = [...rootReport(real).roots].flatMap(([pkg, m]) => {
+    const dir = [...publishedPackages(real)].find(([, n]) => n === pkg)?.[0];
+    const cut = real(`${CUT_DIR}/${dir}.md`) ?? "";
+    return [...m].filter(([n, v]) => v.why === "failing" && !cut.includes(n)).map(([n]) => ({ pkg, dir, name: n }));
+  })[0];
+  if (!pick) return t.skip("no root name fails today, so there is nothing to plant");
+  const longPath = `packages/${pick.dir}/README.md`;
+  const long = `${real(longPath) ?? ""}\n\`${pick.name}\`\n`;
+  const listed = readmeOnlyExports(overlayReader(real, { [longPath]: long }));
+  assert.ok(listed.some((e) => e.pkg === pick.pkg && e.name === pick.name), `${pick.pkg} ${pick.name} is not listed`);
+  // Plant: the cut copy says everything the long README says. Then nothing of that package is listed.
+  const same = readmeOnlyExports(overlayReader(real, { [longPath]: long, [`${CUT_DIR}/${pick.dir}.md`]: long }));
+  assert.equal(same.filter((e) => e.pkg === pick.pkg).length, 0);
 });

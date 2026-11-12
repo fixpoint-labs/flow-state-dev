@@ -7,13 +7,13 @@ pnpm add @flow-state-dev/node
 ```
 
 ```ts
-import { createFlowState } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { flows } from "./flows.js";
 
 const flowState = createFlowState({
   flows,
-  stores: { default: { primary: /* your store adapter */ } },
+  stores: { default: { primary: inMemoryStores() } }, // or a durable store
 });
 
 // Binds process.env.PORT (then 3000), mounts the API under /api/flows, serves /healthz.

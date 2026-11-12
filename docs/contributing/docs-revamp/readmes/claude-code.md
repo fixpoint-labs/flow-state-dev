@@ -8,7 +8,7 @@ pnpm add @flow-state-dev/claude-code @anthropic-ai/claude-agent-sdk
 
 ```ts
 import { generator } from "@flow-state-dev/core";
-import { createClaudeCodeAgentCapability } from "@flow-state-dev/claude-code/sdk";
+import { createClaudeCodeAgentCapability } from "@flow-state-dev/claude-code";
 
 const orchestrator = generator({
   name: "orchestrator",

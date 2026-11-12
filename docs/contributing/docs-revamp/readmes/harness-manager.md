@@ -8,7 +8,7 @@ pnpm add @flow-state-dev/harness-manager
 
 ```ts
 import { harnessManager } from "@flow-state-dev/harness-manager";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code";
 
 const manager = harnessManager({
   boardCollectionId,
