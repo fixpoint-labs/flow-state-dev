@@ -1384,7 +1384,7 @@ export const EXCLUDE = [
   },
   { path: /^(apps|packages|labs|examples)\/.*\.(md|mdx|svg)$/, why: "markdown outside the published docs and package READMEs (fixtures, worker files, app notes)" },
   { path: /^goals\/.*$/, why: "other goal files: only the rules that read goals read them" },
-  { path: /(^|\/)LICENSE\.upstream$|^docs\/contributing\/figures\/.*\.svg$|^docs\/(assets\/|PROMPT_CACHING\.md$)|^(CODE_OF_CONDUCT|SECURITY|compound-engineering\.local)\.md$|^[^/]+\.(json|ya?ml|mjs)$/, why: "root config, assets and pages no rule reads" },
+  { path: /(^|\/)LICENSE\.upstream$|^docs\/contributing\/(?:[^/]+\/)*figures\/.*\.svg$|^docs\/(assets\/|PROMPT_CACHING\.md$)|^(CODE_OF_CONDUCT|SECURITY|compound-engineering\.local)\.md$|^[^/]+\.(json|ya?ml|mjs)$/, why: "root config, assets and pages no rule reads" },
 ];
 
 /** The guard's own test plants retired words on purpose, so it is process tooling. */

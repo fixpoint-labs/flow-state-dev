@@ -1,0 +1,9 @@
+R1 0.5 Right owner; misses repo, workers, kits, flows
+R2 0.5 Installable feature right; kits' flows and slots missing
+R3 0 Describes server config, not callable backend unit
+R4 0.5 Typed unit right; kinds wrong, missing model/chain
+R5 0.5 Parts (a) and (b) right; (c) wrong
+P1.1 1 WORKER.md edit, no TypeScript, matches key
+P1.2 0.5 Right kits and slots; hedged, claims unbuilt
+P1.3 1 Generator, handler, router all correct
+SCORE 4.5 / 8
