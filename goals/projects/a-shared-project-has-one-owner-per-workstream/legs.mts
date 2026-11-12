@@ -125,7 +125,7 @@ const LEAD_INSTRUCTIONS =
   "for eng.coder with createTask. When its status changes, or there is something to report, call updateWorkstream " +
   "with a short status in your own words and your latest report. Mark it done only when the owner says it is finished.";
 
-/** The person's own session on a flow, at the id Shift Manager reads under (`readerSessionId`). */
+/** The person's own session on a flow, at one id per person and flow. */
 const ownSession = (who: Connected, kind: string, suffix = "") => `${kind}-own-${who.person.userId}${suffix}`;
 
 /** Make sure `who` holds a session at `id` on `kind`; a 409 is one they made before. */
