@@ -20,13 +20,15 @@ import type { BoardTaskView } from "../src/lib/reads";
 
 type Opened = { topics: readonly WireTopic[]; pollIntervalMs?: number; onChange: (notice: WireNotice | null) => void; closed: boolean };
 const opened: Opened[] = [];
+let stallConnect = false;
 const subscribe = (topics: readonly WireTopic[], options: { onChange: (notice: WireNotice | null) => void; pollIntervalMs?: number }) => {
   const entry: Opened = { topics, pollIntervalMs: options.pollIntervalMs, onChange: options.onChange, closed: false };
   opened.push(entry);
-  // The socket's connect.
-  queueMicrotask(() => {
-    if (!entry.closed) entry.onChange(null);
-  });
+  // The socket's connect, unless the test holds it back.
+  if (!stallConnect)
+    queueMicrotask(() => {
+      if (!entry.closed) entry.onChange(null);
+    });
   return { close: () => void (entry.closed = true) };
 };
 const open = () => opened.filter((o) => !o.closed);
@@ -75,6 +77,7 @@ beforeEach(() => {
   board = [boardTask(null)];
   failBoard = false;
   boardReads = 0;
+  stallConnect = false;
 });
 afterEach(() => {
   cleanup();
@@ -166,6 +169,29 @@ describe("a task the attached board doesn't hold", () => {
     board = [boardTask(null)];
     (document.querySelector("[data-testid='task-missing-retry']") as HTMLButtonElement).click();
     await waitFor(() => expect(last().row?.id).toBe("t1"));
+  });
+
+  it("counts its deadline from a board read that landed, so a stalled socket connect can't use it up", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    board = [];
+    stallConnect = true;
+    render(
+      <TaskProvider snapshot={snapshot} boardRef={BOARD} taskId="t1">
+        <Probe />
+      </TaskProvider>,
+    );
+    await settle();
+    await vi.advanceTimersByTimeAsync(MISSING_FOR_MS + 5_000);
+    await settle();
+    expect(boardReads).toBe(0);
+    expect(last().gaveUp).toBe(false);
+    expect(last().waiting).toBe(true);
+
+    // The connect lands at last and reads the board: the task is there.
+    board = [boardTask(null)];
+    open().forEach((o) => o.onChange(null));
+    await waitFor(() => expect(last().row?.id).toBe("t1"));
+    expect(last().gaveUp).toBe(false);
   });
 
   it("finds a task filed during the wait by the board notice its filing publishes", async () => {
