@@ -1,7 +1,9 @@
 /**
- * Mechanical checks for one docs-revamp page: its word count against the budget
- * for its `type`, the words the writing standard bans, em-dashes, long tables, and
- * TypeScript examples that do not name their file.
+ * Mechanical checks for one docs-revamp page: its prose word count against the
+ * budget for its `type`, the words the writing standard bans, em-dashes, long
+ * tables, and TypeScript examples that do not name their file. Code blocks and
+ * figures are not capped: a concept page shows its idea in as many short examples
+ * and figures as it needs (the brief's concept/reference contract).
  *
  *   node scripts/check-docs-page.mjs <page.md> [more.md ...]
  *
@@ -32,8 +34,6 @@ function check(path) {
   else if (BUDGET[type] && words > BUDGET[type]) problems.push(`${words} words, budget ${BUDGET[type]}`);
   const untitled = (raw.match(/^```tsx?(?![^\n]*title=)[^\n]*$/gm) ?? []).length;
   if (untitled) problems.push(`${untitled} ts code block(s) with no title="path"`);
-  const codeBlocks = (raw.match(/^```[a-z]+/gm) ?? []).filter((fence) => !/^```(bash|text)$/.test(fence)).length;
-  if (type === "concept" && codeBlocks > 4) problems.push(`${codeBlocks} code blocks (limit 4 on a concept page)`);
   const text = prose.replace(/`[^`]*`/g, "");
   for (const word of BANNED) {
     const hits = text.match(new RegExp(`\\b${word}\\b`, "gi"));

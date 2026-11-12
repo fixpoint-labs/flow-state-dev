@@ -59,11 +59,11 @@ Live state is in Linear under FIX-2696.
 
 | Issue | Delivers | State |
 |---|---|---|
-| FIX-2697 | The brief becomes part of the user-docs standard; the page checker runs in CI | Not started |
+| FIX-2697 | The brief becomes part of the user-docs standard; the page checker, hardened, runs in CI; the figure style, lint and key; the ten-pass loop as a workflow script with a per-page record | Not started |
 | FIX-2698 | API reference generated from doc comments; READMEs cut to install, one example, a link | Not started |
 | FIX-2699 | Behaviour detail moved to tabular Reference; an Upgrading page per release | Not started |
 | FIX-2700 | `llms.txt`, `llms-full.txt`, every page as Markdown | Not started |
-| FIX-2701 | The Concepts pages, written by a smaller model through the write, check, revise loop | Blocks drafted; three pilots written |
+| FIX-2701 | The Concepts pages, written through the ten-pass loop ([D4](DECISIONS.md)) to the concept/reference contract ([D6](DECISIONS.md)) | Blocks drafted; three pilots written |
 | FIX-2702 | The five Start pages | "What Flow State is" piloted |
 | FIX-2703 | The Catalog: Workforce, Harnesses, Skills on the kit template; starter pages | Not started; waits on FIX-2627 |
 | FIX-2704 | Guides consolidated into tutorials and recipes | Not started |
@@ -99,11 +99,11 @@ FIX-2697 hands every writing issue its rules. FIX-2700 is site code and can merg
 ## What's already here, and the debt
 
 **Builds on**
-- The release-docs pipeline. The writing loop is its `docs-writer` agent, given a fact sheet as its surface brief, and its `docs-editor` agent, plus a fact check with a type-check and a cold read ([D4](DECISIONS.md)).
+- The release-docs pipeline. The writing loop is its `docs-writer` agent, given a fact sheet as its surface brief, and its `docs-editor` agent, plus a fact check, a type-check, a depth pass and a cold read ([D4](DECISIONS.md)).
 - The `polish-docs` skill, which release-docs already runs. FIX-2704 and FIX-2705 use it to give each topic one home. It edits presentation, never facts, so what is deleted is decided by FIX-2699 and O3 first.
 - The `concept-doc` skill's rules for building a model up part by part, one cast of examples, and one claim per figure, and its cold read and ownership questions. The brief cites them rather than restating them; the full concept-doc route was piloted and not adopted ([D4](DECISIONS.md)).
 - `goals/first-hour/`, the home of first-hour goal checks. The closure's two tests go there.
-- Two earlier sidebar reorganizations, FIX-266 (March) and FIX-495 (May), and the launch IA issue FIX-601, still in Backlog. This epic supersedes FIX-601's scope; it keeps their lesson that a regrouping alone does not last, which is why it adds page types and a checker.
+- Two earlier sidebar reorganizations, FIX-266 (March) and FIX-495 (May), and the launch IA issue FIX-601, closed as a duplicate of this epic. This epic keeps their lesson that a regrouping alone does not last, which is why it adds page types and a checker.
 - The rule that every exported API has a doc comment, which is what makes generated reference possible.
 - The redirects plugin, already installed on the site.
 - PR 5126: three pilot pages, the brief, the checker, and one Concepts page written from the brief.
@@ -117,9 +117,10 @@ FIX-2697 hands every writing issue its rules. FIX-2700 is site code and can merg
 - Pages sit under `docs/contributing/docs-revamp/pages/` until cutover and are not seen on the site before then.
 - The pilot pages name kit factories that are specified and not built. FIX-2705 reconciles them.
 - The widened vocabulary-sweep exclusion means SVG text in any `figures/` folder under `docs/contributing/` is not scanned.
+- The three pilots and `pages/blocks.md` predate the concept/reference contract (D6) and the figure style: they carry mechanism, a "What it won't do" section and figures with `<style>` blocks. FIX-2701 brings them to the contract.
 
 **Docs.** The shared story is "you start with an app; the app is made of kits; kits are made of flows and blocks; you build with an agent beside you." FIX-2705 publishes it.
 
 ## Sign off
 
-Approving this spec says the objective and the five-section shape are right, and that the set above is the work. It does not approve any page's wording. Three product calls are open and are yours: [O1, O2 and O3 in the decisions](DECISIONS.md).
+Approving this spec says the objective and the five-section shape are right, and that the set above is the work. It does not approve any page's wording. The owner decided O1, O2 and O3 as recommended, the ten-pass loop (D4) and the concept/reference contract (D6) on 2026-11-12 ([decisions](DECISIONS.md)). Which model writes is open, and a one-page Sonnet run through the loop settles it next.

@@ -1,7 +1,10 @@
 # Writing brief for the docs revamp
 
-How to write a page for the new docs. Read the three pilot pages first; they are the standard, and
-this brief explains what they are doing so the next page can do the same.
+How to write a page for the new docs. Read the three pilot pages first; they set the voice, and
+this brief explains what they are doing so the next page can do the same. On depth and figures
+this brief wins: the pilots and [`pages/blocks.md`](./pages/blocks.md) predate the
+concept/reference contract below, and carry mechanism, a "What it won't do" section and `<style>`
+blocks that later pages do not.
 
 - [`pilot/what-flow-state-is.md`](./pilot/what-flow-state-is.md): a Start page
 - [`pilot/tasks-and-boards.md`](./pilot/tasks-and-boards.md): a concept page about a mechanism
@@ -16,6 +19,21 @@ Someone who knows TypeScript and React, has never seen Flow State, and wants the
 They are reading to decide whether an idea is worth their next ten minutes. They are not looking
 anything up. People who look things up use Reference, and so do coding agents.
 
+## Concepts and Reference
+
+The two sections split one topic between them.
+
+- **A Concepts page builds understanding.** It gives the mental model, the idea behind the design
+  and why it is built this way, what the reader gets from it, and how this concept fits with the
+  others. It shows the concept with SVG figures, more than one where each earns its place, and
+  with plenty of short, crisp code examples of the concept in action.
+- **Reference holds the detail.** Mechanism, checks, limits, edge cases and option tables go
+  there, and the Concepts page links to them. Mechanism here is behaviour a user can observe and
+  depend on; how the framework implements it is cut, not moved.
+
+A page that explains how a thing is checked, retried or bounded has left Concepts. Every version
+of the pilots did this, so the writing loop has a pass for it (pass 6).
+
 ## One page, one type
 
 Every page declares a `type` in its frontmatter. The type fixes its job, its length and its outline.
@@ -29,8 +47,9 @@ Every page declares a `type` in its frontmatter. The type fixes its job, its len
 | `recipe` | One task | 800 | Task-shaped title, numbered steps, the finished code |
 | `reference` | Exact answers | none | Tables and signatures, no narrative |
 
-Words are counted without frontmatter, code blocks and figure descriptions.
-`scripts/check-docs-page.mjs` counts them.
+Words are counted without frontmatter, code blocks and figure descriptions: the budget is for
+prose only. `scripts/check-docs-page.mjs` counts them. A first draft aims well under budget, about
+700 words for a concept page, so the review passes have room to add.
 
 ### The concept outline
 
@@ -40,22 +59,25 @@ Its shape is for internal model docs; a concept page uses this outline.
 
 1. **Opening**, two short paragraphs, no heading. A situation the reader has been in, then the idea
    in plain words.
-2. **A figure**, when the idea has a shape (see Figures).
+2. **The model, in a figure** (see Figures).
 3. **The smallest working example**, with a few sentences that point at the parts.
 4. **Two to five sections**, one per question a reader asks next. Headings are plain statements or
-   plain questions: "When a task fails", "Whose worker it is".
-5. **What it gets you.** Why the thing exists: what the reader gets by using it that they would
-   not get from plain code. Three or four short points, each one something they can observe, each
+   plain questions: "When a task fails", "Whose worker it is". Each section shows its idea in a
+   short example, and in a figure where the idea has a shape.
+5. **What it gets you.** Why the thing exists and why it is built this way: what the reader gets
+   by using it that they would not get from plain code. Three or four short points, each one something they can observe, each
    tied to the page's example. It comes after the explanation, so the what is told in one piece
    and the why does not interrupt it. See "Say what it buys the reader" in The moves.
-6. **What it won't do.** Three bullets at most, stated flat.
+6. **How it fits with the others.** What it sits next to, what it is not, and when to reach for
+   the neighbouring concept instead: "A board is not a background queue; Background work is." Exact
+   limits are Reference.
 
    Where our word differs from the industry's, an "If you know ..." section comes straight after the
    opening (see The moves).
 7. **Next.** Two to four links, each with a clause saying what the reader gets there. Link to
    pages by the names in "What to write next", as `./kebab-case-title.md`, whether or not they
-   exist yet. A concept page may end with one link to its Reference page, as
-   `../reference/<topic>.md`.
+   exist yet. One of them is the page's Reference page, as `../reference/<topic>.md`, where the
+   detail the page left out lives.
 
 ## The moves
 
@@ -130,8 +152,8 @@ every sentence lands on the same beat, break one or join two.
 If the example has no evaluator, the page gives evaluators one sentence and a link. It does not
 describe their options.
 
-**Say a thing once.** If a limit is stated where it first matters, it does not come back in
-"What it won't do". That list is for limits the page has not already stated.
+**Say a thing once.** If a neighbouring concept is named where it first matters, it does not
+come back in "How it fits with the others".
 
 **Stop when the point is made.** No closing line that sums up the section.
 
@@ -165,11 +187,15 @@ src/
 - **Do not reprint a file to change one line.** Show the new file, then say the change in a
   sentence: "In `handleTicket`, `pickReply` takes the place of `draftReply`." "Add
   `tools: [lookUpOrder]` to `draftReply`."
-- **A concept page shows four code blocks at most.** The smallest example is one to three files.
-  A reader should be able to hold all the code on the page in their head. A short call written
-  inline in a sentence does not count.
+- **Show it in action, often.** A concept page has a short example for each idea it teaches, not
+  one long listing. Each example does one thing and is short enough to read at a glance. All of
+  them belong to the page's one scenario, so the reader meets the same names throughout.
+- **Every example type-checks** against the package source, or, for a surface that is specified
+  and not built, against a declaration file written for it that FIX-2705 removes when it
+  reconciles the page (ER-8).
 
-`scripts/check-docs-page.mjs` fails a `ts` or `tsx` block with no title.
+`scripts/check-docs-page.mjs` fails a `ts` or `tsx` block with no title. It does not cap how many
+examples a page has.
 
 ## What goes to Reference
 
@@ -181,8 +207,11 @@ Move a sentence to Reference when any of these is true:
 - A reader would only need it after something went wrong. "The router throws when ..." is
   Reference. "Every route takes the router's input" is the page.
 
-Cut a sentence when it says what the framework used to do, why a design was chosen, or how
-something is implemented.
+Then link to it. The Concepts page keeps the guarantee in a sentence and points at the row.
+
+Cut a sentence when it says what the framework used to do, how something is implemented, or the
+history of a design choice. Why the thing is built this way stays when it is told as the idea
+behind it and what the reader gets.
 
 ## Words
 
@@ -201,13 +230,24 @@ something is implemented.
 ## Figures
 
 Draw a figure when the idea is about position: what contains what, what waits on what, what is
-copied per user, what order things happen in. One figure per page is normal. Two is the limit.
-Skip the figure when a table or a sentence carries it.
+copied per user, what order things happen in. A concept page has at least one, for its model, and
+one more for each further idea with a shape. Each earns its place: it shows something a table or
+a sentence would not.
 
 A figure shows one idea, and the page's example appears in it by name (`acme`, `engineering.lead`).
 
-The three pilot figures in [`pilot/figures/`](./pilot/figures) follow the site's drawing system.
-Copy one and change it.
+Every figure follows one style: the site's drawing system, as its published figures use it
+(`apps/docs/docs/fundamentals/state-scopes.svg` and `flow-type-instance-session.svg` are the two
+to compare against). Each mark has one meaning on every page:
+
+| Mark | Means |
+| --- | --- |
+| Hatching (`fill="url(#hatch)"`) | Outlives the request |
+| Dashed outline (`dash`) | Lasts one action run |
+| The highlighter (`hl`) | The one idea a reader should leave with |
+
+Every figure carries a key that names each mark it uses, as the published figures do. The pilot
+figures predate this style; FIX-2701 redraws them.
 
 - **Canvas:** `viewBox="0 0 920 H"`. Margins of 28. Grow down, never wider.
 - **Classes only, no colours.** The site themes them for light and dark.
@@ -215,7 +255,7 @@ Copy one and change it.
   | Class | Use |
   | --- | --- |
   | `solid` | The outline of a thing |
-  | `dash` | Something that does not last, or a boundary such as "one user" |
+  | `dash` | Something that lasts one action run. Draw a boundary such as "one user" with `thin` |
   | `thin` | A part inside a thing |
   | `hi` | A rule between rows |
   | `ln` | An arrow or connector, with `marker-end="url(#ah)"` |
@@ -231,10 +271,13 @@ Copy one and change it.
 - **Arrows start and end on a box edge** and run through gaps, never over text.
 - **Labels are sentence fragments a reader could say.** No option names unless the page teaches
   them.
-- Keep the `<style>` block at the top of each pilot SVG. It makes the file readable on GitHub. The
-  site's own styles override it.
+- **No hex colours and no `<style>` block.** The site styles every class. The figure lint
+  (FIX-2697) fails a figure with either, or with no key.
 
-Look at every figure before committing it:
+Each figure starts from a figure brief: the one idea, the parts and their names from the page's
+example, and which marks it uses. Render it in light and dark and look at it, then set it beside
+the two published figures above: same marks, same weight, same type. Until FIX-2697's renderer
+supplies the site's styles, the command below renders a pilot figure from its `<style>` block:
 
 ```bash
 S=docs/contributing/docs-revamp/pilot/figures/board.svg
@@ -257,48 +300,60 @@ site these become the `caption` and `description` of `<Figure>`.
 
 ## Writing a page, step by step
 
-1. **Collect the facts.** The writer is a fresh [`docs-writer`](../../../.claude/agents/docs-writer.md)
-   agent, and this list is its surface brief. Read the existing page or pages on the topic, the
-   package's exported surface and its doc comments, its tests, and one example that uses it
-   (`examples/`, `labs/`). Write down, with file and line, every fact the page will state, in
-   `<page>.facts.md` beside the page. Cite nothing `docs-writer` may not read: no specs,
-   `docs/internal/`, `CLAUDE.md`, pull requests or commit messages. When the page is about
-   something that stores data (workers, boards, sessions, a kit's collections), the sheet answers
-   four questions for each stored part: who owns it, who can see it, where it is stored, and how
-   many exist. Asking them is how the pilot found that editing a standard worker makes the user's
-   own copy.
-2. **Write the cold-read questions** before any draft exists, and have someone who has not read a
-   draft write them. Five or six scenario questions a reader should answer after the page,
-   at least two of them edge cases (a failure, a second user, an edit), each with its answer
-   from the fact sheet.
-3. **Choose the example.** One concrete scenario with names in it.
-4. **Write the opening and the outline** before anything else. If the opening needs a framework
-   term to make sense, start again.
-5. **Write the page.** Leave out any fact that is not on the list from step 1.
-6. **Run the checks.**
+Every page goes through ten passes, in order, and figures go through their own track beside them.
+FIX-2697 runs the loop as a workflow script so no pass can be skipped, and keeps a record per page
+of each pass and what it found. Until it lands, run the passes by hand and keep the record beside
+the page.
 
-   ```bash
-   node scripts/check-docs-page.mjs path/to/page.md
-   ```
+```text
+ 1 fact sheet ─ 2 cold-read questions ─ 3 draft ─ 4 machine checks ─ 5 fact check
+                                                                         │
+10 owner read ─ 9 cold read ─ 8 revise ─ 7 docs-editor ─ 6 depth pass ───┘
+figures:  brief ─ draw ─ render light + dark ─ figure lint ─ compare with two published figures
+```
 
-7. **Fact-check** with a fresh agent that has the page and the code and nothing else. It returns
-   each claim that is not true, with file and line, and type-checks the page's code against the
-   package source.
-8. **Prose-check** with the `docs-editor` agent.
-9. **Cold-read** it, as [`concept-doc`](../../../.agents/skills/concept-doc/SKILL.md) → "Checking
-   it before you call it done" does. Give two or more fresh agents with no tools only the page and
-   the questions from step 2, and grade their answers against the key. A question most readers
+1. **Fact sheet.** A fresh [`docs-writer`](../../../.claude/agents/docs-writer.md) agent writes
+   `<page>.facts.md` beside the page: every fact the page will state, with file and line. Its
+   sources are the ones ER-9 allows and nothing else: the existing page or pages on the topic, the
+   package's exported surface and its doc comments, its tests, `goals/`, and one example that uses
+   it (`examples/`, `labs/`). No specs, `docs/internal/`, `CLAUDE.md`, pull requests or commit
+   messages. When the page is about something that stores data (workers, boards, sessions, a kit's
+   collections), the sheet answers four questions for each stored part: who owns it, who can see
+   it, where it is stored, and how many exist. Asking them is how the pilot found that editing a
+   standard worker makes the user's own copy.
+2. **Cold-read questions**, written before any draft exists, by an agent that has not read one.
+   Five or six scenario questions a reader should answer after the page, at least two of them edge
+   cases (a failure, a second user, an edit), each with its answer from the fact sheet.
+3. **Draft.** Choose one concrete scenario with names in it. Write the opening and the outline
+   first; if the opening needs a framework term to make sense, start again. Then write to about
+   700 words of prose for a concept page, well under its budget, stating nothing that is not on
+   the fact sheet.
+4. **Machine checks.** The word budget, the banned words and the code titles
+   (`node scripts/check-docs-page.mjs path/to/page.md`), a type-check of every example, balanced
+   fences, retired terms (`node scripts/check-retired-terms.mjs`) and the figure lint.
+5. **Fact check** by a separate agent that has the page and the code and nothing else. It returns
+   each claim that is not true, with file and line.
+6. **Depth pass.** For each paragraph, ask: is this the model, or mechanism? Mechanism leaves the
+   page and becomes a row on the topic's Reference page (FIX-2699), and the page links to it.
+7. **`docs-editor`** checks the prose.
+8. **Revise once**, from passes 5 to 7, then run pass 4 again. Take every factual correction and
+   every depth finding. Take a prose finding unless it would undo something this brief asks for.
+9. **Cold read** by two or more fresh agents with no tools, given only the page and the questions
+   from pass 2, as [`concept-doc`](../../../.agents/skills/concept-doc/SKILL.md) → "Checking it
+   before you call it done" does. Grade their answers against the key. A question most readers
    miss is a gap in the page, even when the fact check and the editor passed it.
-10. **Revise from all three sets of findings**, then run the checks in step 6 again. Take every
-    factual correction and close every cold-read gap. Take a prose finding unless it would undo
-    something this brief asks for.
-11. **Read it aloud once.** Fix anything you would not say to a colleague.
+10. **The owner reads** the first two pages of each section, then a sample of the rest.
+
+At cutover, `polish-docs` runs once across all the pages (FIX-2705).
 
 ## Before you call it done
 
 - The first two paragraphs make sense to someone who has never heard of the framework.
 - The page says why the thing exists, after it has finished saying what the thing is.
 - Every code block has its path as a title, and every name in it is imported or declared there.
+- Every example type-checks, and no paragraph explains a check, a retry or a limit: those are
+  Reference rows the page links to.
+- Every figure has a key, no hex colours and no `<style>` block.
 - No table has more than six rows.
 - No sentence contains *now*, *no longer*, *still*, *deliberately*, *simply*, *just*, *powerful*,
   *seamless*, *robust*, *first-class*.
