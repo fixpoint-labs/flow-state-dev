@@ -17,7 +17,6 @@ export function useTask() {
     taskId: "t1",
     reportStatus: noop,
     waiting: false,
-    gaveUp: false,
     retryRow: noop,
     retryRun: noop,
   } as never;

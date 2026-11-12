@@ -9,21 +9,24 @@
  * lab's conversation (whether it is answering), its divider and its Talk
  * panel (`watchTalk`, the user's message log), and Shift Manager's worker
  * conversation (`followSessionItems`, the hook's follow), its message log
- * (`useMessages`) and a project's entries (`useProjectRead`), the last two
- * under the real `LabProvider`, rendered by react-dom over happy-dom. Each view has its own client, whose fetcher
- * counts the reads it makes.
+ * (`useMessages`), a project's entries (`useProjectRead`) and a task screen
+ * waiting on its run's link (`TaskProvider`), the last three under the real
+ * `LabProvider`, rendered by react-dom over happy-dom. Each view has its own
+ * client, whose fetcher counts the reads it makes.
  *
  *   a  — another session writes: a slow turn in the watched session, a pin,
  *        a message in the log, a project's entry. Each view shows it within
  *        1 s of the write; a Lab read reads the log and the entries again. Then
- *        a 10 s idle window: every view makes 0 reads.
+ *        a 10 s idle window: every view makes 0 reads. A task screen waits on
+ *        a task the board hasn't dispatched: 0 board reads over 10 s, then it
+ *        shows the run the board links within 1 s of the link's write.
  *   b  — a reply of 200 items, then one of 2, in the watched session: each
  *        request view makes as many reads during the long reply as during
  *        the short one, and the item view reads nothing (the stream brings
  *        the items).
  *   c  — the same views on a host whose bus doesn't cross (the crossing
- *        double turned off): a pin, a turn, a message and a project's entry
- *        show within the view's old pace + 1 s.
+ *        double turned off): a pin, a turn, a message, a project's entry and a
+ *        task's run link show within the view's old pace + 1 s.
  *
  * Controls (each runs this file again with a patch applied as it loads):
  *   GOAL_CONTROL=timer       each live read keeps a fixed timer with the socket up: a's 0-reads must FAIL.
@@ -61,6 +64,8 @@ import { followSessionItems, type SessionItems } from "../../../packages/shift-m
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { projectReaderOf, useProjectRead } from "../../../packages/shift-manager/src/lib/projects.ts";
 import { useMessages } from "../../../packages/shift-manager/src/lib/messages.ts";
+import { conversationBoardRef } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { TaskProvider, useTask } from "../../../packages/shift-manager/src/lib/task.tsx";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("realtime-app-views");
@@ -68,8 +73,8 @@ const BOUND_MS = 1_000;
 const IDLE_MS = 10_000;
 const ORG = "acme";
 // The views that read on a notice are the client's live read (`client.live`):
-// the labs' watches and Shift Manager's message log and project entries (and its
-// snapshot, whose Lab reads read those two again). Shift Manager's conversation follows the
+// the labs' watches and Shift Manager's message log, project entries and task run
+// link (and its snapshot, whose Lab reads read the log and the entries again). Shift Manager's conversation follows the
 // session stream instead. A patch to the live read reaches every one of them.
 const LIVE_READ = "packages/client/src/live/live-read.ts";
 /** The Talk panel's worker, and the shared project whose entries the Shift Manager view reads. */
@@ -394,6 +399,72 @@ async function mounted(views: ReturnType<typeof mountViews>): Promise<void> {
   await delay(500);
 }
 
+/** A task screen's run link pace wherever push can miss a change (`REREAD_EVERY_MS`). */
+const RUN_LINK_POLL_MS = 2_000;
+
+/**
+ * A task screen waiting on its run's link, under its own provider and
+ * credential so its board reads are counted apart. Its task, filed on a
+ * coordinator conversation, waits on a held task, so nothing dispatches it;
+ * the screen follows it (as after a board action), so it waits for the board
+ * to hand it a run. `dispatch` drops the dependency: the board then claims it
+ * and writes the run's link to the row, and says when the link landed.
+ */
+async function taskScreen(on: Host, writer: Client) {
+  const conversation = await createWorkforceClient(writer).ensureWorkerSession({ worker: "support.help" });
+  const act = async (name: string, input: unknown) =>
+    ((await (await writer.flow(conversation.flowKind).send(name, input, { sessionId: conversation.id })).result()) as { output?: { taskId?: string } }).output;
+  const gate = (await act("createTask_tasks", { goal: "gate", assignee: "support.devices", held: true }))!.taskId!;
+  const taskId = (await act("createTask_tasks", { goal: "waits on the gate", assignee: "support.devices", deps: [gate], maxAttempts: 1 }))!.taskId!;
+  const token = `tok-task-${(mounts += 1)}`;
+  const reads: Read[] = [];
+  pageReads.set(token, reads);
+  const shown: Array<{ at: number; value: { waiting: boolean; linked: boolean } }> = [];
+  let follow: () => void = () => {};
+  function Shown() {
+    const task = useTask();
+    follow = task.retryRow;
+    const linked = task.row?.run != null;
+    useEffect(() => {
+      shown.push({ at: Date.now(), value: { waiting: task.waiting, linked } });
+    }, [task.waiting, linked]);
+    return null;
+  }
+  function Screen() {
+    const { snapshot } = useLab();
+    const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
+    if (loaded === undefined || !loaded.sessions.some((session) => session.id === conversation.id)) return null;
+    return createElement(TaskProvider, { snapshot: loaded, boardRef: conversationBoardRef(conversation.id), taskId, children: createElement(Shown) });
+  }
+  const root: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  root.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: token, baseUrl: on.base }, children: createElement(Screen) }));
+  const giveUpAt = Date.now() + 15_000;
+  while (shown.length === 0) {
+    if (Date.now() > giveUpAt) throw new Error("setup: the task screen never opened");
+    await delay(20);
+  }
+  follow();
+  while (!shown.at(-1)!.value.waiting) {
+    if (Date.now() > giveUpAt) throw new Error("setup: the task screen never waited on its run");
+    await delay(20);
+  }
+  return {
+    shown,
+    // One read of the conversation's board, the task screen's own (its snapshot reads only on a notice).
+    boardReads: () => reads.filter((r) => r.url.includes(`/resources/tasks`)),
+    all: reads,
+    async dispatch(): Promise<number> {
+      await act("updateTask_tasks", { id: taskId, deps: [] });
+      for (const until = Date.now() + 5_000; Date.now() < until; await delay(5)) {
+        const rows = Object.values(await on.stores.resourceState.getByPrefix("user", `alice:~org:${ORG}`, "tasks/")) as Array<{ state: { id?: string; run?: unknown } }>;
+        if (rows.some((row) => row.state.id === taskId && row.state.run != null)) return Date.now();
+      }
+      throw new Error("setup: the board never linked the task's run");
+    },
+    close: () => root.unmount(),
+  };
+}
+
 /** Run `action` in the writer's session; when it landed. */
 async function writeIn(writer: Client, sessionId: string, action: string, input: unknown): Promise<number> {
   await (await writer.flow("desk").send(action, input, { sessionId })).wait();
@@ -463,6 +534,22 @@ await runGoal(async (failures, tell) => {
       }
       const moved = Object.entries(views.reads).filter(([name, reads]) => reads().length > before.get(name)!);
       tell.over("a:within-1s · views that read on the changes", moved);
+
+      // A task screen waiting on its run's link: nothing read while it waits, then the link within 1 s.
+      const task = await taskScreen(on, writer);
+      closers.push(task.close);
+      await quiet([task.all]);
+      const waitFrom = task.boardReads().length;
+      await delay(IDLE_MS);
+      const waitReads = task.boardReads().length - waitFrom;
+      tell.over("a:idle-0-reads · task screen board reads over 10 s waiting on its link", [waitReads]);
+      if (waitReads > 0) failures.push(`a:idle-0-reads: Shift Manager task run link ${waitReads} board reads over ${IDLE_MS / 1000} s waiting`);
+      const linkedAt = await task.dispatch();
+      const linkShown = await shownAfter(task.shown, (v) => v.linked, linkedAt);
+      tell.over("a:within-1s · task run link shown", linkShown === undefined ? [] : [linkShown]);
+      if (linkShown === undefined || linkShown >= BOUND_MS) failures.push(`a:within-1s: Shift Manager task run link shown ${linkShown ?? "never"} ms after its write (bound ${BOUND_MS})`);
+      else if (waitReads === 0) evidence.push(`a: task screen read its board 0 times over ${IDLE_MS / 1000} s waiting, and showed the run link ${linkShown} ms after its write`);
+      task.close();
 
       // A Lab read (the snapshot read again, here as the user's Refresh) reads the log and the entries again, as it did before.
       await quiet(views.all);
@@ -547,12 +634,23 @@ await runGoal(async (failures, tell) => {
       const message = await shownAfter(fallback.shown.tmTalk, (v) => v.some((m) => m.id === "msg_c"), loggedAt, 1_500 + BOUND_MS + 500);
       const logged = await shownAfter(fallback.shown.smMessages, (v) => v.includes("msg_c"), loggedAt, 5_000 + BOUND_MS + 500);
       const entry = await written(w, s, "openEntry", { id: "fallback" }, fallback.shown.smProject, (v) => v.entries.includes("fallback"), 5_000 + BOUND_MS + 500);
+      // The task screen: on its old pace while it waits, and the link within that pace + 1 s.
+      const task = await taskScreen(plain, w);
+      closers.push(task.close);
+      await quiet([task.all], 300);
+      const waitFrom = task.boardReads().length;
+      await delay(6_000);
+      const waitReads = task.boardReads().length - waitFrom;
+      const linkedAt = await task.dispatch();
+      const linkShown = await shownAfter(task.shown, (v) => v.linked, linkedAt, RUN_LINK_POLL_MS + BOUND_MS + 500);
+      task.close();
       const paced: Array<[string, number | undefined, number]> = [
         ["pins", pin === undefined ? undefined : pin - pinnedAt, 3_000],
         ["Teammates answering", answering === undefined ? undefined : answering - startedAt, 1_500],
         ["Teammates Talk", message, 1_500],
         ["Shift Manager message log", logged, 5_000],
         ["Shift Manager project entries", entry, 5_000],
+        ["Shift Manager task run link", linkShown, RUN_LINK_POLL_MS],
       ];
       tell.over("c:within-poll · fallback views showing the change", paced.flatMap(([, ms]) => (ms === undefined ? [] : [ms])));
       for (const [what, ms, pace] of paced) {
@@ -565,7 +663,7 @@ await runGoal(async (failures, tell) => {
       await quiet(fallback.all, 300);
       const from = new Map(kept.map((name) => [name, fallback.reads[name]!().length]));
       await delay(6_000);
-      const timed = kept.map((name) => [name, fallback.reads[name]!().length - from.get(name)!] as const);
+      const timed = [...kept.map((name) => [name, fallback.reads[name]!().length - from.get(name)!] as const), ["Shift Manager task run link (6 s waiting)", waitReads] as const];
       tell.over("c:fallback-reads · reads per moved view over 6 s idle, no crossing bus", timed);
       const still = timed.filter(([, n]) => n === 0);
       if (still.length > 0) failures.push(`c:fallback-reads: ${still.map(([name]) => name).join(", ")} made no read over 6 s idle with no crossing bus`);
