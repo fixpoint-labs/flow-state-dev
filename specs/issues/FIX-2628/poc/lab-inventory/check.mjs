@@ -84,12 +84,15 @@ const PROJECT_TOKENS = ["setWorkProject", "needsProject", "listProjects", "creat
 
 /** `workforce/flows/` today: each file, who takes it out, and where it goes. */
 const FLOW_FILES = {
-  "pins.mts": "FIX-2624: a user resource on runBy \"default\"; FIX-2628 moves the declaration into the app kit",
-  "dismissals.mts": "FIX-2624: the same",
-  "user-marks.mts": "the schema pins and dismissals share; FIX-2627 moves it out, FIX-2628 deletes it",
+  "pins.mts": "FIX-2624 deletes it: pins become a user resource declared in user-marks.mts",
+  "dismissals.mts": "FIX-2624 deletes it: the same, for dismissals",
+  "user-marks.mts": "the pins and dismissals user resources (FIX-2624); FIX-2627 moves it out, FIX-2628 moves it into the app kit",
   "harness-thread.mts": "FIX-2627: merged into the one coding worker flow",
   "projects.mts": "moved out before the claim pass (FIX-2627's PR); FIX-2628 replaces it with the app kit's repositories",
 };
+
+/** Rows whose file may already be gone: FIX-2624 deletes them, before or after this check runs. */
+const MAY_BE_GONE = new Set(["pins.mts", "dismissals.mts"]);
 
 /**
  * Mentions of the package that are not import lines, by file, each named. Today one test
@@ -160,7 +163,7 @@ function check({ files, flows }, expect) {
   }
 
   for (const f of flows) if (!(f in FLOW_FILES)) problems.push(`unowned file in workforce/flows/: ${f}`);
-  for (const f of Object.keys(FLOW_FILES)) if (!flows.includes(f) && expect !== "gone") problems.push(`stale flow row: ${f} is not in workforce/flows/`);
+  for (const f of Object.keys(FLOW_FILES)) if (!flows.includes(f) && !MAY_BE_GONE.has(f) && expect !== "gone") problems.push(`stale flow row: ${f} is not in workforce/flows/`);
 
   if (expect === "gone") {
     const projectImports = [...seen.keys()].filter((n) => FATES[n] === "project");

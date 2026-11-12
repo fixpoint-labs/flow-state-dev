@@ -129,8 +129,16 @@ export interface FlowRegistry {
    * explicit id only. Nothing is guessed from an incomplete address.
    */
   get(address: string): FlowInstance | undefined;
-  /** Every admitted instance, ordered by kind then id. */
+  /** Every admitted instance, ordered by kind then id. Built-in instances are not listed. */
   list(): FlowInstance[];
+  // FIX-2624.
+  /**
+   * Hold one of the framework's own instances at its address: `get` answers
+   * it, `list` never shows it, so no catalog, listing or tool surface offers
+   * it. Idempotent per address; a held user instance at that address wins.
+   * Optional so a hand-built registry needs none.
+   */
+  registerBuiltIn?(flow: FlowInstance): void;
   /**
    * Merged cross-flow schema view — what each scope's shared storage looks
    * like once isolated declarations are excluded. Diagnostics and devtool
@@ -298,7 +306,14 @@ class InMemoryFlowRegistry implements FlowRegistry {
    * many members, and an intentionally registered exact id wins.
    */
   get(address: string): FlowInstance | undefined {
-    return this.flowsById.get(address);
+    return this.flowsById.get(address) ?? this.builtIns.get(address);
+  }
+
+  /** The framework's own instances, by id: addressable, never listed. */
+  private readonly builtIns = new Map<string, FlowInstance>();
+
+  registerBuiltIn(flow: FlowInstance): void {
+    if (!this.builtIns.has(flow.id)) this.builtIns.set(flow.id, flow);
   }
 
   /**

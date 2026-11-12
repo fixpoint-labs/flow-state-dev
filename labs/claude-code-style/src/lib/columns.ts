@@ -22,6 +22,9 @@ export const COLUMNS: readonly { id: Column; label: string }[] = [
  */
 export const dismissalKey = (task: Pick<LabTask, "id" | "attempts">) => `${task.id}#${task.attempts ?? 0}`;
 
+/** The task id a `dismissalKey` names. */
+export const taskOfDismissal = (key: string) => (key.lastIndexOf("#") === -1 ? key : key.slice(0, key.lastIndexOf("#")));
+
 /** How many of a session's tasks wait on you: those under *Waiting on you* or *Ready for review*, pins aside. */
 export function waitingOnYou(tasks: readonly LabTask[], dismissed: ReadonlySet<string> = new Set()): number {
   return tasks.filter((task) => {

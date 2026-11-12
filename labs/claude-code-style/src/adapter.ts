@@ -38,9 +38,9 @@
  * |                 | `steer`, `release` and `retry`, each the board's own action                 |
  * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }`, naming its `land` when one is given |
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
- * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state; `watchPins` is its |
- * |                 | `listPins` read, again on each state notice of your user topic             |
- * | `watchDismissed`, `dismiss` | the lab's `dismissals` flow, your own user state, read the way pins are |
+ * | `watchPins`, `pin`, `unpin` | your `lab-pins` user resource: read by scope with no session, again on |
+ * |                 | each notice of it on your user topic; written through the default write flow |
+ * | `watchDismissed`, `dismiss` | your `lab-dismissals` user resource, read and written the way pins are |
  *
  * Every watch reads on a change, through the client's live read (`client.live`).
  */
@@ -61,6 +61,7 @@ import {
 } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
+  harnessReadinessViewRef,
   pullRequestWait,
   readSessionPullRequests,
   readRecordedWork,
@@ -84,7 +85,8 @@ import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
 import type { LandedWork, ReviewAnswer, ReviewLand } from "./components/flow-state/review-hold";
-import { dismissalKey, waitingOnYou } from "./lib/columns";
+import { dismissalKey, taskOfDismissal, waitingOnYou } from "./lib/columns";
+import { labDismissals, labPins } from "../workforce/flows/user-marks.mts";
 import { resultSummary } from "./lib/result-summary";
 import { firstLineOfText, NEW_SESSION_TITLE, sessionTitle } from "./lib/session-title";
 import { filedTaskOf, toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
@@ -260,7 +262,7 @@ export interface WorkingNow {
   plan?: PlanRowNow[];
 }
 
-/** One coding harness's readiness, as harness-manager's readiness action answers it. */
+/** One coding harness's readiness, as harness-manager's readiness view answers it. */
 export type LabHarness = HarnessReadinessChipRow;
 
 /** Whether a run could check a repository out on this machine: the projects flow's `checkRepository`. */
@@ -316,8 +318,9 @@ export interface LabAdapter {
   dismiss(task: Pick<LabTask, "id" | "attempts">): Promise<void>;
 }
 
-/** The lab flow whose `read` action is harness-manager's readiness action (`fsdev.config.mts`). */
-const READINESS_FLOW = "harness-readiness";
+// FIX-2624.
+/** The lab flow's harness-manager readiness view (`host.mts`), read by scope with no session. */
+const READINESS_VIEW = harnessReadinessViewRef("harness-readiness");
 
 /** How often an open view reads again, in ms. */
 const READ_EVERY_MS = 1500;
@@ -789,7 +792,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
     return pending;
   };
 
-  /** The user's one session on a lab flow (`projects`, `pins`), found or made once. */
+  /** The user's one session on a lab flow (`projects`), found or made once. */
   const ownSessions = new Map<string, Promise<string>>();
   const ownSession = (flow: string) =>
     ownSessions.get(flow) ??
@@ -1135,14 +1138,11 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
   /** Told when this tab opens a session, so the sessions list reads it in at once. */
   const sessionOpened = new Set<() => void>();
 
-  /** Your pins, as the `pins` flow keeps them. */
-  const pinsDo = async (action: string, input: unknown): Promise<string[]> => (await run("pins", await ownSession("pins"), action, input)).pinned;
-  /** Your pins, through the flow's read: reading them stores no request. */
-  const readPins = async (): Promise<string[]> =>
-    (await fsd.flow("pins").read<{ pinned: string[] }>("listPins", {}, { sessionId: await ownSession("pins") })).pinned;
-  /** The failures you dismissed, through the `dismissals` flow's read. */
-  const readDismissed = async (): Promise<string[]> =>
-    (await fsd.flow("dismissals").read<{ dismissed: string[] }>("listDismissed", {}, { sessionId: await ownSession("dismissals") })).dismissed;
+  /** Your pins and the failures you dismissed: user resources, read by scope with no session. */
+  const pins = () => fsd.resource(labPins);
+  const dismissals = () => fsd.resource(labDismissals);
+  const readPins = async (): Promise<string[]> => (await pins().state()).pinned;
+  const readDismissed = async (): Promise<string[]> => (await dismissals().state()).dismissed;
 
   return {
     modes: modes.map((mode) => mode.id),
@@ -1191,7 +1191,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
             onChange: (notice) => {
               if (notice === null || notice.kind === "resync") relist = true;
               else if (notice.topic.scope === "session" && ROW_CHANGES.has(notice.kind)) dirty.add(notice.topic.id);
-              else if (notice.topic.scope === "user" && notice.kind === "state") marks = true;
+              else if (notice.topic.scope === "user" && notice.topic.resource === labDismissals.ref) marks = true;
               else return;
               void pump();
             },
@@ -1284,8 +1284,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
       return { id: projectRef({ visibility: created.visibility, id: created.project.id }), name: created.project.title };
     },
     checkRepository: async (repository) => await run("projects", await projects(), "checkRepository", { repository }),
-    readHarnesses: async (refresh = false) =>
-      (await run(READINESS_FLOW, await ownSession(READINESS_FLOW), "read", { refresh })).harnesses as LabHarness[],
+    readHarnesses: async (refresh = false) => (await fsd.view(READINESS_VIEW, { refresh })).value,
     openSession: async (mode, projectId) => {
       const { worker } = modeById(mode);
       const project = parseProjectRef(projectId);
@@ -1571,30 +1570,33 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
     }),
     resolve: (sessionId, taskId, land) => answerReview(sessionId, taskId, { value: acceptOf(land) }),
     requestChanges: (sessionId, taskId, words) => answerReview(sessionId, taskId, { value: { verdict: "revise", words } }),
-    // Pins are your user state: a state notice on your topic, from this tab or another, says they may have changed.
-    watchPins: (onChange) => fsd.live([topic.user()], {
+    // A notice of your pins on your user topic, from this tab or another, says they may have changed.
+    watchPins: (onChange) => fsd.live([topic.user({ resource: labPins.ref })], {
       read: readPins,
       onValue: onChange,
-      hear: (notice) => notice.kind === "state",
+      hear: (notice) => notice.topic.resource === labPins.ref,
       pollIntervalMs: 3000,
       onError: logFailedRead,
     }).close,
+    // Each is one write at the version read; one another tab beat is read again and re-applied.
     pin: async (taskId) => {
-      await pinsDo("pin", { taskId });
+      await pins().update((s) => ({ pinned: s.pinned.includes(taskId) ? s.pinned : [...s.pinned, taskId] }));
     },
     unpin: async (taskId) => {
-      await pinsDo("unpin", { taskId });
+      await pins().update((s) => ({ pinned: s.pinned.filter((id) => id !== taskId) }));
     },
-    // Read the way pins are: your dismissals are your user state.
-    watchDismissed: (onChange) => fsd.live([topic.user()], {
+    // Read the way pins are.
+    watchDismissed: (onChange) => fsd.live([topic.user({ resource: labDismissals.ref })], {
       read: readDismissed,
       onValue: onChange,
-      hear: (notice) => notice.kind === "state",
+      hear: (notice) => notice.topic.resource === labDismissals.ref,
       pollIntervalMs: 3000,
       onError: logFailedRead,
     }).close,
+    // One key per task: a newer attempt's dismissal replaces the older one's.
     dismiss: async (task) => {
-      await run("dismissals", await ownSession("dismissals"), "dismiss", { key: dismissalKey(task) });
+      const key = dismissalKey(task);
+      await dismissals().update((s) => ({ dismissed: [...s.dismissed.filter((k) => taskOfDismissal(k) !== task.id), key] }));
     },
   };
 }

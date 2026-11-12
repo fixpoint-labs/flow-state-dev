@@ -26,25 +26,14 @@ const RULES = [
   // claude-code-style: ownSession
   ["labs/claude-code-style/src/adapter.ts", /const ownSessions = |const ownSession = |ownSessions\.get|^\s*ownSessions,$/, ["helper"]],
   ["labs/claude-code-style/src/adapter.ts", /const projects = \(\) => ownSession/, ["helper"]],
-  ["labs/claude-code-style/src/adapter.ts", /pinsDo = .*ownSession\("pins"\)/, ["runby-write"]],
-  ["labs/claude-code-style/src/adapter.ts", /"listPins".*ownSession\("pins"\)/, ["direct-read"]],
-  ["labs/claude-code-style/src/adapter.ts", /"listDismissed".*ownSession\("dismissals"\)/, ["direct-read"]],
   ["labs/claude-code-style/src/adapter.ts", /projects\(\), "listProjects"/, ["direct-read"]],
   ["labs/claude-code-style/src/adapter.ts", /projects\(\), "createProject"/, ["runby-write"]],
   ["labs/claude-code-style/src/adapter.ts", /projects\(\), "checkRepository"/, ["view"]],
-  ["labs/claude-code-style/src/adapter.ts", /ownSession\(READINESS_FLOW\), "read"/, ["view"]],
-  ["labs/claude-code-style/src/adapter.ts", /ownSession\("dismissals"\), "dismiss"/, ["runby-write"]],
-  // teammates: labSession
-  ["labs/teammates/src/adapter.ts", /labSessions|const labSession = |const runLab = |await labSession\(flow\)/, ["helper"]],
-  ["labs/teammates/src/adapter.ts", /runLab\("lab-context", "read"/, ["view"]],
-  ["labs/teammates/src/adapter.ts", /runLab\("harness-readiness", "read"/, ["view"]],
   // workforce client: the roster session
   ["packages/workforce/src/workers/client.ts", /^\s*roster\(\): Promise/, ["unrelated"]],
   ["packages/workforce/src/workers/client.ts", /rosterSession/, ["helper"]],
-  ["packages/workforce/src/workers/client.ts", /roster: async \(\) => readRoster/, ["direct-read"]],
-  ["packages/workforce/src/workers/client.ts", /const \{ id, orgId \} = await roster\(\)/, ["direct-read", "identity"]],
-  ["packages/workforce/src/workers/client.ts", /flowOf\(await readRoster\(\(await roster\(\)\)\.id\)/, ["direct-read"]],
-  ["packages/workforce/src/workers/client.ts", /runIn\(ROSTER_FLOW, \(await roster\(\)\)\.id, "(hire|fork|edit|fire|reset)"/, ["runby-write"]],
+  // The roster session now only reads a workstream's entry (namedLeadSession); the org beside it is the identity read.
+  ["packages/workforce/src/workers/client.ts", /const \[\{ id \}, orgId\] = await Promise\.all\(\[roster\(\), orgOf\(\)\]\)/, ["direct-read"]],
   ["packages/workforce/src/workers/register.ts", /copies\.push\(roster\(\)/, ["unrelated"]],
   ["packages/workforce/src/agent-worker-flow.ts", /`roster\(\)` row/, ["unrelated"]],
   ["packages/workforce/src/hire.ts", /`roster\(\)` row/, ["unrelated"]],

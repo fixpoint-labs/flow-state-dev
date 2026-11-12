@@ -1,7 +1,8 @@
 import type { ZodTypeAny } from "zod";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { ScopeType } from "./scope";
-import type { AnchoredPath, ResourceRef, CollectionClientConfig, StateOf } from "./resource";
+import type { AnchoredPath, ResourceRef, CollectionClientConfig, ResourceRunBy, StateOf } from "./resource";
+import { validateRunBy } from "./resource";
 import type { ResourceTemplate } from "../resource-template/resource-template";
 import type { EdgeSlotConfig } from "../graph";
 import type { ProjectedClient } from "../helpers/client-projection";
@@ -239,7 +240,44 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    * Names must be non-empty and must not contain `@`.
    */
   indexes?: Record<string, ResourceIndexDeclaration<TState>>;
+  // FIX-2624.
+  /**
+   * The flow a client's write of this user or org collection's entries runs
+   * through: `"default"` (the framework's default write flow) or `{ flow }`.
+   * Omit it and a client can't write an entry. User or org scope only, not
+   * with `flowIsolation: true`, and with `client.state.read: true`, since a
+   * client writes an entry at the version it read. With `"default"`, no
+   * computed `client.data`, no `writable: false` and no eviction.
+   */
+  runBy?: ResourceRunBy;
+  /**
+   * The default write flow's rule for one entry, run after the schema and
+   * owner checks; `false` refuses the write. Requires `runBy: "default"`.
+   * Required for an org collection on the default write flow: without it
+   * every member of the org could write every entry. Declare
+   * `canWrite: () => true` when that is what you want.
+   */
+  canWrite?: CollectionCanWrite<TState>;
 };
+
+// FIX-2624.
+/**
+ * What {@link ResourceCollectionConfig.canWrite} decides on: the entry's
+ * storage key, its stored state (none on a create), the state the write would
+ * store (none on a delete), and who asks, from the verified sign-in.
+ */
+export type CollectionWriteCheck<TState extends JsonObject = JsonObject> = {
+  key: string;
+  prev: Readonly<TState> | undefined;
+  next: Readonly<TState> | undefined;
+  userId: string;
+  orgId: string;
+};
+
+/** The default write flow's rule for one collection entry: `true` admits the write. */
+export type CollectionCanWrite<TState extends JsonObject = JsonObject> = (
+  check: CollectionWriteCheck<TState>
+) => boolean | Promise<boolean>;
 
 type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
 
@@ -468,6 +506,7 @@ export function defineResourceCollection<
   });
 
   validateReactTo("defineResourceCollection()", config.reactTo);
+  validateCollectionRunBy(config);
   validateIndexDeclarations(config.pattern, config.indexes);
 
   if (
@@ -506,6 +545,33 @@ export function defineResourceCollection<
     AsStateObject<TStateSchema["_output"]>,
     ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
   >;
+}
+
+// FIX-2624.
+/**
+ * The definition errors of `runBy` and `canWrite` on a collection: the single
+ * resource's (the org rule among them), then what entries add. A client reads
+ * an entry before it writes one, so the entries must be client-readable; and
+ * the default write flow never evicts, since an eviction would delete an entry
+ * the writer never named (`writable: false` is refused with the single
+ * resource's errors).
+ */
+function validateCollectionRunBy(config: ResourceCollectionConfig & { client?: { state?: { read?: boolean } } }): void {
+  validateRunBy("defineResourceCollection()", config);
+  if (config.runBy === undefined) return;
+  const named = `defineResourceCollection() collection "${config.pattern}"`;
+  if (config.client?.state?.read !== true) {
+    throw new Error(
+      `${named} sets runBy without client: { state: { read: true } }: a client writes an entry at the version it read, ` +
+        `so it must be able to read entries.`
+    );
+  }
+  if (config.runBy !== "default") return;
+  if (config.eviction !== undefined && config.eviction !== "none") {
+    throw new Error(
+      `${named} sets runBy: "default" with eviction "${config.eviction}": a client's create would evict an entry it never named.`
+    );
+  }
 }
 
 /**

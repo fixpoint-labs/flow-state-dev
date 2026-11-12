@@ -144,7 +144,7 @@
     "shims.stored-human-approval": "pass",
     "types.typed-handler": "pass",
     "types.fresh-session-default": "pass",
-    "closure.j5:moved-name-named": "fail"
+    "closure.j5:moved-name-named": "pass"
   },
   "ratchets": {
     "export-check": "scripts/check-root-exports.mjs",

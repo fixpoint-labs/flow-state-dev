@@ -34,6 +34,18 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 >   Today the cell is aggregate, so a name that loses its changelog line still reads `fail`. Making
 >   it strict per name belongs in the PR that flips it to `pass` (Codex's finding on #4938).
 
+> **Amended (Nov 12).** The owner made the release-notes call: "I would just indicate a single
+> line that 1076 unused exports have been removed and leave it at that." So the release notes
+> carry one changeset line, on every published package whose root lost a name, saying how many
+> exports the roots lost, and no line per name. j5 now checks for that line: each dropped name
+> still must fail to compile from its old root, and each package that lost one must carry a
+> changelog line stating the real count (1,078 on `main` today; the owner's 1,076 was the count
+> when the question was asked). A missing line or a stale count fails, and the planted control
+> removes the line and fails for every such package. `closure.j5:moved-name-named` expects `pass`.
+> This supersedes the Nov 10 bullet above: there is no per-name line left to be strict about, so
+> Codex's per-name strictness finding on #4938 no longer applies. It also supersedes "the
+> package's changelog line names its new home" in [the Q1 row](#q1).
+
 | | |
 |---|---|
 | **Instead of** | Keeping the manifest after the wrap, with the journeys as its rows, as the non-gating job on `main` that the epic runs while its cells are expected to fail |
@@ -170,6 +182,8 @@ Spec-set review round 1 (Nov 5), recorded, not folded.
 
 ## How it got here
 
+- **Owner amendment (Nov 12)** — release notes name removed exports in one summary line with
+  the count, not one line per name; j5 grades that line ([D1](#d1)).
 - **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
   backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). The Q1 section keeps only the
   break row: one pinned commit after the last child, j5 one hop with no `@deprecated` arm. The

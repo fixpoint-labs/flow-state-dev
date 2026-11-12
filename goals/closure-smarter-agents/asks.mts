@@ -356,14 +356,14 @@ const fmt = (x: { y: number; m: number; d: number }) => `${x.y || "????"}-${Stri
 
 /**
  * Guidance an app must not write for itself once the defaults carry it (epic
- * ER-3): today's date, "check before done", and how long to answer. Matched on
- * a WORKER.md's text with its line breaks folded, so a phrase split across
- * lines is still found.
+ * ER-3): today's date and "check before done". How long to answer is not
+ * swept: FIX-2498's behaviour section was cut, so no default replaces an
+ * app's own length line. Matched on a WORKER.md's text with its line breaks
+ * folded, so a phrase split across lines is still found.
  */
 const APP_GUIDANCE: readonly [kind: string, pattern: RegExp][] = [
   ["date", /\b(?:today'?s date|the current date|the date (?:is|today))\b/i],
   ["done", /\b(?:before (?:you )?(?:say|report|call)(?: it)?(?: is)? done|run the (?:checks|tests) before)\b/i],
-  ["length", /\b(?:in a sentence or two|in (?:one|two|three|a few) sentences|keep (?:it|your answers?|replies) (?:short|brief)|be concise|answer briefly|in (?:under |at most )?\d+ words)\b/i],
 ];
 
 /** Each app-written guidance line found in `files` (path → WORKER.md text), as `path: kind ("phrase")`. */

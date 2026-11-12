@@ -157,7 +157,7 @@ Coding harnesses on this machine:
 ```
 
 Lead sees the same rows, so it starts coding tasks only on an agent marked ✓ and tells
-you what to run for one that isn't. The `harness-readiness` flow's `read` action returns the rows,
+you what to run for one that isn't. The `harness-readiness` flow's `readiness` view returns the rows,
 and `{ refresh: true }` checks again. A task on an agent last read as not ready is checked once
 more before it starts, so signing in after the lab started works without a restart. If it still
 isn't ready, the task fails at once with a line that names the agent and what to run, such as
@@ -182,6 +182,22 @@ hand it tasks. Your own teammates' panels have *Edit instructions*, which replac
 from the next turn on, and their header has *Fire*, which takes them off the list; their conversation stays readable.
 The three teammates from the files can't be edited or fired.
 
+### Routines
+
+Lead, researcher and writer can each follow a GitHub pull request for you, or run something on a
+clock. Ask in words: *"Follow acme/api#412 and tell me about every review on it."* The teammate
+saves a routine, and each new review on that pull request reaches the same conversation as a
+message, once. *"What are you following?"* lists your routines; *"Pause that"* and *"Stop
+following it"* pause or delete one. A clock routine (*"Every Monday at 9, check the open pull
+requests"*) files a task at its time.
+
+The lab polls GitHub; it needs no public address. It reads GitHub with the token of whoever runs
+the lab: `GITHUB_TOKEN`, or what `gh auth token` answers at start. The lab has one user
+(`TEAMMATES_USER`): it takes every request as that user, whatever user the request names, so
+the token serves nobody else. The lab keeps its data in its own organization (`teammates-lab`), so conversations saved before the lab named one don't open. With no token, a GitHub routine is refused, naming
+`GITHUB_TOKEN`, and clock routines still run. Clock routines and polls tick from two SQLite files
+beside the store.
+
 ## Run it
 
 The lab runs on a real model and a durable SQLite store, served by `fsdev dev`:
@@ -203,6 +219,7 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | `TEAMMATES_RUNS` | the folder each coding run's worktree goes in | `.fsdev/teammates-runs/` here |
 | `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | `1200000` (20 minutes) |
 | `TEAMMATES_SETUP` | a command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`; no shell | none |
+| `GITHUB_TOKEN` | the token a routine that follows a GitHub pull request reads GitHub with, for the lab's own user alone | what `gh auth token` answers at start; none, and GitHub routines are refused |
 | `TEAMMATES_CHECKS` | the commands a coding run's worktree must pass before its task is done, `;`-separated, such as `pnpm typecheck; pnpm test`; no shell, so a `;` inside one command, even quoted, isn't supported. A red one sends the run back with the command's output | none |
 
 The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its

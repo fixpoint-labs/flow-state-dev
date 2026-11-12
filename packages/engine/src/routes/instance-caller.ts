@@ -19,6 +19,7 @@ import { pickPrincipalResolver } from "../transports/auth/pickPrincipalResolver"
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { pinRejectsCaller } from "../context/instance-pin";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
+import { isWriteRecord } from "../resources/default-write-flow";
 
 /** A caller one instance's resolver accepted. */
 export type InstanceCaller = { userId: string; orgId: string };
@@ -109,6 +110,9 @@ export async function ownResolverVerdict(
   callerFor: InstanceCallerResolver,
   row: OwnedRecord & { userId: string; orgId?: string | null }
 ): Promise<boolean | undefined> {
+  // FIX-2624: a write record is no conversation and no run a listing shows,
+  // whoever asks; decided from the record's own fields (`isWriteRecord`).
+  if (isWriteRecord(row)) return false;
   const owner = resolveRecordOwner(registry, row);
   if (!owner.ok || !flowAuthenticates(owner.flow)) return undefined;
   const caller = await callerFor(owner.flow);

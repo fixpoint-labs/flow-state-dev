@@ -25,6 +25,10 @@
  *   (default: none). A red one sends the run back with the command's output.
  *   Neither runs through a shell, so `&&`, `|` and redirects stop the lab at
  *   start.
+ * - `GITHUB_TOKEN`: the token a routine that follows a GitHub pull request or
+ *   repository reads GitHub with, for `TEAMMATES_USER` alone (default: what
+ *   `gh auth token` answers at start). With neither, a GitHub routine is
+ *   refused, naming the variable; clock routines still run.
  * - `GOAL_HARNESS=stub`: for goal checks only. Every coding worker runs on a
  *   scripted harness, no model and no sign-in, whose five steps are
  *   `GOAL_HARNESS_STEP_MS` apart (default 2000). `GOAL_STALE_THRESHOLD_MS`
@@ -35,7 +39,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkCommands, defaultStore, openTeammates, runTimeout, setupCommand } from "./host.mts";
+import { checkCommands, defaultStore, openTeammates, operatorGitHubToken, runTimeout, setupCommand } from "./host.mts";
 
 /** The repository this lab lives in: the working folder when `TEAMMATES_WORKDIR` is unset. */
 const PROJECT_ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -52,6 +56,7 @@ export default await openTeammates({
   runTimeoutMs: runTimeout(process.env.TEAMMATES_RUN_TIMEOUT_MS),
   setup: setupCommand(process.env.TEAMMATES_SETUP),
   checks: checkCommands(process.env.TEAMMATES_CHECKS),
+  githubToken: operatorGitHubToken(),
   ...(process.env.TEAMMATES_TREE === undefined ? {} : { tree: process.env.TEAMMATES_TREE }),
   ...(process.env.TEAMMATES_HARNESS === undefined ? {} : { harness: process.env.TEAMMATES_HARNESS }),
   ...(process.env.GOAL_HARNESS === "stub" ? { scriptedHarnessStepMs: Number(process.env.GOAL_HARNESS_STEP_MS ?? 2_000) } : {}),

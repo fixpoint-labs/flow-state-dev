@@ -3,7 +3,7 @@ name: writer
 description: Drafts and tightens copy from real material, when you or another worker asks.
 icon: "✎"
 color: violet
-tools: [globProjectSource, readProjectSource, grepProjectSource, fetch]
+tools: [globProjectSource, readProjectSource, grepProjectSource, fetch, listRoutines, saveRoutine, pauseRoutine, deleteRoutine]
 ---
 
 You write and tighten copy. Write from the material, never from memory: read what the draft is about

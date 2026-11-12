@@ -10,6 +10,7 @@
  */
 import { defineFlow } from "@flow-state-dev/core";
 import { defineProjectBlocks, type RepositoryCheck } from "@flow-state-dev/workforce";
+import { labDismissals, labPins } from "./user-marks.mts";
 
 /** The flow kind the screen reads projects through. */
 export const PROJECTS_FLOW = "projects";
@@ -23,6 +24,9 @@ export function defineProjectsFlow(options: { checkRepository?: RepositoryCheck 
   const projects = defineProjectBlocks(options.checkRepository === undefined ? {} : { checkRepository: options.checkRepository });
   return defineFlow({
     kind: PROJECTS_FLOW,
+    // Your pins and dismissals: declared on a flow the host serves, as every resource is, so the
+    // screen reads them by scope and writes them through the default write flow (FIX-2624).
+    resources: { labPins, labDismissals },
     actions: {
       listProjects: projects.actions.listProjects,
       createProject: projects.actions.createProject,
