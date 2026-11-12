@@ -42,7 +42,7 @@ pages long.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/first-hour/runs-a-starter-and-names-the-layers/` and `goals/first-hour/an-agent-writes-a-flow-from-the-docs/` · real model (`openai/gpt-5.4-mini`, the goals default; the agent leg may need a stronger one, named in its `goal.md`) · run by the implementer on the cutover preview, before the release merges · verdicts in the cutover PR |
+| **Goal check** | `goals/first-hour/runs-a-starter-and-names-the-layers/` and `goals/first-hour/an-agent-writes-a-flow-from-the-docs/` · real model (`openai/gpt-5.4-mini`, the goals default, unless the agent leg's `goal.md` names a stronger one before its first run; the model is not changed after a failing run, the control and both arms use it, and the verdict records it) · run by the implementer on the cutover preview, before the release merges · verdicts in the cutover PR |
 | **Signal** | Human leg: of three or more cold readers ([D1](DECISIONS.md#d1)), most have the starter answering within 10 minutes and, at 60, draw app, kit, flow and block in the right order and name the file to change for a given request. Agent leg: the flow it writes from `llms-full.txt` runs under `fsdev run` and returns the asked-for answer, 2 of 3 tasks; the second arm, `llms.txt` plus per-page Markdown, is recorded beside it |
 | **Input** | Three held-out requests (a worker that cites differently, a second step in a flow, a new tool). A different request must pass too |
 | **Anti-game** | Don't grade the reader's description of what they did; check the running app and the edited file. The agent's sandbox has no repo checkout and no `node_modules` source beyond installed packages |
@@ -51,7 +51,7 @@ pages long.
 **The closure measures**, each with its result in the cutover PR: no concept page over 1,500
 words; Start plus Concepts at 30,000 or fewer; every topic in the sitemap's one-home table
 explained only where it names; every old URL redirects; `goals/first-hour/runs-without-store-ceremony`
-passes part (f).
+passes part (f); `scripts/check-docs-page.mjs`'s default glob reads `apps/docs/{docs,guides}/**` and finds pages there (FIX-2697 hands it over).
 
 ## What changes
 

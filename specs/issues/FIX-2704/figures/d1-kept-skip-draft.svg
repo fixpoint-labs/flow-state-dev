@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 360" role="img" aria-label="D1, where a page kept from today&#x27;s site enters the loop. Chosen: at pass 4. Instead of: at pass 1, or moved with no passes. It comes down to pages already the right size: entering at pass 4 keeps them and checks them, where pass 1 redrafts them and may lose what worked. The price: their facts are checked by pass 5 but never listed on a fact sheet; moved with no passes, wrong facts move too. Locks in: kept pages carry no fact sheet. Flips if: pass 5 finds wrong facts in more than two of the first five kept pages."
+<svg viewBox="0 0 940 360" role="img" aria-label="D1, which passes a page kept from today&#x27;s site runs. Chosen: every pass but the draft. Instead of: all ten passes, or moved with no passes. It comes down to pages already the right size: skipping the draft keeps them and checks them, where a redraft may lose what worked. The price: two agent passes more per page, the fact sheet and the cold-read questions; moved with no passes, wrong facts move too. Locks in: kept pages are never redrafted. Flips if: most cold readers miss a question on more than two of the first five kept pages."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,16 +36,16 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Where does a page kept from today's site enter the ten-pass loop?</text>
+    <text class="t-q" x="32" y="52">Which of the ten passes does a page kept from today's site run?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">At pass 4</text>
+    <text class="t-h c-code" x="228" y="112">All but the draft</text>
     <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="468" y="112">At pass 1</text>
+    <text class="t-h c-lost" x="468" y="112">All ten passes</text>
     <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-mute" x="708" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="708" y="112">Moved, no passes</text>
@@ -59,9 +59,9 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="163">+</text>
     <text class="t-b" x="248" y="162">Kept, and checked</text>
-    <text class="t-s" x="248" y="180">fact, depth, editor, cold</text>
+    <text class="t-s" x="248" y="180">facts, depth, editor, cold read</text>
     <text class="mark minus" x="468" y="163">−</text>
-    <text class="t-b" x="488" y="162">Redrafted from facts</text>
+    <text class="t-b" x="488" y="162">Redrafted</text>
     <text class="t-s" x="488" y="180">may lose what worked</text>
     <text class="mark minus" x="708" y="163">−</text>
     <text class="t-b" x="728" y="162">Kept, unchecked</text>
@@ -69,30 +69,30 @@
   </g>
 
   <g id="row-1">
-    <text class="t-lbl" x="32" y="220">THEIR FACTS</text>
+    <text class="t-lbl" x="32" y="220">WHAT IT COSTS</text>
     <text class="mark minus" x="228" y="223">−</text>
-    <text class="t-b" x="248" y="222">Checked, never listed</text>
-    <text class="t-s" x="248" y="240">pass 5, no fact sheet</text>
-    <text class="mark plus" x="468" y="223">+</text>
-    <text class="t-b" x="488" y="222">Listed and checked</text>
-    <text class="t-s" x="488" y="240">a full fact sheet</text>
-    <text class="mark minus" x="708" y="223">−</text>
-    <text class="t-b" x="728" y="222">Never checked</text>
-    <text class="t-s" x="728" y="240">as today's page has them</text>
+    <text class="t-b" x="248" y="222">Fact sheet, questions</text>
+    <text class="t-s" x="248" y="240">two agent passes per page</text>
+    <text class="mark minus" x="468" y="223">−</text>
+    <text class="t-b" x="488" y="222">A full rewrite</text>
+    <text class="t-s" x="488" y="240">all ten passes, per page</text>
+    <text class="mark plus" x="708" y="223">+</text>
+    <text class="t-b" x="728" y="222">Nothing</text>
+    <text class="t-s" x="728" y="240">and nothing is checked</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="270" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="291">LOCKS IN</text>
-    <text class="t-b" x="32" y="311">Kept pages carry no fact sheet</text>
+    <text class="t-b" x="32" y="311">Kept pages are never redrafted</text>
     <text class="t-s" x="32" y="329">the rule covers kept pages in every section</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="270" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="291">FLIPS IF</text>
-    <text class="t-b" x="494" y="311">Pass 5 finds wrong facts in kept pages</text>
-    <text class="t-s" x="494" y="329">more than two of the first five: pass 1</text>
+    <text class="t-b" x="494" y="311">Cold readers miss questions</text>
+    <text class="t-s" x="494" y="329">in over two of the first five kept pages</text>
   </g>
 </svg>

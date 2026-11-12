@@ -59,7 +59,7 @@ concept/reference contract: `pages/blocks.md` (C-02, with its figure redrawn) an
 | Already here | What this does with it |
 |---|---|
 | `fundamentals/*`, five guides filed as concepts, `advanced/*` | **Replaces.** Each is a source for one or more pages; FIX-2705 removes them |
-| `pages/blocks.md`, `pilot/tasks-and-boards.md`, `pilot/workers.md` | **Extends.** Brought to the contract through passes 4 to 10 |
+| `pages/blocks.md`, `pilot/tasks-and-boards.md`, `pilot/workers.md` | **Extends.** Brought to the contract by every pass but the draft |
 | The concept-doc skill | **Builds on**, for C-12 only and only if its model proves contested ([decided, not asked](DECISIONS.md#decided-not-asked)) |
 | FIX-2697's loop and checker | **Builds on.** Every page runs it |
 | Anything else that teaches the model in order | **None.** `fundamentals/overview` is a map, not a path; `guides/anatomy-of-a-flow` merges into C-01 |

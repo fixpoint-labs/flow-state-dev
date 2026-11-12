@@ -76,6 +76,13 @@ spec: **right approach, with one change folded:** the agent test was claimed by 
 and FIX-2705; it is FIX-2705's, and this issue's check is the build output. Prior art:
 LangChain and Mastra both serve `llms.txt` and per-page Markdown. Nothing open.
 
+## Notes from review
+
+Recorded for the implementer, not folded into the design.
+
+- *Second-look review comment, spec-set PR #5180:* **FIX-2700: the "Copy page" control is not in the goal.** The goal is "served as Markdown, listed in `llms.txt`". The control is a UI addition in the site theme code, and the spec's Goal check never exercises it. Either drop it or give it a signal. If kept, it's worth a line on why it isn't a separate issue.
+- *Cursor review, spec-set PR #5180:* 2% prose match HTML↔Markdown is a hot-path tax. Fine as a one-off goal signal; if wired into every `docs:build` CI check it doubles parsing work across all pages. Prefer proving agents can read the build output via cheaper invariants (`.md` sibling exists, no JSX, listed in `llms.txt`) and generate Markdown from MDX/source rather than rendered HTML.
+
 ## How it got here
 
 - **Draft** in the epic's spec set. The set review moved the agent test to FIX-2705 and dropped

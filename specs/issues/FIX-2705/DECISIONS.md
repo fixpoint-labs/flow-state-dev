@@ -70,5 +70,8 @@ FIX-2697). Nothing open.
 
 - **Draft** in the epic's spec set, as the closure issue: the epic's goal and measures, made
   into two goals and a list of checks.
+- **Review round 1** — the agent leg's model is fixed before its first run and recorded with the
+  verdict, and the checker's glob move joined the closure measures, both from review on the
+  spec-set PR.
 
 **Open: none.**

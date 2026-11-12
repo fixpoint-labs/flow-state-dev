@@ -82,6 +82,14 @@ spec: **right approach.** Prior art: LangChain and Mastra both publish generated
 beside hand-written docs. Reuse: no generator exists in the repo; `check-root-exports.mjs` is
 built on, not duplicated. Nothing open.
 
+## Notes from review
+
+Recorded for the implementer, not folded into the design.
+
+- *Second-look review comment, spec-set PR #5180:* Suggestion: make the build-time measurement an explicit first step of the implementation, with the committed-by-bot fallback written as the stated plan B. As written, the implementer could choose it silently.
+- *Second-look review comment, spec-set PR #5180:* Cheapest guard: a check that fails if a long README changes without its cut copy changing. Or say outright that README edits are frozen until cutover.
+- *Cursor review, spec-set PR #5180:* D1 (generate every build, never commit) trades drift for CI wall clock. Spec acknowledges the cost; when implementing, plan incremental/cache per package *early* rather than only falling back after pain — otherwise small doc fixes under FIX-2697’s record gate will feel brutal.
+
 ## How it got here
 
 - **Draft** in the epic's spec set. The README timing was set by the set review, against

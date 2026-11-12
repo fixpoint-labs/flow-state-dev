@@ -67,8 +67,9 @@ anything a page edited after the loop. Then an edit needs pass 4 only.
   FIX-2705 moves it to `apps/docs/{docs,guides}/**` in the cutover PR. An empty file list fails.
 - **The figure lint extends `apps/docs/scripts/lint-brand.mjs`** with `FIGURES.md` rules 6 to
   16, and runs each rule's fixture first, as that lint does today.
-- **A page kept from today's site enters the loop at pass 4** (the epic's amended D4). Its record
-  says so in pass 1's place.
+- **A page kept from today's site skips pass 3, the draft** (the epic's amended D4), and runs
+  every other pass. Its record marks pass 3 skipped; the record check accepts that mark only on a
+  page the sitemap lists as kept.
 
 ## Considered and dropped
 
@@ -83,6 +84,13 @@ anything a page edited after the loop. Then an edit needs pass 4 only.
 2026-11-12 · watermark 2026-11-12 (epic merged) · run over the whole spec set by the epic agent,
 in its own context. See the spec-set PR body for the set's verdict. For this spec: **right
 approach.** Reuse moved two rows to *Extends* (the brand lint, the checker). Nothing open.
+
+## Notes from review
+
+Recorded for the implementer, not folded into the design.
+
+- *Second-look review comment, spec-set PR #5180:* **FIX-2697 loop script:** it runs ten passes, and passes 1 and 7 are `docs-writer` and `docs-editor`. Say how the script treats a pass whose agent returns REVISE: loop count, cap, and what the record shows. The twelve-round cap in `orchestration.md` is for PR feedback, not this.
+- *Cursor review, spec-set PR #5180:* One docs checker pass (page rules + record sections) per file read · PR-scoped file lists for checker/figure lint; full glob on `main`/schedule · Keep ten-pass loops, pass‑9 armies, and FIX-2705 agent/human hour **out of default CI**
 
 ## How it got here
 

@@ -35,8 +35,8 @@ agent" because they couldn't find where their agent takes them. Then one line pe
 - **S-1 and S-2 go to the owner before the other three start**, the rule FIX-2701's D1 sets for
   Concepts, so a miss is fixed in the brief, not in every page. If the owner
   passed C-01 and C-02 unchanged, this section skips the wait.
-- **Every Start page runs FIX-2697's loop.** S-1, the pilot, enters at pass 4 (the epic's amended
-  D4) with the sitemap's fix applied: slot stacking cut to one sentence, the link to C-01 made
+- **Every Start page runs FIX-2697's loop.** S-1, the pilot, skips the draft (the epic's
+  amended D4) with the sitemap's fix applied: slot stacking cut to one sentence, the link to C-01 made
   a site path.
 - **S-2's install step is one marked block.** Until O2's install ships it is the clone path; the
   page says so in one sentence, and the block is the only thing that changes when it does.

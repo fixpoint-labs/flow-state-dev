@@ -37,7 +37,7 @@ and FIX-2705 reconciles them.
 - **The first two pages of this section go to the owner before the rest start**, the rule
   FIX-2701's D1 sets for Concepts, so a miss is fixed in the brief, not in every page. If the owner
   passed C-01 and C-02 unchanged, this section skips the wait.
-- **Kept library pages enter the loop at pass 4** (the epic's amended D4): the patterns, tools and
+- **Kept library pages skip the draft** (the epic's amended D4): the patterns, tools and
   memory pages whose audit verdict is *keep*. Their config tables leave in pass 6 for
   `reference/patterns`, `reference/tools` and `reference/memory` (FIX-2699).
 - **Codex and Cursor are pages about a fill**, under Harnesses, because FIX-2627's approved spec

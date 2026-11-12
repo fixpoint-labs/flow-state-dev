@@ -41,9 +41,9 @@ Catalog and Build, which hold their first two pages for the same read, skip that
   here starts before it reports.
 - **Order after the wait** is the sitemap's reading order, with pages in parallel where the
   earlier ones they build on have passed pass 9.
-- **The three existing pages enter at pass 4** (the epic's amended D4): their facts are checked
-  by pass 5 rather than a new fact sheet, and pass 6 strips their mechanism and "What it won't
-  do" sections.
+- **The three existing pages skip the draft** (the epic's amended D4): they get a fact sheet and
+  cold-read questions like any page, are not redrafted, and pass 6 strips their mechanism and
+  "What it won't do" sections.
 - **Pass 6 rows go to FIX-2699** through each page's record until the R-page is on `main`, then
   straight onto the R-page (the epic's amended *Who owns what*).
 - **C-11 and C-12 each say when to pick the other**, the epic analysis's note: a capability adds

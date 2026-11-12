@@ -65,7 +65,7 @@ other pages that leave user docs.
 | Already here | What this does with it |
 |---|---|
 | 31 guides in `apps/docs/guides/` | **Replaces.** Each is mapped once in the sitemap |
-| The twelve guides already in recipe shape | **Extends.** Moved to the recipe type and run from pass 4 ([D1](DECISIONS.md#d1)) |
+| The twelve guides already in recipe shape | **Extends.** Moved to the recipe type and run through every pass but the draft ([D1](DECISIONS.md#d1)) |
 | `polish-docs` | **Builds on.** Run across Build once its pages exist, for one home per topic |
 | `apps/docs/guides/webhooks-stripe.md` | **Builds on.** The brief's model recipe |
 | Anything else that consolidates guides | **None.** `release-docs` writes per release; it doesn't merge pages |
@@ -77,7 +77,7 @@ other pages that leave user docs.
 | The debt | |
 |---|---|
 | **Removes** | 31 guides at cutover; the four tellings of hello-chat |
-| **Adds** | Twelve recipes whose facts get a fact check but no fact sheet ([D1](DECISIONS.md#d1)) |
+| **Adds** | Twelve recipes checked against a fact sheet but never redrafted from it ([D1](DECISIONS.md#d1)) |
 | **Leaves** | B-04 and B-05's kit surface, reconciled at FIX-2705 (ER-8) |
 
 **Net: down.** 31 overlapping guides become 37 pages with one topic each.
@@ -90,7 +90,7 @@ no Build page explaining a concept. If wrong: tidy recipes that still teach the 
 **[The debt](#whats-already-here-and-the-debt), net down:** 31 guides become 37 single-topic
 pages. If wrong: twelve recipes carry an old wrong fact past pass 5.
 
-1. **[D1](DECISIONS.md#d1) · A guide kept as-is enters the loop at pass 4, not pass 1.** If wrong: twelve pages get a fact check but no fact sheet.
+1. **[D1](DECISIONS.md#d1) · A guide kept as-is skips the draft and runs every other pass.** If wrong: twelve pages keep a gap a fresh draft would have closed.
 
 **Open: none.**
 
