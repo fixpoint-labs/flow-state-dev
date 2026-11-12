@@ -53,6 +53,7 @@ export {
   setRepositoryOutputSchema,
   type CreateProjectInput,
   type CreateProjectOutput,
+  type CheckRepositoryView,
   type ProjectBlocks,
   type ProjectBlocksOptions,
   type RepositoryCheck,

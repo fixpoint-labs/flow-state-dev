@@ -108,7 +108,8 @@ const checkedBlocks = defineProjectBlocks({
 });
 const checkedFlow = defineFlow({
   kind: "checked",
-  actions: { ...checkedBlocks.actions, inspect: { block: inspect } }
+  actions: { ...checkedBlocks.actions, inspect: { block: inspect } },
+  views: { ...checkedBlocks.views }
 });
 
 // --- Harness ---
@@ -536,23 +537,28 @@ describe("a project's files", () => {
       expect((await h.inspectRow("fresh")).row).toBeNull();
     });
 
-    it("accepts a usable repository, and its read answers what the write would", async () => {
+    // FIX-2624: the read is a view, asked with no session.
+    const check = async (h: Harness, repository: string) => {
+      const answer = await h.call("POST", "alice", ["checked", "views", "checkRepository"], { input: { repository } });
+      if (answer.status !== 200) throw new Error(`checkRepository view ${answer.status}: ${JSON.stringify(answer.json)}`);
+      return answer.json.output;
+    };
+
+    it("accepts a usable repository, and its read, a view asked with no session, answers what the write would", async () => {
       const h = await boot();
       const lab = await h.openSession("alice", "checked");
       const created = await h.ok("alice", "checked", lab, "createProject", { id: "fine", title: "Fine", repository: "file:///srv/fine" });
       expect(created.project.repository).toBe("file:///srv/fine");
-      expect(await h.ok("alice", "checked", lab, "checkRepository", { repository: "file:///srv/fine" })).toEqual({ usable: true, how: "worktree" });
-      expect(await h.ok("alice", "checked", lab, "checkRepository", { repository: UNUSABLE })).toMatchObject({
-        usable: false,
-        problem: expect.stringContaining("Add `**/.fsdev/`")
-      });
+      const sessions = (await h.stores.session.list({ parentage: "all" })).length;
+      expect(await check(h, "file:///srv/fine")).toEqual({ usable: true, how: "worktree" });
+      expect(await check(h, UNUSABLE)).toMatchObject({ usable: false, problem: expect.stringContaining("Add `**/.fsdev/`") });
+      expect((await h.stores.session.list({ parentage: "all" })).length).toBe(sessions);
     });
 
     it("answers a value no row may record with its problem, without asking the host", async () => {
       const h = await boot();
-      const lab = await h.openSession("alice", "checked");
       const asked = hostChecks.length;
-      const answer = await h.ok("alice", "checked", lab, "checkRepository", { repository: "/srv/a-path" });
+      const answer = await check(h, "/srv/a-path");
       expect(answer).toMatchObject({ usable: false, problem: expect.stringContaining("is a path, not a remote") });
       expect(hostChecks.length).toBe(asked);
     });
@@ -582,9 +588,10 @@ describe("a project's files", () => {
       expect((await h.inspectRow("slow")).row).toBeNull();
     });
 
-    it("offers no checkRepository action and asks nothing when the host gives no check", () => {
-      expect(projectBlocks.actions.checkRepository).toBeUndefined();
-      expect(checkedBlocks.actions.checkRepository).toBeDefined();
+    it("offers no checkRepository view and asks nothing when the host gives no check, and never an action", () => {
+      expect(projectBlocks.views.checkRepository).toBeUndefined();
+      expect(checkedBlocks.views.checkRepository).toBeDefined();
+      expect("checkRepository" in checkedBlocks.actions).toBe(false);
     });
   });
 });

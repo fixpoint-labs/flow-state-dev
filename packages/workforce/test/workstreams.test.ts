@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import { defineFlow, defineResourceCollection, handler, sequencer } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { createWorkforceClient } from "../src/browser";
+import { createWorkforceClient, workstreamReportView } from "../src/browser";
 import {
   defineProjectBlocks,
   defineWorkstreamBlocks,
@@ -29,6 +29,7 @@ import {
   workstreamRef
 } from "../src/index";
 import { createWorkerInstallation } from "../src/workers/installation";
+import { ROSTER_FLOW } from "../src/workers/keys";
 import { bootProjectsHost, ORG, refusal, type ProjectsHost } from "./projects-harness";
 
 const apollo = { visibility: "shared" as const, id: "apollo" };
@@ -340,9 +341,20 @@ describe("opening a workstream", () => {
     await h.ok("alice", "lead", stalled, "respond", { message: "still here" });
     expect((await h.sessionsWith("workstreamId", ref)).map((s) => s.id).sort()).toEqual([named, stalled].sort());
 
-    const client = createWorkforceClient(createClient({ userId: "alice", fetcher: h.fetcherFor("alice") }));
+    // The entry is read by scope with no session: drop the roster sessions the hire left, and
+    // watch every request, so a lookup that found or made one to read through shows in both.
+    for (const session of await h.runtime.stores.session.list({ parentage: "all" })) {
+      if (session.flowKind === ROSTER_FLOW) await h.runtime.stores.session.delete(session.id);
+    }
+    const asked: string[] = [];
+    const fetcher = h.fetcherFor("alice");
+    const client = createWorkforceClient(
+      createClient({ userId: "alice", fetcher: (input, init) => (asked.push(`${init?.method ?? "GET"} ${String(input)}`), fetcher(input, init)) })
+    );
     expect((await client.findWorkerSession({ worker: "alice-lead", workstreamId: address }))?.id).toBe(named);
     expect((await client.ensureWorkerSession({ worker: "alice-lead", workstreamId: address })).id).toBe(named);
+    expect((await h.runtime.stores.session.list({ parentage: "all" })).filter((s) => s.flowKind === ROSTER_FLOW)).toEqual([]);
+    expect(asked.filter((line) => line.includes(ROSTER_FLOW) && !/\/(views\/[^/?]+|identity)(\?|$)/.test(line))).toEqual([]);
   });
 
   it("hands out no session for a workstream whose entry names none yet, and starts none", async () => {
@@ -386,6 +398,26 @@ describe("opening a workstream", () => {
     expect(found?.id).toBe(out.workstream.sessionId);
     // A lookup that doesn't name the workstream never returns its session.
     expect(await client.findWorkerSession({ worker: "alice-lead" })).toBeUndefined();
+  });
+});
+
+// FIX-2624.
+describe("an entry's report", () => {
+  it("is the workstreams' report view: anyone in a shared project's org reads it, with no session made to read", async () => {
+    const h = await boot();
+    await open(h, "alice", "checkout", "alice-lead");
+    await h.ok("alice", "lab", await h.lab("alice"), "updateWorkstream", { project: apollo, id: "checkout", report: "ALICE-REPORT" });
+    const before = (await h.runtime.stores.session.list({ parentage: "all" })).length;
+
+    const read = (user: string, input: { project: typeof apollo | typeof notes; owner: string; id: string }) =>
+      createClient({ userId: user, fetcher: h.fetcherFor(user) }).view(workstreamReportView, input);
+    // Bob reads Alice's entry in the project they share; a workstream with no report, or none, reads as none.
+    expect((await read("bob", { project: apollo, owner: "alice", id: "checkout" })).value).toEqual({ report: "ALICE-REPORT" });
+    expect((await read("alice", { project: apollo, owner: "alice", id: "checkout" })).value).toEqual({ report: "ALICE-REPORT" });
+    expect((await read("alice", { project: apollo, owner: "alice", id: "nowhere" })).value).toEqual({ report: null });
+    // A private address reaches only the reader's own user scope: Bob reading "notes" reads his own, which is empty.
+    expect((await read("bob", { project: notes, owner: "alice", id: "checkout" })).value).toEqual({ report: null });
+    expect((await h.runtime.stores.session.list({ parentage: "all" })).length).toBe(before);
   });
 });
 
