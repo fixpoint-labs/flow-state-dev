@@ -2818,7 +2818,7 @@ export async function createExecutionContext<
       else {
         const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
         if (holders.length > 0) {
-          const named = holders.some((cfg) => noticePathFor(cfg, resourcePath) !== undefined);
+          const named = holders.some((cfg) => noticePathFor(cfg, resourcePath, scope) !== undefined);
           notice = named ? { resource: resourcePath } : {};
         }
       }

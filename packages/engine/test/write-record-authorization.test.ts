@@ -103,7 +103,7 @@ describe("write-record authorization", () => {
     expect(worker).toContain("hostResolver: deps.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver");
     // Inside the flow it reaches nothing but the agreement check: never a caller, never an owner.
     const flow = readFileSync(join(__dirname, "../src/resources/default-write-flow.ts"), "utf8");
-    const body = flow.slice(flow.indexOf("function createDefaultWriteFlow("));
+    const body = flow.slice(flow.indexOf("function writeOperations("));
     const uses = body.split("\n").filter((line) => /\bhostResolver\b/.test(line)).map((line) => line.trim());
     expect(uses).toEqual([
       "const hostResolver = host.hostResolver ?? defaultBodyUserIdPrincipalResolver;",

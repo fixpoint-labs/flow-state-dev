@@ -157,6 +157,22 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       key: p.key
     }))
   ],
+  // FIX-2624: a user or org collection's entries, by its pattern.
+  list_scope_entries: [
+    entry("GET", "/resources/:scope/:key/entries", (p) => ({
+      kind: "list_scope_entries",
+      scope: p.scope,
+      key: p.key
+    }))
+  ],
+  read_scope_entry: [
+    entry("GET", "/resources/:scope/:key/entries/:entry", (p) => ({
+      kind: "read_scope_entry",
+      scope: p.scope,
+      key: p.key,
+      entry: p.entry
+    }))
+  ],
   send_resource: [
     entry("POST", "/resources/:scope/:key/actions/:actionName", (p) => ({
       kind: "send_resource",

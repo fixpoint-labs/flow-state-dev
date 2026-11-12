@@ -277,7 +277,9 @@ export type {
 export type { ResourceVisibility, ResourceVisibilityRule, ResourceVisibilityTarget } from "./resource-visibility";
 
 export type {
+  CollectionCanWrite,
   CollectionHookContext,
+  CollectionWriteCheck,
   DefinedResourceCollection,
   EvictionPolicy,
   ResourceCollectionConfig,

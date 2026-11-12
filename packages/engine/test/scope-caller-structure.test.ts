@@ -46,5 +46,7 @@ describe("the no-session routes' caller", () => {
     const project = address.slice(address.indexOf("export async function projectForClient"));
     expect(project.slice(0, project.indexOf("\n}\n"))).toContain("buildResourceSnapshot(");
     expect(read("routes/scope-routes.ts")).toContain("projectForClient(address, state)");
+    // A collection entry: the session-addressed collection routes' own projection.
+    expect(read("routes/scope-routes.ts")).toContain('import { applyClientData } from "./resource-routes";');
   });
 });

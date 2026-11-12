@@ -23,17 +23,29 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { unknownFlowMessage } from "../context/instance-pin";
-import { getString, jsonResponse, parseJsonBody, extractTenantId } from "./route-utils";
+import type { JsonObject, ProjectedResourceCollectionConfig } from "@flow-state-dev/core/types";
+import { searchProjectedRecords } from "@flow-state-dev/core/types";
+import { getString, jsonResponse, parseJsonBody, extractTenantId, extractBareTopic } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
   admitAddress,
+  entryStorageKey,
   flowDeclares,
   isAddressScope,
   projectForClient,
   readAddressed,
+  readEntries,
+  readEntry,
   resolveFlowCaller,
   unknownRefusal
 } from "../resources/scope-address";
+import { ownerKeyAdmits } from "../resources/owner-private";
+import { applyClientData } from "./resource-routes";
+import {
+  buildProjectedResourceContextFromSession,
+  isProjectedResourceCollection,
+  readExternalCollectionState
+} from "../resources/internal";
 import { DEFAULT_WRITE_FLOW, writeSessionId } from "../resources/default-write-flow";
 
 type ScopeRouteContext = {
@@ -70,6 +82,12 @@ export async function handleReadScopeResource(
   });
   if ("refused" in admitted) return refusedResponse(admitted.refused);
   const { address, caller } = admitted;
+  if (address.collection) {
+    return jsonResponse(400, {
+      error: "collection",
+      message: `"${route.key}" at ${route.scope} scope is a collection: read it by its entries (/resources/${route.scope}/:key/entries).`
+    });
+  }
   const { state, version } = await readAddressed(ctx.stores, address, caller);
   const value = await projectForClient(address, state);
   return jsonResponse(200, {
@@ -79,6 +97,110 @@ export async function handleReadScopeResource(
     ...(value !== undefined ? { value } : {}),
     version
   });
+}
+
+const ENTRY_LIST_DEFAULT_LIMIT = 50;
+const ENTRY_LIST_MAX_LIMIT = 200;
+
+/**
+ * GET /resources/:scope/:key/entries?limit=&cursor=&topicPrefix=
+ * GET /resources/:scope/:key/entries/:entry
+ *
+ * The caller's entries of a user or org collection, as the client sees them,
+ * each with its version: one cursor-paged page (the cursor is the last storage
+ * key returned), or one entry (`null` when absent, or not the caller's to
+ * read). Gated by `client.state.read`, as the session-addressed list is. A
+ * projected collection reads through its app source, with a context built
+ * from the caller instead of a session.
+ */
+export async function handleReadScopeEntries(
+  request: Request,
+  route: Extract<ParsedFlowRoute, { kind: "list_scope_entries" | "read_scope_entry" }>,
+  ctx: ScopeRouteContext & { tenantIdHeader?: string }
+): Promise<Response> {
+  if (!isAddressScope(route.scope)) {
+    return jsonResponse(400, { error: "invalid_scope", message: `Scope "${route.scope}" is not "user" or "org"` });
+  }
+  const admitted = await admitAddress({
+    ...ctx,
+    request,
+    scope: route.scope,
+    key: route.key,
+    action: route.kind,
+    claimedUserId: getString(new URL(request.url).searchParams.get("userId"))
+  });
+  if ("refused" in admitted) return refusedResponse(admitted.refused);
+  const { address, caller } = admitted;
+  if (!address.collection) {
+    return jsonResponse(400, { error: "not_a_collection", message: `"${route.key}" at ${route.scope} scope is not a collection` });
+  }
+  const config = address.config;
+  if (config.client?.state?.read !== true) {
+    return jsonResponse(403, { error: "not_readable", message: `State read not permitted for "${route.key}"` });
+  }
+  const shaped = async (storageKey: string, state: JsonObject, version: number) => ({
+    topic: extractBareTopic(config.pattern, storageKey),
+    storageKey,
+    value: await applyClientData(config, state),
+    version
+  });
+  const projected = isProjectedResourceCollection(config)
+    ? buildProjectedResourceContextFromSession(
+        // The tenant from the tenant header, as every route takes it (FIX-682), never the body.
+        {
+          userId: caller.userId,
+          orgId: caller.orgId,
+          tenantId: extractTenantId(request, ctx.tenantIdHeader),
+          flowKind: address.flow.id
+        },
+        address.scope,
+        "",
+        request.signal
+      )
+    : undefined;
+
+  if (route.kind === "read_scope_entry") {
+    const storageKey = entryStorageKey(config, route.entry);
+    if (storageKey === undefined) {
+      return jsonResponse(400, { error: "invalid_entry", message: `Entry "${route.entry}" does not match "${config.pattern}"` });
+    }
+    if (projected !== undefined) {
+      if (!ownerKeyAdmits(config, storageKey, caller.userId)) return jsonResponse(200, null);
+      const state = await readExternalCollectionState(config, extractBareTopic(config.pattern, storageKey), projected);
+      return jsonResponse(200, state === undefined ? null : await shaped(storageKey, state, 0));
+    }
+    const found = await readEntry(ctx.stores, address, caller, storageKey);
+    return jsonResponse(200, found === undefined ? null : await shaped(storageKey, found.state, found.version));
+  }
+
+  const url = new URL(request.url);
+  const limitParam = url.searchParams.get("limit");
+  const limit = limitParam !== null ? Number.parseInt(limitParam, 10) : ENTRY_LIST_DEFAULT_LIMIT;
+  if (!Number.isInteger(limit) || limit < 1 || limit > ENTRY_LIST_MAX_LIMIT) {
+    return jsonResponse(400, { error: "invalid_limit", message: `limit must be 1–${ENTRY_LIST_MAX_LIMIT}` });
+  }
+  const cursor = url.searchParams.get("cursor") ?? undefined;
+  const topicPrefix = url.searchParams.get("topicPrefix") ?? undefined;
+  if (projected !== undefined) {
+    const { hits, nextCursor } = await searchProjectedRecords(
+      config as unknown as ProjectedResourceCollectionConfig,
+      { limit, ...(cursor !== undefined ? { cursor } : {}), ...(topicPrefix !== undefined ? { prefix: topicPrefix } : {}) },
+      projected
+    );
+    const items = await Promise.all(
+      hits
+        .filter((hit) => ownerKeyAdmits(config, hit.storageKey, caller.userId))
+        .map((hit) => shaped(hit.storageKey, hit.state as JsonObject, 0))
+    );
+    return jsonResponse(200, { items, ...(nextCursor !== undefined ? { nextCursor } : {}) });
+  }
+  const after = (await readEntries(ctx.stores, address, caller))
+    .filter((found) => topicPrefix === undefined || found.storageKey.startsWith(topicPrefix))
+    .filter((found) => cursor === undefined || found.storageKey > cursor);
+  const page = after.slice(0, limit);
+  const items = await Promise.all(page.map((found) => shaped(found.storageKey, found.state, found.version)));
+  const nextCursor = after.length > limit ? page[page.length - 1]!.storageKey : undefined;
+  return jsonResponse(200, { items, ...(nextCursor !== undefined ? { nextCursor } : {}) });
 }
 
 /**

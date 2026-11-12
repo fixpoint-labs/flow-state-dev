@@ -21,11 +21,7 @@ import {
 } from "./stream-client/streams";
 import { createPushHub, type SubscribeOptions, type Subscription } from "./subscribe/push-hub";
 import { liveRead, type LiveRead, type LiveReadOptions, type LiveReadWithTopicsOptions } from "./live/live-read";
-import {
-  scopeResourceHandle,
-  type ScopeResourceDef,
-  type ScopeResourceHandle
-} from "./resource-client/scope-resource";
+import { scopeResourceHandle, type ScopeHandleOf, type ScopeResourceDef } from "./resource-client/scope-resource";
 import { viewInputOnWire, type ViewCallOptions, type ViewInputOf, type ViewRef, type ViewResult, type ViewValueOf } from "./view/view";
 import type {
   ChildSessionSummary,
@@ -545,14 +541,13 @@ export interface Client {
   sessions: SessionsApi;
   resources: ResourcesApi;
   /**
-   * One user or org resource, by its definition: read by scope and key with no
-   * session, and written through the flow its `runBy` names. Its key is the
-   * definition's `ref`, or `options.key`. Reads nothing until a method is called.
+   * One user or org resource or collection, by its definition: read by scope
+   * and key with no session, and written through the flow its `runBy` names. A
+   * collection's handle reads and writes its entries one at a time. Its key is
+   * the definition's `ref` (a collection's `pattern`), or `options.key`. Reads
+   * nothing until a method is called.
    */
-  resource<TDef extends ScopeResourceDef>(
-    def: TDef,
-    options?: { key?: string }
-  ): ScopeResourceHandle<TDef extends { ClientType: infer C } ? C : import("@flow-state-dev/core/types").JsonValue>;
+  resource<TDef extends ScopeResourceDef>(def: TDef, options?: { key?: string }): ScopeHandleOf<TDef>;
   requests: {
     /**
      * The user's interrupted requests: a request a host lost in a crash or a

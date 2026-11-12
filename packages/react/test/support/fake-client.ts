@@ -33,6 +33,8 @@ export type FakeClientParts = {
   /** Request-level calls, each given the request id first (and the flow address last). */
   request?: Partial<Record<"status" | "result" | "continue" | "retry" | "resume" | "answer", AnyFn>>;
   resources?: Partial<Client["resources"]>;
+  /** `client.resource(def, options)`: the handle a hook reads and writes a user or org resource through. */
+  resource?: AnyFn;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each test types its own capture
   requestStream?: (options: RequestStreamOptions & { url: string } & Record<string, any>) => RequestStreamHandle;
   sessionStream?: (options: SessionStreamOptions & { sessionId: string }) => SessionStreamHandle;
@@ -120,7 +122,7 @@ export function fakeClient(parts: FakeClientParts): Client {
       get: (_t, name: string) =>
         (parts.resources as Record<string, Fn> | undefined)?.[name] ?? (() => missing(`resources.${name}`))
     }),
-    resource: () => missing("resource"),
+    resource: ((def: unknown, options?: unknown) => call(parts.resource, "resource", def, options)) as Client["resource"],
     requests: { interrupted: async () => missing("requests.interrupted") },
     subscribe: (topics, options) => parts.subscribe?.(topics, options) ?? { close() {} },
     // The client's own live read, over the faked subscription.

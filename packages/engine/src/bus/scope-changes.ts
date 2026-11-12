@@ -45,10 +45,20 @@ export type ScopeChange = {
  * its notice names no path. Every view of the scope wakes and reads again
  * through its own checks: the owner sees the change, and nobody else learns
  * the key. A single resource (`collection` undefined) is the same for every
- * caller, so its key is named.
+ * caller, so its key is named. A user-scope entry names no path either: the
+ * user topic spans the user's orgs, and their user cells don't.
  */
-export function noticePathFor(collection: object | undefined, storageKey: string): string | undefined {
-  return collection === undefined || ownerKeyAdmits(collection, storageKey, undefined) ? storageKey : undefined;
+export function noticePathFor(
+  collection: object | undefined,
+  storageKey: string,
+  scope?: TopicScope
+): string | undefined {
+  if (collection === undefined) return storageKey;
+  // A user's topic is theirs in every org, while their user cell is per org:
+  // an entry's key written in one org would reach their pages in the others.
+  // The bare notice still wakes every view of the scope (FIX-2624).
+  if (scope === "user") return undefined;
+  return ownerKeyAdmits(collection, storageKey, undefined) ? storageKey : undefined;
 }
 
 // FIX-2623 D1.

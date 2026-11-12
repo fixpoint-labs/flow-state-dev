@@ -36,7 +36,7 @@ import { handleGetRequestStatus } from "./request-status-routes";
 import { handleRunRead } from "./read-routes";
 import { handleRunView } from "./view-routes";
 import { handleExecuteAction } from "./action-routes";
-import { handleFlowIdentity, handleReadScopeResource, resolveResourceSend } from "./scope-routes";
+import { handleFlowIdentity, handleReadScopeEntries, handleReadScopeResource, resolveResourceSend } from "./scope-routes";
 import { DEFAULT_WRITE_FLOW } from "../resources/default-write-flow";
 import { reservedAddressRefusal } from "./reserved-addresses";
 import {
@@ -557,6 +557,16 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           hostResolver
+        });
+      }
+
+      if (route.kind === "list_scope_entries" || route.kind === "read_scope_entry") {
+        return await handleReadScopeEntries(request, route, {
+          host,
+          registry: options.registry,
+          stores,
+          hostResolver,
+          tenantIdHeader: options.tenantIdHeader
         });
       }
 

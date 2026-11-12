@@ -10,12 +10,15 @@
  * that session; a client-named session id under {@link WRITE_SESSION_PREFIX}
  * is refused, so nobody can take another writer's.
  *
- * The flow's one action, `set`, checks in order: the schema, the owner (the
- * cell is the caller's own user cell or their org, from the verified sign-in),
+ * Its `set` action writes a single resource, or one entry of a collection;
+ * `delete` deletes one entry. Each checks in order: the schema, the owner (the
+ * cell is the caller's own user cell or their org, from the verified sign-in,
+ * and an owner-keyed entry is written only by its owner, `ownerWriteRefusal`),
  * the resource's `canWrite`, then the version the client read. A stale version
  * is refused (`stale_version`) and the client reads again and re-runs its
  * change. It writes only what the client can read: fields hidden by `expose`,
- * `exclude` or `secret` keep their stored values.
+ * `exclude` or `secret` keep their stored values. A collection's entries share
+ * one write session per writer: the session is the collection's cell's.
  *
  * Limits, stated: the write goes to the store directly, as the resource routes'
  * writes do, so it publishes the scope's change notice but runs no `reactTo`
@@ -34,15 +37,26 @@ import {
 } from "../errors/flow-error";
 import { runResourceCAS } from "../stores/resource-cas";
 import { createStateContainer } from "../stores/state-container";
-import { builtInHostOf } from "../context/built-in-host";
+import { builtInHostOf, type BuiltInHost } from "../context/built-in-host";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { PrincipalResolver } from "../transports/types";
-import { publishScopeChange } from "../bus/scope-changes";
+import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
 import { pinRejectsCaller } from "../context/instance-pin";
 import { parseResourceWriteState } from "./normalize-resource-state";
-import { addressCellId, readAddressed, resolveAddress, type AddressScope } from "./scope-address";
+import { ownerWriteRefusal } from "./owner-private";
+import { countInstances } from "../context/resource-registry";
+import { isProjectedResourceCollection } from "./internal";
+import {
+  addressCellId,
+  entryStorageKey,
+  readAddressed,
+  readCell,
+  resolveAddress,
+  type AddressScope,
+  type ResolvedAddress
+} from "./scope-address";
 
 /** The default write flow's kind and instance id. */
 export const DEFAULT_WRITE_FLOW = "fsd-default-write";
@@ -210,7 +224,11 @@ class ResourceWriteRefusedError extends FlowError {
  * The next stored state from the client's: the fields the client can read come
  * from it, every other field keeps its stored value.
  */
-function mergeClientWrite(config: ResourceConfig, stored: JsonObject, incoming: JsonObject): JsonObject {
+function mergeClientWrite(
+  config: Pick<ResourceConfig, "secret"> & { client?: { expose?: readonly string[]; exclude?: readonly string[] } },
+  stored: JsonObject,
+  incoming: JsonObject
+): JsonObject {
   const hidden = new Set<string>(config.secret ?? []);
   for (const field of config.client?.exclude ?? []) hidden.add(field);
   const exposed = config.client?.expose;
@@ -293,11 +311,191 @@ export function installBuiltIns(registry: FlowRegistry): void {
 }
 
 const setInput = z.object({
+  /** A collection's entry: its bare topic or storage key. Only for a collection. */
+  entry: z.string().min(1).optional(),
   /** The whole state the client wants stored, as it reads it. */
   state: z.record(z.string(), z.unknown()),
   /** The version the client read: 0 when nothing was stored. */
   version: z.number().int().min(0)
 });
+
+const deleteInput = z.object({
+  /** The collection entry to delete: its bare topic or storage key. */
+  entry: z.string().min(1),
+  /** The version the client read. */
+  version: z.number().int().min(0)
+});
+
+/** What every write of the default write flow is admitted with. */
+type AdmittedWrite = {
+  target: WriteTarget;
+  address: ResolvedAddress;
+  caller: { userId: string; orgId: string };
+  tenantId: string | undefined;
+  cell: string;
+};
+
+/** The default write flow's operations over one runtime's stores and host resolver. */
+function writeOperations(registry: FlowRegistry, host: BuiltInHost) {
+  const stores = host.stores;
+  // The host resolver only decides whether the declarations agree, never who the
+  // caller is: that is the session binding the action route admitted.
+  const hostResolver = host.hostResolver ?? defaultBodyUserIdPrincipalResolver;
+
+  /** The write's target, address and caller, from the write session and its binding; refused otherwise. */
+  const admit = (session: { id: string; userId?: string; orgId?: string; tenantId?: string }): AdmittedWrite => {
+    const target = writeTargetOf(session.id);
+    // The session record's binding: the caller the action route resolved and admitted.
+    const { userId, orgId, tenantId } = session;
+    if (target === undefined || userId === undefined || orgId === undefined || target.writer !== DEFAULT_WRITE_FLOW) {
+      throw new ResourceWriteRefusedError("not_writable", "The default write flow runs only in a write session the server made.");
+    }
+    // The session must be this caller's for this target: an id is an address.
+    if (writeSessionId(target, { userId, orgId, tenantId }) !== session.id) {
+      throw new ResourceWriteRefusedError("not_writable", "This write session is not the caller's.");
+    }
+    // The instance that admitted this caller governs, as on its records.
+    const address = resolveAddress(registry, hostResolver, target.scope, target.key, (flow) =>
+      target.admittedBy !== undefined ? flow.id === target.admittedBy : !pinRejectsCaller(flow.ownerPin, { userId, orgId })
+    );
+    if ("refused" in address) throw new ResourceWriteRefusedError("not_writable", address.refused.message);
+    if (address.config.runBy !== "default") {
+      throw new ResourceWriteRefusedError(
+        "not_writable",
+        `Resource "${target.key}" at ${target.scope} scope is not written by the default write flow.`
+      );
+    }
+    const caller = { userId, orgId };
+    return { target, address, caller, tenantId, cell: addressCellId(address, caller) };
+  };
+
+  /** Publish the write's change on its scope's topic, as any action write does. */
+  const publish = (write: AdmittedWrite, resource: string | undefined, requestId: string): void => {
+    publishScopeChange(stores.bus, {
+      scope: write.target.scope,
+      id: write.target.scope === "user" ? write.caller.userId : write.caller.orgId,
+      tenantId: write.tenantId,
+      kind: "resource",
+      ...(resource !== undefined ? { resource } : {}),
+      requestId
+    });
+  };
+
+  const stale = (key: string, currentVersion: number, read: number) =>
+    new ResourceWriteRefusedError(
+      "stale_version",
+      `Resource "${key}" is at version ${currentVersion}, not ${read}: read it again and re-apply the change.`,
+      { currentVersion }
+    );
+
+  const raced = (key: string, currentVersion: number) =>
+    new ResourceWriteRefusedError(
+      "stale_version",
+      `Resource "${key}" changed while this write ran: read it again and re-apply the change.`,
+      { currentVersion }
+    );
+
+  /** The storage key a collection write names, checked against the pattern and the owner fence. */
+  const entryKeyOf = (write: AdmittedWrite & { address: { collection: true } }, entry: string | undefined): string => {
+    const config = write.address.config;
+    if (entry === undefined) {
+      throw new ResourceWriteRefusedError("not_writable", `"${write.target.key}" is a collection: a write names its entry.`);
+    }
+    if (isProjectedResourceCollection(config)) {
+      throw new ResourceWriteRefusedError("not_writable", `"${write.target.key}" is read from its app source; the default write flow can't write it.`);
+    }
+    const storageKey = entryStorageKey(config, entry);
+    if (storageKey === undefined) {
+      throw new ResourceWriteRefusedError("not_writable", `Entry "${entry}" does not match "${config.pattern}".`);
+    }
+    const refusal = ownerWriteRefusal(config, storageKey, write.caller.userId);
+    if (refusal !== undefined) throw new ResourceWriteRefusedError("write_refused", refusal);
+    return storageKey;
+  };
+
+  const writeSingle = async (
+    write: AdmittedWrite & { address: { collection: false } },
+    input: z.infer<typeof setInput>,
+    requestId: string,
+    signal: AbortSignal | undefined
+  ): Promise<{ version: number }> => {
+    const { address, target, caller } = write;
+    if (input.entry !== undefined) {
+      throw new ResourceWriteRefusedError("not_writable", `"${target.key}" is a single resource: a write names no entry.`);
+    }
+    const current = await readAddressed(stores, address, caller);
+    if (input.version !== current.version) throw stale(target.key, current.version, input.version);
+    const written = await persistAtVersion({
+      stores,
+      scope: target.scope,
+      cell: write.cell,
+      key: target.key,
+      held: current,
+      signal,
+      compute: async (prev) => {
+        const next = parseResourceWriteState(
+          address.config.stateSchema,
+          mergeClientWrite(address.config, prev, input.state as JsonObject),
+          target.key
+        );
+        const canWrite = address.config.canWrite;
+        if (canWrite !== undefined && !(await canWrite({ prev, next, ...caller }))) {
+          throw new ResourceWriteRefusedError("write_refused", `Resource "${target.key}" refused this write (canWrite).`);
+        }
+        return next;
+      }
+    });
+    if (written.committed) publish(write, target.key, requestId);
+    return { version: written.version };
+  };
+
+  const writeEntry = async (
+    write: AdmittedWrite & { address: { collection: true } },
+    input: z.infer<typeof setInput>,
+    requestId: string,
+    signal: AbortSignal | undefined
+  ): Promise<{ version: number }> => {
+    const { address, target, caller } = write;
+    const config = address.config;
+    const storageKey = entryKeyOf(write, input.entry);
+    const current = await stores.resourceState.get(target.scope, write.cell, storageKey);
+    const currentVersion = current?.version ?? 0;
+    if (input.version !== currentVersion) throw stale(storageKey, currentVersion, input.version);
+    // The cap counts every instance in the cell, whoever owns it, as a run's create does
+    // (`countInstances`); like it, the count is read before the write, not locked.
+    if (current === undefined && config.maxInstances !== undefined) {
+      if (countInstances(config.pattern, await readCell(stores, address, caller)) >= config.maxInstances) {
+        throw new ResourceWriteRefusedError(
+          "write_refused",
+          `Collection "${config.pattern}" holds its ${config.maxInstances} entries: delete one first.`
+        );
+      }
+    }
+    const written = await persistAtVersion({
+      stores,
+      scope: target.scope,
+      cell: write.cell,
+      key: storageKey,
+      held: { state: current?.state ?? {}, version: currentVersion },
+      signal,
+      compute: async (prev) => {
+        const merged = mergeClientWrite(config, prev, input.state as JsonObject);
+        // The org is the server's to stamp: the stored one on an update, the caller's on a create.
+        if (config.stampOrgId === true) merged.orgId = (current?.state.orgId as string | undefined) ?? caller.orgId;
+        const next = parseResourceWriteState(config.stateSchema, merged, storageKey);
+        const canWrite = config.canWrite;
+        if (canWrite !== undefined && !(await canWrite({ key: storageKey, prev: current?.state, next, ...caller }))) {
+          throw new ResourceWriteRefusedError("write_refused", `Entry "${storageKey}" refused this write (canWrite).`);
+        }
+        return next;
+      }
+    });
+    if (written.committed) publish(write, noticePathFor(config, storageKey, write.target.scope), requestId);
+    return { version: written.version };
+  };
+
+  return { stores, admit, publish, stale, raced, entryKeyOf, writeSingle, writeEntry };
+}
 
 /**
  * Build the default write flow's instance over a registry. Its stores and host
@@ -305,84 +503,65 @@ const setInput = z.object({
  */
 function createDefaultWriteFlow(options: { registry: FlowRegistry }): FlowInstance {
   const { registry } = options;
+  /** This runtime's operations, from the context the action runs in. */
+  const operationsOf = (ctx: object) => {
+    const host = builtInHostOf(ctx);
+    if (host === undefined) throw new ResourceWriteRefusedError("not_writable", "The default write flow runs only in an engine context.");
+    return writeOperations(registry, host);
+  };
   const set = handler({
     name: "fsd-default-write-set",
     inputSchema: setInput,
     outputSchema: z.object({ version: z.number() }),
     execute: async (input, ctx) => {
-      // This runtime's stores and host resolver; the host resolver only decides whether the
-      // declarations agree, never who the caller is (that is the session binding the action route admitted).
-      const host = builtInHostOf(ctx);
-      if (host === undefined) throw new ResourceWriteRefusedError("not_writable", "The default write flow runs only in an engine context.");
-      const stores = host.stores;
-      const hostResolver = host.hostResolver ?? defaultBodyUserIdPrincipalResolver;
-      const sessionId = ctx.session.identity.id;
-      const target = writeTargetOf(sessionId);
-      // The session record's binding: the caller the action route resolved and admitted.
-      const userId = ctx.session.identity.userId;
-      const orgId = ctx.session.identity.orgId;
-      const tenantId = ctx.session.identity.tenantId;
-      if (target === undefined || userId === undefined || orgId === undefined || target.writer !== DEFAULT_WRITE_FLOW) {
-        throw new ResourceWriteRefusedError("not_writable", "The default write flow runs only in a write session the server made.");
-      }
-      // The session must be this caller's for this target: an id is an address.
-      if (writeSessionId(target, { userId, orgId, tenantId }) !== sessionId) {
-        throw new ResourceWriteRefusedError("not_writable", "This write session is not the caller's.");
-      }
-      // The instance that admitted this caller governs, as on its records.
-      const address = resolveAddress(registry, hostResolver, target.scope, target.key, (flow) =>
-        target.admittedBy !== undefined ? flow.id === target.admittedBy : !pinRejectsCaller(flow.ownerPin, { userId, orgId })
-      );
-      if ("refused" in address) throw new ResourceWriteRefusedError("not_writable", address.refused.message);
-      if (address.config.runBy !== "default") {
-        throw new ResourceWriteRefusedError(
-          "not_writable",
-          `Resource "${target.key}" at ${target.scope} scope is not written by the default write flow.`
-        );
-      }
-      const caller = { userId, orgId };
-      const current = await readAddressed(stores, address, caller);
-      if (input.version !== current.version) {
-        throw new ResourceWriteRefusedError(
-          "stale_version",
-          `Resource "${target.key}" is at version ${current.version}, not ${input.version}: read it again and re-apply the change.`,
-          { currentVersion: current.version }
-        );
-      }
-      const written = await persistAtVersion({
-        stores,
-        scope: target.scope,
-        cell: addressCellId(address, caller),
-        key: target.key,
-        held: current,
-        signal: sideChainSignalOf(ctx),
-        compute: async (prev) => {
-          const next = parseResourceWriteState(
-            address.config.stateSchema,
-            mergeClientWrite(address.config, prev, input.state as JsonObject),
-            target.key
-          );
-          const canWrite = address.config.canWrite;
-          if (canWrite !== undefined && !(await canWrite({ prev, next, userId, orgId }))) {
-            throw new ResourceWriteRefusedError("write_refused", `Resource "${target.key}" refused this write (canWrite).`);
-          }
-          return next;
-        }
-      });
-      if (!written.committed) return { version: written.version };
-      publishScopeChange(stores.bus, {
-        scope: target.scope,
-        id: target.scope === "user" ? userId : orgId,
-        tenantId,
-        kind: "resource",
-        resource: target.key,
-        requestId: ctx.request.identity.id
-      });
-      return { version: written.version };
+      const { admit, writeEntry, writeSingle } = operationsOf(ctx);
+      const write = admit(ctx.session.identity);
+      const signal = sideChainSignalOf(ctx);
+      return write.address.collection
+        ? writeEntry(write as AdmittedWrite & { address: { collection: true } }, input, ctx.request.identity.id, signal)
+        : writeSingle(write as AdmittedWrite & { address: { collection: false } }, input, ctx.request.identity.id, signal);
     }
   });
+
+  const remove = handler({
+    name: "fsd-default-write-delete",
+    inputSchema: deleteInput,
+    outputSchema: z.object({ version: z.number() }),
+    execute: async (input, ctx) => {
+      const { stores, admit, publish, stale, raced, entryKeyOf } = operationsOf(ctx);
+      const write = admit(ctx.session.identity);
+      if (!write.address.collection) {
+        throw new ResourceWriteRefusedError(
+          "not_writable",
+          `"${write.target.key}" is a single resource: set it to its default instead of deleting it.`
+        );
+      }
+      const entryWrite = write as AdmittedWrite & { address: { collection: true } };
+      const config = entryWrite.address.config;
+      const storageKey = entryKeyOf(entryWrite, input.entry);
+      const current = await stores.resourceState.get(write.target.scope, write.cell, storageKey);
+      const currentVersion = current?.version ?? 0;
+      if (input.version !== currentVersion) throw stale(storageKey, currentVersion, input.version);
+      // Nothing stored at the version read: already deleted, nothing to publish.
+      if (current === undefined) return { version: 0 };
+      const canWrite = config.canWrite;
+      if (canWrite !== undefined && !(await canWrite({ key: storageKey, prev: current.state, next: undefined, ...write.caller }))) {
+        throw new ResourceWriteRefusedError("write_refused", `Entry "${storageKey}" refused this delete (canWrite).`);
+      }
+      // A delete has no CAS driver to stop it: an abort that landed while canWrite awaited stops it here.
+      sideChainSignalOf(ctx)?.throwIfAborted();
+      const deleted = await stores.resourceState.delete(write.target.scope, write.cell, storageKey, input.version);
+      if (!deleted.ok) throw raced(storageKey, deleted.conflict.currentVersion);
+      // The entry's content goes with it, as the resource routes' and a run's deletes do,
+      // so a key created again starts with none.
+      await stores.content.delete(write.target.scope, write.cell, storageKey);
+      publish(write, noticePathFor(config, storageKey, write.target.scope), ctx.request.identity.id);
+      return { version: deleted.version };
+    }
+  });
+
   return defineFlow({
     kind: DEFAULT_WRITE_FLOW,
-    actions: { set: { block: set } }
+    actions: { set: { block: set }, delete: { block: remove } }
   } as never)() as unknown as FlowInstance;
 }
