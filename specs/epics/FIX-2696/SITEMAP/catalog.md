@@ -290,7 +290,7 @@ action run, hatching where a list or transcript is stored. Config tables → `re
 | K-26 | Event Actors | 900 | Actors react to topics they watch; no controller | You add an actor: what else changes? · One actor throws: what happens to the others? · How does an actor trigger another? | `eventActors` basic use; topic matching | Keep |
 | K-27 | Response Auditor | 1,000 | Run a finished answer through analyzers that score and annotate it | What does an analyzer return? · Where does the audit show? · How do you add your own analyzer? | The auditor after a generator; a custom analyzer | Keep |
 
-All eight: FIX-2703. Sources are the pages of the same name under `patterns/`.
+All eight: FIX-2703. Sources: `patterns/parallelTasks`, `patterns/supervisor`, `patterns/plan-and-execute`, `patterns/debate`, `patterns/round-robin`, `patterns/routed-specialists`, `patterns/event-actors`, `patterns/response-auditor`.
 
 ### K-28 · Goal-seek loop
 
@@ -327,7 +327,7 @@ Each: `catalog/tools/<name>` · catalog · kit template without slots. Provider 
 | K-34 | Bash | 1,100 | Run shell commands in a sandbox whose files persist | Where do files written by a command go after the request? · What can the sandbox reach? · Which line gives a generator the tool? | *Sandbox and store*: the sandbox for one run, the files kept. Marks: dashed outline on the sandbox, hatching on the stored files, arrow (`SYNCS`) | `createBashCapability` in `uses` | Keep, trim |
 | K-35 | Workspace | 1,000 | Move files between stored collections and the place an agent works | Two runs change one file: what happens? · What does the flush report say? · When do you reach for this over Bash? | *Stored files, working files*: two columns and the sync between. Marks: hatching, arrow, red on a conflict | Projecting a collection to disk; writing one file | Keep, trim |
 
-All six: FIX-2703. Sources are the pages of the same name under `tools/`.
+All six: FIX-2703. Sources: `tools/search`, `tools/fetch`, `tools/crawl`, `tools/mcp`, `tools/bash`, `tools/workspace`.
 
 ### K-36 · Memory
 
@@ -349,7 +349,7 @@ All six: FIX-2703. Sources are the pages of the same name under `tools/`.
 | K-38 | The recall tool | `catalog/memory/recall-tool` | 700 | What the model calls when the always-on memory view is not enough | When does the model reach for it? · How are results ranked? · Tool or automatic context: which for a rare lookup? | None | The tool on a generator | Keep |
 | K-39 | Memory hygiene | `catalog/memory/hygiene` | 700 | Keep a long-lived store useful: old and stale memories lose out | What happens to a fact from eighteen months ago? · How do you turn it off? · What can an operator see? | None | The default; calling the janitor | Keep |
 
-All three: FIX-2703.
+All three: FIX-2703. Sources: `memory/relations`, `memory/recall-tool`, `memory/hygiene`.
 
 ### K-40 · UI
 
