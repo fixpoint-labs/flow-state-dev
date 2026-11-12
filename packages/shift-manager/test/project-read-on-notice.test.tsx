@@ -26,12 +26,12 @@ const hear = (notice: WireNotice) => opened.filter((o) => !o.closed).forEach((o)
 
 let title = "Apollo";
 let failing = false;
-let rowReads = 0;
+let projectReads = 0;
 const client = {
   userId: "u_1",
   resources: {
     getCollectionResourceState: async () => {
-      rowReads += 1;
+      projectReads += 1;
       if (failing) throw new Error("unavailable");
       return { clientData: { id: "apollo", title, ownerUserId: "u_1" } };
     },
@@ -62,7 +62,7 @@ beforeEach(() => {
   shown.splice(0);
   title = "Apollo";
   failing = false;
-  rowReads = 0;
+  projectReads = 0;
 });
 afterEach(() => {
   cleanup();
@@ -81,7 +81,7 @@ describe("a project's entries", () => {
     hear(resource("org", "workstreams/zeus/u_1/research"));
     hear(resource("org", "inventory/workers/eng"));
     await settle();
-    expect(rowReads).toBe(1);
+    expect(projectReads).toBe(1);
     const sub = opened.find((o) => !o.closed);
     expect(sub?.topics).toEqual([{ scope: "org" }]);
     expect(sub?.pollIntervalMs).toBe(5_000);
@@ -89,12 +89,12 @@ describe("a project's entries", () => {
     title = "Apollo, renamed";
     hear(resource("org", "workstreams/apollo/u_2/search"));
     await waitFor(() => expect(titleShown()).toBe("Apollo, renamed"));
-    expect(rowReads).toBe(2);
+    expect(projectReads).toBe(2);
     hear(resource("org", "projects/apollo"));
-    await waitFor(() => expect(rowReads).toBe(3));
+    await waitFor(() => expect(projectReads).toBe(3));
 
     view.rerender(<Probe address={{ visibility: "shared", id: "apollo" }} readAt={2} />);
-    await waitFor(() => expect(rowReads).toBe(4));
+    await waitFor(() => expect(projectReads).toBe(4));
   });
 
   it("of a private project are heard under the user's scope", async () => {
@@ -113,9 +113,9 @@ describe("a project's entries", () => {
     await waitFor(() => expect(titleShown()).toBe("Apollo"));
 
     failing = true;
-    const before = rowReads;
+    const before = projectReads;
     hear(resource("org", "projects/apollo"));
-    await waitFor(() => expect(rowReads).toBe(before + 1));
+    await waitFor(() => expect(projectReads).toBe(before + 1));
     await settle();
     expect(titleShown()).toBe("Apollo");
   });
