@@ -47,9 +47,9 @@ flowchart TD
   `{ status: "failed", error }` (a `sendMessage` that waited on a reply its message never got
   to give), and a read's `status` other than `ok`. Reading the shape covers the next tool
   without an edit. The read's `status` is the one rule tied to a tool name.
-- **What it changes beyond the labs:** Kitchen Sink's and Shift Manager's tool lines, on their
-  next registry copy, say "(failed)" for such a result, which they read as done today. That is
-  the point of the change, not a side effect.
+- **What it changes beyond the labs:** Kitchen Sink's and Shift Manager's tool lines, whose
+  registry copies the wave-1 PR refreshes ([E2](#e2)), say "(failed)" for such a result, which
+  they read as done today. That is the point of the change, not a side effect.
 - **Locks in:** the four shapes as the failure contract a tool can rely on to be shown as
   failed. A zero-match search is **not** a failure: it says `no matches`.
 
@@ -72,10 +72,14 @@ flowchart TD
 - **E1 · No new registry file.** `toolOutcome` goes in `tool-naming.ts` and the step-run line
   in `tool-grouping.ts`, so `registry.json` changes only its description and Kitchen Sink's
   drift count (37) stays.
-- **E2 · Kitchen Sink's copies are refreshed in the wave-1 PR**, byte for byte, because its
-  drift test fails otherwise. That is an exception to the epic's wave-1 row ("no app file"),
-  forced by the test and carrying no app logic. No other app file changes in wave 1. Shift Manager's copies have
-  no drift test and wait for its own copy.
+- <a name="e2"></a>**E2 · A wave PR that changes a registry component refreshes every app
+  copy a byte-equality test pins to it, in the same PR.** *(Amended 2026-11-12.)* That is
+  Kitchen Sink's copies (its drift test) and Shift Manager's (`packages/shift-manager/test/static.test.ts` keeps every
+  registry copy byte-equal to `packages/ui/registry/components/*`), byte for byte, plus the
+  narrow tooling entries a copy needs, such as a dead-code ignore in `.fallowrc.json`. It is an
+  exception to the epic's wave-1 row ("no app file"), forced by the tests and carrying no app
+  logic. Nothing else in those apps changes: an app taking the new vocabulary in its own code,
+  such as Shift Manager's `ToolLine.tsx`, stays out of scope.
 - **E3 · A board-qualified task tool reads as its base.** `createTask_<board>` exists when two
   boards share a block (`nameSuffix`); it gets `createTask`'s line. The suffix is stripped only
   when the base is in the table, so `read_file` is untouched.
@@ -135,6 +139,12 @@ red; Teammates reads through `sessionFeed`. Recorded: E2's exception, E6's resha
 
 ## How it got here
 
+- **Amended 2026-11-12, after merge** — E2 rested on a wrong premise: that Shift Manager's
+  copies have no drift test and wait for their own copy. `static.test.ts` pins them byte-equal,
+  so wave 1 (#4621) left main red until #4654 refreshed Shift Manager's `tool.tsx`,
+  `tool-naming.ts` and `tool-grouping.ts` and added its `toolRunOpen` ignore to
+  `.fallowrc.json`. E2 now names the rule; D2's line and the spec's debt row follow it.
+  Approved by the product owner.
 - **Draft** — the problem is two labs with two (or no) vocabularies for the same workforce
   tools and no way to see a refused result; the approach extends the registry's naming helpers
   with those tools and an outcome read from the result, lifts the step-run line out of

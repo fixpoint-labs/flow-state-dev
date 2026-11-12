@@ -82,3 +82,4 @@ earlier cycle files are records and are not rewritten.
 | 27 | harness subscription-usage epic wrap (FIX-2139) (2026-10-29) | [`cycle-27.md`](cycle-ledger/cycle-27.md) |
 | 28 | coordination renames epic wrap (FIX-2071) (2026-10-30) | [`cycle-28.md`](cycle-ledger/cycle-28.md) |
 | 29 | same pieces, different apps epic wrap (FIX-2152) (2026-10-30) | [`cycle-29.md`](cycle-ledger/cycle-29.md) |
+| 30 | webhook routing epic wrap (FIX-2471) (2026-11-11) | [`cycle-30.md`](cycle-ledger/cycle-30.md) |

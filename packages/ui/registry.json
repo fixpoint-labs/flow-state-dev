@@ -753,7 +753,7 @@
       "name": "harness-readiness",
       "title": "Harness Readiness",
       "type": "registry:component",
-      "description": "Which coding harnesses can run on this machine: a chip per harness (\"✓ Cursor\", \"✗ Codex: Run `codex login`\", \"?\" for no answer) and a Re-check. Takes the rows of harness-manager's readiness action and a recheck that calls it with refresh: true.",
+      "description": "Which coding harnesses can run on this machine: a chip per harness (\"✓ Cursor\", \"✗ Codex: Run `codex login`\", \"?\" for no answer) and a Re-check. Takes the rows of harness-manager's readiness view and a recheck that reads it with refresh: true.",
       "dependencies": [],
       "registryDependencies": ["tokens"],
       "files": [{

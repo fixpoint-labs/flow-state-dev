@@ -108,7 +108,7 @@ needs (`CLAUDE_CODE_PASS`, `CODEX_PASS` or `CURSOR_PASS` from its package), neve
 host's environment. That filters what a run starts with; it isn't a security boundary. At start
 the lab logs which harnesses this machine can run, with what to run for one that can't
 (`✗ Codex: … Run \`codex login\`, or set CODEX_API_KEY.`), and the `harness-readiness` flow's
-`read` action returns the same rows; `{ refresh: true }` checks again. The host is durable: a thread's question and review wait on you across a
+`readiness` view returns the same rows, with no session; `{ refresh: true }` checks again. The host is durable: a thread's question and review wait on you across a
 restart, and a coding run's review needs durable execution. Its settings
 are read from the environment, all optional:
 
@@ -185,7 +185,7 @@ a package call:
 | The sessions list | `listWorkerSessions("desk.main")` from `@flow-state-dev/workforce/browser` |
 | *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject` |
 | The project picker and *New project* | `listProjects`, `createProject` and `checkRepository`, from `defineProjectBlocks` with the workspace host's check (`workforce/flows/projects.mts`) |
-| The picker's harness chips | the `harness-readiness` flow's `read` action |
+| The picker's harness chips | the `harness-readiness` flow's `readiness` view, read with no session |
 | Sending and the thread | the `respond` action, and the session's message and tool items |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |

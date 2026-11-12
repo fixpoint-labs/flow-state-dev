@@ -62,6 +62,7 @@ import {
   createRequestStreamStore,
   readEveryCollectionPage,
   topic,
+  viewRef,
   type Client,
   type ClientFetch,
   type SessionConnectionStatus,
@@ -97,7 +98,8 @@ import {
   type RefiledTask,
   type TaskView,
 } from "@flow-state-dev/orchestration/inbox";
-import { pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitInput, type RecordedRun, type RecordedWork, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { harnessReadinessViewRef, pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitInput, type RecordedRun, type RecordedWork, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import type { LabContextView } from "../host.mts";
 import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
@@ -454,10 +456,16 @@ export interface WindowMark {
   summarized: boolean;
 }
 
-/** One coding harness's readiness, as harness-manager's readiness action answers it. */
+/** One coding harness's readiness, as harness-manager's readiness view answers it. */
 export type LabHarness = HarnessReadinessChipRow;
 
-/** What the lab works on and with, from its `lab-context` flow: the context strip and the first run read it. */
+// FIX-2624.
+/** The host's readiness view (`host.mts`), read by scope with no session. */
+const READINESS_VIEW = harnessReadinessViewRef("harness-readiness");
+/** The host's lab-context view (`host.mts`), read by scope with no session. */
+const LAB_CONTEXT_VIEW = viewRef<LabContextView>("lab-context", "context");
+
+/** What the lab works on and with, from its `lab-context` flow's view: the context strip and the first run read it. */
 export interface LabContext {
   /** The working folder. */
   folder: string;
@@ -1267,28 +1275,6 @@ export function createLabAdapter(client: Client = connect(), connection: LabConn
   const watchFeed = <T>(sessionId: string, map: (items: Item[]) => T, onChange: (value: T) => void): Unsubscribe =>
     (feeds(sessionId) as SessionFeed).watch((items: readonly OutputItem[]) => onChange(map(items as unknown as Item[])));
 
-  /** The user's one session on a lab flow (`harness-readiness`, `lab-context`), found or made once. */
-  const labSessions = new Map<string, Promise<string>>();
-  const labSession = (flow: string) => {
-    const known = labSessions.get(flow);
-    if (known !== undefined) return known;
-    const made = (async () => {
-      const [latest] = (await client.sessions.list({ flowKind: flow, userId: client.userId })).sort((a, b) => b.updatedAt - a.updatedAt);
-      return latest?.id ?? (await client.flow(flow).createSession()).id;
-    })();
-    labSessions.set(flow, made);
-    made.catch(() => labSessions.delete(flow));
-    return made;
-  };
-  /** Run one of a lab flow's actions and hand back its output, or throw why it failed. */
-  const runLab = async (flow: string, action: string, input: unknown): Promise<any> => {
-    const sessionId = await labSession(flow);
-    const sent = await client.flow(flow).send(action, input, { sessionId });
-    const { status, error, output } = await sent.result();
-    if (status !== "completed") throw new Error(error?.message ?? `${action} ended ${status}`);
-    return output;
-  };
-
   return {
     watchWorkers(onChange, onError) {
       return workforce.watchRoster(
@@ -1301,10 +1287,10 @@ export function createLabAdapter(client: Client = connect(), connection: LabConn
       );
     },
     async readContext() {
-      return (await runLab("lab-context", "read", {})) as LabContext;
+      return (await client.view(LAB_CONTEXT_VIEW, {})).value;
     },
     async readHarnesses(refresh = false) {
-      return ((await runLab("harness-readiness", "read", { refresh })) as { harnesses: LabHarness[] }).harnesses;
+      return (await client.view(READINESS_VIEW, { refresh })).value;
     },
     async listWorkers() {
       const roster = await workforce.roster();

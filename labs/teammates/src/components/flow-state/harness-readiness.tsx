@@ -5,9 +5,9 @@
  * `✓ Cursor`, `✗ Codex` with what to run, `? Claude Code` for a check that got
  * no answer, and a Re-check that reads them again.
  *
- * Takes plain data: the rows harness-manager's readiness action answers
- * (`harnessReadinessAction`, `{ harnesses }`), and a `recheck` that calls the
- * same action with `{ refresh: true }` and resolves to its rows. While the
+ * Takes plain data: the rows harness-manager's readiness view answers
+ * (`harnessReadinessView`, one row per harness), and a `recheck` that reads the
+ * same view with `{ refresh: true }` and resolves to its rows. While the
  * first read is out, `rows` is `undefined` and the chips say so; a failed
  * Re-check keeps the rows it had and shows the error beside the button.
  */

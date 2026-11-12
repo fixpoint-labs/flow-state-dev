@@ -61,6 +61,7 @@ import {
 } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
+  harnessReadinessViewRef,
   pullRequestWait,
   readSessionPullRequests,
   readRecordedWork,
@@ -261,7 +262,7 @@ export interface WorkingNow {
   plan?: PlanRowNow[];
 }
 
-/** One coding harness's readiness, as harness-manager's readiness action answers it. */
+/** One coding harness's readiness, as harness-manager's readiness view answers it. */
 export type LabHarness = HarnessReadinessChipRow;
 
 /** Whether a run could check a repository out on this machine: the projects flow's `checkRepository`. */
@@ -317,8 +318,9 @@ export interface LabAdapter {
   dismiss(task: Pick<LabTask, "id" | "attempts">): Promise<void>;
 }
 
-/** The lab flow whose `read` action is harness-manager's readiness action (`fsdev.config.mts`). */
-const READINESS_FLOW = "harness-readiness";
+// FIX-2624.
+/** The lab flow's harness-manager readiness view (`host.mts`), read by scope with no session. */
+const READINESS_VIEW = harnessReadinessViewRef("harness-readiness");
 
 /** How often an open view reads again, in ms. */
 const READ_EVERY_MS = 1500;
@@ -790,7 +792,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
     return pending;
   };
 
-  /** The user's one session on a lab flow (`projects`, `pins`), found or made once. */
+  /** The user's one session on a lab flow (`projects`), found or made once. */
   const ownSessions = new Map<string, Promise<string>>();
   const ownSession = (flow: string) =>
     ownSessions.get(flow) ??
@@ -1282,8 +1284,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
       return { id: projectRef({ visibility: created.visibility, id: created.project.id }), name: created.project.title };
     },
     checkRepository: async (repository) => await run("projects", await projects(), "checkRepository", { repository }),
-    readHarnesses: async (refresh = false) =>
-      (await run(READINESS_FLOW, await ownSession(READINESS_FLOW), "read", { refresh })).harnesses as LabHarness[],
+    readHarnesses: async (refresh = false) => (await fsd.view(READINESS_VIEW, { refresh })).value,
     openSession: async (mode, projectId) => {
       const { worker } = modeById(mode);
       const project = parseProjectRef(projectId);

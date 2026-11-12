@@ -62,7 +62,7 @@ back after the run, and by the next run if the machine killed this one (`closure
 `planted`). A project's checks (the labs' and Shift Manager's project row, Kitchen Sink's
 `KITCHEN_SINK_HARNESS_CHECKS`) are the project's data, a fixture on every pass.
 
-**Sweep** (`verdict/run.mts`): no app's `WORKER.md` carries date, "done" or length guidance of its own
+**Sweep** (`verdict/run.mts`): no app's `WORKER.md` carries date or "done" guidance of its own
 (epic ER-3). Reported on every pass; a failure at the wrap.
 
 **Model:** real. By default each app's own (through the AI Gateway), coder asks on Claude Code's
