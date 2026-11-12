@@ -41,9 +41,9 @@ export const REREAD_EVERY_MS = 2_000;
 
 /**
  * How long a task the board doesn't hold is waited for before the screen says
- * so. Filing it is a row write, which publishes a board notice, and where push
- * can miss one the board is re-read at {@link REREAD_EVERY_MS}: so the wait
- * needs no reads of its own, only this deadline. The screen is opened from a
+ * so, counted from a board read that landed. Filing it is a row write, which
+ * publishes a board notice, and where push can miss one the board is re-read at
+ * {@link REREAD_EVERY_MS}: so the wait needs no reads of its own, only this deadline. The screen is opened from a
  * row or a `task-change` item, so a real task is on the board once its filing
  * request commits, well inside it; anything still missing then is a stale
  * link, a deleted task or a mistyped address. A row that exists waits for its
@@ -265,11 +265,12 @@ export function TaskProvider({
   const gaveUp = boardKnown && missing && boardFailure === undefined && missedOut;
   const waiting = boardKnown && (awaitingLink(row) || awaitingNextRun || awaitingDispatch) && boardFailure === undefined && !gaveUp;
   // A missing row's deadline: a timer only, so the board's reads stay the subscription's.
+  // It runs from a board read that landed, so a slow socket connect can't use it up.
   useEffect(() => {
-    if (!waiting || !missing) return;
+    if (!waiting || !missing || !boardRead) return;
     const timer = setTimeout(() => setMissedOut(true), MISSING_FOR_MS);
     return () => clearTimeout(timer);
-  }, [waiting, missing]);
+  }, [waiting, missing, boardRead]);
   useEffect(() => {
     if (!waiting) return;
     const watching = client.live([topic.session(holder, { resource: CONVERSATION_BOARD_COLLECTION })], {
