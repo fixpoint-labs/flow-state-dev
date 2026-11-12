@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
- * A project's entries read on a change, not every 5 s: the view reads its row
- * and its workstream entries when it opens, again on a notice of either under
+ * A project's entries read on a change, not every 5 s: the view reads the
+ * project and its workstream entries when it opens, again on a notice of either under
  * the project's scope (the org's for a shared project, the user's for a
  * private one) and on each Lab read (`readAt`), and on nothing else while push
  * covers the page. Wherever push can miss a change, the subscription keeps the
@@ -70,7 +70,7 @@ afterEach(() => {
 });
 
 describe("a project's entries", () => {
-  it("read on open, then only on a notice of the project's row or entries under its scope and on a Lab read; at the old pace where push can miss one", async () => {
+  it("read on open, then only on a notice of the project or its entries under its scope and on a Lab read; at the old pace where push can miss one", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const view = render(<Probe address={{ visibility: "shared", id: "apollo" }} readAt={1} />);
     await waitFor(() => expect(titleShown()).toBe("Apollo"));

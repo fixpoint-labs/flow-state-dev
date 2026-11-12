@@ -303,7 +303,7 @@ describe("watchTalk", () => {
     const lab = createLabAdapter(h.client);
     await lab.openConversation("eng");
     const shown: LabTalk[][] = [];
-    stops.push(lab.watchTalk("eng", (rows) => shown.push(rows)));
+    stops.push(lab.watchTalk("eng", (talk) => shown.push(talk)));
     await until(() => shown.length === 1);
     // The log is the user's: a message sent from any session lands under the user's scope.
     const sub = h.subscriptions.find((s) => !s.closed && s.topics.some((t) => t.scope === "user"));

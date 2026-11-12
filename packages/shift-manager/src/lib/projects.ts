@@ -204,8 +204,8 @@ const PROJECT_POLL_MS = 5_000;
 // BR-18.
 /**
  * The project's own read, row and entries, when the view opens, each
- * time the Lab is read again (`readAt`), and on each notice of the project's
- * row or one of its entries under the project's scope (the org's for a shared
+ * time the Lab is read again (`readAt`), and on each notice of the project or
+ * one of its entries under the project's scope (the org's for a shared
  * project, its owner's for a private one) while its entries are on screen, on
  * a tab that draws them or open under the project in the sidebar: a
  * workstream is opened by someone else's turn (the Shift Coordinator's, or a
