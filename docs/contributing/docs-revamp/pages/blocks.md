@@ -6,17 +6,17 @@ description: A block is one named piece of work with a typed input and output. F
 
 # Blocks
 
-A customer writes in: "Where is my refund?" Before a reply goes back, a few things happen. The message is cleaned up. Something decides whether it's a refund question or a general one. A model writes the answer, and may need to look up an order first. Each step is a different kind of work, and you want to change one without touching the others.
+A customer writes in: "Where is my refund?" Before a reply goes back, a few things happen. The message is cleaned up. A model writes the answer, and may need to look up an order first. Each step is a different kind of work, and you want to change one without touching the others.
 
 A block is one of those steps: a named piece of work with a typed input and a typed output. You build a flow, the backend your app calls, by putting blocks together. Blocks can hold other blocks, so a whole pipeline is a block too.
 
-![A sequencer containing a handler and a router, with generators and a tool inside](./figures/blocks.svg)
+![A sequencer containing a handler and a generator, with a tool inside the generator](./figures/blocks.svg)
 
-*A flow's blocks, nested. Description for the site's `Figure`: One large box, a sequencer named handleTicket, contains two steps joined by an arrow. The first step is a handler named cleanMessage. The second is a router named pickReply, which contains two generators, refundReply and draftReply. Inside draftReply, highlighted, is a handler named lookUpOrder that the model can call as a tool. This page builds the flow one piece at a time.*
+*A flow's blocks, nested. Description for the site's `Figure`: One large box, a sequencer named handleTicket, contains two steps joined by an arrow. The first step is a handler named cleanMessage. The second is a generator named draftReply. Inside draftReply, highlighted, is a handler named lookUpOrder that the model can call as a tool. This page builds the flow one piece at a time.*
 
 ## The smallest flow
 
-Start with two blocks and a sequencer that runs them in order.
+A handler is a block that runs your code. A generator is a block that asks a model to write. Here is one of each.
 
 ```ts title="src/flows/support/blocks/clean-message.ts"
 import { handler } from "@flow-state-dev/core";
@@ -47,6 +47,8 @@ export const draftReply = generator({
 });
 ```
 
+A sequencer, a block that runs other blocks in order, joins them:
+
 ```ts title="src/flows/support/blocks/handle-ticket.ts"
 import { sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -61,21 +63,13 @@ export const handleTicket = sequencer({
   .step((cleaned) => cleaned.text, draftReply);
 ```
 
-```ts title="src/flows/support/flow.ts"
-import { defineFlow } from "@flow-state-dev/core";
-import { handleTicket } from "./blocks/handle-ticket";
+Look at the two kinds first. The handler is plain code with a schema for what goes in and what comes out. The generator is a model, a prompt, and what to send it as the user's message.
 
-export default defineFlow({
-  kind: "support",
-  actions: { reply: { block: handleTicket } },
-})();
-```
+Then the connector. `cleanMessage` returns an object, and `draftReply` wants a string, so the second step begins with a small function that reshapes one into the other.
 
-`cleanMessage` is a handler, a block that runs your code. `draftReply` is a generator, a block that asks a model to write. Each has a `name` and schemas for what goes in and what comes out.
+`itemVisibility` controls what the user sees. An item is one thing a flow streams to the client, such as a message or a tool call. Without `itemVisibility`, a generator streams nothing. This one streams its reply and keeps it in the conversation. A handler is quiet in the same way until it emits through `ctx.emit`.
 
-The sequencer runs `cleanMessage`, then hands its output to the next step. That output is an object, and `draftReply` wants a string, so the second step starts with a small function that reshapes one into the other. It's called a connector.
-
-The flow exposes `handleTicket` as an action named `reply`, a call a client can make. It can do that because a sequencer is a block like any other. Without `itemVisibility`, a generator streams nothing to the user. This one streams its reply and keeps it in the conversation.
+A flow exposes a block as an action, a call a client can make. `defineFlow({ kind: "support", actions: { reply: { block: handleTicket } } })` makes this one callable as `reply`, because a sequencer is a block like any other.
 
 ## The five kinds
 
@@ -83,52 +77,17 @@ The flow exposes `handleTicket` as an action named `reply`, a call a client can 
 | --- | --- | --- |
 | Handler | Runs your code | `cleanMessage` |
 | Generator | Asks a model to write: text, tool calls, or a typed object | `draftReply` |
-| Evaluator | Asks a model questions whose answers you already know, and gets typed answers back | Could answer "is this about a refund?" |
+| Evaluator | Asks a model a question and gets a typed answer: a choice, a score, a yes or no | Not used here |
 | Sequencer | Runs blocks in order | `handleTicket` |
-| Router | Picks one block to run | `pickReply`, below |
+| Router | Picks one block to run | Not used here |
 
-The first three do work. The last two only arrange other blocks, which is why they nest.
+## Blocks inside blocks
 
-A handler sends the user nothing unless it calls `ctx.emit.message`, so it can do its work quietly. An evaluator is for when your code is going to branch on a model's answer. You give it questions such as `choice`, `score` and `boolean`, and the answer comes back typed, so `answers.team.choice` is one of your options rather than a string. It needs a model that supports evaluation. A model that can only write text is refused before any call is made.
+The page's real point is the last two rows. A sequencer and a router do no work of their own. They arrange other blocks, and because they are blocks, they nest. `handleTicket` could be a step in a longer sequencer, or the block a router picks.
 
-## Picking one block at run time
+A router returns one of the blocks it lists, chosen by your code. Every route takes the router's input and returns its output, so a sequencer can treat the router as one step.
 
-Refund questions deserve their own prompt. A router chooses between blocks while the flow runs.
-
-```ts title="src/flows/support/blocks/pick-reply.ts"
-import { router } from "@flow-state-dev/core";
-import { z } from "zod";
-import { draftReply } from "./draft-reply";
-import { refundReply } from "./refund-reply";
-
-export const pickReply = router({
-  name: "pick-reply",
-  inputSchema: z.string(),
-  outputSchema: z.string(),
-  routes: [refundReply, draftReply],
-  execute: (input) => (input.toLowerCase().includes("refund") ? refundReply : draftReply),
-});
-```
-
-`refundReply` is a second generator, shaped like `draftReply` with a prompt about the refund policy. It lives in its own file beside the others.
-
-The router lists every block it might pick in `routes`, and `execute` returns one of them. Return a block that isn't listed and the router throws. Every route takes the router's input and returns its output, so the sequencer can treat the router as one step:
-
-```ts title="src/flows/support/blocks/handle-ticket.ts"
-import { sequencer } from "@flow-state-dev/core";
-import { z } from "zod";
-import { cleanMessage } from "./clean-message";
-import { pickReply } from "./pick-reply";
-
-export const handleTicket = sequencer({
-  name: "handle-ticket",
-  inputSchema: z.object({ message: z.string() }),
-})
-  .step(cleanMessage)
-  .step((cleaned) => cleaned.text, pickReply);
-```
-
-This continues the sequencer above, with `pickReply` in place of `draftReply`. Plain code made the choice here. When a model should make it, an evaluator answers and the router reads the answer.
+An evaluator is for when your code will branch on a model's answer, such as whether a message is about a refund. [Generators and tools](./generators-and-tools.md) covers it.
 
 ## Giving a block to a model
 
@@ -150,39 +109,20 @@ export const lookUpOrder = handler({
 });
 ```
 
-```ts title="src/flows/support/blocks/draft-reply.ts"
-import { generator } from "@flow-state-dev/core";
-import { z } from "zod";
-import { lookUpOrder } from "../tools/look-up-order";
+Add `tools: [lookUpOrder]` to `draftReply`, importing `lookUpOrder` from `../tools/look-up-order`. The model decides when to call it from its name and description. The framework runs the block and gives the result back to the model.
 
-export const draftReply = generator({
-  name: "draft-reply",
-  model: "openai/gpt-6-luna",
-  prompt: "You answer customer support messages. Be brief and specific.",
-  inputSchema: z.string(),
-  user: (input) => input,
-  tools: [lookUpOrder],
-  itemVisibility: { client: true, history: true },
-});
-```
+## What a block needs
 
-This continues `draftReply` with one new line, `tools`. The model decides when to call `lookUpOrder` from its name and description. The framework runs the block and gives the result back to the model.
-
-A block from a pattern or another package may have a name that reads wrong to the model. `block.as({ name, description })` returns a copy under a new name or description and leaves the original alone. Two different blocks with the same name in one generator's `tools` make it throw.
-
-## What a block carries with it
-
-A block declares the state and resources it uses. A resource is stored data a flow declares, such as a document or a list. The flow that includes the block supplies them. So a block moves into another flow on its own, with nothing to wire up by hand, and a block that needs a resource brings its declaration along.
+If `lookUpOrder` read a stored list of orders, it would declare that list as a resource, stored data a flow keeps. Including the block in a flow installs the list, so the block moves between flows on its own. [Resources](./resources.md) covers them.
 
 ## What a block won't do
 
-- Run itself. A flow action, a parent block, or a model's tool call runs it. You can't call a block like a function.
-- Call other blocks from inside its code. A handler that needs another block's output belongs after that block in a sequencer.
-- Show anything to the user by default. A generator needs `itemVisibility`, and a handler needs `ctx.emit`.
+- Be called as a function from your code. A block has no call method; the framework runs it, as an action, a step, a route or a tool.
+- Call other blocks from inside a handler. A handler that needs another block's output goes after that block in a sequencer.
 
 ## Next
 
-- [Generators and tools](./generators-and-tools.md) goes deeper on prompts, history, structured output and giving a model tools.
+- [Generators and tools](./generators-and-tools.md) goes deeper on prompts, history, structured output, evaluators and giving a model tools.
 - [Composition](./composition.md) covers the rest of the sequencer: parallel steps, loops, side chains and error recovery.
 - [Flows and actions](./flows-and-actions.md) shows how a block becomes something a client can call.
 - [Blocks reference](../reference/blocks.md) lists every option each kind takes.
