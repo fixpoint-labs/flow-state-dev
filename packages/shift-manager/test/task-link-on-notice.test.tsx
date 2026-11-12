@@ -34,7 +34,7 @@ const hear = (notice: WireNotice) => open().forEach((o) => o.onChange(notice));
 
 const CONVERSATION = "conv_1";
 const BOARD = `${CONVERSATION}.tasks`;
-const taskRow = (run: BoardTaskView["run"]) => ({ boardRef: BOARD, ownerSessionId: CONVERSATION, id: "t1", title: "Fix it", status: "in_progress", run }) as BoardTaskView;
+const boardTask = (run: BoardTaskView["run"]) => ({ boardRef: BOARD, ownerSessionId: CONVERSATION, id: "t1", title: "Fix it", status: "in_progress", run }) as BoardTaskView;
 const LINK = { sessionId: "s_run", requestId: "req_run", attempt: 1 };
 
 let board: BoardTaskView[] = [];
@@ -70,7 +70,7 @@ const boardNotice: WireNotice = { topic: { scope: "session", id: CONVERSATION, r
 beforeEach(() => {
   opened.splice(0);
   shown.splice(0);
-  board = [taskRow(null)];
+  board = [boardTask(null)];
   failBoard = false;
   boardReads = 0;
 });
@@ -102,7 +102,7 @@ describe("a task waiting on its run link", () => {
     expect(sub?.pollIntervalMs).toBe(2_000);
 
     // The run writes its link: the row's write is a board notice.
-    board = [taskRow(LINK)];
+    board = [boardTask(LINK)];
     hear(boardNotice);
     await waitFor(() => expect(last().row?.run).toEqual(LINK));
     expect(boardReads).toBe(2);
@@ -125,7 +125,7 @@ describe("a task waiting on its run link", () => {
     expect(open()).toEqual([]);
 
     failBoard = false;
-    board = [taskRow(LINK)];
+    board = [boardTask(LINK)];
     last().retryRow();
     await waitFor(() => expect(last().row?.run).toEqual(LINK));
     expect(last().rowFailure).toBeUndefined();
