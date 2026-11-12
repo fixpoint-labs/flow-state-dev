@@ -35,18 +35,27 @@ const clientDataResourceInferenceSmoke = defineFlow({
   },
   session: {
     stateSchema: z.object({ mode: z.string() }),
-    client: {
-      derived: {
-        modeLabel: (ctx) => {
-          const mode = ctx.state.mode;
-          return mode ?? "unknown";
-        }
-      }
-    }
+    client: { expose: ["mode"] }
   }
 });
 
 void clientDataResourceInferenceSmoke;
+
+// A scope's `derived` is removed: a value computed for a screen is a view.
+// The type refuses the key, and `defineFlow` refuses it at run time.
+const derivedRefused = () =>
+  defineFlow({
+    kind: "clientdata-derived-refused",
+    actions: {},
+    session: {
+      stateSchema: z.object({ mode: z.string() }),
+      client: {
+        // @ts-expect-error `derived` is not a scope client key.
+        derived: { modeLabel: () => "unknown" } // retired-name-refusal: the removed key, refused by its type
+      }
+    }
+  });
+void derivedRefused;
 export const clientDataResourceInferenceTypeSmoke = true;
 
 

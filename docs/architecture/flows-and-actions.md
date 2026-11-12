@@ -187,7 +187,7 @@ Retry, continue and resume re-enter the instance recorded as the request's owner
 
 Resources are **concrete persisted data**. They are declared once in the flow-level `resources` map — each resource's own `scope` decides where it persists. Scope configs carry state and a `client` block; they do not carry resources.
 
-A scope's state is private to the server by default. The `client` block declares the slice that crosses the boundary: `expose` passes top-level state fields through verbatim, and `derived` computes named projections from `{ state, resources }`. Both land under `clientData.<scope>.<name>` on the client.
+A scope's state is private to the server by default. The `client` block declares the slice that crosses the boundary: `expose` passes top-level state fields through verbatim, under `clientData.<scope>.<name>` on the client. A value computed for a screen is a view ([Views](#views)).
 
 ```ts
 defineFlow({
@@ -204,21 +204,15 @@ defineFlow({
 
   session: {
     stateSchema: sessionStateSchema,
-    client: {
-      expose: ["messageCount"],
-      derived: {
-        activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-      },
-    },
+    client: { expose: ["messageCount"] },
   },
 });
 ```
 
 **Key rules:**
 - Resources are flow-level and flat — `session.resources` / `user.resources` / `org.resources` are gone
-- State does not reach the client unless named in `expose` or `derived`
-- `expose` and `derived` share one namespace per scope; colliding names throw at `defineFlow`
-- Each `derived` compute function receives only its own scope's state and resources
+- State does not reach the client unless named in `expose`, or read by a view
+- A scope's `client.derived` is removed: `defineFlow` refuses it, naming views
 - Generator context should use `contextFn()` for typed scope access
 - Use `defineResource()` for portable resource reuse
 
@@ -301,7 +295,7 @@ defineFlow({
 
 **Keeping a screen current.** A read has no push of its own. A screen calls it inside the client's live read, `client.live(topics, { read, hear, paths, onValue })`, which runs it again on the notices under `topics` that `hear` and `paths` let through: one read in flight and at most one waiting, a value reported only when it changed, and a failed read tried again on its own (1 s doubling to 30 s, `onStale` meanwhile). Where push can miss a change it reads on a timer (3 s by default). The live read is the one loop every watch in the framework and its apps runs on (`packages/client/src/live/`); a second coalescer anywhere else fails the `fsd/one-coalescer` lint. `client.subscribe` stays the lower-level call it rides.
 
-**`reads` beside `derived` and views.** Views replace both reads and a scope's `client.derived` entries ([Resources and Client Data](./resources-and-client-data.md#client-data)); until their callers move, all three are on `main`. Reads already run through the view runner, so they refuse writes and model calls the same way. The target model is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
+**`reads` beside views.** Views replace reads, as they replaced a scope's `client.derived` ([Resources and Client Data](./resources-and-client-data.md#client-data)); until the read callers move, both are on `main`. Reads already run through the view runner, so they refuse writes and model calls the same way. The target model is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
 
 ## Flow Discovery
 

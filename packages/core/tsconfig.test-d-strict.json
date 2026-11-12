@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.test-d.json",
+  "compilerOptions": { "strict": true, "paths": {} },
+  "include": ["test/views-strict.test-d.ts"]
+}

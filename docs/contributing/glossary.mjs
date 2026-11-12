@@ -638,7 +638,16 @@ export const ENTRIES = [
     // "Read" retires as the hook's name. Its matcher lands with FIX-2623, the PR that removes
     // `reads`, so no check refuses what is still on main (epic ER-9). "View" is not retired in
     // any other sense: `readTaskView` and "derived views" in prose stay.
-    retires: [],
+    retires: [
+      {
+        // A scope's `client.derived`, removed (FIX-2623): a computed value for a screen is a view.
+        // Identifiers only, never the English word, so "derived from" and `derivedCtx` pass.
+        id: "scope-derived",
+        check: "sweep",
+        files: CODE,
+        pattern: /\bClientDataComputeFn\b|\bClientDataContext\b|\bclient\??\.derived\b|\bderived\s*:\s*\{/,
+      },
+    ],
   },
   {
     term: "Kit",

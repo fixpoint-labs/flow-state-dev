@@ -52,47 +52,18 @@ export type AnyResourceHandle =
   | ProjectedResourceCollectionRef<any>;
 
 /**
- * Context provided to a clientData compute function.
- * Contains the scope state and, where applicable, the scope's resource handles.
- */
-export type ClientDataContext<
-  TState extends JsonObject = JsonObject,
-  TResources extends Record<string, AnyResourceHandle> = Record<string, AnyResourceHandle>
-> = {
-  state: Readonly<TState>;
-  resources: TResources;
-};
-
-/**
- * A compute function that derives client-visible data from scope state.
- * Always client-visible (no `client: true` flag). Returns serializable data.
- */
-export type ClientDataComputeFn<
-  TState extends JsonObject = JsonObject,
-  TResources extends Record<string, AnyResourceHandle> = Record<string, AnyResourceHandle>
-> = (
-  ctx: ClientDataContext<TState, TResources>
-) => JsonValue | Promise<JsonValue>;
-
-/**
  * Scope-level client config. Declares what state crosses the
  * server/client boundary. Absent or empty means the scope's state is
  * private to the server.
  *
  * - `expose`: top-level state field names whose values are passed
  *   verbatim into `clientData.<scope>.<name>`.
- * - `derived`: named projections computed from `{ state, resources }`,
- *   surfaced under `clientData.<scope>.<name>`.
  *
- * Names in `expose` and `derived` share a namespace (the scope's
- * `clientData` object). They must not collide.
+ * A value computed for a screen is a view (`defineView`, in the flow's
+ * `views`), not client data.
  */
-export type ScopeClientConfig<
-  TState extends JsonObject = JsonObject,
-  TResources extends Record<string, AnyResourceHandle> = Record<string, AnyResourceHandle>
-> = {
+export type ScopeClientConfig<TState extends JsonObject = JsonObject> = {
   expose?: ReadonlyArray<keyof TState & string>;
-  derived?: Record<string, ClientDataComputeFn<TState, TResources>>;
 };
 
 export type HookHandler<TInput = unknown> = (
@@ -419,8 +390,8 @@ export type SessionConfig = {
   cas?: CASOptions;
   /**
    * Declares which slice of session state crosses to the client. State is
-   * private by default — only `expose`d field names and `derived`
-   * projections appear in `clientData.session`.
+   * private by default — only `expose`d field names appear in
+   * `clientData.session`.
    */
   client?: ScopeClientConfig<JsonObject>;
   /** Retention policy that bounds session item log size. */

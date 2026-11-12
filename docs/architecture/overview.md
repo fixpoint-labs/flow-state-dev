@@ -103,8 +103,9 @@ const myFlow = defineFlow({
   actions: {
     chat: { inputSchema, block: chatPipeline, userMessage: (i) => i.message }
   },
-  session: { stateSchema, resources: { ... }, client: { expose: [...], derived: { ... } } },
-  user: { stateSchema, client: { derived: { ... } } },
+  session: { stateSchema, resources: { ... }, client: { expose: [...] } },
+  user: { stateSchema, client: { expose: [...] } },
+  views: { ... },   // a value computed for a screen: defineView({ scope, block })
 });
 ```
 
@@ -141,7 +142,7 @@ See [Streaming](./streaming.md) and [Items](./items.md).
 
 **Resources** are named, typed state containers scoped to sessions, users, or orgs. Think of them as structured data stores that blocks can read and write. Blocks declare their resource dependencies via `defineResource()`, and the framework collects and merges these declarations automatically through sequencers up to the flow level. For dynamic collections where the instance count isn't known ahead of time, [Resource Collections](./resource-collections.md) let you create and destroy instances at runtime under a shared schema.
 
-**Client data** is the projection of scope state declared by each scope's `client` block (`expose` for verbatim passthrough, `derived` for computed views). Raw state never reaches the client; the snapshot route returns only what `client` declares. The privacy property is structural: a scope without a `client` block exposes nothing, and a new state field doesn't surface on the wire until it's added to `expose` or `derived`.
+**Client data** is the slice of scope state each scope's `client` block names in `expose`, passed through verbatim. A value computed for a screen is a view. Raw state never reaches the client; the snapshot route returns only what `client` declares. The privacy property is structural: a scope without a `client` block exposes nothing, and a new state field doesn't surface on the wire until it's added to `expose`.
 
 See [Resources and Client Data](./resources-and-client-data.md).
 

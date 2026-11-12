@@ -49,7 +49,7 @@ const licenses = defineResourceCollection({
   client: { state: { read: true } }
 });
 
-/** An org collection with no `client` config, in a scope whose derived value may read it. */
+/** An org collection with no `client` config. */
 /** An org collection whose rows only their owner may read. */
 const drafts = defineResourceCollection({
   pattern: "drafts/[owner]/[id]",
@@ -57,7 +57,7 @@ const drafts = defineResourceCollection({
   scope: "org",
   flowIsolation: false,
   stateSchema: z.object({ title: z.string().default("") }),
-  // A write grant, and an org scope with a derived value: either makes it publish.
+  // A write grant makes it publish.
   client: { content: { update: true } }
 });
 
@@ -75,7 +75,7 @@ const audit = defineResourceCollection({
   stateSchema: z.object({ n: z.number().default(0) })
 });
 
-/** A session collection no client can read, in a scope with no derived value. */
+/** A session collection no client can read. */
 const ledger = defineResourceCollection({
   pattern: "ledger/*",
   scope: "session",
@@ -89,7 +89,7 @@ function app() {
     kind: "desk",
     org: {
       stateSchema: z.object({ plan: z.string().default("free") }),
-      client: { expose: ["plan"], derived: { audited: () => true } }
+      client: { expose: ["plan"] }
     },
     user: { stateSchema: z.object({ theme: z.string().default("light") }) },
     session: { stateSchema: z.object({ topic: z.string().default("") }) },
@@ -192,11 +192,13 @@ describe("resource writes publish on their scope's topic, narrowed to the resour
     ]);
   });
 
-  it("publishes a resource with no client config when its scope declares a derived value", async () => {
+  // A scope's `derived` once made every resource of its scope publish; it is
+  // removed, and only a view on the host does that now (views.test.ts).
+  it("publishes nothing for a resource with no client config, on a host with no view", async () => {
     const bus = createInMemoryBus();
     const heard = hear(bus, orgTopic);
     await run(bus, "audit", "a1");
-    expect(ofKind(heard, "resource").map((n) => n.topic.resource)).toEqual(["audit/a1"]);
+    expect(ofKind(heard, "resource")).toEqual([]);
   });
 
   it("publishes a single resource a client can read, though it is neither live nor reactive", async () => {

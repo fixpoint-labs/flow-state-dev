@@ -12,15 +12,15 @@ import {
   useFlow,
   useHarnessLines,
   useSession,
-  useClientData,
   useResourceCollectionList,
+  useView,
   useVoice,
   type FlowNavigatorLeaf,
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
   type HarnessWaitingLine,
 } from "@flow-state-dev/react";
-import { createClient, type ClientFetch } from "@flow-state-dev/client";
+import { createClient, viewRef, type ClientFetch } from "@flow-state-dev/client";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { Button } from "@/components/ui/button";
 import { Menu, MessageSquareText, Package, Plus, RotateCcw, SquareIcon, Users, Wrench, X } from "lucide-react";
@@ -77,7 +77,8 @@ import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workfor
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
 import { SESSION_DRAFT } from "@/lib/session-draft";
-import { useSessionControls, type RecordedSessionControls } from "@/lib/use-session-controls";
+import { useSessionControls } from "@/lib/use-session-controls";
+import type { modeStatusView, preferencesView } from "@/flows/chat-agent/views";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 import { BASE_PATH } from "@/lib/base-path";
@@ -137,10 +138,9 @@ const SIDEBAR_MIN_WIDTH = 280;
 const SIDEBAR_MAX_WIDTH = 700;
 const SIDEBAR_STORAGE_KEY = "ks-sidebar-width";
 
-const CLIENT_DATA_OPTIONS = {
-  session: ["modeStatus", "workingMemory"] as string[],
-  user: ["preferences"] as string[],
-};
+/** The flow's two views the page watches, named by type only: the browser holds no block. */
+const MODE_STATUS = viewRef<typeof modeStatusView>("chat-agent", "modeStatus");
+const PREFERENCES = viewRef<typeof preferencesView>("chat-agent", "preferences");
 
 export default function Page() {
   // useSearchParams() must be wrapped in Suspense in Next.js app router —
@@ -345,18 +345,20 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   // stay fenced on it.
   const railSessionSource = useMemo(() => railSessions(fsd, workforce), [fsd, workforce]);
 
-  const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
 
-  const modeStatus = clientData.session?.modeStatus as (RecordedSessionControls & { activeSkills?: Array<{ name: string; source: string }> }) | undefined;
   // Mode, thinking style and features are the session's: seeded from what it
-  // last ran with. Until its own snapshot arrives, the previous session's
-  // record is still on screen, so nothing is passed.
+  // last ran with. The view answers nothing until the open session's own
+  // answer lands, so another session's record is never passed.
+  const { value: modeStatus } = useView(MODE_STATUS, {}, {
+    enabled: flow.activeSessionId !== undefined,
+    ...(flow.activeSessionId !== undefined ? { sessionId: flow.activeSessionId } : {}),
+  });
   const { mode, setMode, thinkingStyle, setThinkingStyle, features, setFeatures } = useSessionControls(
     flow.activeSessionId,
-    session.snapshot?.sessionId === flow.activeSessionId ? modeStatus : undefined,
+    modeStatus,
   );
-  const userPrefs = clientData.user?.preferences as { displayName: string; selectedModel: string; thinkingEnabled: boolean } | undefined;
+  const { value: userPrefs } = useView(PREFERENCES);
 
   // Derive artifact summaries from the paginated artifact list. Content is
   // loaded lazily via item.fetchContent() when an artifact is opened.

@@ -1,6 +1,6 @@
 # Resources and Client Data
 
-Resources are **concrete persisted data** attached to a scope. Client data entries are projections of a scope's state and resources (`expose` and `derived`), carried in the session snapshot. They are one of two ways a flow computes what a client sees today; the other is a flow read, run on request and stored nowhere ([Reads](./flows-and-actions.md#reads)). Both run on a session. The target model, where views replace both and user and org data is read with no session, is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
+Resources are **concrete persisted data** attached to a scope. Client data entries are a scope's state fields named in `expose`, carried in the session snapshot. A value computed for a screen is a view ([Views](./flows-and-actions.md#views)), which runs at the scope its data lives in, with no session at user or org scope; a flow read, run on request on a session ([Reads](./flows-and-actions.md#reads)), is the other until it is removed. The target model is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
 
 ## Resources
 
@@ -328,82 +328,18 @@ Identity-equal re-registration is always safe (diamond dependencies through capa
 
 ## Client Data
 
-Scope state is private to the server by default. Each scope declares what crosses the boundary with a `client` block, which has two halves:
-
-- **`expose`** — names of top-level state fields, passed through verbatim.
-- **`derived`** — named projections computed from `{ state, resources }` within that single scope.
+Scope state is private to the server by default. Each scope declares what crosses the boundary with a `client` block: **`expose`**, the names of top-level state fields, passed through verbatim under `clientData.<scope>.<name>` in the session snapshot.
 
 ```ts
 session: {
-  client: {
-    expose: ["messageCount"],
-    derived: {
-      activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-    },
-  },
+  stateSchema: z.object({ messageCount: z.number().default(0) }),
+  client: { expose: ["messageCount"] },
 }
 ```
 
-Everything named in `expose` or `derived` is client-visible; there is no per-entry `client: true/false` toggle. The two share one namespace per scope (the scope's `clientData` object on the wire), so a name used in both throws at `defineFlow`.
+Everything named in `expose` is client-visible; there is no per-entry `client: true/false` toggle. A name not on the scope's state schema throws at `defineFlow`.
 
-### ClientDataComputeFn
-
-```ts
-type ClientDataComputeFn<TState, TResources> =
-  (ctx: ClientDataContext<TState, TResources>) => JsonValue | Promise<JsonValue>;
-
-type ClientDataContext<TState, TResources> = {
-  state: Readonly<TState>;
-  resources: TResources;
-};
-```
-
-**Key differences from the former projection system:**
-- **Single-scope context**: Each compute function receives only the state and resources from its own scope — no cross-scope access. A session-level `derived` entry sees session state and session resources, nothing else.
-- **No output schema validation**: Compute functions return `JsonValue` directly. Type safety comes from usage patterns, not runtime schema validation.
-- **No `defineProjection()`**: There's no portable projection builder. For shared computation logic, extract a regular function.
-
-### All Three Scopes
-
-```ts
-defineFlow({
-  kind: "my-app",
-  session: {
-    client: {
-      derived: {
-        artifactsList: (ctx) => {
-          const artifacts = ctx.resources.artifacts?.state;
-          return artifacts?.order.map(id => ({
-            id,
-            title: artifacts.byId[id]?.title ?? "Untitled",
-          })) ?? [];
-        },
-        modeStatus: (ctx) => ({
-          currentMode: ctx.state.mode ?? "chat",
-          requestCount: ctx.state.requestCount ?? 0,
-        }),
-      },
-    },
-  },
-  user: {
-    client: {
-      derived: {
-        preferences: (ctx) => ({
-          displayName: ctx.state.displayName ?? "User",
-          preferredModel: ctx.state.preferredModel ?? "openai/gpt-6-luna",
-        }),
-      },
-    },
-  },
-  org: {
-    client: {
-      derived: {
-        sharedConfig: (ctx) => ctx.state.config ?? {},
-      },
-    },
-  },
-});
-```
+A value computed for a screen (a projection of state, a count over a collection, a join of resources) is a **view**, not client data: `defineView({ scope, block })` in the flow's `views`, read with `useView` or `client.view` ([Views](./flows-and-actions.md#views)). A scope's `client.derived`, which computed named projections into the snapshot, is removed: `defineFlow` refuses a `derived` key at any scope, naming views, so a flow written for it fails loudly rather than defining cleanly and sending nothing (BP-030).
 
 ## Context Functions
 
@@ -465,17 +401,17 @@ type PlanCtx = ContextOf<typeof planResource, "resource">;
 
 Client-facing data reaches a client three ways today, each through a session:
 
-1. **Scope-level `client`** — `expose` for verbatim state fields, `derived` for projections computed from one scope's state and resources, carried in the snapshot. Suits a small value a screen shows beside the conversation.
+1. **Scope-level `client`** — `expose` for verbatim state fields, carried in the snapshot. Suits a small value a screen shows beside the conversation. A computed value is a view (below).
 2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Suits exposing resource data directly without manual projection.
 3. **Flow `reads`** — a block run on request, answered in the response and stored nowhere, refusing every write ([Reads](./flows-and-actions.md#reads)). Suits an answer computed across resources, such as a task list, that a screen re-reads through the client's live read (`client.live`) when a notice says it changed.
 
 A notice about a resource names its storage path, which a resource's key need not name (`roster` stores under `workforce/workers/…`). Whether a path may belong to what a screen holds is the client's one path rule (`mayHold`, with `storageRootsOf` reading a resource's roots off the flow's manifest): a path at or under one of the roots reads, and an unknown manifest or a pattern with no static prefix rules nothing out, since a false yes costs one read and a false no leaves a screen stale. `client.live` applies it to the `paths` it is given; React's resource hooks apply the same rule to the session stream's `resource_change` items.
 
-`derived` and a read do overlapping jobs: both compute an answer for a screen. A `derived` entry sees only its own scope and is computed each time the snapshot is served (`computeClientData`, `packages/engine/src/routes/route-utils.ts`); a read takes input, sees whatever an action in that session sees, and runs only when called.
+A view and a read do overlapping jobs: both compute an answer for a screen. A view runs at its scope, with no session at user or org, and its answer names the change topics a watcher listens to; a read runs on a session and leaves the topics to the screen. Views replace reads.
 
 ### Scope-Level Client Data
 
-A scope's `client` block projects state and resources from that single scope. The result is served grouped by scope:
+A scope's `client` block names the state fields it exposes (`expose`), from that single scope. The result is served grouped by scope:
 
 ```
 GET /api/flows/sessions/:sessionId/state
@@ -486,8 +422,8 @@ Returns scope-level client data grouped by scope:
 ```json
 {
   "clientData": {
-    "session": { "modeStatus": { "currentMode": "chat" } },
-    "user": { "preferences": { "displayName": "User" } }
+    "session": { "messageCount": 3 },
+    "user": { "displayName": "User" }
   }
 }
 ```
@@ -534,7 +470,7 @@ The snapshot includes a `resources` key with metadata and `clientData` only — 
 
 ```json
 {
-  "clientData": { "session": { "modeStatus": {...} } },
+  "clientData": { "session": { "messageCount": 3 } },
   "resources": {
     "session": {
       "soul": { "clientData": { "displayTone": "Direct" } },
