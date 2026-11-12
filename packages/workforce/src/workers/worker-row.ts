@@ -15,7 +15,7 @@
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
-import { WORKERS_PATTERN } from "./keys";
+import { ROSTER_FLOW, WORKERS_PATTERN } from "./keys";
 import { shownSettingsOf, type ShownSettingsOf } from "./shown-settings";
 
 // BP-030.
@@ -84,6 +84,8 @@ export function defineWorkerCollection(shown: ShownSettingsOf = () => []) {
     pattern: WORKERS_PATTERN,
     scope: "user",
     flowIsolation: false,
+    // A client hires, forks, edits, resets and fires through the roster flow's actions (FIX-2624).
+    runBy: { flow: ROSTER_FLOW },
     stateSchema: workerResourceStateSchema.passthrough(),
     client: {
       state: { read: true },

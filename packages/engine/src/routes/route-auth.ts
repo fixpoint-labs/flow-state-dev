@@ -42,6 +42,7 @@ import {
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { flowAuthenticates } from "./instance-caller";
+import { DEFAULT_WRITE_FLOW, writeRecordGovernor } from "../resources/default-write-flow";
 
 /** Wiring the guard needs; all of it is already built by `createFlowRouteHandlers`. */
 export type RouteAuthContext = {
@@ -185,6 +186,14 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     // A read resolves its principal the way an action does, in its handler,
     // and runs under the same session binding checks (`read-routes.ts`).
     case "run_read":
+    // FIX-2624: each resolves its caller in its handler through the declaring
+    // flow's own resolver (`scope-address.ts`), never the body, query or
+    // headers (BP-031); a send then runs as an action does.
+    case "read_scope_resource":
+    case "list_scope_entries":
+    case "read_scope_entry":
+    case "send_resource":
+    case "flow_identity":
     // A view resolves its principal on the flow's path in its handler, as a
     // read does, never from the body, query or headers (BP-031). A session
     // view runs under the session binding checks (`view-routes.ts`).
@@ -307,10 +316,20 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
  */
 function ownerFlowOf(
   ctx: RouteAuthContext,
-  record: OwnedRecord & OrgAttributedRecord
+  record: OwnedRecord & OrgAttributedRecord,
+  unused: () => Response
 ): { flow?: FlowInstance; denied?: Response } {
+  // FIX-2624: a write record answers to the sign-in of the flow that declares
+  // the resource it writes, read off the record's own session id, never to the
+  // default write flow (which has no resolver) or the host's fallback. One no
+  // declaring flow governs now gets the route's answer for an id nobody used,
+  // so the answer never says the id was a write's.
+  const write = writeRecordGovernor(ctx.registry, ctx.hostResolver, record);
+  if (write !== undefined && write.flow === undefined) {
+    return { denied: unused() };
+  }
   const owner = resolveRecordOwner(ctx.registry, record);
-  const flow = owner.ok ? owner.flow : undefined;
+  const flow = write?.flow ?? (owner.ok ? owner.flow : undefined);
   // The organization axis is checked FIRST and independently of the owner
   // (FIX-1442). A record can name its owning flow perfectly well and still
   // predate organizations entirely — which is the common case, since `flowId`
@@ -330,7 +349,7 @@ function ownerFlowOf(
       })
     };
   }
-  if (owner.ok) return { flow };
+  if (owner.ok || write !== undefined) return { flow };
   const denied = refuseUnattributedRecord(ctx.registry, record);
   return denied === undefined ? {} : { denied };
 }
@@ -345,7 +364,9 @@ function unauthenticatedFlowIds(ctx: RouteAuthContext): Set<string> {
   return new Set(
     ctx.registry
       .list()
-      .filter((flow) => !flowAuthenticates(flow))
+      // The default write flow is never open: its records answer to the
+      // declaring flow's sign-in (`ownerFlowOf`).
+      .filter((flow) => !flowAuthenticates(flow) && flow.id !== DEFAULT_WRITE_FLOW)
       .map((flow) => flow.id)
   );
 }
@@ -450,7 +471,7 @@ export async function authorizeManagementRoute(
       if (session === undefined) {
         return subject.kind === "blob" ? { denied: unknownBlobResponse() } : { session: null };
       }
-      const resolved = ownerFlowOf(ctx, session);
+      const resolved = ownerFlowOf(ctx, session, () => hiddenSessionResponse(route, effective.sessionId));
       if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
       owner = session.userId;
@@ -463,7 +484,7 @@ export async function authorizeManagementRoute(
       const record = await ctx.stores.request.get(effective.requestId);
       if (record !== undefined) {
         checked = { request: record };
-        const resolved = ownerFlowOf(ctx, record);
+        const resolved = ownerFlowOf(ctx, record, () => hiddenRequestResponse(request, route, ctx.registry, effective.requestId));
         if (resolved.denied !== undefined) pendingDenial = resolved.denied;
         governing = resolved.flow;
         owner = record.userId;
@@ -491,7 +512,7 @@ export async function authorizeManagementRoute(
         }
         return ALLOWED;
       }
-      const resolved = ownerFlowOf(ctx, active);
+      const resolved = ownerFlowOf(ctx, active, () => hiddenRequestResponse(request, route, ctx.registry, effective.requestId));
       if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
       owner = active.userId;

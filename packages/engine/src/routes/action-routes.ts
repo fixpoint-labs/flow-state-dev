@@ -35,6 +35,8 @@ import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
 import { claimRequestAttachments } from "./attachment-claim";
 import { resolveActionCore } from "../execution/resolve-action-core";
+import { asServerResourceSend, DEFAULT_WRITE_FLOW, isWriteSessionId, WRITE_SESSION_PREFIX } from "../resources/default-write-flow";
+import type { ResourceSend } from "./scope-routes";
 
 type ActionRunInput = {
   flowKind: string;
@@ -63,20 +65,37 @@ type ActionRouteContext = {
   tenantIdHeader?: string;
 };
 
+// FIX-2624: `resourceSend`.
+/**
+ * Run an action. `resourceSend` is a send addressed to a user or org resource
+ * (`scope-routes.ts`): the writing flow, the writer's session and the caller,
+ * already resolved through the resource's declaring flow.
+ */
 export async function handleExecuteAction(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "execute_action" }>,
-  ctx: ActionRouteContext
+  ctx: ActionRouteContext,
+  resourceSend?: ResourceSend
 ): Promise<Response> {
-  const flow = ctx.registry.get(route.flowKind);
-  if (flow === undefined) {
+  const flowKind = resourceSend?.flowKind ?? route.flowKind;
+  const flow = ctx.registry.get(flowKind);
+  // The default write flow runs only on a send addressed to a resource.
+  if (flow === undefined || (resourceSend === undefined && flow.id === DEFAULT_WRITE_FLOW)) {
     return jsonResponse(404, {
-      error: `Unknown flow "${route.flowKind}"`
+      error: `Unknown flow "${flowKind}"`
     });
   }
 
   const body = await parseJsonBody(request);
-  const sessionId = route.sessionId ?? getString(body.sessionId);
+  const sessionId = resourceSend?.sessionId ?? route.sessionId ?? getString(body.sessionId);
+  // A write session is the server's to find or make for its writer (FIX-2624):
+  // a client that names one could take another writer's.
+  if (resourceSend === undefined && sessionId !== undefined && isWriteSessionId(sessionId)) {
+    return jsonResponse(400, {
+      error: "reserved-session-id",
+      message: `Session ids starting with "${WRITE_SESSION_PREFIX}" are the server's write sessions; a client can't name one.`
+    });
+  }
   const metadata = asObject(body.metadata);
   // FIX-406 6D: optional tenant id from a configurable header.
   const tenantId = extractTenantId(request, ctx.tenantIdHeader);
@@ -86,7 +105,7 @@ export async function handleExecuteAction(
   // without re-parsing the request.
   let principal;
   try {
-    principal = await ctx.host.resolvePrincipal({
+    principal = resourceSend?.principal ?? await ctx.host.resolvePrincipal({
       source: "http",
       request,
       envelope: {
@@ -195,10 +214,12 @@ export async function handleExecuteAction(
     takesFiles: resolveActionCore(flow, route.actionName, "http", undefined)?.userMessage !== undefined
   });
   if ("refused" in claimed) return claimed.refused;
-  const dispatchEnvelope = {
+  const built = {
     ...envelope,
     ...(claimed.attachments.length > 0 ? { attachments: claimed.attachments } : {})
   };
+  // Only the server's own resource send may reach the default write flow or a write session.
+  const dispatchEnvelope = resourceSend === undefined ? built : asServerResourceSend(built);
   let admitted = false;
   try {
     try {

@@ -5,6 +5,7 @@
  * only — validated by `tsc` via the package typecheck.
  */
 import type { ClientDataOf, DefinedResourceCollection } from "@flow-state-dev/core";
+import type { CollectionSnapshotEntry } from "@flow-state-dev/client";
 import { useResource } from "../src/hooks/useResource";
 import { useCollectionResource } from "../src/hooks/useCollectionResource";
 import { useResourceCollectionList } from "../src/hooks/useResourceCollectionList";
@@ -18,14 +19,16 @@ type Assert<T extends true> = T;
 
 type Client = { title: string; count: number };
 
-// useResource threads TClient onto clientData, `| null` for the absent case.
-type _ResClient = Assert<
-  Equals<ReturnType<typeof useResource<Client>>["clientData"], Client | null>
+// useResource takes the definition and threads its branded client type onto `value`
+// (FIX-2624, D2), `| null` until read; a collection's value is its entries.
+type _ResValue = Assert<
+  Equals<ReturnType<typeof useResource<{ scope: "user"; ref: "doc"; ClientType: Client }>>["value"], Client | null>
 >;
-
-// useResource defaults to `unknown` — existing untyped call sites unchanged.
-type _ResDefault = Assert<
-  Equals<ReturnType<typeof useResource>["clientData"], unknown>
+type _ResEntries = Assert<
+  Equals<
+    NonNullable<ReturnType<typeof useResource<{ scope: "org"; pattern: "docs/*"; ClientType: Client }>>["value"]>[number]["value"],
+    Client
+  >
 >;
 
 // useCollectionResource threads TClient onto item.clientData (optional field).
@@ -45,6 +48,15 @@ type _FromDefnHandle = NonNullable<
 >;
 type _FromDefn = Assert<Equals<_FromDefnHandle["clientData"], Client | undefined>>;
 
+// At session scope a collection's value is its snapshot entry (count, prefetched), as the hook
+// returns it, not one entry's client type (Gitar review 4543838048).
+type _SessionCollection = Assert<
+  Equals<
+    ReturnType<typeof useResource<{ scope: "session"; pattern: "memos/*"; ClientType: Client }>>["value"],
+    CollectionSnapshotEntry | null
+  >
+>;
+
 export const clientDataHookTypeSmoke = true;
-type _Checks = [_ResClient, _ResDefault, _Item, _List, _FromDefn];
+type _Checks = [_ResValue, _ResEntries, _SessionCollection, _Item, _List, _FromDefn];
 void 0 as unknown as _Checks;

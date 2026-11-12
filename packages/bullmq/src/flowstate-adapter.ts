@@ -109,6 +109,8 @@ export function bullmqWorker(options: BullmqWorkerOptions): BullmqWorkerAdapter 
         registry: rt.registry,
         stores: rt.stores,
         runtimeConfig: rt.runtimeConfig,
+        // The host's own resolver, so the worker's built-in flows agree with the host (FIX-2624).
+        resolvePrincipal: rt.resolvePrincipal,
         bridge,
         concurrency: options.concurrency,
         lockDuration: options.lockDuration,

@@ -1,3 +1,4 @@
+// fallow-ignore-file duplicate-export -- each lab is its own app, and its host exposes the same openLab and operatorGitHubToken as the others on purpose.
 /**
  * The lab's server, put together from package pieces: the workers in
  * `workforce/`, the built-in agent flow with memory composed in, the lab's one
@@ -38,10 +39,17 @@
  *   never fatal). The page draws its context strip and first-run lines from it.
  * - **Teammates** you hire from the page are rows of your own roster, written
  *   through the roster flow `hireWorkforce` registers; nothing restarts.
+ * - **Routines**: Lead, researcher and writer hold the routine tools, so you
+ *   can ask one to follow a GitHub pull request or to do something on a clock,
+ *   and to list, pause or delete what it follows. A pull request's events are
+ *   polled (no public URL) on the operator's own GitHub token, for the
+ *   operator alone; `fsdev dev` ticks the polls and the clock routines, each
+ *   from a SQLite file of its own beside the store.
  *
  * Durable, on SQLite: a worker message a busy host turned away is sent again
  * on its session's wake, and a restart keeps every conversation.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,7 +57,7 @@ import { checkCodexReadiness, CODEX_PASS, codexAgent } from "@flow-state-dev/cod
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { harnessEnv } from "@flow-state-dev/core/harness";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
-import type { ModelResolver } from "@flow-state-dev/core/types";
+import type { BlockContext, ModelResolver } from "@flow-state-dev/core/types";
 import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { checkCursorReadiness, CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {
@@ -66,14 +74,20 @@ import {
 } from "@flow-state-dev/harness-manager";
 import { createFlowState } from "@flow-state-dev/engine";
 import { system } from "@flow-state-dev/memory";
-import { sqliteStores } from "@flow-state-dev/store-sqlite";
+import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
+import { createSQLiteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
+import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
+import Database from "better-sqlite3";
 import { utility } from "@flow-state-dev/core";
 import { fetch, search } from "@flow-state-dev/tools";
 import {
   AGENT_FLOW,
   consultSessionsCapability,
+  createRoutinesCapability,
   createWorkerInstallation,
   defineAgentWorkerFlow,
+  githubServiceFlow,
+  githubSubscriptionProvider,
   hireWorkforce,
   projectSourceTools,
 } from "@flow-state-dev/workforce";
@@ -132,6 +146,14 @@ export interface TeammatesOptions {
   staleThresholdMs?: number;
   /** Resolves every model the host calls, in place of the gateway: the contract tests pass a scripted one. Absent: the gateway. */
   modelResolver?: ModelResolver;
+  /**
+   * The operator's GitHub token ({@link operatorGitHubToken}): a GitHub routine
+   * reads GitHub with it, for {@link userId} only. Absent: a GitHub routine is
+   * refused, naming `GITHUB_TOKEN`; clock routines still run.
+   */
+  githubToken?: string;
+  /** GitHub's REST API root. Absent: GitHub's own. A goal check names its stub. */
+  githubApiUrl?: string;
 }
 
 /** How long a coding run's checks may take together. */
@@ -276,6 +298,47 @@ export function checkCommands(value: string | undefined): string[] | undefined {
 }
 
 /**
+ * The operator's GitHub token: `GITHUB_TOKEN`, else what `gh auth token`
+ * answers, read once at start and never from a request. `undefined` when
+ * neither has one.
+ */
+export function operatorGitHubToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const named = env.GITHUB_TOKEN?.trim();
+  if (named !== undefined && named !== "") return named;
+  try {
+    const signedIn = execFileSync("gh", ["auth", "token"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).trim();
+    return signedIn === "" ? undefined : signedIn;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * GitHub for routines, read with the operator's token and for the operator
+ * alone: a GitHub routine another user asks for, or one asked for with no
+ * token, is refused naming `GITHUB_TOKEN`, and the token is never lent.
+ */
+function operatorGitHub(operator: string, token: string | undefined, apiUrl: string | undefined) {
+  const reads = (ctx: BlockContext) => (ctx.session.identity as { userId?: string }).userId === operator;
+  const github = githubSubscriptionProvider({ token: (ctx) => (reads(ctx) ? token : undefined), ...(apiUrl === undefined ? {} : { apiUrl }) });
+  return {
+    ...github,
+    async canRead(key: string, ctx: BlockContext) {
+      if (token === undefined) throw new Error("GitHub routines need GITHUB_TOKEN: set it, or sign in with `gh auth login`, and start the lab again. Nothing was saved.");
+      if (!reads(ctx)) throw new Error(`GitHub routines read GitHub with this lab's GITHUB_TOKEN, which serves only ${operator}. Nothing was saved.`);
+      return github.canRead(key, ctx);
+    },
+  };
+}
+
+/** A schedule index in a SQLite file of its own: the index has one table, and one index ticks one flow. */
+function scheduleIndexAt(filename: string) {
+  const db = new Database(filename);
+  initializeSchema(db);
+  return createSQLiteScheduleIndex(db);
+}
+
+/**
  * Build the lab's server.
  *
  * @throws When the working folder is unset, missing or not a git checkout, or the workers' tree doesn't load.
@@ -362,6 +425,8 @@ export async function openTeammates(options: TeammatesOptions) {
           consultSessionsCapability(installation),
           // Which harnesses can run here, so a coding task is filed only on a ready one.
           harnessReadinessCapability(readiness),
+          // List, save, pause and delete routines: offered to a worker whose file picks `routines: [tools]` (each one here).
+          createRoutinesCapability(installation),
         ],
         beforeAnswer: earlier.fold,
         afterAnswer: mem.captureFromItems,
@@ -379,7 +444,19 @@ export async function openTeammates(options: TeammatesOptions) {
       checks,
     }),
   };
-  const copies = hireWorkforce(installation) as Array<{ id: string }>;
+  // Clock routines and GitHub's polls tick from two files beside the store (`fsdev dev` ticks both).
+  const beside = (index: string) => options.store.replace(/(\.[^./\\]+)?$/, `-${index}$1`);
+  const clockDb = beside("clock");
+  const pollDb = beside("poll");
+  const github = operatorGitHub(options.userId, options.githubToken, options.githubApiUrl);
+  const copies = hireWorkforce(installation, {
+    routines: {
+      index: scheduleIndexAt(clockDb),
+      providers: [github],
+      poll: { index: scheduleIndexAt(pollDb) },
+    },
+  }) as Array<{ id: string }>;
+  const service = githubServiceFlow({ provider: github, installation, poll: true }) as unknown as { id: string };
   const readinessFlow = defineFlow({
     kind: READINESS_FLOW,
     actions: { read: harnessReadinessAction(readiness) },
@@ -407,11 +484,15 @@ export async function openTeammates(options: TeammatesOptions) {
   } as never)({ id: LAB_CONTEXT_FLOW } as never) as { id: string };
 
   const state = createFlowState({
-    flows: [...copies, readinessFlow, contextFlow],
+    flows: [...copies, service, readinessFlow, contextFlow],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
+    // The route `serve()`'s tick dispatches each due clock routine and poll to.
+    adapters: [createScheduledTransportAdapter()],
     durable: true,
     dispatchDrainTimeoutMs,
     ...(options.staleThresholdMs === undefined ? {} : { staleSweepThresholdMs: options.staleThresholdMs }),
+    // Every request is the lab's own user, in the lab's own org, never a user the request names: the operator-only GitHub token is gated on it, and serve()'s tick, which names no user, is admitted as it. A configured resolver can't claim the development org, so the lab names its own.
+    resolvePrincipal: () => ({ userId: options.userId, orgId: "teammates-lab" }),
     devtool: { userId: options.userId },
     // A consult reads on `intent/utility`: a smaller model than the workers answer on.
     models: { default: options.model, intents: { utility: [UTILITY_MODEL] } },

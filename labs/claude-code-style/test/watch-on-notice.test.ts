@@ -1,6 +1,6 @@
 /**
  * The lab's views that used to read on a clock read on a change instead:
- * pins on a user-state notice, through a read that writes nothing;
+ * pins on a notice of your pins resource, through a direct read that makes no session;
  * a thread's running turn on a request notice; the sidebar's rows on each
  * listed session's notices; a task's work when the board names its run.
  * Wherever push can miss a change, `client.subscribe` reads on its timer at
@@ -58,16 +58,16 @@ function host() {
       failing.set(`${method} ${path}`, left - 1);
       return json({ error: "down" }, 503);
     }
-    if (path === "/api/flows/sessions") return json({ sessions: [{ id: "pins_s", flowKind: "pins", updatedAt: 1 }] });
-    if (path.endsWith("/reads/listPins")) {
+    if (path === "/api/flows/sessions") return json({ sessions: [{ id: "own_s", flowKind: "projects", updatedAt: 1 }] });
+    if (path === "/api/flows/resources/user/lab-pins") {
       await holdPins;
       if (pinsFailing > 0) {
         pinsFailing -= 1;
         return json({ error: "down" }, 503);
       }
-      return json({ output: { pinned } });
+      return json({ value: { pinned }, version: 1 });
     }
-    if (path.endsWith("/reads/listDismissed")) return json({ output: { dismissed } });
+    if (path === "/api/flows/resources/user/lab-dismissals") return json({ value: { dismissed }, version: 1 });
     // The board's task-list view: its rows, keyed, and the topic a change to them publishes on.
     if (path.endsWith("/views/listTasks_tasks")) {
       const session = path.split("/")[4]!;
@@ -198,7 +198,7 @@ describe("watchSessions", () => {
     await until(() => seen.at(-1)!.find((row) => row.id === "s1")?.waiting === 1);
   });
 
-  it("counts again when you dismiss a failure, on your user state notice", async () => {
+  it("counts again when you dismiss a failure, on a notice of your dismissals", async () => {
     listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
     const h = host();
     h.list([{ id: "t1", goal: "Fix it", status: "errored", attempts: 1 }]);
@@ -206,11 +206,11 @@ describe("watchSessions", () => {
     stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
     await until(() => seen.at(-1)?.find((row) => row.id === "s1")?.waiting === 1);
     h.dismiss(["t1#1"]);
-    h.hear({ topic: { scope: "user" }, kind: "state" });
+    h.hear({ topic: { scope: "user", resource: "lab-dismissals" }, kind: "resource" });
     await until(() => seen.at(-1)!.find((row) => row.id === "s1")?.waiting === 0);
   });
 
-  it("reads no board again on a user-state notice that changed no dismissal, such as a pin", async () => {
+  it("reads no board again on a dismissals notice that changed none", async () => {
     listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
     const h = host();
     h.list([{ id: "t1", goal: "Fix it", status: "errored", attempts: 1 }]);
@@ -218,10 +218,9 @@ describe("watchSessions", () => {
     stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
     await until(() => seen.at(-1)?.find((row) => row.id === "s1")?.waiting === 1);
     const boards = h.count("/views/listTasks_tasks");
-    const reads = h.count("/reads/listDismissed");
-    h.pin(["t1"]);
-    h.hear({ topic: { scope: "user" }, kind: "state" });
-    await until(() => h.count("/reads/listDismissed") > reads);
+    const reads = h.count("/resources/user/lab-dismissals");
+    h.hear({ topic: { scope: "user", resource: "lab-dismissals" }, kind: "resource" });
+    await until(() => h.count("/resources/user/lab-dismissals") > reads);
     await new Promise((r) => setTimeout(r, 50));
     expect(h.count("/views/listTasks_tasks")).toBe(boards);
   });
@@ -339,28 +338,29 @@ describe("watchTasks' freshness", () => {
 });
 
 describe("watchPins", () => {
-  it("reads pins through the flow's read, which stores no request, and again only on a user-state notice", async () => {
+  it("reads pins by scope with no session and no request, and again only on a notice of your pins", async () => {
     const h = host();
     h.pin(["t1"]);
     const seen: string[][] = [];
     stops.push(createWiredLab(h.client).watchPins((ids) => seen.push(ids)));
     await until(() => seen.length === 1);
     expect(seen[0]).toEqual(["t1"]);
-    // A read, never an action: an action writes a request row every time the pins are read.
-    expect(h.calls.some((call) => call.startsWith("POST") && call.includes("/actions/"))).toBe(false);
-    expect(h.subscriptions.at(-1)!.topics).toEqual([{ scope: "user" }]);
+    // A read, never an action, and no session found or made for it.
+    expect(h.calls.some((call) => call.startsWith("POST"))).toBe(false);
+    expect(h.calls.some((call) => call.includes("/sessions"))).toBe(false);
+    expect(h.subscriptions.at(-1)!.topics).toEqual([{ scope: "user", resource: "lab-pins" }]);
     expect(h.subscriptions.at(-1)!.options.pollIntervalMs).toBe(3_000);
 
     // Another tab's resource write or a reply's item says nothing about pins.
     h.hear({ topic: { scope: "user", resource: "workforce/messages/m1" }, kind: "resource" });
     await settle();
-    expect(h.count("/reads/listPins")).toBe(1);
+    expect(h.count("/resources/user/lab-pins")).toBe(1);
 
     h.pin(["t1", "t2"]);
-    h.hear({ topic: { scope: "user" }, kind: "state" });
+    h.hear({ topic: { scope: "user", resource: "lab-pins" }, kind: "resource" });
     await until(() => seen.length === 2);
     expect(seen[1]).toEqual(["t1", "t2"]);
-    expect(h.count("/reads/listPins")).toBe(2);
+    expect(h.count("/resources/user/lab-pins")).toBe(2);
   });
 
   it("reads again on its own after a first read that failed, with no notice to wake it", async () => {
@@ -369,18 +369,8 @@ describe("watchPins", () => {
     h.failPinReads(1);
     const seen: string[][] = [];
     stops.push(createWiredLab(h.client).watchPins((ids) => seen.push(ids)));
-    await until(() => h.count("/reads/listPins") === 1);
+    await until(() => h.count("/resources/user/lab-pins") === 1);
     expect(seen).toEqual([]);
-    await until(() => seen.length === 1);
-    expect(seen[0]).toEqual(["t1"]);
-  });
-
-  it("finds your pins session again after the first lookup failed, rather than failing every retry on the same lookup", async () => {
-    const h = host();
-    h.pin(["t1"]);
-    h.fail("GET /api/flows/sessions");
-    const seen: string[][] = [];
-    stops.push(createWiredLab(h.client).watchPins((ids) => seen.push(ids)));
     await until(() => seen.length === 1);
     expect(seen[0]).toEqual(["t1"]);
   });
@@ -390,7 +380,7 @@ describe("watchPins", () => {
     const seen: string[][] = [];
     const release = h.holdPinReads();
     const stop = createWiredLab(h.client).watchPins((ids) => seen.push(ids));
-    await until(() => h.count("/reads/listPins") === 1);
+    await until(() => h.count("/resources/user/lab-pins") === 1);
     stop();
     release();
     await settle();

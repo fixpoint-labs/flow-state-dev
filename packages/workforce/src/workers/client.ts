@@ -6,15 +6,19 @@
  * user's roster is the roster flow's roster view, read at user scope with no
  * session. `watchRoster` follows it through the client's shared view watch
  * (`watchView`, on `client.live`): the view's answer names the topics it read.
- * A session of the roster flow (one per user) is still made for what writes
- * through it and for the organization it was created in. A worker's sessions
- * are listed by their readonly `workerId` and created with it as initial
- * state, which the worker flow's create check confirms.
+ * A hire, fork, edit, reset or fire is a send addressed to the user's workers
+ * collection, which the roster flow writes (`runBy`), and the organization a
+ * worker's conversation is derived under is the roster flow's identity read. A
+ * session of the roster flow (one per user) is still made for the reads that
+ * go through it. A worker's sessions are listed by their readonly `workerId`
+ * and created with it as initial state, which the worker flow's create check
+ * confirms.
  *
  * Isomorphic: no Node built-ins, so the browser entry exports it too.
  */
 import {
   ClientHttpError,
+  ResourceWriteError,
   type Client,
   type SessionSummary
 } from "@flow-state-dev/client";
@@ -30,7 +34,8 @@ import {
   FILING_SESSION_STATE_KEY,
   ROSTER_FLOW,
   SET_WORK_PROJECT_ACTION,
-  WORKER_ID_STATE_KEY
+  WORKER_ID_STATE_KEY,
+  WORKERS_PATTERN
 } from "./keys";
 import { watchView } from "@flow-state-dev/client/internal";
 import { rosterView } from "./roster-view-ref";
@@ -43,7 +48,7 @@ import type { SetWorkProjectOutput } from "../projects/work-project";
  * Its user is the one whose roster and sessions are read: with
  * authentication, the signed-in user.
  */
-export type WorkforceClientSource = Pick<Client, "userId" | "flow" | "sessions" | "resources" | "view" | "subscribe">;
+export type WorkforceClientSource = Pick<Client, "userId" | "flow" | "sessions" | "resources" | "resource" | "view" | "subscribe">;
 
 /** One worker on a user's roster. */
 export type RosterEntry = {
@@ -273,23 +278,53 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
   const { sessions, resources, userId } = fsd;
 
   /**
-   * The user's roster session, and the organization it was created in. Found
-   * by listing, and created without an id when there is none: the client
-   * can't derive an id that includes the organization before it knows which
-   * one the server binds it to. Two first calls at once may create two; either
-   * writes the same roster.
+   * The user's roster session, which a workstream's entry is read through.
+   * Found by listing, and created without an id when there is none. Two first
+   * calls at once may create two; either reads the same entries.
    */
-  let rosterSession: Promise<{ id: string; orgId: string }> | undefined;
-  const roster = (): Promise<{ id: string; orgId: string }> =>
+  let rosterSession: Promise<{ id: string }> | undefined;
+  const roster = (): Promise<{ id: string }> =>
     (rosterSession ??= (async () => {
       const listed = mostRecent(await sessions.list({ flowKind: ROSTER_FLOW, userId }));
       const detail =
         listed !== undefined ? await sessions.get(listed.id) : await fsd.flow(ROSTER_FLOW).createSession();
-      return { id: detail.id, orgId: detail.orgId };
+      return { id: detail.id };
     })().catch((error: unknown) => {
       rosterSession = undefined;
       throw error;
     }));
+
+  // FIX-2624.
+  /**
+   * The organization the server acts in for this user under the roster flow's
+   * sign-in: the one a worker's conversation is derived under. Asked once, with
+   * no session.
+   */
+  let signedInOrg: Promise<string> | undefined;
+  const orgOf = (): Promise<string> =>
+    (signedInOrg ??= fsd
+      .flow(ROSTER_FLOW)
+      .identity()
+      .then((identity) => identity.orgId)
+      .catch((error: unknown) => {
+        signedInOrg = undefined;
+        throw error;
+      }));
+
+  // FIX-2624.
+  /**
+   * The user's workers collection, written through the flow its `runBy` names
+   * (the roster flow): each write runs in the writer's own write session,
+   * which the server keeps; no roster session is found or made to write.
+   */
+  const rosterWrite = async <TOutput>(action: string, input: unknown): Promise<TOutput> => {
+    try {
+      return await fsd.resource({ scope: "user", pattern: WORKERS_PATTERN }).send<TOutput>(action, input);
+    } catch (error) {
+      if (error instanceof ResourceWriteError) throw new Error(error.message);
+      throw error;
+    }
+  };
 
   /** The roster as it is now, through the roster view: read on every call, since a hire changes it. */
   const readRoster = async (): Promise<RosterEntry[]> => (await fsd.view(rosterView)).value;
@@ -393,13 +428,12 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
         ...(watchOptions?.onError !== undefined ? { onError: watchOptions.onError } : {})
       }),
     findWorkerSession: async (criteria) => {
-      const { id, orgId } = await roster();
+      const [{ id }, orgId] = await Promise.all([roster(), orgOf()]);
       return find(criteria, flowOf(await readRoster(), criteria.worker), id, orgId);
     },
     ensureWorkerSession: async (criteria) => {
-      // One roster read per call, and the roster session's organization from
-      // the same lookup.
-      const { id, orgId } = await roster();
+      // One roster read per call; the organization is the sign-in's.
+      const [{ id }, orgId] = await Promise.all([roster(), orgOf()]);
       const flow = flowOf(await readRoster(), criteria.worker);
       const existing = await find(criteria, flow, id, orgId);
       if (existing !== undefined) return existing;
@@ -445,7 +479,7 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
       }
     },
     listWorkerSessions: async (worker) => {
-      const { id, orgId } = await roster();
+      const orgId = await orgOf();
       const flow = flowOf(await readRoster(), worker);
       const criteria = { worker };
       const [defaultId, rows] = await Promise.all([
@@ -469,11 +503,11 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
       const flow = flowOf(await readRoster(), worker);
       return (await runIn(flow, sessionId, SET_WORK_PROJECT_ACTION, { project, worker })) as SetWorkProjectOutput;
     },
-    hire: async (input) => (await runIn(ROSTER_FLOW, (await roster()).id, "hire", input)) as { id: string; flow: string },
-    fork: async (from, id) => (await runIn(ROSTER_FLOW, (await roster()).id, "fork", { from, id })) as { id: string; flow: string },
-    edit: async (input) => (await runIn(ROSTER_FLOW, (await roster()).id, "edit", input)) as { id: string; flow: string },
-    fire: async (id) => (await runIn(ROSTER_FLOW, (await roster()).id, "fire", { id })) as { id: string },
-    reset: async (id) => (await runIn(ROSTER_FLOW, (await roster()).id, "reset", { id })) as { id: string }
+    hire: (input) => rosterWrite<{ id: string; flow: string }>("hire", input),
+    fork: (from, id) => rosterWrite<{ id: string; flow: string }>("fork", { from, id }),
+    edit: (input) => rosterWrite<{ id: string; flow: string }>("edit", input),
+    fire: (id) => rosterWrite<{ id: string }>("fire", { id }),
+    reset: (id) => rosterWrite<{ id: string }>("reset", { id })
   };
   return client;
 }

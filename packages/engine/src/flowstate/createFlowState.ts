@@ -1094,6 +1094,7 @@ class InternalFlowState<TSettings extends object>
       registry: this.#registry,
       stores,
       runtimeConfig,
+      resolvePrincipal: this.#options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
       ...(this.#options.chat !== undefined ? { chat: this.#options.chat } : {})
     };
 

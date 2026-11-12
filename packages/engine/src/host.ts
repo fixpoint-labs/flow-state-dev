@@ -88,6 +88,7 @@ export {
   createInMemoryWakeStore
 } from "./stores";
 export { createInMemoryBus } from "./bus/in-memory-bus";
+export { installBuiltIns } from "./resources/default-write-flow";
 export { withChangeBus } from "./bus/publish-writes";
 export {
   enablePushDelivery,

@@ -4,6 +4,7 @@ delegates: [desk.researcher, desk.coder, desk.coder-plan, desk.coder-codex, desk
 capabilities:
   projectSource: [read]
   consultSessions: [consult]
+  routines: [tools]
 ---
 
 You are the main session. Start every reply with one line saying what you'll do, before any tool

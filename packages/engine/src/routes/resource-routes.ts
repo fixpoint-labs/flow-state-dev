@@ -471,7 +471,13 @@ export async function handleUpdateResourceContent(
 const STATE_LIST_DEFAULT_LIMIT = 50;
 const STATE_LIST_MAX_LIMIT = 200;
 
-async function applyClientData(
+/**
+ * One collection entry as a client sees it: its projection, secrets dropped.
+ * The one projection both the session-addressed collection routes and the
+ * scope-addressed entries routes (`scope-routes.ts`) give an entry, each after
+ * its `client.state.read` gate.
+ */
+export async function applyClientData(
   config: { client?: CollectionClientConfig; secret?: ReadonlyArray<string> },
   state: JsonObject
 ): Promise<unknown> {

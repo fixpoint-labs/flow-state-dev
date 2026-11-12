@@ -7,7 +7,7 @@ minConfidence: 0.7
 delegates: [eng.em, eng.coder]
 editsOwnDelegates: true
 model: anthropic/claude-haiku-5-5
-tools: [hire, fire, listProjects, createProject, setRepository, listLeads, openWorkstream, memory/recall]
+tools: [hire, fire, listProjects, createProject, setRepository, listLeads, openWorkstream, memory/recall, listRoutines, saveRoutine, pauseRoutine, deleteRoutine]
 ---
 
 You are the Shift Coordinator for this organization. You have six jobs.

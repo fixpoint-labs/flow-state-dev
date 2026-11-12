@@ -2334,9 +2334,14 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
   } as ResourceRegistry<TResources>;
 }
 
-function countInstances(
+/**
+ * How many instances of `pattern` a scope holds: every key that matches,
+ * whoever owns it. A collection's cap counts these, on a run's create and on
+ * the default write flow's (`default-write-flow.ts`).
+ */
+export function countInstances(
   pattern: string,
-  resources: Record<string, JsonObject>
+  resources: Record<string, unknown>
 ): number {
   let count = 0;
   for (const key of Object.keys(resources)) {

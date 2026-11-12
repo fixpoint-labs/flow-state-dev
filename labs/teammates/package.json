@@ -18,6 +18,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.0",
     "@testing-library/react": "^16.3.2",
+    "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
@@ -51,6 +52,7 @@
     "@flow-state-dev/memory": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
+    "@flow-state-dev/scheduled": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/tools": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
@@ -59,6 +61,7 @@
     "@streamdown/code": "^1.0.3",
     "@streamdown/math": "^1.0.2",
     "@streamdown/mermaid": "^1.0.2",
+    "better-sqlite3": "^11.0.0",
     "streamdown": "^2.3.0",
     "zod": "^3.24.1"
   }
