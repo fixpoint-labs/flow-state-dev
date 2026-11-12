@@ -3,9 +3,6 @@
  * The rows themselves are the Lab's; these only name them.
  */
 import { describe, expect, it } from "vitest";
-import { ClientHttpError } from "@flow-state-dev/client";
-import type { Client } from "@flow-state-dev/client";
-import { readerSessionId } from "../src/lib/reads";
 import {
   ageLabel,
   billingLabel,
@@ -15,7 +12,6 @@ import {
   harnessName,
   levelLabel,
   percentLabel,
-  runUsageQuery,
   tokensLabel,
   toHarnessUsage,
   toWorkerUsage,
@@ -114,58 +110,5 @@ describe("Usage by worker labels", () => {
       ...USAGE_PERIODS.map((p) => p.label),
     ].join(" ");
     expect(words).not.toMatch(/left|remaining|limit/i);
-  });
-});
-
-/**
- * A connection whose Lab refuses `refused` (an id another organization holds,
- * which this one can't see) and answers the query on any other session.
- * `listed` is this organization's listing.
- */
-function fakeLab(refused: string | null, listed: Array<{ id: string; flowKind: string }>) {
-  const sent: string[] = [];
-  const client = {
-    userId: "alice",
-    flow: () => ({
-      send: async (_action: string, _input: unknown, options: { sessionId: string }) => {
-        sent.push(options.sessionId);
-        if (options.sessionId === refused) throw new ClientHttpError("unknown session", { status: 404, body: "" });
-        return {
-          id: `r${sent.length}`,
-          wait: async () => ({ status: "completed" }),
-          result: async () => ({ status: "completed", output: { harnesses: [{ harness: "codex" }] } }),
-        };
-      },
-    }),
-    sessions: {
-      list: async () => listed.map((session) => ({ ...session, parentSessionId: null })),
-    },
-  } as unknown as Client;
-  return { client, sent };
-}
-
-describe("the usage query's session", () => {
-  const reader = readerSessionId("alice", "projects");
-
-  it("runs on the user's one reading id when this organization holds it", async () => {
-    const { client, sent } = fakeLab(null, []);
-    expect(await runUsageQuery(client, "projects")).toEqual({ harnesses: [{ harness: "codex" }] });
-    expect(sent).toEqual([reader]);
-  });
-
-  it("runs on this organization's own session when another organization holds the one id", async () => {
-    const first = fakeLab(reader, []);
-    expect(await runUsageQuery(first.client, "projects")).toEqual({ harnesses: [{ harness: "codex" }] });
-    expect(first.sent[1]).toMatch(/^usage-own-[0-9a-f]{32}$/);
-    // Once opened, this organization lists it, and the next read finds it rather than opening another.
-    const again = fakeLab(reader, [{ id: first.sent[1]!, flowKind: "projects" }]);
-    await runUsageQuery(again.client, "projects");
-    expect(again.sent).toEqual([reader, first.sent[1]]);
-  });
-
-  it("passes a refusal on when this organization holds the one id: nothing else is opened", async () => {
-    const { client, sent } = fakeLab(reader, [{ id: reader, flowKind: "projects" }]);
-    await expect(runUsageQuery(client, "projects")).rejects.toThrow(/unknown session/);
-    expect(sent).toEqual([reader]);
   });
 });

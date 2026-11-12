@@ -9,21 +9,16 @@ import { describe, expect, it, vi } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { useWorkerUsage } from "../src/lib/usage";
 
-const client = {
-  userId: "alice",
-  flows: async () => [{ id: "projects", actions: ["workerUsage"] }],
-} as unknown as Client;
-
 /** What each period's read answers: a worker whose input tokens are the period's days, or a failure. */
 let answer: (days: number) => Promise<unknown>;
 
+/** A connection whose worker usage view answers `answer` for the period asked. */
+const client = {
+  userId: "alice",
+  view: async (_ref: unknown, input: { days: number }) => ({ value: await answer(input.days), topics: [] }),
+} as unknown as Client;
+
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client }) }));
-vi.mock("../src/lib/action", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/lib/action")>()),
-  runAction: async (_client: Client, _flow: string, _session: string, _action: string, input: { days: number }) => ({
-    output: await answer(input.days),
-  }),
-}));
 
 const totals = (days: number) => ({
   workers: [{ worker: "researcher", gone: false, tokens: { input: days, output: 0 }, costUsd: null, bySource: [] }],

@@ -1,30 +1,25 @@
-// FIX-2145.
+// FIX-2145; FIX-2624.
 /**
- * How much of each coding harness's subscription the user has used: the Lab's
- * one `harnessUsage` query, read on the flow that answers it. And how many
- * tokens each of the user's workers used over a period: the `workerUsage`
- * query, on the same flow.
+ * How much of each coding harness's subscription the user has used: the
+ * usage flow's view (`harnessUsageFlow`), after a Re-check sent to the usage
+ * collection, which its writer flow runs in the user's own write session.
+ * And how many tokens each of the user's workers used over a period: the
+ * roster flow's `workerUsage` view. Neither read finds or makes a session.
  *
- * Opening Usage asks for a fresh reading (`refresh: true`). The Lab asks a
- * harness at most once a minute, so a view that re-renders or re-reads costs
- * nothing extra. What comes back is drawn as returned: every age and every
- * "rolled over" is the Lab's, worked out by its clock, never this page's.
+ * Opening Usage asks for a fresh reading. The Lab asks a harness at most once
+ * a minute, so a view that re-renders or re-reads costs nothing extra. What
+ * comes back is drawn as returned: every age and every "rolled over" is the
+ * Lab's, worked out by its clock, never this page's.
  */
 import { useCallback, useEffect, useState } from "react";
+import { ClientHttpError, type Client } from "@flow-state-dev/client";
 import type { HarnessUsageLevel } from "@flow-state-dev/core/harness";
-import { ActionRefused, runAction } from "./action";
-import { newSessionId, USAGE_SESSION_PREFIX } from "./ids";
+import { harnessUsageViewRef, recheckHarnessUsage } from "@flow-state-dev/harness-manager/browser";
+import { workerUsageView } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
-import { describeFailure, readerSessionId, type Failure } from "./reads";
-import type { Client } from "@flow-state-dev/client";
+import { describeFailure, type Failure } from "./reads";
 
-/** The query's name, on whichever of the Lab's flows answers it. */
-const HARNESS_USAGE_ACTION = "harnessUsage";
-
-/** The per-worker query's name, answered by the same flow. */
-const WORKER_USAGE_ACTION = "workerUsage";
-
-/** One window as the query returns it. */
+/** One window as the view returns it. */
 export type UsageWindow = {
   id: string;
   label: string | null;
@@ -41,7 +36,7 @@ export type UsageWindow = {
   rolledOver: boolean;
 };
 
-/** One harness as the query returns it. */
+/** One harness as the view returns it. */
 export type HarnessUsage = {
   harness: string;
   status: "windows" | "api-key" | "signed-out" | "unavailable";
@@ -53,60 +48,38 @@ export type HarnessUsage = {
   refreshError: string | null;
 };
 
-/** The Lab flow that answers each query, read once per connection and query. `null`: this Lab has none. */
-const usageFlows = new WeakMap<Client, Map<string, Promise<string | null>>>();
-
-function usageFlowOf(client: Client, action: string = HARNESS_USAGE_ACTION): Promise<string | null> {
-  let byAction = usageFlows.get(client);
-  if (byAction === undefined) {
-    byAction = new Map();
-    usageFlows.set(client, byAction);
-  }
-  let found = byAction.get(action);
-  if (found === undefined) {
-    found = client.flows().then((flows) => flows.find((flow) => flow.actions.includes(action))?.id ?? null);
-    found.catch(() => byAction.delete(action));
-    byAction.set(action, found);
-  }
-  return found;
+/**
+ * Whether `error` says this Lab serves no such usage: no flow declares it
+ * (404), or the collection's writer flow isn't registered here (409).
+ */
+function servesNone(error: unknown): boolean {
+  return error instanceof ClientHttpError && (error.status === 404 || error.status === 409);
 }
 
 /**
- * Run the query on the user's reading session on `flow`. Session ids are not
- * scoped by organization, so when that one id is held in another of the
- * user's organizations (refused here, and not in this organization's
- * listing), it runs on this organization's own usage session instead, opened
- * on first use and found again by its prefix.
+ * Re-check, then the usage rows. `null` when this Lab serves no usage. Re-check
+ * asks each harness at most once a minute per person, so a re-read within the
+ * minute answers the stored rows.
  */
-export async function runUsageQuery(
-  client: Client,
-  flow: string,
-  action: string = HARNESS_USAGE_ACTION,
-  input: unknown = { refresh: true },
-): Promise<unknown> {
-  const reader = readerSessionId(client.userId, flow);
+export async function readHarnessUsageRows(client: Client): Promise<HarnessUsage[] | null> {
   try {
-    return (await runAction(client, flow, reader, action, input)).output;
+    await recheckHarnessUsage(client);
+    return toHarnessUsage((await client.view(harnessUsageViewRef(), {})).value);
   } catch (error) {
-    if (!(error instanceof ActionRefused)) throw error;
-    const listed = await client.sessions.list({ userId: client.userId });
-    if (listed.some((session) => session.id === reader)) throw error;
-    const own = listed.find(
-      (session) => session.parentSessionId == null && session.flowKind === flow && session.id.startsWith(`${USAGE_SESSION_PREFIX}-`),
-    )?.id;
-    return (await runAction(client, flow, own ?? newSessionId(USAGE_SESSION_PREFIX), action, input)).output;
+    if (servesNone(error)) return null;
+    throw error;
   }
 }
 
-/** The query's rows, as sent. A row that isn't one is left out. */
+/** The view's rows, as sent. A row that isn't one is left out. */
 export function toHarnessUsage(output: unknown): HarnessUsage[] {
   const rows = (output as { harnesses?: unknown } | null | undefined)?.harnesses;
   return Array.isArray(rows) ? rows.filter((row): row is HarnessUsage => typeof (row as HarnessUsage)?.harness === "string") : [];
 }
 
 /**
- * The usage rows, refreshed when the view opens and on each Lab read
- * (`readAt`). `rows` is `null` when this Lab answers no usage query. A read
+ * The usage rows, re-checked when the view opens and on each Lab read
+ * (`readAt`). `rows` is `null` when this Lab serves no usage. A read
  * that fails keeps the last rows and reports `failure` beside them, so stale
  * rows never pass for fresh ones.
  */
@@ -121,11 +94,7 @@ export function useHarnessUsage(readAt: number): {
   const [reads, setReads] = useState(0);
   useEffect(() => {
     let closed = false;
-    usageFlowOf(client)
-      .then(async (flow) => {
-        if (flow === null) return null;
-        return toHarnessUsage(await runUsageQuery(client, flow));
-      })
+    readHarnessUsageRows(client)
       .then((read) => {
         if (closed) return;
         setRows(read);
@@ -179,10 +148,20 @@ export function toWorkerUsage(output: unknown): WorkerUsage[] {
   return Array.isArray(rows) ? rows.filter((row): row is WorkerUsage => typeof (row as WorkerUsage)?.worker === "string") : [];
 }
 
+/** Each worker's usage over the last `days` UTC days. `null` when this Lab keeps no roster flow. */
+export async function readWorkerUsageRows(client: Client, days: number): Promise<WorkerUsage[] | null> {
+  try {
+    return toWorkerUsage((await client.view(workerUsageView, { days })).value);
+  } catch (error) {
+    if (servesNone(error)) return null;
+    throw error;
+  }
+}
+
 /**
  * Each worker's usage over the last `days` UTC days, read when the view opens,
  * on each Lab read (`readAt`), and when the period changes. `rows` is `null`
- * when this Lab answers no per-worker query. A read that fails keeps the last
+ * when this Lab keeps no roster flow. A read that fails keeps the last
  * rows for the same period and reports `failure` beside them; rows read for
  * another period are never returned, so one period's totals never stand
  * under another's tab.
@@ -200,11 +179,7 @@ export function useWorkerUsage(
   const [reads, setReads] = useState(0);
   useEffect(() => {
     let closed = false;
-    usageFlowOf(client, WORKER_USAGE_ACTION)
-      .then(async (flow) => {
-        if (flow === null) return null;
-        return toWorkerUsage(await runUsageQuery(client, flow, WORKER_USAGE_ACTION, { days }));
-      })
+    readWorkerUsageRows(client, days)
       .then((rows) => {
         if (!closed) setRead({ days, rows });
       })

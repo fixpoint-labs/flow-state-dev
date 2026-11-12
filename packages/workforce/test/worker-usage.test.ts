@@ -1,8 +1,8 @@
 /**
  * Per-worker token usage (FIX-2145): every request a worker's session runs
  * adds what it spent, model calls and harness runs alike, to the user's
- * `worker-usage/**` record for that worker and UTC day, and `workerUsage`
- * reads it back over a period.
+ * `worker-usage/**` record for that worker and UTC day, and the roster flow's
+ * `workerUsage` view reads it back over a period, with no session (FIX-2624).
  *
  * Why it matters: a user sees which worker used how much of their
  * subscriptions and keys. A total that misses model calls, shows someone
@@ -15,13 +15,18 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { reportHarnessSpend, type HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { abortRequest } from "@flow-state-dev/engine/host";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createClient } from "@flow-state-dev/client";
 import { z } from "zod";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkerInstallation } from "../src/workers/installation";
-import { WORKER_USAGE_ACTION, workerUsageAction, type WorkerUsageView } from "../src/workers/worker-usage";
+import { defineWorkerRosterFlow } from "../src/workers/roster-flow";
+import { workerUsageView } from "../src/workers/worker-usage-ref";
 
 const input = z.object({ message: z.string(), harness: z.any().optional(), waitForAbort: z.boolean().optional() });
 const DAY = 24 * 60 * 60 * 1000;
+
+/** Who signs in, and in which org: two users in one org and one in another. */
+const ORGS: Record<string, string> = { alice: "org-a", bob: "org-a", carol: "org-b" };
 
 afterEach(() => {
   vi.useRealTimers();
@@ -77,13 +82,22 @@ function host(workers: readonly string[] = ["coder", "em"], stores = inMemorySto
       respond: {
         block: sequencer({ name: "work-turn", inputSchema: input }).step(resolve).step(harness).tap(ask),
         userMessage: (i: { message: string }) => i.message
-      },
-      [WORKER_USAGE_ACTION]: workerUsageAction(installation)
+      }
     }
   });
   flows = { work };
   const copy = work() as unknown as FlowInstance;
-  return { copy, started: started.promise, state: createFlowState({ flows: [copy], stores: { default: { primary: stores } }, runtimeConfig: { modelResolver } as never }) };
+  // The roster flow serves the view; the caller is the signed-in user, never the body.
+  const roster = defineWorkerRosterFlow(installation)() as unknown as FlowInstance;
+  const resolvePrincipal = (context: { request?: Request }) => {
+    const user = context.request?.headers.get("x-user");
+    return user == null ? null : { userId: user, orgId: ORGS[user] ?? DEFAULT_ORG_ID };
+  };
+  return {
+    copy,
+    started: started.promise,
+    state: createFlowState({ flows: [copy, roster], stores: { default: { primary: stores } }, resolvePrincipal, runtimeConfig: { modelResolver } as never } as never)
+  };
 }
 
 async function harnessOf(h: ReturnType<typeof host>) {
@@ -95,7 +109,7 @@ async function harnessOf(h: ReturnType<typeof host>) {
       const created = await router.POST(
         new Request("http://localhost/api/flows/work/sessions", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", "x-user": userId },
           body: JSON.stringify({ userId, sessionId, state: { workerId: worker } })
         }),
         { params: { path: ["work", "sessions"] } }
@@ -106,7 +120,7 @@ async function harnessOf(h: ReturnType<typeof host>) {
   };
   const act = async (userId: string, worker: string, actionName: string, value: unknown, conversation = "") => {
     const result = await runAction({
-      orgId: DEFAULT_ORG_ID,
+      orgId: ORGS[userId] ?? DEFAULT_ORG_ID,
       flow: h.copy,
       actionName,
       input: value,
@@ -125,7 +139,7 @@ async function harnessOf(h: ReturnType<typeof host>) {
   const stoppedTurn = async (userId: string, worker: string, harness: HarnessRunSpend) => {
     const requestId = `stopped-${userId}-${worker}`;
     const running = runAction({
-      orgId: DEFAULT_ORG_ID,
+      orgId: ORGS[userId] ?? DEFAULT_ORG_ID,
       flow: h.copy,
       actionName: "respond",
       input: { message: "go", harness, waitForAbort: true },
@@ -141,9 +155,21 @@ async function harnessOf(h: ReturnType<typeof host>) {
     await running;
     expect((await runtime.stores.request.get(requestId))?.status).toBe("aborted");
   };
+  /** The view, read as `userId` signs in: no session named. */
+  const clientOf = (userId: string) =>
+    createClient({
+      userId,
+      fetcher: async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(new URL(String(input instanceof Request ? input.url : input), "http://localhost"), init);
+        request.headers.set("x-user", userId);
+        const path = new URL(request.url).pathname.replace(/^\/api\/flows\//, "").split("/").map(decodeURIComponent);
+        return request.method === "GET" ? router.GET(request, { params: { path } }) : router.POST(request, { params: { path } });
+      }
+    });
   const usage = async (userId: string, days?: number) =>
-    ((await act(userId, "em", WORKER_USAGE_ACTION, days === undefined ? {} : { days })) as { workers: WorkerUsageView[] }).workers;
-  return { turn, stoppedTurn, usage };
+    (await clientOf(userId).view(workerUsageView, days === undefined ? {} : { days })).value.workers;
+  const sessionIds = async () => (await runtime.stores.session.list({ parentage: "all" } as never)).map((session) => session.id).sort();
+  return { turn, stoppedTurn, usage, sessionIds };
 }
 
 const CLAUDE_KEY: HarnessRunSpend = { harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "api-key" };
@@ -170,6 +196,23 @@ describe("per-worker token usage", () => {
           { source: "openai/gpt-6-luna", kind: "model", billing: null, inputTokens: 12, outputTokens: 12, costUsd: null, runs: 3, unreported: 0 }
         ]
       });
+    } finally {
+      await h.state.dispose();
+    }
+  });
+
+  it("answers a second user and a second org their own spend only, and the read makes no session", async () => {
+    const h = host();
+    try {
+      const { turn, usage, sessionIds } = await harnessOf(h);
+      await turn("alice", "coder", CLAUDE_KEY);
+      await turn("bob", "coder");
+      await turn("carol", "em", CLAUDE_PLAN);
+      const before = await sessionIds();
+      expect((await usage("alice")).map((row) => [row.worker, row.tokens.input])).toEqual([["coder", 1004]]);
+      expect((await usage("bob")).map((row) => [row.worker, row.tokens.input])).toEqual([["coder", 4]]);
+      expect((await usage("carol")).map((row) => [row.worker, row.tokens.input])).toEqual([["em", 1004]]);
+      expect(await sessionIds()).toEqual(before);
     } finally {
       await h.state.dispose();
     }

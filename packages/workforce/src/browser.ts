@@ -28,6 +28,7 @@ export {
   type WorkforceClientSource
 } from "./workers/client";
 export { rosterView } from "./workers/roster-view-ref";
+export { workerUsageView } from "./workers/worker-usage-ref";
 export type { RosterView } from "./workers/roster-view";
 export {
   deriveWorkerSessionId,

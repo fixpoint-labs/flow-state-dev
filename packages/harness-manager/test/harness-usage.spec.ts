@@ -1,8 +1,9 @@
 /**
- * The usage record through a real flow: the one query, its refresh, and the
- * one writer's rules. Every read goes through `runAction` on an in-memory
- * store, the path a host's HTTP door takes, so what is asserted is what a
- * screen or a worker gets back.
+ * The usage record through a real flow: Re-check, the rows the view reads,
+ * and the one writer's rules. Re-check runs through `runAction` on the usage
+ * flow over an in-memory store, the path a host's door takes; the rows are
+ * read with the view's own reader (`readHarnessUsage`). The view and Re-check
+ * over a router are `harness-usage-view.spec.ts`.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -18,9 +19,10 @@ import {
   HARNESS_USAGE,
   applyReading,
   applyRunWindow,
-  harnessUsageAction,
   harnessUsageCollection,
+  harnessUsageFlow,
   harnessUsageStateSchema,
+  readHarnessUsage,
   recordHarnessUsage,
   type HarnessUsageView,
   type HarnessUsageState,
@@ -37,7 +39,7 @@ const SIGNED_IN: HarnessUsageReading = {
   ],
 };
 
-/** A flow with the query on it, and a test-only door straight to the writer. */
+/** The usage flow, and a test-only flow with a door straight to the writer and the view's reader. */
 function lab(readers: Record<string, HarnessUsageReader>, timeoutMs?: number) {
   const write = handler({
     name: "usage-write",
@@ -63,20 +65,28 @@ function lab(readers: Record<string, HarnessUsageReader>, timeoutMs?: number) {
     execute: async (_input, ctx: BlockContext) =>
       (await (ctx.resources as any)[HARNESS_USAGE].list()).map((ref: { path: string; state: unknown }) => ({ path: ref.path, state: ref.state })),
   });
+  const read = handler({
+    name: "usage-read",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+    uses: [defineCapability({ name: "usage-read", resources: { [HARNESS_USAGE]: harnessUsageCollection } })],
+    execute: async (_input, ctx: BlockContext) => ({ harnesses: await readHarnessUsage(ctx, Date.now(), Object.keys(readers)) }),
+  });
+  const usageFlow = harnessUsageFlow({ readers, ...(timeoutMs === undefined ? {} : { timeoutMs }) })() as never;
   const flow = defineFlow({
     kind: "usage-flow",
     actions: {
-      harnessUsage: harnessUsageAction({ readers, ...(timeoutMs === undefined ? {} : { timeoutMs }) }),
+      read: { block: read },
       write: { block: write },
       runWrite: { block: runWrite },
       raw: { block: raw },
     },
   } as never)({ id: "usage-flow" } as never);
-  const state = createFlowState({ flows: [flow], stores: { test: { primary: inMemoryStores() } }, defaultProfile: "test" } as never);
+  const state = createFlowState({ flows: [flow, usageFlow], stores: { test: { primary: inMemoryStores() } }, defaultProfile: "test" } as never);
   const act = async (actionName: string, input: unknown, userId = "alice", orgId = "org_1"): Promise<any> => {
     const rt = (await (state as any).getRuntime()) as { stores: unknown; runtimeConfig: object };
     const result = (await runAction({
-      flow,
+      flow: actionName === "recheck" ? usageFlow : flow,
       actionName,
       input,
       userId,
@@ -88,8 +98,11 @@ function lab(readers: Record<string, HarnessUsageReader>, timeoutMs?: number) {
     if (result.error !== undefined) throw new Error(JSON.stringify(result.error));
     return result.output;
   };
-  const usage = async (refresh: boolean, userId?: string, orgId?: string): Promise<HarnessUsageView[]> =>
-    ((await act("harnessUsage", refresh ? { refresh: true } : {}, userId, orgId)) as { harnesses: HarnessUsageView[] }).harnesses;
+  /** Re-check first when `refresh`, then the rows the view answers. */
+  const usage = async (refresh: boolean, userId?: string, orgId?: string): Promise<HarnessUsageView[]> => {
+    if (refresh) await act("recheck", {}, userId, orgId);
+    return ((await act("read", {}, userId, orgId)) as { harnesses: HarnessUsageView[] }).harnesses;
+  };
   return { act, usage };
 }
 
@@ -107,8 +120,8 @@ function scripted(answers: Array<HarnessUsageReading | "hang">) {
   return { reader, calls: () => calls };
 }
 
-describe("harnessUsage — the one query", () => {
-  it("lists a registered harness before anyone has read it, and starts nothing without refresh", async () => {
+describe("the usage rows and Re-check", () => {
+  it("lists a registered harness before anyone has read it, and starts nothing without Re-check", async () => {
     const codex = scripted([SIGNED_IN]);
     const { usage } = lab({ codex: codex.reader });
     const rows = await usage(false);
@@ -118,7 +131,7 @@ describe("harnessUsage — the one query", () => {
     expect(codex.calls()).toBe(0);
   });
 
-  it("reads on refresh, and returns every window with its age and roll-over", async () => {
+  it("reads on Re-check, and returns every window with its age and roll-over", async () => {
     const codex = scripted([SIGNED_IN]);
     const { usage } = lab({ codex: codex.reader });
     const [row] = await usage(true);

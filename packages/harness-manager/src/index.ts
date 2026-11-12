@@ -46,8 +46,9 @@
  * - `harnessReadiness`, which harnesses can run on this machine, read once
  *   at start and again on request, with its user-scope view, its action, its coordinator context
  *   capability and its formatter.
- * - `harnessUsageAction`, the one query for how much of each harness's
- *   subscription a person has used, and the collection behind it.
+ * - `harnessUsageFlow`, the flow a host registers to serve how much of each
+ *   harness's subscription a person has used: its view and its Re-check, and
+ *   the collection behind them.
  * - `harnessRunChangesView`, the session view of what a run's commits changed:
  *   each file and its lines, or one file's patch. A run review's data carries
  *   the same files; `harnessSessionFlow` declares the same view per turn.
@@ -302,19 +303,23 @@ export { ASK_MARKER_IGNORED } from "./workspace";
 
 // ── Subscription usage left, per person and harness ─────────────────────────
 //
-// The query is the read path: a host puts `harnessUsageAction({ readers })`
-// on one flow. `recordHarnessUsage` is the collection's one writer, for a
-// harness that reports usage during a run.
+// A host registers `harnessUsageFlow({ readers })`: its view is the read path
+// and its Re-check the client's write. `recordHarnessUsage` is the
+// collection's one writer, for a harness that reports usage during a run.
 export {
   HARNESS_USAGE,
+  HARNESS_USAGE_FLOW,
+  HARNESS_USAGE_RECHECK,
+  HARNESS_USAGE_VIEW,
   USAGE_READ_TIMEOUT_MS,
   USAGE_REFRESH_EVERY_MS,
-  harnessUsageAction,
   harnessUsageCollection,
+  harnessUsageFlow,
   harnessUsageStateSchema,
   readHarnessUsage,
   recordHarnessUsage,
-  type HarnessUsageActionOptions,
+  type HarnessUsageFlowOptions,
+  type HarnessUsageViewDefinition,
   type HarnessUsageView,
   type HarnessUsageState,
   type HarnessUsageWindowView,

@@ -14,8 +14,9 @@
  * - `workerConfigOf`: the configuration of the worker a turn loaded.
  * - `workerFlow`: a worker flow built on its installation, for a flow that
  *   lives in its own file.
- * - `workerUsageAction`: the `workerUsage` query, each worker's tokens over a
- *   period, read from the `worker-usage` records every request adds to.
+ * - `workerUsageView`: the roster flow's `workerUsage` view, each worker's
+ *   tokens over a period, read from the `worker-usage` records every request
+ *   adds to, with no session.
  * - `createWorkforceClient`: find or start a session with a worker. Exported
  *   from `./browser` only: it is an app's, and the server never calls it.
  */
@@ -64,18 +65,19 @@ export { workerConfigOf } from "./verified-worker";
 export {
   readWorkerUsage,
   recordWorkerSpend,
+  defineWorkerUsageView,
   workerSpendHook,
-  workerUsageAction,
   workerUsageCollection,
   workerUsageStateSchema,
-  WORKER_USAGE_ACTION,
   WORKER_USAGE_DEFAULT_DAYS,
   WORKER_USAGE_MAX_DAYS,
   WORKER_USAGE_RESOURCE,
   type WorkerSourceSpend,
   type WorkerUsageView,
+  type WorkerUsageViewDefinition,
   type WorkerUsageState
 } from "./worker-usage";
+export { workerUsageView } from "./worker-usage-ref";
 export { workerFlow, type WorkerFlowBuilder } from "./worker-flow";
 export { rosterView } from "./roster-view-ref";
 export type { RosterView } from "./roster-view";

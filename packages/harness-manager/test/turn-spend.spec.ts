@@ -10,7 +10,7 @@
  *
  * Red states produced before these were trusted:
  *   - drop the `turn-spend` step (and the failure write's spend): every `spend` here is null.
- *   - drop `onUsage` from the feeds: the usage query lists no window.
+ *   - drop `onUsage` from the feeds: the usage record holds no window.
  *   - write the spend from the flow's `onFinished` instead: the request's
  *     terminal status is published before the spend lands.
  *   - read the request's pending slice instead of its total: a turn resumed
@@ -23,7 +23,7 @@ import {
   type HarnessBlock,
   type HarnessCallbackContext,
 } from "@flow-state-dev/core/harness";
-import { continueRequest, createCheckpointDurabilityProvider, createFlowRegistry, runAction } from "@flow-state-dev/engine";
+import { continueRequest, createCheckpointDurabilityProvider, createFlowRegistry, resolveUserStorageKey, runAction } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -258,11 +258,11 @@ describe("a harness session turn's spend", () => {
 });
 
 describe("a window a turn's run heard about", () => {
-  it("is readable afterwards through the session flow's usage query", async () => {
+  it("lands in the person's usage record, which the usage view reads", async () => {
     const stores = createInMemoryStores();
     await run(stores, "s-window", { window: true });
-    const result = (await run(stores, "s-window", {}, "harnessUsage", {})) as { result?: unknown; output?: unknown };
-    const answer = JSON.stringify(result);
+    const cell = resolveUserStorageKey("u", DEFAULT_ORG_ID, { id: "", isolateUserState: false });
+    const answer = JSON.stringify((await stores.resourceState.get("user", cell, "harness-usage/stub"))?.state);
     expect(answer).toContain("five_hour");
     expect(answer).toContain("42");
   });

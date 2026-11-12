@@ -17,7 +17,7 @@
 - **g** (owed by a person): Jake's own Claude sign-in, a real run, then Usage beside Claude Code's `/status`. No CI has a sign-in, so until it is run the verdict is *goal met except leg g*.
 
 **Anti-game:**
-- No assertion reads Shift Manager's modules or stubs the query. Rows are read through `harnessUsage` over the Lab's HTTP door, and the view in a browser.
+- No assertion reads Shift Manager's modules or stubs the query. Rows are read through the usage flow's `usage` view over the Lab's HTTP door, a refresh being a Re-check sent to the usage collection, and the screen in a browser.
 - Runs go through the real chain: Shift Coordinator, task board, harness manager, `claudeCodeAgent`, `onUsage`, the writer. Only the SDK module is replaced.
 - The empty-home and API-key looks run the real Agent SDK probe.
 
