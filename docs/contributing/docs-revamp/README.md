@@ -16,6 +16,7 @@ process.
 | [`specs/epics/FIX-2696/SITEMAP/`](../../../specs/epics/FIX-2696/SITEMAP/README.md) | The page plan: every page of the new site, with its contents, questions, figures, examples and sources |
 | [`pages/`](./pages) | Pages written through the brief's writing loop, in the order of its queue, with their figures in `pages/figures/`. First: [`blocks.md`](./pages/blocks.md) |
 | `pages/*.facts.md` | A page's fact sheet: every fact the page states, with file and line, collected before drafting (step 1 of the loop). The page states nothing that is not on it. Never published |
+| [`readmes/`](./readmes) | Each published package's cut README: an install line, one example, a link to its API reference section. They replace `packages/*/README.md` at cutover; until then an edit to a long README lands in its cut copy too (`scripts/check-cut-readmes.mjs`) |
 | [`scripts/check-docs-page.mjs`](../../../scripts/check-docs-page.mjs) | Word budget, banned words, em-dashes, table length, code titles |
 
 ## The pages are written for the release that carries kits
