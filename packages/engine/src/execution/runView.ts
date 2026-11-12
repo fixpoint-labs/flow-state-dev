@@ -224,7 +224,7 @@ function keysOf(viewName: string, key: (entry: never) => string, output: unknown
 }
 
 /** What one read-only run needs. */
-export type ReadOnlyRun = {
+type ReadOnlyRun = {
   flow: FlowInstance;
   /** The view's name, recorded as the run's action name. */
   name: string;
@@ -250,7 +250,7 @@ export type ReadOnlyRun = {
  * a session, and the action path's binding errors for a session the caller
  * may not run in. Nothing it does reaches `stores`.
  */
-export async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
+async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
   const noSession = run.scope !== "session";
   if (noSession && run.sessionId !== undefined) {
     throw new Error(`A ${run.scope} view runs with no session; "${run.name}" was handed one`);
