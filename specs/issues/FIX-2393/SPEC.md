@@ -11,7 +11,7 @@
 | **watches a read the project refused** (no project set, not a member, a missing file) | Reads like a read that worked | The line says "(failed)" |
 | **watches a lead file and check on tasks** | "Started a task", "Checked on a task" | `Start a task: Fix the login copy`, `Check on "Fix the login copy"` |
 | **talks to a Teammates lab worker while it works** | Sees nothing until the worker answers; its tool steps show only in the popup | Sees the steps inline during the turn, open while running and folded when the turn is done |
-| **runs Kitchen Sink or Shift Manager on the registry's tool line** | A refused workforce read reads as done | It reads "(failed)" (the same registry rule; these apps take it on their next registry copy) |
+| **runs Kitchen Sink or Shift Manager on the registry's tool line** | A refused workforce read reads as done | It reads "(failed)" (the same registry rule; the wave-1 PR refreshes their byte-pinned copies) |
 
 ## The goal, and how we'll know it's met
 
@@ -134,7 +134,7 @@ status words (FIX-2379's); harness run steps.
 | Claude Code-style `lib/tool-line.ts`, a fixed-phrase map of the same tools | **Removes** (wave 3) |
 | Teammates' copies of `tool-naming.ts` and `tool-grouping.ts`, its popup grouping walk | **Replaced** by a fresh copy (wave 3); the walk moves to the shared helper |
 | Kitchen Sink's byte copies (its drift test) | **Refreshed** in the wave-1 PR, byte for byte: the drift test requires it |
-| Shift Manager's own copies of `tool.tsx` and friends | **Left** to its next registry copy; no drift test holds it |
+| Shift Manager's copies of `tool.tsx`, `tool-naming.ts`, `tool-grouping.ts` (`static.test.ts` pins them byte-equal) | **Refreshed** in the wave-1 PR, byte for byte, with the dead-code ignore a copy needs ([E2](DECISIONS.md#e2)); its own `ToolLine.tsx` is left |
 | FIX-2343 (#4232): a failed call says "(failed)" and stays muted | **Kept**, and now reached by refused results too |
 | How a call's failure is found today: `item.status === "failed"` only | **Extended**: a result that reports failure counts too |
 
