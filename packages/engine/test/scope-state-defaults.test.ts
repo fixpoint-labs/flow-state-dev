@@ -321,7 +321,7 @@ const blockDefaultsFlow = defineFlow({
   actions: { read: reader }
 })();
 
-async function runRead(stores: ReturnType<typeof createInMemoryStores>, sessionId: string) {
+async function runReaderAction(stores: ReturnType<typeof createInMemoryStores>, sessionId: string) {
   const result = await runAction({
     orgId: ORG,
     flow: blockDefaultsFlow,
@@ -339,7 +339,7 @@ async function runRead(stores: ReturnType<typeof createInMemoryStores>, sessionI
 
 describe("defaults a block or a capability declares", () => {
   it("read on a fresh session, user and org with no restating on the flow", async () => {
-    expect(await runRead(createInMemoryStores(), "sess_block_fresh")).toEqual({
+    expect(await runReaderAction(createInMemoryStores(), "sess_block_fresh")).toEqual({
       count: 0,
       tags: ["new"],
       theme: "light",
@@ -355,7 +355,7 @@ describe("defaults a block or a capability declares", () => {
       { id: USER_KEY, userId: USER, state: { otherFlow: 1 }, version: 0, createdAt: 0, updatedAt: 0 },
       "any"
     );
-    await runRead(stores, "sess_block_stored");
+    await runReaderAction(stores, "sess_block_stored");
     const session = await stores.session.get("sess_block_stored");
     await stores.session.set(
       "sess_block_stored",
@@ -363,7 +363,7 @@ describe("defaults a block or a capability declares", () => {
       "any"
     );
 
-    expect(await runRead(stores, "sess_block_stored")).toMatchObject({ count: 0, tags: ["kept"], theme: "light" });
+    expect(await runReaderAction(stores, "sess_block_stored")).toMatchObject({ count: 0, tags: ["kept"], theme: "light" });
     expect((await stores.user.get(USER_KEY))?.state).toMatchObject({ otherFlow: 1 });
   });
 

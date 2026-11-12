@@ -134,7 +134,7 @@ describe("a write session can't be claimed by a client", () => {
       expect(JSON.stringify(await stores.session.list({}))).toBe(before);
       covered.push(route.kind);
     }
-    expect(covered).toEqual(expect.arrayContaining(["create_session", "execute_action", "get_session", "session_stream", "run_read"]));
+    expect(covered).toEqual(expect.arrayContaining(["create_session", "execute_action", "get_session", "session_stream", "run_view"]));
   });
 
   it("refuses a body-named write session on the action route", async () => {

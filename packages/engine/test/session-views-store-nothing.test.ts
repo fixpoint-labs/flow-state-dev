@@ -1,12 +1,14 @@
+// FIX-2623 (FIX-2286's read checks, carried to session views).
 /**
- * A flow's reads (FIX-2286): an app runs a block on a session and gets its
- * answer back, and nothing is stored. The checks that matter are the ones a
- * poll would break: a read adds no request, changes no row, can't write,
- * can't start a request, and reaches only a session its caller may run in.
+ * A session view: an app runs a block on a session and gets its answer back,
+ * and nothing is stored. The checks that matter are the ones a watch would
+ * break: a view adds no request, changes no row, can't write, can't start a
+ * request, ends its run the way a request does, and reaches only a session its
+ * caller may run in.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, defineResourceCollection, dispatcher, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, defineResourceCollection, defineView, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { onRequestEnded } from "@flow-state-dev/core/internal";
 import { createFlowApiRouter, createFlowRegistry, disposeFlowApiRouter } from "../src";
 import { createInMemoryStores } from "../src/host";
@@ -22,6 +24,7 @@ const notes = defineResourceCollection({
 const listNotes = handler({
   name: "list-notes",
   inputSchema: z.object({ prefix: z.string().default("") }),
+  outputSchema: z.object({ titles: z.array(z.string()) }),
   resources: { notes },
   execute: async (input, ctx) => ({
     titles: (await ctx.resources.notes.list())
@@ -44,6 +47,7 @@ const addNote = handler({
 const writes = handler({
   name: "read-that-writes",
   inputSchema: z.object({}),
+  outputSchema: z.object({ ok: z.boolean() }),
   resources: { notes },
   execute: async (_input, ctx) => {
     await ctx.resources.notes.create("sneaky", { title: "sneaky" });
@@ -54,6 +58,7 @@ const writes = handler({
 const writesState = handler({
   name: "read-that-writes-state",
   inputSchema: z.object({}),
+  outputSchema: z.object({ ok: z.boolean() }),
   execute: async (_input, ctx) => {
     await ctx.session.patchState({ touched: true });
     return { ok: true };
@@ -63,6 +68,7 @@ const writesState = handler({
 const writesUser = handler({
   name: "read-that-writes-user-state",
   inputSchema: z.object({}),
+  outputSchema: z.object({ ok: z.boolean() }),
   execute: async (_input, ctx) => {
     await ctx.user.patchState({ touched: true });
     return { ok: true };
@@ -73,6 +79,7 @@ const ended: string[] = [];
 const cleansUp = handler({
   name: "read-that-cleans-up",
   inputSchema: z.object({ fail: z.boolean().default(false) }),
+  outputSchema: z.object({ ok: z.boolean() }),
   execute: async (input, ctx) => {
     onRequestEnded(ctx, (ending) => {
       ended.push(ending.status);
@@ -82,7 +89,7 @@ const cleansUp = handler({
   }
 });
 
-// A side chain that adds its hook only after the read's own step has answered.
+// A side chain that adds its hook only after the view's own step has answered.
 const lateCleanup = handler({
   name: "late-cleanup",
   inputSchema: z.unknown(),
@@ -94,9 +101,9 @@ const lateCleanup = handler({
     return {};
   }
 });
-const sideChains = sequencer({ name: "read-with-side-chain", inputSchema: z.object({}) })
+const sideChains = sequencer({ name: "read-with-side-chain", inputSchema: z.object({}), outputSchema: z.object({ ok: z.boolean() }) })
   .sideChain(lateCleanup)
-  .step(handler({ name: "answer", inputSchema: z.unknown(), execute: () => ({ ok: true }) }));
+  .step(handler({ name: "answer", inputSchema: z.unknown(), outputSchema: z.object({ ok: z.boolean() }), execute: () => ({ ok: true }) }));
 
 const dispatches = dispatcher({
   name: "read-that-dispatches",
@@ -111,14 +118,14 @@ function build() {
     kind: "board",
     actions: { addNote: { block: addNote } },
     internal: { actions: { add: { block: handler({ name: "noop", inputSchema: z.object({}).passthrough(), execute: () => ({}) }) } } },
-    reads: {
-      notes: { block: listNotes },
-      writes: { block: writes },
-      writesState: { block: writesState },
-      writesUser: { block: writesUser },
-      cleansUp: { block: cleansUp },
-      sideChains: { block: sideChains },
-      dispatches: { block: dispatches }
+    views: {
+      notes: defineView({ scope: "session", block: listNotes }),
+      writes: defineView({ scope: "session", block: writes }),
+      writesState: defineView({ scope: "session", block: writesState }),
+      writesUser: defineView({ scope: "session", block: writesUser }),
+      cleansUp: defineView({ scope: "session", block: cleansUp }),
+      sideChains: defineView({ scope: "session", block: sideChains }),
+      dispatches: defineView({ scope: "session", block: dispatches })
     }
   })();
   const registry = createFlowRegistry();
@@ -157,7 +164,7 @@ async function runAction(router: Router, stores: StoreRegistry, sessionId: strin
   throw new Error(`${action} did not finish`);
 }
 
-/** Everything the stores hold that a read could leave behind, as one comparable value. */
+/** Everything the stores hold that a view could leave behind, as one comparable value. */
 async function snapshot(stores: StoreRegistry) {
   return JSON.stringify({
     requests: (await stores.request.list({})).map((r) => [r.id, r.status, r.version]),
@@ -176,31 +183,31 @@ async function seeded() {
   return { router, stores, sessionId: session.id };
 }
 
-describe("a flow's reads", () => {
+describe("a session view", () => {
   it("answers in the response and stores nothing", async () => {
     const { router, stores, sessionId } = await seeded();
     const before = await snapshot(stores);
     for (let i = 0; i < 10; i += 1) {
-      const res = await post(router, ["board", sessionId, "reads", "notes"], { userId: "alice", input: {} });
+      const res = await post(router, ["board", sessionId, "views", "notes"], { userId: "alice", input: {} });
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ output: { titles: ["alpha", "beta"] } });
+      expect(await res.json()).toMatchObject({ output: { titles: ["alpha", "beta"] } });
     }
     expect(await snapshot(stores)).toBe(before);
   });
 
   it("answers on a session no action has run in yet, and still stores nothing", async () => {
     // Session creation stores no user or org record; the first run seeds them.
-    // A read must not need an action to have run first, and must not seed them itself.
+    // A view must not need an action to have run first, and must not seed them itself.
     const { router, stores } = build();
     const created = await post(router, ["board", "sessions"], { userId: "alice", sessionId: "sess_1" });
     const { session } = (await created.json()) as { session: { id: string } };
     const before = JSON.stringify({ users: await stores.user.list(), orgs: await stores.org.list(), at: await snapshot(stores) });
-    const res = await post(router, ["board", session.id, "reads", "notes"], { userId: "alice", input: {} });
+    const res = await post(router, ["board", session.id, "views", "notes"], { userId: "alice", input: {} });
     expect(res.status, await res.clone().text()).toBe(200);
-    expect(await res.json()).toEqual({ output: { titles: [] } });
+    expect(await res.json()).toMatchObject({ output: { titles: [] } });
     expect(JSON.stringify({ users: await stores.user.list(), orgs: await stores.org.list(), at: await snapshot(stores) })).toBe(before);
     // The seed is only something to read: writing to the seeded user still refuses.
-    const write = await post(router, ["board", session.id, "reads", "writesUser"], { userId: "alice", input: {} });
+    const write = await post(router, ["board", session.id, "views", "writesUser"], { userId: "alice", input: {} });
     expect(write.status).toBe(409);
     expect(JSON.stringify({ users: await stores.user.list(), orgs: await stores.org.list(), at: await snapshot(stores) })).toBe(before);
   });
@@ -208,19 +215,19 @@ describe("a flow's reads", () => {
   it("runs its request-end hooks when it ends, and owes nothing after", async () => {
     const { router, sessionId } = await seeded();
     ended.length = 0;
-    const ok = await post(router, ["board", sessionId, "reads", "cleansUp"], { userId: "alice", input: {} });
+    const ok = await post(router, ["board", sessionId, "views", "cleansUp"], { userId: "alice", input: {} });
     expect(ok.status, await ok.clone().text()).toBe(200);
-    const failed = await post(router, ["board", sessionId, "reads", "cleansUp"], { userId: "alice", input: { fail: true } });
+    const failed = await post(router, ["board", sessionId, "views", "cleansUp"], { userId: "alice", input: { fail: true } });
     expect(failed.status).toBe(422);
     expect(ended).toEqual(["completed", "failed"]);
-    // A host's shutdown would otherwise wait on every read that added a hook.
+    // A host's shutdown would otherwise wait on every view run that added a hook.
     expect(await drainRequestEnds(0)).toBe(0);
   });
 
   it("waits for its side chains before it ends, so their hooks run too", async () => {
     const { router, sessionId } = await seeded();
     ended.length = 0;
-    const res = await post(router, ["board", sessionId, "reads", "sideChains"], { userId: "alice", input: {} });
+    const res = await post(router, ["board", sessionId, "views", "sideChains"], { userId: "alice", input: {} });
     expect(res.status, await res.clone().text()).toBe(200);
     expect(ended).toEqual(["late:completed"]);
     expect(await drainRequestEnds(0)).toBe(0);
@@ -228,24 +235,24 @@ describe("a flow's reads", () => {
 
   it("parses its input against the block's schema", async () => {
     const { router, sessionId } = await seeded();
-    const narrowed = await post(router, ["board", sessionId, "reads", "notes"], { userId: "alice", input: { prefix: "b" } });
-    expect(await narrowed.json()).toEqual({ output: { titles: ["beta"] } });
-    const bad = await post(router, ["board", sessionId, "reads", "notes"], { userId: "alice", input: { prefix: 3 } });
+    const narrowed = await post(router, ["board", sessionId, "views", "notes"], { userId: "alice", input: { prefix: "b" } });
+    expect(await narrowed.json()).toMatchObject({ output: { titles: ["beta"] } });
+    const bad = await post(router, ["board", sessionId, "views", "notes"], { userId: "alice", input: { prefix: 3 } });
     expect(bad.status).toBe(400);
   });
 
   it("answers another user as for a session that doesn't exist", async () => {
     const { router, sessionId } = await seeded();
-    const res = await post(router, ["board", sessionId, "reads", "notes"], { userId: "bob", input: {} });
+    const res = await post(router, ["board", sessionId, "views", "notes"], { userId: "bob", input: {} });
     expect(res.status).toBe(404);
     expect(JSON.stringify(await res.json())).not.toContain("alpha");
-    const none = await post(router, ["board", "sess_missing", "reads", "notes"], { userId: "alice", input: {} });
+    const none = await post(router, ["board", "sess_missing", "views", "notes"], { userId: "alice", input: {} });
     expect(none.status).toBe(404);
   });
 
-  it("refuses a read the flow doesn't declare, even one named for an action", async () => {
+  it("refuses a view the flow doesn't declare, even one named for an action", async () => {
     const { router, sessionId } = await seeded();
-    const res = await post(router, ["board", sessionId, "reads", "addNote"], { userId: "alice", input: { title: "x" } });
+    const res = await post(router, ["board", sessionId, "views", "addNote"], { userId: "alice", input: { title: "x" } });
     expect(res.status).toBe(404);
   });
 
@@ -257,7 +264,7 @@ describe("a flow's reads", () => {
   ])("refuses %s with read_only and changes nothing", async (_what, read) => {
     const { router, stores, sessionId } = await seeded();
     const before = await snapshot(stores);
-    const res = await post(router, ["board", sessionId, "reads", read], { userId: "alice", input: {} });
+    const res = await post(router, ["board", sessionId, "views", read], { userId: "alice", input: {} });
     const body = (await res.json()) as { error: string; message: string };
     expect({ status: res.status, error: body.error }, body.message).toEqual({ status: 409, error: "read_only" });
     expect(await snapshot(stores)).toBe(before);

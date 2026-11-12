@@ -309,27 +309,6 @@ export type NormalizedActions<TActions extends Record<string, ActionEntry>> = {
   [K in keyof TActions]: NormalizedEntry<TActions[K]>;
 };
 
-// FIX-2286.
-/**
- * A read: a block an app runs on a session to watch a view the flow
- * computes, such as a conversation's task list. It is answered in the HTTP
- * response and stored nowhere: no request record, no items, no concurrency
- * slot. Its context refuses every write (resource, content and session state,
- * and dispatch) with code `read_only`, so a read cannot change what it reads.
- *
- * The one hook for watching a computed view: an app polls it, or calls it when
- * a push tells it something changed. Anything that changes state is an action.
- */
-export type ReadConfig<TBlock extends BlockDefinition = BlockDefinition> = {
-  block: TBlock;
-  /** Overrides `block.inputSchema` for the read's input, as on an action. */
-  inputSchema?: TBlock["inputSchema"];
-  /** Human-readable description, for tooling. Defaults to `block.description`. */
-  description?: string;
-};
-
-/** What an author writes for a read: the block alone, or `{ block, ... }`. */
-export type ReadEntry<TBlock extends BlockDefinition = BlockDefinition> = TBlock | ReadConfig<TBlock>;
 
 /**
  * The entries of one dispatch type, nested under the type so a per-type
@@ -635,13 +614,6 @@ export type FlowDefinition<
    */
   task?: TypedEntries<TaskEntry | BlockDefinition>;
 
-  /**
-   * The flow's reads: blocks an app runs on a session to watch a view the
-   * flow computes, answered in the response and stored nowhere. See
-   * {@link ReadConfig}. A read may share a name with an action.
-   */
-  reads?: Record<string, ReadEntry>;
-
   // FIX-2623.
   /**
    * The flow's views: blocks a screen watches, each with a scope (`session`,
@@ -836,8 +808,6 @@ export type FlowInstance<
    * a `task` dispatch can only ever reach the worker through that gate.
    */
   task?: TypedEntries<TaskEntry>;
-  /** See {@link FlowDefinition.reads}. Absent when the flow declares none. */
-  reads?: Record<string, ReadConfig>;
   /** See {@link FlowDefinition.views}. Absent when the flow declares none. */
   views?: Record<string, ViewDefinition>;
   session?: TSession;
@@ -920,8 +890,6 @@ export type FlowType<
   internal?: TypedEntries<InternalEntry>;
   /** Mirror of `FlowInstance.task`. */
   task?: TypedEntries<TaskEntry>;
-  /** See {@link FlowDefinition.reads}. Absent when the flow declares none. */
-  reads?: Record<string, ReadConfig>;
   /** See {@link FlowDefinition.views}. Absent when the flow declares none. */
   views?: Record<string, ViewDefinition>;
   session?: TSession;

@@ -84,10 +84,8 @@ export {
 
 export type {
   ActionConfig,
-  ReadConfig,
   ActionEntry,
   NormalizedActions,
-  ReadEntry,
   TypedEntries,
   ActionCore,
   UserMessageEcho,

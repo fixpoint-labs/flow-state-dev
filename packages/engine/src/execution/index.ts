@@ -3,10 +3,8 @@
  */
 export { executeBlock } from "./executeBlock";
 export { runAction } from "./runAction";
-export { runRead } from "./runRead";
 export { runView } from "./runView";
 export type { RunViewOptions, ViewAnswer } from "./runView";
-export type { RunReadOptions } from "./runRead";
 export { continueRequest } from "./request-continuation";
 export { settleUnstartedRequest } from "./settle-unstarted-request";
 export type { UnstartedRequestEnding } from "./settle-unstarted-request";

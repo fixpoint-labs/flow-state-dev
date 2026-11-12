@@ -1,8 +1,7 @@
 // FIX-2623.
 /**
  * The view runner: the one place a view runs, answered to its caller and
- * stored nowhere. Every view runs through {@link runView}, and a flow's
- * `reads` too until they are removed (`runRead.ts`), so "a view writes
+ * stored nowhere. Every view runs through {@link runView}, so "a view writes
  * nothing, calls no model, and every read it makes is recorded" holds by
  * construction, not by each view's care.
  *
@@ -224,10 +223,10 @@ function keysOf(viewName: string, key: (entry: never) => string, output: unknown
   return [...seen];
 }
 
-/** What one read-only run needs. Shared by {@link runView} and `runRead`. */
+/** What one read-only run needs. */
 export type ReadOnlyRun = {
   flow: FlowInstance;
-  /** The view's or read's name, recorded as the run's action name. */
+  /** The view's name, recorded as the run's action name. */
   name: string;
   block: BlockDefinition;
   input: unknown;
@@ -240,7 +239,7 @@ export type ReadOnlyRun = {
   runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel">;
   signal?: AbortSignal;
   /** The run's source label. */
-  source: "view" | "read";
+  source: "view";
 };
 
 /**
@@ -349,7 +348,3 @@ export async function runView(options: RunViewOptions): Promise<ViewAnswer> {
   return view.key !== undefined ? { ...answer, keys: keysOf(options.viewName, view.key, answer.output) } : answer;
 }
 
-/** Parse a read's input against its schema. Kept for `runRead` until reads are removed. */
-export function parseReadInput(schema: ZodTypeAny, input: unknown): unknown {
-  return parseInput("Read", schema, input);
-}

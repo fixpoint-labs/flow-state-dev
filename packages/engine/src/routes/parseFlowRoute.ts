@@ -9,7 +9,6 @@ export type ParsedFlowRoute =
   | { kind: "list_flows" }
   | { kind: "capabilities" }
   | { kind: "execute_action"; flowKind: string; actionName: string; sessionId?: string }
-  | { kind: "run_read"; flowKind: string; sessionId: string; readName: string }
   | { kind: "read_scope_resource"; scope: string; key: string }
   | { kind: "list_scope_entries"; scope: string; key: string }
   | { kind: "read_scope_entry"; scope: string; key: string; entry: string }

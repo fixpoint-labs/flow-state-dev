@@ -25,7 +25,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createClient } from "@flow-state-dev/client";
 import { reviewDetail } from "@flow-state-dev/harness-manager/browser";
-import { createInboxClient, inboxItems, taskActionName, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskActionName, taskListViewRef, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, REPO_ROOT, runGoal, stopProcessGroup, type ModulePatch } from "../../lib/index.mts";
 import { githubStub, stubPullRequestUrl } from "../../lib/github-stub.mts";
@@ -36,7 +36,6 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 const USER = "u_goal";
 const BOARD = "tasks";
 const CREATE_TASK = taskActionName("createTask", BOARD);
-const LIST_TASKS = taskActionName("listTasks", BOARD);
 const GET_TASK = taskActionName("getTask", BOARD);
 const UPDATE_TASK = taskActionName("updateTask", BOARD);
 /** The scripted coder's pause before each of its five steps. */
@@ -88,8 +87,8 @@ await runGoal(async (failures, tell) => {
       return requests.find((request) => request.id === ended.id)?.result?.output;
     };
     const rowOf = async (id: string): Promise<Row | undefined> => {
-      const listed = await fsd.flow(flow).read<{ ok: boolean; tasks: Row[] }>(LIST_TASKS, {}, { sessionId: session.id });
-      return listed.tasks.find((row) => row.id === id);
+      const listed = (await fsd.view(taskListViewRef(flow, BOARD), {}, { sessionId: session.id })).value as Row[];
+      return listed.find((row) => row.id === id);
     };
     const until = async (id: string, done: (row: Row) => boolean, ms = SETTLE_MS) => {
       let row: Row | undefined;

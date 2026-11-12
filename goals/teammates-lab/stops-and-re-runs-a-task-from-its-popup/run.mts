@@ -17,9 +17,9 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "playwright";
-import { createClient } from "@flow-state-dev/client";
+import { ClientHttpError, createClient } from "@flow-state-dev/client";
 import { STEER_POLL_MS } from "@flow-state-dev/harness-manager";
-import { createInboxClient, inboxItems, taskActionName, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskActionName, taskListViewRef, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice } from "@flow-state-dev/orchestration/tasks";
 import { createWorkforceClient, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { goalTmpDir, loadFixture, REPO_ROOT, repoPath, runGoal, stopProcessGroup } from "../../lib/index.mts";
@@ -39,7 +39,6 @@ const LAB = repoPath("labs", "teammates");
 const BOARD = "tasks";
 const CREATE_TASK = taskActionName("createTask", BOARD);
 const GET_TASK = taskActionName("getTask", BOARD);
-const LIST_TASKS = taskActionName("listTasks", BOARD);
 const UPDATE_TASK = taskActionName("updateTask", BOARD);
 /** Each of the scripted run's five steps: long enough to steer and cancel mid-run. */
 const STEP_MS = 6_000;
@@ -106,13 +105,15 @@ type Row = InboxTaskInput & { goal: string; title?: string; assignee?: string; a
 type WholeRow = { status?: string; goal?: string; title?: string; context?: string; assignee?: string; attempts?: number; error?: string; steers?: { message: string }[] };
 type Board = { flow: string; sessionId: string };
 
-/** A board's rows, as its list read answers: stores nothing, touches no row. */
+/** A board's rows, as its task-list view answers: stores nothing, touches no row. */
 async function rowsOf(fsd: Fsd, board: Board): Promise<Row[]> {
-  const listed = await fsd.flow(board.flow).read<{ ok: boolean; error?: string; tasks: Row[] }>(LIST_TASKS, {}, { sessionId: board.sessionId });
-  // A conversation nothing was ever filed on has no board yet: it holds no rows.
-  if (!listed.ok && listed.error?.startsWith("no_delegation_board")) return [];
-  if (!listed.ok) throw new Error(`listTasks refused: ${listed.error}`);
-  return listed.tasks;
+  try {
+    return (await fsd.view(taskListViewRef(board.flow, BOARD), {}, { sessionId: board.sessionId })).value as Row[];
+  } catch (error) {
+    // A conversation nothing was ever filed on has no board yet: it holds no rows.
+    if (error instanceof ClientHttpError && error.status === 422) return [];
+    throw error;
+  }
 }
 
 /** One board action on `board`, and its output. */
