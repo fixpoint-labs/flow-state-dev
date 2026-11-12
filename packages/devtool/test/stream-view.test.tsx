@@ -110,6 +110,16 @@ describe("StreamView — a status item with nothing to show", () => {
     expect(container.querySelectorAll(".cursor-pointer")).toHaveLength(0);
   });
 
+  it("keeps it in debug mode, where its raw JSON is the point", () => {
+    localStorage.setItem("fsd.devtool.debugMode", "true");
+    const { container } = renderStreamView({
+      requestGroups: [makeGroup([statusItem("empty-1", {})])],
+      streamStatus: "completed",
+    });
+    expect(container.querySelectorAll(".cursor-pointer")).toHaveLength(1);
+    expect(screen.getByText("Raw JSON")).toBeInTheDocument();
+  });
+
   it("still renders a count-only status row", () => {
     const { container } = renderStreamView({
       requestGroups: [makeGroup([statusItem("count-1", { sideChainTasks: 2 })])],

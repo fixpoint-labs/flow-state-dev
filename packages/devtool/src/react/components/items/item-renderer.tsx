@@ -42,8 +42,9 @@ export const ItemRenderer = memo(function ItemRenderer({ item }: ItemRendererPro
 
   const isTier3 = TIER_3_TYPES.has(item.type);
   if (isTier3 && !isDebugMode) return null;
-  // A status item with no label would leave a blank, clickable row.
-  if (item.type === "status" && statusItemLabel(item) === null) return null;
+  // A status item with no label would leave a blank, clickable row. Debug mode
+  // keeps it, since its raw JSON overlay is the only way to inspect it.
+  if (item.type === "status" && !isDebugMode && statusItemLabel(item) === null) return null;
 
   const isMessage = item.type === "message";
   const isError = item.type === "error";
