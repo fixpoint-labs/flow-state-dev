@@ -4,8 +4,8 @@ One visual language for every figure in the user docs. A reader who has learned 
 can read it on every other page, because each mark means one thing site-wide.
 
 This file is the home of the figure rules, beside the page standard. [`user-docs.md`](./user-docs.md#figures)
-says when a page needs a figure; this file says how to draw, check and embed one. FIX-2697 turns
-[the lint rules](#lint-rules) into a check.
+says when a page needs a figure; this file says how to draw, check and embed one. [The lint
+rules](#lint-rules) say what the figure check enforces.
 
 | Here | What it is |
 | --- | --- |
@@ -16,7 +16,7 @@ says when a page needs a figure; this file says how to draw, check and embed one
 | [The figure brief](#the-figure-brief) | What to write before drawing |
 | [Render it and look at it](#render-it-and-look-at-it) | `render.sh`, and what to check |
 | [On the page](#on-the-page) | The `Figure` component |
-| [Lint rules](#lint-rules) | For FIX-2697 to implement |
+| [Lint rules](#lint-rules) | What the figure lint checks |
 | [Exemplars](#exemplars) | The three pilot figures, redrawn |
 
 ## Where the style comes from
@@ -213,8 +213,8 @@ images under [`docs-revamp/figures/rendered/`](./docs-revamp/figures/rendered) a
 
 ## Lint rules
 
-For FIX-2697. Rules 1 to 5 are what `apps/docs/scripts/lint-brand.mjs` checks today; point it at
-the revamp figures. Rules 6 to 16 are new. Like the brand lint, the check first runs against
+Rules 1 to 5 are what `apps/docs/scripts/lint-brand.mjs` checks today, pointed at the revamp
+figures. Rules 6 to 16 extend it. Like the brand lint, the check first runs against
 fixtures that break each rule and fails if a rule does not fire.
 
 **Banned constructs**
@@ -271,8 +271,8 @@ where their meaning is true, and that the highlighted thing is the page's one id
 ## Exemplars
 
 The three pilot figures, redrawn to these rules. Each passes the brand lint with no findings
-and was rendered and read in both modes. `docs-revamp/pages/figures/blocks.svg` has not been redrawn;
-FIX-2701 redraws it with its page.
+and was rendered and read in both modes. `docs-revamp/pages/figures/blocks.svg` has not been redrawn
+yet; it is redrawn with its page.
 
 ### Layer boxes: `docs-revamp/pilot/figures/layers.svg`
 
