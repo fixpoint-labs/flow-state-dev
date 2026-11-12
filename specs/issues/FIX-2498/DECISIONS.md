@@ -11,7 +11,7 @@ implementer must not re-derive. The epic's D1 (on by default, an opt-out each) a
 ```mermaid
 flowchart TD
   I["FIX-2498 · environment and skills index"] --> D1["D1 · new blocks after the worker's text<br/>apps add a line through their capabilities"]
-  D1 -.->|"rejected"| X1["at the front, with a new flow option<br/>moves the stable start every day, a second way in"]
+  D1 -.->|"rejected"| X1["epic D4 and ER-1 as written · at the front, no app lines<br/>moves the stable start every day, no surface"]
   I --> D2["D2 · today is the server's day, zone named"]
   D2 -.->|"rejected"| X2["the user's own zone<br/>no client sends it today"]
   I -.->|"cut by the owner, Nov 12"| X3["behaviour section<br/>sizing passed 3 of 3 without it"]
@@ -20,15 +20,15 @@ flowchart TD
 Solid edges are what you sign. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · The new blocks go after the worker's own text, as tagged context, and an app adds a line through the capabilities it already composes
+## D1 · The new blocks go after the worker's own text, as tagged context, and an app may add its own free-text environment line through the capabilities it already composes
 
 | | |
 |---|---|
-| **Instead of** | The epic's [D4](../../epics/FIX-2490/DECISIONS.md#d4) as written: the sections inside the prompt's first entry, before the team's and the worker's text, with a new `defineAgentWorkerFlow` option for an app's extra fields |
-| **Because** | The date changes every day, so at the front it changes the start of every worker's prompt, which the issue asks us not to disturb. After the worker's text, the start stays as it is. And the generator's context already merges contributions under one key, so an app's capability adds `environment` lines with no new option (tenet 2, few primitives). Kitchen Sink's assistant already puts its date in this slot |
-| **Locks in** | The `environment` context key is public: any app or capability that writes under it shows inside the worker's block, and renaming it later breaks them. The default layer now has two places, the prompt and the context, so FIX-2500 must say which one its summary uses. An app line is free text; nothing checks it |
+| **Instead of** | The epic's [D4](../../epics/FIX-2490/DECISIONS.md#d4) and [ER-1](../../epics/FIX-2490/DECISIONS.md#who-owns-what) as written: the sections inside the prompt array's single default entry, at the front, before the team's and the worker's text; no new `defineAgentWorkerFlow` option; and no app-supplied section text, so an app could not add a fact such as the surface |
+| **Because** | The date changes every day, so at the front it changes the start of every worker's prompt, which the issue asks us not to disturb. After the worker's text, the start stays as it is. And the generator's context already merges contributions under one key, so an app's capability adds `environment` lines with no new option (tenet 2, few primitives). The surface is a fact only the app knows, and the epic's outcome names it; the epic's own *in the box* figure already lists app environment fields Kitchen Sink's assistant already puts its date in this slot |
+| **Locks in** | **Amends ER-1's "no app-supplied text"** for this one block: any app or capability that writes under the public `environment` key shows its free text inside the worker's environment block, and renaming the key later breaks them. **Amends D4's "single default entry"**: the default layer has two places, the prompt and the context, so FIX-2500 must say which one its summary uses. An app line is free text; nothing checks it |
 
-![D1, where the new blocks go: after the worker's own text as tagged context, chosen, beside at the front of the prompt with a new flow option. Decides it: the start of the prompt stays the same day to day. Price: the default layer is in two places. A worker with no skill is a tie](figures/d1-after-the-worker-text.svg)
+![D1, where the new blocks go: after the worker's own text as tagged context with app lines, chosen, beside the epic's D4 and ER-1 as written, at the front with no app lines. Decides it: the start of the prompt stays the same day to day. Price: the default layer is in two places. A worker with no skill is a tie](figures/d1-after-the-worker-text.svg)
 
 It comes down to the start of the prompt: at the front, the date changes it every day.
 
@@ -77,7 +77,8 @@ the user's zone is worth a client change, and that is its own issue.
 
 | Alternative | Why not |
 |---|---|
-| A `defineAgentWorkerFlow({ environment })` option for app fields | A second way in beside `uses`, for something context keys already do |
+| A `defineAgentWorkerFlow({ environment })` option for app fields | A second way in beside `uses`, for something context keys already do. D4 also rules out a new option |
+| Keep the layer the single prompt entry and put its fixed sections after the worker's text inside it, with only the date in context (Cursor, [thread](https://github.com/fixpoint-labs/flow-state-dev/pull/5163#discussion_r4550490282)) | Not possible as one entry: the default entry is the array's first item, and identity must stay first (FIX-2334), so text after the worker's needs a second entry at the end or a module that joins the whole array itself, which the seam's comment forbids. The skills line also has to sit beside the skills list, which is already tagged context. Either way the layer is in two places. It does not avoid the ER-1 question either: that turns on whether an app may add a line, not on where the date sits |
 | The "load a fitting skill" line in orchestration's own listing text | Changes every skills-library user, not only workers; the defaults live in workforce (epic D4, ER-2) |
 | A capability per section | A second way in for fixed text (ER-1) |
 | Rewriting each app's skill descriptions | App content, on the epic's *Not doing* list. The new page says to write them as what and when |
@@ -106,8 +107,8 @@ sub-agent tool. Weigh it as a self-check.
    the closure's sweep. None moves this direction.
 5. **Necessity** — the date ask is 0 of 3 everywhere; the skill ask 2 of 3 in two apps.
 6. **Ergonomics** — an app line is a short capability, longer than an option. Recorded.
-7. **Concerns** — D1 amends the epic's D4. It is on the sign-off as D1; if approved, the epic's D4
-   text gets a follow-up amendment PR. Recorded.
+7. **Concerns** — D1 amends the epic's D4 and ER-1. Both are on the sign-off as D1; if approved,
+   the epic's D4 and ER-1 text get a follow-up amendment PR. Recorded.
 
 ## How it got here
 

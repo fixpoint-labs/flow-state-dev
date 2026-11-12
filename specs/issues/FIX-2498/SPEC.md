@@ -123,7 +123,7 @@ One module owns both sections; each renders after the worker's text, and an app 
 | Generator context keys that merge across contributors (mechanism `capability`) | **Builds on.** The block is the `environment` key; an app's capability adds to it |
 | `skills.activateTool`, default off (contract C5) | **Amended.** Unset follows `defaults`; a set value wins. No skills, no cost |
 | Epic [D4](../../epics/FIX-2490/DECISIONS.md#d4): the layer is "the prompt array's single default entry" | **Amended in part** by [D1](DECISIONS.md#d1): one module still, but its new sections render as tagged context after the worker's text |
-| Epic [ER-1](../../epics/FIX-2490/DECISIONS.md#who-owns-what): sections, a `defaults` key, a 400-token ceiling | **Kept.** Two sections: `environment` and `skillsIndex` |
+| Epic [ER-1](../../epics/FIX-2490/DECISIONS.md#who-owns-what): sections, a `defaults` key, a 400-token ceiling, no app-supplied text | **Amended in part** by [D1](DECISIONS.md#d1): an app may add free-text lines to the environment block. The rest is kept: two sections, `environment` and `skillsIndex` |
 | FIX-2492's per-turn date in Kitchen Sink | **Superseded** by the exported block, in the same change |
 | This issue's behaviour section | **Cut** by the owner on Nov 12. Not built |
 
@@ -152,12 +152,12 @@ tests are their only proof. If wrong: a block that gets the date right and the r
 `defaults` key and two sections come in. If wrong: every workforce worker pays tokens for
 blocks few of them use.
 
-1. **[D1](DECISIONS.md#d1) · The new blocks go after the worker's own text, and an app adds a
-   line through its own capabilities.** If wrong: the date sits where the model weighs it less,
+1. **[D1](DECISIONS.md#d1) · The new blocks go after the worker's own text, and an app may add
+   its own free-text line to the environment block.** Amends the epic's D4 and ER-1. If wrong: the date sits where the model weighs it less,
    and an app line nobody checks drifts from the block.
 2. **[D2](DECISIONS.md#d2) · "Today" is the server's day, with its time zone named.** If wrong:
    a user far from the server sees yesterday's or tomorrow's date near midnight.
 
-**Open: none.** D1 is the one to weigh: it amends the epic's D4.
+**Open: none.** D1 is the one to weigh: it amends the epic's D4 and ER-1.
 
 Improvement · `workforce` + Kitchen Sink · small · epic FIX-2490
