@@ -150,4 +150,30 @@ describe("a workstream going quiet", () => {
     expect(value()!.progress.stale.map((e) => e.id)).toEqual(["research"]);
     expect(projectReads).toBe(1);
   });
+
+  it("still goes quiet when its threshold is further off than setTimeout's longest delay", async () => {
+    // An entry written 20 days ahead of this page's clock goes quiet 27 days from now:
+    // past setTimeout's cap (about 24.8 days), so the first timer fires early and must set itself again.
+    const DAY = 24 * 60 * 60 * 1000;
+    const loadedAt = Date.UTC(2026, 10, 12, 9);
+    vi.useFakeTimers({ now: loadedAt, shouldAdvanceTime: true });
+    const updatedAt = new Date(loadedAt + 20 * DAY).toISOString();
+    entries = [
+      {
+        storageKey: "workstreams/apollo/~u_1/research",
+        clientData: { title: "Research", lead: "researcher", sessionId: null, status: "on-track", due: null, objectives: [], openedAt: updatedAt, updatedAt, writtenBy: { userId: "u_1" } },
+      },
+    ];
+    render(<Probe address={{ visibility: "shared", id: "apollo" }} readAt={1} />);
+    const value = () => {
+      const last = shown.at(-1);
+      return last !== undefined && "value" in last ? last.value : undefined;
+    };
+    await waitFor(() => expect(value()?.entries.map((e) => e.id)).toEqual(["research"]));
+    await vi.advanceTimersByTimeAsync(26 * DAY);
+    expect(value()!.entries[0]!.stale).toBe(false);
+    await vi.advanceTimersByTimeAsync(1 * DAY + 60_000);
+    await waitFor(() => expect(value()!.entries[0]!.stale).toBe(true));
+    expect(projectReads).toBe(1);
+  });
 });

@@ -288,17 +288,16 @@ export function useProjectRead(address: ProjectAddress, readerSessionId: string 
     if (landed === null) return;
     const at = nextQuietAt(landed);
     if (at === undefined) return;
-    // An early fire (a delay past setTimeout's cap) recomputes nothing new and keeps
-    // the held read, so it renders nothing and the next timer is set the same way.
-    const timer = setTimeout(
-      () =>
-        setRead((held) => {
-          if (held === undefined || !("value" in held) || held.value !== landed) return held;
-          const next = withProgress(landed.project, landed.entries, Date.now());
-          return next.progress.stale.length === landed.progress.stale.length ? held : { value: next };
-        }),
-      Math.min(MAX_TIMER_MS, Math.max(0, at - Date.now())),
-    );
+    // A delay past setTimeout's cap fires early, as does one the wall clock stepped
+    // back under: such a fire changes nothing and sets the timer again, here.
+    let timer: ReturnType<typeof setTimeout>;
+    const arm = () => {
+      timer = setTimeout(() => {
+        if (Date.now() < at) return arm();
+        setRead((held) => (held !== undefined && "value" in held && held.value === landed ? { value: withProgress(landed.project, landed.entries, Date.now()) } : held));
+      }, Math.min(MAX_TIMER_MS, Math.max(0, at - Date.now())));
+    };
+    arm();
     return () => clearTimeout(timer);
   }, [landed]);
   const reread = useCallback(() => live.current?.refresh(), []);
