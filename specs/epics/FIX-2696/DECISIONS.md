@@ -122,6 +122,7 @@ Four readers audited all 193 pages on 2026-11-11 for duplication, concept-versus
 No end-state POC was built; the pilots and the Blocks run stand in for it.
 
 - **Concept-doc pilot** ([`poc/concept-doc-pilot/`](poc/concept-doc-pilot/COMPARISON.md)) · built: the three pilots rewritten as concept docs, and through concept doc then `docs-writer`, each graded blind by a fact check, a cold read and `docs-editor` · showed: better facts, pages harder to understand · changed: the loop gains a cold read and the ownership questions (D4), and the pilots lose four wrong claims (a root import of `harnesses`, `workspace` as a path, a task claimed only once, a standard worker that can't be edited).
+- **Model pilot** ([`poc/model-pilot/`](poc/model-pilot/SCORECARD.md)) · built: the three pilots written again from the recipe A was written with, once by Sonnet and once by Opus, beside A (Fable) at its first-check state, each given the same blind fact check and `docs-editor` pass · showed: accuracy is about equal across models; Fable's pages are 30–45% shorter; every version, Fable's included, puts mechanism on concept pages and breaks the site's figure conventions · changed: nothing yet. Which model writes the remaining pages is open until a one-page Sonnet test against a brief that carries the level rule, a word target and figure rules.
 
 ## Analysis · 2026-11-12 · watermark 2026-11-10
 
