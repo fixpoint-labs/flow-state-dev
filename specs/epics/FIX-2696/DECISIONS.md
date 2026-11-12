@@ -17,7 +17,7 @@ flowchart TD
   D4 -.-> M["Open · which model writes"]
 ```
 
-**Who decided what.** The owner decided D2 on 2026-11-11, and O1, O2, O3, D4's loop and D6 on 2026-11-12. The epic agent decided D1, D3, D5 and the drafting calls at the end, inside that direction. Which model writes is open (D4).
+**Who decided what.** The owner decided D2 on 2026-11-11, and O1, O2, O3, D4's loop, D6 and the sitemap's three questions (D1) on 2026-11-12. The epic agent decided D1, D3, D5 and the drafting calls at the end, inside that direction. Which model writes is open (D4).
 
 ## D1 · Five sections, told from the app down
 
@@ -25,7 +25,7 @@ Start, Concepts, Catalog, Build and Reference replace today's eleven sidebar gro
 
 **Why.** The audit found the landing page and the docs describe different products, and that the reading path has no end. *If wrong:* a restructure is redirects and a sidebar file; the pages survive.
 
-**The page plan.** [`SITEMAP/`](SITEMAP/README.md) names every page of the five sections: its job, its contents, its cold-read questions, a brief for each figure, its examples, what it leaves to Reference, its sources today and the issue that writes it. The owner signs it off with this PR. It is the page plan every writing child works from; adding, dropping or re-homing a page is an amendment to it first. It plans 108 hand-written pages and about 95,200 words, against the estimates of about 75 and about 90,000 the epic was filed with; Start + Concepts is 25,900 against the 30,000 target. Its three questions for the owner are at the end of its index.
+**The page plan.** [`SITEMAP/`](SITEMAP/README.md) names every page of the five sections: its job, its contents, its cold-read questions, a brief for each figure, its examples, what it leaves to Reference, its sources today and the issue that writes it. The owner signs it off with this PR. It is the page plan every writing child works from; adding, dropping or re-homing a page is an amendment to it first. It plans 108 hand-written pages and about 95,200 words, against the estimates of about 75 and about 90,000 the epic was filed with; Start + Concepts is 25,900 against the 30,000 target. The owner settled its three questions on 2026-11-12, as recommended: the 95,200 words stand as written, Concepts keeps all 23 pages, and `guides/projects-on-org-scope` is cut, because "project" already means a Workforce project. They are recorded at the end of its index.
 
 ## D2 · Pages are written for the release that carries kits, and ship in one cutover · decided by the owner, 2026-11-11
 

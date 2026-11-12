@@ -51,7 +51,7 @@ Five sections replace eleven. A reader reads Start and Concepts and looks things
 | **Build** | Do one task: tutorials and recipes | 37 | 31,450 |
 | **Reference** | Exact answers, for people and agents | 27 generated sections, plus 43 tabular pages | no budget |
 
-These are the planned figures from [`SITEMAP/`](SITEMAP/README.md), which names every page with its contents, cold-read questions, figures, examples and sources. Start + Concepts is 25,900 words against the 30,000 target. The four hand-written sections come to 95,200 against the "about 90,000" this epic was filed with, because naming every page turned an estimate of 75 pages into 108; the sitemap's index puts that to the owner.
+These are the planned figures from [`SITEMAP/`](SITEMAP/README.md), which names every page with its contents, cold-read questions, figures, examples and sources. Start + Concepts is 25,900 words against the 30,000 target. The four hand-written sections come to 95,200 against the "about 90,000" this epic was filed with, because naming every page turned an estimate of 75 pages into 108; the owner accepted that on 2026-11-12, as the sitemap's index records.
 
 Every page has a type with a shape and a word budget ([`WRITING-BRIEF.md`](../../../docs/contributing/docs-revamp/WRITING-BRIEF.md)), and `scripts/check-docs-page.mjs` checks the mechanical part.
 
