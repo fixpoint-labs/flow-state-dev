@@ -14,6 +14,15 @@ A block is one of those steps: a named piece of work with a typed input and a ty
 
 *A flow's blocks, nested. Description for the site's `Figure`: One large box, a sequencer named handleTicket, contains two steps joined by an arrow. The first step is a handler named cleanMessage. The second is a generator named draftReply. Inside draftReply, highlighted, is a handler named lookUpOrder that the model can call as a tool. This page builds the flow one piece at a time.*
 
+## What a block gets you
+
+You could write this whole reply as one function. Putting each step in its own block is what lets the framework do the rest.
+
+- **A finished block is a checkpoint.** Its output is recorded. On a store that persists, such as SQLite or Postgres, a run that dies after `cleanMessage` picks up at `draftReply`. The message is not cleaned twice.
+- **A block can wait.** A block can pause the run for a user, such as a manager approving a refund, and carry on when the answer arrives. The wait survives a restart.
+- **Every block is traced.** Each time a block runs, the run is recorded, and the DevTool shows it. You can see which step was slow or wrong without adding any logging.
+- **A block moves.** It knows only its own input and output. `lookUpOrder` can be a step in this flow, a tool in another, and a piece of something a teammate builds later.
+
 ## The smallest flow
 
 A handler is a block that runs your code. A generator is a block that asks a model to write. Here is one of each.

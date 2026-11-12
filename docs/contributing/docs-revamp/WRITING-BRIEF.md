@@ -37,14 +37,17 @@ Words are counted without frontmatter, code blocks and figure descriptions.
 1. **Opening**, two short paragraphs, no heading. A situation the reader has been in, then the idea
    in plain words.
 2. **A figure**, when the idea has a shape (see Figures).
-3. **The smallest working example**, with a few sentences that point at the parts.
-4. **Two to five sections**, one per question a reader asks next. Headings are plain statements or
+3. **What it gets you.** Why the thing exists: what the reader gets by using it that they would
+   not get from plain code. Three or four short points, each one something they can observe, each
+   tied to the page's example. See "Say what it buys the reader" in The moves.
+4. **The smallest working example**, with a few sentences that point at the parts.
+5. **Two to five sections**, one per question a reader asks next. Headings are plain statements or
    plain questions: "When a task fails", "Whose worker it is".
-5. **What it won't do.** Three bullets at most, stated flat.
+6. **What it won't do.** Three bullets at most, stated flat.
 
    Where our word differs from the industry's, an "If you know ..." section comes straight after the
    opening (see The moves).
-6. **Next.** Two to four links, each with a clause saying what the reader gets there. Link to
+7. **Next.** Two to four links, each with a clause saying what the reader gets there. Link to
    pages by the names in "What to write next", as `./kebab-case-title.md`, whether or not they
    exist yet. A concept page may end with one link to its Reference page, as
    `../reference/<topic>.md`.
@@ -58,6 +61,17 @@ Each rule below has an example from a pilot page and the kind of sentence it rep
 > Some work is a list. Research three competitors, then write the comparison.
 
 Not: "Task board is the building block underneath Parallel Tasks, Supervisor, and Plan and Execute."
+
+**Say what it buys the reader.** A page that defines a thing and shows its code has not yet said
+why anyone would use it. Before the first code, say what the reader gets. Name consequences they
+can see, in the page's example, and leave the mechanism out.
+
+> **A finished block is a checkpoint.** Its output is recorded. On a store that persists, such as
+> SQLite or Postgres, a run that dies after `cleanMessage` picks up at `draftReply`. The message is
+> not cleaned twice.
+
+Not: "Blocks are typed, composable units." Typed and composable are properties. The reader wants
+to know what happens to them because of those properties.
 
 **Say the idea in words you would use out loud.** Introduce the API name afterwards, attached
 to the plain word.
@@ -261,6 +275,7 @@ site these become the `caption` and `description` of `<Figure>`.
 ## Before you call it done
 
 - The first two paragraphs make sense to someone who has never heard of the framework.
+- The page says why the thing exists, before its first code block.
 - Every code block has its path as a title, and every name in it is imported or declared there.
 - No table has more than six rows.
 - No sentence contains *now*, *no longer*, *still*, *deliberately*, *simply*, *just*, *powerful*,

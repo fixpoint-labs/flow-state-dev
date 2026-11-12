@@ -51,3 +51,11 @@ Paths are from the repo root. `core` = `packages/core/src`; `hc` = `examples/hel
 - Handler `description` is read by the model when the handler is a tool: stated via the `.as` doc (core/types/block.ts:1322-1330) and the old page (blocks.md:158), not through the tool-compile path.
 - Example code type-checked by the coordinator.
 - Resource example (`lookUpOrder` reading a stored list) is hypothetical and labelled "if".
+
+## What a block gets you
+
+- A completed block's output is recorded and reused on resume; its `execute` is skipped. `apps/docs/docs/advanced/block-memoization-and-replay.md:7-13`
+- Sequencers checkpoint at every step boundary, and a resumed request skips completed steps; on by default on stores that persist (filesystem, SQLite, Postgres). `apps/docs/docs/advanced/durable-execution.md:9-11`
+- A block can pause a request for external input with `ctx.suspend()`, and the pause is held across a restart. `apps/docs/docs/advanced/durable-execution.md:9`, `:27`
+- Each block execution is captured as a `block_trace` in the item log. `apps/docs/docs/advanced/block-memoization-and-replay.md:7`
+- The DevTool shows execution traces. `apps/docs/docs/devtool/overview.md:9`
