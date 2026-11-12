@@ -83,3 +83,39 @@ describe("StreamView — continuation/suspension_resume boundary", () => {
     expect(screen.getByText(/5 prior items/i)).toBeInTheDocument();
   });
 });
+
+/**
+ * A status item with an empty message and no count it recognises has no label.
+ * That covers a row stored under the count's old field name, which the DevTool
+ * no longer reads. Such a row must leave no clickable blank row in the stream.
+ */
+describe("StreamView — a status item with nothing to show", () => {
+  const statusItem = (id: string, fields: Record<string, unknown>) =>
+    ({
+      id,
+      type: "status",
+      status: "completed",
+      requestId: "req-1",
+      itemIndex: 0,
+      ts: 1000,
+      message: "",
+      ...fields,
+    }) as unknown as OutputItem;
+
+  it("renders no row wrapper for it", () => {
+    const { container } = renderStreamView({
+      requestGroups: [makeGroup([statusItem("empty-1", {}), statusItem("empty-2", {})])],
+      streamStatus: "completed",
+    });
+    expect(container.querySelectorAll(".cursor-pointer")).toHaveLength(0);
+  });
+
+  it("still renders a count-only status row", () => {
+    const { container } = renderStreamView({
+      requestGroups: [makeGroup([statusItem("count-1", { sideChainTasks: 2 })])],
+      streamStatus: "completed",
+    });
+    expect(screen.getByText("side chains: 2 pending")).toBeInTheDocument();
+    expect(container.querySelectorAll(".cursor-pointer")).toHaveLength(1);
+  });
+});
