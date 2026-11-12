@@ -152,6 +152,9 @@ export const harnessUsageCollection = defineResourceCollection({
   runBy: { flow: HARNESS_USAGE_FLOW },
   // A client reads only its own rows; the view is how a screen reads them, with their ages.
   client: { state: { read: true } },
+  // The hashed account and the server's clocks stay on the server: every client read drops them,
+  // as the view does. The writer and the reader here see them through the handle.
+  secret: ["account", "accountAt", "noSubscriptionAt", "lastAttemptAt"],
 });
 
 /**

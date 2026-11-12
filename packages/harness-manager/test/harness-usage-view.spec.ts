@@ -9,10 +9,11 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient } from "@flow-state-dev/client";
+import { defineFlow } from "@flow-state-dev/core";
 import type { HarnessUsageReader, HarnessUsageReading } from "@flow-state-dev/core/harness";
 import { createFlowApiRouter, createFlowRegistry, disposeFlowApiRouter } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
-import { harnessUsageFlow } from "../src/harness-usage";
+import { HARNESS_USAGE, harnessUsageCollection, harnessUsageFlow } from "../src/harness-usage";
 import { harnessUsageViewRef, recheckHarnessUsage } from "../src/browser";
 
 const routers: ReturnType<typeof createFlowApiRouter>[] = [];
@@ -43,6 +44,8 @@ function perCaller() {
 function host(readers: Record<string, HarnessUsageReader>) {
   const registry = createFlowRegistry();
   registry.register(harnessUsageFlow({ readers })() as never);
+  // A session flow that declares the collection, as a harness session flow does: its session reads it too.
+  registry.register(defineFlow({ kind: "harness-session", resources: { [HARNESS_USAGE]: harnessUsageCollection } } as never)() as never);
   const stores = createInMemoryStores();
   const signIn = (context: { request?: Request }) => {
     const user = context.request?.headers.get("x-user");
@@ -108,5 +111,29 @@ describe("usage, read as a view and re-checked through its writer flow", () => {
     // Four sends, one write session for Alice.
     const sessions = await stores.session.list({ parentage: "all" } as never);
     expect(sessions.filter((session) => session.userId === "alice")).toHaveLength(1);
+  });
+
+  it("never sends a client the account, its clock, a look's no-subscription time or the attempt clock", async () => {
+    const codex = perCaller();
+    const { clientOf } = host({ codex: codex.reader });
+    const alice = clientOf("alice");
+    await recheckHarnessUsage(alice);
+    const hidden = ["account", "accountAt", "noSubscriptionAt", "lastAttemptAt"];
+
+    // Read by scope.
+    const page = await alice.resource(harnessUsageCollection).list();
+    expect(page.items.map((entry) => (entry.value as { plan?: unknown }).plan)).toEqual(["plan-alice"]);
+    for (const entry of page.items) for (const field of hidden) expect(entry.value).not.toHaveProperty(field);
+
+    // Read through a session of a flow that declares it.
+    const session = await alice.flow("harness-session").createSession();
+    const manifest = await alice.resources.getResourceManifest(session.id);
+    const ref = (manifest.resources as Array<{ kind: string; pattern?: string; ref: string }>).find((r) => r.pattern === "harness-usage/**")!.ref;
+    const listed = await alice.resources.listCollectionResources(session.id, ref);
+    expect(listed.items).toHaveLength(1);
+    for (const item of listed.items) {
+      expect((item.clientData as { plan?: unknown }).plan).toBe("plan-alice");
+      for (const field of hidden) expect(item.clientData).not.toHaveProperty(field);
+    }
   });
 });
