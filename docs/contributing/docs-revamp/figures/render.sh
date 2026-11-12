@@ -17,7 +17,7 @@ out=${2:-$here/rendered}
 css=$(realpath "$here/../../../../labs/design-system/page.css")
 name=$(basename "$svg" .svg)
 height=$(grep -oE 'viewBox="[0-9.]+ [0-9.]+ [0-9.]+ [0-9.]+' "$svg" | head -1 | grep -oE '[0-9.]+$')
-chrome=${CHROME:-$(ls -d /opt/pw-browsers/chromium-*/chrome-linux*/chrome 2>/dev/null | head -1)}
+chrome=${CHROME:-$(ls -d /opt/pw-browsers/chromium-*/chrome-linux*/chrome 2>/dev/null | head -1 || true)}
 chrome=${chrome:-$(command -v chromium || command -v google-chrome || true)}
 [ -x "$chrome" ] || { echo "no Chromium found: set CHROME to a Chromium or Chrome binary" >&2; exit 1; }
 
