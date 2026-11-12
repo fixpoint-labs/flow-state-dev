@@ -849,11 +849,11 @@ function typedEntries<TEntry extends { block: BlockDefinition }>(
   return toEntries<TEntry>(value.actions);
 }
 
-// FIX-2623.
+// FIX-2623; BP-030.
 /**
  * A flow's `reads` is removed: views replace it. Refused by name, so a flow
  * written for it fails at definition rather than defining cleanly and serving
- * nothing at the route it used to (BP-030).
+ * nothing at the route it used to.
  */
 function rejectReads(kind: string, definition: object): void {
   if (Object.hasOwn(definition, "reads")) {
