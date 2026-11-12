@@ -12,8 +12,8 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createClient } from "@flow-state-dev/client";
-import { taskActionName } from "@flow-state-dev/orchestration/inbox";
+import { ClientHttpError, createClient } from "@flow-state-dev/client";
+import { taskActionName, taskListViewRef } from "@flow-state-dev/orchestration/inbox";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Page } from "playwright";
 import { goalTmpDir, REPO_ROOT, repoPath } from "../../lib/index.mts";
@@ -62,11 +62,13 @@ await runTaskSignals({
     await panel.waitFor();
     return {
       rows: async () => {
-        const listed = await fsd.flow(flow).read<{ ok: boolean; error?: string; tasks: any[] }>(taskActionName("listTasks", BOARD), {}, { sessionId: session.id });
-        // A conversation nothing was ever filed on has no board yet: it holds no rows.
-        if (!listed.ok && listed.error?.startsWith("no_delegation_board")) return [];
-        if (!listed.ok) throw new Error(`listTasks refused: ${listed.error}`);
-        return listed.tasks;
+        try {
+          return (await fsd.view(taskListViewRef(flow, BOARD), {}, { sessionId: session.id })).value as any[];
+        } catch (error) {
+          // A conversation nothing was ever filed on has no board yet: it holds no rows.
+          if (error instanceof ClientHttpError && error.status === 422) return [];
+          throw error;
+        }
       },
       file: async (title, goal) => {
         const out = await act("createTask", { assignee: CODER, title, goal });

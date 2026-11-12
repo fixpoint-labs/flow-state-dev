@@ -1,6 +1,6 @@
 # Resources and Client Data
 
-Resources are **concrete persisted data** attached to a scope. Client data entries are a scope's state fields named in `expose`, carried in the session snapshot. A value computed for a screen is a view ([Views](./flows-and-actions.md#views)), which runs at the scope its data lives in, with no session at user or org scope; a flow read, run on request on a session ([Reads](./flows-and-actions.md#reads)), is the other until it is removed. The target model is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
+Resources are **concrete persisted data** attached to a scope. Client data entries are a scope's state fields named in `expose`, carried in the session snapshot. A value computed for a screen is a view ([Views](./flows-and-actions.md#views)), which runs at the scope its data lives in, with no session at user or org scope. The target model is [Reading, Writing and Installing](../internal/design/reading-writing-installing.md).
 
 ## Resources
 
@@ -399,15 +399,14 @@ type PlanCtx = ContextOf<typeof planResource, "resource">;
 
 ## Client Visibility
 
-Client-facing data reaches a client three ways today, each through a session:
+Client-facing data reaches a client three ways: the first two through a session, a view at the scope its data lives in:
 
 1. **Scope-level `client`** — `expose` for verbatim state fields, carried in the snapshot. Suits a small value a screen shows beside the conversation. A computed value is a view (below).
 2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Suits exposing resource data directly without manual projection.
-3. **Flow `reads`** — a block run on request, answered in the response and stored nowhere, refusing every write ([Reads](./flows-and-actions.md#reads)). Suits an answer computed across resources, such as a task list, that a screen re-reads through the client's live read (`client.live`) when a notice says it changed.
+3. **Views** — a block run on request, answered in the response and stored nowhere, refusing every write ([Views](./flows-and-actions.md#views)). Suits an answer computed across resources, such as a task list; the answer names the topics a screen's live read listens to.
 
 A notice about a resource names its storage path, which a resource's key need not name (`roster` stores under `workforce/workers/…`). Whether a path may belong to what a screen holds is the client's one path rule (`mayHold`, with `storageRootsOf` reading a resource's roots off the flow's manifest): a path at or under one of the roots reads, and an unknown manifest or a pattern with no static prefix rules nothing out, since a false yes costs one read and a false no leaves a screen stale. `client.live` applies it to the `paths` it is given; React's resource hooks apply the same rule to the session stream's `resource_change` items.
 
-A view and a read do overlapping jobs: both compute an answer for a screen. A view runs at its scope, with no session at user or org, and its answer names the change topics a watcher listens to; a read runs on a session and leaves the topics to the screen. Views replace reads.
 
 ### Scope-Level Client Data
 

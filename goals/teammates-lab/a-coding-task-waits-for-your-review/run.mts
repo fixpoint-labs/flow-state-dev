@@ -20,7 +20,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@flow-state-dev/client";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
-import { createInboxClient, inboxItems, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskListViewRef, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import {
   assertPatched,
@@ -41,7 +41,6 @@ const RUNS = Number(process.env.GOAL_RUNS ?? 1);
 const USER = "u_goal";
 /** The board's actions, on the conversation that files the task. */
 const CREATE_TASK = "createTask_tasks";
-const LIST_TASKS = "listTasks_tasks";
 const GET_TASK = "getTask_tasks";
 const UPDATE_TASK = "updateTask_tasks";
 
@@ -57,9 +56,8 @@ type Row = InboxTaskInput & { attempts?: number; output?: { review?: string } | 
 
 /** The filing conversation's board rows. */
 async function rows(fsd: Fsd, flow: string, sessionId: string): Promise<Row[]> {
-  const listed = await fsd.flow(flow).read<{ ok: boolean; error?: string; tasks: Row[] }>(LIST_TASKS, {}, { sessionId });
-  if (!listed.ok) throw new Error(`setup: listTasks refused: ${listed.error}`);
-  return listed.tasks;
+  // The board's view: a refusal (no board here) throws, as the old read's `ok: false` did.
+  return (await fsd.view(taskListViewRef(flow, "tasks"), {}, { sessionId })).value as Row[];
 }
 
 /** Run one of the board's actions on the filing conversation, and return its output. */

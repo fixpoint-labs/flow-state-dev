@@ -635,10 +635,17 @@ export const ENTRIES = [
     term: "View",
     means: "The one hook that computes an answer for a screen (`defineView`, a flow's `views`): it has a scope (no session at user or org) and, for a list, keyed rows. It stores nothing, refuses writes and model calls, and each run records what it read, so its answer names the change topics a watcher listens to. Nothing about its dependencies is declared.",
     decision: "Owner, 2026-11-10 (epic FIX-2618 O2, ER-1); FIX-2619; FIX-2623 D1 (dependencies recorded, not declared) and D2 (no model call)",
-    // "Read" retires as the hook's name. Its matcher lands with FIX-2623, the PR that removes
-    // `reads`, so no check refuses what is still on main (epic ER-9). "View" is not retired in
-    // any other sense: `readTaskView` and "derived views" in prose stay.
+    // "Read" retires as the hook's name, with FIX-2623's removal of `reads` (epic ER-9). "View"
+    // is not retired in any other sense: `readTaskView` and "derived views" in prose stay.
     retires: [
+      {
+        // A flow's `reads`, removed (FIX-2623): the hook is a view. Identifiers only, never the
+        // English word, so FIX-2551's live read, FIX-2624's direct read and "the line reads:" pass.
+        id: "flow-reads",
+        check: "sweep",
+        files: CODE,
+        pattern: /\bReadConfig\b|\bReadEntry\b|\brunRead\b|\bRunReadOptions\b|\btaskToolReads\b|\bhandleRunRead\b|\breads\s*:\s*(board|sessionBoard)\.|\bflow\([^)]*\)\.read\s*[<(]|\/reads\//,
+      },
       {
         // A scope's `client.derived`, removed (FIX-2623): a computed value for a screen is a view.
         // Identifiers only, never the English word, so "derived from" and `derivedCtx` pass.

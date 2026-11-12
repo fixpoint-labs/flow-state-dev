@@ -81,7 +81,6 @@ custom) mount alongside it via the `adapters` option — see
 | GET | `/api/flows/users/:userId/stream` | The push socket, taken as an upgrade by the host; a plain GET answers 426 |
 | POST | `/api/flows/:flowId/actions/:action` | Execute action (new session) |
 | POST | `/api/flows/:flowId/:sessionId/actions/:action` | Execute action (existing session) |
-| POST | `/api/flows/:flowId/:sessionId/reads/:readName` | Run a flow read on an existing session: `200 { output }`, stored nowhere. Fenced as the action route; it never creates a session ([Reads](./flows-and-actions.md#reads)) |
 | POST | `/api/flows/:flowId/views/:viewName` | Run a user or org view with no session: `200 { output, topics }`, stored nowhere. The caller comes from the flow's own resolver ([Views](./flows-and-actions.md#views)) |
 | POST | `/api/flows/:flowId/:sessionId/views/:viewName` | Run a session view on an existing session: `200 { output, topics }`. Fenced as the action route; it never creates a session ([Views](./flows-and-actions.md#views)) |
 | GET | `/api/flows/:flowId/requests/:requestId/stream` | SSE request stream |
