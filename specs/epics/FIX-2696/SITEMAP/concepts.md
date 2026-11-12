@@ -681,4 +681,4 @@ page to page. C-12 onward use the cast named in each entry.
 
 **Sources.** `tools/coding-agents` (rewrite to about 1,000) · `orchestration/harness-manager` (the model only) · `workforce/projects` (the coding half).
 
-**Unsettled.** The kit factories and `workspace` keys (FIX-2627). Whether Codex and Cursor arrive as kits or as fills of the harnesses slot.
+**Unsettled.** The kit factories and `workspace` keys (FIX-2627). Codex and Cursor are fills of the harnesses slot (settled by FIX-2627).

@@ -18,7 +18,7 @@ first three things to change · What isn't wired yet · Next.
 
 **Unsettled, for the whole section.** The kit factories and their config keys (FIX-2627,
 reconciled at FIX-2705 under ER-8). The install path of a starter (O2). The Claude Code-style
-starter's name. Whether Codex and Cursor ship as kits or as fills of the harnesses slot.
+starter's name. (Codex and Cursor are fills of the harnesses slot, not kits: settled by FIX-2627.)
 
 **Figure conventions here.** A kit page's first figure is always *what this installs*: the kit
 as one box set into an app, with its flows, the folder it reads, the slots it opens and the

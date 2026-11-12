@@ -1,0 +1,98 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="D1, where a page kept from today&#x27;s site enters the loop. Chosen: at pass 4. Instead of: at pass 1, or moved with no passes. It comes down to pages already the right size: entering at pass 4 keeps them and checks them, where pass 1 redrafts them and may lose what worked. The price: their facts are checked by pass 5 but never listed on a fact sheet; moved with no passes, wrong facts move too. Locks in: kept pages carry no fact sheet. Flips if: pass 5 finds wrong facts in more than two of the first five kept pages."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where does a page kept from today's site enter the ten-pass loop?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">At pass 4</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="468" y="112">At pass 1</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="708" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="708" y="112">Moved, no passes</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT HAPPENS TO</text>
+    <text class="t-lbl" x="32" y="169">A GOOD PAGE</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="163">+</text>
+    <text class="t-b" x="248" y="162">Kept, and checked</text>
+    <text class="t-s" x="248" y="180">fact, depth, editor, cold</text>
+    <text class="mark minus" x="468" y="163">−</text>
+    <text class="t-b" x="488" y="162">Redrafted from facts</text>
+    <text class="t-s" x="488" y="180">may lose what worked</text>
+    <text class="mark minus" x="708" y="163">−</text>
+    <text class="t-b" x="728" y="162">Kept, unchecked</text>
+    <text class="t-s" x="728" y="180">wrong facts move too</text>
+  </g>
+
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="220">THEIR FACTS</text>
+    <text class="mark minus" x="228" y="223">−</text>
+    <text class="t-b" x="248" y="222">Checked, never listed</text>
+    <text class="t-s" x="248" y="240">pass 5, no fact sheet</text>
+    <text class="mark plus" x="468" y="223">+</text>
+    <text class="t-b" x="488" y="222">Listed and checked</text>
+    <text class="t-s" x="488" y="240">a full fact sheet</text>
+    <text class="mark minus" x="708" y="223">−</text>
+    <text class="t-b" x="728" y="222">Never checked</text>
+    <text class="t-s" x="728" y="240">as today's page has them</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="270" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="291">LOCKS IN</text>
+    <text class="t-b" x="32" y="311">Kept pages carry no fact sheet</text>
+    <text class="t-s" x="32" y="329">the rule covers kept pages in every section</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="270" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="291">FLIPS IF</text>
+    <text class="t-b" x="494" y="311">Pass 5 finds wrong facts in kept pages</text>
+    <text class="t-s" x="494" y="329">more than two of the first five: pass 1</text>
+  </g>
+</svg>

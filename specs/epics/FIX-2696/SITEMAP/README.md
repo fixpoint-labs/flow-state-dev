@@ -131,7 +131,7 @@ A page that depends on one of these says so in its entry, and does not invent th
 | How a starter is installed (O2) | S-2, S-4, B-05, K-02 to K-04 | Product work outside the set |
 | The Claude Code-style starter's name | K-03 | The owner |
 | Kit factories and config keys: `workforce()`, `harnesses()`, `claudeCode()` | S-1, C-12, C-22, C-23, K-05 to K-17, B-04, R-11, R-25, R-27 | FIX-2627; reconciled at FIX-2705 (ER-8) |
-| Codex and Cursor: kits, or fills of the harnesses slot | C-23, K-16, K-17 | FIX-2627 |
+| ~~Codex and Cursor: kits, or fills of the harnesses slot~~ Settled by FIX-2627's approved spec: fills of the harnesses slot | C-23, K-16, K-17 | Settled |
 | "Lab": defined once on K-04, or dropped | K-04 | The owner |
 | Option names for queued runs and dispatch | C-16 | The page's fact sheet |
 
