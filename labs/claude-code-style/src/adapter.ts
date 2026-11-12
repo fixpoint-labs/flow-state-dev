@@ -44,7 +44,7 @@
  *
  * Every watch reads on a change, through the client's live read (`client.live`).
  */
-import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, type Client, type ClientFetch, type SessionConnectionStatus, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
+import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, viewRef, type Client, type ClientFetch, type SessionConnectionStatus, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createInboxClient,
@@ -79,6 +79,7 @@ import {
   WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
+import type { CheckRepositoryView } from "@flow-state-dev/workforce";
 import { isSuspensionWait, type FileContent } from "@flow-state-dev/core/items";
 import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
@@ -265,7 +266,7 @@ export interface WorkingNow {
 /** One coding harness's readiness, as harness-manager's readiness view answers it. */
 export type LabHarness = HarnessReadinessChipRow;
 
-/** Whether a run could check a repository out on this machine: the projects flow's `checkRepository`. */
+/** Whether a run could check a repository out on this machine: the projects flow's `checkRepository` view. */
 export type RepositoryCheck = { usable: true; how: "worktree" | "clone" } | { usable: false; problem: string };
 
 /** Everything the screen reads and writes. */
@@ -321,6 +322,10 @@ export interface LabAdapter {
 // FIX-2624.
 /** The lab flow's harness-manager readiness view (`host.mts`), read by scope with no session. */
 const READINESS_VIEW = harnessReadinessViewRef("harness-readiness");
+
+// FIX-2624.
+/** The projects flow's repository check, a view read with no session. */
+const CHECK_REPOSITORY_VIEW = viewRef<CheckRepositoryView>("projects", "checkRepository");
 
 /** How often an open view reads again, in ms. */
 const READ_EVERY_MS = 1500;
@@ -1283,7 +1288,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
       refuseExisting(created, name);
       return { id: projectRef({ visibility: created.visibility, id: created.project.id }), name: created.project.title };
     },
-    checkRepository: async (repository) => await run("projects", await projects(), "checkRepository", { repository }),
+    checkRepository: async (repository) => (await fsd.view(CHECK_REPOSITORY_VIEW, { repository })).value,
     readHarnesses: async (refresh = false) => (await fsd.view(READINESS_VIEW, { refresh })).value,
     openSession: async (mode, projectId) => {
       const { worker } = modeById(mode);

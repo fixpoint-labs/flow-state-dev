@@ -15,7 +15,7 @@ import { GAPS } from "../src/gaps";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
 import { projectsOf, type LoadedSnapshot } from "../src/lib/derive";
-import { createLabReader, PROJECT_READER_FLOW, readerSessionId, toProject, type Project } from "../src/lib/reads";
+import { createLabReader, PROJECT_PATTERN, toProject, type Project } from "../src/lib/reads";
 import { ASKER_FLOW } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -46,13 +46,11 @@ async function lab(projects: NonNullable<Parameters<typeof openAskLab>[0]>["proj
 }
 
 
-/** The row as the Lab stores it, read over its collection route through the owner's roster session, which the app opened. */
+/** The row as the Lab stores it, read by org scope over the entries route, as the owner. */
 async function storedRow(baseUrl: string, id: string): Promise<Project> {
-  const res = await fetch(`${baseUrl}/api/flows/sessions/${readerSessionId(ASK_LAB_USER_ID, PROJECT_READER_FLOW)}/resources/projects?limit=200`);
-  const body = (await res.json()) as { items: Array<{ clientData: Project }> };
-  const row = body.items.map((i) => i.clientData).find((p) => p.id === id);
-  if (row === undefined) throw new Error(`no project ${id} stored`);
-  return row;
+  const { value } = await connect({ userId: ASK_LAB_USER_ID, baseUrl }).resource({ scope: "org", pattern: PROJECT_PATTERN }).entry(`projects/${id}`).read();
+  if (value === null) throw new Error(`no project ${id} stored`);
+  return value as unknown as Project;
 }
 
 function openApp(baseUrl: string, path: string, userId = ASK_LAB_USER_ID): Client {
@@ -88,13 +86,23 @@ describe("PROJECTS (BR-22, D3)", () => {
     expect(screen.queryByTestId("project-open-hint")).toBeNull();
   });
 
+  // FIX-2624.
+  it("a member who holds no session reads the projects by scope, and the read makes none", async () => {
+    const { baseUrl } = await lab();
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
+    const client = connect({ userId: OTHER, baseUrl });
+    const snapshot = await createLabReader(client).read();
+    expect("projects" in snapshot && snapshot.projects.ok && snapshot.projects.value.rows.map((p) => p.id).sort()).toEqual(["desk", "empty"]);
+    expect(await client.sessions.list({ userId: OTHER, include: "dispatch-runs" })).toEqual([]);
+  });
+
   it("a failed projects read shows its failed-read state with Retry, and Retry reads it again (BR-30)", async () => {
     const { baseUrl } = await lab();
     const real = globalThis.fetch;
     let down = true;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const url = String(input instanceof Request ? input.url : input);
-      if (down && /\/resources\/projects(\?|$)/.test(url)) {
+      if (down && /\/resources\/org\/projects%2F\*\/entries(\?|$)/.test(url)) {
         return Promise.resolve(new Response(JSON.stringify({ error: "projects offline" }), { status: 503 }));
       }
       return real(input, init);
@@ -110,29 +118,22 @@ describe("PROJECTS (BR-22, D3)", () => {
 });
 
 describe("a Lab that declares no projects is empty, not failed (D3)", () => {
-  /** Pass every request on, except a POST that opens a session on `flow`, which answers `status`. */
-  function refuseSessionsOn(flow: string, status: number) {
+  /** Pass every request on, except a read of the projects at either scope, which answers `status`. */
+  function projectsAnswer(status: number) {
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const url = String(input instanceof Request ? input.url : input);
-      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
-      if (method === "POST" && url.includes(`/api/flows/${flow}/sessions`)) {
-        return Promise.resolve(new Response(JSON.stringify({ error: `no ${flow} here` }), { status }));
+      if (/\/resources\/(org|user)\/projects%2F\*\/entries(\?|$)/.test(url)) {
+        return Promise.resolve(new Response(JSON.stringify({ error: `no projects here (${status})` }), { status }));
       }
       return real(input, init);
     });
   }
 
-  it("a pre-project Lab, whose flows declare no projects collection, shows no project and no failure", async () => {
+  // FIX-2624.
+  it("a pre-project Lab, none of whose flows declares a projects collection (a 404), shows no project and no failure", async () => {
     const { baseUrl } = await lab([]);
-    const real = globalThis.fetch;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      const url = String(input instanceof Request ? input.url : input);
-      if (!/\/manifest(\?|$)/.test(url)) return real(input, init);
-      const body = (await (await real(input, init)).json()) as { resources: Array<{ pattern?: string }> };
-      const resources = body.resources.filter((r) => r.pattern !== "projects/*");
-      return new Response(JSON.stringify({ ...body, resources }), { status: 200, headers: { "content-type": "application/json" } });
-    });
+    projectsAnswer(404);
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
     const snapshot = await createLabReader(connect({ userId: ASK_LAB_USER_ID, baseUrl })).read();
     expect("projects" in snapshot && snapshot.projects).toEqual({ ok: true, value: { rows: [] } });
@@ -143,24 +144,14 @@ describe("a Lab that declares no projects is empty, not failed (D3)", () => {
     expect(screen.queryAllByTestId("project-group")).toEqual([]);
   });
 
-  it("a Lab that doesn't serve the roster flow has nothing that declares projects: zero projects, not a failure", async () => {
+  it("a projects read that fails any other way is a failed projects read, never an empty list", async () => {
     const { baseUrl } = await lab();
+    projectsAnswer(503);
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-    await connect({ userId: OTHER, baseUrl }).flow(ASKER_FLOW).createSession({ state: { workerId: "ops.asker" } });
-    refuseSessionsOn(PROJECT_READER_FLOW, 404);
-    const snapshot = await createLabReader(connect({ userId: OTHER, baseUrl })).read();
-    expect("projects" in snapshot && snapshot.projects).toEqual({ ok: true, value: { rows: [] } });
-  });
-
-  it("a roster flow that can't be opened for this user is a failed projects read, never an empty list", async () => {
-    const { baseUrl } = await lab();
-    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-    await connect({ userId: OTHER, baseUrl }).flow(ASKER_FLOW).createSession({ state: { workerId: "ops.asker" } });
-    refuseSessionsOn(PROJECT_READER_FLOW, 503);
     const snapshot = await createLabReader(connect({ userId: OTHER, baseUrl })).read();
     const projects = "projects" in snapshot ? snapshot.projects : undefined;
     expect(projects?.ok).toBe(false);
-    expect(projects?.ok === false && projects.failure.message).toMatch(/no workforce-roster here/);
+    expect(projects?.ok === false && projects.failure.message).toMatch(/no projects here \(503\)/);
   });
 });
 

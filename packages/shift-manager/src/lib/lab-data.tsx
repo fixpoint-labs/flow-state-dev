@@ -169,7 +169,7 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   // lost. The live read drops a notice the snapshot doesn't hear before it
   // merges, so two different unheard notices never widen into a whole read.
   const listed = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.sessions : undefined;
-  const topics = useMemo(() => snapshotTopics(listed === undefined ? [] : heardSessionIds(listed, client.userId)), [listed, client.userId]);
+  const topics = useMemo(() => snapshotTopics(listed === undefined ? [] : heardSessionIds(listed)), [listed]);
   const topicsKey = listed === undefined ? null : JSON.stringify(topics);
   const topicsNow = useRef(topics);
   topicsNow.current = topics;

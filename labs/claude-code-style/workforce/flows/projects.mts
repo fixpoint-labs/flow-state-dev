@@ -16,9 +16,10 @@ import { labDismissals, labPins } from "./user-marks.mts";
 export const PROJECTS_FLOW = "projects";
 
 /**
- * Build the flow: the project blocks' actions and nothing else. Given the
- * host's `checkRepository`, a project on a repository no run could use is
- * refused when it is made, and `checkRepository` answers the picker first.
+ * Build the flow: the project blocks' actions and views and nothing else.
+ * Given the host's `checkRepository`, a project on a repository no run could
+ * use is refused when it is made, and the `checkRepository` view answers the
+ * picker first, with no session.
  */
 export function defineProjectsFlow(options: { checkRepository?: RepositoryCheck } = {}) {
   const projects = defineProjectBlocks(options.checkRepository === undefined ? {} : { checkRepository: options.checkRepository });
@@ -30,7 +31,7 @@ export function defineProjectsFlow(options: { checkRepository?: RepositoryCheck 
     actions: {
       listProjects: projects.actions.listProjects,
       createProject: projects.actions.createProject,
-      ...(projects.actions.checkRepository === undefined ? {} : { checkRepository: projects.actions.checkRepository }),
     },
+    views: { ...projects.views },
   } as never);
 }

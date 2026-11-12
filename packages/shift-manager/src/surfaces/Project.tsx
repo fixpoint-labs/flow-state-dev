@@ -39,7 +39,6 @@ import { EmptyState, Meta, PartialMark, ScreenTitle, SectionFailure, Tabs } from
 import { projectsOf, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import {
-  projectReaderOf,
   readEntryReport,
   readProjectSetup,
   useProjectRead,
@@ -184,20 +183,15 @@ function ProjectBody({
   brief: string | null;
 }) {
   const { refresh } = useLab();
-  const reader = projectReaderOf(snapshot.sessions);
   // Only Board and Workstreams draw entries; Stream and Brief never pay for the read.
   const needsEntries = route.tab === "board" || route.tab === "workstreams";
-  const { read, reread } = useProjectRead(address, needsEntries ? reader : null, snapshot.readAt);
+  const { read, reread } = useProjectRead(address, needsEntries, snapshot.readAt);
   const { setup, retry: retrySetup } = useProjectSetup();
   const roster = useRoster();
   const { workers } = withRoster(snapshot, roster);
   const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries : undefined;
   const readFailure =
-    reader === null ? (
-      <EmptyState title="Your project reads aren't open yet" testId="project-reader-none">
-        Shift Manager reads a project through your own session on the roster, which opens with the Lab's next read.
-      </EmptyState>
-    ) : read !== undefined && "failure" in read ? (
+    read !== undefined && "failure" in read ? (
       <div className="p-4">
         <SectionFailure what="The project" failure={read.failure} onRetry={reread} testId="project-read-failure" />
       </div>
@@ -245,7 +239,6 @@ function ProjectBody({
             address={address}
             route={route}
             entry={entry}
-            readerSessionId={reader!}
             roster={roster}
             workers={workers}
             gaps={gaps}
@@ -408,7 +401,6 @@ function EntryView({
   address,
   route,
   entry,
-  readerSessionId,
   roster,
   workers,
   gaps,
@@ -417,7 +409,6 @@ function EntryView({
   address: ProjectAddress;
   route: ProjectRoute;
   entry: WorkstreamEntry | undefined;
-  readerSessionId: string;
   roster: ReturnType<typeof useRoster>;
   workers: readonly Worker[];
   gaps: Gaps;
@@ -477,7 +468,7 @@ function EntryView({
     );
   }
   const leadName = workers.find((worker) => worker.id === entry.lead)?.displayName ?? entry.lead;
-  return <EntryDetails address={address} entry={entry} leadName={leadName} readerSessionId={readerSessionId} back={back} />;
+  return <EntryDetails address={address} entry={entry} leadName={leadName} back={back} />;
 }
 
 // BR-12.
@@ -486,27 +477,25 @@ function EntryDetails({
   address,
   entry,
   leadName,
-  readerSessionId,
   back,
 }: {
   address: ProjectAddress;
   entry: WorkstreamEntry;
   leadName: string;
-  readerSessionId: string;
   back: ReactNode;
 }) {
   const { client } = useLab();
   const [report, setReport] = useState<Read<string | null>>(undefined);
   useEffect(() => {
     let closed = false;
-    readEntryReport(client, readerSessionId, address, entry)
+    readEntryReport(client, address, entry)
       .then((value) => !closed && setReport({ value }))
       .catch((error: unknown) => !closed && setReport({ failure: describeFailure(error) }));
     return () => {
       closed = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, readerSessionId, entry.key]);
+  }, [client, entry.key]);
   return (
     <article className="mx-auto flex w-full max-w-3xl flex-col gap-2 p-4 text-sm" data-testid="project-entry-details" data-workstream-id={entry.id}>
       {back}

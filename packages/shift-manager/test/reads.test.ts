@@ -12,7 +12,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { connect } from "../src/lib/connection";
 import {
   createLabReader,
-  readerSessionId,
   UNOWNED_SESSION_UNANSWERABLE,
   type LabSnapshot,
 } from "../src/lib/reads";
@@ -162,55 +161,18 @@ describe("the refusal (V2, BR-3)", () => {
     expect(seen.filter((line) => /^GET \/api\/flows\/sessions\/[^/]+$/.test(line))).toEqual([]);
   });
 
-  // FIX-1752: projects are org-wide, so a user the Lab verifies reaches them on a first
-  // visit. Their reading sessions are opened first, and the Lab stamps them with their organization.
-  it("reads the organization off a reading session it opens for a user who holds none", async () => {
+  // FIX-1752: projects are org-wide, so a user the Lab verifies reaches them on a first visit.
+  // FIX-2624: the organization is the identity read's, and nothing is opened to read.
+  it("reads the organization for a user who holds no session, and opens none, however many first reads overlap", async () => {
     // The Lab opens nothing at boot; its verified principal puts the user in `org_first_visit`.
     const { baseUrl } = await lab({ conversations: false, bearer: "ask-lab-secret", orgId: "org_first_visit" });
-    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" });
-    expect(await client.sessions.list({ userId: ASK_LAB_USER_ID })).toEqual([]);
-    const snapshot = loaded(await createLabReader(client).read());
-    expect(snapshot.orgId).toBe("org_first_visit");
-    // The roster flow's is the one reading session opened.
-    expect(snapshot.sessions.map((s) => s.flowKind)).toEqual(["workforce-roster"]);
-  });
-
-  // Two reads of a first visit can overlap: StrictMode replays the boot, or the user opens
-  // two tabs. Either way the user ends up with one reading session on each flow, never two.
-  it("opens one reading session per flow for overlapping first-visit reads, on one page and across two", async () => {
-    const { baseUrl } = await lab({ conversations: false });
-    const page = connect({ baseUrl, userId: ASK_LAB_USER_ID });
-    const [a, b] = await Promise.all([createLabReader(page).read(), createLabReader(page).read()]);
-    // Two tabs: two client, so nothing in the page is shared between them.
-    const tab = () => connect({ baseUrl, userId: "u_two_tabs" });
-    const [c, d] = await Promise.all([createLabReader(tab()).read(), createLabReader(tab()).read()]);
-    for (const snapshot of [a, b, c, d]) expect(loaded(snapshot).orgId).toBe(DEFAULT_ORG_ID);
-    expect((await page.sessions.list({ userId: ASK_LAB_USER_ID })).map((s) => s.flowKind)).toEqual(["workforce-roster"]);
-    expect((await tab().sessions.list({ userId: "u_two_tabs" })).map((s) => s.flowKind)).toEqual(["workforce-roster"]);
-  });
-
-  // Session ids aren't scoped by organization. A user whose reading id is already held in
-  // another of their organizations must still reach this one, not be locked out of it.
-  it("opens the reading session under a fresh id when its one id is held where this organization can't list it", async () => {
-    const { baseUrl } = await lab({ conversations: false });
-    const real = globalThis.fetch;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      const url = String(input instanceof Request ? input.url : input);
-      // The other organization's session under the same id: a conflict, which this listing never shows.
-      if (
-        new RegExp(`/api/flows/${ROSTER_FLOW}/sessions$`).test(url) &&
-        String(init?.body ?? "").includes(readerSessionId(ASK_LAB_USER_ID, ROSTER_FLOW))
-      ) {
-        return new Response(JSON.stringify({ error: "Session already exists" }), { status: 409 });
-      }
-      return real(input, init);
-    });
-    const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
-    const snapshot = loaded(await createLabReader(client).read());
-    expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
-    const readers = (await client.sessions.list({ userId: ASK_LAB_USER_ID })).filter((s) => s.flowKind === ROSTER_FLOW);
-    expect(readers).toHaveLength(1);
-    expect(readers[0]!.id).not.toBe(readerSessionId(ASK_LAB_USER_ID, ROSTER_FLOW));
+    const client = () => connect({ baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" });
+    expect(await client().sessions.list({ userId: ASK_LAB_USER_ID })).toEqual([]);
+    // StrictMode replays the boot, or the user opens two tabs.
+    const page = client();
+    const reads = await Promise.all([createLabReader(page).read(), createLabReader(page).read(), createLabReader(client()).read()]);
+    for (const snapshot of reads) expect(loaded(snapshot).orgId).toBe("org_first_visit");
+    expect(await client().sessions.list({ userId: ASK_LAB_USER_ID, include: "dispatch-runs" })).toEqual([]);
   });
 
   it("a user the roster flow's sign-in refuses gets the Lab's refusal, and nothing else is read", async () => {
