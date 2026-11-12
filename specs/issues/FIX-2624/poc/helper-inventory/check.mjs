@@ -39,15 +39,12 @@ const RULES = [
   ["packages/workforce/src/hire.ts", /`roster\(\)` row/, ["unrelated"]],
   // Shift Manager: readerSessionId. Gone in 3b: the project setup (a view), the message log (a direct
   // read), the organization (the identity read) and the worker inventory (a direct read). What stays
-  // waits: the routines need a home for the declared-routine seed (3d), and the project reads are 3c's. Gone in
-  // 3d: usage (the usage flow's view, and Re-check through its runBy).
+  // waits: the project reads are 3c's. Gone in 3d: usage (the usage flow's view, and Re-check through its
+  // runBy) and routines (the roster flow's routines view, and pause and delete through the collections' runBy).
   ["packages/shift-manager/src/lib/reads.ts", /export function readerSessionId|const openingReaders|withReaderSessions|openingReaders\.|openReaderSession|createSession\(\{ sessionId: readerSessionId|\{@link readerSessionId\}/, ["helper"]],
   ["packages/shift-manager/src/lib/reads.ts", /through Workforce's `roster\(\)`/, ["unrelated"]],
   ["packages/shift-manager/src/lib/projects.ts", /getCollectionResourceState\(readerSessionId|listCollectionResources\(readerSessionId|getCollectionResourceContent\(readerSessionId/, ["direct-read"]],
   ["packages/shift-manager/src/lib/projects.ts", /readerSessionId: string|readerSessionId === null|readProject\(client, readerSessionId|\[client, readerSessionId|`readerSessionId` is `null`/, ["carrier"]],
-  ["packages/shift-manager/src/lib/routines.ts", /readerSessionId, LIST_ROUTINES_ACTION/, ["view"]],
-  ["packages/shift-manager/src/lib/routines.ts", /runAction\(client, ROSTER_FLOW, readerSessionId, verb/, ["runby-write"]],
-  ["packages/shift-manager/src/lib/routines.ts", /readerSessionId: string \| null|readerSessionId === null|\[client, readerSessionId/, ["carrier"]],
   ["packages/shift-manager/src/lib/snapshot-subscribe.ts", /readerSessionId/, ["helper"]],
   ["packages/shift-manager/src/surfaces/Project.tsx", /readEntryReport\(client, readerSessionId/, ["direct-read"]],
   ["packages/shift-manager/src/surfaces/Project.tsx", /readerSessionId/, ["carrier"]],
