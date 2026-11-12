@@ -1,4 +1,4 @@
-import type { Config } from "@docusaurus/types";
+import type { Config, PluginConfig, PluginModule } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 import { inkTheme } from "./src/prismThemes";
 import apiReferencePlugin from "./scripts/api-reference/plugin.mjs";
@@ -16,6 +16,16 @@ const algolia: Preset.ThemeConfig["algolia"] =
         indexName: "flow-state-dev",
       }
     : undefined;
+
+const apiReference: PluginConfig[] =
+  process.env.FSD_API_REFERENCE === "1"
+    ? [
+        [
+          apiReferencePlugin as PluginModule,
+          { id: "api", path: ".api-reference", routeBasePath: "docs/reference/api" },
+        ],
+      ]
+    : [];
 
 const config: Config = {
   title: "flow-state.dev",
@@ -163,14 +173,7 @@ const config: Config = {
     // a build into a scratch folder that is never deployed, and it has no sidebar entry; the
     // cutover adds both. FSD_API_REFERENCE_SKIP_TYPES=1 skips the packages' types build when
     // the caller has just run it.
-    ...(process.env.FSD_API_REFERENCE === "1"
-      ? [
-          [
-            apiReferencePlugin,
-            { id: "api", path: ".api-reference", routeBasePath: "docs/reference/api" },
-          ] as const,
-        ]
-      : []),
+    ...apiReference,
   ],
 
   themeConfig: {
