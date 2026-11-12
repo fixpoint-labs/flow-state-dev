@@ -81,6 +81,11 @@ const SITEMAP_CATALOG = `# Sitemap · Catalog
 **B-09 · Deploy to Railway** · \`build/deploy/railway\` · 600 words
 Steps: a Node server. Source: \`guides/deploying-to-railway\` (keep).
 `;
+const SITEMAP_REFERENCE = `# Sitemap · Reference
+
+**R-32 · Webhooks and inbound transports** · \`reference/webhooks\`
+Tables: binding fields · verification. Lookups: What is returned? · Who calls? Sources: \`server/webhooks\` (keep, trim) · \`advanced/inbound-transports\`. From: C-13, B-12 to B-14.
+`;
 
 describe("check-docs-page", () => {
   let root;
@@ -92,6 +97,7 @@ describe("check-docs-page", () => {
       [`${SITEMAP}/README.md`]: "# Sitemap\n",
       [`${SITEMAP}/concepts.md`]: SITEMAP_CONCEPTS,
       [`${SITEMAP}/catalog.md`]: SITEMAP_CATALOG,
+      [`${SITEMAP}/reference.md`]: SITEMAP_REFERENCE,
       [at("clean.md")]: clean,
       [at("clean.record.md")]: record("C-07"),
       [at("clean.facts.md")]: "# Facts\n",
@@ -129,6 +135,18 @@ describe("check-docs-page", () => {
       [at("skip-no-id.record.md")]: record("C-07", { 3: "Skipped: kept." }).replace(/^Sitemap: .*\n/m, ""),
       [at("skip-unknown-id.md")]: clean,
       [at("skip-unknown-id.record.md")]: record("C-99", { 3: "Skipped: kept." }),
+      [at("skip-unmoved-source.md")]: page("Webhooks and inbound transports", "Tables.", "reference"),
+      [at("skip-unmoved-source.record.md")]: record("R-32", { 3: "Skipped: kept." }),
+      [at("skip-cold-read.md")]: clean,
+      [at("skip-cold-read.record.md")]: record("C-07", { 9: "Skipped: no cold-read agents were run." }),
+      [at("not-sampled-early.md")]: clean,
+      [at("not-sampled-early.record.md")]: record("C-07", { 5: "Not sampled." }),
+      [at("four-backticks.md")]: page("Four", "Shown:\n\n````md\n```ts\nconst a = 1;\n```\n````\n\nAfter.\n\n```ts\nconst b = 2;\n```"),
+      [at("four-backticks.record.md")]: record("C-07"),
+      [at("tildes.md")]: page("Tildes", "~~~ts\nconst a = 1;\n~~~\n\n~~~ts title=\"a.ts\"\n```\n~~~"),
+      [at("tildes.record.md")]: record("C-07"),
+      [at("unclosed.md")]: page("Unclosed", "Text.\n\n```ts title=\"a.ts\"\nconst a = 1;"),
+      [at("unclosed.record.md")]: record("C-07"),
     });
   });
   after(() => rmSync(root, { recursive: true, force: true }));
@@ -195,6 +213,72 @@ describe("check-docs-page", () => {
     fails("skip-wrong-title.md", /skipped for K-22 "Plan and Execute", and the page's title is "Something else"/);
     fails("skip-no-id.md", /no `Sitemap: <id>` line/);
     fails("skip-unknown-id.md", /the sitemap has no entry C-99/);
+  });
+
+  it("refuses a skipped draft whose entry leaves a source with no verdict on the page", () => {
+    fails("skip-unmoved-source.md", /sitemap lists R-32 as neither/);
+  });
+
+  it("refuses a skip mark on any pass but the draft, and `Not sampled` on any but the owner read", () => {
+    fails("skip-cold-read.md", /record: pass 9 is marked skipped; only pass 3 may be/);
+    fails("not-sampled-early.md", /record: pass 5 says `Not sampled`; only pass 10 may/);
+  });
+
+  it("closes a fence only on its own character at its length or longer", () => {
+    // Only the heading and the prose around the fences count as words.
+    assert.match(fails("four-backticks.md", /1 ts code block\(s\) with no title="path"/), /\(concept, 3 words\)/);
+    assert.match(fails("tildes.md", /1 ts code block\(s\) with no title="path"/), /\(concept, 1 words\)/);
+  });
+
+  it("fails a page that ends inside a fence", () => {
+    fails("unclosed.md", /a ```ts fence opened on line \d+ is never closed/);
+  });
+
+  it("fails a record or fact sheet whose page is gone, in a default run", () => {
+    const orphanRoot = mkdtempSync(join(tmpdir(), "docs-page-orphan-"));
+    try {
+      plant(orphanRoot, {
+        [at("a.md")]: page("A", "Fine."),
+        [at("a.record.md")]: record("C-07"),
+        [at("gone.record.md")]: record("C-07"),
+        [at("gone.facts.md")]: "# Facts\n",
+      });
+      const { status, out } = check(orphanRoot);
+      assert.equal(status, 1, out);
+      assert.match(out, /FAIL docs\/contributing\/docs-revamp\/pages\/gone\.record\.md: its page gone\.md does not exist/);
+      assert.match(out, /FAIL docs\/contributing\/docs-revamp\/pages\/gone\.facts\.md: its page gone\.md does not exist/);
+      assert.match(out, /ok {3}docs\/contributing\/docs-revamp\/pages\/a\.md/);
+    } finally {
+      rmSync(orphanRoot, { recursive: true, force: true });
+    }
+  });
+
+  describe("--sitemap, the parse the skipped-draft rule reads", () => {
+    // Golden test against the real sitemap: a reword of its prose that flips an entry to kept (and
+    // so lets a pass-3 skip through) changes this list, and the change has to be made here too.
+    it("parses the repository's sitemap into the pinned kept, piloted and drafted entries", () => {
+      const res = spawnSync(process.execPath, [SCRIPT, "--sitemap"], { encoding: "utf8" });
+      assert.equal(res.status, 0, res.stdout + res.stderr);
+      assert.deepEqual(res.stdout.trim().split("\n"), [
+        "151 entries: 51 kept, 3 piloted, 1 drafted",
+        "kept: B-08 B-09 B-10 B-11 B-12 B-13 B-14 B-15 B-16 B-17 B-19 B-20 B-21 B-22 B-23 B-24 B-28 B-29 B-30 B-33 B-34 B-35 B-36 B-37 C-11 K-09 K-20 K-21 K-22 K-23 K-24 K-25 K-26 K-27 K-28 K-29 K-30 K-31 K-32 K-33 K-34 K-35 K-36 K-37 K-38 K-39 K-40 K-41 K-43 R-18 R-39",
+        "piloted: C-21 C-22 S-1",
+        "drafted: C-02",
+      ]);
+    });
+
+    it("fails loudly on a line that names an entry in a shape it cannot read", () => {
+      const odd = mkdtempSync(join(tmpdir(), "docs-page-sitemap-"));
+      try {
+        plant(odd, { [`${SITEMAP}/x.md`]: "# X\n\n### C-03: Generators\n\n| Id | Page | Notes |\n| --- | --- | --- |\n| K-50 | Odd | n |\n" });
+        const res = check(odd, "--sitemap");
+        assert.equal(res.status, 1, res.out);
+        assert.match(res.out, /x\.md:3: an entry the sitemap parse cannot read: ### C-03: Generators/);
+        assert.match(res.out, /x\.md:7: an entry the sitemap parse cannot read: \| K-50/);
+      } finally {
+        rmSync(odd, { recursive: true, force: true });
+      }
+    });
   });
 
   it("fails a named file that does not exist", () => {
@@ -281,6 +365,35 @@ describe("check-docs-page", () => {
       assert.equal(res.status, 1, res.out);
       assert.match(res.out, /FAIL docs\/contributing\/docs-revamp\/pages\/a\.md[\s\S]*no record/);
       change({ [at("a.record.md")]: record("C-07") });
+    });
+
+    it("fails a change that deletes a page and leaves its record", () => {
+      const res = change({ [at("a.md")]: null });
+      assert.equal(res.status, 1, res.out);
+      assert.match(res.out, /FAIL docs\/contributing\/docs-revamp\/pages\/a\.record\.md: its page a\.md does not exist/);
+      change({ [at("a.md")]: page("A", "Fine.") });
+    });
+
+    it("stops on a git failure reading the base record, other than the record not being there", () => {
+      const broken = mkdtempSync(join(tmpdir(), "docs-page-git-broken-"));
+      const run = (...a) => spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: broken, encoding: "utf8" });
+      try {
+        run("init", "-q");
+        plant(broken, { [at("a.md")]: page("A", "Fine."), [at("a.record.md")]: record("C-07") });
+        run("add", ".");
+        run("commit", "-qm", "base");
+        plant(broken, { [at("a.md")]: page("A", "Fine, and edited.") });
+        run("commit", "-qam", "edit");
+        // Drop the base record's blob: the diff still names the page, and reading the record fails.
+        const blob = run("rev-parse", `HEAD^1:${at("a.record.md")}`).stdout.trim();
+        rmSync(join(broken, ".git/objects", blob.slice(0, 2), blob.slice(2)));
+        const res = check(broken, "--changed-since", "HEAD^1");
+        assert.notEqual(res.status, 0, res.out);
+        assert.doesNotMatch(res.out, /^ok /m);
+        assert.match(res.out, /git show/);
+      } finally {
+        rmSync(broken, { recursive: true, force: true });
+      }
     });
 
     it("checks every page when the change edits the sitemap", () => {

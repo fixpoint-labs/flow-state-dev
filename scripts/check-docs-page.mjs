@@ -7,7 +7,9 @@
  * fenced at any indent (an example inside a list item counts). Code blocks and figures are not
  * capped: a concept page shows its idea in as many short examples and figures as it needs (the
  * brief's concept/reference contract). Frontmatter, code blocks, MDX imports and figures (a
- * `<Figure … />` line, with its caption and description) are not counted as words.
+ * `<Figure … />` line, with its caption and description) are not counted as words. A fence is
+ * read as CommonMark reads it (backticks or tildes, closed by the same character at the opener's
+ * length or longer), and a page that ends inside one fails.
  *
  * Record rules: every page has a `<page>.record.md` beside it, next to its `<page>.facts.md`.
  * The record names the page's sitemap entry and has one section per pass, plus the rows the depth
@@ -25,10 +27,12 @@
  * A section is matched by its number; its body may not be empty. Pass 3's body may start with
  * `Skipped` (and say why) only on a page the sitemap lists as kept, piloted or drafted, and whose
  * `title` is that entry's title. Kept means a source verdict of *Keep* or *Keep, trim* (an audit
- * note after a `;` is allowed), with every other source moved off the page (`to …`). Pass 10's
- * body starts with `Read` or `Not sampled`. `Reference rows` may say `None.`
+ * note after a `;` is allowed), with every other source moved off the page (`to …`); a source with
+ * no verdict is not moved off. Pass 10's body starts with `Read` or `Not sampled`. No other pass
+ * may start with `Skipped` or `Not sampled`. `Reference rows` may say `None.`
  *
  * A page edited by a change needs a new pass 4 and pass 5 entry in that change (`--changed-since`).
+ * A record or fact sheet whose page is gone fails.
  *
  *   node scripts/check-docs-page.mjs                    every page under the default root, with
  *                                                       its record. What CI runs on main
@@ -38,6 +42,10 @@
  *   node scripts/check-docs-page.mjs <page.md> [...]    the page rules for the pages named: pass 4
  *                                                       runs this before passes 5 to 10 exist.
  *                                                       `--record` checks their records too
+ *   node scripts/check-docs-page.mjs --sitemap          the sitemap as the skipped-draft rule reads
+ *                                                       it: the kept, piloted and drafted ids. A
+ *                                                       line naming an entry in a shape the parse
+ *                                                       cannot read fails it
  *   --root <dir>   the repository the default paths resolve against (default: this one)
  *
  * Exits 1 when any page fails, and when it is given no page to check: a default root with no page
@@ -46,7 +54,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Moves to apps/docs/{docs,guides} at cutover (FIX-2705).
@@ -63,14 +71,37 @@ const BANNED = [
 const PASSES = 10;
 const SIDECAR = /\.(record|facts)\.md$/;
 
+/**
+ * A page's fenced code blocks, as CommonMark reads them: a fence closes only on a line of the
+ * opener's character (backtick or tilde) at least as long. Returns the page without its fenced
+ * lines, each opening fence line, and the one left open at the end of the page, if any.
+ */
+function fencesOf(raw) {
+  const kept = [];
+  const openers = [];
+  let open = null;
+  raw.split("\n").forEach((line, i) => {
+    const fence = line.match(/^[ \t]*(`{3,}|~{3,})(.*)$/);
+    if (!open) {
+      if (fence && !(fence[1][0] === "`" && fence[2].includes("`"))) {
+        open = { marker: fence[1], line: i + 1, text: fence[1] + (fence[2].trim().split(/\s/)[0] ?? "") };
+        openers.push(line);
+      } else kept.push(line);
+    } else if (fence && fence[1][0] === open.marker[0] && fence[1].length >= open.marker.length && !fence[2].trim()) {
+      open = null;
+    }
+  });
+  return { rest: kept.join("\n"), openers, unclosed: open };
+}
+
 /** The page rules over one page's text; returns its type, word count and problems. */
 function pageProblems(raw) {
   const front = raw.match(/^---\n([\s\S]*?)\n---\n/);
   const type = front?.[1].match(/^type:\s*["']?([\w-]+)["']?\s*$/m)?.[1];
   const title = front?.[1].match(/^title:\s*["']?(.*?)["']?\s*$/m)?.[1];
-  const prose = raw
-    .replace(/^---\n[\s\S]*?\n---\n/, "")
-    .replace(/```[\s\S]*?```/g, "")
+  // Frontmatter becomes blank lines, so a fence's line number is the page's.
+  const { rest, openers, unclosed } = fencesOf(raw.replace(/^---\n[\s\S]*?\n---\n/, (m) => "\n".repeat(m.split("\n").length - 1)));
+  const prose = rest
     .replace(/^\*.*Description for the site's `?Figure`?:.*\*$/gm, "")
     .replace(/^<Figure\b.*\/>$/gm, "")
     .replace(/^import .* from "[^"]+";$/gm, "");
@@ -79,10 +110,9 @@ function pageProblems(raw) {
   if (!type) problems.push("no `type` in frontmatter");
   else if (type !== "reference" && !BUDGET[type]) problems.push(`unknown \`type\` "${type}"`);
   else if (BUDGET[type] && words > BUDGET[type]) problems.push(`${words} words, budget ${BUDGET[type]}`);
-  // Opening fences only: a fence opens at an even position in the page's fence sequence.
-  const fences = raw.match(/^[ \t]*```[^\n]*$/gm) ?? [];
-  const untitled = fences.filter((f, i) => i % 2 === 0 && /^[ \t]*```tsx?\b(?![^\n]*title=)/.test(f)).length;
+  const untitled = openers.filter((f) => /^[ \t]*(`{3,}|~{3,})tsx?\b(?![^\n]*title=)/.test(f)).length;
   if (untitled) problems.push(`${untitled} ts code block(s) with no title="path"`);
+  if (unclosed) problems.push(`a ${unclosed.text} fence opened on line ${unclosed.line} is never closed`);
   const text = prose.replace(/`[^`]*`/g, "");
   for (const word of BANNED) {
     const hits = text.match(new RegExp(`\\b${word}\\b`, "gi"));
@@ -109,11 +139,16 @@ function isKept(verdicts) {
   return kept.length > 0 && verdicts.map(verdict).every((v) => v === "keep" || v === "keep, trim" || v.startsWith("to "));
 }
 
-let sitemapCache;
-/** Every sitemap entry by id: its title and whether it is kept, piloted or drafted. Read once, on the first skipped draft. */
+const sitemapCache = new Map();
+/**
+ * Every sitemap entry by id: its title and whether it is kept, piloted or drafted. Read once per
+ * sitemap directory, on the first skipped draft. Throws on a line that names an entry in a shape
+ * this parse does not read, so a reworded entry cannot quietly change what a skip may claim.
+ */
 function sitemap(dir) {
-  if (sitemapCache) return sitemapCache;
+  if (sitemapCache.has(dir)) return sitemapCache.get(dir);
   const entries = new Map();
+  const unread = [];
   const files = readdirSync(dir).filter((f) => f.endsWith(".md") && f !== "README.md");
   if (!files.length) throw new Error(`no sitemap section files in ${dir}`);
   const ID = String.raw`([SCKBR]-\d{1,2})`;
@@ -123,30 +158,39 @@ function sitemap(dir) {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       // A row of a table whose last column is the audit's source verdict.
-      if (/^\|\s*Id\s*\|/.test(line)) header = line.split("|").map((c) => c.trim());
+      if (/^\|/.test(line) && /^\|[\s|:-]+\|$/.test(lines[i + 1] ?? "")) header = line.split("|").map((c) => c.trim());
       const row = line.match(new RegExp(`^\\|\\s*${ID}\\s*\\|`));
-      if (row && header.at(-2) === "Source verdict") {
+      if (row && header[1] === "Id" && header.at(-2) === "Source verdict") {
         const cells = line.split("|").map((c) => c.trim());
         entries.set(row[1], { title: cells[2], status: isKept([cells.at(-2)]) ? "kept" : null });
         continue;
       }
       // A heading entry (`### C-02 · Blocks`), or a one-paragraph one (`**B-13 · Title** · …`).
       const head = line.match(new RegExp(`^### ${ID} · (.+)$`)) ?? line.match(new RegExp(`^\\*\\*${ID} · (.+?)\\*\\*`));
-      if (!head) continue;
+      if (!head) {
+        // Any other line that opens on an id, bar a heading over a range of table rows (`### K-20 to K-27 · …`).
+        const named = new RegExp(`^(#{1,6} |\\*\\*|\\|\\s*)${ID}\\b`).test(line);
+        if (named && !new RegExp(`^### ${ID} to ${ID} · `).test(line)) unread.push(`${file}:${i + 1}: an entry the sitemap parse cannot read: ${line}`);
+        continue;
+      }
       let end = i + 1;
       const stop = line.startsWith("###") ? /^(#{1,3} |---$)/ : /^(\s*$|#{1,3} |\*\*[SCKBR]-\d)/;
       while (end < lines.length && !stop.test(lines[end])) end++;
       const body = lines.slice(i, end).join("\n");
       const slugLine = line.startsWith("###") ? (lines.slice(i + 1, end).find((l) => l.trim()) ?? "") : line;
-      const sources = body.match(/Sources?[.:]\**\s*(.*)/)?.[1] ?? "";
-      const verdicts = [...sources.matchAll(/\(([^()]*)\)/g)].map((m) => m[1]);
+      // The sources run to the next label (`From: …`); a `·` separates them, and each source's
+      // verdict is its last parenthesis. A source with none has no verdict, and is not moved off.
+      const sources = (body.match(/Sources?[.:]\**\s*(.*)/)?.[1] ?? "").split(/\.\s+(?=[A-Z][\w ]*:)/)[0];
+      const verdicts = sources ? sources.split(" · ").map((s) => [...s.matchAll(/\(([^()]*)\)/g)].at(-1)?.[1] ?? "") : [];
       const status = /· piloted\b/.test(slugLine) ? "piloted"
         : /· drafted\b/.test(slugLine) ? "drafted"
         : isKept(verdicts) ? "kept" : null;
       entries.set(head[1], { title: head[2].trim(), status });
     }
   }
-  return (sitemapCache = entries);
+  if (unread.length) throw new Error(unread.join("\n"));
+  sitemapCache.set(dir, entries);
+  return entries;
 }
 
 /** A record's sections, by pass number (or heading), each to its trimmed body. */
@@ -178,6 +222,9 @@ function recordProblems(pagePath, title, before) {
   for (let n = 1; n <= PASSES; n++) {
     if (!sections.has(String(n))) problems.push(`record: no pass ${n}`);
     else if (!sections.get(String(n))) problems.push(`record: pass ${n} is empty`);
+    // A pass that did not run may say so only where the loop allows it: the draft, and the owner read.
+    else if (n !== 3 && /^Skipped\b/.test(sections.get(String(n)))) problems.push(`record: pass ${n} is marked skipped; only pass 3 may be`);
+    else if (n !== PASSES && /^Not sampled\b/.test(sections.get(String(n)))) problems.push(`record: pass ${n} says \`Not sampled\`; only pass ${PASSES} may`);
   }
   if (!sections.has("Reference rows")) problems.push("record: no `Reference rows` section");
   const owner = sections.get(String(PASSES));
@@ -203,11 +250,23 @@ function pagesUnder(dir) {
     .sort();
 }
 
+/** The records and fact sheets among `paths` (absolute) that are on disk and whose page is not. */
+function orphansOf(paths) {
+  return paths.filter((f) => SIDECAR.test(f) && existsSync(f) && !existsSync(f.replace(SIDECAR, ".md"))).sort();
+}
+
+/** Every record and fact sheet under `dir`. */
+function sidecarsUnder(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { recursive: true }).map(String).filter((f) => SIDECAR.test(f)).map((f) => join(dir, f));
+}
+
 /**
  * The pages a change since `ref` touched: a page, its record or its fact sheet, deleted ones
  * included, so a page whose record went is checked. A change to this script or to the sitemap can
  * break a record it never touched, so it checks every page. A page the change edited carries the
- * record its base had (none for a page new to the loop).
+ * record its base had (none for a page new to the loop). `orphans` are the records and fact sheets
+ * in the change whose page is gone. A git failure other than the base having no record throws.
  */
 function changedSince(ref) {
   const git = (...a) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -218,15 +277,20 @@ function changedSince(ref) {
   const named = inPages.map((f) => join(ROOT, f.replace(SIDECAR, ".md")));
   const all = changed.some((f) => !f.startsWith(`${PAGES}/`)) ? pagesUnder(join(ROOT, PAGES)) : [];
   const files = [...new Set([...all, ...named])].filter(existsSync).sort();
+  const sidecars = named.flatMap((p) => [".record.md", ".facts.md"].map((ext) => p.replace(/\.md$/, ext)));
+  const orphans = orphansOf(all.length ? sidecarsUnder(join(ROOT, PAGES)) : sidecars);
   const before = new Map();
   for (const rel of inPages.filter((f) => !SIDECAR.test(f))) {
+    const at = `${ref}:${rel.replace(/\.md$/, ".record.md")}`;
     try {
-      before.set(join(ROOT, rel), git("show", `${ref}:${rel.replace(/\.md$/, ".record.md")}`));
-    } catch {
+      before.set(join(ROOT, rel), git("show", at));
+    } catch (err) {
       // The base had no record: the page is new to the loop, and nothing in it is stale.
+      if (err.status === 128 && /does not exist|exists on disk, but not in/.test(String(err.stderr))) continue;
+      throw new Error(`git show ${at} failed: ${String(err.stderr ?? err.message).trim()}`);
     }
   }
-  return { files, before };
+  return { files, before, orphans };
 }
 
 const args = process.argv.slice(2);
@@ -240,14 +304,23 @@ const flag = (name) => {
 const ROOT = resolve(flag("--root") ?? fileURLToPath(new URL("..", import.meta.url)));
 const record = args.includes("--record") && args.splice(args.indexOf("--record"), 1).length > 0;
 const since = flag("--changed-since");
+if (args.includes("--sitemap")) {
+  const entries = [...sitemap(join(ROOT, SITEMAP))].sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true }));
+  const ids = (status) => entries.filter(([, e]) => e.status === status).map(([id]) => id);
+  const [kept, piloted, drafted] = ["kept", "piloted", "drafted"].map(ids);
+  console.log(`${entries.length} entries: ${kept.length} kept, ${piloted.length} piloted, ${drafted.length} drafted`);
+  console.log(`kept: ${kept.join(" ")}\npiloted: ${piloted.join(" ")}\ndrafted: ${drafted.join(" ")}`);
+  process.exit(0);
+}
 // Pass 4 names its page before passes 5 to 10 exist; every other run reads the record.
 const records = record || Boolean(since) || !args.length;
 
 let files;
 let before = new Map();
+let orphans = [];
 if (since) {
-  ({ files, before } = changedSince(since));
-  if (!files.length) {
+  ({ files, before, orphans } = changedSince(since));
+  if (!files.length && !orphans.length) {
     console.log(`no page under ${PAGES} changed since ${since}; nothing to check`);
     process.exit(0);
   }
@@ -259,9 +332,13 @@ if (since) {
     console.log(`FAIL no page found under ${PAGES}`);
     process.exit(1);
   }
+  orphans = orphansOf(sidecarsUnder(join(ROOT, PAGES)));
 }
 
-let failed = false;
+let failed = orphans.length > 0;
+for (const orphan of orphans) {
+  console.log(`FAIL ${relative(ROOT, orphan)}: its page ${basename(orphan.replace(SIDECAR, ".md"))} does not exist`);
+}
 for (const file of files) {
   const rel = relative(ROOT, file);
   const shown = rel.startsWith("..") ? file : rel;
