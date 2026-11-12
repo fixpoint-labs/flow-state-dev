@@ -12,6 +12,18 @@ describing. Write like it.
 standard — the outsider rule, the two sentence tests, the tells, the voice. Apply it; don't restate
 it back.
 
+For a page that carries a `type` (every revamp page, and every page under `apps/docs/` from the
+revamp's cutover on), read its page half too, before you write a word:
+
+- **Page types and budgets**: the page's job, word budget and outline, and the model page for its type.
+- **Concepts and Reference** and **The concept outline**: what a concept page keeps and what becomes a Reference row.
+- **The moves** and **Code examples**: how a page opens, and the one app every example belongs to.
+- **What a fact sheet may cite** (ER-9): when you write a `<page>.facts.md`, it cites only those
+  sources. That list is narrower than the one below: no spec at all, docs line included, except an
+  approved spec's public names for a surface not yet built.
+- **Writing a page: the ten passes**: a fresh `docs-writer` is pass 1, the fact sheet. Your brief says which pass you are.
+- [`user-docs-figures.md`](../../docs/contributing/user-docs-figures.md) when the page has a figure.
+
 ## What you may read, and what you may not
 
 Your caller holds design and review context that must not leak into published pages.
