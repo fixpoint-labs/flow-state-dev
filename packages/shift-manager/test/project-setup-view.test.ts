@@ -1,7 +1,7 @@
 // FIX-2624.
 /**
  * The Lab's project setup is a view: Shift Manager reads which worker each
- * person's project coordinator runs as with no session found or made.
+ * user's project coordinator runs as with no session found or made.
  *
  * What it answers is the Lab's configuration, the same for every caller the
  * flow signs in, so a second user and a second org read the same setup and

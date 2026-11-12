@@ -311,7 +311,7 @@ export const HARNESS_USAGE_ACTION = "harnessUsage";
 // FIX-2624.
 /**
  * The project setup as a user-scope view, read with no session: the worker
- * each person's project coordinator runs as (`projectCoordinator`), or `null`
+ * each user's project coordinator runs as (`projectCoordinator`), or `null`
  * when the tree declares none. The Lab's configuration, the same for every
  * caller; it reads no resource, so its answer names no topic.
  */
@@ -1256,7 +1256,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // Which harnesses can run here: what the start logged, read again on `{ refresh: true }`.
     // A view, read with no session (`harnessReadinessViewRef(PROJECTS_FLOW)`).
     views: {
-      // Which worker each person's project coordinator runs as.
+      // Which worker each user's project coordinator runs as.
       [PROJECT_SETUP_VIEW]: projectSetupView(() => installation.projectCoordinator()?.worker ?? null),
       ...(options.readiness === undefined ? {} : { readiness: harnessReadinessView(options.readiness) }),
     },

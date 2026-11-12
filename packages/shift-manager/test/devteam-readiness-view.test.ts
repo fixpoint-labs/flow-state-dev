@@ -1,8 +1,8 @@
 // FIX-2624.
 /**
  * DevTeam's projects flow serves harness readiness as harness-manager's view:
- * a person reads which harnesses can run here, and Re-checks, with no session
- * found or made for the read. Each signed-in person reads the machine's rows.
+ * a user reads which harnesses can run here, and Re-checks, with no session
+ * found or made for the read. Each signed-in user reads the machine's rows.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,7 +31,7 @@ afterEach(async () => {
 
 const SIGNED_OUT: HarnessReadiness = { ready: false, reason: "Codex is signed out", remedy: "Run `codex login`" };
 
-it("answers each person the machine's readiness rows from the projects flow, Re-checks on refresh, and makes no session", async () => {
+it("answers each user the machine's readiness rows from the projects flow, Re-checks on refresh, and makes no session", async () => {
   const answers: HarnessReadiness[] = [SIGNED_OUT, { ready: true }];
   let checks = 0;
   const readiness = harnessReadiness({
@@ -55,11 +55,11 @@ it("answers each person the machine's readiness rows from the projects flow, Re-
 
   for (const who of [LAB_USERS.owner, LAB_USERS.member]) {
     const answer = await clientOf(who).view(ref, {});
-    expect(answer.value.map((row) => ({ harness: row.harness, ready: row.ready, remedy: row.remedy }))).toEqual([
+    expect(answer.value.map((harness) => ({ harness: harness.harness, ready: harness.ready, remedy: harness.remedy }))).toEqual([
       { harness: "codex", ready: false, remedy: "Run `codex login`" },
     ]);
   }
-  // Re-check from one person checks again; the next reader sees it.
+  // Re-check from one user checks again; the next reader sees it.
   expect((await clientOf(LAB_USERS.member).view(ref, { refresh: true })).value[0]!.ready).toBe(true);
   expect((await clientOf(LAB_USERS.owner).view(ref, {})).value[0]!.ready).toBe(true);
 
