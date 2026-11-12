@@ -53,6 +53,9 @@ import { PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/hos
 import { harnessReadinessViewRef } from "@flow-state-dev/harness-manager/browser";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 
+/** One row of the readiness view, as this goal reads it. */
+type ReadinessRow = { harness: string; ready: boolean; remedy: string | null };
+
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const ALL_LEGS = ["a", "b", "c"] as const;
 const LEGS = new Set((process.env.GOAL_LEG ?? ALL_LEGS.join(",")).split(",").map((l) => l.trim()).filter(Boolean));
@@ -336,9 +339,12 @@ await runGoal(async (failures) => {
         const user = await pageUser(started.origin);
         const person = { userId: user.userId, bearer: user.bearerToken ?? "" };
         // The projects flow's readiness view, read with no session.
-        const read = await connect({ userId: person.userId, baseUrl: started.origin, bearerToken: person.bearer })
+        const read: { rows: ReadinessRow[]; error: string | undefined } = await connect({ userId: person.userId, baseUrl: started.origin, bearerToken: person.bearer })
           .view(harnessReadinessViewRef(PROJECTS_FLOW), {})
-          .then((answer) => ({ rows: answer.value, error: undefined }), (error: unknown) => ({ rows: [], error: String(error) }));
+          .then(
+            (answer) => ({ rows: answer.value as ReadinessRow[], error: undefined }),
+            (error: unknown) => ({ rows: [], error: String(error) }),
+          );
         const claude = read.rows.find((r) => r.harness === "claude-code");
         if (read.error !== undefined || claude?.ready !== false || !String(claude.remedy).includes("ANTHROPIC_API_KEY")) {
           note(`c:read-says-what-to-set (${form})`, JSON.stringify(claude ?? read.error ?? null));
