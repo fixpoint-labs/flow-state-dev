@@ -15,3 +15,5 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-12 | 00be18b2 | n/a | PASS | 27 of 27 built root pages carry their marker (two of them types); with `packages/mcp/dist/index.d.ts` deleted the build exits 1 naming `@flow-state-dev/mcp`. Read 302 built HTML pages. |
+| 2026-11-12 | origin/main 23ef519e (`GOAL_CONTROL=main`) | n/a | FAIL (expected) | `a · carries-the-edited-sentence` 0 of 27 (no built page for any section); `b · fails-naming-the-package`: the build passed with the declaration deleted. The site itself built. |
