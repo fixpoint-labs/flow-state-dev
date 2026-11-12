@@ -288,7 +288,6 @@ Server routes follow a canonical pattern:
 ```
 POST /api/flows/:flowKind/actions/:action
 POST /api/flows/:flowKind/:sessionId/actions/:action
-POST /api/flows/:flowKind/:sessionId/reads/:readName
 POST /api/flows/:flowKind/views/:viewName
 POST /api/flows/:flowKind/:sessionId/views/:viewName
 GET  /api/flows/:flowKind/requests/:requestId/stream
