@@ -11,8 +11,9 @@
  *
  * - {@link formatHarnessReadiness}, the start log's table and the
  *   coordinator's context, from one formatter so the two never disagree;
- * - {@link harnessReadinessAction}, the read a screen draws chips from, with
- *   Re-check as `{ refresh: true }`;
+ * - {@link harnessReadinessView}, the user-scope view a screen draws chips
+ *   from, read with no session, with Re-check as `{ refresh: true }`, and
+ *   {@link harnessReadinessAction}, the same read as a flow-level action;
  * - {@link harnessReadinessCapability}, a context entry a host adds to its
  *   coordinator's `uses`, so work is filed only on a ready harness;
  * - `refusal(harness)`, a coding flow's gate before a task starts.
@@ -30,8 +31,9 @@
  * - **Opt-in.** Nothing here changes `harnessManager`; a host that installs
  *   none of it sees no difference.
  */
-import { defineCapability, handler } from "@flow-state-dev/core";
+import { defineCapability, defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
 import type { HarnessReadiness, HarnessReadinessCheck } from "@flow-state-dev/core/harness";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /** How long a check may take before it reads as unanswered: 30 s, a cold Codex start. */
@@ -233,11 +235,13 @@ export function formatHarnessReadiness(rows: readonly HarnessReadinessView[]): s
 
 /**
  * The readiness read, as one flow-level action a host puts on a flow:
- * `actions: { harnessReadiness: harnessReadinessAction(readiness) }`.
+ * `actions: { harnessReadiness: harnessReadinessAction(readiness) }`. A screen
+ * reads {@link harnessReadinessView} instead, with no session.
  *
  * Input `{ refresh?: boolean }`; `refresh: true` is Re-check. Output
  * `{ harnesses }`, one {@link HarnessReadinessView} per harness. Zero-model.
  */
+// FIX-2624: Shift Manager's devteam still reads this through its projects flow; it moves to the view with that flow's reads.
 export function harnessReadinessAction(readiness: HarnessReadinessRead) {
   return {
     description:
@@ -250,6 +254,45 @@ export function harnessReadinessAction(readiness: HarnessReadinessRead) {
       execute: async (input) => ({ harnesses: await readiness.read({ refresh: input.refresh === true }) }),
     }),
   };
+}
+
+/** What the readiness view takes: `refresh: true` is Re-check. */
+const readinessViewInputSchema = z.object({ refresh: z.boolean().optional() });
+
+/** What the readiness view answers: one row per harness, keyed by harness. */
+const readinessViewOutputSchema = z.array(harnessReadinessViewSchema);
+
+/** The readiness view, as {@link harnessReadinessView} builds it. Import as a type in client code. */
+export type HarnessReadinessViewDefinition = ViewDefinition<
+  BlockDefinition<typeof readinessViewInputSchema, typeof readinessViewOutputSchema>,
+  "user"
+>;
+
+// FIX-2624.
+/**
+ * The readiness read, as a user-scope view a host installs on a flow:
+ * `views: { readiness: harnessReadinessView(readiness) }`. A screen reads it
+ * with no session (`harnessReadinessViewRef` from `/browser`).
+ *
+ * Input `{ refresh?: boolean }`; `refresh: true` is Re-check. Answers one
+ * {@link HarnessReadinessView} per harness, keyed by harness. The rows are this
+ * machine's, the same for every caller the flow signs in; the view reads no
+ * resource, so its answer names no topic. Zero-model.
+ */
+export function harnessReadinessView(readiness: HarnessReadinessRead): HarnessReadinessViewDefinition {
+  return defineView({
+    scope: "user",
+    key: (readiness) => readiness.harness,
+    description:
+      "Which coding harnesses can run on this machine, and what to do about one that can't. " +
+      "`refresh: true` checks them again.",
+    block: handler({
+      name: "harness-readiness",
+      inputSchema: readinessViewInputSchema,
+      outputSchema: readinessViewOutputSchema,
+      execute: async (input) => readiness.read({ refresh: input.refresh === true }),
+    }),
+  }) as HarnessReadinessViewDefinition;
 }
 
 /** The guidance under the rows in the coordinator's context. */
