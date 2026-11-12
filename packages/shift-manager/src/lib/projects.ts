@@ -21,8 +21,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { topic, viewRef, type Client, type LiveRead, type SessionSummary } from "@flow-state-dev/client";
 import {
+  DONE_STATUS,
   parseWorkstreamEntry,
   projectProgress,
+  STALE_AFTER_MS,
   workstreamsAccessor,
   type ParsedWorkstreamEntry,
   type ProjectProgress,
@@ -146,9 +148,36 @@ export async function readProject(client: Client, readerSessionId: string, addre
   if (row === null) return null;
   const project = toProject(row.clientData, address.visibility);
   if (project === undefined) return null;
+  return withProgress(project, entries, now);
+}
+
+/**
+ * A project read as of `now`: its progress, worked out from its entries by
+ * Workforce's own `projectProgress`, and each entry marked gone quiet by that
+ * same clock. Pure, so a view can work it out again as time passes, with no read.
+ */
+function withProgress(project: Project, entries: readonly Omit<WorkstreamEntry, "stale">[], now: number): ProjectRead {
   const progress = projectProgress(entries, now);
   const quiet = new Set(progress.stale.map((entry) => `${entry.owner}/${entry.id}`));
   return { project, entries: entries.map((entry) => ({ ...entry, stale: quiet.has(`${entry.owner}/${entry.id}`) })), progress };
+}
+
+// BR-19.
+/**
+ * When the next of `read`'s entries goes quiet, by `projectProgress`'s rule (an
+ * unfinished entry unchanged for {@link STALE_AFTER_MS}), or `undefined` when
+ * none will: a quiet entry is one nobody writes, so no notice says so.
+ */
+function nextQuietAt(read: ProjectRead): number | undefined {
+  let next: number | undefined;
+  for (const entry of read.entries) {
+    if (entry.stale || entry.status === DONE_STATUS) continue;
+    const updated = Date.parse(entry.updatedAt);
+    if (!Number.isFinite(updated)) continue;
+    const at = updated + STALE_AFTER_MS;
+    if (next === undefined || at < next) next = at;
+  }
+  return next;
 }
 
 /**
@@ -248,6 +277,19 @@ export function useProjectRead(address: ProjectAddress, readerSessionId: string 
     readAtSeen.current = readAt;
     live.current?.refresh();
   }, [readAt]);
+  // Going quiet is the absence of writes, so the page's own clock says when:
+  // one recompute at the next entry's threshold, with no read, then the next.
+  const landed = read !== undefined && "value" in read ? read.value : null;
+  useEffect(() => {
+    if (landed === null) return;
+    const at = nextQuietAt(landed);
+    if (at === undefined) return;
+    const timer = setTimeout(
+      () => setRead((held) => (held !== undefined && "value" in held && held.value === landed ? { value: withProgress(landed.project, landed.entries, Date.now()) } : held)),
+      Math.max(0, at - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [landed]);
   const reread = useCallback(() => live.current?.refresh(), []);
   return { read, reread };
 }

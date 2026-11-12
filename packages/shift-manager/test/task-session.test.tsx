@@ -22,6 +22,7 @@ const task = {
   row: undefined,
   run: { kind: "open", run },
   waiting: false,
+  gaveUp: false,
   retryRow: vi.fn(),
   retryRun: vi.fn(),
   reportStatus,
