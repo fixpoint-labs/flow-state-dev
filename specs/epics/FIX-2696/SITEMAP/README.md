@@ -26,8 +26,8 @@ that adds, drops or re-homes a page is an amendment here first.
 - **All hand-written prose: 95,200 against about 90,000.** Over by about 5,200, or 6%. The
   estimate counted about 75 pages; naming every page gives 108, because each of the audit's
   "keep" verdicts is a page: eight patterns, six tools, four memory pages, twelve deploy,
-  webhook and schedule recipes. The overshoot is in Catalog (+2,850) and Build (+6,450). Whether to accept
-  it or cut is the first open question below.
+  webhook and schedule recipes. The overshoot is in Catalog (+2,850) and Build (+6,450). The owner
+  accepted it on 2026-11-12 (the first decision below).
 
 "Planned words" is prose only, as `scripts/check-docs-page.mjs` counts it: no code, no
 frontmatter, no figure descriptions.
@@ -135,15 +135,17 @@ A page that depends on one of these says so in its entry, and does not invent th
 | "Lab": defined once on K-04, or dropped | K-04 | The owner |
 | Option names for queued runs and dispatch | C-16 | The page's fact sheet |
 
-## Questions for the owner
+## Decided by the owner, 2026-11-12
 
-1. **The plan is 95,200 words, about 6% over the 90,000 estimate.** Recommendation: accept it.
-   The measure that protects the newcomer is Start + Concepts under 30,000, and that holds.
-   Cutting to 90,000 means merging the six tool pages into two and the three scheduler recipes
-   into one, which undoes "keep" verdicts on pages that are already the right size.
-2. **Concepts has 23 pages, not 20.** The three added are What the browser sees, When something
-   fails, and Testing. Each comes from an audit verdict that needed a home. Recommendation:
-   keep all three; the alternative is to fold Testing and When something fails into Build as
-   recipes, which leaves two ideas everyone needs without a page in the book.
-3. **`guides/projects-on-org-scope` is cut,** where the audit said "rename or cut". Recommendation:
-   cut. It collides with Workforce projects, and C-07 and C-17 cover organization-wide data.
+These were the plan's three questions for the owner. Each is settled; a writing child works from
+the answer and does not reopen it.
+
+1. **The plan stays at 95,200 words, about 6% over the 90,000 estimate.** Accepted as written: the
+   overshoot comes from naming every page the audit kept. The measure that protects the newcomer
+   is Start + Concepts under 30,000, and that holds. The six tool pages and the three scheduler
+   recipes are not merged.
+2. **Concepts keeps all 23 pages, not 20.** The three added are What the browser sees, When
+   something fails, and Testing, each from an audit verdict that needed a home. Testing and When
+   something fails are not folded into Build as recipes.
+3. **`guides/projects-on-org-scope` is cut,** where the audit said "rename or cut". "Project"
+   already means a Workforce project, and C-07 and C-17 cover organization-wide data.
