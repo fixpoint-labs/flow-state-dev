@@ -38,6 +38,8 @@
     "apps/kitchen-sink/flows/**/index.ts",
     // Docusaurus seeds the config, sidebars and pages, not this theme module.
     "apps/docs/src/prismThemes.ts",
+    // The API reference generator runs this in a child process per package, by path.
+    "apps/docs/scripts/api-reference/render-package.mjs",
     // MDX pages import these; no plugin follows an import out of a .md file.
     "apps/docs/src/components/**/index.tsx",
     // Vercel deploys each file under api/ as a Function; nothing imports them.
@@ -270,6 +272,8 @@
     "@cursor/sdk-darwin-x64",
     "@cursor/sdk-linux-arm64",
     "@cursor/sdk-linux-x64",
-    "@cursor/sdk-win32-x64"
+    "@cursor/sdk-win32-x64",
+    // TypeDoc loads it by name from its `plugin` option (apps/docs/scripts/api-reference).
+    "typedoc-plugin-markdown"
   ]
 }

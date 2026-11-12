@@ -2,7 +2,7 @@
  * The API reference generator: one section of Markdown per published package, rendered from
  * the doc comments in the `.d.ts` files each package publishes (FIX-2698).
  *
- * The site build calls `generateApiReference` from `docusaurus.config.ts` when
+ * The site build calls `generateApiReference` (through `plugin.mjs`) when
  * `FSD_API_REFERENCE` is set; the output is generated at each build and never committed.
  * Before the cutover nothing generated is published: the default site build does not run
  * this, and CI's run builds into a scratch folder that is not deployed.
@@ -30,9 +30,9 @@ import { listSections } from "./packages.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DOCS = join(HERE, "..", "..");
-export const REPO_ROOT = join(DOCS, "..", "..");
+const REPO_ROOT = join(DOCS, "..", "..");
 /** Where the site reads the generated Markdown from. Git-ignored. */
-export const DEFAULT_OUT_DIR = join(DOCS, ".api-reference");
+const DEFAULT_OUT_DIR = join(DOCS, ".api-reference");
 const CACHE_DIR = join(DOCS, "node_modules", ".cache", "fsd-api-reference");
 const RENDER = join(HERE, "render-package.mjs");
 

@@ -1,6 +1,7 @@
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 import { inkTheme } from "./src/prismThemes";
+import apiReferencePlugin from "./scripts/api-reference/plugin.mjs";
 
 // Search is Algolia DocSearch. The Vercel Algolia integration puts the app id
 // and the search-only key into the build's environment; the search key is
@@ -155,6 +156,21 @@ const config: Config = {
         ],
       },
     ],
+    // The generated API reference (FIX-2698): one section per published package, built from
+    // the doc comments in the `.d.ts` files each package publishes, at
+    // `/docs/reference/api/<slug>`. Generated into `.api-reference/` at each build and never
+    // committed. Until the cutover it is built only when FSD_API_REFERENCE=1, which CI sets for
+    // a build into a scratch folder that is never deployed, and it has no sidebar entry; the
+    // cutover adds both. FSD_API_REFERENCE_SKIP_TYPES=1 skips the packages' types build when
+    // the caller has just run it.
+    ...(process.env.FSD_API_REFERENCE === "1"
+      ? [
+          [
+            apiReferencePlugin,
+            { id: "api", path: ".api-reference", routeBasePath: "docs/reference/api" },
+          ] as const,
+        ]
+      : []),
   ],
 
   themeConfig: {
@@ -242,29 +258,4 @@ const config: Config = {
   } satisfies Preset.ThemeConfig,
 };
 
-// The generated API reference (FIX-2698): one section per published package, built from the
-// doc comments in the `.d.ts` files each package publishes, at `/docs/reference/api/<slug>`.
-// Generated at each build and never committed. Until the cutover it is built only when
-// FSD_API_REFERENCE=1, which CI sets for a build into a scratch folder that is never deployed,
-// and it has no sidebar entry; the cutover adds both. FSD_API_REFERENCE_SKIP_TYPES=1 skips the
-// packages' types build when the caller has just run it.
-export default async function createConfig(): Promise<Config> {
-  if (process.env.FSD_API_REFERENCE !== "1") return config;
-  // Docusaurus loads this config more than once per build; generate once per process.
-  const memo = globalThis as { fsdApiReference?: Promise<{ outDir: string }> };
-  memo.fsdApiReference ??= import("./scripts/api-reference/generate.mjs").then(
-    ({ generateApiReference }) =>
-      generateApiReference({ skipTypes: process.env.FSD_API_REFERENCE_SKIP_TYPES === "1" }),
-  );
-  const { outDir } = await memo.fsdApiReference;
-  return {
-    ...config,
-    plugins: [
-      ...config.plugins,
-      [
-        "@docusaurus/plugin-content-docs",
-        { id: "api", path: outDir, routeBasePath: "docs/reference/api" },
-      ],
-    ],
-  };
-}
+export default config;

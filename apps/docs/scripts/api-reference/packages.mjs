@@ -15,7 +15,7 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 /** Slug under `reference/api/` → package directory under `packages/`. */
-export const SECTIONS = [
+const SECTIONS = [
   { slug: "core", dir: "core" },
   { slug: "engine", dir: "engine" },
   { slug: "client", dir: "client" },
@@ -46,7 +46,7 @@ export const SECTIONS = [
 ];
 
 /** Published packages that deliberately have no section, and where their reference lives. */
-export const NO_SECTION = {
+const NO_SECTION = {
   "@flow-state-dev/contracts": "reads under core, which re-exports it",
 };
 
@@ -61,7 +61,7 @@ const isInternalSubpath = (sub) => /(^|\/)internal(\/|$)/.test(sub);
  * @param {Record<string, unknown>} pkg a parsed package.json
  * @returns {{ subpath: string, types: string }[]}
  */
-export function publicEntries(pkg) {
+function publicEntries(pkg) {
   const exportsMap = pkg.publishConfig?.exports ?? pkg.exports ?? {};
   const out = [];
   for (const [key, value] of Object.entries(exportsMap)) {
