@@ -6,7 +6,7 @@ dist
 .env.local
 .docusaurus
 apps/docs/build
-# The generated API reference (FIX-2698): built at each site build, never committed.
+# The generated API reference (FIX-2698): written by each FSD_API_REFERENCE=1 site build, never committed.
 apps/docs/.api-reference
 
 # Local tool configs

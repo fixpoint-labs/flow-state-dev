@@ -56,6 +56,7 @@ function generatorVersion() {
   return [
     version("typedoc"),
     version("typedoc-plugin-markdown"),
+    version("typescript"),
     readFileSync(RENDER, "utf8"),
     readFileSync(join(HERE, "packages.mjs"), "utf8"),
   ].join("\n");
@@ -147,7 +148,7 @@ export async function generateApiReference({ outDir = DEFAULT_OUT_DIR, skipTypes
       }
       cpSync(job.out, join(outDir, section.slug), { recursive: true });
       const report = JSON.parse(readFileSync(job.report, "utf8"));
-      results.push({ slug: section.slug, name: report.name, exports: report.exports, undocumented: report.undocumented, cached });
+      results.push({ slug: section.slug, name: report.name, exports: report.exports, undocumented: report.undocumented, unlinked: report.unlinked, cached });
     }
   };
   const width = Math.max(1, Math.min(availableParallelism(), 4, sections.length));
@@ -167,6 +168,7 @@ export async function generateApiReference({ outDir = DEFAULT_OUT_DIR, skipTypes
   );
   for (const r of results) {
     if (r.undocumented.length > 0) log(`[api-reference]   ${r.name}: ${r.undocumented.length} of ${r.exports} exports have no doc comment`);
+    if (r.unlinked.length > 0) log(`[api-reference]   ${r.name}: ${r.unlinked.length} comment links to an anchor the page lacks, left as text`);
   }
   log(`[api-reference] the list: ${relative(REPO_ROOT, join(CACHE_DIR, "undocumented.json"))}`);
   return { outDir, sections: results };

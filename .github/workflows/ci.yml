@@ -665,10 +665,9 @@ jobs:
       - name: Lint docs brand rules
         run: pnpm --filter @flow-state-dev/docs lint:brand
 
-      # No `packages:build` and no Turborepo cache, unlike the jobs above:
-      # `apps/docs` declares no workspace dependency, and `docs:build` runs
-      # `docusaurus build` directly rather than through turbo, so neither would
-      # do anything but add minutes.
+      # The site as it deploys: `apps/docs` declares no workspace dependency and
+      # `docs:build` runs `docusaurus build` directly, so it needs no
+      # `packages:build`.
       #
       # Unfiltered by path, like every other job here. Docusaurus resolves links
       # across the whole site, so a page this PR never touched can break when
@@ -676,6 +675,20 @@ jobs:
       # `apps/docs/**` would skip exactly the run that catches it.
       - name: Build docs site
         run: pnpm docs:build
+
+      # The API reference build below runs `packages:build` itself, and renders
+      # each package's section only when its declarations changed since the
+      # cached render (the generator checks each entry's key, so a stale restore
+      # re-renders rather than serving old pages).
+      - name: Restore Turborepo and API reference caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            .turbo
+            apps/docs/node_modules/.cache/fsd-api-reference
+          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ github.job }}-
 
       # The generated API reference (FIX-2698), built and never deployed: it builds every
       # published package's types, renders one section per package from the doc comments in
