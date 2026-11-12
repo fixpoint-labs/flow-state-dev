@@ -258,7 +258,11 @@ The three pilot figures are redrawn as the exemplars; `pages/figures/blocks.svg`
 Every page goes through ten passes, in order, and figures go through their own track beside them.
 FIX-2697 runs the loop as a workflow script so no pass can be skipped, and keeps a record per page
 of each pass and what it found. Until it lands, run the passes by hand and keep the record beside
-the page.
+the page. A page kept from today's site (one the audit kept because it is already the right size)
+and the pilots are already written: they skip pass 3, the draft, and run every other pass. Pass 1
+still lists what the page states, and pass 2 still writes the questions and their answer key,
+by an agent that has not read the page, because pass 9 grades against that key. The record marks
+pass 3 as skipped and says why.
 
 ```text
  1 fact sheet ─ 2 cold-read questions ─ 3 draft ─ 4 machine checks ─ 5 fact check
@@ -272,7 +276,9 @@ figures:  brief ─ draw ─ render light + dark ─ figure lint ─ compare wit
    sources are the ones ER-9 allows and nothing else: the existing page or pages on the topic, the
    package's exported surface and its doc comments, its tests, `goals/`, and one example that uses
    it (`examples/`, `labs/`). No specs, `docs/internal/`, `CLAUDE.md`, pull requests or commit
-   messages. When the page is about something that stores data (workers, boards, sessions, a kit's
+   messages, with one exception: for a surface specified and not yet built, an approved spec's
+   public names, config keys and import paths, and nothing else from it, each marked for
+   reconciling at cutover. When the page is about something that stores data (workers, boards, sessions, a kit's
    collections), the sheet answers four questions for each stored part: who owns it, who can see
    it, where it is stored, and how many exist. Asking them is how the pilot found that editing a
    standard worker makes the user's own copy.
