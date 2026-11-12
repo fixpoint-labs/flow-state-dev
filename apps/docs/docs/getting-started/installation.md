@@ -31,8 +31,10 @@ pnpm add @flow-state-dev/vercel
 pnpm add -D @flow-state-dev/testing
 
 # CLI — run flows and blocks from the terminal
-pnpm add -D @flow-state-dev/fsdev
+pnpm add -D @flow-state-dev/fsdev --allow-build=better-sqlite3
 ```
+
+The CLI's default store is SQLite, and pnpm builds the `better-sqlite3` native module only when you allow it. npm, yarn and bun build it without the flag.
 
 ### Which packages do I need?
 
