@@ -55,7 +55,9 @@ const client = {
 };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client, reader }) }));
 
-import { TaskProvider, useTask, type TaskView } from "../src/lib/task";
+import { MISSING_READS_AT_MOST, TaskProvider, useTask, type TaskView } from "../src/lib/task";
+import { TaskFrame } from "../src/surfaces/TaskFrame";
+import { GAPS } from "../src/gaps";
 
 const shown: TaskView[] = [];
 function Probe() {
@@ -129,5 +131,38 @@ describe("a task waiting on its run link", () => {
     last().retryRow();
     await waitFor(() => expect(last().row?.run).toEqual(LINK));
     expect(last().rowFailure).toBeUndefined();
+  });
+});
+
+describe("a task the attached board doesn't hold", () => {
+  it("is called missing after a bounded series of board reads that land without it, and Retry reads again", async () => {
+    // A stale link, a deleted task or a mistyped address: push brings no notice for a row nobody writes.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    board = [];
+    render(
+      <TaskProvider snapshot={snapshot} boardRef={BOARD} taskId="t1">
+        <Probe />
+        <TaskFrame tab="session" gaps={GAPS} />
+      </TaskProvider>,
+    );
+    // Each read's re-render schedules the next, so the clock moves a step at a time.
+    for (let step = 0; step < 15; step++) {
+      await vi.advanceTimersByTimeAsync(2_100);
+      await settle();
+    }
+    await waitFor(() => expect(document.querySelector("[data-testid='task-missing']")?.textContent).toMatch(/holds no task "t1"/));
+    // The connect's read, then the bounded series.
+    expect(boardReads).toBe(1 + MISSING_READS_AT_MOST);
+    expect(last().waiting).toBe(false);
+    for (let step = 0; step < 10; step++) {
+      await vi.advanceTimersByTimeAsync(2_100);
+      await settle();
+    }
+    expect(boardReads).toBe(1 + MISSING_READS_AT_MOST);
+
+    // Filed after all: Retry reads the board once more and finds it.
+    board = [boardTask(null)];
+    (document.querySelector("[data-testid='task-missing-retry']") as HTMLButtonElement).click();
+    await waitFor(() => expect(last().row?.id).toBe("t1"));
   });
 });
