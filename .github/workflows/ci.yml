@@ -676,3 +676,10 @@ jobs:
       # `apps/docs/**` would skip exactly the run that catches it.
       - name: Build docs site
         run: pnpm docs:build
+
+      # The generated API reference (FIX-2698), built and never deployed: it builds every
+      # published package's types, renders one section per package from the doc comments in
+      # their `.d.ts`, and fails naming any package it cannot read. The output lands in a
+      # scratch folder; the cutover adds it to the published site.
+      - name: Build API reference (not published)
+        run: pnpm --filter @flow-state-dev/docs build:api-reference --out-dir "$RUNNER_TEMP/api-reference-site"

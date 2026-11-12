@@ -242,4 +242,29 @@ const config: Config = {
   } satisfies Preset.ThemeConfig,
 };
 
-export default config;
+// The generated API reference (FIX-2698): one section per published package, built from the
+// doc comments in the `.d.ts` files each package publishes, at `/docs/reference/api/<slug>`.
+// Generated at each build and never committed. Until the cutover it is built only when
+// FSD_API_REFERENCE=1, which CI sets for a build into a scratch folder that is never deployed,
+// and it has no sidebar entry; the cutover adds both. FSD_API_REFERENCE_SKIP_TYPES=1 skips the
+// packages' types build when the caller has just run it.
+export default async function createConfig(): Promise<Config> {
+  if (process.env.FSD_API_REFERENCE !== "1") return config;
+  // Docusaurus loads this config more than once per build; generate once per process.
+  const memo = globalThis as { fsdApiReference?: Promise<{ outDir: string }> };
+  memo.fsdApiReference ??= import("./scripts/api-reference/generate.mjs").then(
+    ({ generateApiReference }) =>
+      generateApiReference({ skipTypes: process.env.FSD_API_REFERENCE_SKIP_TYPES === "1" }),
+  );
+  const { outDir } = await memo.fsdApiReference;
+  return {
+    ...config,
+    plugins: [
+      ...config.plugins,
+      [
+        "@docusaurus/plugin-content-docs",
+        { id: "api", path: outDir, routeBasePath: "docs/reference/api" },
+      ],
+    ],
+  };
+}
