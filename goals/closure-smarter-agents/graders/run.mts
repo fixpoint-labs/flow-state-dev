@@ -206,7 +206,7 @@ const rules: [string, boolean, boolean][] = [
   ["44 fillers do not pass a 50-turn window", foldFillersPassed(44, 50), false],
   ["the fillers stop only past the window, with a margin", foldFillersPassed(50, 50) === false && foldFillersPassed(50 + FOLD_MARGIN, 50), true],
   ["no window seen yet, keep going", foldFillersPassed(200, undefined), false],
-  ["the sweep finds a done line split across lines", sweepGuidance({ "a/WORKER.md": "Run the tests before you\nsay it is done." }).length === 1, true],
+  ["the sweep finds a done line split across lines", sweepGuidance({ "a/WORKER.md": "Check your work before you\nsay it is done." }).length === 1, true],
   ["the sweep leaves an app's length line alone", sweepGuidance({ "a/WORKER.md": "Answer in a sentence or two, and say so." }).length === 0, true],
   ["the sweep finds a date line", sweepGuidance({ "a/WORKER.md": "Always state today's date first." }).length === 1, true],
   ["the sweep passes a worker with no such line", sweepGuidance({ "a/WORKER.md": "You are the main session. Read the project before you answer." }).length === 0, true],
