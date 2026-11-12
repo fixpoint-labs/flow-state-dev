@@ -95,8 +95,8 @@ opening, the figure, the code and the failure section. Do not introduce a second
 
 **State the guarantee. Leave out the machinery.**
 
-> The drain runs up to four ready tasks at a time unless you set another limit, and a task is only
-> ever claimed once.
+> The drain runs up to four ready tasks at a time unless you set another limit, and a task never
+> runs in two places at once.
 
 Not: "A claim is a single atomic compare-and-set, so two workers never run the same task."
 
@@ -262,24 +262,37 @@ site these become the `caption` and `description` of `<Figure>`.
    package's exported surface and its doc comments, its tests, and one example that uses it
    (`examples/`, `labs/`). Write down, with file and line, every fact the page will state, in
    `<page>.facts.md` beside the page. Cite nothing `docs-writer` may not read: no specs,
-   `docs/internal/`, `CLAUDE.md`, pull requests or commit messages.
-2. **Choose the example.** One concrete scenario with names in it.
-3. **Write the opening and the outline** before anything else. If the opening needs a framework
+   `docs/internal/`, `CLAUDE.md`, pull requests or commit messages. When the page is about
+   something that stores data (workers, boards, sessions, a kit's collections), the sheet answers
+   four questions for each stored part: who owns it, who can see it, where it is stored, and how
+   many exist. Asking them is how the pilot found that editing a standard worker makes the user's
+   own copy.
+2. **Write the cold-read questions** before any draft exists, and have someone who has not read a
+   draft write them. Five or six scenario questions a reader should answer after the page,
+   at least two of them edge cases (a failure, a second user, an edit), each with its answer
+   from the fact sheet.
+3. **Choose the example.** One concrete scenario with names in it.
+4. **Write the opening and the outline** before anything else. If the opening needs a framework
    term to make sense, start again.
-4. **Write the page.** Leave out any fact that is not on the list from step 1.
-5. **Run the checks.**
+5. **Write the page.** Leave out any fact that is not on the list from step 1.
+6. **Run the checks.**
 
    ```bash
    node scripts/check-docs-page.mjs path/to/page.md
    ```
 
-6. **Fact-check** with a fresh agent that has the page and the code and nothing else. It returns
+7. **Fact-check** with a fresh agent that has the page and the code and nothing else. It returns
    each claim that is not true, with file and line, and type-checks the page's code against the
    package source.
-7. **Prose-check** with the `docs-editor` agent.
-8. **Revise from both sets of findings**, then run the checks in step 5 again. Take every factual
-   correction. Take a prose finding unless it would undo something this brief asks for.
-9. **Read it aloud once.** Fix anything you would not say to a colleague.
+8. **Prose-check** with the `docs-editor` agent.
+9. **Cold-read** it, as [`concept-doc`](../../../.agents/skills/concept-doc/SKILL.md) → "Checking
+   it before you call it done" does. Give two or more fresh agents with no tools only the page and
+   the questions from step 2, and grade their answers against the key. A question most readers
+   miss is a gap in the page, even when the fact check and the editor passed it.
+10. **Revise from all three sets of findings**, then run the checks in step 6 again. Take every
+    factual correction and close every cold-read gap. Take a prose finding unless it would undo
+    something this brief asks for.
+11. **Read it aloud once.** Fix anything you would not say to a colleague.
 
 ## Before you call it done
 

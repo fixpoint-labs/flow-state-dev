@@ -31,11 +31,13 @@ Pages describe Workforce, the harnesses and Claude Code as kits an app installs.
 
 The repo's rule is that user docs change only at release, and CI enforces it. Writing in the contributor folder keeps every PR mergeable and keeps unreleased surface off the site. FIX-2705 moves the pages under `apps/docs/` in one release-docs pass.
 
-## D4 · The `docs-writer` agent writes each page from a fact sheet; two checkers review it; the writer revises · tried on Blocks, 2026-11-12
+## D4 · The `docs-writer` agent writes each page from a fact sheet; three checks review it; the writer revises · tried on Blocks and in the concept-doc pilot, 2026-11-12
 
-The loop is: a fresh `docs-writer`, on a smaller model, collects the page's fact sheet (`<page>.facts.md`) and writes from the brief; a fresh agent fact-checks against the code with a type-check of the examples; `docs-editor` prose-checks; the writer revises. On the Blocks page the first draft needed the review round, mostly for scope and density, and the revision stood beside the pilots. A person reads each Concepts page cold before it merges.
+The loop is: a fresh `docs-writer`, on a smaller model, collects the page's fact sheet (`<page>.facts.md`), asking of each stored part who owns it, who can see it and where it is stored; cold-read questions are written before any draft; the writer writes from the brief; a fresh agent fact-checks against the code with a type-check of the examples; `docs-editor` prose-checks; two or more tool-less readers answer the questions from the page alone; the writer revises from all three. On the Blocks page the first draft needed the review round, mostly for scope and density, and the revision stood beside the pilots. A person reads each Concepts page cold before it merges.
 
 **Why `docs-writer`, not a second writer.** The pages are user docs written by agents that hold the spec. `docs-writer` is the agent whose reading list keeps design context out of a page, and the fact sheet is its surface brief. A separate writer with its own reading list would be a second way to write user docs, and the Blocks run showed the gap: its fact sheet cites `CLAUDE.md` and an architecture doc, and the brief's queue pointed the Views page at `docs/internal/`. ER-9 closes it.
+
+**Why not write a concept doc first.** The owner asked for the three pilots to be rewritten through `concept-doc`, both as the bare concept doc (B) and through the route it feeds, concept doc then `docs-writer` (C). The full route is rejected: it costs a 5,000-word doc per page, and cold readers understood its pages least. Two of its steps are adopted, because they found what the fact check and the editor missed: the cold read, and the ownership questions, which caught the pilot's claim that a standard worker can't be edited. Scores (current pilots A / B / C): cold read on the page's own questions 8 / 6.5 / 5.5 of 9, on all questions 15 / 13 / 9.5 of 24; wrong claims 4 / 10 / 5. Read them as weak: the questions were written after reading A, one cold reader per page, grading varied by up to 2.5 of 8, A had review rounds the others didn't, every arm ran on Opus, and no example was type-checked. Evidence: [`poc/concept-doc-pilot/COMPARISON.md`](poc/concept-doc-pilot/COMPARISON.md). `concept-doc` stays for an area whose model is unclear or contested; kits and slots is the likely one.
 
 ## D5 · The API reference is generated from doc comments
 
@@ -118,6 +120,8 @@ About 330,000 words leave the reading path. Much is regenerated as reference. So
 Four readers audited all 193 pages on 2026-11-11 for duplication, concept-versus-reference mix, voice and the first-hour path. The full findings, the proposed structure, the fate of every section and a verdict for every page are retained in [`analysis/RECOMMENDATION.md`](analysis/RECOMMENDATION.md). Three pilot pages set the voice. A fourth page, Blocks, was then written by a smaller model from the brief alone to test whether the brief was enough; what it exposed went back into the brief.
 
 No end-state POC was built; the pilots and the Blocks run stand in for it.
+
+- **Concept-doc pilot** ([`poc/concept-doc-pilot/`](poc/concept-doc-pilot/COMPARISON.md)) · built: the three pilots rewritten as concept docs, and through concept doc then `docs-writer`, each graded blind by a fact check, a cold read and `docs-editor` · showed: better facts, pages harder to understand · changed: the loop gains a cold read and the ownership questions (D4), and the pilots lose four wrong claims (a root import of `harnesses`, `workspace` as a path, a task claimed only once, a standard worker that can't be edited).
 
 ## Analysis · 2026-11-12 · watermark 2026-11-10
 

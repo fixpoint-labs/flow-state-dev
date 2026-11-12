@@ -90,7 +90,7 @@ When you want one front door for a whole team, make it a [coordinator](../catalo
 
 The files in your repo define the **standard** workers. Every user gets each of them, and each user's set of workers is their **roster**. Take two users, Alice and Bob. Alice's lead answers to Alice. Bob can't open her conversations or read what her lead remembers about her.
 
-Nobody can edit a standard worker from inside the app. A user who wants a different one **forks** it, and gets a worker of their own that starts from the same settings. A user can also hire a worker from scratch while the app runs. Those workers belong to that user alone. No file changes and nothing restarts.
+A user can edit a standard worker from inside the app. The edit makes that user's own copy under the same id, and the file in your repo never changes; a reset deletes the copy and brings the standard back. A user who wants a second worker beside it **forks** it, and gets a new worker of their own that starts from the same settings. A user can also hire a worker from scratch while the app runs. Those workers belong to that user alone. No file changes and nothing restarts.
 
 ## What runs a worker
 

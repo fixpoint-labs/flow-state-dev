@@ -42,13 +42,13 @@ The team, with the task board its workers share, and the coding agents it hands 
 ```ts title="fsdev.config.ts"
 import { claudeCode } from "@flow-state-dev/claude-code";
 import { createFlowState } from "@flow-state-dev/engine";
-import { harnesses } from "@flow-state-dev/harness-manager";
+import { harnesses } from "@flow-state-dev/harness-manager/kit";
 import { workforce } from "@flow-state-dev/workforce";
 
 export default createFlowState({
   kits: [
     workforce({ directory: "./workforce" }),
-    harnesses({ workspace: "./workspace" }),
+    harnesses({ workspace: { root: "./runs", sourceRepo: ".", baseRef: "main" } }),
     claudeCode(),
   ],
 });

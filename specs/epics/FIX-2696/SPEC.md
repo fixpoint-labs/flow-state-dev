@@ -99,9 +99,9 @@ FIX-2697 hands every writing issue its rules. FIX-2700 is site code and can merg
 ## What's already here, and the debt
 
 **Builds on**
-- The release-docs pipeline. The writing loop is its `docs-writer` agent, given a fact sheet as its surface brief, and its `docs-editor` agent, plus a fact check with a type-check ([D4](DECISIONS.md)).
+- The release-docs pipeline. The writing loop is its `docs-writer` agent, given a fact sheet as its surface brief, and its `docs-editor` agent, plus a fact check with a type-check and a cold read ([D4](DECISIONS.md)).
 - The `polish-docs` skill, which release-docs already runs. FIX-2704 and FIX-2705 use it to give each topic one home. It edits presentation, never facts, so what is deleted is decided by FIX-2699 and O3 first.
-- The `concept-doc` skill's rules for building a model up part by part, one cast of examples, and one claim per figure. The concept-page outline in the brief cites them rather than restating them.
+- The `concept-doc` skill's rules for building a model up part by part, one cast of examples, and one claim per figure, and its cold read and ownership questions. The brief cites them rather than restating them; the full concept-doc route was piloted and not adopted ([D4](DECISIONS.md)).
 - `goals/first-hour/`, the home of first-hour goal checks. The closure's two tests go there.
 - Two earlier sidebar reorganizations, FIX-266 (March) and FIX-495 (May), and the launch IA issue FIX-601, still in Backlog. This epic supersedes FIX-601's scope; it keeps their lesson that a regrouping alone does not last, which is why it adds page types and a checker.
 - The rule that every exported API has a doc comment, which is what makes generated reference possible.

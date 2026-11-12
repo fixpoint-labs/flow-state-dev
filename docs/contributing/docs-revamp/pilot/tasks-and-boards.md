@@ -60,7 +60,7 @@ When `compare` runs, its block receives what the three research tasks produced o
 | `deps` | The tasks that must be `completed` first |
 | `status` | `pending`, then `in_progress`, then `completed` or `errored`. `cancelled` when a task it depends on failed |
 
-A task is ready when every task in its `deps` is `completed`. The drain runs up to four ready tasks at a time unless you set another limit, and a task is only ever claimed once.
+A task is ready when every task in its `deps` is `completed`. The drain runs up to four ready tasks at a time unless you set another limit, and a task never runs in two places at once.
 
 ## When a task fails
 
