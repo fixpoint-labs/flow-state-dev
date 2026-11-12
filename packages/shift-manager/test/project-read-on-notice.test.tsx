@@ -25,6 +25,7 @@ const subscribe = (topics: readonly WireTopic[], options: { onChange: (notice: W
 const hear = (notice: WireNotice) => opened.filter((o) => !o.closed).forEach((o) => o.onChange(notice));
 
 let title = "Apollo";
+let entries: Array<{ storageKey: string; clientData: unknown }> = [];
 let failing = false;
 let projectReads = 0;
 const client = {
@@ -35,12 +36,13 @@ const client = {
       if (failing) throw new Error("unavailable");
       return { clientData: { id: "apollo", title, ownerUserId: "u_1" } };
     },
-    listCollectionResources: async () => ({ items: [] }),
+    listCollectionResources: async () => ({ items: entries }),
   },
   live: (topics: readonly WireTopic[], options: Parameters<typeof liveRead>[2]) => liveRead(subscribe as never, topics, options),
 };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client }) }));
 
+import { STALE_AFTER_MS } from "@flow-state-dev/workforce/browser";
 import { useProjectRead, type ProjectAddress } from "../src/lib/projects";
 
 type Shown = ReturnType<typeof useProjectRead>["read"];
@@ -61,6 +63,7 @@ beforeEach(() => {
   opened.splice(0);
   shown.splice(0);
   title = "Apollo";
+  entries = [];
   failing = false;
   projectReads = 0;
 });
@@ -118,5 +121,33 @@ describe("a project's entries", () => {
     await waitFor(() => expect(projectReads).toBe(before + 1));
     await settle();
     expect(titleShown()).toBe("Apollo");
+  });
+});
+
+describe("a workstream going quiet", () => {
+  it("shows as gone quiet once its threshold passes, by the page's own clock, with no read", async () => {
+    // A quiet workstream is one nobody writes: no notice ever says it went quiet.
+    const loadedAt = Date.UTC(2026, 10, 12, 9);
+    vi.useFakeTimers({ now: loadedAt, shouldAdvanceTime: true });
+    const updatedAt = new Date(loadedAt - STALE_AFTER_MS + 5_000).toISOString();
+    entries = [
+      {
+        storageKey: "workstreams/apollo/~u_1/research",
+        clientData: { title: "Research", lead: "researcher", sessionId: null, status: "on-track", due: null, objectives: [], openedAt: updatedAt, updatedAt, writtenBy: { userId: "u_1" } },
+      },
+    ];
+    render(<Probe address={{ visibility: "shared", id: "apollo" }} readAt={1} />);
+    const value = () => {
+      const last = shown.at(-1);
+      return last !== undefined && "value" in last ? last.value : undefined;
+    };
+    await waitFor(() => expect(value()?.entries.map((e) => e.id)).toEqual(["research"]));
+    expect(value()!.entries[0]!.stale).toBe(false);
+    expect(value()!.progress.stale).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(6_000);
+    await waitFor(() => expect(value()!.entries[0]!.stale).toBe(true));
+    expect(value()!.progress.stale.map((e) => e.id)).toEqual(["research"]);
+    expect(projectReads).toBe(1);
   });
 });
