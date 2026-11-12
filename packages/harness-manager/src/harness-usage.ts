@@ -79,7 +79,7 @@ import { z } from "zod";
 import { assertSafeSegment, hashKeySegment } from "./workspace";
 import { HARNESS_USAGE, HARNESS_USAGE_FLOW, HARNESS_USAGE_PATTERN, HARNESS_USAGE_RECHECK, HARNESS_USAGE_VIEW } from "./usage-keys";
 
-export { HARNESS_USAGE, HARNESS_USAGE_FLOW, HARNESS_USAGE_RECHECK, HARNESS_USAGE_VIEW };
+export { HARNESS_USAGE, HARNESS_USAGE_FLOW };
 
 /** How often a registered reader may be tried, per person and harness: once a minute. */
 export const USAGE_REFRESH_EVERY_MS = 60_000;
