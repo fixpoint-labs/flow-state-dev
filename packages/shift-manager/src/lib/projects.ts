@@ -196,7 +196,7 @@ export function readProjectSetup(client: Client): Promise<ProjectSetup | null> {
 }
 
 /** A read in flight, landed, or failed. */
-export type ProjectReadState = { value: ProjectRead | null } | { failure: Failure } | undefined;
+type ProjectReadState = { value: ProjectRead | null } | { failure: Failure } | undefined;
 
 /** How often a project's entries are read again while they are on screen. */
 const PROJECT_POLL_MS = 5_000;

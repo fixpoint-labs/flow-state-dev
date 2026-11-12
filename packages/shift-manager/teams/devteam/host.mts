@@ -303,7 +303,7 @@ async function loadTree(root: string): Promise<DeclaredRoster> {
  * The projects flow's view that names this Lab's project setup, for Shift
  * Manager: it doesn't name the project coordinator itself, and reads it here.
  */
-export const PROJECT_SETUP_VIEW = "projectSetup";
+const PROJECT_SETUP_VIEW = "projectSetup";
 
 /** The projects flow's action that answers how much of each harness's subscription is used. */
 export const HARNESS_USAGE_ACTION = "harnessUsage";

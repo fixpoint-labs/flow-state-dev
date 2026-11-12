@@ -35,7 +35,7 @@
  *
  * Whether Claude Code can run here never stops a start: {@link startHarness}
  * logs its readiness and what to do when it can't, and the Lab serves the
- * same rows as the projects flow's `readiness` view. Claude Code is
+ * same rows on the projects flow's `harnessReadiness` action. Claude Code is
  * checked whichever coder runs, since the Error Reporter runs on it too.
  *
  * A `coder` worker that names a harness in its `harness` setting
