@@ -1,9 +1,0 @@
-R1 0 says page does not say
-R2 0 says page does not say
-R3 0.5 actions callable by client; misses streaming, state, blocks
-R4 0.5 right on unit of work; examples muddled
-R5 0 all three parts answered "does not say"
-P2.1 1 errored, others continue, compare cancelled, blocked-by-failures
-P2.2 1 no auto-run, needs drain; session/user/org resource
-P2.3 1 deps outputs on input.deps keyed by task id
-SCORE 4 / 8

@@ -1,9 +1,0 @@
-R1 0 says page does not say
-R2 0.5 right install line, missing flows/slots definition
-R3 0 describes worker flow, not backend unit
-R4 0 says page does not say
-R5 0.5 only (a) correct; (b),(c) missing
-P3.1 1 correctly no, private per user
-P3.2 1 edit makes own copy, fork, hire
-P3.3 0 says page does not say; refusal expected
-SCORE 3 / 8

@@ -1,9 +1,0 @@
-R1 0 answer says page does not say
-R2 0 answer says page does not say
-R3 0 answer says page does not say
-R4 0.5 block as task-handler right, general definition missing
-R5 0 answer says page does not say
-P2.1 1 others continue, compare cancelled, blocked-by-failures stop
-P2.2 1 needs new drain; persistence via scope storage
-P2.3 0 says page does not say
-SCORE 2.5 / 8

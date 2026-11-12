@@ -1,9 +1,0 @@
-R1 0.5 Right on repo ownership; omits kits, config, flows
-R2 1 Installable, config-listed, flows, slots all present
-R3 1 HTTP, actions, streaming, typed state, blocks
-R4 1 Typed unit; all five kinds named
-R5 1 WORKER.md, kit in config, block: all correct
-P1.1 1 WORKER.md edit, no TypeScript, restart
-P1.2 1 Both kits added; slot relationships correct
-P1.3 1 Generator, handler, router all correct
-SCORE 7.5 / 8

@@ -1,9 +1,0 @@
-R1 0 says page doesn't say; key defines app
-R2 0.5 right on kits, misses flows/slots filling detail
-R3 0.5 flow described, misses HTTP, streaming, blocks
-R4 0.5 block correct, but five kinds unnamed
-R5 0.5 (a) right, (b) right, (c) right-ish
-P1.1 1 WORKER.md, no TypeScript, correct
-P1.2 1 both kits, claudeCode fills harnesses slot
-P1.3 0 says page doesn't say
-SCORE 4 / 8

@@ -1,9 +1,0 @@
-R1 0 Says page doesn't define app
-R2 0.5 Right on kits/config; misses flows, slots filling
-R3 0.5 Actions and blocks right; misses HTTP, streaming
-R4 0.5 Right idea; misses typed question, chain kinds
-R5 1 All three parts correct
-P1.1 1 WORKER.md, no TypeScript, correct
-P1.2 0.5 Right kits and slot; extra unverified worker claims
-P1.3 0 Says page doesn't name kinds
-SCORE 3.5 / 8

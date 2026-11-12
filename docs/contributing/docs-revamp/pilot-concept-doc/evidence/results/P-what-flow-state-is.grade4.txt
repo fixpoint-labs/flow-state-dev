@@ -1,9 +1,0 @@
-R1 0 says page doesn't define app
-R2 0.5 right on install, misses flows/slots filling
-R3 0.5 flow described, misses HTTP/client/typed state
-R4 0.5 right idea, misses five kinds named
-R5 0.5 (a) and (b) right, (c) block correct
-P1.1 1 WORKER.md edit, no TypeScript
-P1.2 0.5 kits right, extra worker file claims
-P1.3 0 says page doesn't say
-SCORE 3.5 / 8

@@ -1,9 +1,0 @@
-R1 0.5 Host file/store partly fits; misses repo, kits, flows
-R2 0.5 Installable feature right; misses flows and slots purpose
-R3 0.5 Server-served flow; misses client calling, streaming, blocks
-R4 0.5 Typed unit right; kinds listed but misses model/code framing
-R5 0.5 (a) and (b) right; (c) misses block as flow step
-P1.1 1 WORKER.md edit, no TypeScript, matches key
-P1.2 0.5 Names both kits and slot relation; hedges claudeCode
-P1.3 1 Generator, handler, router all correct
-SCORE 5.5 / 8

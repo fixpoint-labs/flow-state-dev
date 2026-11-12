@@ -1,9 +1,0 @@
-R1 0 Says page doesn't say; key defines app
-R2 0.5 Install unit right; misses flows, slots filling
-R3 0 Describes registration, not backend callable unit
-R4 0 Says page doesn't say; key defines block
-R5 0.5 (a) and (b) right; (c) wrong
-P3.1 1 Correctly no; sessions private per user
-P3.2 1 Edit makes own copy; reset, fork, hire
-P3.3 0 Says page doesn't say; key: refused
-SCORE 3 / 8

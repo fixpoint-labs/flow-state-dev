@@ -1,9 +1,0 @@
-R1 0.5 Whole app and repo right; starter, kits missing
-R2 1 Matches: config-listed, flows, slots
-R3 1 HTTP, actions, streaming, typed state, blocks
-R4 1 Typed unit; five kinds correctly named
-R5 1 WORKER.md, kit in config, block: all right
-P1.1 1 Edit WORKER.md, no TypeScript, restart
-P1.2 1 Both kits added; slot relationships correct
-P1.3 1 Generator, handler, router all correct
-SCORE 7.5 / 8

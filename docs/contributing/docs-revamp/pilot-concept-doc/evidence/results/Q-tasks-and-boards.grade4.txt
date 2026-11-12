@@ -1,9 +1,0 @@
-R1 0 page does not say
-R2 0 page does not say
-R3 0 page does not say
-R4 0.5 block as task-input unit; lacks definition
-R5 0 page does not say any part
-P2.1 1 others continue, compare cancelled, blocked-by-failures
-P2.2 1 needs drain rerun; persisted in scoped storage
-P2.3 0 page does not say; key is input.deps
-SCORE 2.5 / 8

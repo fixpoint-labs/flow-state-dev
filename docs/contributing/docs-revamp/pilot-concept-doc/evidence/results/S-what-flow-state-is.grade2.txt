@@ -1,9 +1,0 @@
-R1 0.5 Pages, server and store right; kits, flows missing
-R2 1 Installable feature, slots, flows and views covered
-R3 1 Backend unit with actions, state, root blocks
-R4 1 Typed unit of work, five kinds correct
-R5 1 WORKER.md, kit, block all correct
-P1.1 1 Edit WORKER.md, no TypeScript
-P1.2 0.5 Right kits and slot, but heavily hedged
-P1.3 1 Generator, handler, router all correct
-SCORE 7 / 8

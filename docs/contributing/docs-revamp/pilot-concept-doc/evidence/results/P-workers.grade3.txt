@@ -1,9 +1,0 @@
-R1 0 Says page doesn't define app
-R2 0.5 Kit install right; lacks flows, slots
-R3 0.5 Backend unit right; misses HTTP, blocks
-R4 0 Says page doesn't define block
-R5 0.5 (a) right; (b) hedged, (c) flow not block
-P3.1 1 Correct: per-user private copies
-P3.2 0 Says cannot edit; misses edit-copy
-P3.3 1 Refused, names worker, own delegates
-SCORE 3.5 / 8
