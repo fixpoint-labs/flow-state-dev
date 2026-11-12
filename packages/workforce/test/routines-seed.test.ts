@@ -92,8 +92,8 @@ async function workerTurn(h: SubscriptionsHost, userId: string, orgId = ORG, ses
 async function storedRoutines(h: SubscriptionsHost, userId: string, orgId = ORG) {
   const runtime = await h.state.getRuntime();
   const cell = `${userId}:~org:${orgId}`;
-  const rows = { ...(await runtime.stores.resourceState.getByPrefix("user", cell, "workforce/schedules/")), ...(await runtime.stores.resourceState.getByPrefix("user", cell, "workforce/subscriptions/")) };
-  return Object.fromEntries(Object.entries(rows).map(([key, stored]) => [key, (stored as { version: number }).version]));
+  const stored = { ...(await runtime.stores.resourceState.getByPrefix("user", cell, "workforce/schedules/")), ...(await runtime.stores.resourceState.getByPrefix("user", cell, "workforce/subscriptions/")) };
+  return Object.fromEntries(Object.entries(stored).map(([key, entry]) => [key, (entry as { version: number }).version]));
 }
 
 /** The sessions in the store on the roster flow, the write sessions aside. */
