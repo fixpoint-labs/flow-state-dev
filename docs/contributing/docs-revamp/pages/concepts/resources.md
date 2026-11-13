@@ -12,11 +12,11 @@ import AResourceTravels from "./figures/a-resource-travels.svg";
 
 A resource is named, stored data that a block declares: a document, a record, or a collection of them. It is for things that have a name and a body of their own, like a refund policy every reply should follow, or the notes piling up on a support ticket.
 
-A block is one piece of work in a flow, one of the steps your app calls through its actions. Declare a resource on the block that needs it, and the framework stores it, loads it when the action that uses it runs, and keeps it apart from session state and from other resources. The examples are a support desk. `refundPolicy` is a document, `draftReply` is the block that drafts each reply, and `ticketNotes` is a collection.
+A block is one piece of work in a flow, one of the steps your app calls through its actions. Declare a resource on the block that needs it, and the framework stores it and hands the block a handle to it, kept apart from session state and from other resources. The examples are a support desk. `refundPolicy` is a document, `draftReply` is the block that drafts each reply, and `ticketNotes` is a collection.
 
 A flow also keeps session state, the typed fields on each session's record. The figure sets the two side by side.
 
-<Figure svg={StateAndResources} caption="Session state beside the resources it can reach" description={"At the top, a box for the browser, which sees neither session state nor resources unless a client config exposes it; two dashed arrows run up from the columns below to it, each meaning only when exposed. Below, two hatched columns, both stored with the scope so both outlive the request. On the left, session state on the session record, two flat fields, escalated and ticketCount, read as ctx.session.state, for flags, counters and small settings. On the right, resources, each in its own store keyed by scope and then path: refundPolicy at org/refundPolicy, highlighted as having a name of its own, and one note of the ticketNotes collection at session/ticketNotes/n-1. Each has a content body and its own typed state, and refundPolicy is read as ctx.resources.refundPolicy. A note says state is versioned and content is not."} />
+<Figure svg={StateAndResources} caption="Session state beside the resources it can reach" description={"At the top, a box for the browser, which sees neither session state nor resources unless a client config exposes it; two dashed arrows run up from the columns below to it, each meaning only when exposed. Below, two hatched columns, both stored with the scope so both outlive the request. On the left, session state on the session record, two flat fields, escalated and ticketCount, read as ctx.session.state, for flags, counters and small settings. On the right, resources, each in its own store keyed by scope and then path: refundPolicy at org/refundPolicy, highlighted as having a name of its own, and one note of the ticketNotes collection at session/ticketNotes/n-1. Each has a content body and its own typed state, and refundPolicy is read as ctx.resources.refundPolicy."} />
 
 ## A resource a block declares
 
@@ -96,7 +96,7 @@ export const addNote = handler({
 });
 ```
 
-The pattern says every note's key sits under `ticketNotes`, at any depth. The name you give in `resources`, here `notes`, is how the block reaches the collection. `create` makes a note and returns its handle, which has its own state and content like any resource. Reading notes back, and what to use when a key may repeat, is in the [reference](../reference/resources.md).
+The pattern says every note's key sits under `ticketNotes`, at any depth. The name you give in `resources`, here `notes`, is how the block reaches the collection. `create` makes a note and returns its handle, which has its own state and content like any resource. It throws if a note with that key already exists, so a second message on ticket `T-1042` would fail here. When the note may already be there, call `getOrCreate` or `upsert` instead. `get(key)` rejects when the key is missing, and `getOptional(key)` returns `undefined`. The [reference](../reference/resources.md) covers reading notes back and the rest of the collection methods.
 
 If the set is small and fixed, say three attachments per ticket, one resource with an array in its state is simpler.
 
@@ -104,7 +104,7 @@ If the set is small and fixed, say three attachments per ticket, one resource wi
 
 Your code reads a resource through `ctx.resources`, in any block that declares it.
 
-The model reads nothing by default. `draftReply` passed the policy into its prompt itself. A resource opts a generator in with `llmReadable` and `llmWritable`, and a collection sets them once for every note. The [reference](../reference/resources.md) has the options and the tools that use them.
+The model reads nothing by default. `draftReply` passed the policy into its prompt itself. Set `llmReadable` or `llmWritable` on a resource and a generator's model can read or write it. Set them on a collection and they apply to every note in it. The [reference](../reference/resources.md) has the options.
 
 The browser reads nothing by default either. A `client` config on the resource opens the body, and `expose` picks which state fields the page sees. The [reference](../reference/resources.md) lists the options.
 
@@ -116,7 +116,11 @@ A block's declaration goes wherever the block goes. A sequencer, a block that ru
 
 What comes along is the definition. The stored document is keyed by scope, and an org-scoped one is shared, so billing reads the same policy support does.
 
-A block can reach only the resources it declares.
+## What a request loads
+
+A request loads only the resources its flow declares, directly or through its blocks. Say the org also stores a `serviceHours` document that no block and no flow declares. It stays stored, but no request loads it, so no block can read it.
+
+Resources declared on the flow itself load on every request. Resources declared in an action's blocks load when that action runs, and a sibling action's do not. The [reference](../reference/resources.md) covers deferring a load further.
 
 ## What it gets you
 
@@ -127,7 +131,7 @@ A block can reach only the resources it declares.
 
 ## How it fits with the others
 
-Session state is for flat fields, and the conversation itself is kept as items, a separate store from resources. Resources are named records read by key, not a database: there is no query language over them.
+What a session records, the messages and results, is kept as items, which the [sessions page](./sessions-items-and-streaming.md) covers. Resources are named records read by key, not a database: there is no query language over them.
 
 ## Next
 

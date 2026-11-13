@@ -11,7 +11,7 @@ import TheWindow from "./figures/the-window.svg";
 
 A browser page never runs your flow. The flow runs on the server, and the page reaches it through the client, a small typed window with three openings. The page can call an action, follow a session as it happens, and read the data the flow chooses to expose. Nothing else gets through.
 
-A flow is a self-contained system on the server, with actions you call and state of its own. A session is the record it keeps of many requests together. The page gets those three things and nothing more.
+A flow is a self-contained system on the server, with actions you call and state of its own. A session is the record it keeps of many requests together.
 
 The example on this page is a support desk: a flow called `support` with an action called `reply`.
 
@@ -67,13 +67,13 @@ export function Conversation({ sessionId }: { sessionId: string }) {
 }
 ```
 
-`useSession` returns the session's items: messages, tool calls, status cards. While a request streams, the text of a message grows token by token. A session also changes when a request comes from somewhere else, such as another tab. The [Client reference](../reference/client.md) covers following those too.
+`useSession` returns the session's items: messages, tool calls, status cards. While a request streams, the text of a message grows token by token. By default the hook follows only the requests this page sent. To see replies sent from somewhere else, such as another agent's tab, pass `useSession(sessionId, { live: true })`: each finished item from those requests joins `items` whole, a moment after it is saved.
 
 [Sessions, items and streaming](./sessions-items-and-streaming.md) covers items and the stream.
 
 ## Reading what the flow exposes
 
-A scope's state stays on the server unless the flow names a field in `client.expose`.
+Session state stays on the server unless the flow names a field in `client.expose`.
 
 ```ts title="src/flows/support/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
@@ -114,7 +114,7 @@ When the page needs an answer in a different shape, a view computes it on the se
 
 `ItemsRenderer` draws a list of items in order. It has a built-in for messages, reasoning, status, errors, tool output and suspension cards. For any other type it draws a placeholder, not the item's content. The [UI components reference](../reference/ui-components.md) lists what it draws.
 
-To draw a type yourself, register a renderer on `FlowProvider`. A `component` item carries a name, and the renderer map is keyed by it:
+To draw a type yourself, register a renderer on `FlowProvider`. A `component` item is one a flow emits to ask the page to draw a named component, and the renderer map is keyed by that name:
 
 ```tsx title="src/app/order-card.tsx"
 import type { ComponentItem } from "@flow-state-dev/core/items";
@@ -128,7 +128,7 @@ In `SupportPage`, add `renderers={{ component: { "order-card": OrderCard } }}` t
 
 ## What the browser never gets
 
-A field in session state that is not in `client.expose` is never readable on the page, mid-stream or after. Items the flow marks as not for the client, such as block traces and router decisions, are removed from the stream. The server does not trust the `userId` a page sends. Who the caller is comes from your server's authentication.
+A field in session state that is not in `client.expose` is never readable on the page, mid-stream or after. Items the flow marks as not for the client, such as block traces and router decisions, are removed from the stream. The `userId` the page sends is caller input, not proof. When the server checks who is calling (see the [Client reference](../reference/client.md)), it ignores this `userId` and uses the request's credentials.
 
 ## Without React
 
@@ -150,18 +150,20 @@ export async function askSupport(userId: string, text: string) {
 }
 ```
 
+`sent.stream({ ... })` follows that one request as it runs. It does not reconnect on its own: if the connection drops, open it again with `startingAfter` set to the last sequence number you saw, and the server sends what you missed before carrying on. `fsd.sessions.stream(sessionId)` follows the whole session and retries by itself.
+
 `import type` keeps the flow's server code out of a browser bundle, and the type is what makes a misspelt action name a compile error. [Client options](../reference/client.md) has the rest.
 
 ## What it gets you
 
 - **Types follow the flow.** `reply` with the wrong input fails to compile.
 - **A new field is private.** Add `refundLimit` to session state and it stays on the server until you name it in `expose`.
-- **A dropped stream picks up.** A dropped request stream resumes where it left off, and no items are lost.
-- **Credentials live in one place.** Every call and stream on the page goes through one client, so one credential covers them all.
+- **A dropped stream picks up.** It resumes from the last event it saw, and no items are lost.
+- **Credentials live in one place.** Pass a `fetcher` that adds an `Authorization` header to `FlowProvider` (or `createClient`), and every call and stream carries it.
 
 ## How it fits with the others
 
-The client is the page's half of [Flows and actions](./flows-and-actions.md): it names a flow and an action and sends input. What it reads is decided by [State and scopes](./state-and-scopes.md). Hooks for resources, such as `useResourceCollection`, are listed in the [`@flow-state-dev/react` reference](../reference/client.md).
+The client is the page's half of [Flows and actions](./flows-and-actions.md): it names a flow and an action and sends input. What it reads is decided by [State and scopes](./state-and-scopes.md). Hooks for resources, such as `useResourceCollection`, are listed in the [Client reference](../reference/client.md).
 
 ## Next
 

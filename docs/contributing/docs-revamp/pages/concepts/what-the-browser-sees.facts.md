@@ -427,3 +427,21 @@ exposed names when no filter is given; state it only if a test is cited by pass 
   `result: true`, `useSession` `live: true`, `ItemsRenderer` fallback fields and silent types,
   `renderers` prop shape and `false`, item visibility list, resource `client` gate, `userId`
   resolution, request-stream resume by sequence number, `fetcher`, `useClientData` schemas.
+
+## Revise round 2 notes
+
+- Item 36: with sign-in on, the server ignores the page's `userId` and identifies the caller from
+  credentials (`client.ts:57-61`; `config-client.md` field table). Without sign-in `userId` is used,
+  so the page says "with sign-in on", not "never trusted".
+- Item 62: the credentials bullet names `fetcher` on `FlowProvider` or `createClient`
+  (`config-client.md:86-102`; item 49).
+- Item 39: built-ins confirmed as message, reasoning, status, error, tool_output, suspension.
+- The page defines a `component` item before the renderer map (item 41).
+
+## Revise round 3 notes
+
+- Item 36: the page no longer says "sign-in on"; it says "when the server checks who is calling"
+  and links the Client reference for how. Same fact: the server ignores the page's `userId` and uses
+  the request's credentials (`client.ts:57-61`; `config-client.md` field table).
+- Items 21-22: `expose` is per scope (session, user, org). The page's sentence names session state,
+  the only scope its example shows; State and scopes covers the others.

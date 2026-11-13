@@ -1,7 +1,7 @@
 ---
 title: State and scopes
 type: concept
-description: State is typed data your backend keeps between steps. Four scopes decide how long it lasts and who shares it.
+description: State is typed data your app keeps on the server between steps. Four scopes decide how long it lasts and who shares it.
 ---
 
 import Figure from "@site/src/components/Figure";
@@ -10,35 +10,19 @@ import WhoSeesWhat from "./figures/who-sees-what.svg";
 
 # State and scopes
 
-State is typed data your backend keeps so that one step can use what an earlier one worked out: a customer's plan, a count of tickets, a setting an admin chose. You declare its shape with a Zod schema and read and write it from the code that runs a step. Flow State keeps it in four places, called scopes, and they differ in two ways: how long the data lasts and who shares it.
+State is typed data your app keeps on the server so that one step can use what an earlier one worked out: a customer's plan, a count of tickets, a setting an admin chose. You declare its shape with a Zod schema and read and write it from the code that runs a step. Flow State keeps it in four places, called scopes, and they differ in how long the data lasts and who shares it.
 
-The example is a support desk, a flow named `support`: a self-contained part of your backend that a client calls by action name. A session is where a flow keeps a run of requests together, here one customer conversation.
+The example is a support desk, a flow named `support`: a self-contained system inside your app that a client calls by action name. A session is where a flow keeps a run of requests together, here one customer conversation.
 
-<Figure svg={FourScopes} caption="Four scopes, four separate records" description={"Four columns side by side, left to right: request, session, user and org. Request has a dashed outline, meaning it lasts one action run, and holds a field named tries. Session, user and org have hatched tops, meaning they outlive the request, and hold ticketCount, plan and licenses. Each column shows how to reach it from code, what it is for and what keys it: the request, the session id, the user and the organization, the organization. An arrow labelled names runs from the session to the user and the org: a session names them and holds none of their state. None of the four boxes sits inside another."} />
+<Figure svg={FourScopes} caption="Four scopes, four separate records" description={"Four columns side by side, left to right: request, session, user and org. Request has a dashed outline, meaning it lasts one action run, and holds a field named tries. Session, user and org have hatched tops, meaning they outlive the request, and hold ticketCount, plan and licenses. Each column shows how to reach it from code, what it is for and what keys it: the request, the session id, the user within an organization, and the organization. An arrow labelled names runs from the session to the user and the org: a session names them and holds none of their state. None of the four boxes sits inside another."} />
 
-Request state is scratch space for one run, such as a retry count. A second request cannot read what the first put there. A flow declares it as `request: { stateSchema }`.
+Request state is scratch space for one run, such as a retry count, `tries`. A second request cannot read what the first put there. A block declares it with `requestStateSchema`.
 
 ## Session first
 
-Most state belongs to the session: if the next request might care, put it there. A flow declares it with a schema, and a field's default is what a new session reads.
+Most state belongs to the session: if the next request might care, put it there. A block declares the fields it touches with a schema; you don't declare them again on the flow. A field's default is what a new session reads.
 
-```ts title="src/flows/support/flow.ts"
-import { defineFlow } from "@flow-state-dev/core";
-import { z } from "zod";
-import { handleTicket } from "./blocks/handle-ticket";
-
-export const supportFlow = defineFlow({
-  kind: "support",
-  actions: { handleTicket },
-  session: {
-    stateSchema: z.object({ ticketCount: z.number().default(0) }),
-  },
-});
-
-export default supportFlow();
-```
-
-A block reads and writes it through `ctx`, the object every block receives. The block names the fields it touches, and `ctx.session.state` is typed from that.
+The block reads and writes it through `ctx`, the object every block receives, and `ctx.session.state` is typed from the schema. `countTicket` runs inside `handleTicket`, the flow's action, which is what a client calls.
 
 ```ts title="src/flows/support/blocks/count-ticket.ts"
 import { handler } from "@flow-state-dev/core";
@@ -63,7 +47,7 @@ A session belongs to one user in one organization, fixed when it is created.
 
 ## State a user carries between conversations
 
-The customer's plan should follow them into every conversation, so it is user state. Beside `session` in `defineFlow`, declare `user` the same way, a `stateSchema` with a `plan` that defaults to `"free"` and a `score` that defaults to `0`. Declare `org` with a `licenses` field that defaults to `5`.
+The customer's plan should follow them into every conversation, so it is user state. Declare it on a block the same way, with `userStateSchema`: a `plan` that defaults to `"free"` and an internal `score` that defaults to `0`. Org state takes `orgStateSchema`, here a `licenses` field that defaults to `5`.
 
 ```ts title="src/flows/support/blocks/upgrade-plan.ts"
 import { handler } from "@flow-state-dev/core";
@@ -73,7 +57,10 @@ export const upgradePlan = handler({
   name: "upgrade-plan",
   inputSchema: z.object({ plan: z.string() }),
   outputSchema: z.object({ plan: z.string(), licenses: z.number().optional() }),
-  userStateSchema: z.object({ plan: z.string().default("free") }),
+  userStateSchema: z.object({
+    plan: z.string().default("free"),
+    score: z.number().default(0),
+  }),
   orgStateSchema: z.object({ licenses: z.number().default(5) }),
   execute: async (input, ctx) => {
     await ctx.user.patchState({ plan: input.plan });
@@ -82,7 +69,7 @@ export const upgradePlan = handler({
 });
 ```
 
-The calls are the same as for the session. Only the scope changes. When a customer, Alice, upgrades to `"pro"`, a brand-new session of hers reads `plan` as `"pro"`. A user's state belongs to them inside one organization: Alice in another organization reads `"free"`, and so does Bob, who shares her organization but not her user record. How flows share or keep apart a user's record is in the [flows reference](../reference/flows.md).
+The calls are the same as for the session. Only the scope changes. `ctx.org` is typed as optional, so read it with `?.`. When a customer, Alice, upgrades to `"pro"`, a brand-new session of hers reads `plan` as `"pro"`. A user's state belongs to them inside one organization: Alice in another organization reads `"free"`, and so does Bob, who shares her organization but not her user record. How flows share or keep apart a user's record is in the [flows reference](../reference/flows.md).
 
 ## State an organization shares
 
@@ -96,7 +83,22 @@ Two users in one organization share the org record and nothing else. When Alice 
 
 The browser never gets raw state. Only the fields you name in a scope's `client.expose` cross to it, so an internal score stays private by being left out. Request state cannot be exposed at all.
 
-Add `client: { expose: ["plan"] }` to `user` in the flow. A component then asks for it by name.
+Exposure is set on the flow. `handleTicket`, the flow's action, is a sequencer that runs `countTicket` and `upgradePlan`, each in its own file beside the flow. The flow exposes `plan`:
+
+```ts title="src/flows/support/flow.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import { handleTicket } from "./blocks/handle-ticket";
+
+export const supportFlow = defineFlow({
+  kind: "support",
+  actions: { handleTicket },
+  user: { client: { expose: ["plan"] } },
+});
+
+export default supportFlow();
+```
+
+A component then asks for it by name. The values come back untyped, hence the `String`.
 
 ```tsx title="src/app/plan-badge.tsx"
 "use client";
@@ -111,11 +113,11 @@ export function PlanBadge({ sessionId }: { sessionId: string }) {
 }
 ```
 
-Blocks on the server still read and write `score`. A value computed from state is a [view](./views.md), not an exposed field.
+Blocks on the server can read and write `score`. A value computed from state is a [view](./views.md), not an exposed field.
 
 ## What it gets you
 
-- **Typed state.** `ctx.session.state.ticketCount` is a `number`, and writing a string to it is a compile error.
+- **Typed state on the server.** `ctx.session.state.ticketCount` is a `number`, and writing a string to it is a compile error.
 - **A lifetime picked by where the field goes.** `tries` lasts one run, `ticketCount` one conversation, `plan` one customer and `licenses` one organization.
 - **No filtering code.** A customer in two organizations has two user records, so no block writes `where orgId = ...`.
 - **New fields need no migration.** A field added with a default reads that default on every record saved before it existed.
@@ -123,7 +125,7 @@ Blocks on the server still read and write `score`. A value computed from state i
 
 ## How it fits with the others
 
-State is typed data on a scope. A [resource](./resources.md) is a named container of structured data with a scope of its own. A session's items, the messages and tool calls it records, sit beside its state and are not part of it; [Sessions, items and streaming](./sessions-items-and-streaming.md) covers them. Block and sequencer state is tied to one run rather than to a user, and the [blocks reference](../reference/blocks.md) covers it.
+State is typed data on a scope. A [resource](./resources.md) is a named container of structured data with a scope of its own. A session's items, the messages and tool calls it records, sit beside its state and are not part of it; [Sessions, items and streaming](./sessions-items-and-streaming.md) covers them.
 
 ## Next
 

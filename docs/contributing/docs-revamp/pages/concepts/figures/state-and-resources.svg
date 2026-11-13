@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 526">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 486">
 <defs>
 <pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
 <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
@@ -53,15 +53,12 @@
 <text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="366" y="406">Documents, plans, notes</text>
 <line class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" x1="178" y1="124" x2="178" y2="69" marker-end="url(#ah)"/>
 <line class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" x1="622" y1="124" x2="622" y2="69" marker-end="url(#ah)"/>
-<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="448" x2="920" y2="448"/>
-<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="474">01</text>
-<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="474">State is versioned. Content is not: a later write replaces an earlier one.</text>
 <g id="key">
-<line class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" x1="28" y1="500" x2="54" y2="500" marker-end="url(#ah)"/>
-<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="504">ONLY WHEN EXPOSED</text>
-<rect fill="url(#hatch)" x="222" y="494" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="222" y="494" width="26" height="11"/>
-<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="256" y="504">OUTLIVES THE REQUEST</text>
-<rect class="hl" fill="#e8f551" x="438" y="494" width="26" height="11"/>
-<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="472" y="504">A NAME OF ITS OWN</text>
+<line class="ln-dash" fill="none" stroke="#1b1a15" stroke-width="1.3" stroke-dasharray="5 4" x1="28" y1="460" x2="54" y2="460" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="464">ONLY WHEN EXPOSED</text>
+<rect fill="url(#hatch)" x="222" y="454" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="222" y="454" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="256" y="464">OUTLIVES THE REQUEST</text>
+<rect class="hl" fill="#e8f551" x="438" y="454" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="472" y="464">A NAME OF ITS OWN</text>
 </g>
 </svg>
