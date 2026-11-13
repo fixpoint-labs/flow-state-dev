@@ -48,7 +48,7 @@ flowchart LR
 ```
 
 Every guide lands in exactly one place. The twelve already in recipe shape keep their text and
-enter the loop late ([D1](DECISIONS.md#d1)); the rest are written fresh from their sources.
+skip only the draft ([D1](DECISIONS.md#d1)); the rest are written fresh from their sources.
 
 **Docs:** 37 Build pages under `docs/contributing/docs-revamp/pages/build/`, moved under
 `apps/docs/` at cutover. Eight figures. The two contributor pages are moved by FIX-2705 with the

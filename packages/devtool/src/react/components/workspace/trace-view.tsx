@@ -716,8 +716,7 @@ function getItemPreview(item: DevtoolItem): string {
       // Structural status items from the sequencer's auto-await (FIX-369)
       // arrive with an empty `message` and only a side-chain count.
       // Synthesize a label so the trace row isn't blank. See also
-      // `StatusItemView` in components/items/status-item.tsx — same contract,
-      // and the same dual-read for pre-FIX-766 persisted rows.
+      // `StatusItemView` in components/items/status-item.tsx — same contract.
       if (item.message) return item.message;
       const pending = sideChainTaskCount(item);
       if (pending !== undefined) return sideChainTaskLabel(pending);

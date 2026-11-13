@@ -6,13 +6,18 @@
  *
  * **The row.** From the snapshot, then from one board's re-read. While the row
  * is not on the board yet, or is `in_progress` with no run linked, it is
- * re-read every 2 s, at most 30 times: the run writes its link as it
- * starts, and nothing pushes that to a view following another session. Once
- * the linked run settles on a row still queued or running, it is re-read the
- * same way, in a fresh window, until the row links the next attempt; the
- * screen then follows that run. A row in any other state is not re-read.
- * Retry reads the board once, now, and starts one more window. A board whose
- * read failed shows that failure, never "no such task".
+ * re-read on each board notice of the conversation that holds the board: the
+ * run writes its link as it starts, and that row write publishes one, from
+ * any process. Wherever push can miss a change it is re-read every
+ * {@link REREAD_EVERY_MS} instead (`client.live`). Once the linked run settles
+ * on a row still queued or running, it is re-read the same way until the row
+ * links the next attempt; the screen then follows that run. A row in any other
+ * state is not re-read. A task the board doesn't hold (a stale link, a deleted
+ * task, a mistyped address) waits the same way, on the same reads, for
+ * {@link MISSING_FOR_MS} at most, then is called missing. A failed
+ * re-read stops the wait and shows the failure;
+ * Retry reads the board once, now, and waits again if the row still waits. A
+ * board whose read failed shows that failure, never "no such task".
  *
  * **The run.** Bound to the session and request the row's link names, and the
  * flow that session records as its owner. The flow is read once per open, and
@@ -24,15 +29,27 @@
  * request and draws *interrupted* only once the record reads `aborted`.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { topic } from "@flow-state-dev/client";
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import { allTasks, type LoadedSnapshot } from "./derive";
 import { useLab } from "./lab-data";
-import { conversationBoardRef, describeFailure, type BoardTaskView, type Failure } from "./reads";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, describeFailure, type BoardTaskView, type Failure } from "./reads";
 import { interruptRun, readRunRecord, resolveRunFlow, RunReadError, type OpenRun } from "./run";
 
-/** How often, and how many times, a task screen re-reads its row. */
+/** The pace a task screen re-reads its row at while it waits, wherever push can miss a change. */
 export const REREAD_EVERY_MS = 2_000;
-export const REREAD_AT_MOST = 30;
+
+/**
+ * How long a task the board doesn't hold is waited for before the screen says
+ * so, counted from a board read that landed. Filing it is a row write, which
+ * publishes a board notice, and where push can miss one the board is re-read at
+ * {@link REREAD_EVERY_MS}: so the wait needs no reads of its own, only this deadline. The screen is opened from a
+ * row or a `task-change` item, so a real task is on the board once its filing
+ * request commits, well inside it; anything still missing then is a stale
+ * link, a deleted task or a mistyped address. A row that exists waits for its
+ * link with no bound.
+ */
+export const MISSING_FOR_MS = 10_000;
 
 /** The session a board ref names as its holder: everything before its last dot. */
 export function holderSessionOf(boardRef: string): string {
@@ -65,7 +82,7 @@ export type TaskView = {
   rowFailure: Failure | undefined;
   /** The row is being re-read while its link is awaited. */
   waiting: boolean;
-  /** The re-read window ran out with no link. */
+  /** The board doesn't hold the task: its wait's deadline passed with no read finding the row. */
   gaveUp: boolean;
   retryRow(): void;
   run: RunState;
@@ -130,7 +147,8 @@ export function TaskProvider({
   const fromSnapshot = useMemo(() => allTasks(snapshot).filter((r) => r.boardRef === boardRef), [snapshot, boardRef]);
   const [boardRows, setBoardRows] = useState<BoardTaskView[]>(fromSnapshot);
   const [rowFailure, setRowFailure] = useState<Failure | undefined>(undefined);
-  const [reads, setReads] = useState(0);
+  // The missing row's deadline passed with no read finding it.
+  const [missedOut, setMissedOut] = useState(false);
   // Set by a re-read someone asked for (a board action in the frame, or Retry):
   // a row that comes back pending with no run is then followed until the board
   // hands it to one, which a Release or a Retry leaves to its next dispatch pass.
@@ -138,13 +156,13 @@ export function TaskProvider({
 
   useEffect(() => {
     setBoardRows(fromSnapshot);
-    setReads(0);
   }, [fromSnapshot, taskId]);
+  useEffect(() => setMissedOut(false), [boardRef, taskId]);
 
   const row = boardRows.find((r) => r.id === taskId);
   // A board the Lab doesn't attach is named at once, with no read (BR-2). A
   // task missing from a board it does attach may have just been filed, so it
-  // gets the same bounded re-read as a row waiting for its link. A board whose
+  // gets the same re-read as a row waiting for its link. A board whose
   // read failed is neither: the screen shows that failure, with Retry, rather
   // than calling the task missing.
   const holder = holderSessionOf(boardRef);
@@ -232,24 +250,38 @@ export function TaskProvider({
 
   const currentStatus = status !== undefined && "status" in status && status.requestId === link?.requestId ? status.status : undefined;
 
-  // BR-3's bounded re-read: while the row has no run linked yet, or while the
-  // run it links has settled on a row the board may still hand on, until the
-  // row links the next attempt (a retry or a reclaim writes a new link). Each
-  // settled link starts a fresh window. A failed re-read stops it and shows Retry.
+  // BR-3's re-read: while the row has no run linked yet, or while the run it
+  // links has settled on a row the board may still hand on, until the row links
+  // the next attempt (a retry or a reclaim writes a new link). Each is a write
+  // to the row, which publishes a board notice on the holding conversation's
+  // topic, narrowed to its board. A failed re-read stops it and shows Retry.
   const linkSettled = currentStatus !== undefined && currentStatus !== "in_progress";
-  useEffect(() => {
-    if (linkSettled) setReads(0);
-  }, [linkSettled, link?.requestId]);
   const awaitingNextRun = row !== undefined && row.run !== null && linkSettled && isOpen(row);
   const awaitingDispatch = following && row !== undefined && row.status === "pending" && row.run === null;
-  const waiting = boardKnown && (awaitingLink(row) || awaitingNextRun || awaitingDispatch) && boardFailure === undefined && reads < REREAD_AT_MOST;
+  const missing = row === undefined;
+  useEffect(() => {
+    if (!missing) setMissedOut(false);
+  }, [missing]);
+  const gaveUp = boardKnown && missing && boardFailure === undefined && missedOut;
+  const waiting = boardKnown && (awaitingLink(row) || awaitingNextRun || awaitingDispatch) && boardFailure === undefined && !gaveUp;
+  // A missing row's deadline: a timer only, so the board's reads stay the subscription's.
+  // It runs from a board read that landed, so a slow socket connect can't use it up.
+  useEffect(() => {
+    if (!waiting || !missing || !boardRead) return;
+    const timer = setTimeout(() => setMissedOut(true), MISSING_FOR_MS);
+    return () => clearTimeout(timer);
+  }, [waiting, missing, boardRead]);
   useEffect(() => {
     if (!waiting) return;
-    const timer = setTimeout(() => {
-      void readBoardNow().finally(() => setReads((n) => n + 1));
-    }, REREAD_EVERY_MS);
-    return () => clearTimeout(timer);
-  }, [waiting, reads, readBoardNow]);
+    const watching = client.live([topic.session(holder, { resource: CONVERSATION_BOARD_COLLECTION })], {
+      read: readBoardNow,
+      hear: (notice) => notice.kind === "board",
+      pollIntervalMs: REREAD_EVERY_MS,
+      // The row was just read: the subscription's connect, or its first tick, is the next read.
+      readNow: false,
+    });
+    return () => watching.close();
+  }, [waiting, client, holder, readBoardNow]);
 
   const settledOnce = useRef<string | null>(null);
   const reportStatus = useCallback(
@@ -316,11 +348,11 @@ export function TaskProvider({
     boardRows,
     rowFailure: boardFailure,
     waiting,
-    gaveUp: boardKnown && awaitingLink(row) && boardFailure === undefined && reads >= REREAD_AT_MOST,
-    // A read now, then a fresh re-read window if the row is still waiting.
+    gaveUp,
+    // A read now; the screen waits again if the row still waits, a missing one for a fresh deadline.
     retryRow: () => {
       setFollowing(true);
-      setReads(0);
+      setMissedOut(false);
       void readBoardNow();
     },
     run,
