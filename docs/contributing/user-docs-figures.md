@@ -223,11 +223,10 @@ images under [`docs-revamp/figures/rendered/`](./docs-revamp/figures/rendered) a
 ## Lint rules
 
 `apps/docs/scripts/lint-brand.mjs` checks all sixteen, and CI runs it as `lint:brand`. Rules 1
-to 5 hold every diagram, the site's published ones included. Rules 6 to 15 hold each figure
-kept in a `figures/` folder; by default the lint checks those under
-`docs/contributing/docs-revamp/`. Rule 16 holds the revamp's pages in `pages/` and `pilot/`, and
-any `.md` file named to the lint. The site's published diagrams sit outside `figures/` folders
-and get rules 1 to 5 only, until they are redrawn. Before the real files, the lint runs its
+to 5 hold every diagram, the site's published ones included. Rules 6 to 15 hold every figure
+under `docs/contributing/docs-revamp/`, whatever folder it sits in, and the lint's figure
+fixtures. Rule 16 holds the revamp's pages in `pages/` and `pilot/`, and any `.md` file named to
+the lint. The site's published diagrams get rules 1 to 5 only, until they are redrawn. Before the real files, the lint runs its
 fixtures in `apps/docs/scripts/brand-lint-fixtures/figures/`: at least one per rule, named for
 the rule's name in the lint's output (`key.svg`, `key.two-keys.svg`), each breaking that rule,
 plus a clean figure and page that must pass. It fails if a fixture does not trip its rule, or if

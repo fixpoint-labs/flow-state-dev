@@ -6,7 +6,7 @@
 </defs>
 <rect fill="url(#hatch)" x="28" y="24" width="300" height="10"/><line class="thin" x1="28" y1="34.5" x2="328" y2="34.5"/>
 <rect class="solid" x="28" y="24" width="300" height="80"/>
-<text class="lb" x="42" y="56">THE TASKS</text>
+<text class="lb" x="42" y="56">TASKS &amp; RUNS</text>
 <rect class="hl" x="36" y="66" width="120" height="28"/>
 <text class="c on-hl" x="42" y="84">compare</text>
 <rect class="dash" x="438" y="24" width="300" height="80"/>

@@ -17,9 +17,9 @@
  *   stroke-width, dash or font by attribute, and it has no image, link, script, tspan,
  *   gradient, filter, opacity, transformed text or `textLength`.
  *
- * A figure kept in a `figures/` folder (the revamp's, under `docs/contributing/docs-revamp/`,
- * are linted by default) is also held to the rest of the figure standard,
- * `docs/contributing/user-docs-figures.md` → "Lint rules", by its number:
+ * A figure under `docs/contributing/docs-revamp/`, in any folder, and the figure fixtures, are
+ * also held to the rest of the figure standard, `docs/contributing/user-docs-figures.md` →
+ * "Lint rules", by its number:
  *
  * - defs (6), canvas (7), text-class (8), text-fit (9), arrow (10), key (11),
  *   key-marks (12), hatch (13), highlight (14), numbering (15).
@@ -36,7 +36,7 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DOCS = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -45,6 +45,8 @@ const PAGE_CSS = createRequire(join(DOCS, "package.json")).resolve("@flow-state-
 // The revamp's pages and figures, which the whole figure standard holds until cutover moves them onto the site.
 const REVAMP = resolve(DOCS, "../../docs/contributing/docs-revamp");
 const FIGURE_FIXTURES = join(FIXTURES, "figures");
+// Where the whole figure standard holds, by path prefix. The site's published diagrams are not here: they keep rules 1 to 5 until cutover redraws them.
+const HELD_TO_STANDARD = [REVAMP, FIGURE_FIXTURES];
 // Drawn before the figure standard; FIX-2701 redraws them with their page and drops them from here.
 const PREDATE_STANDARD = ["pages/blocks.md", "pages/figures/blocks.svg"].map((p) => join(REVAMP, p));
 
@@ -124,15 +126,24 @@ function drawingClassNames() {
   return new Set([...css.matchAll(/\.drawing\s+(?:[a-z]+)?\.([a-z][\w-]*)/g)].map((m) => m[1]));
 }
 
+const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+/** XML's character references and five named entities as the characters they stand for; any other `&name;` is left as written. */
+const decodeEntities = (s) =>
+  s.replace(/&(?:#x([\da-f]+)|#(\d+)|(\w+));/gi, (ref, hex, dec, named) =>
+    hex || dec ? String.fromCodePoint(parseInt(hex ?? dec, hex ? 16 : 10)) : (ENTITIES[named] ?? ref),
+  );
+
 /** A diagram as a tree of `{ name, attrs, children, text, index, parent }`: enough XML for a drawing. */
 function parseSvg(text) {
   const root = { name: "#root", attrs: {}, children: [], text: "", index: 0 };
   const stack = [root];
-  const token = /<!--[\s\S]*?-->|<[?!][^>]*>|<(\/?)([\w:-]+)((?:\s+[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>|([^<]+)/g;
+  const token = /<!--[\s\S]*?-->|<!\[CDATA\[([\s\S]*?)\]\]>|<[?!][^>]*>|<(\/?)([\w:-]+)((?:\s+[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>|([^<]+)/g;
   for (const m of text.matchAll(token)) {
-    const [, close, name, attrText, selfClose, chars] = m;
+    const [, cdata, close, name, attrText, selfClose, chars] = m;
     const top = stack[stack.length - 1];
-    if (chars !== undefined) top.text += chars;
+    // CDATA is character data, kept as written; other text has its entities decoded.
+    if (cdata !== undefined) top.text += cdata;
+    else if (chars !== undefined) top.text += decodeEntities(chars);
     else if (close) {
       if (stack.length > 1) stack.pop();
     } else if (name) {
@@ -150,8 +161,8 @@ function parseSvg(text) {
 const descendants = (node) => node.children.flatMap((c) => [c, ...descendants(c)]);
 const classesOf = (node) => (node.attrs.class ?? "").split(/\s+/).filter(Boolean);
 const num = (node, attr) => Number(node.attrs[attr] ?? 0);
-/** A text element's characters, an entity counted as one. */
-const content = (node) => node.text.trim().replace(/&[#\w]+;/g, "x");
+/** A text element's characters as they render: entities decoded by `parseSvg`, CDATA as written. */
+const content = (node) => node.text.trim();
 function within(node, test) {
   for (let p = node.parent; p; p = p.parent) if (test(p)) return true;
   return false;
@@ -179,11 +190,14 @@ function lintSvgAttributes(file, text, tree, out) {
 }
 
 // The figure standard's `<defs>`, exactly; whitespace between tags is free.
-const DEFS = `<defs>
+const DEFS_TEXT = `<defs>
 <pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
 <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
 </defs>`;
-const squash = (s) => s.replace(/>\s+</g, "><").replace(/\s+/g, " ").trim();
+/** A parsed element as one string: its name, its attributes in order, its trimmed text and its children's. */
+const shape = (node) =>
+  `<${node.name}${Object.entries(node.attrs).map(([k, v]) => ` ${k}="${v}"`).join("")}>${node.text.trim()}${node.children.map(shape).join("")}</${node.name}>`;
+const DEFS = shape(parseSvg(DEFS_TEXT).children[0]);
 // Each text class, and its width in units per character.
 const UNITS = { lb: 7.5, nm: 9, sub: 6.3, c: 7.5, t: 7.2, n: 6.6, plate: 7.3 };
 const BOXES = new Set(["solid", "thin", "dash"]);
@@ -211,7 +225,10 @@ const LABEL = {
 /** Rules 6 to 15 of the figure standard, for a figure it holds: defs, canvas, text, arrows, key, marks. */
 function lintFigure(file, text, tree, out) {
   const svg = tree.children.find((n) => n.name === "svg");
-  if (!svg) return out.push(finding(file, text, 0, "canvas", "no <svg> root"));
+  if (!svg) {
+    out.push(finding(file, text, 0, "canvas", "no <svg> root"));
+    return;
+  }
   const at = (node, rule, detail) => out.push(finding(file, text, node.index, rule, detail));
   const all = descendants(svg);
   const keys = all.filter((n) => n.attrs.id === "key");
@@ -220,8 +237,8 @@ function lintFigure(file, text, tree, out) {
   const same = (a, b) => ["x", "y", "width"].every((k) => num(a, k) === num(b, k));
 
   // 6. The two definitions, as printed.
-  const defs = [...text.matchAll(/<defs\b[\s\S]*?<\/defs>/g)];
-  if (defs.length !== 1 || squash(defs[0][0]) !== squash(DEFS)) {
+  const defs = all.filter((n) => n.name === "defs");
+  if (defs.length !== 1 || shape(defs[0]) !== DEFS) {
     at(defs[0] ?? svg, "defs", "<defs> is not exactly the hatch pattern and the ah marker the standard prints");
   }
 
@@ -381,8 +398,8 @@ function lintFonts(file, text, out) {
 }
 
 const inside = (dir, file) => !relative(dir, resolve(file)).startsWith("..");
-/** Whether the whole figure standard holds a diagram: any one kept in a `figures/` folder. The site's published diagrams are not, yet. */
-const heldToStandard = (file) => resolve(file).split(sep).slice(0, -1).includes("figures");
+/** Whether the whole figure standard holds a diagram: any one under a `HELD_TO_STANDARD` prefix, whatever its folder is called. */
+const heldToStandard = (file) => HELD_TO_STANDARD.some((dir) => inside(dir, file));
 
 /** Every finding for one file: a diagram, a page (`.md`, `.mdx`) or a stylesheet. */
 function lintFile(file, allowed) {
@@ -460,7 +477,7 @@ const pagesIn = (dir) =>
   readdirSync(join(REVAMP, dir))
     .filter((f) => /\.mdx?$/.test(f) && !/\.(record|facts)\.md$/.test(f))
     .map((f) => join(REVAMP, dir, f));
-const revamp = [...svgsUnder(REVAMP).filter(heldToStandard), ...["pages", "pilot"].flatMap(pagesIn)];
+const revamp = [...svgsUnder(REVAMP), ...["pages", "pilot"].flatMap(pagesIn)];
 const stale = PREDATE_STANDARD.filter((f) => !revamp.includes(f));
 if (!args.length && stale.length) {
   // An exemption for a file that is gone would quietly exempt whatever takes its name.
