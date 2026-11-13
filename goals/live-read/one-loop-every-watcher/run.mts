@@ -8,12 +8,18 @@
  * (requests the server answers, never `read` calls against a fake):
  *
  *   rp  React's `Roster` panel, live, rendered by react-dom over happy-dom, read off the rows it draws
- *   rw  Workforce's `watchRoster`, read off what it reports
+ *   rw  Workforce's `watchRoster`, read off what it reports (it, and tm, read the roster view)
  *   sm  Shift Manager's snapshot, under its real `LabProvider`, counted per snapshot read
  *   tm  the Teammates lab's `watchWorkers`
  *   cc  the claude-code-style lab's `watchPins`
  *
- * Alice's other tab writes:
+ * Alice's other tab writes as an app does, with no roster session: hires
+ * through the workforce client, on the roster flow the workers collection's
+ * `runBy` names, and pins through the pins resource's default write
+ * (FIX-2624). Only the React panel, which reads a session's collection, is
+ * handed a roster session the page makes for it.
+ *
+ * It writes:
  *
  *   a  — a burst: 50 hires (the roster) and 50 pins (your user resource), each
  *        landing while every watcher's read is held in flight. Each watcher
@@ -40,7 +46,7 @@ import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@fl
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { Roster } from "@flow-state-dev/react/workforce";
-import { createWorkforceClient, PROJECTS_FLOW, ROSTER_FLOW, type RosterEntry } from "@flow-state-dev/workforce/browser";
+import { createWorkforceClient, PROJECTS_FLOW, ROSTER_FLOW, rosterView, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, type ModulePatch } from "../../lib/index.mts";
 import { buildKitchenSinkWorkforce } from "../../../apps/kitchen-sink/workforce/hire.ts";
@@ -103,11 +109,16 @@ const ROSTER_WATCHERS: readonly Watcher[] = ["rp", "rw", "sm", "tm"];
 const TOKENS: Record<string, string> = { "tok-rp": "alice", "tok-rw": "alice", "tok-sm": "alice", "tok-tm": "alice", "tok-cc": "alice", "tok-tab": "alice" };
 const tokenOf = (w: Watcher) => `tok-${w}`;
 
-/** Whether `url` is one read of what watcher `w` shows: the roster's own collection, a snapshot's first request, the pins read. */
+/**
+ * Whether `url` is one read of what watcher `w` shows: the panel's read of the roster's own
+ * collection, a roster view call (each roster watch follows the view, FIX-2623), a snapshot's
+ * first request, the pins read.
+ */
 function isReadOf(w: Watcher, url: string): boolean {
   if (w === "sm") return url.includes("/sessions") && url.includes("dispatch-runs");
   if (w === "cc") return url.includes("/resources/user/lab-pins");
-  return url.includes("workforceWorkers") && !url.includes("workforceStandardWorkers");
+  if (w === "rp") return url.includes("workforceWorkers") && !url.includes("workforceStandardWorkers");
+  return url.includes(`/api/flows/${rosterView.flow}/views/${rosterView.view}`);
 }
 
 const reads = new Map<Watcher, number[]>(WATCHERS.map((w) => [w, []]));
@@ -265,10 +276,12 @@ const check = (name: string, ok: boolean, detail: string) => {
 const on = await host();
 const tab = clientOf(on, "tok-tab");
 const tabWorkforce = createWorkforceClient(tab);
-await tabWorkforce.roster();
-const [rosterSession] = await tab.sessions.list({ flowKind: ROSTER_FLOW, userId: "alice" });
-if (rosterSession === undefined) throw new Error("setup: alice has no roster session");
-const hire = (id: string) => tab.flow(ROSTER_FLOW).send("hire", { id, flow: "agent", description: id }, { sessionId: rosterSession.id }).then((sent) => sent.result());
+// The React panel reads a session's collection, and no read makes a session any more (FIX-2624),
+// so the page makes the roster session it hands the panel, as a session-addressed read does today.
+const rosterSession = await tab.flow(ROSTER_FLOW).createSession();
+// A hire as an app writes one: through the workforce client, on the roster flow the workers'
+// `runBy` names, in alice's write session.
+const hire = (id: string) => tabWorkforce.hire({ id, flow: "agent", description: id });
 const pin = (id: string) => tab.resource(labPins).update((s) => ({ pinned: [...s.pinned, id] }));
 
 const unmount = mount(on, rosterSession.id);

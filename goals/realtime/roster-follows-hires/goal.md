@@ -10,7 +10,7 @@
 - `c:no-push` — on a host with no push, each view shows a hire within the fallback pace (3 s) + 1 s.
 - `d:rail` — on the tree with two coordinators, `railSessions` lists exactly `support.desk` and `support.help`.
 
-**Anti-game:** Every assertion reads what an app's own code renders or hands back, or the roster reads counted at that view's fetcher (a read of the user's own workers' collection), never `publish` calls, frames sent, or a `watchRoster` called outside the apps. Real sockets on a bound port. Each graded list is floored with `tell.over`.
+**Anti-game:** Every assertion reads what an app's own code renders or hands back, or the roster reads counted at that view's fetcher (a call of the roster flow's `roster` view, which each app's watch follows since FIX-2623), never `publish` calls, frames sent, or a `watchRoster` called outside the apps. Real sockets on a bound port. Each graded list is floored with `tell.over`.
 **Model:** n/a (the roster flow's actions write; no turn runs a model)
 **Run:** `cd goals && pnpm tsx realtime/roster-follows-hires/run.mts`
 **Controls:**
