@@ -10754,7 +10754,29 @@ check('page-loop: two entries whose slugs end alike land on different files, and
   const reference = await run('page-loop.js', { args: { ...loopArgs, page: 'R-01' }, respond: loopResponder({ entries: blocksEntries, tree }) })
   assert.equal(reference.result.status, 'complete')
   assert.equal(reference.result.path, `${LOOP_DIR}/reference/blocks.md`, 'R-01 never writes over the concept page')
-  assert.ok(labels(reference.calls, 'pass-').every(() => true) && !reference.calls.some((c) => c.prompt.includes(`Write ${LOOP_DIR}/blocks.`)), 'no writing agent is pointed at the concept page')
+  // The file scout is asked about the flat path, read only, to learn whose page it is. No agent that
+  // writes (the fact sheet, the draft, the revise rounds, the record) is ever given it.
+  const flat = `${LOOP_DIR}/blocks.`
+  assert.ok(reference.calls.find((c) => c.label === 'inspect').prompt.includes(`${LOOP_DIR}/blocks.md`), 'the scout checks who owns the flat page')
+  const writers = reference.calls.filter((c) => /^(pass-[138](:|$)|record$)/.test(c.label))
+  assert.deepEqual(writers.map((c) => c.label), ['pass-1', 'pass-3', 'record'])
+  for (const c of writers) assert.ok(!c.prompt.includes(flat), `${c.label} is pointed at the concept page`)
+})
+
+check('page-loop: a directory-index slug writes the folder’s index.md, and a malformed one is still refused', async () => {
+  const entries = (slug) => ({ 'C-07': { slug, title: 'Catalog', type: 'catalog' } })
+  for (const [slug, path] of [['catalog/', `${LOOP_DIR}/catalog/index.md`], ['catalog/workforce/', `${LOOP_DIR}/catalog/workforce/index.md`]]) {
+    const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ entries: entries(slug) }) })
+    assert.equal(result.status, 'complete', slug)
+    assert.equal(result.path, path)
+    assert.equal(result.record, path.replace(/\.md$/, '.record.md'))
+    assert.ok(labels(calls, 'pass-3').length === 1, `${slug} reaches the draft`)
+  }
+  for (const slug of ['catalog//x', 'catalog/../', 'catalog//', '/catalog/']) {
+    const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ entries: entries(slug) }) })
+    assert.equal(result.status, 'blocked', slug)
+    assert.deepEqual(calls.map((c) => c.label), ['plan'], slug)
+  }
 })
 
 check('page-loop: a target path that belongs to another sitemap entry is refused before any agent writes', async () => {

@@ -12,7 +12,8 @@
  * Args: `{ page, writer, dir? }`. `page` is a sitemap id (`C-07`); `writer` is the model for the
  * passes that write (1, 3 and 8); `dir` puts the page somewhere other than the revamp's pages
  * folder, for a run kept as evidence. The page file is the entry's slug under that folder
- * (`concepts/blocks` → `<dir>/concepts/blocks.md`), so R-01 `reference/blocks` and C-02
+ * (`concepts/blocks` → `<dir>/concepts/blocks.md`; a folder slug `catalog/workforce/` →
+ * `<dir>/catalog/workforce/index.md`), so R-01 `reference/blocks` and C-02
  * `concepts/blocks` never share a file. One page predates the section folders: a page at
  * `<dir>/<last segment>.md` that is this entry's (its record names the id, or, with no record, its
  * title and type are the entry's) is used where it is. A target that exists and is another entry's
@@ -404,13 +405,15 @@ if (!plan) return failed('plan')
 if (!plan.found) return { status: 'blocked', page: A.page, reason: `the sitemap has no entry ${A.page}` }
 
 // The slug comes from an agent that read contributor text: it becomes a path only in a known section,
-// with every segment allow-listed.
-const slug = plan.slug.split('/')
-if (slug.length < 2 || !SECTIONS.includes(slug[0]) || !safePath(plan.slug)) {
+// with every segment allow-listed. A slug ending in `/` is a folder's index page (`catalog/workforce/`
+// is `catalog/workforce/index.md`, as the docs site reads a folder).
+const SLUG = plan.slug.endsWith('/') ? `${plan.slug}index` : plan.slug
+const slug = SLUG.split('/')
+if (slug.length < 2 || !SECTIONS.includes(slug[0]) || !safePath(SLUG)) {
   return { status: 'blocked', page: A.page, reason: `the sitemap gives ${A.page} the slug ${JSON.stringify(plan.slug)}, which is not <section>/<name> in one of ${SECTIONS.join(', ')} with plain segments` }
 }
 const TITLE = one(plan.title)
-const NAMESPACED = `${DIR}/${plan.slug}.md`
+const NAMESPACED = `${DIR}/${SLUG}.md`
 const FLAT = `${DIR}/${slug.at(-1)}.md`
 
 const seen = await agent(
