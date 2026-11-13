@@ -27,7 +27,7 @@
  */
 import { defineKit, slot, type CapabilityRef, type UsesEntry } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { z } from "zod";
+import { z, type ZodTypeAny } from "zod";
 import { AGENT_FLOW, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../agent-worker-flow";
 import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import { defineCoordinatorFlow, type CoordinatorFlowOptions } from "../coordinator/coordinator-flow";
@@ -93,6 +93,12 @@ export interface WorkforceConfig {
   messages?: MessageLimits;
   /** The standard worker each user's project coordinator runs as. */
   projectCoordinator?: string;
+  /**
+   * Session fields the app declares on the agent and coordinator sessions, a
+   * schema each, by name. Only the server writes one: a create that seeds it
+   * is refused, naming it, and the client reads it off the session.
+   */
+  sessionFields?: Readonly<Record<string, ZodTypeAny>>;
 }
 
 /** Accepts any object: what the field holds is checked where it is used. */
@@ -125,6 +131,7 @@ const configSchema: z.ZodType<WorkforceConfig, z.ZodTypeDef, WorkforceConfig> = 
     taskChainLimit: z.number().int().positive().optional(),
     messages: object<MessageLimits>().optional(),
     projectCoordinator: z.string().min(1).optional(),
+    sessionFields: z.record(z.custom<ZodTypeAny>((value) => value instanceof z.ZodType, { message: "a session field is a zod schema" })).optional(),
   })
   .strict();
 
@@ -210,6 +217,7 @@ function installWorkforce(
           ...(generated.blocks === undefined ? {} : { catalog: generated.blocks as never }),
           ...agent,
           installation,
+          ...(config.sessionFields === undefined ? {} : { sessionFields: config.sessionFields }),
           uses: [...(agent.uses ?? []), ...added(installation)],
         }),
       { showSettings: showSettings ?? [] },
@@ -221,6 +229,7 @@ function installWorkforce(
       defineCoordinatorFlow({
         ...coordinator,
         installation,
+        ...(config.sessionFields === undefined ? {} : { sessionFields: config.sessionFields }),
         agent: { ...coordinator.agent, uses: [...(coordinator.agent?.uses ?? []), ...added(installation)] },
       }),
     );

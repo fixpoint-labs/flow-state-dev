@@ -132,6 +132,7 @@ import { reportRescuedFailure } from "../error-reporter/rescued";
 import { verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
 import { workerRoutineVerbs } from "../routines/routines";
 import { ROUTED_FROM_STATE_KEY, SET_WORK_PROJECT_ACTION, WORK_PROJECT_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
+import { withSessionFields, type SessionFields } from "../workers/session-fields";
 import { setWorkProjectAction } from "../projects/work-project";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import {
@@ -242,6 +243,8 @@ export interface CoordinatorFlowOptions {
    * `routines.providers` names. Omitted, a coordinator keeps no routines.
    */
   routines?: boolean;
+  /** Session fields the app declares on the coordinator's sessions, server-written only. */
+  sessionFields?: SessionFields;
 }
 
 /** What best fit's one call is asked. */
@@ -1722,7 +1725,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     // per-turn visibility rule, and the request `onStarted` that loads this
     // turn's worker on this flow before anything reads a setting.
     ...turn.bound,
-    session: {
+    session: withSessionFields({
       ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape, ...workerMessageStateShape }),
       // The board's `routedFrom` too: no caller names the conversation a routed task came from (BP-031).
       // And `workProjectId`: only the work-project action sets the project a conversation works in (FIX-2161).
@@ -1736,7 +1739,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // Every answer, routing and pass-on writes this one record at once; a pass-on that
       // runs out of retries fails after its round has closed, and its answers are lost.
       cas: { maxRetries: 8 }
-    },
+    }, options.sessionFields),
     resources: {
       ...resources,
       ...(turn.bound.resources ?? {}),

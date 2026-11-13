@@ -23,6 +23,7 @@ const COMPONENTS = resolve(ROOT, "registry/components");
 interface Manifest {
   items: Array<{
     name: string;
+    type: string;
     files?: Array<{ path: string }>;
     cssVars?: { theme?: Record<string, string> };
     css?: Record<string, Record<string, Record<string, string>>>;
@@ -52,7 +53,10 @@ afterAll(() => {
 describe("the colour census", () => {
   it("walks every file the manifest installs", () => {
     const walked = new Set(registryFiles(COMPONENTS));
-    const shipped = manifest.items.flatMap((item) => (item.files ?? []).map((file) => resolve(ROOT, file.path)));
+    // Components only: a starter file (a kit folder's markdown) carries no colour.
+    const shipped = manifest.items
+      .filter((item) => item.type !== "registry:file")
+      .flatMap((item) => (item.files ?? []).map((file) => resolve(ROOT, file.path)));
     expect(shipped.length).toBeGreaterThan(0);
     for (const file of shipped) expect(walked.has(file), `${file} is installed but not walked`).toBe(true);
     // More files than the manifest names, never fewer: files the manifest
