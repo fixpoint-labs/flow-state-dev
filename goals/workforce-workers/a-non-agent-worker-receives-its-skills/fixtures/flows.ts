@@ -206,6 +206,7 @@ export const noContractFlow = defineFlow({
     // Imposed on every worker: its own id.
     workerId: z.string().optional(),
     delegates: z.array(z.string()).default([]),
+    defaults: z.any().optional(),
     // `workerSkills` omitted — the single reason the bag is refused.
     desk: z.string().default("front")
   }),
@@ -235,6 +236,7 @@ export const handRolledFlow = defineFlow({
     workerPackages: z.array(z.any()).optional(),
     workerId: z.string().optional(),
     delegates: z.array(z.string()).default([]),
+    defaults: z.any().optional(),
     desk: z.string().default("front")
   }),
   resources: { ...twinInstallation.resources, ...workerMessagesResources },
