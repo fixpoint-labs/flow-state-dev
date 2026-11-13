@@ -107,7 +107,8 @@ code, which outranks every prose finding in the list.
 5. **Keep the neighbours honest.** A correction to a contract often leaves a contradiction on
    another page or in a README that stated the old behavior. Search for the claim you just changed
    and fix every copy of it. A page that contradicts the one you fixed is worse than one that's
-   merely dated.
+   merely dated. Until the docs cutover, every `packages/<dir>/README.md` has a cut copy at
+   `docs/contributing/docs-revamp/readmes/<dir>.md`; an edit to one lands in both.
 
 ## Verify (BP-003)
 

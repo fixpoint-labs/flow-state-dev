@@ -201,6 +201,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: node --test scripts/root-exports.test.mjs
 
+      # Until the docs cutover, each published package has a long README and a
+      # cut copy under docs/contributing/docs-revamp/readmes/ (FIX-2698 D2). An
+      # edit to one lands in both, and each cut copy keeps its shape. Here
+      # because it reads the export check's report and the same base.
+      - name: Cut READMEs keep step with the long ones
+        if: ${{ !cancelled() }}
+        run: node scripts/check-cut-readmes.mjs HEAD^1
+
+      - name: The cut-README check refuses its plants
+        if: ${{ !cancelled() }}
+        run: node --test scripts/check-cut-readmes.test.mjs
+
       # The retired-term guard lives here because it reads names with the
       # TypeScript parser (FIX-2631 D2), so it needs the install, and its
       # added-names reach is the same per-file ratchet against the same base.
