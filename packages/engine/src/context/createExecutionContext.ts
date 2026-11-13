@@ -51,6 +51,8 @@ import type { BlockValueInternal, RuntimeItem, ReplayLog } from "@flow-state-dev
 import {
   resolveAllowedActions,
   BOARD_NOTICE_SEAM,
+  BOARD_READ_SEAM,
+  type BoardReadSeam,
   DISPATCH_SEAM,
   ATTACHMENT_SEAM,
   type AttachmentSeam,
@@ -2820,7 +2822,12 @@ export async function createExecutionContext<
         const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
         if (holders.length > 0) {
           // An entry names its key beside its path, when the path may be named (FIX-2625).
-          const named = holders.map((cfg) => entryNotice(cfg, resourcePath, scope)).find((n) => n.resource !== undefined);
+          // On the user topic each holder names its root: the deepest is under
+          // every other, so a view of any holder hears it (the path rule).
+          const named = holders
+            .map((cfg) => entryNotice(cfg, resourcePath, scope))
+            .filter((n) => n.resource !== undefined)
+            .sort((a, b) => b.resource!.length - a.resource!.length)[0];
           notice = named ?? {};
         }
       }
@@ -3475,6 +3482,19 @@ export async function createExecutionContext<
       return Object.values(flatResourcesHandles);
     }
   } as ResourceRegistry<Record<string, AnyResourceRef>>;
+  // FIX-2625: a board read through its task collection, in a view, is heard on
+  // its board's notices in place of its ledger's: the ledger is named by the
+  // accessor whose handle the collection read through.
+  const boardReadSeam: BoardReadSeam | undefined =
+    viewDependencies === undefined
+      ? undefined
+      : {
+          record(read) {
+            const covers = Object.keys(flatResourcesHandles).find((accessor) => flatResourcesHandles[accessor] === read.ledger);
+            if (covers === undefined || read.sessionIds.length === 0) return;
+            viewDependencies.board(read.board, read.sessionIds, covers);
+          }
+        };
   if (viewDependencies !== undefined || noSession) {
     for (const accessor of [...Object.keys(flatResourcesHandles), ...sessionAccessorsWithoutSession]) {
       Object.defineProperty(flatResourcesRegistry, accessor, {
@@ -4135,6 +4155,8 @@ export async function createExecutionContext<
       // A task board's change reaches this run's bus, under the
       // request's tenant. No bus (a registry no entry wrapped): no seam.
       ...(boardNoticeSeam !== undefined ? { [BOARD_NOTICE_SEAM]: boardNoticeSeam } : {}),
+      // A view's run records a board read through its task collection.
+      ...(boardReadSeam !== undefined ? { [BOARD_READ_SEAM]: boardReadSeam } : {}),
       ...(attachmentSeam !== undefined ? { [ATTACHMENT_SEAM]: attachmentSeam } : {}),
       ...(userAttachmentSeam !== undefined ? { [USER_ATTACHMENT_SEAM]: userAttachmentSeam } : {}),
       settings: options.settings ?? {},

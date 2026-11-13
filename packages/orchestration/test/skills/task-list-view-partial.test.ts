@@ -125,3 +125,17 @@ describe("the board's task-list view · a board notice", () => {
     expect((await view({}, { topic: { scope: "session", id: "conversation" }, kind: "request", ids: ["a"] })).partial).toBeUndefined();
   });
 });
+
+// FIX-2625: the owner's call. A watcher of the board hears only the board's
+// notices, which name the task; its ledger's user-topic notices name none, so
+// hearing them answered the whole board for one task's change. Every write to
+// the ledger publishes the board notice (`board-notice.test.ts`).
+describe("the board's task-list view · what its answer hears", () => {
+  it("the board's notices on the session that filed its entries, and not its ledger's user topic", async () => {
+    const { act, view } = await boot();
+    await act("file", { id: "a" });
+    const answer = await view();
+    expect(answer.topics).toEqual([{ scope: "session", id: "conversation", resource: BOARD }]);
+    expect(answer.hears).toEqual([{ topic: { scope: "session", id: "conversation", resource: BOARD }, kinds: ["board"] }]);
+  });
+});

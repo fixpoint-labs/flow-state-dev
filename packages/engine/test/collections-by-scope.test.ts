@@ -418,13 +418,27 @@ describe("a user entry's change notice", () => {
     expect(set.status, JSON.stringify(set.result)).toBe("completed");
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(heard.length).toBeGreaterThan(0);
-    expect(heard.every((notice) => notice.topic.resource === undefined)).toBe(true);
+    expect(heard.every((notice) => notice.topic.resource === undefined || notice.topic.resource === "drafts")).toBe(true);
     expect(JSON.stringify(heard)).not.toContain("secret-plan");
+  });
+
+  // FIX-2625: a screen of another resource under the user scope must not read on it.
+  it("names its collection's root, the same in every org, so a screen of another resource skips it", async () => {
+    const { router, stores } = buildRouter([threadsFlow()]);
+    const heard: ChangeNotice[] = [];
+    stores.bus.subscribe({ scope: "user", id: "alice", tenantId: "" }, (notice) => heard.push(notice));
+    const set = await sendEntry(router, stores, "user", "drafts/*", "set", alice, { entry: "secret-plan", state: { title: "x", body: "" }, version: 0 });
+    expect(set.status, JSON.stringify(set.result)).toBe("completed");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const resource = heard.filter((notice) => notice.kind === "resource");
+    expect(resource.map((notice) => notice.topic.resource)).toEqual(["drafts"]);
+    // The root is no entry: it carries no ids.
+    expect(resource.map((notice) => notice.ids)).toEqual([undefined]);
   });
 
   it("is chosen in one place for every writer: a run's write and the default write flow's", async () => {
     const { noticePathFor } = await import("../src/bus/scope-changes");
-    expect(noticePathFor(drafts, "drafts/secret-plan", "user")).toBeUndefined();
+    expect(noticePathFor(drafts, "drafts/secret-plan", "user")).toBe("drafts");
     // An org entry and a session entry keep their path; a single resource's key is the same for everyone.
     expect(noticePathFor(projects, "projects/p", "org")).toBe("projects/p");
     expect(noticePathFor(undefined, "pins", "user")).toBe("pins");

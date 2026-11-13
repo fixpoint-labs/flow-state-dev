@@ -173,6 +173,72 @@ describe("watchView", () => {
     expect(next[1]).not.toBe(first[1]);
   });
 
+  // FIX-2625: an answer says which notices change what its run read, so a write
+  // to another resource of the scope, or a kind nothing it read changes on,
+  // reads nothing.
+  describe("the notices an answer says it hears", () => {
+    const hearing = (): ViewResult => ({
+      value: "v",
+      topics: [{ scope: "user" }, { scope: "session", id: "s1", resource: "desk" }],
+      hears: [
+        { topic: { scope: "user" }, kinds: ["resource"], paths: ["workers"] },
+        { topic: { scope: "session", id: "s1", resource: "desk" }, kinds: ["board"] }
+      ]
+    });
+
+    it("reads on a resource under a root it read, a resource notice that names no path, and a board it read", async () => {
+      const fake = fakeViewClient(hearing);
+      watchView(fake.client, ROSTER, {}, {}, { pollIntervalMs: null });
+      await flush();
+      const settled = fake.views();
+      for (const notice of [
+        { topic: { scope: "user", resource: "workers" }, kind: "resource" },
+        { topic: { scope: "user", resource: "workers/w1" }, kind: "resource" },
+        { topic: { scope: "user" }, kind: "resource" },
+        { topic: { scope: "session", id: "s1", resource: "desk" }, kind: "board", ids: ["t1"] }
+      ] as WireNotice[]) {
+        const before = fake.views();
+        fake.notify(notice);
+        await flush();
+        expect(fake.views(), JSON.stringify(notice)).toBe(before + 1);
+      }
+      expect(fake.views()).toBe(settled + 4);
+    });
+
+    it("reads nothing for another resource, another kind, or another board", async () => {
+      const fake = fakeViewClient(hearing);
+      watchView(fake.client, ROSTER, {}, {}, { pollIntervalMs: null });
+      await flush();
+      const settled = fake.views();
+      for (const notice of [
+        { topic: { scope: "user", resource: "lab-pins" }, kind: "resource" },
+        { topic: { scope: "user", resource: "workersX" }, kind: "resource" },
+        { topic: { scope: "user" }, kind: "run" },
+        { topic: { scope: "user" }, kind: "state" },
+        { topic: { scope: "session", id: "s1", resource: "plan" }, kind: "board", ids: ["t1"] },
+        { topic: { scope: "session", id: "s2", resource: "desk" }, kind: "board", ids: ["t1"] }
+      ] as WireNotice[]) {
+        fake.notify(notice);
+        await flush();
+      }
+      expect(fake.views()).toBe(settled);
+      // A resync still reads.
+      fake.notify({ topic: { scope: "user" }, kind: "resync" });
+      await flush();
+      expect(fake.views()).toBe(settled + 1);
+    });
+
+    it("hears every notice under its topics from a server that names no hearing", async () => {
+      const fake = fakeViewClient(() => ({ value: "v", topics: [{ scope: "user" }] }));
+      watchView(fake.client, ROSTER, {}, {}, { pollIntervalMs: null });
+      await flush();
+      const settled = fake.views();
+      fake.notify({ topic: { scope: "user" }, kind: "run" });
+      await flush();
+      expect(fake.views()).toBe(settled + 1);
+    });
+  });
+
   // FIX-2625 D1: a notice with ids asks the view for just the rows it touches;
   // the answer is placed by key over the rows held, so the screen equals a
   // whole read without one.

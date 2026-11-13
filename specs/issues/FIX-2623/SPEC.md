@@ -44,7 +44,11 @@ The check reads what the watching client reported and how often its fetcher call
 bus. The control blinds the recorder to the one dependency the probe view has, so a broken
 recorder shows. A board control can't: under publish-all its other reads (`tasks`,
 `workforceWorkers`, the session's state, [FIX-2621's table](../FIX-2621/poc/dependency-check/README.md))
-can wake it on their own topics, so it can pass with the plan ledger unrecorded.
+can wake it on their own topics, so it can pass with the plan ledger unrecorded. Amended by
+[FIX-2625 D3](../FIX-2625/DECISIONS.md#d3): the board's ledgers (`tasks` and the plan ledger) are
+heard only on their board notices, on the session each entry's notices go to, never on the user
+topic their ledger writes; `workforceWorkers` and the session's state are heard on their own
+topics, narrowed to the kinds and resources the run read.
 
 | How we verify | |
 |---|---|

@@ -76,6 +76,29 @@ export type ViewChange = {
   readonly ids: readonly string[];
 };
 
+// FIX-2625.
+/**
+ * Which notices under one of a view answer's topics may change what its run
+ * read. A watcher reads again on a notice its topic covers whose kind is
+ * listed and, for a `resource` notice that names a path, whose path falls at
+ * or under one of `paths` (the client's path rule). A `resource` notice that
+ * names no path, and a `resync`, always read.
+ *
+ * - `state`, on a user or org topic: the scope's state was read.
+ * - `items`, `request`, `run` and `state`, on a session topic: the session
+ *   was read (its state, items, metadata or history).
+ * - `resource`, with `paths`: a resource was read, at its storage key or a
+ *   collection's root.
+ * - `board`, on a session topic narrowed to a board: a task board was read
+ *   through its task collection, whose every write publishes its board notice
+ *   there. Its ledger's own resource notices are not heard.
+ */
+export type ViewHearing = {
+  readonly topic: WireTopic;
+  readonly kinds: readonly ChangeKind[];
+  readonly paths?: readonly string[];
+};
+
 /**
  * What a view's block sees of its run, as `ctx.view`: set on every block of a
  * view's run, child blocks included, and absent anywhere else.

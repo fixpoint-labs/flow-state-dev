@@ -16,7 +16,7 @@
  * - **Model calls** refuse with `ViewModelCallError` (D2).
  * - **Reads** are recorded where the engine builds each block's context
  *   (`view-reads.ts`), child blocks included, and the answer carries the
- *   topics they fall under.
+ *   topics they fall under and what it hears under each.
  * - **A change** the caller names (`changed`) reaches every block as
  *   `ctx.view.changed`, for a keyed view only. A view that calls
  *   `ctx.view.partial` answers just the rows it chose, flagged `partial`;
@@ -29,6 +29,7 @@ import type {
   FlowInstance,
   ViewChange,
   ViewDefinition,
+  ViewHearing,
   ViewRunContext,
   ViewScope,
   WireTopic
@@ -68,6 +69,9 @@ export type RunViewOptions = {
 export type ViewAnswer = {
   output: unknown;
   topics: WireTopic[];
+  // FIX-2625.
+  /** Which notices under `topics` may change what the run read (`ViewHearing`). */
+  hears: ViewHearing[];
   /** Every distinct read the run made, by scope and accessor. Not on the wire: for diagnostics and tests. */
   reads: readonly RecordedRead[];
   /** A keyed view's row keys, in the answer's order. */
@@ -328,7 +332,7 @@ async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
     );
   }
   if (result.error !== undefined) throw viewRefusalIn(result.error) ?? result.error;
-  return { output: result.output, topics: recorder.topics(), reads: recorder.reads() };
+  return { output: result.output, topics: recorder.topics(), hears: recorder.hears(), reads: recorder.reads() };
 }
 
 /**

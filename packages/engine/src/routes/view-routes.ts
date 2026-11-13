@@ -5,9 +5,9 @@
  * - `POST /:flowKind/views/:viewName` — a user or org view, with no session.
  * - `POST /:flowKind/:sessionId/views/:viewName` — a session view, on that session.
  *
- * Each runs the view for its caller and answers `200 { output, topics }`:
- * the answer, and the change topics what it read falls under, deduped and
- * sorted. Nothing is stored (`execution/runView.ts`). A keyed view adds its
+ * Each runs the view for its caller and answers `200 { output, topics, hears }`:
+ * the answer, the change topics what it read falls under, deduped and
+ * sorted, and which notices under each may change it. Nothing is stored (`execution/runView.ts`). A keyed view adds its
  * rows' `keys`; a body that names a `changed` notice with ids may get a
  * partial answer, flagged `partial: { removed }`.
  *
@@ -137,6 +137,7 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
     return jsonResponse(200, {
       output: answer.output ?? null,
       topics: answer.topics,
+      hears: answer.hears,
       ...(answer.keys !== undefined ? { keys: answer.keys } : {}),
       ...(answer.partial !== undefined ? { partial: answer.partial } : {})
     });

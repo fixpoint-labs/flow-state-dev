@@ -15,12 +15,14 @@
  *   ones and reads once more. A notice with ids asks a keyed view for just
  *   the rows it touches; a partial answer is placed by key over the rows
  *   held (`placePartial`), and in development and tests checked against a
- *   whole run.
+ *   whole run. An answer that names what it hears (`hears`) reads again only
+ *   on a notice that may change what its run read.
  */
 import { wireTopicKey, type WireNotice, type WireTopic } from "@flow-state-dev/contracts";
-import type { ViewDefinition, ViewInput, ViewOutput } from "@flow-state-dev/core/types";
-import type { SubscribeOptions, Subscription } from "../subscribe/push-hub";
+import type { ViewDefinition, ViewHearing, ViewInput, ViewOutput } from "@flow-state-dev/core/types";
+import { covers, type SubscribeOptions, type Subscription } from "../subscribe/push-hub";
 import { liveRead, type LiveRead } from "../live/live-read";
+import { mayHold } from "../live/paths";
 
 /** A view by flow address and name, typed by the view. Holds no block: safe in a browser bundle. */
 export type ViewRef<TView extends ViewDefinition = ViewDefinition> = {
@@ -58,6 +60,9 @@ export type ViewResult<TValue = unknown> = {
    * keys to drop. Absent: `value` is the whole answer.
    */
   partial?: { removed: string[] };
+  // FIX-2625.
+  /** Which notices under `topics` may change what the run read. Absent (a server from before it): every one. */
+  hears?: ViewHearing[];
 };
 
 /**
@@ -96,7 +101,9 @@ type Shared = {
   /** The last answer's rows by key, so an unchanged row keeps its identity. */
   byKey: Map<string, { json: string; entry: unknown }>;
   /** A keyed answer as last held, for a partial answer to be placed over: its rows, keys and topics. */
-  held?: { entries: unknown[]; keys: string[]; topics: WireTopic[] };
+  held?: { entries: unknown[]; keys: string[]; topics: WireTopic[]; hears?: ViewHearing[] };
+  /** What the last answer hears (`ViewResult.hears`). */
+  hears?: ViewHearing[];
 };
 
 const sharedByClient = new WeakMap<object, Map<string, Shared>>();
@@ -168,7 +175,25 @@ function placePartial(held: NonNullable<Shared["held"]>, result: ViewResult): Vi
     entries.push(entry);
     keys.push(key);
   }
-  return { value: entries, topics: unionTopics(held.topics, result.topics), keys };
+  const hears = held.hears === undefined || result.hears === undefined ? undefined : [...held.hears, ...result.hears];
+  return { value: entries, topics: unionTopics(held.topics, result.topics), keys, ...(hears !== undefined ? { hears } : {}) };
+}
+
+// FIX-2625.
+/**
+ * Whether `notice` may change what an answer's run read: a hearing whose topic
+ * covers it lists its kind, and a `resource` notice's path falls under the
+ * hearing's roots (`mayHold`, the client's one path rule). Every notice, for
+ * an answer that names no hearing.
+ */
+function hearsNotice(hears: readonly ViewHearing[] | undefined, notice: WireNotice): boolean {
+  if (hears === undefined) return true;
+  return hears.some(
+    (hearing) =>
+      covers(hearing.topic, notice.topic) &&
+      hearing.kinds.includes(notice.kind) &&
+      (notice.kind !== "resource" || notice.topic.resource === undefined || mayHold(notice.topic.resource, hearing.paths))
+  );
 }
 
 /** Both sets of topics, each once. */
@@ -217,6 +242,7 @@ export function watchView<TValue = unknown>(
       [],
       {
         topicsFromResult: true,
+        hear: (notice) => hearsNotice(entry.hears, notice),
         read: async (notice) => {
           const changed = changeFor(notice, entry.held);
           let result = await client.view(ref, input, changed !== undefined ? { ...callOptions, changed } : callOptions);
@@ -230,14 +256,19 @@ export function watchView<TValue = unknown>(
                   `[flow-state-dev] "${ref.flow}" view "${ref.view}" answered partially for ${JSON.stringify(changed?.ids)} ` +
                     "and differs from a whole run: a row the change touched was left out, or one moved. The screen shows the whole run."
                 );
-                result = { ...whole, topics: unionTopics(result.topics, whole.topics) };
+                result = {
+                  ...whole,
+                  topics: unionTopics(result.topics, whole.topics),
+                  ...(result.hears !== undefined && whole.hears !== undefined ? { hears: [...result.hears, ...whole.hears] } : {})
+                };
               }
             }
           }
           entry.held =
             result.keys !== undefined && Array.isArray(result.value)
-              ? { entries: result.value, keys: result.keys, topics: result.topics }
+              ? { entries: result.value, keys: result.keys, topics: result.topics, ...(result.hears !== undefined ? { hears: result.hears } : {}) }
               : undefined;
+          entry.hears = result.hears;
           return { value: keepUnchangedEntries(entry, result), topics: result.topics };
         },
         onValue: (value) => {

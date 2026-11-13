@@ -10,7 +10,7 @@
  */
 import type { ResumeAction, WireTopic } from "@flow-state-dev/contracts";
 import type { FileContent } from "@flow-state-dev/contracts/items";
-import type { ActionConfig, FlowActionInput, RequestStatusSnapshot } from "@flow-state-dev/core/types";
+import type { ActionConfig, FlowActionInput, RequestStatusSnapshot, ViewHearing } from "@flow-state-dev/core/types";
 import { clientError, createTransport, requireValue, seg, topicPath, type Transport } from "./internal/http";
 import { pause } from "./internal/pause";
 import {
@@ -796,7 +796,13 @@ export function createClient(options: CreateClientOptions): Client {
           : `/api/flows/${seg(flow)}/views/${seg(name)}`;
       // The change it may answer for (FIX-2625 D1): a notice with ids, as a hint; never one with none.
       const changed = viewOptions?.changed;
-      const answer = await t.json<{ output: ViewValueOf<TRef>; topics: WireTopic[]; keys?: string[]; partial?: { removed: string[] } }>(path, {
+      const answer = await t.json<{
+        output: ViewValueOf<TRef>;
+        topics: WireTopic[];
+        keys?: string[];
+        partial?: { removed: string[] };
+        hears?: ViewHearing[];
+      }>(path, {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
@@ -811,7 +817,8 @@ export function createClient(options: CreateClientOptions): Client {
         value: answer.output,
         topics: answer.topics ?? [],
         ...(answer.keys !== undefined ? { keys: answer.keys } : {}),
-        ...(answer.partial !== undefined ? { partial: { removed: answer.partial.removed ?? [] } } : {})
+        ...(answer.partial !== undefined ? { partial: { removed: answer.partial.removed ?? [] } } : {}),
+        ...(Array.isArray(answer.hears) ? { hears: answer.hears } : {})
       };
     },
     transcribe: (request) => {

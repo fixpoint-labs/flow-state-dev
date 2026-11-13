@@ -123,8 +123,8 @@ export { REQUEST_RESUME_SEAM, requestResumeOf } from "../types/request-resume";
 export type { RequestResume } from "../types/request-resume";
 
 /** The board-notice seam: a task board's change reaches the change bus. */
-export { BOARD_NOTICE_SEAM, publishBoardChange } from "../types/board-notice";
-export type { BoardChange, BoardNoticeSeam } from "../types/board-notice";
+export { BOARD_NOTICE_SEAM, BOARD_READ_SEAM, publishBoardChange, recordBoardRead } from "../types/board-notice";
+export type { BoardChange, BoardNoticeSeam, BoardRead, BoardReadSeam } from "../types/board-notice";
 
 /** The request's side-chain pool: detached work a request drains before it ends. */
 export { getRequestSideChainPool } from "../execution/request-side-chain-pool";

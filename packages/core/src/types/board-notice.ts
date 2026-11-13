@@ -11,6 +11,12 @@
  * board. The notice carries no rows, only the changed task's id: a view reads
  * the board through its own checked read.
  *
+ * Its read half: where the task collection is built, in a view's run, it
+ * calls {@link recordBoardRead}, and the engine's seam under
+ * {@link BOARD_READ_SEAM} records the board as what the view heard, in place
+ * of its ledger. The same place wires every write to the notice, so a
+ * watcher of the board misses no change by hearing only the board.
+ *
  * Framework-facing, like the dispatch seam: a symbol key, not a public
  * `ctx.publish`, so app code can't invent a topic.
  */
@@ -46,5 +52,45 @@ export function publishBoardChange(ctx: object, change: BoardChange): boolean {
   const seam = (ctx as Pick<InternalBlockContext, typeof BOARD_NOTICE_SEAM>)[BOARD_NOTICE_SEAM];
   if (seam == null) return false;
   seam.publish(change);
+  return true;
+}
+
+// FIX-2625.
+/**
+ * A task board read through its task collection, as a view's run records it:
+ * the board, the sessions whose topic its board notices go to, and the ledger
+ * handle the entries were read through. A watcher of the view then hears the
+ * board's notices on those sessions, which name the tasks that changed, and
+ * not the ledger's own resource notices, which can't.
+ */
+export interface BoardRead {
+  /** The board's id (the ledger's `collectionId`), as its notices narrow their topic. */
+  readonly board: string;
+  /** The bare session ids its board notices go to: each entry's filer, and the running session. */
+  readonly sessionIds: readonly string[];
+  /** The ledger's resource collection handle, as `ctx.resources` handed it out. */
+  readonly ledger: object;
+}
+
+/** The seam a view's run attaches under {@link BOARD_READ_SEAM}. */
+export interface BoardReadSeam {
+  /** Record `read` as a dependency of the view's run. */
+  record(read: BoardRead): void;
+}
+
+/** The context slot a view's run attaches its board-read seam under. Absent outside a view. */
+export const BOARD_READ_SEAM: unique symbol = Symbol.for("@flow-state-dev/board-read-seam");
+
+/**
+ * Record that a view's run read `read.board` through its task collection.
+ * Called only where every write to the ledger publishes its board notice, so
+ * the board's notices are all a watcher needs to hear.
+ *
+ * @returns `false` outside a view's run: nothing is recorded.
+ */
+export function recordBoardRead(ctx: object, read: BoardRead): boolean {
+  const seam = (ctx as Pick<InternalBlockContext, typeof BOARD_READ_SEAM>)[BOARD_READ_SEAM];
+  if (seam == null) return false;
+  seam.record(read);
   return true;
 }

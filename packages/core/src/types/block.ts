@@ -19,7 +19,7 @@ import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM } from "./request-end";
 import { ATTACHMENT_SEAM, type AttachmentSeam } from "./attachment-seam";
 import { USER_ATTACHMENT_SEAM, type UserAttachmentSeam } from "./user-attachment-seam";
 import { REQUEST_RESUME_SEAM, type RequestResume } from "./request-resume";
-import { BOARD_NOTICE_SEAM, type BoardNoticeSeam } from "./board-notice";
+import { BOARD_NOTICE_SEAM, BOARD_READ_SEAM, type BoardNoticeSeam, type BoardReadSeam } from "./board-notice";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
@@ -994,6 +994,14 @@ export interface InternalBlockContext extends BlockContext {
    * collection's change adapter calls. See `types/board-notice.ts`.
    */
   [BOARD_NOTICE_SEAM]?: BoardNoticeSeam;
+
+  // FIX-2625.
+  /**
+   * A view run's board-read seam, under a symbol key. Read only by
+   * `recordBoardRead`, which the task collection calls where it is built.
+   * See `types/board-notice.ts`.
+   */
+  [BOARD_READ_SEAM]?: BoardReadSeam;
 
   // FIX-2129.
   /**

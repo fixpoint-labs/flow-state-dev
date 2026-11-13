@@ -55,6 +55,23 @@ It comes down to the promise: an entry path is an id, so the narrow switch leaks
 **What would change my mind:** an owner who wants the switch only for the new field, accepting
 that entry keys already reach org members today. Then the push edge strips `ids` alone.
 
+<a name="d3"></a>
+## D3 · The board view hears only its own board notices (the owner's call)
+
+Decided by the owner on 2026-11-13, while the implementation was blocked: the board view on a
+user-scope ledger also heard the ledger's own notices on the user topic, which name no task (ids
+there would cross orgs), so one task's change answered the whole board.
+
+| | |
+|---|---|
+| **Instead of** | The board view hearing its ledger's resource notices on the user topic beside its board notices, so every task change answers all of it · or ids on the user topic, which part 1 ruled out |
+| **Because** | A board notice names the task that changed; the ledger's user-topic notice can't. Hearing both answers whole every time, which is the cost the issue names |
+| **Locks in** | A view's read of a board through its task collection is heard on that board's notices only, on the session each entry's notices go to (its filer, and the running session), and the ledger's own resource notices are not heard. The task collection records that read (`recordBoardRead`) in the one place it wires every write to the board notice (`getOrCreateTaskCollection`'s `onWrite`), so a ledger read any other way stays heard on the user topic |
+| **The trade-off** | A ledger write that published no board notice would leave every screen of the board stale, with nothing else to wake it. Closed at the publisher: every write to the ledger goes through the task collection's write paths, each of which publishes the board notice naming its task, and `board-notice.test.ts` checks it at the store for each write the task collection offers. The write paths were audited for this change; none bypasses it |
+
+**What would change my mind:** a write to a task ledger that bypasses the shared publish path.
+Then the board hears its ledger's notices again, or the bypass moves onto the path.
+
 ## Decided, not asked
 
 ### Invariants
@@ -139,6 +156,25 @@ Settled on the implementation PRs. Each narrows a decision above; none reverses 
   row's task id (`task-change` items), so a board notice names its task.
 - **The cap is 100** (`NOTICE_MAX_IDS`, `contracts/types/push-delivery`), one constant and one
   union rule (`unionNoticeIds`) for the fold and the merge. A hundred 40-byte ids fit `NOTIFY`.
+- **One mechanism narrows what a view hears, and delivers [D3](#d3).** A view's answer keeps its
+  topics, for clients from before this issue, and adds `hears`: per topic, the kinds of notice
+  that may change what the run read and, for a resource, the storage roots a notice's path must
+  fall under (the client's one path rule, `mayHold`). A board read is one more kind of read: heard
+  as `board` on the board's topic, and it covers its ledger's resource read. So a pin doesn't wake
+  the roster's view, a hire's run notices don't, and a task's change wakes the board with its id.
+  Topics stay bare scope topics: a narrowed subscription matches a path exactly, and an org or
+  session entry's notice names the entry's key, under the root a view read.
+- **A user-scope entry's notice names its collection's root**, the static prefix of its pattern,
+  never its key and never an id. The user topic spans the user's orgs and the root is the same in
+  every one, as a single resource's name already is on that topic. Without it, every resource
+  notice on the user topic named no path, every view and direct read of the scope heard it, and
+  the client's path rule never ran there. With org ids off, the edge cuts it as it cuts every path.
+- **The board read covers the filers' sessions it can see.** A board notice goes to each
+  entry's filer. The read records the running session and each listed entry's filer, so a change
+  to an entry filed in another session is heard. An entry filed into the same ledger from a session
+  with no entry on it yet is heard on that session's topic only, until the view next answers
+  whole. No board view in the framework lists such a ledger: the workforce board is partitioned by
+  its filing session, and its entries are filed there.
 
 ## Considered and dropped
 

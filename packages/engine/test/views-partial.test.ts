@@ -166,7 +166,13 @@ describe("the view route · the change a call carries", () => {
     const r = await router();
     const res = await post(r, ["desk", "views", "pins"], { userId: "alice", input: {}, changed: pinChange("pins/c") });
     expect(res.status, await res.clone().text()).toBe(200);
-    expect(await res.json()).toEqual({ output: [{ id: "c", label: "three" }], topics: [{ scope: "user" }], keys: ["c"], partial: { removed: [] } });
+    expect(await res.json()).toEqual({
+      output: [{ id: "c", label: "three" }],
+      topics: [{ scope: "user" }],
+      hears: [{ topic: { scope: "user" }, kinds: ["resource"], paths: ["pins"] }],
+      keys: ["c"],
+      partial: { removed: [] }
+    });
   });
 
   it("runs whole for a change it can't read: no ids, ids that aren't strings, or past the cap", async () => {
