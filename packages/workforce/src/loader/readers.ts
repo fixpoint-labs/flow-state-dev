@@ -48,10 +48,3 @@ export {
   WORKERS_LEVEL,
   siblingSlotPath,
 } from "./resource-convention";
-
-export type {
-  WorkerManifest,
-  TeamManifest,
-  ResourceDoc,
-  PackageManifest,
-} from "../manifest";
