@@ -1,5 +1,5 @@
 /**
- * A long conversation with a worker keeps its thread: once turns are about to
+ * A long conversation with a worker keeps its early turns: once turns are about to
  * leave the history window, the built-in worker flow folds them into a running
  * summary the worker reads with the turns after it. On by default, for every
  * worker, with no app wiring.
