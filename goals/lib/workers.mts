@@ -1,50 +1,100 @@
 /**
- * The installation a goal's app builds, and the copies it registers.
+ * Workforce as a goal's app installs it: the workforce kit over a folder, with
+ * the goal's own worker flows in its `workerFlows` slot.
  *
- * Every worker runs on one registered copy of the flow it names. A worker flow
- * is built on the installation (its `session`, its `resources`), and the
- * installation reads the flows when it first needs them, so the two are
- * built in one step:
+ * A goal whose workers are records in its code writes them as a folder first
+ * (`workforceTree`), so every goal reads its workers the way an app does:
+ * from `WORKER.md` files the kit claims.
  *
  * ```ts
- * const { installation, copies } = installWorkers(workers, (installation) => ({
- *   note: defineNoteFlow(installation),
- * }));
+ * const { installation, copies } = await installWorkers(workforceTree(workers), {
+ *   note: workerFlow((installation) => defineNoteFlow(installation), { roles: ["contributor"] }),
+ * });
  * ```
  *
- * `copies` is `hireWorkforce(installation)`: one copy per worker flow, at its
- * kind (`agent` included, bound to the installation when `build` names none),
- * and the roster flow.
+ * `copies` is every flow the kit serves: one copy per worker flow (the
+ * built-in `agent` included, unless the goal fills one), and the roster flow.
  */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import {
-  createWorkerInstallation,
-  hireWorkforce,
-  type WorkerInstallation,
-  type WorkerInstallationOptions,
-  type WorkerManifest,
-} from "@flow-state-dev/workforce";
+import type { WorkerFlowEntry, WorkerInstallation, WorkerManifest } from "@flow-state-dev/workforce";
+import { workforce, type WorkforceConfig } from "@flow-state-dev/workforce/kit";
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 
-/** What {@link installWorkers} takes beside the workers and the flows. */
-export type InstallWorkersOptions = Omit<WorkerInstallationOptions, "standardWorkers" | "workerFlows">;
+/** One frontmatter value as the workforce frontmatter reader takes it: JSON-quoted strings, flow lists. */
+function frontmatterValue(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => JSON.stringify(item)).join(", ")}]`;
+  if (typeof value === "object" && value !== null) {
+    return `\n${Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => `  ${key}: ${frontmatterValue(entry)}`)
+      .join("\n")}`;
+  }
+  return typeof value === "string" ? JSON.stringify(value) : String(value);
+}
+
+/** A worker's `WORKER.md` path under the folder, from its id: `team.worker`, or an org worker's bare id. */
+export function workerPath(id: string): string {
+  const dot = id.indexOf(".");
+  return dot < 0 ? `org/workers/${id}/WORKER.md` : `teams/${id.slice(0, dot)}/workers/${id.slice(dot + 1)}/WORKER.md`;
+}
+
+/** A worker record as its `WORKER.md`: its declared keys as frontmatter, its body below. */
+export function workerFile(worker: Pick<WorkerManifest, "declared" | "body">): string {
+  const keys = Object.entries(worker.declared).filter(([, value]) => value !== undefined);
+  return `---\n${keys.map(([key, value]) => `${key}: ${frontmatterValue(value)}`).join("\n")}\n---\n${worker.body}\n`;
+}
+
+const trees: string[] = [];
+process.once("exit", () => {
+  for (const tree of trees) rmSync(tree, { recursive: true, force: true });
+});
 
 /**
- * Build the installation over `workers` and the worker flows `build` returns
- * for it, and register one copy of each.
- *
- * @throws What `hireWorkforce` throws: a worker that would be refused on its
- *   first turn, or a worker flow that doesn't declare the installation's session.
+ * A workforce folder holding `workers`, each as its `WORKER.md`, and `files`
+ * by path relative to the folder. It lives in a temporary directory removed
+ * when the process exits.
  */
-export function installWorkers(
-  workers: readonly WorkerManifest[],
-  build: (installation: WorkerInstallation) => Record<string, unknown>,
-  options: InstallWorkersOptions = {},
-): { installation: WorkerInstallation; copies: FlowInstance[] } {
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ ...options, standardWorkers: workers, workerFlows: () => flows as never });
-  flows = build(installation);
-  return {
-    installation,
-    copies: hireWorkforce(installation),
-  };
+export function workforceTree(workers: readonly Pick<WorkerManifest, "id" | "declared" | "body">[], files: Readonly<Record<string, string>> = {}): string {
+  const parent = mkdtempSync(join(tmpdir(), "fsd-goal-workforce-"));
+  trees.push(parent);
+  const root = join(parent, "workforce");
+  const all: Record<string, string> = { ...Object.fromEntries(workers.map((worker) => [workerPath(worker.id), workerFile(worker)])), ...files };
+  mkdirSync(root, { recursive: true });
+  for (const [path, body] of Object.entries(all)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), body);
+  }
+  return root;
+}
+
+/**
+ * Install the workforce kit over `directory`, with `workerFlows` in its slot
+ * and `config` as its config, as an app's `createFlowState({ kits })` does,
+ * and hand back the installation it hired and every flow it serves.
+ *
+ * @throws As an app's start does: a file the kit doesn't read, a worker that
+ *   would be refused on its first turn, a worker flow that doesn't declare the
+ *   installation's session.
+ */
+export async function installWorkers(
+  directory: string,
+  workerFlows: Readonly<Record<string, WorkerFlowEntry>> = {},
+  config: Omit<WorkforceConfig, "directory"> = {},
+): Promise<{ installation: WorkerInstallation; copies: FlowInstance[] }> {
+  let installation: WorkerInstallation | undefined;
+  const state = createFlowState({
+    kits: [workforce({ ...config, directory })],
+    fill: {
+      [workforce.slots.workerFlows]: workerFlows,
+      [workforce.slots.flows]: { goal: (hired: WorkerInstallation) => ((installation = hired), []) },
+    },
+    stores: { goal: { primary: inMemoryStores() } },
+  });
+  await state.ready();
+  const copies = (await state.getRuntime()).registry.list();
+  await state.dispose();
+  if (installation === undefined) throw new Error("installWorkers: the workforce kit hired no installation");
+  return { installation, copies };
 }
