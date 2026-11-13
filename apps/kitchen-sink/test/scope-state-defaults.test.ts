@@ -18,7 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createFlowRegistry } from "@flow-state-dev/engine";
 import type { z } from "zod";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
-import { buildKitchenSinkWorkforce } from "../workforce/hire";
+import { buildKitchenSinkWorkforce } from "../lib/workforce-hire";
 
 vi.setConfig({ testTimeout: 30_000 });
 

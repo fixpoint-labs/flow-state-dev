@@ -3,7 +3,7 @@
  *
  * The point of this module is what it does *not* contain: no worker is named
  * here, and no block is. `blocks` comes from `workforce.gen.ts`, which
- * `fsdev gen` writes from the tree beside this file, and the workers come from
+ * `fsdev gen` writes from the `workforce/` tree, and the workers come from
  * the `teams/` folders: one coordinator, `support.help`, and four specialists
  * on the built-in `agent` flow. Adding a tool means adding a file and
  * re-running the command — there is no second place to edit.
@@ -12,8 +12,9 @@
  * registered copy of its flow. A user's own workers, hired or forked through
  * the roster flow, run on the same copies.
  *
- * This subtree is the whole of the app's Layer 2 usage. Nothing in `app/`
- * reaches into it. One edge leads in: `fsdev.config.ts`, which awaits the
+ * This module and the `workforce/` tree are the whole of the app's Layer 2
+ * usage. Nothing in `app/` reaches into them. It sits outside `workforce/`:
+ * that folder holds only the files workforce reads. One edge leads in: `fsdev.config.ts`, which awaits the
  * build below and spreads the copies into the map it serves. That edge is what
  * makes the demonstration real — until it existed the bundler never resolved
  * `workforce.gen.ts`'s imports, so the claim this tree exists to prove (a
@@ -36,15 +37,15 @@ import {
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
-import { agentFlowUnderControl, coordinatorWorkersUnderControl } from "../lib/coordinator-control";
-import { landingControl } from "../lib/landing-control";
-import { ROUTE_MODEL } from "../lib/models";
-import { blocks, packageBlocks, workerBlocks, workerFlows } from "./workforce.gen";
+import { agentFlowUnderControl, coordinatorWorkersUnderControl } from "./coordinator-control";
+import { landingControl } from "./landing-control";
+import { ROUTE_MODEL } from "./models";
+import { blocks, packageBlocks, workerBlocks, workerFlows } from "../workforce/workforce.gen";
 
 /** This directory — the workforce root, read at run time the way Markdown always is. */
-export const workforceRoot = dirname(fileURLToPath(import.meta.url));
+export const workforceRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "workforce");
 
 /** The installation, the copies it registers, and what the loader could not read. */
 export interface KitchenSinkWorkforce {

@@ -145,9 +145,9 @@ await runGoal(async (failures) => {
   if (coordinator.declared.routing !== "everyone") {
     fail("source", `${coordinator.id} routes by ${String(coordinator.declared.routing ?? "its default")} (want everyone)`);
   }
-  const hire = readFileSync(`${KITCHEN_SINK}/workforce/hire.ts`, "utf8");
-  if (builds.test(hire)) fail("source", `kitchen-sink's workforce/hire.ts builds its own ${builds.exec(hire)![1]}`);
-  if (!/defineCoordinatorFlow\s*\(/.test(hire)) fail("source", "kitchen-sink's workforce/hire.ts never registers defineCoordinatorFlow");
+  const hire = readFileSync(`${KITCHEN_SINK}/lib/workforce-hire.ts`, "utf8");
+  if (builds.test(hire)) fail("source", `kitchen-sink's lib/workforce-hire.ts builds its own ${builds.exec(hire)![1]}`);
+  if (!/defineCoordinatorFlow\s*\(/.test(hire)) fail("source", "kitchen-sink's lib/workforce-hire.ts never registers defineCoordinatorFlow");
   const shell = readFileSync(`${KITCHEN_SINK}/lib/workforce-shell.ts`, "utf8");
   const asks = /export const WORKER_ASKS = \{([\s\S]*?)\} as const/.exec(shell)?.[1];
   if (asks === undefined) fail("source", "kitchen-sink's lib/workforce-shell.ts has no WORKER_ASKS to read");
