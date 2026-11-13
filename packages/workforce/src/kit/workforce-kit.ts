@@ -86,7 +86,7 @@ export interface WorkforceConfig {
 /** Accepts any object: what the field holds is checked where it is used. */
 const object = <T>() => z.custom<T>((value) => typeof value === "object" && value !== null);
 
-const configSchema: z.ZodType<WorkforceConfig, z.ZodTypeDef, unknown> = z
+const configSchema: z.ZodType<WorkforceConfig, z.ZodTypeDef, WorkforceConfig> = z
   .object({
     agent: object<WorkforceAgentOptions>().optional(),
     coordinator: object<WorkforceCoordinatorOptions>().optional(),
