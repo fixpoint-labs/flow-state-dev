@@ -19,37 +19,20 @@
 import { join } from "node:path";
 import { askAfterFold, askWorker, clientFor, gitRepository, heldSkills, runChecks, runClosure, serveFsdev, skillFiles, type AppDriver } from "../closure.mts";
 import { claudeCodeSettings } from "../model.mts";
+import { storeFile, teammatesServe, tree, USER } from "./serve.mts";
 
-const USER = "u_closure";
 const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
-const lab = (root: string) => join(root, "labs", "teammates");
-const tree = (root: string) => join(lab(root), "workforce");
 
 const driver: AppDriver = {
   app: "teammates",
   plant: (d, p) => skillFiles(join(tree(p.root), "teams", "teammates", "workers", "chief-of-staff"), d.skill, p.switches),
   start: async (d, p, scratch) => {
-    const store = join(scratch, "teammates.sqlite");
+    const store = storeFile(scratch);
     // The working folder: a git checkout holding the draw's files, the coder ask's failing check, and on
     // Haiku the project settings that set its Claude Code runs to Haiku.
     const workdir = gitRepository(join(scratch, "workdir"), { ...d.files, [d.coder.file]: d.coder.script, ...claudeCodeSettings(p.model) });
-    const served = await serveFsdev({
-      root: p.root,
-      cwd: lab(p.root),
-      // Named, not found in the folder: on Haiku it is the config `haiku.config.mts` loads.
-      args: ["--config", join(lab(p.root), "fsdev.config.mts")],
-      model: p.model,
-      logTo: join(scratch, "server.log"),
-      env: {
-        TEAMMATES_STORE: store,
-        TEAMMATES_USER: USER,
-        TEAMMATES_WORKDIR: workdir,
-        TEAMMATES_HARNESS: "claude-code",
-        // Teammates' checks: `main` names none, so the control and the cut run name the fixture's.
-        ...(p.switches ? { TEAMMATES_CHECKS: d.coder.check } : {}),
-      },
-    });
+    const served = await serveFsdev(teammatesServe(d, p, scratch, workdir));
     const fsd = clientFor(served.origin, USER);
     const lead = (line: string, budgetMs?: number) => askWorker(fsd, { user: USER, worker: LEAD, line, ...(budgetMs === undefined ? {} : { budgetMs }) });
     return {

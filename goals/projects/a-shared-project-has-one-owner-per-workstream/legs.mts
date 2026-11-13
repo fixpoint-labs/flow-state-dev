@@ -5,7 +5,7 @@
  * verified bearer.
  *
  * Every change goes through the install's routes as that person: the
- * `projects` flow's `createProject`, `projectSetup`, `openWorkstream` and
+ * `projects` flow's `createProject`, `projectSetup` view, `openWorkstream` and
  * `updateWorkstream`, the roster flow's `hire`, a turn in a session, or the
  * registered `goal-entry-writer` flow. Nothing is seeded. Every grade reads
  * back what that person gets from the routes, and, for a coordinator's
@@ -332,10 +332,11 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
 
   // ---- leg b: one owner per workstream ------------------------------------
   const r = leg("b");
-  const setup = await act(alice, PROJECTS_FLOW, ownSession(alice, PROJECTS_FLOW), "projectSetup", {});
-  const projectCoordinator = setup.output?.projectCoordinator as string | null | undefined;
-  if (setup.status !== "completed" || typeof projectCoordinator !== "string") {
-    throw new Error(`setup: projectSetup ${setup.status}: ${show(setup.output)} ${setup.error ?? ""}`);
+  // The projects flow's `projectSetup` view, read with no session.
+  const setup = await alice.routes.call("POST", `/${PROJECTS_FLOW}/views/projectSetup`, { userId: alice.person.userId, input: {} });
+  const projectCoordinator = setup.body?.output?.projectCoordinator as string | null | undefined;
+  if (setup.status !== 200 || typeof projectCoordinator !== "string") {
+    throw new Error(`setup: projectSetup ${setup.status}: ${show(setup.body)}`);
   }
   r.notes.push(`projectSetup: project coordinator "${projectCoordinator}"`);
 

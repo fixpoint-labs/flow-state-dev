@@ -1,13 +1,12 @@
-// FIX-1989.
+// FIX-1989; FIX-2624.
 /**
- * The user's message log: Workforce's `workforce/messages/*`,
- * read through the user's roster session. Another user's messages are not in it.
+ * The user's message log: Workforce's `workforce/messages/*`, read by user
+ * scope with no session. Another user's messages are not in it.
  */
 import { useCallback, useEffect, useState } from "react";
-import { readEveryCollectionPage } from "@flow-state-dev/client";
-import { WORKER_MESSAGES_RESOURCE, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
+import { WORKER_MESSAGES_PATTERN, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
-import { describeFailure, type Failure } from "./reads";
+import { describeFailure, readEveryScopeEntry, type Failure } from "./reads";
 
 export type { WorkerMessageResourceState };
 
@@ -57,21 +56,28 @@ export function firstLine(text: string): string {
  * The log, read when the view opens, again on each Lab read (`readAt`), and
  * every {@link MESSAGES_POLL_MS}. A later read keeps the last rows until it
  * lands, and a failed later read keeps them; only a failed first read shows.
+ * `rows` is `null` when no flow of the Lab declares the log (a 404): it keeps
+ * no roster for the user.
  */
 export function useMessages(
-  readerSessionId: string | null,
   readAt: number,
-): { rows: WorkerMessageResourceState[] | undefined; failure: Failure | undefined; reread: () => void } {
+): { rows: WorkerMessageResourceState[] | null | undefined; failure: Failure | undefined; reread: () => void } {
   const { client } = useLab();
-  const [rows, setRows] = useState<WorkerMessageResourceState[] | undefined>(undefined);
+  const [rows, setRows] = useState<WorkerMessageResourceState[] | null | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
   useEffect(() => {
-    if (readerSessionId === null) return;
     let closed = false;
     let next: ReturnType<typeof setTimeout> | undefined;
-    readEveryCollectionPage(client.resources, readerSessionId, WORKER_MESSAGES_RESOURCE)
+    readEveryScopeEntry(client, "user", WORKER_MESSAGES_PATTERN)
       .then(toMessages)
+      .then(
+        (value): WorkerMessageResourceState[] | null => value,
+        (error: unknown) => {
+          if (describeFailure(error).httpStatus === 404) return null;
+          throw error;
+        },
+      )
       .then((value) => {
         if (closed) return;
         setRows(value);
@@ -87,7 +93,7 @@ export function useMessages(
       closed = true;
       if (next !== undefined) clearTimeout(next);
     };
-  }, [client, readerSessionId, readAt, reads]);
+  }, [client, readAt, reads]);
   const reread = useCallback(() => setReads((n) => n + 1), []);
   return { rows, failure: rows === undefined ? failure : undefined, reread };
 }

@@ -113,39 +113,30 @@ describe("a record written before the side-chain rename", () => {
 });
 
 /**
- * The side-chain COUNT is a second persisted field the rename moved, and its
- * failure is quieter than the badge's: the trace tree drops any status row with
- * neither a message nor a count, so reading only the new spelling makes a
- * pre-upgrade or replayed row **disappear** rather than render wrong. Mixed
- * versions then lose the only sign that draining is happening.
+ * The side-chain count on a status item is read under its current name only.
+ *
+ * A status row written under the retired spelling, with no message, carries no
+ * count the DevTool recognises, so the trace tree drops it: an old record shows
+ * nothing rather than a wrong number.
  */
 describe("the side-chain count on a status item", () => {
-  const statusRow = (provenanceless: Record<string, unknown>) =>
-    ({ type: "status", message: "", ...provenanceless }) as never;
+  const statusRow = (fields: Record<string, unknown>) =>
+    ({ type: "status", message: "", ...fields }) as never;
 
-  it("reads the current spelling", () => {
+  it("reads the current spelling, including the drain-complete zero", () => {
     expect(sideChainTaskCount(statusRow({ sideChainTasks: 2 }))).toBe(2);
-  });
-
-  it("reads a row written before the rename", () => {
-    expect(sideChainTaskCount(statusRow({ backgroundTasks: 3 }))).toBe(3);
-  });
-
-  it("reads a legacy ZERO, which is the drain-complete signal", () => {
-    // `?? ` on the value rather than a truthiness check: 0 is meaningful here
-    // and is exactly the row a naive shim drops.
-    expect(sideChainTaskCount(statusRow({ backgroundTasks: 0 }))).toBe(0);
-  });
-
-  it("prefers the current spelling when both are present", () => {
-    expect(sideChainTaskCount(statusRow({ sideChainTasks: 1, backgroundTasks: 9 }))).toBe(1);
+    expect(sideChainTaskCount(statusRow({ sideChainTasks: 0 }))).toBe(0);
   });
 
   it("returns undefined when the row carries no count at all", () => {
     expect(sideChainTaskCount(statusRow({}))).toBeUndefined();
   });
 
-  it("keeps a legacy status row in the trace tree instead of dropping it", () => {
+  it("does not read the retired spelling", () => {
+    expect(sideChainTaskCount(statusRow({ backgroundTasks: 3 }))).toBeUndefined();
+  });
+
+  it("drops a count-only status row written under the retired spelling", () => {
     const items = [
       makeItem("s1", 0, {
         blockName: "seq",
@@ -153,8 +144,6 @@ describe("the side-chain count on a status item", () => {
         phase: "main",
       }),
     ] as unknown as Array<Record<string, unknown>>;
-    // A structural status row as a pre-upgrade engine wrote it: empty message,
-    // count under the retired name.
     items.push({
       id: "s2",
       type: "status",
@@ -169,6 +158,7 @@ describe("the side-chain count on a status item", () => {
 
     const tree = buildTraceTree([group(items as never)]);
     const rendered = JSON.stringify(tree);
-    expect(rendered).toContain("s2");
+    expect(rendered).toContain("s1");
+    expect(rendered).not.toContain("s2");
   });
 });
