@@ -172,6 +172,26 @@ none reverses one.
   hold a readiness read; FIX-2391's goal grades it.
 - **Teammates reads its workers' delegates with `readWorkforceFolder`** for its context view: the
   roster view (FIX-2623's, installed unchanged) carries no delegates.
+- **A third workforce slot, `flows`** (the coordinator's call, 2026-11-13, in place of a config
+  option): keyed builders handed the installation, whose flows the kit serves beside its worker
+  flows. An app's flow built on the installation (Shift Manager's projects and workstreams flow)
+  fills it, and a host that needs the installation afterwards keeps the one its builder was
+  handed. Workforce fills it with nothing: projects stays the app's (O1).
+- **A check that perturbs worker records edits a copy of the folder.** The kit reads files, never
+  records, so kitchen-sink's coordinator controls and the DevTeam Lab's record options
+  (`documentOverrides`, `skills`, `mutateSkills`, `coderHarness`, the tool filters, an unserved
+  Error Reporter) write a temporary copy of the tree the kit then reads. A skill shared from a
+  team or the org can't change for one worker (a skill name reaches a worker from one level
+  only), so that edit is refused.
+- **A worker flow keyed `agent` or `coordinator` in the generated module replaces the kit's
+  own**, as one filled in `workerFlows` does.
+- **A host reads its own tree with `readWorkforceFolder` and a claim that does nothing** where it
+  needs the declared records before start (the DevTeam Lab's EM and coder, Teammates' delegates).
+  The kit's own read is the one that claims the folder.
+- **The tree's documents are the installation's.** The kit passes the folder's documents and
+  references to the installation, so the agent and coordinator flows declare them as a host
+  that passed `documents` did; Shift Manager's ask-lab test now finds the asker's listing among
+  others rather than alone.
 - **The planted stray is named by its folder.** With nothing else under `workforce/flows/`, the
   claim pass names `flows`, the topmost entry no reader used; the goal check asserts that.
 
