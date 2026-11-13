@@ -43,16 +43,25 @@ interface StepResult {
 }
 
 /**
+ * The block a worker's answer is scripted under. A worker that holds a skill
+ * answers on its turn's skill-loader arm, a second generator named
+ * `<answer>-with-activate-tool`; it is the same answer built two ways, so it
+ * takes the base answer's script.
+ */
+const scriptKeyOf = (blockName: string): string => blockName.replace(/-with-activate-tool$/, "");
+
+/**
  * A model resolver that answers each block by its script, and `fallback` for a
- * block with none. Pass it as the host's `modelResolver`; the return type is
- * left to the caller, so this file needs no package types.
+ * block with none. A worker's answer takes the same script on either of its
+ * turn's arms (see {@link scriptKeyOf}). Pass it as the host's `modelResolver`;
+ * the return type is left to the caller, so this file needs no package types.
  */
 export function scriptedModels(scripts: Record<string, Script>, fallback: Script = () => ({ text: "ok" })): (modelId: string, blockName?: string) => unknown {
   let ids = 0;
   const stepOf = async (blockName: string | undefined, messages: unknown[], signal?: AbortSignal): Promise<StepResult> => {
     const said = JSON.stringify(messages);
     const step = messages.filter((m) => (m as { role?: string }).role === "tool").length;
-    const script = (blockName === undefined ? undefined : scripts[blockName]) ?? fallback;
+    const script = (blockName === undefined ? undefined : (scripts[blockName] ?? scripts[scriptKeyOf(blockName)])) ?? fallback;
     const next = await script({ blockName, said, step, ...(signal === undefined ? {} : { signal }) });
     if ("text" in next) return { text: next.text, finishReason: "stop" };
     if ("output" in next) return { structuredOutput: next.output, finishReason: "stop" };

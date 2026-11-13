@@ -45,6 +45,7 @@
  */
 
 export { AGENT_FLOW, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
+export { workerDate } from "./worker-default-layer";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { type HireOptions, type WorkerFlowEntry } from "./hire";
