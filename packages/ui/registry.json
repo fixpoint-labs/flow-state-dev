@@ -762,6 +762,27 @@
         "target": "components/flow-state/harness-readiness.tsx"
       }],
       "categories": ["ai", "framework"]
+    },
+    {
+      "name": "workforce-starter",
+      "title": "Workforce Starter",
+      "type": "registry:file",
+      "description": "Workforce's starter folder: one team with one worker on the built-in agent flow, its TEAM.md and WORKER.md. Copied into workforce/ beside the app; never overwrites a file already there.",
+      "dependencies": [],
+      "registryDependencies": [],
+      "files": [
+        {
+          "type": "registry:file",
+          "path": "registry/workforce-starter/TEAM.md",
+          "target": "workforce/teams/team/TEAM.md"
+        },
+        {
+          "type": "registry:file",
+          "path": "registry/workforce-starter/WORKER.md",
+          "target": "workforce/teams/team/workers/assistant/WORKER.md"
+        }
+      ],
+      "categories": ["framework"]
     }
   ]
 }

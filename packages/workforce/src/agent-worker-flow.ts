@@ -109,6 +109,7 @@ import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rul
 import { setWorkProjectAction } from "./projects/work-project";
 import { SET_WORK_PROJECT_ACTION } from "./workers/keys";
 import type { WorkerInstallation } from "./workers/installation";
+import { withSessionFields, type SessionFields } from "./workers/session-fields";
 import { workerIdentityPrompt } from "./messages/worker-identity";
 import { steerOrTalk } from "./conversation-board/steer";
 import { worksConversationResultTask } from "./conversation-board/task-admission";
@@ -439,6 +440,8 @@ export interface AgentWorkerFlowOptions {
    * one worker does.
    */
   installation?: WorkerInstallation;
+  /** Session fields the app declares on this flow's sessions, server-written only. Needs `installation`. */
+  sessionFields?: SessionFields;
 }
 
 /**
@@ -1342,7 +1345,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       ? {
           // The session's delegates and its board's notices, server-written:
           // a create that seeds either is refused.
-          session: installation.session(board?.sessionStateShape),
+          session: withSessionFields(installation.session(board?.sessionStateShape), options.sessionFields),
           resources: { ...installation.resources, ...installation.documents, ...(board?.resources ?? {}) },
           resourceVisibility: installation.resourceVisibility,
           request: { onStarted: resolveTurnWorker }

@@ -208,6 +208,16 @@ none reverses one.
   disposed; kitchen-sink's, which the app reads for as long as it runs, when the process exits.
 - **The planted stray is named by its folder.** With nothing else under `workforce/flows/`, the
   claim pass names `flows`, the topmost entry no reader used; the goal check asserts that.
+- **`sessionFields` reaches the agent and coordinator flows as a factory option.** The kit hands
+  its `sessionFields` to the two flows it builds (`defineAgentWorkerFlow`, `defineCoordinatorFlow`);
+  each field joins that session's schema, its `serverOwned` list and its client data. A field
+  named like a key workforce keeps on the session refuses start. `workProjectId` stays as it is
+  until FIX-2628 moves projects to the app.
+- **The starter files are one registry item, `workforce-starter`.** `fsdev ui add
+  workforce-starter` copies `workforce/teams/team/TEAM.md` and
+  `workforce/teams/team/workers/assistant/WORKER.md` into the app (the copy-in FIX-2626 names),
+  so the registry gains its first `registry:file` item beside its components. No `init` command
+  exists to add it to; the item is the whole of `init` for workforce.
 
 ## Considered and dropped
 
