@@ -378,7 +378,10 @@ standard worker makes the user's own copy.
 ## Writing a page: the ten passes
 
 Every page goes through ten passes, in order, and figures go through their own track beside them.
-Until the page loop script lands, run the passes by hand and keep the record beside the page.
+The page loop runs them: the workflow script `.agents/workflows/page-loop.js`, started with the
+page's sitemap id and the writer model (`{ page: "C-07", writer: "sonnet" }`). It writes
+`<page>.record.md` beside the page, one section per pass, which CI's record check reads. It never
+runs in CI itself; CI checks the record a run left.
 A page kept from today's site (one the audit kept because it is already the right size), the
 pilots and the pages already drafted are written: they skip pass 3, the draft, and run every other
 pass. Pass 1 still lists what the page states, and pass 2 still writes the questions and their
@@ -410,13 +413,25 @@ figures:  brief ─ draw ─ render light + dark ─ figure lint ─ compare wit
 6. **Depth pass.** For each paragraph, ask: is this the model, or mechanism? Mechanism leaves the
    page and becomes a row on the topic's Reference page, and the page links to it.
 7. **[`docs-editor`](../../.agents/subagents/docs-editor.md)** checks the prose.
-8. **Revise once**, from passes 5 to 7, then run pass 4 again. Take every factual correction and
+8. **Revise**, one round from passes 5 to 7, then run pass 4 again. Take every factual correction and
    every depth finding. Take a prose finding unless it would undo something this standard asks for.
 9. **Cold read** by two or more fresh agents with no tools, given only the page and the questions
    from pass 2, as [`concept-doc`](../../.agents/skills/concept-doc/SKILL.md) → "Checking it
    before you call it done" does. Grade their answers against the key. A question most readers
    miss is a gap in the page, even when the fact check and the editor passed it.
 10. **The owner reads** the first two pages of each section, then a sample of the rest.
+
+**When a pass sends the page back.** A failing machine check, an untrue claim, a paragraph of
+mechanism, a `docs-editor` REVISE and a cold-read question most readers missed each send the page
+to pass 8. One revise round is pass 8, then pass 4 again, then pass 7 again if its last verdict was
+REVISE. Pass 5 and 6 findings are taken in the first round only. A cold-read gap gets a round, then
+a new cold read: fresh readers, the same questions. A page gets at most three rounds, the same three
+as [who writes them](#who-writes-them). A page with findings still open after the third is
+escalated: pass 9 still runs, and the record lists every round, opens with a `Loop: escalated` line
+naming what is open, and has no pass 10. The record check fails it until the owner reads the page,
+records pass 10 as `Read`, and drops the line. On a page that closed, the loop records pass 10 as
+`Not sampled`; the owner rewrites it when they read the page. PR feedback's twelve-round cap is a
+different limit and does not apply here.
 
 At cutover, `polish-docs` runs once across all the pages.
 

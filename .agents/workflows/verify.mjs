@@ -40,7 +40,9 @@
  */
 
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -10480,11 +10482,211 @@ check('app-review: refuses to run without apps', async () => {
 })
 
 // ---------------------------------------------------------------------------
+// page-loop — one docs page through the ten passes, and the record the checker reads
+// ---------------------------------------------------------------------------
+
+const loopQuestions = [
+  { question: 'Q-ONE: which scope follows the customer?', answer: 'user state', edge: false },
+  { question: 'Q-TWO: does a second request see request state?', answer: 'no', edge: true },
+  { question: 'Q-THREE: what do two users share?', answer: 'org state', edge: true },
+  { question: 'Q-FOUR: how is a field kept from the browser?', answer: 'the client block', edge: false },
+  { question: 'Q-FIVE: where is session state declared?', answer: 'on the flow', edge: false },
+]
+const LOOP_PAGE = '---\ntitle: State and scopes\ntype: concept\n---\n\n# State and scopes\n\nA support desk keeps a few kinds of state.\n'
+/**
+ * A stub for every page-loop agent, by label. `editor` lists pass 7's verdicts in order (the last
+ * repeats); `missed` lists, per cold read, the question numbers every reader gets wrong.
+ */
+function loopResponder({ status = 'new', pageExists = false, found = true, editor = ['SHIP'], untrue = [], depthRows = [], missed = [], questions = loopQuestions, dead = [] } = {}) {
+  let editorCalls = 0
+  return (prompt, opts) => {
+    const label = opts.label || ''
+    if (dead.some((d) => label.startsWith(d))) return null
+    if (label === 'plan') return { found, slug: 'concepts/state-and-scopes', title: 'State and scopes', type: 'concept', status, pageExists, entry: 'ENTRY-MARKER' }
+    if (label === 'pass-1') return { facts: 12, summary: 'twelve facts' }
+    if (label === 'pass-2') return { questions }
+    if (label === 'pass-3') return { scenario: 'the support desk', words: 700, figures: [] }
+    if (label.startsWith('pass-4')) return { checks: [{ check: 'check-docs-page', ok: true, detail: 'ok' }], page: LOOP_PAGE }
+    if (label === 'pass-5') return { untrue }
+    if (label === 'pass-6') return { rows: depthRows }
+    if (label.startsWith('pass-7')) {
+      const verdict = editor[Math.min(editorCalls++, editor.length - 1)]
+      return { verdict, findings: verdict === 'REVISE' ? ['line 9: "the substrate" is an internal'] : [] }
+    }
+    if (label.startsWith('pass-8')) return { changed: ['rewrote line 9'], declined: [] }
+    if (/^pass-9:\d+:reader/.test(label)) return { answers: questions.map(() => 'an answer'), guessed: [] }
+    if (/^pass-9:\d+:grade/.test(label)) {
+      const wrong = missed[Number(label.split(':')[1]) - 1] || []
+      return { grades: [1, 2, 3].flatMap((reader) => questions.map((_, i) => ({ reader, question: i + 1, correct: !wrong.includes(i + 1) }))) }
+    }
+    if (label === 'record') return { written: true, checkerExit: 0, checkerOutput: 'ok' }
+    throw new Error(`page-loop stub: no response for ${label}`)
+  }
+}
+const loopArgs = { page: 'C-07', writer: 'WRITER-MODEL' }
+const passOf = (label) => (label.match(/^pass-(\d+)/) || [])[1]
+
+/**
+ * Run the real checker on a record the script composed, beside a clean page, the way CI and the
+ * record agent run it. It reads the checker's exit code and output, not its functions: if the
+ * record format and the checker drift apart, this fails.
+ */
+function checkRecord(recordText) {
+  const dir = mkdtempSync(join(tmpdir(), 'page-loop-'))
+  const page = join(dir, 'state-and-scopes.md')
+  writeFileSync(page, LOOP_PAGE)
+  writeFileSync(join(dir, 'state-and-scopes.record.md'), recordText)
+  try {
+    return { code: 0, out: execFileSync(process.execPath, [join(HERE, '../../scripts/check-docs-page.mjs'), page, '--record'], { encoding: 'utf8' }) }
+  } catch (err) {
+    return { code: err.status, out: String(err.stdout) }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+check('page-loop: the passes run in order, 1 and 7 are docs-writer and docs-editor, and the record passes the checker', async () => {
+  const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder() })
+  assert.equal(result.status, 'complete')
+  assert.equal(result.path, 'docs/contributing/docs-revamp/pages/state-and-scopes.md')
+  const order = calls.map((c) => passOf(c.label || '')).filter(Boolean).map(Number)
+  assert.deepEqual([...new Set(order)], [1, 2, 3, 4, 5, 6, 7, 9], 'nothing to revise skips pass 8, and pass 10 is the owner’s')
+  assert.equal(calls.find((c) => c.label === 'pass-1').agentType, 'docs-writer')
+  assert.equal(calls.find((c) => c.label === 'pass-7:1').agentType, 'docs-editor')
+  // The writer model is the epic's D4 test: it has to reach every pass that writes, and only those.
+  for (const c of calls) {
+    const writes = ['1', '3', '8'].includes(passOf(c.label || ''))
+    assert.equal(c.model === 'WRITER-MODEL', writes, `${c.label}: model ${c.model}`)
+  }
+  assert.ok(calls.find((c) => c.label === 'pass-1').prompt.includes('ENTRY-MARKER'), 'pass 1 works from the sitemap entry')
+  const { code, out } = checkRecord(result.recordText)
+  assert.equal(code, 0, `the composed record fails the checker:\n${out}`)
+  assert.ok(calls.find((c) => c.label === 'record').prompt.includes(result.recordText), 'the record agent writes the composed text')
+  assert.match(result.recordText, /^## 10 · Owner read\n\nNot sampled\b/m)
+  assert.match(result.recordText, /^## 8 · Revise\n\nNo findings/m)
+})
+
+check('page-loop: cold-read questions come from an agent with no draft, and reach pass 9 unchanged', async () => {
+  const { calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder() })
+  const inOrder = calls.map((c) => c.label)
+  assert.ok(inOrder.indexOf('pass-2') < inOrder.indexOf('pass-3'), 'questions are written before the draft exists')
+  assert.ok(!calls.find((c) => c.label === 'pass-2').prompt.includes(LOOP_PAGE), 'pass 2 is shown no page text')
+  const readers = calls.filter((c) => /^pass-9:1:reader/.test(c.label))
+  assert.equal(readers.length, 3, 'three fresh readers')
+  for (const r of readers) {
+    for (const q of loopQuestions) assert.ok(r.prompt.includes(q.question), `${r.label} lost "${q.question}"`)
+    assert.ok(r.prompt.includes(LOOP_PAGE), 'a reader is given the page pass 4 read')
+    assert.ok(!/Answer:/.test(r.prompt), 'readers never see the key')
+  }
+  const grade = calls.find((c) => c.label === 'pass-9:1:grade')
+  for (const q of loopQuestions) assert.ok(grade.prompt.includes(`Answer: ${q.answer}`), 'the grader has the key')
+})
+
+check('page-loop: an editor REVISE sends the page to one revise round, then pass 4 and pass 7 again', async () => {
+  const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ editor: ['REVISE', 'SHIP'] }) })
+  assert.equal(result.status, 'complete')
+  assert.equal(result.rounds, 1)
+  assert.deepEqual(labels(calls, 'pass-8'), ['pass-8:1'])
+  assert.deepEqual(labels(calls, 'pass-4'), ['pass-4:0', 'pass-4:1'], 'pass 4 runs again after the revise')
+  assert.deepEqual(labels(calls, 'pass-7'), ['pass-7:1', 'pass-7:2'])
+  const inOrder = calls.map((c) => c.label)
+  assert.ok(inOrder.indexOf('pass-4:1') < inOrder.indexOf('pass-9:1:reader-1'), 'the cold read reads the revised page')
+  assert.match(result.recordText, /- Round 1: REVISE\. .*\n- Round 2: SHIP/)
+  assert.equal(checkRecord(result.recordText).code, 0)
+})
+
+check('page-loop: pass 5 and 6 findings go to round 1 once, and the moved rows land in Reference rows', async () => {
+  const { result, calls } = await run('page-loop.js', {
+    args: loopArgs,
+    respond: loopResponder({ untrue: [{ claim: 'UNTRUE-CLAIM', truth: 'it is not so', where: 'x.ts:3' }], depthRows: [{ paragraph: 'The engine writes', row: 'WRITE-ROW', referencePage: 'R-07' }] }),
+  })
+  const revise = calls.find((c) => c.label === 'pass-8:1').prompt
+  assert.ok(revise.includes('UNTRUE-CLAIM') && revise.includes('WRITE-ROW'), 'round 1 takes the fact check and the depth pass')
+  assert.equal(labels(calls, 'pass-8').length, 1, 'pass 5 and 6 findings are taken once, not raised again')
+  assert.equal(labels(calls, 'pass-7').length, 1, 'an editor that said SHIP is not asked again')
+  assert.match(result.recordText, /## Reference rows\n\n- WRITE-ROW → R-07/)
+  assert.equal(checkRecord(result.recordText).code, 0)
+})
+
+check('page-loop: an editor that keeps saying REVISE stops at three rounds, and the record fails until the owner reads it', async () => {
+  const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ editor: ['REVISE'] }) })
+  assert.equal(result.status, 'escalated')
+  assert.equal(result.rounds, 3)
+  assert.deepEqual(labels(calls, 'pass-8'), ['pass-8:1', 'pass-8:2', 'pass-8:3'])
+  assert.equal(labels(calls, 'pass-7').length, 4, 'the first review and one after each round')
+  assert.equal(labels(calls, 'pass-4').length, 4, 'pass 4 after the draft and after each round')
+  assert.ok(labels(calls, 'pass-9').length > 0, 'the cold read still runs, for the owner')
+  assert.match(result.recordText, /^Loop: escalated after 3 revise round\(s\)/m)
+  assert.ok(!/^## 10 /m.test(result.recordText), 'an escalated record has no pass 10')
+  const { code, out } = checkRecord(result.recordText)
+  assert.equal(code, 1)
+  assert.match(out, /record: no pass 10/)
+})
+
+check('page-loop: a question most readers miss sends the page back, and fresh readers get the same questions', async () => {
+  const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ missed: [[2]] }) })
+  assert.equal(result.status, 'complete')
+  assert.ok(calls.find((c) => c.label === 'pass-8:1').prompt.includes(loopQuestions[1].question), 'the gap reaches the writer')
+  const second = calls.filter((c) => /^pass-9:2:reader/.test(c.label))
+  assert.equal(second.length, 3, 'a second cold read with new readers')
+  for (const r of second) for (const q of loopQuestions) assert.ok(r.prompt.includes(q.question), 'the second read asks the same questions')
+  assert.match(result.recordText, /- Read 1, .*Gaps: .*Q-TWO.*\n- Read 2, .*No gap\./)
+  assert.equal(checkRecord(result.recordText).code, 0)
+})
+
+check('page-loop: a gap that outlasts the cap escalates with the gap open', async () => {
+  const { result } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ missed: [[1], [1], [1], [1]] }) })
+  assert.equal(result.status, 'escalated')
+  assert.equal(result.rounds, 3)
+  assert.equal(result.open[0].from, 'pass 9')
+  assert.match(checkRecord(result.recordText).out, /record: no pass 10/)
+})
+
+check('page-loop: a kept page skips the draft, and the record says so', async () => {
+  const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ status: 'kept', pageExists: true }) })
+  assert.equal(labels(calls, 'pass-3').length, 0)
+  assert.match(calls.find((c) => c.label === 'pass-2').prompt, /it exists; leave it closed/)
+  assert.match(result.recordText, /^## 3 · Draft\n\nSkipped: C-07 is kept/m)
+})
+
+check('page-loop: a skipped draft with no page on disk, or no sitemap entry, stops before pass 1', async () => {
+  for (const opts of [{ status: 'piloted', pageExists: false }, { found: false }]) {
+    const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder(opts) })
+    assert.equal(result.status, 'blocked')
+    assert.deepEqual(calls.map((c) => c.label), ['plan'])
+  }
+})
+
+check('page-loop: pass 2 outside five or six questions with two edge cases fails the run', async () => {
+  const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ questions: loopQuestions.slice(0, 4) }) })
+  assert.equal(result.status, 'failed')
+  assert.equal(labels(calls, 'pass-3').length, 0)
+})
+
+check('page-loop: a dead agent stops the run and writes no record', async () => {
+  const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ dead: ['pass-5'] }) })
+  assert.equal(result.status, 'failed')
+  assert.equal(result.at, 'pass 5')
+  assert.equal(labels(calls, 'record').length, 0, 'no record for a loop that did not finish')
+})
+
+check('page-loop: dir moves the page, for a run kept as evidence', async () => {
+  const { result } = await run('page-loop.js', { args: { ...loopArgs, dir: 'specs/issues/FIX-2697/poc/loop-run/' }, respond: loopResponder() })
+  assert.equal(result.path, 'specs/issues/FIX-2697/poc/loop-run/state-and-scopes.md')
+  assert.equal(result.record, 'specs/issues/FIX-2697/poc/loop-run/state-and-scopes.record.md')
+})
+
+check('page-loop: refuses to run without a sitemap id and a writer model', async () => {
+  await assert.rejects(() => run('page-loop.js', { args: { writer: 'sonnet' }, respond: () => null }), /args\.page/)
+  await assert.rejects(() => run('page-loop.js', { args: { page: 'C-07' }, respond: () => null }), /args\.writer/)
+})
+
+// ---------------------------------------------------------------------------
 // meta contract — phases declared must match the phases actually started
 // ---------------------------------------------------------------------------
 
 check('every phase() a script can start is declared in meta.phases', async () => {
-  for (const name of ['epic-wake.js', 'issue-multi-pr.js', 'app-review.js']) {
+  for (const name of ['epic-wake.js', 'issue-multi-pr.js', 'app-review.js', 'page-loop.js']) {
     const src = readFileSync(join(HERE, name), 'utf8')
     const declared = [...src.matchAll(/\{ title: '([^']+)'/g)].map((m) => m[1])
     const started = [...src.matchAll(/^phase\('([^']+)'\)/gm)].map((m) => m[1])
