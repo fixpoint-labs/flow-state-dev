@@ -190,7 +190,8 @@ Open both images and check, in each:
 5. Set it beside the two published figures. Same marks, same line weights, same type sizes.
 6. Read the figure without the page. The one idea should be recoverable from it.
 
-Then run the site's brand lint on the file. It runs from `apps/docs` and takes file paths:
+Then run the site's brand lint on the file, which checks [the lint rules](#lint-rules). It runs
+from `apps/docs` and takes file paths:
 
 ```bash
 pnpm --filter @flow-state-dev/docs exec node scripts/lint-brand.mjs "$PWD/docs/contributing/docs-revamp/pilot/figures/board.svg"
@@ -221,9 +222,16 @@ images under [`docs-revamp/figures/rendered/`](./docs-revamp/figures/rendered) a
 
 ## Lint rules
 
-Rules 1 to 5 are what `apps/docs/scripts/lint-brand.mjs` checks today, pointed at the revamp
-figures. Rules 6 to 16 extend it. Like the brand lint, the check first runs against
-fixtures that break each rule and fails if a rule does not fire.
+`apps/docs/scripts/lint-brand.mjs` checks all sixteen, and CI runs it as `lint:brand`. Rules 1
+to 5 hold every diagram, the site's published ones included. Rules 6 to 15 hold each figure
+kept in a `figures/` folder; by default the lint checks those under
+`docs/contributing/docs-revamp/`. Rule 16 holds the revamp's pages in `pages/` and `pilot/`, and
+any `.md` file named to the lint. The site's published diagrams sit outside `figures/` folders
+and get rules 1 to 5 only, until they are redrawn. Before the real files, the lint runs its
+fixtures in `apps/docs/scripts/brand-lint-fixtures/figures/`: at least one per rule, named for
+the rule's name in the lint's output (`key.svg`, `key.two-keys.svg`), each breaking that rule,
+plus a clean figure and page that must pass. It fails if a fixture does not trip its rule, or if
+the clean ones trip any.
 
 **Banned constructs**
 
@@ -280,7 +288,7 @@ where their meaning is true, and that the highlighted thing is the page's one id
 
 The three pilot figures, redrawn to these rules. Each passes the brand lint with no findings
 and was rendered and read in both modes. `docs-revamp/pages/figures/blocks.svg` has not been redrawn
-yet; it is redrawn with its page.
+yet; it is redrawn with its page, and until then the lint skips it and `pages/blocks.md`.
 
 ### Layer boxes: `docs-revamp/pilot/figures/layers.svg`
 
