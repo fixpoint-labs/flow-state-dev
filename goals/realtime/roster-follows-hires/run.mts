@@ -60,6 +60,7 @@ import { buildKitchenSinkWorkforce, workforceRoot } from "../../../apps/kitchen-
 import { TeamPanel } from "../../../apps/kitchen-sink/components/team-panel.tsx";
 import { railSessions } from "../../../apps/kitchen-sink/lib/rail-sessions.ts";
 import { ROUTE_MODEL } from "../../../apps/kitchen-sink/lib/models.ts";
+import { packageBlocks, workerBlocks } from "../../../apps/kitchen-sink/workforce/workforce.gen.ts";
 import { LabProvider } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useRoster } from "../../../packages/shift-manager/src/lib/roster.ts";
 import { createLabAdapter, type LabWorker } from "../../../labs/teammates/src/adapter.ts";
@@ -363,7 +364,7 @@ async function twoCoordinatorTree(): Promise<FlowInstance[]> {
   const read = await readWorkforce(root);
   if (read.errors.length > 0) throw new Error(`setup: ${read.errors.map((e) => e.path).join(", ")}`);
   let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: read.workers, workerFlows: () => flows as never });
+  const installation = createWorkerInstallation({ standardWorkers: read.workers, workerFlows: () => flows as never, workerBlocks, packageBlocks });
   flows = {
     agent: defineAgentWorkerFlow({ installation }),
     [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
