@@ -41,7 +41,7 @@ A **flow** is a backend you write. It names its actions, the entry points a page
 
 A **block** is a typed unit of work: a model call, a plain function, or several of them chained. An action runs one block. See [Blocks](./blocks.md).
 
-A **kit** is a feature packaged so an app installs it with one entry in `kits`. It brings its own flows and can leave openings for other kits to fill. `workforce` brings the team of workers in your repo. See [Kits and slots](./kits-and-slots.md).
+A **kit** is a feature packaged so an app installs it with one entry in `kits`. It brings its own flows and can leave openings for other kits to fill. `workforce` brings your team of workers, each one a `WORKER.md` file in your repo whose body is its instructions. See [Kits and slots](./kits-and-slots.md).
 
 `stores` is where data is kept.
 
@@ -73,14 +73,12 @@ export function SendButton({ message }: { message: string }): ReactElement {
 From there:
 
 1. The page sends the action to the engine.
-2. The engine checks the input against the action's schema and checks that the session is the caller's.
+2. The engine checks the input against the action's schema and checks that the session is the caller's. A session answers only the user who owns it; the [sessions reference](../reference/sessions.md) covers what happens otherwise.
 3. The flow runs the action's block. In `help-desk` that is a sequencer, a block that runs blocks in order: `chatGenerator` calls the model, then `incrementMessageCount` updates the session's state.
 4. Blocks emit **items**, the pieces a flow streams out, and they reach the page as the model writes. `session.items` is the live list of them.
 5. When the run completes, the page receives the session's new state.
 
 If the stream drops, the page picks it up where it left off. [Sessions, items and streaming](./sessions-items-and-streaming.md) has the detail.
-
-A session answers only the user who owns it. The [sessions reference](../reference/sessions.md) covers what happens otherwise.
 
 ## Where things are kept
 
@@ -88,13 +86,13 @@ A session answers only the user who owns it. The [sessions reference](../referen
 
 Code and `WORKER.md` files are in your repo. What `createFlowState` returns lives in the process.
 
-The session is in your store, with its state and its items. All of that outlives the request, and on a store that persists it outlives a restart. Request state, the scratch space of one action run, is kept with its request and no other request sees it. With no `stores`, the store is memory: a restart empties it, sessions included.
+The session is in your store, with its state and its items. All of that outlives the request, and on a store that persists it outlives a restart. Request state is scratch space for one action run. It is written to the store with its request, and only that run can see it. With no `stores`, the store is memory: a restart empties it, sessions included.
 
-The browser holds what it last received: the live items and the snapshot, the state the flow chose to expose. A view is a read-only question a screen asks the server, such as a user's open orders. Its answer is computed on each read and stored nowhere. See [State and scopes](./state-and-scopes.md), [Views](./views.md) and the [client reference](../reference/client.md) for what the browser keeps locally.
+The browser holds what it last received: the live items and the snapshot, the state the flow chose to expose. A view is a read-only question a screen asks the server, such as a user's open orders. Its answer is computed on each read. The server doesn't keep it, and the browser holds only the last answer while the screen is open. See [State and scopes](./state-and-scopes.md), [Views](./views.md) and the [client reference](../reference/client.md) for what the browser keeps locally.
 
 ## Which page to read for what
 
-Say a worker in the help desk, `triage`, gives a wrong answer. A worker is a file, `WORKER.md`, whose body is its instructions and which can name the flow that runs it. Open that file first. If it looks right, open the flow it names, then the blocks inside that flow. To see which block produced the text, run the action from a terminal:
+Say a worker, `triage`, whose `WORKER.md` names `flow: help-desk`, gives a wrong answer. Open that file first. If it looks right, open the `help-desk` flow, then the blocks inside it. To see which block produced the text, run the action from a terminal:
 
 ```bash
 fsdev run help-desk chat -i '{"message":"Where is my order?"}'
@@ -110,6 +108,17 @@ The [CLI reference](../reference/cli.md) lists what it prints and the flags that
 | Session | [Sessions, items and streaming](./sessions-items-and-streaming.md) |
 | State | [State and scopes](./state-and-scopes.md) |
 | View | [Views](./views.md) |
+
+## What it gets you
+
+- **The conversation survives.** The session lives in your store, so with `sqliteStores` a user comes back after a restart and finds it. With no `stores`, a restart empties it.
+- **A dropped connection loses nothing.** The stream picks up where it stopped, so a half-written reply finishes.
+- **The browser sees only what the flow exposes.** Everything else in session state stays on the server.
+- **You can test without the page.** `fsdev run` runs the same action on the same engine and stores, from a terminal.
+
+## How it fits with the others
+
+Each layer uses only the ones beneath it, so the page never reaches into a block and a block never knows about React. Code outside the server, in Node or at the edge, talks to your flows through the client, and `@flow-state-dev/react` wraps that client in hooks. Kits, patterns, tools and memory are built on the runtime and are not part of it: you can ship a flow with none of them.
 
 ## Next
 

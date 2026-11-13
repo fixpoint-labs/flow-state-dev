@@ -162,3 +162,12 @@ Item facts:
 - `fsdev run` output format (`docs/cli/agent-dev-loop.md:13-14`): moved to R-35 (provisional `../reference/cli.md`).
 - A worker's `WORKER.md` body is its instructions and a record may name `flow:` (`packages/workforce/README.md:5-7`, `:40-43`, `:60-62`); the page now says so in one clause where `triage` first appears.
 - `session.items` now first appears in step 4 (`hc-app:72-73`).
+
+## Revise round 2 notes (pass 8)
+
+- A view's answer: the server keeps nothing; the browser holds the last answer as `value` while the screen is open (`react/hooks/useView.ts:13`; `engine/test/session-views-store-nothing.test.ts:2-7`). Page now says both.
+- `triage` is a worker whose `WORKER.md` names `flow: help-desk` (`packages/workforce/README.md:60-62`); the debugging path now ends at `fsdev run help-desk chat`. Worker defined at first use, beside `workforce` (`:5-7`).
+- Request state: written to the store with its request (`engine/context/createExecutionContext.ts:2645-2668`); only that run sees it (`docs/fundamentals/state-and-scopes.md:25`).
+- Session ownership sentence merged into step 2; R-20 link moved there.
+- Added "What it gets you" (store persistence `engine/flowstate/types.ts:168-178`; stream resume `anatomy-of-a-flow.md:103-105`; `client.expose` `state-and-scopes.md:25`; `fsdev run` stores `agent-dev-loop.md:33`) and "How it fits with the others" (layers `docs/glossary.md:25`; client `docs/client/overview.md:7-9`; `docs/ecosystem/overview.md:5-9`).
+- `workforce` kit factory remains specified and not exported; the page keeps its cutover comment.
