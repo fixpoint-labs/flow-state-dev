@@ -158,7 +158,7 @@ export async function askSupport(userId: string, text: string) {
 
 - **Types follow the flow.** `reply` with the wrong input fails to compile.
 - **A new field is private.** Add `refundLimit` to session state and it stays on the server until you name it in `expose`.
-- **A dropped stream picks up.** It resumes from the last event it saw, and no items are lost.
+- **A dropped stream loses nothing.** Reopen a request's stream with `startingAfter` and the server sends what you missed; `useSession` and a session stream reconnect by themselves.
 - **Credentials live in one place.** Pass a `fetcher` that adds an `Authorization` header to `FlowProvider` (or `createClient`), and every call and stream carries it.
 
 ## How it fits with the others

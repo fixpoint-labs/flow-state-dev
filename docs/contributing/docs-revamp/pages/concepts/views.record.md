@@ -4,6 +4,8 @@ Sitemap: C-09
 
 Loop: escalated after 3 revise round(s) with 1 finding(s) open. Pass 10 is the owner's: they read the page and record it.
 
+Closed after the loop: the one open finding (banned words on line 93) is fixed; the line now reads "It appears once in her roster, as her copy: marked `standard: true` and `edited: true`, on the standard file's team." No finding is open.
+
 - [pass 4] node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/concepts/views.md: FAIL docs/contributing/docs-revamp/pages/concepts/views.md (concept, 652 words). Banned words: "now" x1, "still" x2. All three are on line 93: "Say Alice edits a standard worker. It appears once in her roster, as her copy, still marked `standard: true` and still on the standard file's team, now with `edited: true`. ...". Line 83 also contains "now" ("hired just now"), but it sits inside the <Figure> description, which the checker removes before counting, so it is not one of the hits.
 
 ## 1 · Fact sheet
@@ -38,11 +40,15 @@ Written by `docs-writer` (sonnet), 626 words. Scenario: The Workforce roster sid
 - After revise round 2, page sha256 aba331641e3e: exit 0.
 - After revise round 3, page sha256 3d682c5947a3: exit 1. Failed: node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/concepts/views.md.
 
+- Post-loop edit: line 93 rewritten without the banned words. Re-ran check-docs-page.mjs on the page: ok, 648 words.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 06daef5b77dc, and the 6 Reference row(s) pass 6 moved.
 
 - The flow example `defineFlow({ kind: "roster", views: { roster } })()` is a complete flow declaration. Untrue: `actions` is a required field of a flow definition (`actions: TActions;`, not optional, and `defineFlow` infers `TActions extends Record<string, ActionEntry>` from it). A definition with only `kind` and `views` does not match `FlowDefinition`, so the example fails to typecheck. It needs an `actions` map, even if only `actions: {}`. Real flows that install views also pass `actions`, e.g. `defineFlow({ kind: PROJECTS_FLOW, actions: { ...projects.actions }, views: { ...projects.views } })`. (/home/user/flow-state-dev/packages/core/src/types/flow.ts:592 (page: /home/user/flow-state-dev/docs/contributing/docs-revamp/pages/concepts/views.md:48-51))
+
+- Post-loop edit: no new claim; `edited: true` is facts' own field for an edited standard worker.
 
 ## 6 · Depth pass
 
