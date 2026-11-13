@@ -1,5 +1,6 @@
+// FIX-2624.
 /**
- * `client.resource(def)` (FIX-2624): a user or org resource read by scope and
+ * `client.resource(def)`: a user or org resource read by scope and
  * key with no session, and written through its `runBy` flow at the version it
  * read. What matters to a caller: no session route is touched, a stale write is
  * re-read and re-applied (so two concurrent edits both land), and a write that

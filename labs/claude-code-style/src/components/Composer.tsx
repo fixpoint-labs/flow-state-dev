@@ -1,7 +1,6 @@
-import { interruptChordLabel, isSendKey } from "@flow-state-dev/react";
+import { interruptChordLabel, isSendKey, useDraftSend } from "@flow-state-dev/react";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { useDraftSend } from "../lib/use-draft-send";
 import { cn } from "../lib/utils";
 import { AttachButton, AttachmentStrip, useAttachments, type AttachmentUploader } from "./flow-state/attachments";
 

@@ -1,5 +1,6 @@
+// FIX-2536.
 /**
- * `serve()`'s schedule tick (FIX-2536): a flow whose `schedules.index` is set
+ * `serve()`'s schedule tick: a flow whose `schedules.index` is set
  * has its due entries claimed each minute by the server that serves it.
  *
  * Why these matter: a long-lived host has no cron of its own, so this tick is

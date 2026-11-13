@@ -159,6 +159,12 @@ export {
 } from "./hooks/useJumpToLatest";
 
 export { useDraft, clearDraft, readDraft, saveDraft } from "./hooks/useDraft";
+export {
+  useDraftSend,
+  type DraftSend,
+  type DraftSendAttachments,
+  type DraftSendFn
+} from "./hooks/useDraftSend";
 
 export { useSubscription, type UseSubscriptionOptions } from "./hooks/useSubscription";
 export { useView, type UseViewOptions, type UseViewResult } from "./hooks/useView";

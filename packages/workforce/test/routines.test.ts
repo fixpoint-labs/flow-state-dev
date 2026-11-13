@@ -1,5 +1,6 @@
+// FIX-2614.
 /**
- * Routines (FIX-2614): one list and four verbs over clock routines (schedules)
+ * Routines: one list and four verbs over clock routines (schedules)
  * and event routines (subscriptions), for the user on the roster
  * flow and for a worker through its tools, plus the app's declared routines.
  *

@@ -26,7 +26,8 @@ describe("resolveProfileStores", () => {
     }
   });
 
-  it("projects the blobs slot onto the registry's blob store (FIX-824)", async () => {
+  // FIX-824.
+  it("projects the blobs slot onto the registry's blob store", async () => {
     const blobs = createMemoryBlobStore();
     const { stores, adapters } = await resolveProfileStores({
       profileName: "default",

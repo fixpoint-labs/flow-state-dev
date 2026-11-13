@@ -66,13 +66,16 @@ export const LAND_LABEL: Record<ReviewLand, string> = { "pull-request": "Open a 
 
 /**
  * The ways to land, with a failed landing's way first: the retry. Each way once, in the review's order.
- * Shared by the review card and the lab's thread accept, so the two never order them differently.
+ * Shared by the review card and any accept a host draws outside it, so the two never order them differently.
  */
 export function orderedLands(lands: readonly ReviewLand[], failed: { land: ReviewLand } | null): ReviewLand[] {
   return failed === null ? [...lands] : [failed.land, ...lands.filter((land) => land !== failed.land)];
 }
 
-/** Why the last landing failed, in the landing's own words, or nothing when none failed. */
+/**
+ * Why the last landing failed, in the landing's own words, or nothing when none failed.
+ * The review card draws it, and a host can draw it beside an accept of its own.
+ */
 export function LandFailure({ failed }: { failed: { land: ReviewLand; message: string } | null }) {
   if (failed === null) return null;
   return (

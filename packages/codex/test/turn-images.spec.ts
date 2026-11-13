@@ -1,6 +1,7 @@
+// FIX-2519 D1.
 /**
  * A turn's images reach Codex as files in a folder of the turn's own, outside
- * the checkout, gone when the turn ends however it ends (FIX-2519 D1): in the
+ * the checkout, gone when the turn ends however it ends: in the
  * checkout, an agent's `git add -A` would ship the screenshot in its pull
  * request. A type Codex can't take refuses the turn before a thread starts.
  *

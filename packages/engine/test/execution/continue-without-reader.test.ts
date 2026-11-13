@@ -1,5 +1,6 @@
+// FIX-2675.
 /**
- * `continueWithoutReader` (FIX-2675): a continuation started by a caller that
+ * `continueWithoutReader`: a continuation started by a caller that
  * never reads its live stream (the durability sweeper, a wait's resume, a
  * parked stop) must not hold the run's events in that stream.
  */

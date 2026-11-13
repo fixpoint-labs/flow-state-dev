@@ -1,5 +1,6 @@
+// FIX-824 D1.
 /**
- * FIX-824 D1: attachment bytes live wherever the sessions live. The `blobs`
+ * Attachment bytes live wherever the sessions live. The `blobs`
  * slot resolves to the profile's own adapter when it names one; otherwise to
  * the local disk when the sessions persist (under a filesystem primary's own
  * root, else `.fsdev/blobs/<profile>` in the working directory), and to memory when

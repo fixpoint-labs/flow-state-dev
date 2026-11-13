@@ -1,5 +1,6 @@
+// FIX-2537.
 /**
- * Custom and interest screens (FIX-2537): a subscription says what it wants in
+ * Custom and interest screens: a subscription says what it wants in
  * code (the app's own function, listed by name) or in a sentence (a model
  * judges what the code screens passed).
  *

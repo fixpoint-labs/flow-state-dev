@@ -1,5 +1,6 @@
+// FIX-2536.
 /**
- * GitHub's poll (FIX-2536): a PR's activity, read from GitHub's REST API as
+ * GitHub's poll: a PR's activity, read from GitHub's REST API as
  * the polling user, rebuilt into the payloads GitHub's normalize reads.
  *
  * Why these matter: a session that is both pushed and polled hears each event

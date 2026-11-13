@@ -243,7 +243,8 @@ describe("the glossary defines each shipped term exactly once", () => {
 const resourceHits = (path: string, text: string): string[] =>
   (scanTreeRules as (path: string, text: string) => Hit[])(path, text).map((h) => `${h.line}:${h.text}`);
 
-/** The three released messages a published page may still quote (FIX-2479 D4). */
+// FIX-2479 D4.
+/** The three released messages a published page may still quote. */
 const OWNER_PRIVATE = "A row of an owner-private collection is readable only by the user it belongs to.";
 const OWNER_WRITES = "A row of an owner-writes collection is written only by the user it belongs to.";
 const OVERLAP = 'Collection pattern "[tenant]/**" can reach the rows of owner-private collection';
@@ -535,7 +536,8 @@ describe("TypeScript's parser reads every declaration kind, and a use never", ()
   });
 });
 
-describe("a change may not add a row name to a file (D1, a per-file ratchet)", () => {
+// FIX-2631 D1.
+describe("a change may not add a retired name to a file (a per-file ratchet)", () => {
   it("refuses a new local, parameter or property, and names the one that is new", () => {
     expect(added("packages/workforce/src/zz.ts", null, "const taskRow = 1;\n")).toEqual(["1:taskRow"]);
     expect(added("packages/workforce/src/zz.ts", "const row = 1;\n", "const row = 1;\nfunction f(row: unknown) {}\n")).toEqual(["2:row"]);

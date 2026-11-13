@@ -1,6 +1,7 @@
+// FIX-2519.
 /**
  * A turn's images reach Cursor as base64 on the message it sends, beside the
- * prompt (FIX-2519); nothing is written to disk. A type Cursor can't take
+ * prompt; nothing is written to disk. A type Cursor can't take
  * refuses the turn before an agent is opened.
  *
  * The client is scripted, as in `agent.spec.ts`: that the real runtime reads

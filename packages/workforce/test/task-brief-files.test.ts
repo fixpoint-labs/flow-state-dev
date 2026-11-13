@@ -1,6 +1,7 @@
+// FIX-2522; epic FIX-2516 ER-7.
 /**
- * A task's files are its brief's, for every run (FIX-2522; epic FIX-2516
- * ER-7). A user sends a screenshot to a conversation; a task filed on that
+ * A task's files are its brief's, for every run.
+ * A user sends a screenshot to a conversation; a task filed on that
  * turn keeps its own copy on its row; each run of the task, the first and a
  * re-run, reads it in a session of its own, and finds it on its brief line,
  * where a generator worker's model reads it with the brief.

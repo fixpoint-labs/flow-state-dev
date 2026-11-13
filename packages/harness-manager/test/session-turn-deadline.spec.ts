@@ -1,5 +1,6 @@
+// FIX-2680.
 /**
- * A harness session's turn ends at its deadline (FIX-2680): a harness wedged
+ * A harness session's turn ends at its deadline: a harness wedged
  * on a hung tool would otherwise keep its agent, and everything it started,
  * alive for as long as the host runs. The harness is the package's scripted
  * stub, paused on a step that only its abort ends, so the turn ends only if

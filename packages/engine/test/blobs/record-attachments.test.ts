@@ -1,5 +1,6 @@
+// FIX-2634.
 /**
- * The attachments block on the real path (spec FIX-2634): a flow that
+ * The attachments block on the real path: a flow that
  * includes `recordAttachments` gets the session's `attachments` list with no
  * other wiring, read through the ordinary collection routes; a retried turn
  * lists no file twice; no other block can edit or remove an entry; and the

@@ -1,5 +1,6 @@
+// FIX-2522; epic FIX-2516 ER-7.
 /**
- * Files kept in a person's own scope (FIX-2522; epic FIX-2516 ER-7). A record
+ * Files kept in a person's own scope. A record
  * that outlives the turn its files came with (a task's brief on a
  * conversation's board, at the user scope) keeps copies through core's
  * `keepAttachmentsForUser`. The copies matter because the brief must reach

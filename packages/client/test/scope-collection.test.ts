@@ -1,5 +1,6 @@
+// FIX-2624.
 /**
- * `client.resource(collection)` (FIX-2624): a user or org collection's entries,
+ * `client.resource(collection)`: a user or org collection's entries,
  * listed and read by scope and key with no session, and each written or
  * deleted through the collection's `runBy` flow at the version it read. What
  * matters to a caller: no session route is touched, an entry update another

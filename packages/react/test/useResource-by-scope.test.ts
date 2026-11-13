@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
+// FIX-2624 D2.
 /**
- * `useResource(def, { session })` (FIX-2624, D2): one hook for one resource or
+ * `useResource(def, { session })`: one hook for one resource or
  * collection at any scope. A user or org one is read by scope and key with no
  * session, read again when a change notice under its path lands (and only
  * then), and written through its handle; a session one comes from the

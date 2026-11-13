@@ -59,7 +59,6 @@ import {
   SquareIcon,
   XIcon,
 } from "lucide-react";
-import { nanoid } from "nanoid";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { isSendKey } from "@flow-state-dev/react";
 import {
@@ -87,27 +86,6 @@ import {
 
 /** Framework-agnostic prompt status. Replaces ChatStatus from "ai". */
 export type PromptStatus = "ready" | "submitting" | "streaming" | "error";
-
-/**
- * A file a message carries. Replaces FileUIPart from "ai". In a submitted
- * message, `url` is the uploaded file's reference (`fsd-blob:<id>`), never its
- * bytes.
- */
-export interface FileAttachment {
-  type: "file";
-  mediaType: string;
-  url: string;
-  filename?: string;
-}
-
-/** Framework-agnostic source attachment. Replaces SourceDocumentUIPart from "ai". */
-export interface SourceAttachment {
-  type: "source";
-  sourceId: string;
-  title?: string;
-  url?: string;
-  description?: string;
-}
 
 // ============================================================================
 // Provider Context & Types
@@ -225,30 +203,6 @@ export const usePromptInputAttachments = () => {
   return context;
 };
 
-// ============================================================================
-// Referenced Sources (Local to PromptInput)
-// ============================================================================
-
-export interface ReferencedSourcesContext {
-  sources: (SourceAttachment & { id: string })[];
-  add: (sources: SourceAttachment[] | SourceAttachment) => void;
-  remove: (id: string) => void;
-  clear: () => void;
-}
-
-export const LocalReferencedSourcesContext =
-  createContext<ReferencedSourcesContext | null>(null);
-
-export const usePromptInputReferencedSources = () => {
-  const ctx = useContext(LocalReferencedSourcesContext);
-  if (!ctx) {
-    throw new Error(
-      "usePromptInputReferencedSources must be used within a LocalReferencedSourcesContext.Provider"
-    );
-  }
-  return ctx;
-};
-
 export type PromptInputActionAddAttachmentsProps = ComponentProps<
   typeof DropdownMenuItem
 > & {
@@ -316,8 +270,6 @@ export const PromptInputAttachments = ({
 
 export interface PromptInputMessage {
   text: string;
-  /** The message's files, each by reference. */
-  files: FileAttachment[];
   /**
    * The same files as `upload` returned them, in the order attached: what a
    * send takes as its `attachments` (`sendAction`, `useHarnessLines().send`).
@@ -472,16 +424,6 @@ const PromptInputForm = ({
   // Set while a Send waits on uploads and onSubmit, so a second Enter doesn't send the same files again.
   const submittingRef = useRef(false);
 
-  // ----- Local referenced sources (always local to PromptInput)
-  const [referencedSources, setReferencedSources] = useState<
-    (SourceAttachment & { id: string })[]
-  >([]);
-
-  const clearReferencedSources = useCallback(
-    () => setReferencedSources([]),
-    []
-  );
-
   // Takes files dropped anywhere on the page, when asked to: a native listener, since the document isn't React's.
   const { add } = attachments;
   useEffect(() => {
@@ -514,24 +456,6 @@ const PromptInputForm = ({
     };
   }, [add, globalDrop]);
 
-  const refsCtx = useMemo<ReferencedSourcesContext>(
-    () => ({
-      add: (incoming: SourceAttachment[] | SourceAttachment) => {
-        const array = Array.isArray(incoming) ? incoming : [incoming];
-        setReferencedSources((prev) => [
-          ...prev,
-          ...array.map((s) => ({ ...s, id: nanoid() })),
-        ]);
-      },
-      clear: clearReferencedSources,
-      remove: (id: string) => {
-        setReferencedSources((prev) => prev.filter((s) => s.id !== id));
-      },
-      sources: referencedSources,
-    }),
-    [referencedSources, clearReferencedSources]
-  );
-
   const handleSubmit: FormEventHandler<HTMLFormElement> = useCallback(
     async (event) => {
       event.preventDefault();
@@ -557,21 +481,14 @@ const PromptInputForm = ({
       const shown = attachments.refusals;
       const clear = () => {
         attachments.consume(sent, shown);
-        clearReferencedSources();
         controller?.textInput.clear();
       };
 
       try {
         // Waits only for uploads still in flight; a file already uploaded is already a reference.
         const uploaded = await attachments.settle();
-        const files: FileAttachment[] = uploaded.map((file) => ({
-          type: "file",
-          mediaType: file.mediaType,
-          url: file.data,
-          ...(file.filename === undefined ? {} : { filename: file.filename }),
-        }));
 
-        const result = onSubmit({ files, attachments: uploaded, text }, event);
+        const result = onSubmit({ attachments: uploaded, text }, event);
 
         if (result instanceof Promise) {
           try {
@@ -589,7 +506,7 @@ const PromptInputForm = ({
         submittingRef.current = false;
       }
     },
-    [controller, attachments, onSubmit, clearReferencedSources]
+    [controller, attachments, onSubmit]
   );
 
   const { dropTarget } = attachments;
@@ -632,15 +549,9 @@ const PromptInputForm = ({
     </>
   );
 
-  const withReferencedSources = (
-    <LocalReferencedSourcesContext.Provider value={refsCtx}>
-      {inner}
-    </LocalReferencedSourcesContext.Provider>
-  );
-
   return (
     <LocalAttachmentsContext.Provider value={own}>
-      {withReferencedSources}
+      {inner}
     </LocalAttachmentsContext.Provider>
   );
 };

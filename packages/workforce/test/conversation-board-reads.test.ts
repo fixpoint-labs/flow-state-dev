@@ -1,4 +1,5 @@
 // FIX-2286; FIX-2623.
+// FIX-2286 D2.
 /**
  * Watching a conversation's task board stores nothing.
  *
@@ -6,7 +7,7 @@
  * `client.view(taskListViewRef(flow, "tasks"), ...)`, instead of running the
  * action of the same name. The view must answer the rows the action lists,
  * keyed by task id, add no request however often it is called, reach only a
- * conversation its caller owns, and never run the board's pass (FIX-2286 D2):
+ * conversation its caller owns, and never run the board's pass:
  * a row whose start was lost waits for an action, not a look. Every
  * assertion on what was stored reads the store, not the view's own answer.
  */
@@ -90,7 +91,8 @@ describe("the conversation board's listTasks view", () => {
     }
   });
 
-  it("never runs the board's pass: a row whose start was lost waits for an action, not a look (FIX-2286 D2)", async () => {
+  // FIX-2286 D2.
+  it("never runs the board's pass: a task whose start was lost waits for an action, not a look", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");

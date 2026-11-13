@@ -1,5 +1,6 @@
+// FIX-824.
 /**
- * FIX-824: a file goes up the upload route once and comes back as a
+ * A file goes up the upload route once and comes back as a
  * reference; the action that names it claims it into its session after the
  * session check; and the read route serves the bytes only to a caller who can
  * read that session. Another user's read is a 404, as for an id nobody used.

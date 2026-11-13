@@ -1,5 +1,6 @@
+// FIX-2624.
 /**
- * The host resolver reaches the queue worker through the adapter (FIX-2624).
+ * The host resolver reaches the queue worker through the adapter.
  *
  * `createFlowState({ resolvePrincipal: R, worker: bullmqWorker(...) })` must
  * give the worker R, with no caller handing it to `startWorker`: the worker

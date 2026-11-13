@@ -5,7 +5,9 @@
  * it, a run between steps reads as a feed that went quiet. The line names the
  * most specific status there is (the tool call in flight, then the plan step
  * in progress, then the run's note, then a plain "Working..."), counts the
- * time since the run started, and is gone once the task stops running.
+ * time since the run started, and is gone once the task stops running. It is
+ * the registry's `StreamingIndicator`, the line the teammates popup draws, so
+ * a long command keeps to one line with the whole of it on hover.
  */
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -78,9 +80,18 @@ describe("a running task's view ends in a live working line", () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     vi.setSystemTime(STARTED + 4 * 60_000 + 12_000);
     const view = open(RUNNING);
-    expect(within(view.pane).getByTestId("run-timer").textContent).toBe("4m 12s");
+    expect(within(view.pane).getByTestId("run-timer").textContent).toBe("(4m 12s)");
     act(() => vi.advanceTimersByTime(3_000));
-    expect(within(view.pane).getByTestId("run-timer").textContent).toBe("4m 15s");
+    expect(within(view.pane).getByTestId("run-timer").textContent).toBe("(4m 15s)");
+  });
+
+  it("keeps a long command to one line, whole on hover", () => {
+    const command = "pnpm --filter @flow-state-dev/engine test -- --reporter=verbose test/stream-resume.test.ts";
+    const view = open(RUNNING);
+    view.setWork({ inFlight: { tool: "Bash", args: { command } } });
+    const said = within(view.line()!).getByTitle(/^Running pnpm --filter/);
+    expect(said.title).toBe(said.textContent);
+    expect(said.className).toContain("truncate");
   });
 
   it.each(["completed", "errored", "cancelled"] as const)("is gone once the task is %s", (status) => {
