@@ -3,6 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientHttpError } from "@flow-state-dev/client";
+import { liveRead } from "@flow-state-dev/client/internal";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { firstLine, exchangesOf, toMessages, type WorkerMessageResourceState } from "../src/lib/messages";
@@ -14,7 +15,9 @@ vi.mock("@flow-state-dev/client", async (original) => ({
   readEveryCollectionPage: (...a: unknown[]) => readPages(...a),
 }));
 const resource = vi.fn((def: { scope: string; pattern?: string }) => ({ ...def, list: vi.fn() }));
-const lab = { client: { userId: "u_1", resources: {}, resource }, refresh: vi.fn() };
+// The client's own live read, over a subscription that hears nothing: each view reads once on open.
+const live = (topics: Parameters<typeof liveRead>[1], options: Parameters<typeof liveRead>[2]) => liveRead(() => ({ close: () => {} }), topics, options);
+const lab = { client: { userId: "u_1", resources: {}, resource, live }, refresh: vi.fn() };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
 import { Messages } from "../src/surfaces/Messages";
