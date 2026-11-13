@@ -147,11 +147,11 @@ describe("usePanelRows · late and racing responses", () => {
 
   it("BR-4 · never returns the previous session's rows, not even for one render", async () => {
     const source = entrySource();
-    const seen: Array<{ sessionId: string; rows: string[] }> = [];
+    const seen: Array<{ sessionId: string; entries: string[] }> = [];
     const { result, rerender } = renderHook(
       ({ sessionId }) => {
         const state = usePanelRows(source as never, sessionId, "roster", undefined, "Panel failed");
-        seen.push({ sessionId, rows: topics(state.rows) });
+        seen.push({ sessionId, entries: topics(state.rows) });
         return state;
       },
       { initialProps: { sessionId: "s1" } }
@@ -165,7 +165,7 @@ describe("usePanelRows · late and racing responses", () => {
 
     const underS2 = seen.filter((entry) => entry.sessionId === "s2");
     expect(underS2.length).toBeGreaterThan(0);
-    expect(underS2.every((entry) => entry.rows.length === 0)).toBe(true);
+    expect(underS2.every((entry) => entry.entries.length === 0)).toBe(true);
   });
 });
 
