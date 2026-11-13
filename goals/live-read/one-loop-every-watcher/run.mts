@@ -40,7 +40,7 @@ import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@fl
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { Roster } from "@flow-state-dev/react/workforce";
-import { createWorkforceClient, ROSTER_FLOW, type RosterEntry } from "@flow-state-dev/workforce/browser";
+import { createWorkforceClient, PROJECTS_FLOW, ROSTER_FLOW, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, type ModulePatch } from "../../lib/index.mts";
 import { buildKitchenSinkWorkforce } from "../../../apps/kitchen-sink/workforce/hire.ts";
@@ -141,7 +141,7 @@ async function host(): Promise<Host> {
   const registry = createFlowRegistry();
   for (const copy of copies) registry.register(copy);
   // The lab's pins: a user resource the host declares, written through the default write flow.
-  registry.register(defineFlow({ kind: "projects", resources: { labPins }, actions: {} } as never)() as never);
+  registry.register(defineFlow({ kind: PROJECTS_FLOW, resources: { labPins }, actions: {} } as never)() as never);
   const stores: StoreRegistry = { ...createInMemoryStores(), bus: crossingBus() };
   const router = createFlowApiRouter({
     registry,

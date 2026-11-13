@@ -37,6 +37,7 @@ import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
 import { labPins } from "../../../labs/claude-code-style/workforce/flows/user-marks.mts";
+import { PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { createWiredLab, type ThreadView } from "../../../labs/claude-code-style/src/adapter.ts";
 import { createLabAdapter, type ConversationView } from "../../../labs/teammates/src/adapter.ts";
 import { followSessionItems, type SessionItems } from "../../../packages/shift-manager/src/lib/run.ts";
@@ -125,7 +126,7 @@ async function host(bus: "default" | "not-crossing"): Promise<Host> {
   const registry = createFlowRegistry();
   registry.register(deskFlow());
   // The lab's pins: a user resource the host declares, written through the default write flow.
-  registry.register(defineFlow({ kind: "projects", resources: { labPins }, actions: {} } as never)() as unknown as FlowInstance);
+  registry.register(defineFlow({ kind: PROJECTS_FLOW, resources: { labPins }, actions: {} } as never)() as unknown as FlowInstance);
   const memory = createInMemoryStores();
   const notCrossing = crossingBus();
   notCrossing.setCrossing(false);

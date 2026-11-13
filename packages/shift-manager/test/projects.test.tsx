@@ -12,10 +12,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
-import type { Client } from "@flow-state-dev/client";
+import { CollectionReadStoppedError, type Client } from "@flow-state-dev/client";
+import { readProject } from "../src/lib/projects";
 import { connect } from "../src/lib/connection";
 import { projectsOf, type LoadedSnapshot } from "../src/lib/derive";
-import { createLabReader, PROJECT_PATTERN, toProject, type Project } from "../src/lib/reads";
+import { PROJECTS_PATTERN } from "@flow-state-dev/workforce/browser";
+import { createLabReader, toProject, type Project } from "../src/lib/reads";
 import { ASKER_FLOW } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -48,7 +50,7 @@ async function lab(projects: NonNullable<Parameters<typeof openAskLab>[0]>["proj
 
 /** The row as the Lab stores it, read by org scope over the entries route, as the owner. */
 async function storedRow(baseUrl: string, id: string): Promise<Project> {
-  const { value } = await connect({ userId: ASK_LAB_USER_ID, baseUrl }).resource({ scope: "org", pattern: PROJECT_PATTERN }).entry(`projects/${id}`).read();
+  const { value } = await connect({ userId: ASK_LAB_USER_ID, baseUrl }).resource({ scope: "org", pattern: PROJECTS_PATTERN }).entry(`projects/${id}`).read();
   if (value === null) throw new Error(`no project ${id} stored`);
   return value as unknown as Project;
 }
@@ -114,6 +116,24 @@ describe("PROJECTS (BR-22, D3)", () => {
     down = false;
     act(() => fireEvent.click(within(failed).getByRole("button", { name: "Retry" })));
     await screen.findByTestId("nav-project-desk");
+  });
+});
+
+// FIX-2624.
+describe("a project's own read", () => {
+  it("stops on a repeated cursor with the shared pager's error, never as a short list", async () => {
+    const { baseUrl } = await lab();
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (/\/resources\/org\/workstreams%2F[^/]*\/entries\?/.test(url)) {
+        return Promise.resolve(new Response(JSON.stringify({ items: [], nextCursor: "again" }), { status: 200, headers: { "content-type": "application/json" } }));
+      }
+      return real(input, init);
+    });
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
+    const client = connect({ userId: ASK_LAB_USER_ID, baseUrl });
+    await expect(readProject(client, { visibility: "shared", id: "desk" })).rejects.toBeInstanceOf(CollectionReadStoppedError);
   });
 });
 

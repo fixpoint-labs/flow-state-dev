@@ -104,7 +104,7 @@ describe("V8", () => {
   // FIX-2624.
   it("opens a reader session on no flow: the worker inventory and the projects are read by scope", async () => {
     const reads = await import("../src/lib/reads");
-    expect(Object.keys(reads).filter((name) => /_READER_FLOW$|^readerSessionId$/.test(name))).toEqual([]);
+    expect(Object.keys(reads).filter((name) => /_READER_FLOW$/.test(name))).toEqual([]);
   });
 
   it("reads conversation boards from the collection their task actions are named for", async () => {

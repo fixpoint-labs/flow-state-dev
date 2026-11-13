@@ -9,11 +9,12 @@
  * `setWorkProject` checks the same rule on the server.
  */
 import { defineFlow } from "@flow-state-dev/core";
-import { defineProjectBlocks, type RepositoryCheck } from "@flow-state-dev/workforce";
+import { defineProjectBlocks, PROJECTS_FLOW, type RepositoryCheck } from "@flow-state-dev/workforce";
 import { labDismissals, labPins } from "./user-marks.mts";
 
-/** The flow kind the screen reads projects through. */
-export const PROJECTS_FLOW = "projects";
+// FIX-2624: workforce's projects flow kind, which the projects collections' `runBy` names.
+/** The flow kind the screen writes projects through. */
+export { PROJECTS_FLOW };
 
 /**
  * Build the flow: the project blocks' actions and views and nothing else.

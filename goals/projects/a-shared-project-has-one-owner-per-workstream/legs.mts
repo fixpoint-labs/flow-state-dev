@@ -19,7 +19,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { createClient } from "@flow-state-dev/client";
-import { createWorkforceClient, projectProgress } from "@flow-state-dev/workforce/browser";
+import { createWorkforceClient, projectProgress, PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { routedDeliveries, type RoutedDelivery } from "../../lib/routed-tasks.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 import { ENTRY_WRITER_KIND } from "./controls/patches.mts";
@@ -48,7 +48,6 @@ type WorkstreamInput = { id: string; title: string; objectives: string[]; due: s
 /** The engine's refusal of a write by anyone but the row's owner. */
 const OWNER_RULE = "A resource in an owner-writes collection is written only by the user it belongs to.";
 
-const PROJECTS_FLOW = "projects";
 const ROSTER_KIND = "workforce-roster";
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);

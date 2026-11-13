@@ -61,7 +61,7 @@ import type { FileContent, OutputItem, SuspensionItem } from "@flow-state-dev/co
 import { isUserSuspension, suspendForUserKindOf, type ResumeAction } from "@flow-state-dev/core/types";
 import { suspensionShape } from "@flow-state-dev/react";
 import { deriveSuspensions } from "@flow-state-dev/react/internal";
-import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import { PROJECTS_PATTERN, ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
 import { createInboxClient, inboxItems, taskActionName, taskHoldSchema, taskView, type BoardActions, type InboxAnswer, type TaskViewInput, type InboxHold, type InboxItem, type InboxTaskInput, type TaskHold } from "@flow-state-dev/orchestration/inbox";
@@ -323,11 +323,6 @@ export type LabSnapshot =
 /** The organization's worker inventory, by its published key pattern. */
 const WORKER_INVENTORY_PATTERN = "inventory/workers/*";
 
-/**
- * The projects, by their published key pattern: one pattern, at the
- * organization's scope for the shared ones and the user's for their own.
- */
-export const PROJECT_PATTERN = "projects/*";
 
 /** Rows per collection page: the collection route's maximum. */
 const PAGE_SIZE = 200;
@@ -353,13 +348,13 @@ const NO_ROSTER_FLOW = `Unknown flow "${ROSTER_FLOW}"`;
  * repeated-cursor check it keeps. Each row carries the entry's client
  * projection as `clientData`, as a session-addressed read does, so one parser
  * reads either. A 404 is no flow declaring the collection, or a caller none of
- * them signs in.
+ * them signs in. `topicPrefix` keeps the entries whose storage key starts with it.
  */
-export function readEveryScopeEntry(client: Client, scope: "user" | "org", pattern: string) {
+export function readEveryScopeEntry(client: Client, scope: "user" | "org", pattern: string, topicPrefix?: string) {
   const collection = client.resource({ scope, pattern });
   const pages = {
     listCollectionResources: async (_sessionId: string, _ref: string, options: { limit?: number; cursor?: string } = {}) => {
-      const page = await collection.list(options);
+      const page = await collection.list({ ...options, ...(topicPrefix === undefined ? {} : { topicPrefix }) });
       return {
         items: page.items.map((entry) => ({ topic: entry.topic, storageKey: entry.storageKey, clientData: entry.value })),
         ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
@@ -845,7 +840,7 @@ export function createLabReader(client: Client): LabReader {
   const readProjects = async (): Promise<Section<Projects>> => {
     const rowsAt = async (scope: "org" | "user", visibility: ProjectVisibility) => {
       try {
-        return (await readEveryScopeEntry(client, scope, PROJECT_PATTERN))
+        return (await readEveryScopeEntry(client, scope, PROJECTS_PATTERN))
           .map((row) => toProject(row.clientData, visibility))
           .filter((p): p is Project => p !== undefined);
       } catch (error) {

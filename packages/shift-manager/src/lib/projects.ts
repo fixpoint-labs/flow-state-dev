@@ -23,6 +23,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   parseWorkstreamEntry,
   projectProgress,
+  PROJECTS_PATTERN,
   WORKSTREAMS_PATTERN,
   workstreamReportView,
   type ParsedWorkstreamEntry,
@@ -30,7 +31,7 @@ import {
 } from "@flow-state-dev/workforce/browser";
 import { viewRef, type Client } from "@flow-state-dev/client";
 import { useLab } from "./lab-data";
-import { describeFailure, PROJECT_PATTERN, toProject, type Failure, type Project, type ProjectVisibility } from "./reads";
+import { describeFailure, readEveryScopeEntry, toProject, type Failure, type Project, type ProjectVisibility } from "./reads";
 
 /** A project's address: where it lives, and its id. */
 export type ProjectAddress = { visibility: ProjectVisibility; id: string };
@@ -77,9 +78,6 @@ export type ProjectSetup = {
 /** The view the Lab's projects flow names its setup on. */
 export const PROJECT_SETUP_VIEW = "projectSetup";
 
-/** Rows per page: the entries route's maximum. */
-const PAGE_SIZE = 200;
-const MAX_PAGES = 50;
 
 /**
  * An entry, from what the entries' browser read publishes, parsed by
@@ -120,26 +118,11 @@ const scopeOf = (visibility: ProjectVisibility) => (visibility === "private" ? "
 export async function readProject(client: Client, address: ProjectAddress, now = Date.now()): Promise<ProjectRead | null> {
   const scope = scopeOf(address.visibility);
   const [row, entries] = await Promise.all([
-    client.resource({ scope, pattern: PROJECT_PATTERN }).entry(`projects/${address.id}`).read(),
-    (async () => {
-      const found: Omit<WorkstreamEntry, "stale">[] = [];
-      const workstreams = client.resource({ scope, pattern: WORKSTREAMS_PATTERN });
-      let cursor: string | undefined;
-      for (let page = 0; page < MAX_PAGES; page += 1) {
-        const listed = await workstreams.list({
-          limit: PAGE_SIZE,
-          topicPrefix: `workstreams/${address.id}/`,
-          ...(cursor === undefined ? {} : { cursor }),
-        });
-        for (const item of listed.items) {
-          const entry = toEntry(item.storageKey, item.value);
-          if (entry !== undefined) found.push(entry);
-        }
-        if (listed.nextCursor === undefined || listed.nextCursor === cursor) break;
-        cursor = listed.nextCursor;
-      }
-      return found;
-    })(),
+    client.resource({ scope, pattern: PROJECTS_PATTERN }).entry(`projects/${address.id}`).read(),
+    // The project's one prefix, through the snapshot's pager: its page ceiling and repeated-cursor check.
+    readEveryScopeEntry(client, scope, WORKSTREAMS_PATTERN, `workstreams/${address.id}/`).then((rows) =>
+      rows.map((row) => toEntry((row as { storageKey?: string }).storageKey ?? `workstreams/${row.topic}`, row.clientData)).filter((entry): entry is Omit<WorkstreamEntry, "stale"> => entry !== undefined),
+    ),
   ]);
   if (row.value === null) return null;
   const project = toProject(row.value, address.visibility);
