@@ -141,3 +141,18 @@ Imports: `defineKit`, `slot`, `defineFlow` from `@flow-state-dev/core` (`ct:112-
 - That a kit "has no client half": only in the contributor glossary, not citable.
 - That list order breaks ties for list-slot entries, until a test covers it **[verify]**.
 - Anything about how a kit's flows store data beyond "the flows' scopes".
+
+## 10. Moved to Reference (R-11, `reference/kits`), revise round 1
+
+The page states the one-line model and links `../reference/kits.md` for each:
+
+- Kit config validation: checked at the call site; a bad value throws there (`dk:249-256`).
+- A kit's folder: read at app start, after the kits are planned; every entry must be used except names such as `.DS_Store`; any other unused file stops the app and the error names it (`dk:70-75`, `wk:22`). Per-path rules on R-29.
+- Slot kinds: keyed (a duplicate key refused) and list (appends every entry) (`dk:22-41`). The page says only that `harnesses` is a list slot.
+- Who may fill a slot: the key `owner.slots.<name>`, the requires rule (direct or transitive), the start-up refusal (`kp:139-142`).
+- Install order: dependency order, not list order (`kp:55-85`). The page keeps one sentence.
+- `contributes` timing: runs once the owner's own slots are full, the app's `fill` included (`dk:131-133`). The page says `coderFlow` receives every harness in the slot, including ones the app adds.
+- `fill` and `without`: the app-level `fill` key; `without(slotKey)` (`dk:164-178`).
+- Start-up refusals: each throws at `createFlowState`, naming the kit and the slot (`kp:47-53`).
+
+`install` in the page example returns `{ flows: [] }`: the kit serves no flow of its own; its `coder` flow goes into `workforce`'s slot (`dk:95-98`).

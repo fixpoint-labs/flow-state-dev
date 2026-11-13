@@ -13,7 +13,7 @@ A flow is a self-contained system in your app, with actions that clients call. S
 
 The example is a support desk with three flows. `support` has a `reply` action that a page calls. `billing` is started by Stripe. `digest` is started by a schedule.
 
-<Figure svg={WaysIn} caption="Every way in ends at a run" description={"Three boxes on the left and two on the right surround one box in the middle, the running app, which holds the support, billing and digest flows from one config object. On the left, a browser page, the fsdev run terminal command and an MCP client such as Claude Desktop each call support.reply. On the right, Stripe runs the block billing binds and a scheduler runs the block digest binds. Five arrows, keyed as starts a run, point from those five boxes at the app. Inside the app, one highlighted box reads a run, recorded like any other, where the source says which door it came through. The highlight marks the one idea: every door ends there."} />
+<Figure svg={WaysIn} caption="Every way in ends at a run" description={"Three boxes on the left and two on the right surround one box in the middle, the running app, which holds the support, billing and digest flows from one config object. On the left, a browser page, the fsdev run terminal command and an MCP client such as Claude Desktop each call support.reply. On the right, Stripe starts a block in billing and a scheduler starts a block in digest. Five arrows, keyed as starts a run, point from those five boxes at the app. Inside the app, one highlighted box reads a run, recorded like any other, where the source says which door it came through. The highlight marks the one idea: every door ends there."} />
 
 ## One object
 
@@ -31,17 +31,17 @@ export default createFlowState({
 });
 ```
 
-`flows` is a list. Each is served under its own id, its `kind`. A keyed object such as `flows: { support }` throws when the app starts.
+`flows` is a list. Each is served under its own id, the `kind` you gave it in `defineFlow`.
 
-`models` names the default model. Leave it out and Flow State finds providers from environment variables such as `OPENAI_API_KEY`. `stores` says where the app keeps what it saves: sessions, state, requests. Leave it out and everything lives in memory and is gone on restart. Models and stores are set here, not on a host and not in a flow.
+`models` names the default model. Leave it out and Flow State finds providers from environment variables such as `OPENAI_API_KEY`. `stores` says where the app keeps what it saves: sessions, state, requests. Leave it out and everything lives in memory and is gone on restart. Every host and every flow uses the models and stores set here.
 
 Keep this file apart from your route handler. The route imports it, and the `fsdev` command loads its default export. Every other option is in [Runtime options](../reference/runtime.md).
 
 ## What it serves
 
-Every flow gets HTTP routes under `/api/flows`, with the flow's id next: `/api/flows/support/...`. Calling `reply` is a `POST` to `/api/flows/support/actions/reply`. It answers `202 Accepted` with a request id, runs the action, and streams the result back as server-sent events. [HTTP API](../reference/http-api.md) has the rest of the routes.
+Every flow gets HTTP routes under `/api/flows`, with the flow's id next: `/api/flows/support/...`. Calling `reply` is a `POST` to `/api/flows/support/actions/reply`. [HTTP API](../reference/http-api.md) has the responses and the rest of the routes.
 
-A flow with no `authentication` takes the caller's `userId` from the request body. That is for development only. [Authentication](../reference/authentication.md) covers what to set before you expose a flow.
+Who may call them is set by `authentication` on the flow. A flow with none is for development only. [Authentication](../reference/authentication.md) covers what to set before you expose a flow.
 
 ## Where it runs
 
@@ -54,15 +54,15 @@ import flowstate from "../fsdev.config";
 await serve(flowstate);
 ```
 
-`serve` listens on `$PORT`, or 3000, and answers `/healthz`. On `SIGTERM` it finishes the requests in flight and releases the stores. `fsdev serve` does the same from the terminal, using `fsdev.config.ts`.
+`serve` starts a long-lived server for the app. `fsdev serve` does the same from the terminal, using `fsdev.config.ts`. [Runtime options](../reference/runtime.md) has the port, health check and shutdown behaviour.
 
 ## Other ways in
 
-HTTP is the built-in door. The others are adapters you add to `createFlowState` with `adapters`, and each one hands the app the same kind of request.
+HTTP is the built-in door. From a terminal, `fsdev run support reply -i '{"message":"hi"}'` calls the action directly, with the stores and models from `fsdev.config.ts`.
 
-**A terminal.** `fsdev run support reply -i '{"message":"hi"}'` calls the action with the stores and models from `fsdev.config.ts`.
+MCP, webhooks and schedules are adapters you add to `createFlowState` with `adapters`. Each one hands the app the same kind of request.
 
-**MCP.** The Model Context Protocol is how clients such as Claude Desktop use outside tools. Set `mcp: { enabled: true }` on `support` and add `createMcpTransportAdapter()` from `@flow-state-dev/mcp` to `adapters`, and its actions become tools. An MCP call is an action call. See [MCP server](../reference/mcp-server.md).
+**MCP.** The Model Context Protocol is how clients such as Claude Desktop use outside tools. With the MCP adapter, the actions of `support` become tools, and an MCP call is an action call. See [MCP server](../reference/mcp-server.md).
 
 **A webhook.** Stripe posting to your app is not an action call. A webhook has no action name for a caller to send. The flow says which block runs for which event, where a block is a unit of work.
 
@@ -87,18 +87,16 @@ export default defineFlow({
 })();
 ```
 
-`input` turns Stripe's event into the input of `recordPayment`. `actions` is empty because there is nothing for a caller to call, and the run belongs to a `system` user. The flow holds no secret. The app adds `createWebhookTransportAdapter` to `adapters`, with the signing secret and how to verify Stripe's signature. Stripe is pointed at `POST /api/flows/billing/webhooks/stripe`. See [Webhooks](../reference/webhooks.md) and the [Stripe recipe](../build/webhooks/stripe.md).
+`input` turns Stripe's event into the input of `recordPayment`. `actions` is empty because there is nothing for a caller to call, and the run belongs to a `system` user. The flow holds no secret. The app adds a webhook adapter that checks Stripe's signature. See [Webhooks](../reference/webhooks.md) and the [Stripe recipe](../build/webhooks/stripe.md).
 
-**A schedule.** A schedule is a name and a cron string on the flow, with the block to run. Flow State does not own the clock. Your scheduler, such as Vercel Cron or EventBridge, calls the schedule's dispatch endpoint when the time comes, and `createScheduledTransportAdapter()` from `@flow-state-dev/scheduled` runs the block. It is not an action call either. See [Schedules](../reference/schedules.md).
-
-Voice is not a separate door. It adds speech to the HTTP path.
+**A schedule.** A schedule is a name and a cron string on the flow, with the block to run. Flow State does not own the clock. Your scheduler, such as Vercel Cron or EventBridge, calls a URL the schedule adapter serves for that schedule when the time comes, and the adapter runs the block. It is not an action call either. See [Schedules](../reference/schedules.md).
 
 ## What it gets you
 
 - **A flow is written once.** `support` is reached by a page, a terminal and an MCP client with no code for each.
 - **Moving hosts changes one file.** Going from a Next.js route to `serve` touches the mount file, not `support`, `billing` or `digest`.
-- **A forged webhook never starts a block.** A bad signature gets a 401 and `recordPayment` does not run. A good one gets a `202` at once, and the block runs after the response.
-- **A misconfigured app fails when it starts.** A duplicate flow id, an empty `stores` map and a webhook provider the host did not set up each throw at startup.
+- **A forged webhook never starts a block.** A request with a bad signature never reaches `recordPayment`. [Webhooks](../reference/webhooks.md) has the responses.
+- **A misconfigured app fails when it starts, not on the first request.** [Runtime options](../reference/runtime.md) lists what is refused.
 
 ## How it fits with the others
 
