@@ -19,7 +19,8 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { z } from "zod";
 
 const file = z.object({ type: z.literal("file"), mediaType: z.string(), filename: z.string().optional(), data: z.string() });
-const input = z.object({ message: z.string(), files: z.array(file) });
+// The composer goal's send names its files only beside the input, so `files` may be absent here.
+const input = z.object({ message: z.string(), files: z.array(file).default([]) });
 
 const send = handler({
   name: "send",

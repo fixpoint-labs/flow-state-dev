@@ -106,10 +106,9 @@ describe("attaching in PromptInput", () => {
     });
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
     const sent = onSubmit.mock.calls[0]![0];
-    expect(sent.files).toHaveLength(1);
-    expect(sent.files[0]!.url).toMatch(/^fsd-blob:b_/);
-    // The same file as a send takes it: what `upload` returned, so a page hands it on untouched.
-    expect(sent.attachments).toEqual([{ type: "file", mediaType: "image/png", filename: "shot.png", data: sent.files[0]!.url }]);
+    // One file shape: the files as a send takes them, what `upload` returned, so a page hands them on untouched.
+    expect(Object.keys(sent).sort()).toEqual(["attachments", "text"]);
+    expect(sent.attachments).toEqual([{ type: "file", mediaType: "image/png", filename: "shot.png", data: expect.stringMatching(/^fsd-blob:b_/) }]);
     // No bytes, and no local preview address: a data URL, base64, or a `blob:` URL.
     expect(JSON.stringify(sent)).not.toMatch(/"(data|blob):|base64/);
     expect(client.upload).toHaveBeenCalledOnce();
@@ -162,7 +161,7 @@ describe("attaching in PromptInput", () => {
     expect(onSubmit).not.toHaveBeenCalled();
     await act(async () => open());
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
-    expect(onSubmit.mock.calls[0]![0].files.map((f) => f.url)).toEqual([
+    expect(onSubmit.mock.calls[0]![0].attachments.map((f) => f.data)).toEqual([
       expect.stringMatching(/^fsd-blob:/),
       expect.stringMatching(/^fsd-blob:/),
     ]);
@@ -199,7 +198,7 @@ describe("attaching in PromptInput", () => {
       fireEvent.keyDown(box, { key: "Enter" });
     });
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
-    expect(onSubmit.mock.calls[0]![0].files.map((f) => f.filename)).toEqual(["ok.png"]);
+    expect(onSubmit.mock.calls[0]![0].attachments.map((f) => f.filename)).toEqual(["ok.png"]);
   });
 
   it("refuses by name when the composer has nowhere to upload, rather than dropping the file", async () => {
@@ -421,7 +420,7 @@ describe("PromptInput's Send", () => {
     await act(async () => pick([file("b.png", "image/png")]));
     await act(async () => open());
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
-    expect(onSubmit.mock.calls[0]![0].files.map((f) => f.filename)).toEqual(["a.png"]);
+    expect(onSubmit.mock.calls[0]![0].attachments.map((f) => f.filename)).toEqual(["a.png"]);
     expect(screen.queryByRole("img", { name: "a.png" })).toBeNull();
     expect(screen.getByRole("img", { name: "b.png" })).toBeTruthy();
   });
