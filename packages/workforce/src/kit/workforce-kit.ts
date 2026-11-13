@@ -16,6 +16,10 @@
  *   which is then not configured here.
  * - `uses` (a list): capabilities added to the agent and coordinator flows
  *   this kit builds, as the harness kit adds its readiness.
+ * - `flows` (keyed): flows that aren't worker flows but are built on the
+ *   installation (an app's projects and workstreams flow, say). Each entry is
+ *   a builder handed the installation; the kit serves what it returns beside
+ *   its worker flows. Workforce ships none of its own.
  *
  * The kit adds two capabilities of workforce's own to those flows, over its
  * installation: consulting another conversation (`consultSessions`) and the
@@ -106,6 +110,13 @@ const workerFlowEntrySchema = z.custom<WorkerFlowEntry>(
   { message: "a worker flow entry is a flow, `{ flow }`, or `workerFlow(…)`" },
 );
 
+/** A `flows` entry: builds flows on the installation the kit hired. */
+export type WorkforceFlowsBuilder = (installation: WorkerInstallation) => readonly FlowInstance<any, any>[];
+
+const flowsBuilderSchema = z.custom<WorkforceFlowsBuilder>((value) => typeof value === "function", {
+  message: "a `flows` entry is a function that builds flows on the installation",
+});
+
 /** A `uses` entry: a capability, or a function choosing them per turn. */
 const usesEntrySchema = z.custom<UsesEntry>(
   (value) => typeof value === "function" || (typeof value === "object" && value !== null),
@@ -124,6 +135,7 @@ export const workforce = defineKit({
   slots: {
     workerFlows: slot.keyed(workerFlowEntrySchema),
     uses: slot.list(usesEntrySchema),
+    flows: slot.keyed(flowsBuilderSchema),
   },
   directory: { path: "workforce", read: (folder) => readWorkforceFolder(folder) },
   install: ({ config, folder, slots }) => ({ flows: installWorkforce(config, folder as WorkforceFolder, slots) }),
@@ -133,7 +145,11 @@ export const workforce = defineKit({
 function installWorkforce(
   config: WorkforceConfig,
   folder: WorkforceFolder,
-  slots: { readonly workerFlows: Readonly<Record<string, WorkerFlowEntry>>; readonly uses: readonly UsesEntry[] },
+  slots: {
+    readonly workerFlows: Readonly<Record<string, WorkerFlowEntry>>;
+    readonly uses: readonly UsesEntry[];
+    readonly flows: Readonly<Record<string, WorkforceFlowsBuilder>>;
+  },
 ): FlowInstance[] {
   const filled = slots.workerFlows;
   if (config.agent !== undefined && Object.hasOwn(filled, AGENT_FLOW)) {
@@ -190,6 +206,7 @@ function installWorkforce(
     ...(config.messages === undefined ? {} : { messages: config.messages }),
     ...(config.routines === undefined ? {} : { routines: config.routines }),
   });
-  if (config.github === undefined) return copies;
-  return [...copies, githubServiceFlow({ ...config.github, installation }) as unknown as FlowInstance];
+  const built = Object.values(slots.flows).flatMap((build) => build(installation) as FlowInstance[]);
+  const github = config.github === undefined ? [] : [githubServiceFlow({ ...config.github, installation }) as unknown as FlowInstance];
+  return [...copies, ...github, ...built];
 }

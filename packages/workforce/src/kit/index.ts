@@ -11,4 +11,5 @@ export {
   type WorkforceAgentOptions,
   type WorkforceConfig,
   type WorkforceCoordinatorOptions,
+  type WorkforceFlowsBuilder,
 } from "./workforce-kit";

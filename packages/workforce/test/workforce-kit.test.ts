@@ -133,4 +133,28 @@ describe("workforce as a kit", () => {
     const agent = registry.get("agent") as unknown as { resources?: Record<string, unknown> };
     expect(Object.keys(agent.resources ?? {})).toContain("probe");
   });
+
+  it("serves the flows an app builds on the installation through its flows slot", async () => {
+    const directory = tree({ "teams/core/workers/lead/WORKER.md": LEAD });
+    let seen: WorkerInstallation | undefined;
+    const state = track(
+      createFlowState({
+        kits: [workforce({ directory })],
+        fill: {
+          [workforce.slots.flows]: {
+            // A flow that isn't a worker flow, built on the installation: its resources are the installation's.
+            projects: (installation: WorkerInstallation) => {
+              seen = installation;
+              return [defineFlow({ kind: "projects", resources: { ...installation.resources }, actions: {} } as never)() as never];
+            },
+          },
+        },
+        stores,
+      }),
+    );
+    await state.ready();
+    expect([...state.meta.flowKeys].sort()).toEqual(["agent", "projects", "workforce-roster"]);
+    // The builder got the installation the kit hired: the one whose standard worker is Lead.
+    expect(seen?.standardWorkers().map((worker) => worker.id)).toEqual(["core.lead"]);
+  });
 });
