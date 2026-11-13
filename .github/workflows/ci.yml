@@ -458,6 +458,19 @@ jobs:
       - name: The vocabulary sweep reports its plant
         run: node goals/vocabulary/one-word-per-thing/sweep.mjs --control
 
+      # A docs-revamp page must keep to its type's budget and the page rules, and its
+      # record must show every pass of the writing loop. PRs check the pages they
+      # touch (a record's edit names its page); main checks every page. The script
+      # header owns the rules and the record format.
+      - name: The docs page checker refuses its plants
+        run: node --test scripts/check-docs-page.test.mjs
+      - name: Docs pages this PR touches
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-docs-page.mjs --changed-since HEAD^1
+      - name: Every docs page
+        if: github.event_name == 'push'
+        run: node scripts/check-docs-page.mjs
+
       # A goal that guards a check with `xs.length > 0 &&` skips it on an empty
       # list and prints PASS having read nothing (FIX-1183). Goals floor the
       # list with tell.over instead; the script header owns the one shape it
