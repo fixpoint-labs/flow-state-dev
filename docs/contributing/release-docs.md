@@ -89,6 +89,11 @@ keeps the older releases; the page links to them instead of repeating them.
   gets a page that says so in one sentence, with the links.
 - **`<date>`** is the date of the docs pass, the same as its `release-docs/<date>` branch. Packages
   version on their own, so no one version number names a release.
+- **The old address keeps working.** Deleting the previous page breaks every link to it, and the
+  site build fails on a broken link (`onBrokenLinks: "throw"`). In the same pass, point the sidebar
+  entry and every inbound link at the new page, and repoint the client redirects in
+  `apps/docs/docusaurus.config.ts` (`@docusaurus/plugin-client-redirects`): every earlier
+  `reference/upgrading/<date>` address, the one just removed included, goes to the new page.
 - **Before the docs cutover** the site has no Reference section, and a docs pass writes no Upgrading
   page. The first is written at cutover, from the changesets pending then.
 
