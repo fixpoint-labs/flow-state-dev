@@ -211,7 +211,9 @@ none reverses one.
 - **`sessionFields` reaches the agent and coordinator flows as a factory option.** The kit hands
   its `sessionFields` to the two flows it builds (`defineAgentWorkerFlow`, `defineCoordinatorFlow`);
   each field joins that session's schema, its `serverOwned` list and its client data. A field
-  named like a key workforce keeps on the session refuses start. `workProjectId` stays as it is
+  named like a key workforce keeps on the session refuses start. Every field is visible to the
+  session's browser, as `workProjectId` is: never put a secret in one. No per-field expose option
+  is built; nothing needs one yet. `workProjectId` stays as it is
   until FIX-2628 moves projects to the app.
 - **The starter files are one registry item, `workforce-starter`.** `fsdev ui add
   workforce-starter` copies `workforce/teams/team/TEAM.md` and

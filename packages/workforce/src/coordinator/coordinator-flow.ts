@@ -243,7 +243,10 @@ export interface CoordinatorFlowOptions {
    * `routines.providers` names. Omitted, a coordinator keeps no routines.
    */
   routines?: boolean;
-  /** Session fields the app declares on the coordinator's sessions, server-written only. */
+  /**
+   * Session fields the app declares on the coordinator's sessions, server-written only.
+   * Every field is visible to the session's browser. Never put a secret here.
+   */
   sessionFields?: SessionFields;
 }
 

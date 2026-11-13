@@ -97,6 +97,7 @@ export interface WorkforceConfig {
    * Session fields the app declares on the agent and coordinator sessions, a
    * schema each, by name. Only the server writes one: a create that seeds it
    * is refused, naming it, and the client reads it off the session.
+   * Every field is visible to the session's browser. Never put a secret here.
    */
   sessionFields?: Readonly<Record<string, ZodTypeAny>>;
 }

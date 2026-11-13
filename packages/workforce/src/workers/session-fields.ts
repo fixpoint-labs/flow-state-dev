@@ -7,6 +7,8 @@
  * create that seeds it is refused with a 400 naming it) and what the client
  * reads of the session. A field named like one workforce keeps is
  * refused: the app would overwrite a key workforce writes.
+ *
+ * Every field is visible to the session's browser. Never put a secret here.
  */
 import type { SessionConfig } from "@flow-state-dev/core/types";
 import { z, type AnyZodObject, type ZodTypeAny } from "zod";
