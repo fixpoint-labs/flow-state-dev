@@ -106,6 +106,8 @@ export default [
 
   // 10. Arrows.
   svg("arrow", "arrow", "a <line> arrow that is not horizontal or vertical", 'x2="330" y2="64"', 'x2="330" y2="90"'),
+  // Codex's case: a misspelt marker reference drew no arrowhead and still counted as an arrow.
+  svg("arrow.missing-marker", "arrow", 'marker-end="url(#missing)" names no <marker>', 'marker-end="url(#ah)"', 'marker-end="url(#missing)"'),
 
   // 11. Key.
   svg("key", "key", "the key is not the figure's last element", KEY_CLOSE, `</g>\n<line class="hi" ${LINE_HI} x1="0" y1="190" x2="920" y2="190"/>\n</svg>`),

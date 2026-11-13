@@ -522,6 +522,14 @@ function lintFigure(file, text, tree, out) {
   }
 
   // 10. Arrows run horizontally or vertically.
+  // An arrowhead reference names a <marker> the figure defines: a misspelt one draws the line with no head.
+  const markerIds = new Set(all.filter((n) => n.name === "marker").map((n) => n.attrs.id));
+  for (const node of all) {
+    for (const attr of ["marker-start", "marker-end"].filter((a) => node.attrs[a] !== undefined)) {
+      const id = /^url\(#([^)\s]+)\)$/.exec(node.attrs[attr].trim())?.[1];
+      if (!id || !markerIds.has(id)) at(node, "arrow", `${attr}="${node.attrs[attr]}" names no <marker> this figure defines, so no arrowhead draws`);
+    }
+  }
   for (const node of all.filter((n) => classesOf(n).some((c) => c === "ln" || c === "ln-dash"))) {
     const straight =
       node.name === "line"

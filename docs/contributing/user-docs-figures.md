@@ -298,7 +298,8 @@ if a rule is tripped by no fixture, or if a clean one (a case with `rule` and `e
    or before x=892, and keeps 12 or more inside both edges of its box: the smallest box that holds
    where it starts, or else the smallest its span overlaps.
 10. An `ln` or `ln-dash` runs only horizontally or vertically: a `<line>` with one coordinate
-    fixed, or a `<path>` of `M`, `H` and `V`.
+    fixed, or a `<path>` of `M`, `H` and `V`. A `marker-start` or `marker-end` is `url(#id)` naming a
+    `<marker>` the figure defines; a misspelt one draws the line with no head.
 
 **The key**
 
