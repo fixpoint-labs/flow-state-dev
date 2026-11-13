@@ -46,6 +46,11 @@
  */
 
 export {
+  readWorkforceFolder,
+  type WorkforceFolder,
+} from "./read-workforce-folder";
+
+export {
   readDeclaredRoster,
   type DeclaredProblem,
   type DeclaredProblemLayer,
