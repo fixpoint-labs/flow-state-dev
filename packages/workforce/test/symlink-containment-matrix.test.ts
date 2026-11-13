@@ -34,12 +34,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  readPackagesDirectory,
-  readResourcesDirectory,
-  readWorkerSkills,
-  readWorkforceDirectory,
-} from "../src/loader";
+import { readPackagesDirectory, readResourcesDirectory, readWorkerSkills, readWorkforceDirectory } from "../src/loader/readers";
 import { discoverWorkforceCode } from "../src/codegen";
 // Not on the `./codegen` subpath — the command reaches it through
 // `discoverWorkforceCode`. Imported directly because it opens the root itself,

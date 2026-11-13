@@ -15,7 +15,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { walkTeams } from "../src/loader";
+import { walkTeams } from "../src/loader/readers";
 
 const roots: string[] = [];
 

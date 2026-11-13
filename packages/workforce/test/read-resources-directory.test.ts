@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fsp from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readResourcesDirectory, readWorkforceDirectory } from "../src/loader";
+import { readResourcesDirectory, readWorkforceDirectory } from "../src/loader/readers";
 import { DERIVED_KEY_CASES } from "./derived-key-cases";
 
 const roots: string[] = [];
