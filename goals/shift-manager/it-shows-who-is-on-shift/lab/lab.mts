@@ -46,16 +46,16 @@ import {
   openInventory,
   workerConfigSchema,
   workerMessagesResources,
+  workerFlow,
   workerTaskEntry,
   type InventoryActionRequest,
 } from "@flow-state-dev/workforce";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { actingAs } from "../../../lib/client-actions.mts";
 import { hearsMessages, workerDoor } from "../../../lib/worker-door.mts";
-import { installWorkers } from "../../../lib/workers.mts";
+import { installWorkers, readTree } from "../../../lib/workers.mts";
 
 /** The tree this Lab reads. */
 const SHIFT_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
@@ -104,15 +104,6 @@ const sleep = (ms: number, signal: AbortSignal) =>
     );
   });
 
-/** Read the tree, refusing it whole if anything did not load. */
-async function readTree() {
-  const roster = await readDeclaredRoster(SHIFT_LAB_TREE);
-  if (roster.problems.length > 0) {
-    throw new Error(`the shift-lab tree did not load: ${roster.problems.map((p) => `${p.path}: ${p.error.message}`).join("; ")}`);
-  }
-  return roster;
-}
-
 /** The spread from `SHIFT_LAB_SPREAD`, or the default. */
 function spreadFromEnv(): Spread {
   const raw = process.env.SHIFT_LAB_SPREAD;
@@ -140,7 +131,8 @@ const parkingModel: GeneratorModel = {
 /** Build, open and hand back the Lab, with every worker in its spread's states. */
 export async function openShiftLab(spread: Spread = spreadFromEnv()) {
   const orgId = DEFAULT_ORG_ID;
-  const tree = await readTree();
+  // The kit's reader refuses the tree whole if anything did not load.
+  const tree = await readTree(SHIFT_LAB_TREE);
 
   // The filer is the worker off the coordinator flow whose file names delegates.
   const lead = tree.workers.find((w) => w.declared.flow !== COORDINATOR_FLOW && ((w.declared.delegates as string[] | undefined) ?? []).length > 0);
@@ -181,9 +173,24 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
     },
   });
 
-  const { installation, copies } = installWorkers(tree.workers, (installation) => {
-    const leadBoard = defineSessionBoard({ installation, flowKind: LEAD_KIND });
-    const leadTurn = handler({ name: "shift-lab-lead-turn", inputSchema: door, execute: async () => "Noted." });
+  const leadTurn = handler({ name: "shift-lab-lead-turn", inputSchema: door, execute: async () => "Noted." });
+  const leadFlow = workerFlow(
+    (installation) => {
+      const leadBoard = defineSessionBoard({ installation, flowKind: LEAD_KIND });
+      return defineFlow({
+        kind: LEAD_KIND,
+        cardinality: "collection",
+        configSchema: workerConfigSchema(),
+        session: { ...installation.session(leadBoard.sessionStateShape), serverOwned: [...leadBoard.serverOwned] },
+        resources: { ...installation.resources, ...leadBoard.resources },
+        actions: { ...workerDoor, ...leadBoard.actions },
+        // A task's notice lands as a line; it wakes no turn.
+        internal: { actions: leadBoard.entries(leadTurn, () => "fixed") },
+      } as never);
+    },
+    { roles: ["manager"] },
+  );
+  const seatFlow = workerFlow((installation) => {
     // A seat's own session board is never filed on; it is built for its
     // question park, which a task turn composes.
     const { questions } = defineSessionBoard({ installation, flowKind: SEAT_KIND });
@@ -200,29 +207,21 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
       park: [(input: { message: string }) => input, (input: { message: string }) => input.message.includes(PARK), parkTurn],
       hold: [(input: { message: string }) => input, (input: { message: string }) => !input.message.includes(PARK), holdRun],
     });
-    return {
-      [LEAD_KIND]: { roles: ["manager"], flow: defineFlow({
-        kind: LEAD_KIND,
-        cardinality: "collection",
-        configSchema: workerConfigSchema(),
-        session: { ...installation.session(leadBoard.sessionStateShape), serverOwned: [...leadBoard.serverOwned] },
-        resources: { ...installation.resources, ...leadBoard.resources },
-        actions: { ...workerDoor, ...leadBoard.actions },
-        // A task's notice lands as a line; it wakes no turn.
-        internal: { actions: leadBoard.entries(leadTurn, () => "fixed") },
-      } as never) },
-      [SEAT_KIND]: { roles: ["contributor"], flow: defineFlow({
-        kind: SEAT_KIND,
-        cardinality: "collection",
-        configSchema: workerConfigSchema(),
-        session: installation.session(),
-        resources: { ...installation.resources, ...workerMessagesResources },
-        internal: { actions: hearsMessages(installation, SEAT_KIND) },
-        actions: { ...workerDoor, ask: { block: sequencer({ name: "shift-lab-ask", inputSchema: z.object({ what: z.string() }) }).step(gate), durable: true } },
-        task: { actions: { work: workerTaskEntry({ name: "shift-lab-task", turn: taskTurn }) } },
-      } as never) },
-      [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
-    };
+    return defineFlow({
+      kind: SEAT_KIND,
+      cardinality: "collection",
+      configSchema: workerConfigSchema(),
+      session: installation.session(),
+      resources: { ...installation.resources, ...workerMessagesResources },
+      internal: { actions: hearsMessages(installation, SEAT_KIND) },
+      actions: { ...workerDoor, ask: { block: sequencer({ name: "shift-lab-ask", inputSchema: z.object({ what: z.string() }) }).step(gate), durable: true } },
+      task: { actions: { work: workerTaskEntry({ name: "shift-lab-task", turn: taskTurn }) } },
+    } as never);
+  }, { roles: ["contributor"] });
+  const { installation, copies } = await installWorkers(SHIFT_LAB_TREE, {
+    [LEAD_KIND]: leadFlow,
+    [SEAT_KIND]: seatFlow,
+    [COORDINATOR_FLOW]: workerFlow((installation) => defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL })),
   });
   // The seat write takes caller-supplied rows, so it is internal only.
   const writer = defineFlow({

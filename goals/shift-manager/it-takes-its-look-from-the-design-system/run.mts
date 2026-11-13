@@ -60,11 +60,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Page } from "playwright";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { declarations, hex, near, parseColour, readShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
 import { stripImportsAndComments } from "../../../labs/design-system/test/theme.ts";
-import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, readTree, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerCopy, pickShift, startShiftManager, type Patch, type ServedShiftManager } from "../../lib/shift-manager.mts";
 
@@ -121,7 +120,7 @@ const startLab = (pages: string, shift: "day" | "night"): Promise<ServedShiftMan
  * through that conversation and kept to its rows.
  */
 async function rowWithRun(origin: string): Promise<string> {
-  const roster = await readDeclaredRoster(join(RUN_LAB, "workforce"));
+  const roster = await readTree(join(RUN_LAB, "workforce"));
   const lead = roster.workers.find((w) => w.declared.flow !== "coordinator" && ((w.declared.delegates as string[] | undefined) ?? []).length > 0)!;
   const enc = encodeURIComponent;
   for (let waited = 0; waited < 30_000; waited += 250) {
