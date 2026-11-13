@@ -208,11 +208,6 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       // side-chain count (FIX-369) — those still get a synthesized label in
       // `getItemPreview`. Items with no message AND no count have no label to
       // render, so skip the row entirely.
-      //
-      // The count is read through `sideChainTaskCount`, which tolerates the
-      // pre-FIX-766 `backgroundTasks` spelling: this field is persisted, so a
-      // replayed or mixed-version trace carries the old name and reading only
-      // the new one would drop the row rather than mis-label it.
       if (item.type === "status") {
         const status = item as StatusItem;
         if (!status.message && sideChainTaskCount(status) === undefined) {

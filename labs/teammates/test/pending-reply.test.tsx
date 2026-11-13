@@ -13,6 +13,7 @@ import { App } from "../src/App";
 import { createLabAdapter, type ConversationEntry, type LabTalk } from "../src/adapter";
 import { pendingFor } from "../src/lib/talk";
 import { createFixtureLab } from "./fake-lab";
+import { liveOver } from "./live-over";
 
 const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
@@ -56,6 +57,10 @@ describe("the message log the screen reads", () => {
     });
     const client = {
       resources: { listCollectionResources: async () => ({ items: [row("msg_landed", "delivered"), row("msg_on_its_way", "unconfirmed")] }) },
+      subscribe: () => ({ close: () => {} }),
+      get live() {
+        return liveOver(this as never);
+      },
     } as unknown as Client;
     let rows: LabTalk[] | undefined;
     const stop = createLabAdapter(client).watchTalk(LEAD, (next) => (rows = next));
