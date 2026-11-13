@@ -46,6 +46,15 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 > Codex's per-name strictness finding on #4938 no longer applies. It also supersedes "the
 > package's changelog line names its new home" in [the Q1 row](#q1).
 
+> **Amended (Nov 13).** The exact count is checked at release, not on every run. Other epics'
+> PRs keep dropping root names after the line's count is set, and their own CI never sees the
+> merged rule, so the exact count turned `main` red twice in a day for drift nobody on `main`
+> caused. On a push to `main` or a dispatch, j5 still fails a dropped name that compiles and a
+> package with no summary line, but a count that differs from the measured one is a note with
+> both numbers. The Version Packages PR (head `changeset-release/main`, the signal
+> `release-docs-gate.yml` keys on) runs the goal too, and there a stale count fails. This
+> supersedes "a stale count fails" in the Nov 12 note above.
+
 | | |
 |---|---|
 | **Instead of** | Keeping the manifest after the wrap, with the journeys as its rows, as the non-gating job on `main` that the epic runs while its cells are expected to fail |
@@ -182,6 +191,8 @@ Spec-set review round 1 (Nov 5), recorded, not folded.
 
 ## How it got here
 
+- **EM amendment (Nov 13)** — j5 checks the summary line's exact count on the Version Packages
+  PR only; elsewhere a stale count is a note ([D1](#d1)).
 - **Owner amendment (Nov 12)** — release notes name removed exports in one summary line with
   the count, not one line per name; j5 grades that line ([D1](#d1)).
 - **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
