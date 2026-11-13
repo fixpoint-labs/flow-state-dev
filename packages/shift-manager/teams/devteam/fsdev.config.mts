@@ -84,7 +84,7 @@ import { parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/works
 import type { AskFeature } from "./ask.mts";
 import { claudeCodeEnv, codexEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
 import { CHECKOUT } from "./fsd-checkouts.mts";
-import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab, operatorGitHubToken, readLabTree } from "./host.mts";
+import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab, operatorGitHubToken, readDevTeamTree } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
@@ -156,7 +156,7 @@ const DEFAULT_PROJECTS = [
 
 // Read off the tree: the EM, and the coder its doors file for, its first
 // delegate on the coder worker flow.
-const roster = await readLabTree(LAB_TREE);
+const roster = await readDevTeamTree(LAB_TREE);
 const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const em = roster.workers.find((w) => w.declared.flow === EM_FLOW);
 if (em === undefined) throw new Error("the DevTeam tree declares no EM");

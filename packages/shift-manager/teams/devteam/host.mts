@@ -283,7 +283,7 @@ const resolveLabPrincipal: PrincipalResolver = async (context) => {
  * records; the workforce kit reads the tree again when it installs, and is the
  * one that claims its files.
  */
-export async function readLabTree(root: string = LAB_TREE): Promise<WorkforceFolder> {
+export async function readDevTeamTree(root: string = LAB_TREE): Promise<WorkforceFolder> {
   return readWorkforceFolder({ path: root, claim: () => undefined });
 }
 
@@ -881,7 +881,7 @@ export interface Lab {
 export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const root = options.root ?? LAB_TREE;
   // The tree as declared: what the Lab's own checks and the controls' edits read. The workforce kit reads it again, through its claim pass.
-  const roster = await readLabTree(root);
+  const roster = await readDevTeamTree(root);
 
   // A feature task works in its project: the workstream's it was filed from,
   // or the one it names.
