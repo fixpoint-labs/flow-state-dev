@@ -21,6 +21,7 @@ import { dirname, join } from "node:path";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { WorkerFlowEntry, WorkerInstallation, WorkerManifest } from "@flow-state-dev/workforce";
 import { workforce, type WorkforceConfig } from "@flow-state-dev/workforce/kit";
+import { readWorkforceFolder, type WorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 
 /** One frontmatter value as the workforce frontmatter reader takes it: JSON-quoted strings, flow lists. */
@@ -67,6 +68,17 @@ export function workforceTree(workers: readonly Pick<WorkerManifest, "id" | "dec
     writeFileSync(join(root, path), body);
   }
   return root;
+}
+
+/**
+ * What the workforce kit reads of `directory`: its workers, teams, documents
+ * and references, for a goal that asserts on the records. A file the kit
+ * doesn't read is left to the kit's own start to refuse.
+ *
+ * @throws As the kit's start does, on a file a reader can't load.
+ */
+export function readTree(directory: string): Promise<WorkforceFolder> {
+  return readWorkforceFolder({ path: directory, claim: () => undefined });
 }
 
 /**
