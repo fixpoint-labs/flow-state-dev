@@ -108,7 +108,7 @@ export const harnesses = defineKit({
   },
   install: ({ config, slots }) => {
     const readiness = readinessOf(slots.harnesses);
-    if (config.logReadiness === true) void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
+    if (config.logReadiness === true) void readiness.read().then((entries) => console.log(formatHarnessReadiness(entries)));
     const flow = defineFlow({
       kind: HARNESSES_FLOW,
       views: { readiness: harnessReadinessView(readiness) },
