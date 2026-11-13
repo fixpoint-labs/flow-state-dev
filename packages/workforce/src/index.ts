@@ -102,6 +102,7 @@ export {
 export { mergeWorkerFlows } from "./merge-worker-flows";
 export { doorTask, workerDoorOf, type WorkerDoor } from "./worker-door";
 export { resourcesFromDocs } from "./resources-from-docs";
+export { sourceReadCapability, type SourceReadCapabilityOptions } from "./source-read";
 export { referencesFromDocs, referenceBody } from "./references-from-docs";
 export {
   clearShadowedReferences,
