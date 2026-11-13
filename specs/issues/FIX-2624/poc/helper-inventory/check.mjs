@@ -23,11 +23,8 @@ const CLASSES = {
 
 // [file prefix, line regex, class(es)]
 const RULES = [
-  // claude-code-style: ownSession
-  ["labs/claude-code-style/src/adapter.ts", /const ownSessions = |const ownSession = |ownSessions\.get|^\s*ownSessions,$/, ["helper"]],
-  ["labs/claude-code-style/src/adapter.ts", /const projects = \(\) => ownSession/, ["helper"]],
-  ["labs/claude-code-style/src/adapter.ts", /projects\(\), "listProjects"/, ["direct-read"]],
-  ["labs/claude-code-style/src/adapter.ts", /projects\(\), "createProject"/, ["runby-write"]],
+  // claude-code-style: ownSession. Gone in 3c: listProjects (a direct read by scope) and createProject
+  // (a send to the projects collection, run by its runBy flow, PROJECTS_FLOW).
   // Gone in 3c: the repository check (the projects flow's `checkRepository` view).
   // workforce client: the public roster read. Gone in 3c: the roster session (a workstream's entry is a direct read).
   ["packages/workforce/src/workers/client.ts", /^\s*roster\(\): Promise/, ["unrelated"]],
