@@ -90,7 +90,7 @@ Alice and Bob watch the same view and get different answers. A `user` view answe
 
 The roster shows what "their own rows" means when the answer joins two stores. It lists the user's own workers and the standard workers, read from the `WORKER.md` files that ship with the app. The server joins them, so the screen never merges lists or removes a duplicate.
 
-Say Alice edits a standard worker. It appears once in her roster, as her copy, still marked `standard: true` and still on the standard file's team, now with `edited: true`. The edited copy lives in Alice's own collection. Bob has not edited it, so his roster lists the unedited standard worker.
+Say Alice edits a standard worker. It appears once in her roster, as her copy: marked `standard: true` and `edited: true`, on the standard file's team. The edited copy lives in Alice's own collection. Bob has not edited it, so his roster lists the unedited standard worker.
 
 ## What it gets you
 
