@@ -73,30 +73,34 @@ A tool that fails does not end the run. The model is told what went wrong and ca
 
 ## How much the model decides
 
-<Figure svg={GeneratorSpectrum} caption="The same reply, with the model deciding more" description={"Three columns side by side, each a version of the support reply. The first, a check after the model, is a sequencer named handleTicket that runs supportAgent and then checkRefundPolicy: the model chooses inside its step and the step after it always runs. The second, a pipeline as one tool, is supportAgent with one tool, refund, which is a sequencer holding issueRefund and then checkRefundPolicy. The check row is highlighted: the model decides whether to call refund, and when it does the check runs. The third, free tool choice, is supportAgent with lookUpOrder and issueRefund, and the model picks which, in what order and when to stop."} />
+<Figure svg={GeneratorSpectrum} caption="The same reply, with the model deciding more" description={"Three columns side by side, each a version of the support reply. The first, a check after the model, is a sequencer named handleTicket that runs supportAgent, then checkRefundPolicy, then issueRefund: the model picks the order, and your code checks and then refunds. The second, a pipeline as one tool, is supportAgent with one tool, refund, which is a sequencer holding checkRefundPolicy and then issueRefund. The check row is highlighted: the model decides whether to call refund, and when it does the check runs before the refund. The third, free tool choice, is supportAgent with lookUpOrder and issueRefund, and the model picks which, in what order and when to stop."} />
 
 The third column is the `supportAgent` you started with: the model picks which tool, in what order and when to stop.
 
-Say you want the model to choose between `lookUpOrder` and `issueRefund`, and you never want the policy check skipped. The first two columns keep the check. Both use the same check, a handler that takes a refund's result, a reply and an amount.
+Say no refund may go out without the policy check. The first two columns run the check before the refund. Both use the same check, a handler that looks up the order's amount in your own system, never taking it from the model, and throws when the refund needs a person. A block that throws stops its sequencer, so the refund after it never runs.
 
 ```ts title="src/flows/support/blocks/check-refund-policy.ts"
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 
+// A stand-in for your order system.
+const orderTotals: Record<string, number> = { "A-1001": 1200 };
+
 export const checkRefundPolicy = handler({
   name: "check-refund-policy",
-  inputSchema: z.object({ reply: z.string(), refundCents: z.number() }),
-  outputSchema: z.object({ reply: z.string(), needsReview: z.boolean() }),
-  execute: async (input) => ({
-    reply: input.reply,
-    needsReview: input.refundCents > 5000,
-  }),
+  inputSchema: z.object({ orderId: z.string() }),
+  outputSchema: z.object({ orderId: z.string() }),
+  execute: async (input) => {
+    const cents = orderTotals[input.orderId];
+    if (cents === undefined || cents > 5000) {
+      throw new Error(`Order ${input.orderId} needs a person to refund it.`);
+    }
+    return { orderId: input.orderId };
+  },
 });
 ```
 
-The first way puts the check after the model, in a sequencer, a block that runs blocks in order. The model chooses inside its step. The step after it always runs.
-
-The check reads the model's answer, so the model's answer must be in a shape code can read. Without an `outputSchema` a generator answers in text. Add `outputSchema: z.object({ reply: z.string(), refundCents: z.number() })` to `supportAgent` and it returns that object. The [generators reference](../reference/generators.md) says what happens to a reply that does not fit.
+The first way puts your code after the model, in a sequencer, a block that runs blocks in order. Here `supportAgent` keeps only `lookUpOrder` and answers with the order to refund. Give it `outputSchema: z.object({ orderId: z.string() })` so the answer is an object code can read instead of text. The [generators reference](../reference/generators.md) says what happens to an answer that does not fit.
 
 ```ts title="src/flows/support/blocks/handle-ticket.ts"
 import { sequencer } from "@flow-state-dev/core";
@@ -109,10 +113,13 @@ export const handleTicket = sequencer({
   inputSchema: z.object({ message: z.string() }),
 })
   .step(supportAgent)
-  .step(checkRefundPolicy);
+  .step(checkRefundPolicy)
+  .step(issueRefund);
 ```
 
-The second way is a pipeline as the tool. A sequencer in `tools` reaches the model as one tool, with a name, a description and an input schema. The model never sees its steps. Here the check reads `issueRefund`'s output, so `supportAgent` needs no `outputSchema`.
+The model picks the order. The check and the refund are your code, and they run in that order.
+
+The second way is a pipeline as the tool. A sequencer in `tools` reaches the model as one tool, with a name, a description and an input schema. The model never sees its steps.
 
 ```ts title="src/flows/support/tools/refund.ts"
 import { sequencer } from "@flow-state-dev/core";
@@ -125,11 +132,11 @@ export const refund = sequencer({
   description: "Refund an order. Use it when the customer asks for money back.",
   inputSchema: z.object({ orderId: z.string() }),
 })
-  .step(issueRefund)
-  .step(checkRefundPolicy);
+  .step(checkRefundPolicy)
+  .step(issueRefund);
 ```
 
-In `supportAgent`, `refund` takes the place of `issueRefund`. The check runs whenever the model refunds, and the model gets back the check's result, `reply` and `needsReview`.
+In `supportAgent`, `refund` takes the place of `issueRefund`. Whenever the model refunds, the check runs first. When it refuses, the tool call fails and the model is told why, so it can tell the customer.
 
 ## What the model is told
 
@@ -147,13 +154,13 @@ export const customerPlan = contextFn(
 );
 ```
 
-Add `context: customerPlan` to `supportAgent`. `context` takes other forms too; the [generators reference](../reference/generators.md) lists them and the order the slots are assembled in.
+Add `context: { plan: customerPlan }` to `supportAgent`. Named like this, the plan reaches the model as data in a `<plan>` tag, and its text is escaped. A bare string or function in `context` is added to the instructions instead, so keep customer data in named entries. The [generators reference](../reference/generators.md) lists the other forms and the order the slots are assembled in.
 
 ## What it gets you
 
 - **You choose how much the model decides, in one place.** `lookUpOrder`, `issueRefund` and `checkRefundPolicy` are the same in all three. Moving between columns changes how they are composed.
 - **A tool keeps what a block has.** `lookUpOrder` has typed input and output, and it can be a tool here and a step in another flow.
-- **The model reaches only what you hand it.** The `tools` list is its whole reach. Declaring `tools`, even `tools: []`, also drops any tools a capability would have added, so list those yourself if you want them.
+- **The model reaches only what you hand it.** Declaring `tools`, even `tools: []`, replaces the tools a capability would add. A capability's built-in controls, such as a skills loader, come through anyway; the [generators reference](../reference/generators.md) lists them.
 - **You can see what it did.** Each tool call is recorded as an item, an entry in the run's stream, with its input and output, and the DevTool, the local debugging UI, shows the run as a tree.
 
 ## How it fits with the others

@@ -37,7 +37,7 @@ export default createFlowState({
 
 `createFlowState` builds the engine: the part on your server that serves your flows, streams their results and stores what they keep.
 
-A **flow** is the top-level unit of your backend: the thing you register with the server and that clients connect to. It names its actions, the entry points a page can run, and says which of its state the browser may see. `help-desk` has one action, `chat`. See [Flows and actions](./flows-and-actions.md).
+A **flow** is a self-contained system inside your app, registered with the server for clients to call. It names its actions, the entry points a page can run, and says which of its state the browser may see. `help-desk` has one action, `chat`. See [Flows and actions](./flows-and-actions.md).
 
 A **block** is a typed unit of work: a model call, a plain function, or several of them chained. An action runs one block. See [Blocks](./blocks.md).
 

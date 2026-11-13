@@ -11,8 +11,10 @@
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="28" y1="120" x2="300" y2="120"/>
 <text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="144">checkRefundPolicy</text><text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="190" y="144">handler</text>
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="28" y1="158" x2="300" y2="158"/>
-<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="262">the model chooses inside its step;</text>
-<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="279">the step after it always runs</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="182">issueRefund</text><text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="190" y="182">handler</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="28" y1="196" x2="300" y2="196"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="262">the model picks the order;</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="279">your code checks, then refunds</text>
 <rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="324" y="24" width="272" height="270"/>
 <text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="338" y="46">A PIPELINE AS ONE TOOL</text>
 <text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="338" y="68">supportAgent</text>
@@ -21,12 +23,12 @@
 <rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="338" y="116" width="244" height="116"/>
 <text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="352" y="138">refund</text><text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="430" y="138">a sequencer</text>
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="338" y1="152" x2="582" y2="152"/>
-<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="352" y="176">issueRefund</text>
+<rect class="hl" fill="#e8f551" x="346" y="160" width="228" height="26"/>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="352" y="178">checkRefundPolicy</text>
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="338" y1="190" x2="582" y2="190"/>
-<rect class="hl" fill="#e8f551" x="346" y="198" width="228" height="26"/>
-<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="352" y="216">checkRefundPolicy</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="352" y="216">issueRefund</text>
 <text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="338" y="262">the model decides whether to call it;</text>
-<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="338" y="279">when it does, the check runs</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="338" y="279">the check runs before the refund</text>
 <rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="620" y="24" width="272" height="270"/>
 <text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="634" y="46">FREE TOOL CHOICE</text>
 <text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="634" y="68">supportAgent</text>

@@ -39,6 +39,7 @@ Written by `docs-writer` (sonnet), 896 words. Scenario: Support desk: a customer
 - After revise round 1, page sha256 7fec4bbdf5ad: exit 0.
 - After revise round 2, page sha256 499d2011c501: exit 0.
 - After revise round 3, page sha256 7923f69a3f28: exit 0.
+- After the owner-approved edits, page sha256 5a7ef2ccee22: exit 0.
 
 ## 5 · Fact check
 
@@ -47,6 +48,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 f9d
 - Reference row 2: Row 2 and page line 80: a reply that does not match the outputSchema fails the block Untrue: A mismatch does not fail the block straight away. With the default repair mode ('auto') the generator first runs deterministic repair (default attempts), then one LLM coercion pass, and throws only if those fail. It fails immediately only with repair mode 'fail' or 'rescue'. (/home/user/flow-state-dev/packages/core/src/blocks/generator.ts:1083-1130) The row is recorded corrected.
 - Page line 80: 'a reply that does not fit fails the block' (same claim as row 2, on the page) Untrue: Same as row 2: the block fails only after repair and the LLM coercion pass are exhausted, or immediately in 'fail'/'rescue' mode. (/home/user/flow-state-dev/packages/core/src/blocks/generator.ts:1083-1130)
 - Page lines 138-146: the contextFn schema `{ session: z.object({ plan: z.string().default("free") }) }` supplies the 'free' default, so the model is told 'The customer is on the free plan' when no plan is set Untrue: contextFn ignores its schemas argument at runtime (it is `_schemas`, used only for types). It passes ctx.session.state straight to the function, so the .default("free") is never applied by contextFn. A missing plan gives 'undefined plan' unless the flow's own session state schema sets the default. (/home/user/flow-state-dev/packages/core/src/context.ts:84-103)
+- After the owner-approved edits, page sha256 5a7ef2ccee22: Security review (Cursor, Codex), owner approved 2026-11-13. The check now runs before the refund in both composed versions and reads the amount from the order system, not from the model; in the first version the model holds only `lookUpOrder`. Checked: a block that throws stops its sequencer (composition fact sheet). `context: { plan: customerPlan }` puts the plan in an escaped `<plan>` tag, while a bare string or function goes in as instructions (`prompt/xml.ts:134`, `escapeXmlText`; `generator-object-context.test.ts:246` for function values). Declaring `tools` replaces capability tools, but control tools still reach the model (`core/README.md:245`, `generator.ts` `controlTools`). The new samples type-checked against the workspace packages with no errors.
 
 ## 6 · Depth pass
 

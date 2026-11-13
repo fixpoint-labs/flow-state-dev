@@ -1,7 +1,7 @@
 ---
 title: Flows and actions
 type: concept
-description: A flow is the top-level unit of your backend, the thing you register with the server and clients call. Its actions are what a client can call.
+description: A flow is a self-contained system inside your app, with actions clients call and data of its own. You define it once and the server runs instances of it.
 ---
 
 import Figure from "@site/src/components/Figure";
@@ -9,7 +9,9 @@ import FlowsAndActions from "./figures/flows-and-actions.svg";
 
 # Flows and actions
 
-A flow is the top-level unit of your backend: the thing you register with the server and that clients connect to. It lists the actions a client can call, and each action runs a piece of your code. A client never reaches that code directly. It names a flow and an action, `support` and `reply`, and sends some input.
+A flow is a self-contained system inside your app. It exposes actions that clients call, and it keeps its own data. What happens inside is up to you. A flow can act like an agent that responds, works in the background and is woken by other flows, like a controller that handles requests, or like any other self-contained mechanism. You define a flow once, the way you write a class, and the server runs instances of it.
+
+A client never reaches the code inside. It names a flow and an action, `support` and `reply`, and sends some input.
 
 The example on this page is a support desk: a flow called `support` with an action called `reply`.
 

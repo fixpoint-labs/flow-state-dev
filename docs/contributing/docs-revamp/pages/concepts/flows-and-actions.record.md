@@ -34,6 +34,7 @@ Written by `docs-writer` (sonnet), 747 words. Scenario: A support desk: a flow `
 - After revise round 2, page sha256 cdd3e047674c: exit 0.
 - After revise round 3, page sha256 e54fdc288946: exit 0.
 - After the owner's review edits, page sha256 4c80e7f4e123: exit 0.
+- After the owner-approved edits, page sha256 bffe7d17981b: exit 0.
 
 ## 5 · Fact check
 
@@ -41,6 +42,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 d89
 
 - "The last line is `flow_complete` with the action's `output`. Run it again with `--session s1` and `count` is 2." This follows the `fsdev.config.ts` shown earlier on the page, `createFlowState({ flows: [support] })`. Untrue: That config sets no `stores`, so the app runs in memory. When `fsdev run` loads an app config it uses the config's own stores, `runtime.stores`. It opens the SQLite local store only when there is no config. Each `fsdev run` is a new process, so the in-memory session `s1` is gone on the second run. `s1` is created again and `count` is 1, not 2. The claim holds only if the config passes persistent stores, or if the run uses the no-config local SQLite path. (packages/engine/src/flowstate/createFlowState.ts:234 (no `stores` gives `inMemoryStores()`); packages/fsdev/src/commands/run.ts:297 (`stores = options.stores ?? runtime.stores`) and :327 (local SQLite only on the no-config branch); packages/fsdev/src/commands/run.ts:410 (reads session `s1` from those stores))
 - After the owner's review edits, page sha256 4c80e7f4e123: Owner review, 2026-11-13: the flow's definition (the top-level unit you register and clients connect to); `session.stateSchema` removed from `defineFlow`, with one sentence that `reply` declares the state it uses; "conversation" wording replaced by session. Checked by running the page's flow with no flow-level schema through `createClient` over `createInProcessFetch`: two sends on one session returned `count: 1` then `count: 2`, so the block's default applies.
+- After the owner-approved edits, page sha256 bffe7d17981b: Owner direction 2026-11-13: a flow is a self-contained system with its own actions and data; it can act as an agent, a controller or another mechanism; it is defined once, like a class, and run as instances. Checked: `internal` entries exist for background jobs and wakes sent to a coordinator (`core/types/flow.ts:595-605`); calling the definition makes the registered instance (fact sheet, `FlowInstance`).
 
 ## 6 · Depth pass
 
