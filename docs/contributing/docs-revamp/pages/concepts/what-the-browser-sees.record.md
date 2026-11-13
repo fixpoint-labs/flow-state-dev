@@ -41,6 +41,8 @@ Written by `docs-writer` (sonnet), 774 words. Scenario: The support desk: flow `
 
 - Post-loop edit (escalation, the two pass-9 misses): line 70 now names `useSession(sessionId, { live: true })` for requests the page did not send; the 'Without React' section now says a request stream does not reconnect on its own and is reopened with `startingAfter`, and that `fsd.sessions.stream` retries by itself. Re-ran check-docs-page.mjs: ok, 755 words.
 
+- Post-review edit (Gitar): the 'What it gets you' stream bullet now says who resumes: the caller reopens a request stream with `startingAfter`; `useSession` and a session stream reconnect by themselves. Re-ran check-docs-page.mjs: ok.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 d5d188aec271, and the 11 Reference row(s) pass 6 moved.
@@ -50,6 +52,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 d5d
 - Reference row 4: Page line 117 (and row 4): for any type other than the built-ins, ItemsRenderer draws a small block of JSON showing `type`, component name and `status` Untrue: Not for every other type. `state_change`, `resource_change`, `suspension_resume` and `continuation` items render nothing, and a `component` item whose key matches a registered `container` renderer also renders nothing. ItemsRenderer also drops trace types (`block_trace`, `router_decision`, `state_snapshot`) unless `showSubAgents` is set. The JSON fallback applies only to the remaining unregistered types, such as an unregistered `component`, `container` or `source`. (/home/user/flow-state-dev/packages/react/src/components/ItemRenderer.ts:45-57 (NON_RENDERABLE_TYPES), 233-246 (container suppression), 267-282 (JSON fallback); /home/user/flow-state-dev/packages/react/src/components/ItemsRenderer.ts:142-155 (trace filter)) The row is recorded corrected.
 
 - Post-loop edit: checked `live` at `packages/react/src/hooks/useSession.ts:297`, `:619`; `startingAfter` on the request stream at `packages/client/src/client.ts:1025-1035`; reconnect behaviour per facts items 12, 13, 16.
+
+- Post-review edit: same facts as items 12, 13 and the C-06 reconnect sentence (`useSession` resumes on its own); no new claim.
 
 ## 6 · Depth pass
 
