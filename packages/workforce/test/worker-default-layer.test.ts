@@ -13,7 +13,10 @@
  * the one line the layer defines: the date is checked against the clock.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defineCapability } from "@flow-state-dev/core";
+import { z } from "zod";
+import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
+import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 import type { FlowInstance, InitialSkill } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
@@ -314,6 +317,52 @@ describe("`defaults` in a worker's config", () => {
     expect(system).not.toContain("<date>");
     expect(system).not.toContain("loadSkill");
     expect(system).not.toContain(SKILLS_INDEX_LINE);
+  });
+
+  // `defaults` is a contract key, so an app's own worker flow meets it the way
+  // it meets every other: composing the contract takes it for free, and a flow
+  // that hand-declares the keys is refused at boot, by name, until it adds it.
+  describe("on an app's own worker flow", () => {
+    const work = handler({
+      name: "custom-work",
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: true }),
+    });
+    const customFlow = (configSchema: z.AnyZodObject) =>
+      defineFlow({ kind: "request-triage", cardinality: "collection", configSchema, actions: { ...workerDoor, run: work } });
+    const onCustom = (declared: Record<string, unknown>) =>
+      record({ id: "ops.router", declared: { flow: "request-triage", ...declared }, body: "Route." });
+
+    it("hires a worker whose file sets `defaults` on a flow that composes the contract, and ignores it", () => {
+      const flow = customFlow(workerConfigSchema().extend({ desk: z.string().default("front") }));
+      const [worker] = hire([onCustom({ defaults: false })], { "request-triage": flow as never });
+      expect(worker!.config).toMatchObject({ defaults: false, desk: "front" });
+    });
+
+    it("refuses a flow that hand-declares the contract without `defaults`, naming the key, and hires nothing", () => {
+      const flow = customFlow(
+        z.object({
+          instructions: z.string().optional(),
+          teamInstructions: z.string().optional(),
+          workerSkills: z.array(z.any()).default([]),
+          workerTools: z.array(z.any()).default([]),
+          workerPackages: z.array(z.any()).optional(),
+          workerId: z.string().optional(),
+          delegates: z.array(z.string()).default([]),
+        }),
+      );
+      let message = "";
+      try {
+        hire([onCustom({})], { "request-triage": flow as never });
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message).toContain('worker flow "request-triage"');
+      expect(message).toContain("doesn't accept `defaults`");
+      expect(message).toContain("workerConfigSchema()");
+      expect(message).toContain("nothing was hired");
+    });
   });
 
   it("refuses a section it does not know, by name, at the mint", () => {
