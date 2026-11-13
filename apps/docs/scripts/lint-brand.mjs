@@ -29,8 +29,8 @@
  * Before linting the real files it lints `scripts/brand-lint-fixtures/`, which break
  * every rule on purpose, and fails unless each rule fires there: a rule that can no
  * longer fail is reported, not trusted. Under `brand-lint-fixtures/figures/`, `<rule>.svg`
- * and `<rule>.<case>.svg` (or `.md`) must trip that rule, and `good.svg` and `good.md` must
- * pass every rule.
+ * and `<rule>.<case>.svg` (or `.md`) must trip that rule, and `good.*` (`good.<case>.*`
+ * included) must pass every rule.
  *
  * Usage: node scripts/lint-brand.mjs [file...]   (no files: the docs' own)
  */
@@ -351,22 +351,30 @@ function lintFigure(file, text, tree, out) {
 
 /** Rule 16: a page puts each figure on through `<Figure svg caption description />`, and nothing else. */
 function lintFigureEmbeds(file, text, out) {
-  for (const m of text.matchAll(/!\[[^\]]*\]\(\s*<?[^)\s>]*\.svg\b|<img\b[^>]*\.svg\b/g)) {
-    out.push(finding(file, text, m.index, "embed", "a figure set as an image: use <Figure svg caption description />"));
+  const image = (index) => out.push(finding(file, text, index, "embed", "a figure set as an image: use <Figure svg caption description />"));
+  for (const m of text.matchAll(/!\[[^\]]*\]\(\s*<?[^)\s>]*\.svg\b|<img\b[^>]*\.svg\b/g)) image(m.index);
+  // Reference-style images (`![alt][ref]`, `![ref][]`, `![ref]`), through their `[ref]: url` definitions.
+  const label = (s) => s.trim().replace(/\s+/g, " ").toLowerCase();
+  const refs = new Map(
+    [...text.matchAll(/^ {0,3}\[([^\]]+)\]:\s*<?([^\s>]+)/gm)].map((d) => [label(d[1]), d[2]]),
+  );
+  for (const m of text.matchAll(/!\[([^\]]*)\](?:\[([^\]]*)\])?(?![[(])/g)) {
+    if (/\.svg\b/.test(refs.get(label(m[2] || m[1])) ?? "")) image(m.index);
   }
   for (const m of text.matchAll(/Description for the site's/g)) {
     out.push(finding(file, text, m.index, "embed", "a note about how the figure will be embedded: the description goes in <Figure>"));
   }
   // The opening tag, self-closed or not; a `>` inside a quoted prop does not end it.
-  for (const m of text.matchAll(/<Figure\b(?:"(?:[^"\\]|\\.)*"|[^>"])*>/g)) {
+  for (const m of text.matchAll(/<Figure\b(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^>"'])*>/g)) {
     const at = (detail) => out.push(finding(file, text, m.index, "embed", detail));
+    // A string prop in any JSX form: `name="…"`, `name='…'` or `name={"…"}` / `name={'…'}`, spaces around `=` free.
     const prop = (name) => {
-      const s = new RegExp(`\\b${name}=\\{?"((?:[^"\\\\]|\\\\.)*)"`).exec(m[0]);
-      return s ? s[1].replace(/\\(.)/g, "$1") : null;
+      const s = new RegExp(`\\b${name}\\s*=\\s*\\{?\\s*(?:"((?:[^"\\\\]|\\\\.)*)"|'((?:[^'\\\\]|\\\\.)*)')`).exec(m[0]);
+      return s ? (s[1] ?? s[2]).replace(/\\(.)/g, "$1") : null;
     };
     const caption = prop("caption");
     const words = prop("description")?.trim().split(/\s+/).filter(Boolean).length ?? 0;
-    if (!/\bsvg=\{/.test(m[0])) at("<Figure> has no svg");
+    if (!/\bsvg\s*=\s*\{/.test(m[0])) at("<Figure> has no svg");
     if (caption === null) at("<Figure> has no caption");
     else if (caption.length > 60 || caption.endsWith(".")) at(`caption "${caption}" is over 60 characters or ends in a full stop`);
     if (words < 30) at(`the description is ${words} words: it says what the whole figure shows in 30 or more`);
