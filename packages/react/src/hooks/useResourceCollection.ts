@@ -225,19 +225,35 @@ export function useResourceCollection<TClient = unknown>(
     [session.snapshot, session.sessionId, ref]
   );
 
+  // FIX-2625: the whole list's latest read since the last invalidation: how
+  // many entries it holds, once it lands (`undefined` for a page that isn't
+  // the whole list, or a read that failed).
+  const wholeReadRef = useRef<{ owner: object; generation: number; length: Promise<number | undefined> } | null>(null);
+
   // Snapshot refresh as a fallback invalidator, behind the
   // `session.resourceChanges` watcher above. useSession calls
   // `refreshSnapshot()` at request completion when any resource changed
   // during streaming, which updates `count` (always emitted, FIX-427 §3.6).
-  // Invalidate whenever count moves so cached pages refetch on the next call.
+  // Invalidate whenever count moves so cached pages refetch on the next call,
+  // unless the change that moved it was already read: the whole list, read
+  // since the last invalidation, holds as many entries as the count says. One
+  // change then reads once, though its entry and its count arrive apart.
   const lastSeenCountRef = useRef<number | undefined>(collectionEntry?.count);
   useEffect(() => {
     const next = collectionEntry?.count;
-    if (next !== lastSeenCountRef.current) {
-      lastSeenCountRef.current = next;
+    if (next === lastSeenCountRef.current) return;
+    lastSeenCountRef.current = next;
+    const whole = wholeReadRef.current;
+    const generation = generationRef.current;
+    if (next === undefined || whole === null || whole.owner !== fence || whole.generation !== generation) {
       invalidate();
+      return;
     }
-  }, [collectionEntry?.count, invalidate]);
+    void whole.length.then((length) => {
+      // Something read again meanwhile: that read is the one in play.
+      if (length !== next && generationRef.current === generation) invalidate();
+    });
+  }, [collectionEntry?.count, invalidate, fence]);
 
   const list = useCallback(
     async (options?: CollectionListOptions): Promise<CollectionListPage> => {
@@ -259,7 +275,18 @@ export function useResourceCollection<TClient = unknown>(
       // Skip the write if invalidate() bumped generation. Write `cache`, not
       // `cacheRef.current`: a switch replaces that ref while this is in flight.
       const startGen = generationRef.current;
-      const page = await client.listCollectionResources(sessionId, ref, options);
+      const reading = client.listCollectionResources(sessionId, ref, options);
+      if (options?.cursor === undefined && options?.topicPrefix === undefined) {
+        wholeReadRef.current = {
+          owner: fence,
+          generation: startGen,
+          length: reading.then(
+            (page) => (page.nextCursor === undefined ? page.items.length : undefined),
+            () => undefined
+          )
+        };
+      }
+      const page = await reading;
       if (startGen === generationRef.current) {
         cache.pages.set(key, { page });
       }
