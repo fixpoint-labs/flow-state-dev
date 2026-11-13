@@ -7,7 +7,7 @@
 - `a:burst <watcher>` — 1 to 2 reads for the 50 writes it shows. Shift Manager is graded on the hires only: a pin runs in a write session no listing shows (FIX-2624), so the pins are unrelated to it.
 - `a:unrelated <watcher>` — 0 reads for the 50 writes it doesn't show (roster watchers and Shift Manager during the pins, the pins watcher during the hires).
 - `a:equals-store <watcher>` — once quiet, it shows what the store holds: the roster's 50 workers (the `Roster` panel by how many rows it drew: it draws the org inventory's row shape, so the user's roster rows are drawn as unreadable ones and counted), the 50 pins; Shift Manager, whose snapshot shows no roster rows, by a snapshot read landing after the last hire.
-- `b:recovers <watcher>` — after one read answers 503, woken by one write (a hire for the roster watchers, then a pin), each shows the change within 2 s with no other notice sent.
+- `b:recovers <watcher>` — every read answers 503 from one write (a hire for the roster watchers, then a pin) until its last notice has landed; each watcher then shows the change within 2 s with no other notice sent, so only its retry can show it. `b:failed <watcher>` checks at least one of its reads was refused.
 
 **Anti-game:** Reads are requests the server answers, counted at each watcher's own fetcher by its token: the React panel's read of the roster's own collection, a roster view call for `watchRoster` and `watchWorkers` (they follow the roster view since FIX-2623), a snapshot's first request (`/sessions?…dispatch-runs`), the pins read. Never `read` calls against a fake `subscribe`, which would pass while a caller still loops on its own. Values are read off what each watcher draws or reports, never off the store's own notices. Real sockets on a bound port.
 **Not graded:** a resource notice that names no path reads once. A hire's notice names none (FIX-2624), but the hires burst grades reads, not which notice started them; `packages/client/test/live.test.ts` covers it. Shift Manager's "0 reads for a write it doesn't show": every session it lists is heard by request, so no write here lands outside it.
@@ -15,14 +15,13 @@
 **Run:** `cd goals && pnpm tsx live-read/one-loop-every-watcher/run.mts`
 **Controls:**
 - `GOAL_CONTROL=no-coalesce` — every notice heard reads at once (`coalesce.ts`). Must FAIL `a:burst`.
-- `GOAL_CONTROL=rule-says-no` — the path rule rules every path out (`paths.ts`). Fails no `a:equals-store` line today, for any watcher; see "Not shown failing".
-- `GOAL_CONTROL=no-retry` — a failed read schedules nothing (`live-read.ts`). Must FAIL `b:recovers` for rp, sm and cc; rw and tm are not shown failing (see below).
+- `GOAL_CONTROL=rule-says-no` — the path rule rules every path out (`paths.ts`). Fails no `a:equals-store` line today, for any of the five watchers; see "Not shown failing".
+- `GOAL_CONTROL=no-retry` — a failed read schedules nothing (`live-read.ts`). Must FAIL `b:recovers` for all five watchers.
 
 The totality half — exactly one coalescer and one path rule, both in the client — is `specs/issues/FIX-2551/poc/copy-count/check.mjs --after`, and structurally the `fsd/one-coalescer` lint.
 
-**Not shown failing** (until [FIX-2625](https://linear.app/fixpoint-labs/issue/FIX-2625) narrows view topics to the resources each one read):
-- `rule-says-no` doesn't reach `a:equals-store` for any roster watcher. The roster view's watch (rw, tm) passes no `paths`, and a hire's resource notice carries no path (FIX-2624), so the path rule is never asked for rp either. The pins watcher and Shift Manager's snapshot hold under the patch too, so no watcher fails this leg today.
-- `no-retry` doesn't reach `b:recovers` for rw and tm. Their watch hears every user-scope notice, and one hire sends five (four `run`, one `resource`), so a later notice from the same hire reads after the 503 and stands in for the retry.
+**Not shown failing:**
+- `rule-says-no` doesn't reach `a:equals-store` for any watcher. For the roster watchers (rp, rw, sm, tm): a user-scope resource notice carries no path (FIX-2624), and the live read hears a notice with no path before it asks the rule; the roster view's watch (rw, tm) passes no `paths` at all. This holds until [FIX-2625](https://linear.app/fixpoint-labs/issue/FIX-2625) narrows view topics to the resources each one read. The pins watcher (cc) filters with its own `hear` and passes no `paths` either.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

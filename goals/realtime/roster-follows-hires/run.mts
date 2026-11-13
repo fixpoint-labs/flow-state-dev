@@ -306,10 +306,11 @@ async function requestDone(on: Host, requestId: string): Promise<number> {
  * each write's request and session ids from the send's response, so a write
  * is timed at its request's completion, not at the client's result.
  */
-type Tab = { workforce: WorkforceClient; sent: Array<{ requestId: string; sessionId: string }>; writeSession: () => string };
+type Tab = { workforce: WorkforceClient; sent: Array<{ requestId: string; sessionId: string }>; refused: string[]; writeSession: () => string };
 
 function tabOf(on: Host): Tab {
   const sent: Tab["sent"] = [];
+  const refused: string[] = [];
   const token = "tok-alice-tab";
   const tab = createClient({
     userId: TOKENS[token]!,
@@ -319,7 +320,8 @@ function tabOf(on: Host): Tab {
       headers.set("authorization", `Bearer ${token}`);
       const response = await globalThis.fetch(input, { ...init, headers });
       const url = String(input instanceof Request ? input.url : input);
-      if (/\/resources\/user\/[^/]+\/actions\//.test(url) && response.ok) {
+      if (/\/resources\/user\/[^/]+\/actions\//.test(url) && !response.ok) refused.push(`${response.status} ${await response.clone().text()}`);
+      else if (/\/resources\/user\/[^/]+\/actions\//.test(url)) {
         const body = (await response.clone().json()) as { request?: { id?: string }; session?: { id?: string } };
         if (body.request?.id !== undefined && body.session?.id !== undefined) sent.push({ requestId: body.request.id, sessionId: body.session.id });
       }
@@ -329,6 +331,7 @@ function tabOf(on: Host): Tab {
   return {
     workforce: createWorkforceClient(tab),
     sent,
+    refused,
     writeSession: () => {
       const last = sent.at(-1);
       if (last === undefined) throw new Error("setup: alice's tab has written nothing, so she has no write session");
@@ -340,9 +343,11 @@ function tabOf(on: Host): Tab {
 /** One write from alice's tab, timed at its request's completion. */
 async function act(on: Host, tab: Tab, write: (workforce: WorkforceClient) => Promise<unknown>): Promise<number> {
   const before = tab.sent.length;
+  const refusedBefore = tab.refused.length;
   const settled = write(tab.workforce);
   const deadline = Date.now() + 15_000;
   while (tab.sent.length === before) {
+    if (tab.refused.length > refusedBefore) throw new Error(`setup: alice's write was refused: ${tab.refused[refusedBefore]}`);
     if (Date.now() > deadline) throw new Error("setup: alice's write was never accepted");
     await Promise.race([settled, delay(1)]);
   }
