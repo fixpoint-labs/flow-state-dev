@@ -1,7 +1,6 @@
-import type { Config, PluginConfig, PluginModule } from "@docusaurus/types";
+import type { Config, PluginConfig } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 import { inkTheme } from "./src/prismThemes";
-import apiReferencePlugin from "./scripts/api-reference/plugin.mjs";
 
 // Search is Algolia DocSearch. The Vercel Algolia integration puts the app id
 // and the search-only key into the build's environment; the search key is
@@ -17,11 +16,12 @@ const algolia: Preset.ThemeConfig["algolia"] =
       }
     : undefined;
 
+// Named by path, so Docusaurus loads the generator only when this build asks for it.
 const apiReference: PluginConfig[] =
   process.env.FSD_API_REFERENCE === "1"
     ? [
         [
-          apiReferencePlugin as PluginModule,
+          "./scripts/api-reference/plugin.mjs",
           { id: "api", path: ".api-reference", routeBasePath: "docs/reference/api" },
         ],
       ]
@@ -166,7 +166,7 @@ const config: Config = {
         ],
       },
     ],
-    // The generated API reference (FIX-2698): one section per published package, built from
+    // The generated API reference: one section per published package, built from
     // the doc comments in the `.d.ts` files each package publishes, at
     // `/docs/reference/api/<slug>`. Generated into `.api-reference/` at each build and never
     // committed. Until the cutover it is built only when FSD_API_REFERENCE=1, which CI sets for

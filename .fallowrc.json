@@ -40,6 +40,8 @@
     "apps/docs/src/prismThemes.ts",
     // The API reference generator runs this in a child process per package, by path.
     "apps/docs/scripts/api-reference/render-package.mjs",
+    // The site config names the API reference plugin by path; Docusaurus loads it.
+    "apps/docs/scripts/api-reference/plugin.mjs",
     // MDX pages import these; no plugin follows an import out of a .md file.
     "apps/docs/src/components/**/index.tsx",
     // Vercel deploys each file under api/ as a Function; nothing imports them.

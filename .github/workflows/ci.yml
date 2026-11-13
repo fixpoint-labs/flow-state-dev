@@ -680,6 +680,11 @@ jobs:
       # each package's section only when its declarations changed since the
       # cached render (the generator checks each entry's key, so a stale restore
       # re-renders rather than serving old pages).
+      # The generator's own behaviour over scratch workspaces: derived sections, a cache key
+      # that follows a comment any number of workspace hops away, fail-fast, warnings listed.
+      - name: API reference generator tests
+        run: node --test apps/docs/scripts/api-reference/api-reference.test.mjs
+
       - name: Restore Turborepo and API reference caches
         uses: actions/cache@v4
         with:

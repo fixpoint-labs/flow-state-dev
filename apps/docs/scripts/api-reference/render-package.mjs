@@ -8,7 +8,7 @@
  *     job: { name, dir, entries: [{ subpath, types }], out, report }
  *
  * Writes the section's Markdown under `out` and a JSON report to `report`:
- * `{ name, exports, undocumented: ["<subpath> · <export>", ...] }`. Exits non-zero with a
+ * `{ name, exports, undocumented: ["<subpath> · <export>", ...], unlinked, warnings }`. Exits non-zero with a
  * message naming the package when it cannot read the package, so the build fails by name.
  *
  * Why the published `.d.ts` and not `src`: the reference is of what a reader installs. The
@@ -18,7 +18,7 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { Application, LogLevel, ReflectionKind } from "typedoc";
+import { Application, Logger, LogLevel, ReflectionKind } from "typedoc";
 
 const job = JSON.parse(process.argv[2]);
 
@@ -68,6 +68,30 @@ const titleByModule = new Map();
 
 /** Errors TypeDoc logs; any one of them fails this package. */
 const errors = [];
+/** Warnings TypeDoc logs (a broken `{@link}`, say); listed in the report, never failed on. */
+const warnings = [];
+
+/**
+ * TypeDoc's supported way to receive its messages: a `Logger` subclass, assigned to
+ * `app.logger`. The base class counts errors and warnings; this one keeps their text, with the
+ * file and line a message names, relative to the package.
+ */
+class ReportLogger extends Logger {
+  log(message, level) {
+    super.log(message, level);
+    if (level === LogLevel.Error) errors.push(message);
+    else if (level === LogLevel.Warn) warnings.push(message);
+  }
+
+  addContext(message, _level, ...args) {
+    const [at, file] = args;
+    const source = typeof at === "number" ? file : at?.getSourceFile?.();
+    if (!source) return message;
+    const pos = typeof at === "number" ? at : at.getStart(source, false);
+    const { line } = source.getLineAndCharacterOfPosition(pos);
+    return `${message} (${relative(job.dir, source.fileName)}:${line + 1})`;
+  }
+}
 
 const app = await Application.bootstrapWithPlugins({
   name: job.name,
@@ -86,7 +110,9 @@ const app = await Application.bootstrapWithPlugins({
   disableSources: true,
   githubPages: false,
   logLevel: LogLevel.Warn,
-  validation: { notExported: false, invalidLink: false, rewrittenLink: false, notDocumented: false },
+  // A broken `{@link}` is a warning the report lists; what `notExported` and `notDocumented`
+  // would warn about is the undocumented-exports list's job, or noise for a re-export.
+  validation: { notExported: false, invalidLink: true, rewrittenLink: false, notDocumented: false },
   // typedoc-plugin-markdown: one page per entry point, so a section is a folder with one
   // page for the root and one per public subpath, never a page per export.
   outputFileStrategy: "modules",
@@ -107,14 +133,20 @@ const app = await Application.bootstrapWithPlugins({
   // Members stay lists, the plugin's default: a table cell flattens a comment's code
   // examples onto one line, where nested backticks break.
 });
-app.logger.log = (message, level) => {
-  if (level === LogLevel.Error) errors.push(String(message));
-};
+// Bootstrap logs through TypeDoc's own console logger (an option it can't read, a plugin it
+// can't load); an error there fails the package before anything converts.
+if (app.logger.hasErrors()) fail("TypeDoc could not start; its errors are above.");
+const logger = new ReportLogger();
+logger.level = app.logger.level;
+app.logger = logger;
 
 const project = await app.convert();
 if (!project || errors.length > 0) {
   fail(errors.length > 0 ? errors.join("; ") : "TypeDoc converted nothing.");
 }
+// Validation is a separate pass TypeDoc's CLI runs and the API leaves to its caller; it is
+// what warns about a comment's broken `{@link}`.
+app.validate(project);
 
 // Name each entry point by the import a reader writes (`@flow-state-dev/engine/host`), not
 // by its declaration file's path.
@@ -180,17 +212,28 @@ for (const file of readdirSync(job.out)) {
   const path = join(job.out, file);
   let text = readFileSync(path, "utf8");
   const title = titleByModule.get(file.slice(0, -".md".length));
-  if (title) text = text.replace(/^# .*$/m, `# ${title}`);
+  // The page's own heading is its first line (`hidePageHeader` drops anything above it).
+  if (title) text = text.replace(/^# [^\n]*/, `# ${title}`);
   const anchors = new Set([...text.matchAll(/\\\{#([^\\}]+)\\\}/g)].map((m) => m[1]));
-  const next = text.replace(/\[([^\]]*)\]\(#([^)\s]+)\)/g, (link, label, anchor) => {
-    if (anchors.has(anchor)) return link;
-    unlinked.push(`${file} · #${anchor}`);
-    return label;
+  const unlink = (line) =>
+    line.replace(/\[([^\]]*)\]\(#([^)\s]+)\)/g, (link, label, anchor) => {
+      if (anchors.has(anchor)) return link;
+      unlinked.push(`${file} · #${anchor}`);
+      return label;
+    });
+  // A fenced block is a comment's example, shown as written: its text is never a link.
+  let fence = null;
+  const next = text.split("\n").map((line) => {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    if (fence === null && marker) fence = marker;
+    else if (fence !== null && marker?.[0] === fence[0] && marker.length >= fence.length) fence = null;
+    else if (fence === null) return unlink(line);
+    return line;
   });
-  writeFileSync(path, next);
+  writeFileSync(path, next.join("\n"));
 }
 
 writeFileSync(
   job.report,
-  JSON.stringify({ name: job.name, exports: exportsCount, undocumented: [...undocumented], unlinked }, null, 2),
+  JSON.stringify({ name: job.name, exports: exportsCount, undocumented: [...undocumented], unlinked, warnings }, null, 2),
 );

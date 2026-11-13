@@ -1,57 +1,25 @@
 /**
- * The API reference's sections: one per published package, at `reference/api/<slug>`.
+ * The API reference's sections: one per published package, at `reference/api/<slug>`, where
+ * the slug is the package's directory under `packages/`.
  *
- * The slug table is the docs-revamp sitemap's (specs/epics/FIX-2696/SITEMAP/reference.md,
- * "Generated API reference"). Twenty-seven sections for twenty-eight published packages:
- * `@flow-state-dev/contracts` has no section of its own, because `core` re-exports it and a
- * reader imports it from `core`, so its exports read under `core`. `@flow-state-dev/ui` is a
- * registry, not an import, and has no section here.
+ * Derived, not listed: every workspace member under `packages/` that is not `private` gets a
+ * section, so a new package can't ship without one and a removed one can't leave a section
+ * building nothing. `@flow-state-dev/ui` is private (a registry, not an import) and so has
+ * none. `@flow-state-dev/contracts` is the one published package without a section: `core`
+ * re-exports it and a reader imports it from `core`, so its exports read under `core`.
  *
- * `listSections` also checks the table against the workspace: a published package with no
- * row, or a row with no published package, fails the build by name, so a new package can't
- * ship without a reference section and a removed one can't leave a section building nothing.
+ * The workspace is read through the repository's one workspace parser, and a subpath is
+ * public by the same rule the root-exports check uses.
  */
-import { readdirSync, readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
-
-/** Slug under `reference/api/` → package directory under `packages/`. */
-const SECTIONS = [
-  { slug: "core", dir: "core" },
-  { slug: "engine", dir: "engine" },
-  { slug: "client", dir: "client" },
-  { slug: "react", dir: "react" },
-  { slug: "testing", dir: "testing" },
-  { slug: "fsdev", dir: "fsdev" },
-  { slug: "devtool", dir: "devtool" },
-  { slug: "node", dir: "node" },
-  { slug: "next", dir: "next" },
-  { slug: "vercel", dir: "vercel" },
-  { slug: "bullmq", dir: "bullmq" },
-  { slug: "mcp", dir: "mcp" },
-  { slug: "scheduled", dir: "scheduled" },
-  { slug: "store-sqlite", dir: "store-sqlite" },
-  { slug: "store-postgres", dir: "store-postgres" },
-  { slug: "orchestration", dir: "orchestration" },
-  { slug: "patterns", dir: "patterns" },
-  { slug: "tools", dir: "tools" },
-  { slug: "workspace", dir: "workspace" },
-  { slug: "memory", dir: "memory" },
-  { slug: "workforce", dir: "workforce" },
-  { slug: "harness-manager", dir: "harness-manager" },
-  { slug: "claude-code", dir: "claude-code" },
-  { slug: "codex", dir: "codex" },
-  { slug: "cursor", dir: "cursor" },
-  { slug: "shift-manager", dir: "shift-manager" },
-  { slug: "voice-openai", dir: "voice-openai" },
-];
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { isInternalSubpath } from "../../../../scripts/import-census.mjs";
+import { workspaceManifests } from "../../../../scripts/workspace-members.mjs";
 
 /** Published packages that deliberately have no section, and where their reference lives. */
 const NO_SECTION = {
   "@flow-state-dev/contracts": "reads under core, which re-exports it",
 };
-
-/** A subpath is internal when any segment is `internal`, the same rule `check-root-exports.mjs` uses. */
-const isInternalSubpath = (sub) => /(^|\/)internal(\/|$)/.test(sub);
 
 /**
  * The `.d.ts` entry of each public, non-internal subpath a package publishes, read from the
@@ -75,36 +43,27 @@ function publicEntries(pkg) {
 }
 
 /**
- * Every section, with its package read from the workspace at `root`. Throws, naming the
- * package, when the table and the workspace's published packages disagree.
+ * Every section, sorted by slug, and every workspace package's name → its directory and
+ * manifest (private ones included: they can be dependencies a section's cache key reads).
+ * Each manifest is read once.
  *
  * @param {string} root the repository root
+ * @returns {{
+ *   sections: { slug: string, dir: string, pkg: Record<string, any>, entries: { subpath: string, types: string }[] }[],
+ *   byName: Map<string, { dir: string, pkg: Record<string, any> }>,
+ * }}
  */
 export function listSections(root) {
-  const packagesDir = join(root, "packages");
-  const published = new Map();
-  for (const dir of readdirSync(packagesDir)) {
-    const file = join(packagesDir, dir, "package.json");
-    if (!existsSync(file)) continue;
-    const pkg = JSON.parse(readFileSync(file, "utf8"));
-    if (pkg.private) continue;
-    published.set(dir, pkg);
+  const byName = new Map();
+  const sections = [];
+  for (const manifest of workspaceManifests(root)) {
+    if (!manifest.startsWith("packages/")) continue;
+    const dir = join(root, dirname(manifest));
+    const pkg = JSON.parse(readFileSync(join(root, manifest), "utf8"));
+    byName.set(pkg.name, { dir, pkg });
+    if (pkg.private || pkg.name in NO_SECTION) continue;
+    sections.push({ slug: dirname(manifest).slice("packages/".length), dir, pkg, entries: publicEntries(pkg) });
   }
-  const sections = SECTIONS.map(({ slug, dir }) => {
-    const pkg = published.get(dir);
-    if (!pkg) {
-      throw new Error(
-        `API reference: section "${slug}" names packages/${dir}, which is not a published package.`,
-      );
-    }
-    return { slug, dir: join(packagesDir, dir), pkg, entries: publicEntries(pkg) };
-  });
-  const covered = new Set(SECTIONS.map((s) => s.dir));
-  for (const [dir, pkg] of published) {
-    if (covered.has(dir) || pkg.name in NO_SECTION) continue;
-    throw new Error(
-      `API reference: ${pkg.name} is published but has no section. Add it to SECTIONS in apps/docs/scripts/api-reference/packages.mjs.`,
-    );
-  }
-  return sections;
+  sections.sort((a, b) => a.slug.localeCompare(b.slug));
+  return { sections, byName };
 }

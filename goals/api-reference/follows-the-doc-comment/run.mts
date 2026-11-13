@@ -24,7 +24,8 @@
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { workspaceManifests } from "../../../scripts/workspace-members.mjs";
 import { goalTmpDir, loadFixture, REPO_ROOT, RUN_STAMP, runGoal } from "../../lib/index.mts";
 
 interface Marked {
@@ -53,7 +54,7 @@ function scratchTree(): void {
   // The store and root links are shared; each workspace folder's own links are copied, so a
   // workspace dependency (`../../core`) resolves inside the scratch tree, not here.
   symlinkSync(join(REPO_ROOT, "node_modules"), join(tree, "node_modules"));
-  for (const folder of workspaceFolders()) {
+  for (const folder of workspaceManifests(REPO_ROOT).map(dirname)) {
     const from = join(REPO_ROOT, folder, "node_modules");
     if (!existsSync(from) || !existsSync(join(tree, folder))) continue;
     cpSync(from, join(tree, folder, "node_modules"), {
@@ -63,17 +64,6 @@ function scratchTree(): void {
       filter: (src) => !src.startsWith(join(from, ".cache")),
     });
   }
-}
-
-/** Every workspace folder `pnpm-workspace.yaml` names (`dir/*` globs one level). */
-function workspaceFolders(): string[] {
-  const globs = [...readFileSync(join(REPO_ROOT, "pnpm-workspace.yaml"), "utf8").matchAll(/^\s*-\s*(\S+)\s*$/gm)].map((m) => m[1]);
-  return globs.flatMap((glob) => {
-    if (!glob.endsWith("/*")) return [glob];
-    const parent = glob.slice(0, -2);
-    if (!existsSync(join(REPO_ROOT, parent))) return [];
-    return readdirSync(join(REPO_ROOT, parent)).map((name) => join(parent, name));
-  });
 }
 
 /** Adds the marker as the first sentence of the doc comment directly above `name`'s declaration. */
