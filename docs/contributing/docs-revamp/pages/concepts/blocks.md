@@ -120,13 +120,15 @@ export const lookUpOrder = handler({
 
 Add `tools: [lookUpOrder]` to `draftReply`, importing `lookUpOrder` from `../tools/look-up-order`. The model decides when to call it from its name and description. The framework runs the block and gives the result back to the model.
 
+The model sees the same three things for any block: its `name`, its `description`, and its `inputSchema` as the parameters. So you could hand it `handleTicket` the same way, and it would see a name, a description and an input shape, not the steps. What the sequencer returns, its last step's output, goes back to the model as the tool result.
+
 If `lookUpOrder` read a stored list of orders, it would declare that list as a resource, stored data a flow keeps. Any flow that includes the block gets the resource, with no extra setup. [Resources](./resources.md) covers them.
 
 ## What a block gets you
 
 Each step in its own block gets you these:
 
-- **A finished block is a checkpoint.** Its output is recorded. On a store that persists, such as SQLite or Postgres, a run that dies after `cleanMessage` picks up at `draftReply` when you continue it. The message is not cleaned twice. The [durable execution reference](../reference/durable-execution.md) covers how to continue a run.
+- **A finished block is a checkpoint.** Its output is recorded. On a store that persists, such as SQLite or Postgres, a run that dies after `cleanMessage` picks up at `draftReply` when you continue it. The message is not cleaned twice. An in-memory store keeps no checkpoints, so a crashed run there cannot be continued. Use a filesystem, SQLite or Postgres store to get them. The [durable execution reference](../reference/durable-execution.md) covers how to continue a run.
 - **A block can wait.** A block can pause the run for a user, such as a manager approving a refund, and carry on when the answer arrives. The [durable execution reference](../reference/durable-execution.md) covers how a wait is answered.
 - **Every block is traced.** Each time a block runs, the run is recorded, and the DevTool shows it. You can see which step was slow or wrong without adding any logging.
 - **A block moves.** It knows only its own input and output. `lookUpOrder` can be a step in this flow, a tool in another, and a piece of something a teammate builds later.

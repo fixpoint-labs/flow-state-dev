@@ -157,7 +157,7 @@ Reference homes: the first two limits are R-01 rows ("how a block is invoked" an
 - At run time each side is checked: input against the consumer's `inputSchema` before `execute`, output against the producer's `outputSchema` after it. `core/blocks/internal/build-block.ts:356-366` [page: "checked when the flow runs"; check order is [ref] R-01]
 - A rejected value throws `Block "<name>" input|output validation failed at "<path>": <message>` and fails the block; the error shows in that block's trace row (`block_trace.error`, `items:59-112`). `core/blocks/internal/build-block.ts:152-171` [ref] R-01. Only the first Zod issue is reported, and the path part is omitted when the path is empty (a wrong type at the root).
 - A schema left off is `z.any()`: nothing is checked and the next step's input is untyped. `core/blocks/internal/build-block.ts:210-211` [ref] R-01
-- On the in-memory registry there is no checkpoint, so a crashed run cannot be continued (`dur:11`, `dur:32-36`). [ref] R-17 (resume behaviour by store). Not on the page: the default depends on the host (the engine's fallback is in-memory; `fsdev`'s local default is SQLite), so the page names no default.
+- On the in-memory registry there is no checkpoint, so a crashed run cannot be continued (`dur:11`, `dur:32-36`). [page: one sentence in "What a block gets you", with the stores that do persist; resume behaviour by store is [ref] R-17]. The page does not name a default store: the default depends on the host (the engine's fallback is in-memory; `fsdev`'s local default is SQLite), so the page names no default.
 - Type helpers that read these schemas: [ref/type-helpers]. `apps/docs/docs/fundamentals/type-system.md`
 
 ## 9. The page's example (one scenario)
