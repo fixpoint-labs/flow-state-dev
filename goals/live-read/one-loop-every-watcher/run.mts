@@ -61,6 +61,10 @@ const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("live-read-one-loop");
 const BURST = 50;
 const MAX_READS_PER_BURST = 2;
 const RECOVER_MS = 2_000;
+/** Leg b's window closes once no notice has reached a watcher for this long... */
+const QUIET_MS = 200;
+/** ...or this long after the write, whichever comes first. */
+const CLOSE_CAP_MS = 3_000;
 const ORG = "acme";
 
 const PATCHES: Record<string, ModulePatch[]> = {
@@ -129,6 +133,10 @@ let release: () => void = () => {};
 const failing = new Set<Watcher>();
 /** How many reads each watcher had answered 503 while it was failing. */
 const failedReads = new Map<Watcher, number>();
+/** When each notice frame reached each watcher's socket. */
+const notices = new Map<Watcher, number[]>(WATCHERS.map((w) => [w, []]));
+/** The watcher each push ticket was minted for, from the mint's answer at its fetcher. */
+const ticketOf = new Map<string, Watcher>();
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -143,7 +151,30 @@ globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     }
     if (held !== undefined) await held;
   }
+  if (w !== undefined && url.includes("/stream")) {
+    const response = await realFetch(input, init);
+    const ticket = (await response.clone().json().catch(() => undefined)) as { ticket?: unknown } | undefined;
+    if (typeof ticket?.ticket === "string") ticketOf.set(ticket.ticket, w);
+    return response;
+  }
   return realFetch(input, init);
+};
+
+// Each watcher's socket, known by the ticket it subscribes with: every notice frame it receives
+// is recorded, so leg b can check that no notice reached a watcher after its window closed.
+const realSend = WebSocket.prototype.send;
+const tagged = new WeakSet<WebSocket>();
+WebSocket.prototype.send = function (this: WebSocket, data: Parameters<WebSocket["send"]>[0]) {
+  const sent = typeof data === "string" ? (JSON.parse(data) as { type?: unknown; ticket?: unknown }) : undefined;
+  const w = sent?.type === "subscribe" && typeof sent.ticket === "string" ? ticketOf.get(sent.ticket) : undefined;
+  if (w !== undefined && !tagged.has(this)) {
+    tagged.add(this);
+    this.addEventListener("message", (event) => {
+      const frame = JSON.parse(String((event as MessageEvent).data)) as { type?: unknown };
+      if (frame.type === "notice") notices.get(w)!.push(Date.now());
+    });
+  }
+  return realSend.call(this, data);
 };
 
 // ---------------------------------------------------------------------------
@@ -347,12 +378,22 @@ try {
       failing.add(w);
       failedReads.set(w, 0);
     }
+    const from = Date.now();
     await write();
-    // Every read fails until the write's last notice has reached every socket (one write sends
-    // several, and a watcher may hear them all), so after this only a retry can show the change.
-    await delay(200);
+    // Every read fails until the write's notices have stopped reaching the watchers (one write
+    // sends several, and a watcher may hear them all): QUIET_MS with none, at most CLOSE_CAP_MS.
+    // After the close only a retry can show the change; a notice after it fails the watcher.
+    const writtenAt = Date.now();
+    const capAt = writtenAt + CLOSE_CAP_MS;
+    for (;;) {
+      const last = Math.max(writtenAt, ...who.map((w) => notices.get(w)!.at(-1) ?? 0));
+      const wait = Math.min(last + QUIET_MS, capAt) - Date.now();
+      if (wait <= 0) break;
+      await delay(wait);
+    }
     for (const w of who) failing.delete(w);
     const closedAt = Date.now();
+    const quietAtClose = who.every((w) => (notices.get(w)!.at(-1) ?? 0) <= closedAt - QUIET_MS);
     const shownAt = new Map<Watcher, number>();
     await waitFor(() => {
       for (const w of who) if (!shownAt.has(w) && shows(w)) shownAt.set(w, Date.now());
@@ -361,11 +402,26 @@ try {
     // Graded per watcher, so a control that leaves one watcher green shows which.
     for (const w of who) {
       const n = failedReads.get(w) ?? 0;
-      check(`b:failed ${w}`, n > 0, n > 0 ? `${n} read(s) answered 503 while the write's notices landed` : "never read after the write");
+      const heard = notices.get(w)!.filter((at) => at >= from && at <= closedAt).length;
+      check(
+        `b:failed ${w}`,
+        n > 0 && heard > 0,
+        `${n} read(s) answered 503 while ${heard} notice(s) reached it; window closed ${closedAt - writtenAt} ms after the write${quietAtClose ? "" : " at the cap, not quiet"}`,
+      );
       const at = shownAt.get(w);
-      check(`b:recovers ${w}`, at !== undefined, at !== undefined ? `showed the change ${at - closedAt} ms after its last notice, with no other notice` : `not within ${RECOVER_MS} ms of its last notice`);
+      const late = notices.get(w)!.filter((t) => t > closedAt && t <= (at ?? Date.now())).length;
+      check(
+        `b:recovers ${w}`,
+        at !== undefined && late === 0,
+        at === undefined
+          ? `not within ${RECOVER_MS} ms of the window's close`
+          : late > 0
+            ? `${late} notice(s) reached it after the window closed, before it showed the change`
+            : `showed the change ${at - closedAt} ms after the window closed, with no notice after it`,
+      );
     }
   };
+
 
   const smBefore = snapshotReadAt;
   await recover(ROSTER_WATCHERS, () => hire("after-failure"), (w) =>
