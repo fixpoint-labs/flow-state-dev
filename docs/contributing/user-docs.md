@@ -445,8 +445,9 @@ At cutover, `polish-docs` runs once across all the pages.
 - Every code block has its path as a title, and every name in it is imported or declared there.
 - Every example type-checks, and no paragraph explains a check, a retry or a limit: those are
   Reference rows the page links to.
-- Every figure has a key, takes its colours from page tokens (no colour value in the file) and has
-  no `<style>` block.
+- Every figure has a key and no `<style>` block. Its colours, lines and type come from the page
+  tokens; the file carries the light value of each as a fallback, and the figure lint checks the
+  two match.
 - No table has more than six rows.
 - No sentence contains *now*, *no longer*, *still*, *deliberately*, *simply*, *just*, *powerful*,
   *seamless*, *robust*, *first-class*.

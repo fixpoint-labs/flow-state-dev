@@ -27,7 +27,9 @@ published as `@flow-state-dev/design-system/page.css`. The site inlines each SVG
 [`apps/docs/src/components/Figure`](../../apps/docs/src/components/Figure/index.tsx), so the
 drawing takes the page's fonts and colour tokens. `apps/docs/scripts/lint-brand.mjs` already
 fails a published figure that writes a colour value into the file, carries a `<style>` block
-or uses an unknown class.
+or uses an unknown class. A figure held to this standard carries the light value of each
+colour, line and type property as a fallback, which the lint checks against `page.css` (see
+[Light and dark](#light-and-dark)).
 
 The meanings come from the thirteen figures published today. All thirteen key their hatching as
 `OUTLIVES THE REQUEST`. Compare a new figure against two of them:
@@ -116,7 +118,8 @@ A figure has up to three bands, top to bottom:
 | `n` | A note's number | 11 | 6.6 |
 | `plate` | A number or word set on an arrow, over a `ground` rect | 10.5 | 7.3 |
 
-A line of text ends at least 12 units inside its box, and no later than x=892.
+A line of text starts and ends at least 12 units inside its box, and runs no further than the
+margins, from x=28 to x=892.
 
 **Lines.** `solid` outlines a thing. `thin` outlines a part, and closes a hatched band. `hi` is a
 rule between rows. `ln` is an arrow. Arrows run horizontally or vertically, start and end on a box
@@ -127,21 +130,31 @@ text centred on it; `01` takes a rect 24.6 wide.
 (`acme`, `engineering.lead`). No option names unless the page teaches them. No sentence addressed
 to the writer or the reviewer: anything in the drawing is for the reader.
 
-**The two definitions** every figure starts with, unchanged:
+**The two definitions** every figure starts with, unchanged (the `stroke=`, `stroke-width=` and
+`fill=` are their light fallbacks, see [Light and dark](#light-and-dark)):
 
 ```svg
 <defs>
-<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
-<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
 </defs>
 ```
 
 ## Light and dark
 
-A figure is drawn in colour, but its colours come from the page, never from the file. The file
-holds shapes, classes and text, with no colour value, no font and no `<style>` block.
-`page.css` gives every class its Paper value and its Night value from the same tokens the page
-uses, so one file draws correctly in both.
+A figure's colours, lines and type come from the page tokens. `page.css` gives every class its
+Paper value and its Night value from the same tokens the page uses, so one file draws correctly in
+both. The file also carries the light (Paper) value of each as a fallback: every element carries,
+as attributes with exactly the value `page.css`'s light theme gives its classes, its `fill`,
+`stroke`, `stroke-width`, `stroke-dasharray`, `font-family`, `font-size`, `font-weight` and
+`letter-spacing`, the hatch line and the arrowhead included, and nothing carries one its classes
+do not set. SVG has no attribute for `text-transform`, so where a class uppercases its text the
+text is written in capitals. On the site the class rules override these attributes, in Paper and
+in Night; opened on its own or on GitHub, the file draws as the site's Paper does, dashes and
+type included. The font stack, `'IBM Plex Mono', ui-monospace, monospace`, ends in the generic
+`monospace`, so where the webfont is missing the text keeps the advance width the text-fit rule
+assumes. The lint reads the values from `page.css`, resolving its cascade, and checks the two
+match. There is still no `<style>` block in the file.
 
 The palette is the page's own: paper for the ground, the inks for lines and text, the
 yellow highlighter (`hl`) for the one thing to look at, and red (`x`, `x-fill`) for a failure or
@@ -153,8 +166,8 @@ line, hatch and label, not by giving each its own colour.
 - The only fills are `hl`, `ground` under a plate, `ink` on an arrowhead or a dot, `x-fill` on a
   failure mark, and the hatch.
   Do not cover a line with a filled shape.
-- A file like this shows as black shapes when opened on its own or on GitHub. That is expected.
-  To see it, render it.
+- Opened on its own or on GitHub, a figure draws in its Paper fallbacks, in whatever monospace
+  the viewer has. To see it as the site draws it, in both modes, render it.
 
 ## The figure brief
 
@@ -190,7 +203,8 @@ Open both images and check, in each:
 5. Set it beside the two published figures. Same marks, same line weights, same type sizes.
 6. Read the figure without the page. The one idea should be recoverable from it.
 
-Then run the site's brand lint on the file. It runs from `apps/docs` and takes file paths:
+Then run the site's brand lint on the file, which checks [the lint rules](#lint-rules). It runs
+from `apps/docs` and takes file paths:
 
 ```bash
 pnpm --filter @flow-state-dev/docs exec node scripts/lint-brand.mjs "$PWD/docs/contributing/docs-revamp/pilot/figures/board.svg"
@@ -221,30 +235,71 @@ images under [`docs-revamp/figures/rendered/`](./docs-revamp/figures/rendered) a
 
 ## Lint rules
 
-Rules 1 to 5 are what `apps/docs/scripts/lint-brand.mjs` checks today, pointed at the revamp
-figures. Rules 6 to 16 extend it. Like the brand lint, the check first runs against
-fixtures that break each rule and fails if a rule does not fire.
+`apps/docs/scripts/lint-brand.mjs` checks all sixteen, and CI runs it as `lint:brand`. Rules 1
+to 5 hold every diagram, the site's published ones included. Rules 6 to 15 hold every figure
+under `docs/contributing/docs-revamp/`, whatever folder it sits in, and the lint's figure
+fixtures. Rule 16 holds the revamp's pages in `pages/` and `pilot/`, and any `.md` file named to
+the lint. The site's published diagrams get rules 1 to 5 only, until they are redrawn. Before the real files, the lint runs its
+fixtures. `apps/docs/scripts/brand-lint-fixtures/figures/` holds the clean figures and pages,
+`good.*`, which must pass every rule. Each case in `brand-lint-fixtures/cases.mjs` breaks one
+rule by editing a clean one in memory (`{ name, base, find, replace, rule, expect }`), named for
+the rule's name in the lint's output (`key`, `key.two-keys`). `expect` is part of the message the
+broken branch gives, so each branch of a rule has a case of its own. The lint fails if a case's
+`find` is not in its base, if a case does not give a finding of its rule containing its `expect`,
+if a rule is tripped by no fixture, or if a clean one (a case with `rule` and `expect` null, or a
+`good.*` file) trips any.
 
 **Banned constructs**
 
 1. No `<style>`, `style=`, `<title>` or `<desc>`.
-2. No colour literal anywhere: hex, `rgb()`, `hsl()` or a colour name. The only `fill` attribute
-   allowed is `fill="url(#hatch)"`.
+2. Colours come from the page tokens. A figure under `docs/contributing/docs-revamp/` carries the
+   light value of each as a fallback: each element whose class sets a `fill` or `stroke` in
+   `page.css`'s light theme carries `fill=` and `stroke=` with exactly that value, and no other
+   element carries a colour, `fill="url(#hatch)"` aside. The lint reads the values from
+   `page.css` and checks the two match. No other colour literal anywhere: hex, `rgb()`, `hsl()`
+   or a colour name. The site's published diagrams, until they are redrawn, carry no colour
+   literal at all, and their only `fill` attribute is `fill="url(#hatch)"`.
 3. Every `class` is one `page.css` defines under `.drawing`.
-4. No `stroke-width`, `stroke-dasharray` or `font-family` attribute. Classes set them.
+4. Classes set line and type. A figure under `docs/contributing/docs-revamp/` carries their light
+   values as fallbacks, as rule 2 does for colour: `stroke-width`, `stroke-dasharray`,
+   `font-family`, `font-size`, `font-weight` and `letter-spacing`, each exactly as `page.css`'s
+   light theme gives the element's classes, and none its classes do not set; text a class
+   uppercases is written in capitals. The lint reports these as `fallback`. The site's published
+   diagrams, until they are redrawn, carry no `stroke-width`, `stroke-dasharray` or `font-family`
+   attribute.
 5. No `<image>`, `<foreignObject>`, `<a>`, `<script>`, `<tspan>`, gradient, filter, `opacity`,
-   `transform` on text, or `textLength`.
+   `textLength`, `<!DOCTYPE>` or `<!ENTITY>`. A figure is drawn in canvas coordinates and takes no
+   transforms: no `transform` on any element, no `<svg>` inside the root, and text is placed by one `x` and one `y`, with no
+   `dx`, `dy` or `rotate`. A figure is drawn with `<svg>` (the root only), `<defs>`, `<pattern>`
+   and `<marker>` (inside the `<defs>` only), `<g>`, `<rect>`, `<line>`, `<path>` and `<text>`, and
+   no other element: no `<use>`, `<symbol>`, `<switch>`, `<clipPath>` or `<mask>`. No element has an
+   `href` or `xlink:href`, and only the root and the `ah` marker have a `viewBox` or
+   `preserveAspectRatio`. Each element carries only the attributes the standard's figures draw
+   with, besides the fallbacks of rules 2 and 4: `svg` `xmlns viewBox`; `pattern` `id width
+   height patternUnits patternTransform`; `marker` `id viewBox refX refY markerWidth markerHeight
+   orient`; `g` `id text-anchor`; `rect` `class x y width height`; `line` `class x1 y1 x2 y2
+   marker-start marker-end`; `path` `class d marker-start marker-end`; `text` `class x y
+   text-anchor`. Any other (`writing-mode`, `dominant-baseline`, `word-spacing`…) is an `attr`
+   finding. The site's published diagrams, until they are redrawn, are held only to no
+   `transform` on text or on a group around it.
 6. `<defs>` holds exactly the `hatch` pattern and the `ah` marker, as printed above.
 
 **Canvas and text**
 
-7. The root is `viewBox="0 0 920 H"` with whole-number `H`, and has no `width` or `height`.
+7. The root is `viewBox="0 0 920 H"` with whole-number `H`, and has no `width` or `height`. Every
+   `rect`, `line` and `path` outside the `<defs>` stays on the canvas, 0 to 920 across and 0 to `H`
+   down (the canvas edge, not the 28 margin: a full-width rule runs edge to edge). A `path` is
+   read from its `M`, `L`, `H`, `V` and `Z` commands, absolute or relative; any other command is a
+   finding.
 8. Every `<text>` has exactly one of `lb`, `nm`, `sub`, `c`, `t`, `n`, `plate`, with `on-hl` or
    `x` as the only additions. `lb` and `plate` text is capitals.
-9. Text fits. Width is characters times the class's units per character. The line ends at or
-   before x=892, and 12 or more inside the smallest box that holds its start point.
+9. Text fits. Width is characters times the class's units per character, and its `text-anchor`
+   (its own or a group's, `start` by default) places it. The line starts at or after x=28, ends at
+   or before x=892, and keeps 12 or more inside both edges of its box: the smallest box that holds
+   where it starts, or else the smallest its span overlaps.
 10. An `ln` or `ln-dash` runs only horizontally or vertically: a `<line>` with one coordinate
-    fixed, or a `<path>` of `M`, `H` and `V`.
+    fixed, or a `<path>` of `M`, `H` and `V`. A `marker-start` or `marker-end` is `url(#id)` naming a
+    `<marker>` the figure defines; a misspelt one draws the line with no head.
 
 **The key**
 
@@ -265,13 +320,13 @@ fixtures that break each rule and fails if a rule does not fire.
 
 13. Hatching is a band and nothing else: a rect 10 tall that shares its `x`, `y` and `width`
     with a `solid` or `thin` rect. Never a whole-shape fill, and never on a `dash` rect.
-14. At most one `hl` shape outside the key. `on-hl` appears only on text inside it.
+14. At most one `hl` shape outside the key. `on-hl` appears only on text inside it: the whole line, measured as in rule 9, not only its anchor.
 15. One numbering. Plates numbered `01`, `02` on arrows each have a note with the same `n`, and
     notes count up from `01` without a gap. Numbers are not used for anything else, except the
     `01 ·` prefix on layer labels, which a figure with numbered notes does not use.
 16. On the page: every figure is a `<Figure svg caption description />`. The caption is 60
     characters or fewer with no closing full stop, the description is 30 words or more, and no
-    line contains "Description for the site's".
+    line contains "Description for the site's". No figure is drawn inline as an `<svg>` on the page.
 
 Not lintable, so the cold read and the reviewer check it: that hatching and dashes are used
 where their meaning is true, and that the highlighted thing is the page's one idea.
@@ -280,7 +335,7 @@ where their meaning is true, and that the highlighted thing is the page's one id
 
 The three pilot figures, redrawn to these rules. Each passes the brand lint with no findings
 and was rendered and read in both modes. `docs-revamp/pages/figures/blocks.svg` has not been redrawn
-yet; it is redrawn with its page.
+yet; it is redrawn with its page, and until then the lint skips it and `pages/blocks.md`.
 
 ### Layer boxes: `docs-revamp/pilot/figures/layers.svg`
 

@@ -6,30 +6,70 @@
  * - colour: in custom.css every colour literal is one of page.css's token values —
  *   paper, the inks, the highlighter or red, in Paper or Night — and no colour name or
  *   other colour function appears. A diagram carries no colour literal at all: it reads
- *   the page's tokens through page.css's drawing classes.
+ *   the page's tokens through page.css's drawing classes. A figure held to the whole
+ *   standard (below) is the exception: each element carries, as `fill=` and `stroke=`, the
+ *   light value page.css gives its classes, read from page.css at lint time, and nothing else.
  * - stroke: every stroke width is 1, 1.3 or 1.4 (diagrams, and page.css's drawing classes).
  * - dash: every dash pattern is `5 4`.
  * - info: `custom.css` never names `--info`, the app register's blue.
  * - font: no `<text>` (or anything around it) is set in a font other than the mono.
  * - svg: a diagram has no `<title>`, `<desc>`, `<style>` or `style=` (the page and
  *   `<Figure>` own those), and uses only the drawing classes page.css defines.
+ * - fallback: a held figure (below) also carries the light values page.css gives its classes
+ *   for stroke-width, stroke-dasharray, font-family, font-size, font-weight and
+ *   letter-spacing, and writes in capitals text a class uppercases.
+ * - fill, attr, element: a diagram's only `fill` attribute is the hatch, it sets no
+ *   stroke-width, dash or font by attribute (a held figure's fallbacks aside), and it has no
+ *   image, link, script, tspan,
+ *   gradient, filter, opacity, text under a transform, `textLength`, DOCTYPE or ENTITY.
+ *
+ * A figure under `docs/contributing/docs-revamp/`, in any folder, and the figure fixtures, are
+ * also held to the rest of the figure standard, `docs/contributing/user-docs-figures.md` →
+ * "Lint rules", by its number:
+ *
+ * - defs (6), canvas (7), text-class (8), text-fit (9), arrow (10), key (11),
+ *   key-marks (12), hatch (13), highlight (14), numbering (15).
+ * - element (5, in full): no transform anywhere, and no dx, dy or rotate on text; only the
+ *   elements a figure is drawn with (`FIGURE_ELEMENTS`), no href, and a viewBox only on the
+ *   root and the defs' marker.
+ * - attr (4 and 5, in full): only the attributes each element is drawn with (`FIGURE_ATTRIBUTES`),
+ *   besides the fallbacks.
+ * - canvas (7, in full): every rect, line and path stays on the 920 × H canvas.
+ * - embed (16): the revamp's pages (`pages/` and `pilot/`) put each figure on the page
+ *   as a `<Figure svg caption description />` with a short caption and a full description. Pages
+ *   are read with the MDX parser the site uses; one that does not parse fails.
  *
  * Before linting the real files it lints `scripts/brand-lint-fixtures/`, which break
  * every rule on purpose, and fails unless each rule fires there: a rule that can no
- * longer fail is reported, not trusted.
+ * longer fail is reported, not trusted. `brand-lint-fixtures/figures/` holds only clean
+ * figures and pages, `good.*`, which must pass every rule. Each case in
+ * `brand-lint-fixtures/cases.mjs` edits one of them in memory and must trip its rule; a case
+ * whose edit no longer applies fails too.
  *
  * Usage: node scripts/lint-brand.mjs [file...]   (no files: the docs' own)
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, relative } from "node:path";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import { createProcessor } from "@mdx-js/mdx";
 import { fileURLToPath } from "node:url";
+import CASES from "./brand-lint-fixtures/cases.mjs";
 
 const DOCS = join(dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURES = join(DOCS, "scripts/brand-lint-fixtures");
 const PAGE_CSS = createRequire(join(DOCS, "package.json")).resolve("@flow-state-dev/design-system/page.css");
+// The revamp's pages and figures, which the whole figure standard holds until cutover moves them onto the site.
+const REVAMP = resolve(DOCS, "../../docs/contributing/docs-revamp");
+const FIGURE_FIXTURES = join(FIXTURES, "figures");
+// Where the whole figure standard holds, by path prefix. The site's published diagrams are not here: they keep rules 1 to 5 until cutover redraws them.
+const HELD_TO_STANDARD = [REVAMP, FIGURE_FIXTURES];
+// Drawn before the figure standard; FIX-2701 redraws them with their page and drops them from here.
+const PREDATE_STANDARD = ["pages/blocks.md", "pages/figures/blocks.svg"].map((p) => join(REVAMP, p));
 
-const RULES = ["colour", "stroke", "dash", "info", "font", "svg"];
+const RULES = [
+  "colour", "stroke", "dash", "info", "font", "svg", "fill", "attr", "element",
+  "fallback", "defs", "canvas", "text-class", "text-fit", "arrow", "key", "key-marks", "hatch", "highlight", "numbering", "embed",
+];
 const STROKES = new Set(["1", "1.3", "1.4"]);
 const DASHES = new Set(["5 4", "none"]);
 const NAMED = "aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen".split(" ");
@@ -102,6 +142,574 @@ function drawingClassNames() {
   return new Set([...css.matchAll(/\.drawing\s+(?:[a-z]+)?\.([a-z][\w-]*)/g)].map((m) => m[1]));
 }
 
+// What a figure carries as its own attributes, as page.css's light theme gives it: the colours (rule `colour`),
+// and the line and type properties (rule `fallback`). text-transform has no SVG attribute: where a class sets it
+// to uppercase, the text itself must be in capitals.
+const FALLBACK_COLOURS = ["fill", "stroke"];
+const FALLBACK_PROPS = [...FALLBACK_COLOURS, "stroke-width", "stroke-dasharray", "font-family", "font-size", "font-weight", "letter-spacing"];
+
+/**
+ * page.css's `.drawing` rules that set a fallback property, each with its light-theme values, every `var()` resolved
+ * through `:root`: `{ tag, classes, not, specificity, [property]: value }`, in source order. A value that does not
+ * resolve to a literal, a font stack that does not end in a generic family, or a selector this cannot read, throws:
+ * the fallback a figure must carry would be a guess.
+ */
+function drawingFallbackRules() {
+  const css = readFileSync(PAGE_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  // The bare `:root` block is Paper, the light theme; Night's are `:root[…]` and `:root:not(…)`.
+  const root = /:root\s*\{([^}]*)\}/.exec(css);
+  if (!root) throw new Error("page.css: no :root block to read the light theme from");
+  const tokens = Object.fromEntries([...root[1].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
+  const literal = (prop, value, where) => {
+    const ref = /^var\(\s*(--[\w-]+)\s*\)$/.exec(value);
+    const resolved = ref ? tokens[ref[1]] : value;
+    if (resolved === undefined || /var\(|currentcolor|inherit|initial|unset/i.test(resolved)) {
+      throw new Error(`page.css: ${where} is "${value}", which has no light-theme literal to check a fallback against`);
+    }
+    // Off the site the webfont is missing: the stack must end in a generic family, so the width text-fit assumes holds.
+    if (prop === "font-family" && !/(?:^|,)\s*monospace$/.test(resolved)) {
+      throw new Error(`page.css: ${where} is "${resolved}", which does not end in the generic monospace`);
+    }
+    return fallbackValue(resolved);
+  };
+  const property = new RegExp(`(?:^|;)\\s*(${[...FALLBACK_PROPS, "text-transform"].join("|")})\\s*:\\s*([^;]+)`, "g");
+  const rules = [];
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const decls = [...m[2].matchAll(property)];
+    if (!decls.length) continue;
+    for (const selector of m[1].split(",").map((s) => s.trim()).filter((s) => s.startsWith(".drawing "))) {
+      const compound = /^\.drawing\s+([a-z]+)?((?:\.[\w-]+)*)(?::not\(([a-z]+)\))?$/.exec(selector);
+      if (!compound) throw new Error(`page.css: cannot read the drawing selector "${selector}"`);
+      const [, tag, classText, not] = compound;
+      const classes = classText.split(".").filter(Boolean);
+      const rule = { tag, classes, not, specificity: classes.length * 100 + (tag ? 1 : 0) + (not ? 1 : 0) };
+      for (const [, prop, value] of decls) rule[prop] = literal(prop, value.trim(), `${selector} { ${prop} }`);
+      rules.push(rule);
+    }
+  }
+  return rules;
+}
+
+/** A value as an attribute carries it: whitespace collapsed, and double quotes as single (the attribute's are double). */
+const fallbackValue = (value) => value.trim().replace(/\s+/g, " ").replace(/"/g, "'");
+
+/** The light values page.css gives an element, by its name and classes, for each fallback property and text-transform. */
+function lightFallbacks(node) {
+  const cls = classesOf(node);
+  const matching = FALLBACK_RULES.filter(
+    (r) => (!r.tag || r.tag === node.name) && r.classes.every((c) => cls.includes(c)) && r.not !== node.name,
+  );
+  const out = {};
+  for (const prop of [...FALLBACK_PROPS, "text-transform"]) {
+    // The cascade: the highest specificity wins, and among equals the later rule (a stable sort keeps source order).
+    const winner = matching.filter((r) => r[prop] !== undefined).sort((a, b) => a.specificity - b.specificity).at(-1);
+    if (winner) out[prop] = winner[prop];
+  }
+  return out;
+}
+
+const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+/** XML's character references and five named entities as the characters they stand for; any other `&name;` is left as written. */
+const decodeEntities = (s) =>
+  s.replace(/&(?:#x([\da-f]+)|#(\d+)|(\w+));/gi, (ref, hex, dec, named) =>
+    hex || dec ? String.fromCodePoint(parseInt(hex ?? dec, hex ? 16 : 10)) : (ENTITIES[named] ?? ref),
+  );
+
+/** A diagram as a tree of `{ name, attrs, children, text, index, parent }`: enough XML for a drawing. */
+function parseSvg(text) {
+  const root = { name: "#root", attrs: {}, children: [], text: "", index: 0 };
+  const stack = [root];
+  const token = /<!--[\s\S]*?-->|<!\[CDATA\[([\s\S]*?)\]\]>|<[?!][^>]*>|<(\/?)([\w:-]+)((?:\s+[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>|([^<]+)/g;
+  for (const m of text.matchAll(token)) {
+    const [, cdata, close, name, attrText, selfClose, chars] = m;
+    const top = stack[stack.length - 1];
+    // CDATA is character data, kept as written; other text has its entities decoded.
+    if (cdata !== undefined) top.text += cdata;
+    else if (chars !== undefined) top.text += decodeEntities(chars);
+    else if (close) {
+      if (stack.length > 1) stack.pop();
+    } else if (name) {
+      const attrs = Object.fromEntries(
+        [...attrText.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map((a) => [a[1], a[2] ?? a[3]]),
+      );
+      const node = { name, attrs, children: [], text: "", index: m.index, parent: top };
+      top.children.push(node);
+      if (!selfClose) stack.push(node);
+    }
+  }
+  return root;
+}
+
+const descendants = (node) => node.children.flatMap((c) => [c, ...descendants(c)]);
+const classesOf = (node) => (node.attrs.class ?? "").split(/\s+/).filter(Boolean);
+/** A coordinate or length: a plain number or one in px; NaN for anything else, which `lintFigure` reports. */
+const num = (node, attr) => {
+  const value = (node.attrs[attr] ?? "0").trim();
+  return /^[-+]?(?:\d+\.?\d*|\.\d+)(?:px)?$/.test(value) ? parseFloat(value) : NaN;
+};
+const GEOMETRY = ["x", "y", "width", "height", "x1", "y1", "x2", "y2"];
+/** A text element's characters as they render: entities decoded by `parseSvg`, CDATA as written. */
+const content = (node) => node.text.trim();
+function within(node, test) {
+  for (let p = node.parent; p; p = p.parent) if (test(p)) return true;
+  return false;
+}
+const holds = (box, x, y) =>
+  x >= num(box, "x") && x <= num(box, "x") + num(box, "width") && y >= num(box, "y") && y <= num(box, "y") + num(box, "height");
+
+/** Rules 2, 4 and 5 of the figure standard, which every diagram keeps: fills, attributes, elements. */
+function lintSvgAttributes(file, text, tree, held, out) {
+  const BANNED = /^(?:image|foreignObject|a|script|tspan|linearGradient|radialGradient|filter)$/;
+  // An entity can hide any markup (a <script> included) from this lint's parser, and SVGO expands it on the site.
+  for (const m of text.matchAll(/<!(DOCTYPE|ENTITY)\b/gi)) {
+    out.push(finding(file, text, m.index, "element", `<!${m[1]}> has no place in a drawing: its entities can carry markup the lint never sees`));
+  }
+  for (const node of descendants(tree)) {
+    const at = (rule, detail) => out.push(finding(file, text, node.index, rule, detail));
+    // A figure held to the whole standard carries fallback fills, which rule 2's colour check reads instead.
+    if (!held && node.attrs.fill !== undefined && node.attrs.fill !== "url(#hatch)") {
+      at("fill", `fill="${node.attrs.fill}": the only fill attribute is the hatch; a fill comes from hl, ground, ink or x-fill`);
+    }
+    // A held figure carries these as fallbacks, which lintFigure checks against page.css instead.
+    for (const attr of held ? [] : ["stroke-width", "stroke-dasharray", "font-family"]) {
+      if (node.attrs[attr] !== undefined) at("attr", `a ${attr} attribute: the drawing classes set it`);
+    }
+    if (BANNED.test(node.name)) at("element", `<${node.name}> has no place in a drawing`);
+    for (const attr of ["opacity", "fill-opacity", "stroke-opacity", "filter", "textLength"]) {
+      if (node.attrs[attr] !== undefined) at("element", `a ${attr} attribute has no place in a drawing`);
+    }
+    if (node.name === "text" && (node.attrs.transform !== undefined || within(node, (p) => p.attrs.transform !== undefined))) {
+      at("element", "a transform on text or a group around it: text never rotates");
+    }
+  }
+}
+
+// The figure standard's `<defs>`, exactly; whitespace between tags is free.
+const DEFS_TEXT = `<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>`;
+/**
+ * A parsed element as one string: its name, its attributes in order, its trimmed text and its children's. The
+ * fallbacks are left out: the colour and fallback rules check those against page.css.
+ */
+const shape = (node) =>
+  `<${node.name}${Object.entries(node.attrs)
+    .filter(([k]) => !FALLBACK_PROPS.includes(k))
+    .map(([k, v]) => ` ${k}="${v}"`)
+    .join("")}>${node.text.trim()}${node.children.map(shape).join("")}</${node.name}>`;
+const DEFS = shape(parseSvg(DEFS_TEXT).children[0]);
+// Each text class, and its width in units per character.
+const UNITS = { lb: 7.5, nm: 9, sub: 6.3, c: 7.5, t: 7.2, n: 6.6, plate: 7.3 };
+// The elements a held figure is drawn with, as the standard's figures use them (svg only as the root).
+const FIGURE_ELEMENTS = new Set(["svg", "defs", "pattern", "marker", "g", "rect", "line", "path", "text"]);
+const DEFS_ONLY = new Set(["pattern", "marker"]);
+// Attributes off the allow-list that a rule of their own already reports, so each is reported once, by that rule.
+const OWN_CHECK = new Set([
+  "href", "xlink:href", "viewBox", "preserveAspectRatio", "transform", "dx", "dy", "rotate", "style",
+  "opacity", "fill-opacity", "stroke-opacity", "filter", "textLength",
+]);
+// The attributes each of those elements carries in the standard's figures, besides the fallbacks (FALLBACK_PROPS),
+// which the fallback rules check. marker-start pairs with the ah marker's auto-start-reverse.
+const FIGURE_ATTRIBUTES = Object.fromEntries(
+  Object.entries({
+    svg: "xmlns viewBox",
+    defs: "",
+    pattern: "id width height patternUnits patternTransform",
+    marker: "id viewBox refX refY markerWidth markerHeight orient",
+    g: "id text-anchor",
+    rect: "class x y width height",
+    line: "class x1 y1 x2 y2 marker-start marker-end",
+    path: "class d marker-start marker-end",
+    text: "class x y text-anchor",
+  }).map(([name, attrs]) => [name, new Set(attrs.split(" ").filter(Boolean))]),
+);
+
+/**
+ * The canvas points a rect, line or path reaches; none for other elements. A path is read from its M, L, H, V and Z
+ * commands, absolute or relative; any other command (a curve, an arc) is reported through `unread`, since where it
+ * draws is not checked.
+ */
+function shapePoints(node, unread) {
+  if (node.name === "rect") {
+    const [x, y, w, h] = ["x", "y", "width", "height"].map((a) => num(node, a));
+    return [[x, y], [x + w, y + h]];
+  }
+  if (node.name === "line") return [[num(node, "x1"), num(node, "y1")], [num(node, "x2"), num(node, "y2")]];
+  if (node.name !== "path") return [];
+  const points = [];
+  let [x, y] = [0, 0];
+  let start = [0, 0];
+  for (const [, command, args] of (node.attrs.d ?? "").matchAll(/([a-zA-Z])([^a-zA-Z]*)/g)) {
+    const n = (args.match(/-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/gi) ?? []).map(Number);
+    const rel = command === command.toLowerCase();
+    const step = { m: 2, l: 2, h: 1, v: 1, z: 0 }[command.toLowerCase()];
+    if (step === undefined || (step && (!n.length || n.length % step))) {
+      unread(`a path command "${command}${args.trim() ? ` ${args.trim()}` : ""}" the lint does not read: a figure's paths use M, L, H, V and Z`);
+      return points;
+    }
+    if (step === 0) [x, y] = start;
+    for (let i = 0; i < n.length; i += step) {
+      const c = command.toLowerCase();
+      if (c === "h") x = rel ? x + n[i] : n[i];
+      else if (c === "v") y = rel ? y + n[i] : n[i];
+      else [x, y] = rel ? [x + n[i], y + n[i + 1]] : [n[i], n[i + 1]];
+      if (c === "m" && i === 0) start = [x, y];
+      points.push([x, y]);
+    }
+  }
+  return points;
+}
+const BOXES = new Set(["solid", "thin", "dash"]);
+
+/** The mark a shape draws, as the key names it: hatch, dash, hl, ln, ln-dash or x (red); null for none. */
+function markOf(node) {
+  const cls = classesOf(node);
+  if (node.attrs.fill === "url(#hatch)") return "hatch";
+  if (cls.includes("x") || cls.includes("x-fill")) return "x";
+  if (cls.includes("ln-dash")) return "ln-dash";
+  if (cls.includes("ln") && (node.attrs["marker-end"] || node.attrs["marker-start"])) return "ln";
+  if (cls.includes("dash")) return "dash";
+  if (cls.includes("hl")) return "hl";
+  return null;
+}
+// The element a key sample for each mark is, and what its label must say.
+const SAMPLE = { hatch: "rect", dash: "line", hl: "rect", ln: "line", "ln-dash": "line", x: "line" };
+const LABEL = {
+  hatch: [(l) => l === "OUTLIVES THE REQUEST", "must be exactly OUTLIVES THE REQUEST"],
+  dash: [(l) => l === "LASTS ONE ACTION RUN", "must be exactly LASTS ONE ACTION RUN"],
+  hl: [(l) => l.split(/\s+/).length <= 5, "must be five words or fewer"],
+  "ln-dash": [(l) => /^ONLY\b/.test(l), "must start with ONLY"],
+};
+
+/** Rules 6 to 15 of the figure standard, for a figure it holds: defs, canvas, text, arrows, key, marks. */
+function lintFigure(file, text, tree, out) {
+  const svg = tree.children.find((n) => n.name === "svg");
+  if (!svg) {
+    out.push(finding(file, text, 0, "canvas", "no <svg> root"));
+    return;
+  }
+  const at = (node, rule, detail) => out.push(finding(file, text, node.index, rule, detail));
+  const all = descendants(svg);
+  const keys = all.filter((n) => n.attrs.id === "key");
+  const drawing = all.filter((n) => n.attrs.id !== "key" && !within(n, (p) => p.attrs.id === "key" || p.name === "defs"));
+  const rects = drawing.filter((n) => n.name === "rect");
+  const same = (a, b) => ["x", "y", "width"].every((k) => num(a, k) === num(b, k));
+
+  // 2 and 4. Each element carries, as attributes, the light values page.css gives its classes: its colours (rule
+  // colour) and its line and type (rule fallback), so the file draws right off the site; on the site the class rules
+  // override them in both themes. Nothing carries a value its classes do not set.
+  for (const node of [svg, ...all]) {
+    const light = lightFallbacks(node);
+    const tag = `<${node.name}${node.attrs.class ? ` class="${node.attrs.class}"` : ""}>`;
+    for (const prop of FALLBACK_PROPS) {
+      const rule = FALLBACK_COLOURS.includes(prop) ? "colour" : "fallback";
+      const carried = node.attrs[prop] === undefined ? undefined : fallbackValue(node.attrs[prop]);
+      if (prop === "fill" && carried === "url(#hatch)" && light.fill === undefined) continue;
+      if (light[prop] === undefined) {
+        if (carried !== undefined) at(node, rule, `${prop}="${carried}" on ${tag}: its classes set no ${prop} in page.css`);
+      } else if (carried === undefined) {
+        at(node, rule, `${tag} has no ${prop}="${light[prop]}", the light value page.css gives it`);
+      } else if (carried !== light[prop]) {
+        at(node, rule, `${prop}="${carried}" on ${tag} is not "${light[prop]}", the light value page.css gives it`);
+      }
+    }
+    if (light["text-transform"] === "uppercase" && content(node) !== content(node).toUpperCase()) {
+      at(node, "fallback", `${tag} "${content(node)}" is not in capitals: page.css uppercases it, and SVG has no attribute to`);
+    }
+  }
+
+  // 6. The two definitions, as printed.
+  const defs = all.filter((n) => n.name === "defs");
+  if (defs.length !== 1 || shape(defs[0]) !== DEFS) {
+    at(defs[0] ?? svg, "defs", "<defs> is not exactly the hatch pattern and the ah marker the standard prints");
+  }
+
+  // 7. The canvas.
+  if (!/^0 0 920 \d+$/.test(svg.attrs.viewBox ?? "")) {
+    at(svg, "canvas", `viewBox "${svg.attrs.viewBox ?? ""}" is not 0 0 920 H with a whole-number H`);
+  }
+  for (const attr of ["width", "height"]) if (svg.attrs[attr] !== undefined) at(svg, "canvas", `the root has a ${attr}; the page sizes it`);
+  const canvas = /^0 0 920 (\d+)$/.exec(svg.attrs.viewBox ?? "");
+  const height = canvas ? Number(canvas[1]) : null;
+  // The root's width and height are the canvas rule's to report.
+  for (const attr of Object.keys(svg.attrs).filter((a) => !FIGURE_ATTRIBUTES.svg.has(a) && a !== "width" && a !== "height")) {
+    at(svg, "attr", `a ${attr} attribute on the root <svg>: not one a figure is drawn with`);
+  }
+  // Every geometry check reads these; one it cannot read is reported, never skipped.
+  for (const node of all) {
+    // One canvas: a nested <svg> is a new viewport, so the coordinates inside it are not the canvas's.
+    if (node.name === "svg") at(node, "element", "a nested <svg>: a figure is one canvas, drawn in its coordinates");
+    // Only the elements a figure is drawn with; anything else (use, symbol, switch, clipPath, mask…) can draw or
+    // move what the checks cannot see. The pattern and marker live only in the defs, which rule 6 fixes exactly.
+    else if (!FIGURE_ELEMENTS.has(node.name)) at(node, "element", `<${node.name}> is not one of the elements a figure is drawn with: ${[...FIGURE_ELEMENTS].join(", ")}`);
+    else if (DEFS_ONLY.has(node.name) && !within(node, (p) => p.name === "defs")) at(node, "element", `a <${node.name}> outside the <defs>`);
+    // References and viewports place content away from its own x and y: no href, and a viewBox only on the root
+    // and the defs' marker.
+    for (const attr of ["href", "xlink:href"].filter((a) => node.attrs[a] !== undefined)) {
+      at(node, "element", `an ${attr} on <${node.name}>: a figure draws everything where it stands`);
+    }
+    for (const attr of ["viewBox", "preserveAspectRatio"].filter((a) => node.attrs[a] !== undefined)) {
+      if (!(node.name === "marker" && within(node, (p) => p.name === "defs"))) at(node, "element", `a ${attr} on <${node.name}>: only the root sets the viewport`);
+    }
+    // Only the attributes a figure's elements are drawn with: anything else (writing-mode, baseline-shift…) can
+    // change where or how text and shapes draw.
+    for (const attr of Object.keys(node.attrs).filter((a) => !FIGURE_ATTRIBUTES[node.name]?.has(a) && !FALLBACK_PROPS.includes(a) && !OWN_CHECK.has(a))) {
+      at(node, "attr", `a ${attr} attribute on <${node.name}>: not one a figure is drawn with`);
+    }
+    // Shapes stay on the canvas, 0 to 920 across and 0 to its height down.
+    if (height !== null && !within(node, (p) => p.name === "defs")) {
+      for (const [x, y] of shapePoints(node, (detail) => at(node, "canvas", detail))) {
+        if (x < 0 || x > 920 || y < 0 || y > height) at(node, "canvas", `a <${node.name}> reaching (${x}, ${y}), off the 920 × ${height} canvas`);
+      }
+    }
+    // A figure is drawn in canvas coordinates: a transform would move a shape away from the coordinates every check reads.
+    if (node.attrs.transform !== undefined || /(?:^|;)\s*transform\s*:/.test(node.attrs.style ?? "")) {
+      at(node, "element", `a transform on <${node.name}>: a figure is drawn in canvas coordinates and takes no transforms`);
+    }
+    // Text sits where its x and y say; an offset or per-glyph position is not checked, so it is not allowed.
+    if (node.name === "text" || node.name === "tspan") {
+      for (const attr of ["dx", "dy", "rotate"].filter((a) => node.attrs[a] !== undefined)) {
+        at(node, "text-fit", `a ${attr} attribute on <${node.name}>: text is placed by one x and one y only`);
+      }
+    }
+    for (const attr of GEOMETRY.filter((a) => node.attrs[a] !== undefined && Number.isNaN(num(node, a)))) {
+      at(node, "canvas", `${attr}="${node.attrs[attr]}" is not a number in canvas units (unitless or px)`);
+    }
+  }
+
+  // Each text's rendered span from rule 9, which rule 14 checks against the highlighter.
+  const spans = new Map();
+  for (const node of all.filter((n) => n.name === "text")) {
+    // 8. One text class, plus on-hl or x; lb and plate in capitals.
+    const cls = classesOf(node);
+    const kinds = cls.filter((c) => c in UNITS);
+    if (kinds.length !== 1 || cls.some((c) => !(c in UNITS) && c !== "on-hl" && c !== "x")) {
+      at(node, "text-class", `text class "${cls.join(" ")}" is not one of ${Object.keys(UNITS).join(", ")}, plus on-hl or x`);
+      continue;
+    }
+    const kind = kinds[0];
+    const words = content(node);
+    if ((kind === "lb" || kind === "plate") && words !== words.toUpperCase()) at(node, "text-class", `${kind} text "${words}" is not in capitals`);
+
+    // 9. It fits: the line runs from x=28 to x=892, and 12 inside both edges of its box.
+    const width = [...words].length * UNITS[kind];
+    const x = num(node, "x");
+    // The anchor inherits as SVG's does: the nearest one on the text or a group around it, start by default.
+    const chain = [];
+    for (let p = node; p; p = p.parent) if (p.attrs["text-anchor"] !== undefined) chain.push(p.attrs["text-anchor"]);
+    for (const value of chain.filter((v) => !["start", "middle", "end"].includes(v))) {
+      at(node, "text-fit", `text-anchor="${value}" is not start, middle or end, so the line's extent cannot be checked`);
+    }
+    const start = x - ({ middle: width / 2, end: width }[chain[0]] ?? 0);
+    const end = start + width;
+    spans.set(node, [start, end]);
+    if (start < 28) at(node, "text-fit", `"${words}" starts at x=${start.toFixed(1)}, inside the 28 left margin`);
+    if (end > 892) at(node, "text-fit", `"${words}" ends at x=${end.toFixed(1)}, past 892`);
+    // Its box: the smallest that holds where the line starts, or else the smallest its rendered span overlaps.
+    const y = num(node, "y");
+    const boxes = all
+      .filter((r) => r.name === "rect" && classesOf(r).some((c) => BOXES.has(c)) && y >= num(r, "y") && y <= num(r, "y") + num(r, "height"))
+      .sort((a, b) => num(a, "width") * num(a, "height") - num(b, "width") * num(b, "height"));
+    const box =
+      boxes.find((r) => holds(r, start, y)) ?? boxes.find((r) => start < num(r, "x") + num(r, "width") && end > num(r, "x"));
+    if (box && start < num(box, "x") + 12) {
+      at(node, "text-fit", `"${words}" starts at x=${start.toFixed(1)}, less than 12 inside its box's left edge at ${num(box, "x")}`);
+    }
+    if (box && end > num(box, "x") + num(box, "width") - 12) {
+      at(node, "text-fit", `"${words}" ends at x=${end.toFixed(1)}, less than 12 inside its box's right edge at ${num(box, "x") + num(box, "width")}`);
+    }
+  }
+
+  // 10. Arrows run horizontally or vertically.
+  // An arrowhead reference names a <marker> the figure defines: a misspelt one draws the line with no head.
+  const markerIds = new Set(all.filter((n) => n.name === "marker").map((n) => n.attrs.id));
+  for (const node of all) {
+    for (const attr of ["marker-start", "marker-end"].filter((a) => node.attrs[a] !== undefined)) {
+      const id = /^url\(#([^)\s]+)\)$/.exec(node.attrs[attr].trim())?.[1];
+      if (!id || !markerIds.has(id)) at(node, "arrow", `${attr}="${node.attrs[attr]}" names no <marker> this figure defines, so no arrowhead draws`);
+    }
+  }
+  for (const node of all.filter((n) => classesOf(n).some((c) => c === "ln" || c === "ln-dash"))) {
+    const straight =
+      node.name === "line"
+        ? num(node, "x1") === num(node, "x2") || num(node, "y1") === num(node, "y2")
+        : node.name === "path" && /^\s*M\s*-?[\d.]+[\s,]+-?[\d.]+(?:\s*[HV]\s*-?[\d.]+)*\s*$/.test(node.attrs.d ?? "");
+    if (!straight) at(node, "arrow", `a <${node.name}> arrow that is not horizontal or vertical: a <line>, or a <path> of M, H and V`);
+  }
+
+  // 11. One key, the last element, of entries that are one sample and one lb label.
+  const key = keys[0];
+  if (keys.length !== 1 || key.name !== "g") at(key ?? svg, "key", `${keys.length} key elements: a figure has exactly one <g id="key">`);
+  else if (svg.children.at(-1) !== key) at(key, "key", "the key is not the figure's last element");
+  const entries = [];
+  let samples = [];
+  for (const node of key?.children ?? []) {
+    if (node.name !== "text") samples.push(node);
+    else if (!classesOf(node).includes("lb") || !samples.length) at(node, "key", `key label "${content(node)}" is not one lb label after a sample`);
+    else {
+      // A hatched sample is two rects: the hatch, and the thin outline that closes it.
+      const hatched = samples.length === 2 && markOf(samples[0]) === "hatch" && classesOf(samples[1]).includes("thin") && same(samples[0], samples[1]);
+      if (samples.length !== 1 && !hatched) at(samples[0], "key", `key entry "${content(node)}" has ${samples.length} samples, not one`);
+      entries.push({ sample: samples[0], label: content(node) });
+      samples = [];
+    }
+  }
+  if (samples.length) at(samples[0], "key", "a key sample with no label after it");
+
+  // 12. The key lists every mark the drawing uses, and only those, in the standard's words.
+  const used = new Set(drawing.map(markOf).filter(Boolean));
+  const listed = new Set();
+  for (const { sample, label } of entries) {
+    const mark = markOf(sample);
+    if (!mark) {
+      at(sample, "key-marks", `key entry "${label}" shows no mark`);
+      continue;
+    }
+    listed.add(mark);
+    if (sample.name !== SAMPLE[mark]) at(sample, "key-marks", `the ${mark} sample is a <${sample.name}>, not a <${SAMPLE[mark]}>`);
+    if (!used.has(mark)) at(sample, "key-marks", `key entry "${label}" is for ${mark}, which the drawing does not use`);
+    const [ok, must] = LABEL[mark] ?? [];
+    if (ok && !ok(label)) at(sample, "key-marks", `the ${mark} label "${label}" ${must}`);
+  }
+  for (const mark of used) if (!listed.has(mark)) at(key ?? svg, "key-marks", `the drawing uses ${mark}, and the key has no entry for it`);
+
+  // 13. Hatching is a band 10 tall on a solid or thin box, never on a dashed one.
+  for (const node of drawing.filter((n) => markOf(n) === "hatch")) {
+    const onBox = (cls) => rects.some((r) => r !== node && same(r, node) && classesOf(r).some((c) => cls.includes(c)));
+    if (node.name !== "rect" || num(node, "height") !== 10 || !onBox(["solid", "thin"]) || onBox(["dash"])) {
+      at(node, "hatch", "hatching that is not a band 10 tall sharing x, y and width with a solid or thin box");
+    }
+  }
+
+  // 14. One highlighter, and on-hl only on text over it.
+  const hl = drawing.filter((n) => classesOf(n).includes("hl"));
+  for (const node of hl.slice(1)) at(node, "highlight", `${hl.length} highlighted shapes: a figure has one`);
+  for (const node of all.filter((n) => n.name === "text" && classesOf(n).includes("on-hl"))) {
+    // The whole rendered span, not only the anchor: ink past the highlighter's edge is dark on Night's dark page.
+    const [start, end] = spans.get(node) ?? [num(node, "x"), num(node, "x")];
+    const y = num(node, "y");
+    if (!hl.some((r) => holds(r, start, y) && holds(r, end, y))) {
+      at(node, "highlight", `on-hl text "${content(node)}" runs from x=${start.toFixed(1)} to x=${end.toFixed(1)}, not all over the highlighter`);
+    }
+  }
+
+  // 15. One numbering: notes count up from 01, each numbered plate has its note, and no layer numbers beside notes.
+  const texts = drawing.filter((n) => n.name === "text");
+  const noteNodes = texts.filter((n) => classesOf(n).includes("n"));
+  const notes = noteNodes.map(content);
+  notes.forEach((note, i) => {
+    const next = String(i + 1).padStart(2, "0");
+    if (note !== next) at(noteNodes[i], "numbering", `note "${note}" where ${next} comes next`);
+  });
+  for (const node of texts.filter((n) => classesOf(n).includes("plate") && /^\d+$/.test(content(n)))) {
+    if (!notes.includes(content(node))) at(node, "numbering", `plate ${content(node)} has no note ${content(node)}`);
+  }
+  if (notes.length) {
+    for (const node of texts.filter((n) => /^\d+\s*·/.test(content(n)))) at(node, "numbering", `"${content(node)}" numbers a layer in a figure with numbered notes`);
+  }
+}
+
+/** Every node of an mdast or estree tree, depth first; position data is not walked. */
+function* walk(node) {
+  if (!node || typeof node.type !== "string") return;
+  yield node;
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "position" || key === "loc" || key === "range") continue;
+    for (const child of Array.isArray(value) ? value : [value]) {
+      if (child && typeof child === "object") yield* walk(key === "data" ? child.estree : child);
+    }
+  }
+}
+
+// The parser Docusaurus runs on a page (`markdown.format` is mdx by default).
+const MDX = createProcessor({ format: "mdx" });
+
+/**
+ * Rule 16: a page puts each figure on through `<Figure svg caption description />`, and nothing else. The page is
+ * read as the site reads it, as MDX, so code blocks and inline code are not markup and a page that does not parse
+ * is a finding.
+ */
+function lintFigureEmbeds(file, text, out) {
+  const at = (line, detail) => out.push({ file, line, rule: "embed", detail });
+  // Docusaurus takes the frontmatter off before MDX sees the page; blanking it keeps the lines.
+  const body = text.replace(/^---\n[\s\S]*?\n---(?=\n|$)/, (fm) => fm.replace(/[^\n]/g, " "));
+  let tree;
+  try {
+    tree = MDX.parse(body);
+  } catch (err) {
+    at(err.line ?? err.place?.line ?? 1, `the page does not parse as MDX: ${err.reason ?? err.message}`);
+    return;
+  }
+  const nodes = [...walk(tree)];
+  const lineOf = (node, fallback) => node.loc?.start.line ?? node.position?.start.line ?? fallback;
+
+  // The SVGs the page imports, by the name it binds each to.
+  const svgs = new Set();
+  for (const node of nodes.filter((n) => n.type === "ImportDeclaration" && /\.svg$/.test(n.source.value))) {
+    for (const specifier of node.specifiers) svgs.add(specifier.local.name);
+  }
+
+  const image = (line) => at(line, "a figure set as an image: use <Figure svg caption description />");
+  const definitions = new Map(nodes.filter((n) => n.type === "definition").map((n) => [n.identifier, n.url]));
+  for (const node of nodes) {
+    const line = lineOf(node, 1);
+    if (node.type === "image" && /\.svg\b/.test(node.url)) image(line);
+    if (node.type === "imageReference" && /\.svg\b/.test(definitions.get(node.identifier) ?? "")) image(line);
+    if (node.type === "text" && node.value.includes("Description for the site's")) {
+      at(line, "a note about how the figure will be embedded: the description goes in <Figure>");
+    }
+  }
+
+  // Every element, in Markdown (mdxJsx*Element) or inside an expression (JSXElement), as a name and its
+  // attributes: `{ name, value }`, with value a string, an estree expression, or null for a bare attribute.
+  const elements = [];
+  for (const node of nodes) {
+    if (node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") {
+      const attrs = node.attributes
+        .filter((a) => a.type === "mdxJsxAttribute")
+        .map((a) => ({ name: a.name, value: typeof a.value === "string" ? a.value : (a.value?.data?.estree.body[0]?.expression ?? null) }));
+      elements.push({ name: node.name, attrs, line: lineOf(node, 1) });
+    } else if (node.type === "JSXElement") {
+      const open = node.openingElement;
+      const attrs = open.attributes
+        .filter((a) => a.type === "JSXAttribute")
+        .map((a) => ({ name: a.name.name, value: a.value?.type === "Literal" ? a.value.value : (a.value?.expression ?? null) }));
+      elements.push({ name: open.name.name, attrs, line: lineOf(node, 1) });
+    }
+  }
+
+  const stringOf = (value) =>
+    typeof value === "string" ? value
+    : value?.type === "Literal" && typeof value.value === "string" ? value.value
+    : value?.type === "TemplateLiteral" && !value.expressions.length ? value.quasis[0].value.cooked
+    : null;
+  // The one allowed use of an imported SVG: the whole svg value of a <Figure>.
+  const allowed = new Set();
+  for (const { name, attrs, line } of elements) {
+    if (svgs.has(name)) at(line, `${name} is used outside a <Figure>'s svg: use <Figure svg={${name}} caption description />`);
+    if (name === "img" && /\.svg\b/.test(stringOf(attrs.find((a) => a.name === "src")?.value) ?? "")) image(line);
+    if (name === "svg") at(line, "an inline <svg> on the page: a figure is its own file, put on through <Figure svg={…} />");
+    if (name !== "Figure") continue;
+    const prop = (key) => attrs.find((a) => a.name === key)?.value;
+    const svg = prop("svg");
+    if (svg?.type === "Identifier") allowed.add(svg);
+    const caption = stringOf(prop("caption"));
+    const words = stringOf(prop("description"))?.trim().split(/\s+/).filter(Boolean).length ?? 0;
+    if (!svg || typeof svg === "string") at(line, "<Figure> has no svg");
+    if (caption === null) at(line, "<Figure> has no caption");
+    else if (caption.length > 60 || caption.endsWith(".")) at(line, `caption "${caption}" is over 60 characters or ends in a full stop`);
+    if (words < 30) at(line, `the description is ${words} words: it says what the whole figure shows in 30 or more`);
+  }
+  // Any other reference to an imported SVG, in any expression, attribute or export. An import's own names declare, not use.
+  const declared = new Set(nodes.filter((n) => n.type === "ImportDeclaration").flatMap((n) => [...walk(n)]));
+  for (const node of nodes) {
+    if (node.type === "Identifier" && svgs.has(node.name) && !allowed.has(node) && !declared.has(node)) {
+      at(lineOf(node, 1), `${node.name} is used outside a <Figure>'s svg: use <Figure svg={${node.name}} caption description />`);
+    }
+  }
+}
+
 function lintStrokes(file, text, out) {
   for (const m of text.matchAll(/stroke-width\s*[:=]\s*["']?([^;"'}\s]+)/g)) {
     const value = m[1].replace(/px$/, "");
@@ -126,15 +734,29 @@ function lintFonts(file, text, out) {
   }
 }
 
-/** Every finding for one file. */
-function lintFile(file, allowed) {
-  const text = readFileSync(file, "utf8");
+const inside = (dir, file) => !relative(dir, resolve(file)).startsWith("..");
+/** Whether the whole figure standard holds a diagram: any one under a `HELD_TO_STANDARD` prefix, whatever its folder is called. */
+const heldToStandard = (file) => HELD_TO_STANDARD.some((dir) => inside(dir, file));
+
+/** Every finding for one file: a diagram, a page (`.md`, `.mdx`) or a stylesheet. */
+function lintFile(file, allowed, text = readFileSync(file, "utf8")) {
   const out = [];
-  if (file.endsWith(".svg")) {
+  if (/\.mdx?$/.test(file)) {
+    lintFigureEmbeds(file, text, out);
+  } else if (file.endsWith(".svg")) {
+    const tree = parseSvg(text);
+    const held = heldToStandard(file);
     lintSvgShape(file, text, DRAWING_CLASSES, out);
-    lintColours(file, text, allowed, out);
+    // A held figure's fill= and stroke= are its fallback colours, in either XML quoting, which lintFigure checks
+    // against page.css; any other colour literal still fails here.
+    const colours = held
+      ? text.replace(/(\s(?:fill|stroke)\s*=\s*)(["'])(.*?)\2/g, (m, head, quote, value) => `${head}${quote}${" ".repeat(value.length)}${quote}`)
+      : text;
+    lintColours(file, colours, allowed, out);
     lintStrokes(file, text, out);
     lintFonts(file, text, out);
+    lintSvgAttributes(file, text, tree, held, out);
+    if (held) lintFigure(file, text, tree, out);
   } else {
     const css = text.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " "));
     lintColours(file, css, allowed, out);
@@ -167,21 +789,80 @@ function svgsUnder(dir) {
 
 const allowed = allowedColours();
 const DRAWING_CLASSES = drawingClassNames();
+let FALLBACK_RULES;
+try {
+  FALLBACK_RULES = drawingFallbackRules();
+} catch (err) {
+  console.error(`brand lint: ${err.message}`);
+  process.exit(1);
+}
 const show = (f) => `${f.file.startsWith(DOCS) ? relative(DOCS, f.file) : f.file}:${f.line} ${f.rule}: ${f.detail}`;
 
-// 1. The fixtures must trip every rule, or a rule has stopped working.
-const fixtureFindings = readdirSync(FIXTURES).flatMap((f) => lintFile(join(FIXTURES, f), allowed));
-const silent = RULES.filter((rule) => !fixtureFindings.some((f) => f.rule === rule));
-if (silent.length) {
-  console.error(`brand lint: no fixture failure for ${silent.join(", ")}; the rule can no longer fail.`);
+// 1. The fixtures must trip every rule, or a rule has stopped working. The clean figure fixtures
+// (`figures/good.*`) must trip none: a rule that fires on a clean figure would fail every figure
+// for nothing. Each case in `cases.mjs` edits one of them in memory and must trip its rule.
+const broken = [];
+const fixtureFindings = [
+  ...readdirSync(FIXTURES).map((f) => join(FIXTURES, f)).filter((f) => statSync(f).isFile() && !f.endsWith(".mjs")),
+  ...readdirSync(FIGURE_FIXTURES).map((f) => join(FIGURE_FIXTURES, f)),
+].map((file) => ({ file, found: lintFile(file, allowed) }));
+for (const { file, found } of fixtureFindings.filter((f) => inside(FIGURE_FIXTURES, f.file))) {
+  if (!basename(file).startsWith("good.")) broken.push(`${relative(DOCS, file)}: a figure fixture file is a clean one, good.*; a failing case belongs in cases.mjs`);
+  else broken.push(...found.map((f) => `the clean fixture fails ${show(f)}`));
+}
+for (const fixtureCase of CASES) {
+  const file = join(FIGURE_FIXTURES, `${fixtureCase.name}${extname(fixtureCase.base)}`);
+  const finds = [fixtureCase.find].flat();
+  const replaces = [fixtureCase.replace].flat();
+  let text = readFileSync(join(FIGURE_FIXTURES, fixtureCase.base), "utf8");
+  const stale = finds.filter((find, i) => {
+    if (!text.includes(find) || find === replaces[i]) return true;
+    text = text.replace(find, () => replaces[i]);
+    return false;
+  });
+  if (fixtureCase.rule !== null && !RULES.includes(fixtureCase.rule)) broken.push(`case ${fixtureCase.name} names no rule`);
+  else if ((fixtureCase.rule === null) !== (fixtureCase.expect === null) || (fixtureCase.rule !== null && !fixtureCase.expect)) {
+    broken.push(`case ${fixtureCase.name} needs an expect, the part of the message its branch of ${fixtureCase.rule} gives (null only for a clean case)`);
+  } else if (finds.length !== replaces.length) broken.push(`case ${fixtureCase.name} has ${finds.length} finds and ${replaces.length} replaces`);
+  else if (stale.length) broken.push(`case ${fixtureCase.name}: ${JSON.stringify(stale[0])} is not in ${fixtureCase.base}, so the case changes nothing`);
+  else {
+    const found = lintFile(file, allowed, text);
+    fixtureFindings.push({ file, found });
+    // A case with no rule is a clean one: it must pass every rule. Any other must trip its rule's own branch: the
+    // rule alone could be tripped by a neighbouring branch while the one the case is for no longer fires.
+    if (fixtureCase.rule === null) broken.push(...found.map((f) => `the clean case ${fixtureCase.name} fails ${show(f)}`));
+    else if (!found.some((f) => f.rule === fixtureCase.rule && f.detail.includes(fixtureCase.expect))) {
+      broken.push(`case ${fixtureCase.name} does not trip ${fixtureCase.rule} with "${fixtureCase.expect}"`);
+    }
+  }
+}
+const silent = RULES.filter((rule) => !fixtureFindings.some((f) => f.found.some((x) => x.rule === rule)));
+if (silent.length) broken.push(`no fixture failure for ${silent.join(", ")}; the rule can no longer fail.`);
+if (broken.length) {
+  for (const line of broken) console.error(`brand lint: ${line}`);
   process.exit(1);
 }
 
-// 2. The real files.
+// 2. The real files: the site's diagrams and custom.css, and the revamp's figures and pages.
 const args = process.argv.slice(2);
+const pagesIn = (dir) =>
+  readdirSync(join(REVAMP, dir))
+    .filter((f) => /\.mdx?$/.test(f) && !/\.(record|facts)\.md$/.test(f))
+    .map((f) => join(REVAMP, dir, f));
+const revamp = [...svgsUnder(REVAMP), ...["pages", "pilot"].flatMap(pagesIn)];
+const stale = PREDATE_STANDARD.filter((f) => !revamp.includes(f));
+if (!args.length && stale.length) {
+  // An exemption for a file that is gone would quietly exempt whatever takes its name.
+  console.error(`brand lint: exempt from the figure standard, and gone: ${stale.map((f) => relative(REVAMP, f)).join(", ")}`);
+  process.exit(1);
+}
 const files = args.length
   ? args
-  : [...["docs", "guides", "blog"].flatMap((d) => svgsUnder(join(DOCS, d))), join(DOCS, "src/css/custom.css")];
+  : [
+      ...["docs", "guides", "blog"].flatMap((d) => svgsUnder(join(DOCS, d))),
+      join(DOCS, "src/css/custom.css"),
+      ...revamp.filter((f) => !PREDATE_STANDARD.includes(f)),
+    ];
 const findings = [...files.flatMap((f) => lintFile(f, allowed)), ...(args.length ? [] : lintPageCss())];
 for (const f of findings) console.error(show(f));
 console.log(`brand lint: ${files.length} files, ${findings.length} findings (fixtures trip all ${RULES.length} rules).`);

@@ -323,6 +323,9 @@ importers:
       '@docusaurus/types':
         specifier: ^3.10.2
         version: 3.10.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@mdx-js/mdx':
+        specifier: 3.1.1
+        version: 3.1.1
       typedoc:
         specifier: ^0.28.20
         version: 0.28.20(@typescript/typescript6@6.0.2)
