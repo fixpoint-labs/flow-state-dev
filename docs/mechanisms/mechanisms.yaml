@@ -109,7 +109,7 @@ mechanisms:
     doc: docs/architecture/kits.md
 
   - id: view
-    job: Compute an answer a screen watches, at the scope its data lives in (no session at user or org), typed by its block's output schema and optionally keyed. It writes nothing and calls no model; each run records what it read, and the answer names the change topics a watcher listens to. It replaced flow reads and a scope's client.derived.
+    job: Compute an answer a screen watches, at the scope its data lives in (no session at user or org), typed by its block's output schema and optionally keyed. It writes nothing and calls no model; each run records what it read, and the answer names the change topics a watcher listens to and, under each, the kinds and resource roots of the notices that may change it (`hears`); a task board read through its task collection is recorded there as its board's notices (`recordBoardRead`). It replaced flow reads and a scope's client.derived.
     package: "@flow-state-dev/core"
     anchor: defineView
     file: packages/core/src/flow/defineView.ts

@@ -8,7 +8,8 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { createClient, viewRef, type SubscribeOptions, type ViewCallOptions, type ViewResult, type WireNotice, type WireTopic } from "../src";
-import { watchView, type ViewWatchClient } from "../src/view/view";
+import { placePartial, watchView, type ViewWatchClient } from "../src/view/view";
+import type { ViewHearing } from "@flow-state-dev/core/internal";
 
 const flush = async () => {
   for (let i = 0; i < 8; i++) await Promise.resolve();
@@ -177,6 +178,31 @@ describe("watchView", () => {
   // to another resource of the scope, or a kind nothing it read changes on,
   // reads nothing.
   describe("the notices an answer says it hears", () => {
+    // A board takes a partial answer per task write: what it hears must not grow with them.
+    it("stays one hearing per topic across any number of partial answers, kinds and paths merged", () => {
+      const board = { topic: { scope: "session", id: "s1", resource: "desk" }, kinds: ["board"] } as const;
+      let held: { entries: unknown[]; keys: string[]; topics: WireTopic[]; hears: ViewHearing[] } = {
+        entries: [{ id: "a" }],
+        keys: ["a"],
+        topics: [board.topic] as WireTopic[],
+        hears: [board, { topic: { scope: "user" }, kinds: ["resource"], paths: ["workers"] }] as ViewHearing[]
+      };
+      for (let i = 0; i < 50; i += 1) {
+        const placed = placePartial(held, {
+          value: [{ id: "a" }],
+          keys: ["a"],
+          topics: [board.topic],
+          partial: { removed: [] },
+          hears: [board, { topic: { scope: "user" }, kinds: ["state", "resource"], paths: [i % 2 === 0 ? "workers" : "pins"] }]
+        });
+        held = { entries: placed.value as unknown[], keys: placed.keys!, topics: placed.topics, hears: placed.hears! };
+      }
+      expect(held.hears).toEqual([
+        board,
+        { topic: { scope: "user" }, kinds: ["state", "resource"], paths: ["pins", "workers"] }
+      ]);
+    });
+
     const hearing = (): ViewResult => ({
       value: "v",
       topics: [{ scope: "user" }, { scope: "session", id: "s1", resource: "desk" }],

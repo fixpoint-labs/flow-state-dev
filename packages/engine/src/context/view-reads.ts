@@ -19,8 +19,8 @@
  * and its ledger's resource notices are not heard at all: every write to the
  * ledger publishes the board notice, which names the task.
  */
-import type { ViewHearing, WireTopic } from "@flow-state-dev/core";
-import type { ChangeKind } from "@flow-state-dev/core/internal";
+import type { WireTopic } from "@flow-state-dev/core";
+import type { ChangeKind, ViewHearing } from "@flow-state-dev/core/internal";
 import { wireTopicKey } from "@flow-state-dev/core/internal";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import type { RequestHost } from "@flow-state-dev/core/internal";

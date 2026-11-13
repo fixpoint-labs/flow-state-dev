@@ -19,7 +19,8 @@
  *   on a notice that may change what its run read.
  */
 import { wireTopicKey, type WireNotice, type WireTopic } from "@flow-state-dev/contracts";
-import type { ViewDefinition, ViewHearing, ViewInput, ViewOutput } from "@flow-state-dev/core/types";
+import type { ViewDefinition, ViewInput, ViewOutput } from "@flow-state-dev/core/types";
+import type { ViewHearing } from "@flow-state-dev/core/internal";
 import { covers, type SubscribeOptions, type Subscription } from "../subscribe/push-hub";
 import { liveRead, type LiveRead } from "../live/live-read";
 import { mayHold } from "../live/paths";
@@ -158,7 +159,7 @@ function keepUnchangedEntries(shared: Pick<Shared, "byKey">, result: ViewResult)
  * the answer's, so a partial run that read less never narrows what the screen
  * hears.
  */
-function placePartial(held: NonNullable<Shared["held"]>, result: ViewResult): ViewResult {
+export function placePartial(held: NonNullable<Shared["held"]>, result: ViewResult): ViewResult {
   const removed = new Set(result.partial?.removed ?? []);
   const answered = new Map<string, unknown>();
   (result.value as unknown[]).forEach((entry, index) => answered.set(result.keys![index]!, entry));
@@ -175,7 +176,7 @@ function placePartial(held: NonNullable<Shared["held"]>, result: ViewResult): Vi
     entries.push(entry);
     keys.push(key);
   }
-  const hears = held.hears === undefined || result.hears === undefined ? undefined : [...held.hears, ...result.hears];
+  const hears = held.hears === undefined || result.hears === undefined ? undefined : unionHears(held.hears, result.hears);
   return { value: entries, topics: unionTopics(held.topics, result.topics), keys, ...(hears !== undefined ? { hears } : {}) };
 }
 
@@ -194,6 +195,39 @@ function hearsNotice(hears: readonly ViewHearing[] | undefined, notice: WireNoti
       hearing.kinds.includes(notice.kind) &&
       (notice.kind !== "resource" || notice.topic.resource === undefined || mayHold(notice.topic.resource, hearing.paths))
   );
+}
+
+// FIX-2625.
+/** The order a merged hearing lists its kinds in, as the engine's answer does. */
+const KIND_ORDER: readonly WireNotice["kind"][] = ["items", "request", "run", "state", "resource", "board", "resync"];
+
+/**
+ * Both answers' hearings, one per topic: two for the same topic merge into
+ * one hearing of the kinds and paths of both, so a partial answer placed over
+ * the held one never narrows what the screen hears and never grows the list.
+ * A `resource` hearing with no paths rules no path out, so neither does the merge.
+ */
+function unionHears(a: readonly ViewHearing[], b: readonly ViewHearing[]): ViewHearing[] {
+  const byTopic = new Map<string, { topic: WireTopic; kinds: Set<WireNotice["kind"]>; paths: Set<string> | undefined }>();
+  for (const hearing of [...a, ...b]) {
+    const key = wireTopicKey(hearing.topic);
+    const held = byTopic.get(key);
+    const paths = hearing.kinds.includes("resource") && hearing.paths === undefined ? undefined : new Set(hearing.paths ?? []);
+    if (held === undefined) {
+      byTopic.set(key, { topic: hearing.topic, kinds: new Set(hearing.kinds), paths });
+      continue;
+    }
+    for (const kind of hearing.kinds) held.kinds.add(kind);
+    if (held.paths !== undefined) {
+      if (paths === undefined) held.paths = undefined;
+      else for (const path of paths) held.paths.add(path);
+    }
+  }
+  return [...byTopic.values()].map(({ topic, kinds, paths }) => ({
+    topic,
+    kinds: KIND_ORDER.filter((kind) => kinds.has(kind)),
+    ...(kinds.has("resource") && paths !== undefined ? { paths: [...paths].sort() } : {})
+  }));
 }
 
 /** Both sets of topics, each once. */
@@ -259,7 +293,7 @@ export function watchView<TValue = unknown>(
                 result = {
                   ...whole,
                   topics: unionTopics(result.topics, whole.topics),
-                  ...(result.hears !== undefined && whole.hears !== undefined ? { hears: [...result.hears, ...whole.hears] } : {})
+                  ...(result.hears !== undefined && whole.hears !== undefined ? { hears: unionHears(result.hears, whole.hears) } : {})
                 };
               }
             }
