@@ -3,9 +3,7 @@
  * The rows themselves are the Lab's; these only name them.
  */
 import { describe, expect, it } from "vitest";
-import { ClientHttpError } from "@flow-state-dev/client";
-import type { Client } from "@flow-state-dev/client";
-import { readerSessionId } from "../src/lib/reads";
+import { ClientHttpError, type Client } from "@flow-state-dev/client";
 import {
   ageLabel,
   billingLabel,
@@ -15,12 +13,14 @@ import {
   harnessName,
   levelLabel,
   percentLabel,
-  runUsageQuery,
+  readHarnessUsageView,
+  readWorkerUsageView,
   tokensLabel,
   toHarnessUsage,
   toWorkerUsage,
   USAGE_PERIODS,
   windowName,
+  type HarnessUsage,
 } from "../src/lib/usage";
 
 describe("Usage labels", () => {
@@ -118,54 +118,49 @@ describe("Usage by worker labels", () => {
 });
 
 /**
- * A connection whose Lab refuses `refused` (an id another organization holds,
- * which this one can't see) and answers the query on any other session.
- * `listed` is this organization's listing.
+ * The usage reads over a fake connection: what Re-check and the views answer.
+ * A Lab with no usage reads as `null`; any other refusal reaches the screen as
+ * a failure; and a Re-check that fails never hides the stored rows.
  */
-function fakeLab(refused: string | null, listed: Array<{ id: string; flowKind: string }>) {
-  const sent: string[] = [];
-  const client = {
+const STORED: HarnessUsage = {
+  harness: "codex",
+  status: "windows",
+  reason: null,
+  plan: "pro",
+  windows: [],
+  checkedAt: 1,
+  ageMs: 0,
+  refreshError: null,
+};
+
+function fakeLab(answers: { recheck?: () => Promise<unknown>; view?: () => Promise<unknown> }) {
+  return {
     userId: "alice",
-    flow: () => ({
-      send: async (_action: string, _input: unknown, options: { sessionId: string }) => {
-        sent.push(options.sessionId);
-        if (options.sessionId === refused) throw new ClientHttpError("unknown session", { status: 404, body: "" });
-        return {
-          id: `r${sent.length}`,
-          wait: async () => ({ status: "completed" }),
-          result: async () => ({ status: "completed", output: { harnesses: [{ harness: "codex" }] } }),
-        };
-      },
-    }),
-    sessions: {
-      list: async () => listed.map((session) => ({ ...session, parentSessionId: null })),
-    },
+    resource: () => ({ send: answers.recheck ?? (async () => ({ asked: [] })) }),
+    view: async () => ({ value: await (answers.view ?? (async () => ({ harnesses: [STORED], workers: [] })))(), topics: [] }),
   } as unknown as Client;
-  return { client, sent };
 }
 
-describe("the usage query's session", () => {
-  const reader = readerSessionId("alice", "projects");
+const refused = (status: number, error: string) => async () => {
+  throw new ClientHttpError(`Request failed (${status})`, { status, body: { error, message: error } });
+};
 
-  it("runs on the user's one reading id when this organization holds it", async () => {
-    const { client, sent } = fakeLab(null, []);
-    expect(await runUsageQuery(client, "projects")).toEqual({ harnesses: [{ harness: "codex" }] });
-    expect(sent).toEqual([reader]);
+describe("the usage reads", () => {
+  it("read as no usage only when nothing serves it: a 404, or a Re-check whose writer flow isn't registered", async () => {
+    expect(await readHarnessUsageView(fakeLab({ recheck: refused(404, "unknown_resource") }))).toBeNull();
+    expect(await readHarnessUsageView(fakeLab({ recheck: refused(409, "runby_flow_missing") }))).toBeNull();
+    expect(await readHarnessUsageView(fakeLab({ view: refused(404, "unknown_view") }))).toBeNull();
+    expect(await readWorkerUsageView(fakeLab({ view: refused(404, "unknown_view") }), 7)).toBeNull();
   });
 
-  it("runs on this organization's own session when another organization holds the one id", async () => {
-    const first = fakeLab(reader, []);
-    expect(await runUsageQuery(first.client, "projects")).toEqual({ harnesses: [{ harness: "codex" }] });
-    expect(first.sent[1]).toMatch(/^usage-own-[0-9a-f]{32}$/);
-    // Once opened, this organization lists it, and the next read finds it rather than opening another.
-    const again = fakeLab(reader, [{ id: first.sent[1]!, flowKind: "projects" }]);
-    await runUsageQuery(again.client, "projects");
-    expect(again.sent).toEqual([reader, first.sent[1]]);
+  it("pass any other 409 on to the screen, from Re-check and from either view", async () => {
+    await expect(readHarnessUsageView(fakeLab({ recheck: refused(409, "declarations_disagree") }))).rejects.toThrow(/409/);
+    await expect(readHarnessUsageView(fakeLab({ view: refused(409, "declarations_disagree") }))).rejects.toThrow(/409/);
+    await expect(readWorkerUsageView(fakeLab({ view: refused(409, "runby_flow_missing") }), 7)).rejects.toThrow(/409/);
   });
 
-  it("passes a refusal on when this organization holds the one id: nothing else is opened", async () => {
-    const { client, sent } = fakeLab(reader, [{ id: reader, flowKind: "projects" }]);
-    await expect(runUsageQuery(client, "projects")).rejects.toThrow(/unknown session/);
-    expect(sent).toEqual([reader]);
+  it("still answer the stored rows when Re-check fails, with why beside them", async () => {
+    const harnesses = await readHarnessUsageView(fakeLab({ recheck: refused(500, "store offline") }));
+    expect(harnesses).toEqual([{ ...STORED, refreshError: "store offline" }]);
   });
 });

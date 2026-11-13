@@ -81,6 +81,8 @@ import { defineWorkerCollection, parseWorkerResourceState, type WorkerResourceSt
 import { grantedAccessOf, markVerifiedWorker, type GrantedAccess } from "./verified-worker";
 import { ALL_DELEGATES } from "../delegates/delegate-keys";
 import { WORKER_USAGE_RESOURCE, workerSpendHook, workerUsageCollection } from "./worker-usage";
+import { routineResourcesOf, type RoutineResources } from "../routines/routine-resources";
+import { routineSeedOf } from "../routines/routines-options";
 
 export { verifiedWorkerOf } from "./verified-worker";
 
@@ -248,11 +250,12 @@ export interface WorkerInstallation extends WorkerGrants {
    * The two worker collections, the user's own workers and the standard ones
    * projected from the files, and the workstream entries the create check
    * reads a workstream session's link from, and the `worker-usage` records
-   * every request's spend is added to. A worker flow spreads them into
-   * its `resources`, and so does every block that calls {@link resolveWorker}
-   * or writes a worker.
+   * every request's spend is added to, and the user's routine collections,
+   * which a worker's request seeds the app's declared routines into. A worker
+   * flow spreads them into its `resources`, and so does every block that calls
+   * {@link resolveWorker} or writes a worker.
    */
-  readonly resources: {
+  readonly resources: RoutineResources & {
     readonly [WORKERS_RESOURCE]: ReturnType<typeof defineWorkerCollection>;
     readonly [STANDARD_WORKERS_RESOURCE]: ReturnType<typeof defineStandardWorkerCollection>;
     readonly [WORKSTREAMS_RESOURCE]: (typeof WORKSTREAM_RESOURCES)[typeof WORKSTREAMS_RESOURCE];
@@ -473,12 +476,13 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
   }
 
+  // The routine collections join once the installation exists: their indexes are read through it.
   const resources = {
     [WORKERS_RESOURCE]: defineWorkerCollection(shownSettings),
     [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_FLOW, shownSettings),
     ...WORKSTREAM_RESOURCES,
     [WORKER_USAGE_RESOURCE]: workerUsageCollection
-  } as const;
+  } as WorkerInstallation["resources"];
 
   const sessionStateShape = {
     [WORKER_ID_STATE_KEY]: z.string().min(1).readonly(),
@@ -928,6 +932,29 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     return [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   };
 
+  // FIX-2624.
+  /**
+   * What every worker request does as it ends: record its spend, then seed the
+   * app's declared routines for its user, so a user who only talks to a worker
+   * gets them. The seed writes a routine only when it is missing or changed,
+   * so a later request writes nothing. A seed that fails never fails the request.
+   */
+  const workerRequestEnd: SessionRequestEndHook = (ctx) => {
+    const spend = workerSpendHook(ctx);
+    return async (ending) => {
+      const verdict = await spend?.(ending);
+      const seed = routineSeedOf(installation);
+      if (seed !== undefined) {
+        try {
+          await seed(ctx);
+        } catch (error) {
+          console.warn(`[workforce] could not seed the app's routines: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      return verdict;
+    };
+  };
+
   const installation: WorkerInstallation = {
     resources,
     documents,
@@ -943,7 +970,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         createCheck,
         serverOwned: SESSION_BOARD_SERVER_OWNED,
         client: { expose: [WORK_PROJECT_STATE_KEY] },
-        [SESSION_REQUEST_END_HOOK]: workerSpendHook
+        [SESSION_REQUEST_END_HOOK]: workerRequestEnd
       };
     },
     resolveWorker,
@@ -957,5 +984,6 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     configurationProblems,
     standardWorkerProblems
   };
+  Object.assign(resources, routineResourcesOf(installation));
   return installation;
 }

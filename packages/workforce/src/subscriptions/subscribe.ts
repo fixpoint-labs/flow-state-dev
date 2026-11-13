@@ -278,6 +278,42 @@ export function customScreensLine(providers: readonly SubscriptionProvider[]): s
 }
 
 /** A refusal, or the session `subscribe` writes for. */
+// FIX-2624.
+/**
+ * Why a subscription's settings are refused before anything is read: no
+ * thread, a provider that isn't offered or that the thread doesn't name, kinds
+ * the provider refuses, a screen it can't run, or a cadence that isn't one.
+ * `undefined` when they pass. The write runs it first; the routines view runs
+ * it too, to leave out a declared routine its seed would refuse.
+ */
+export function subscriptionInputRefusal(
+  providers: readonly SubscriptionProvider[],
+  input: Pick<SubscribeInput, "provider" | "thread" | "kinds" | "screens" | "everyMinutes">
+): string | undefined {
+  const thread = input.thread.trim();
+  if (thread.length === 0) return "no_thread: name one thread key to follow; a sentence alone selects nothing.";
+  const provider = providers.find((p) => p.provider === input.provider);
+  if (provider === undefined) {
+    return `no_provider: "${input.provider}" isn't one you can subscribe on. You can: ${providers.map((p) => p.provider).join(", ") || "none"}.`;
+  }
+  if (!thread.startsWith(`${provider.provider}:`)) return `wrong_provider: a ${provider.provider} thread key starts with "${provider.provider}:".`;
+  const undeclared = provider.refuses?.(thread, input.kinds);
+  if (undeclared !== undefined) return undeclared;
+  const unrunnable = unrunnableScreen(provider, input.screens);
+  if (unrunnable !== undefined) return unrunnable;
+  if (input.everyMinutes !== undefined && !(ROUTINE_CADENCES as readonly number[]).includes(input.everyMinutes)) {
+    return `invalid_cadence: every ${input.everyMinutes} minutes isn't a cadence. Use one of ${ROUTINE_CADENCES.join(", ")}.`;
+  }
+  return undefined;
+}
+
+/** Why an `unmatched` subscription is refused on `flowKind`: only a coordinator reads `inferredWork`, so only its session hears what nobody else heard. */
+export function unmatchedRefusal(input: Pick<SubscribeInput, "unmatched">, flowKind: string | undefined): string | undefined {
+  return input.unmatched === true && flowKind !== COORDINATOR_FLOW
+    ? "not_a_coordinator: only a coordinator's conversation can hear what no other subscription heard (unmatched)."
+    : undefined;
+}
+
 function hearer(ctx: BlockContext, target: SubscribeTarget | undefined): { refused: string } | { sessionId: string; worker: string; taskId?: string } {
   if (target !== undefined) return { sessionId: target.sessionId, worker: target.worker, ...(target.taskId === undefined ? {} : { taskId: target.taskId }) };
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
@@ -343,22 +379,10 @@ async function writeSubscription(
 ): Promise<SubscribeOutcome> {
   const hears = hearer(ctx, target);
   if ("refused" in hears) return hears;
+  const settings = subscriptionInputRefusal(providers, input);
+  if (settings !== undefined) return { refused: settings };
   const thread = input.thread.trim();
-  if (thread.length === 0) return { refused: "no_thread: name one thread key to follow; a sentence alone selects nothing." };
-  const provider = providers.find((p) => p.provider === input.provider);
-  if (provider === undefined) {
-    return { refused: `no_provider: "${input.provider}" isn't one you can subscribe on. You can: ${providers.map((p) => p.provider).join(", ") || "none"}.` };
-  }
-  if (!thread.startsWith(`${provider.provider}:`)) {
-    return { refused: `wrong_provider: a ${provider.provider} thread key starts with "${provider.provider}:".` };
-  }
-  const undeclared = provider.refuses?.(thread, input.kinds);
-  if (undeclared !== undefined) return { refused: undeclared };
-  const unrunnable = unrunnableScreen(provider, input.screens);
-  if (unrunnable !== undefined) return { refused: unrunnable };
-  if (input.everyMinutes !== undefined && !(ROUTINE_CADENCES as readonly number[]).includes(input.everyMinutes)) {
-    return { refused: `invalid_cadence: every ${input.everyMinutes} minutes isn't a cadence. Use one of ${ROUTINE_CADENCES.join(", ")}.` };
-  }
+  const provider = providers.find((p) => p.provider === input.provider)!;
   if (!(await provider.canRead(thread, ctx))) return { refused: `not_readable: you can't read "${thread}", so you can't follow it.` };
 
   const identity = ctx.session.identity as { id: string; userId?: string; orgId?: string; tenantId?: string };
@@ -371,10 +395,8 @@ async function writeSubscription(
     const view = await requestHostOf(ctx)?.sessions?.read(identity.id);
     flowKind = view === undefined ? undefined : (view.flowId ?? view.flowKind);
   }
-  // Only a coordinator reads `inferredWork`, so only its session hears what nobody else heard.
-  if (input.unmatched === true && flowKind !== COORDINATOR_FLOW) {
-    return { refused: "not_a_coordinator: only a coordinator's conversation can hear what no other subscription heard (unmatched)." };
-  }
+  const unmatched = unmatchedRefusal(input, flowKind);
+  if (unmatched !== undefined) return { refused: unmatched };
   const tenantId = target === undefined ? tenantOf(ctx) : target.tenantId;
   const id = write.id ?? (await subscriptionIdOf(hears.sessionId, provider.provider, thread, tenantId));
   const self = await provider.self?.(ctx, { sessionId: hears.sessionId });

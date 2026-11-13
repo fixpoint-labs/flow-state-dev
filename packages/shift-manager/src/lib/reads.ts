@@ -20,8 +20,8 @@
  *    session. A Lab that serves no roster flow names no organization, and
  *    gets the refusal too: Shift Manager never draws a Lab under an unknown
  *    one (ER-4). A user who holds no session of their own on the roster flow
- *    yet has one opened on it (`withReaderSessions`), which the projects,
- *    the routines and usage still read through.
+ *    yet has one opened on it (`withReaderSessions`), which the project
+ *    reads still go through.
  * 3. **The inventory**: the organization's worker collection, read by org
  *    scope and its published key pattern with no session; every flow that
  *    declares it (the roster flow does) serves the one collection. Nothing
@@ -1036,8 +1036,7 @@ export function createLabReader(client: Client): LabReader {
     }
     if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(client.userId, "its identity read names none") } };
 
-    // The user's own session on the roster flow, which the project reads, the
-    // routines and usage still read through.
+    // The user's own session on the roster flow, which the project reads still go through.
     const readers = await withReaderSessions(sessions);
     sessions = readers.sessions;
 

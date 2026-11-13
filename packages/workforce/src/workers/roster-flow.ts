@@ -2,7 +2,8 @@
 /**
  * The roster flow: a flow that runs no worker, which answers a user's roster
  * and changes it. Its `roster` view joins the user's own workers and the
- * standard ones at user scope, with no session (`roster-view.ts`); its roster
+ * standard ones at user scope, with no session (`roster-view.ts`), and its
+ * `workerUsage` view reads what each of them spent (`worker-usage.ts`); its roster
  * actions (hire, fork, edit, fire, reset) run in a session of it, and it adds
  * no endpoint. It declares the projects at both scopes and
  * the workstream entries too, so the same session reads the projects its user
@@ -22,13 +23,16 @@
  * an app that lists every flow's sessions filters this flow kind out.
  */
 import { defineFlow } from "@flow-state-dev/core";
+import type { ViewDefinition } from "@flow-state-dev/core";
 import type { ActionEntry, BlockDefinition, SchedulesConfig } from "@flow-state-dev/core/types";
+import { ROUTINES_VIEW } from "../routines/keys";
 import { defineWorkerInventoryCollection } from "../inventory/collections";
 import { workerMessagesResources } from "../messages/message-log";
 import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
-import { ROSTER_FLOW, ROSTER_VIEW } from "./keys";
+import { ROSTER_FLOW, ROSTER_VIEW, WORKER_USAGE_VIEW } from "./keys";
 import { defineRosterView } from "./roster-view";
+import { defineWorkerUsageView } from "./worker-usage";
 
 /**
  * Define the roster flow over `installation`. Register what it returns.
@@ -37,13 +41,13 @@ import { defineRosterView } from "./roster-view";
  * @param actions Actions to mount on it, such as the hire, fork, edit and fire
  *   blocks (`createWorkerHireBlocks`). Omitted, it reads and writes nothing.
  * @param routines The routine collections, the resolver clock fires go
- *   through (`defineScheduledWork`), and the declared routines' seed, run as
- *   each request starts. Omitted, it keeps no routines.
+ *   through (`defineScheduledWork`), the declared routines' seed, run as each
+ *   request starts, and the `routines` view. Omitted, it keeps no routines.
  */
 export function defineWorkerRosterFlow(
   installation: WorkerInstallation,
   actions: Record<string, ActionEntry> = {},
-  routines?: { resources: Record<string, unknown>; schedules: SchedulesConfig; seed?: BlockDefinition<any, any> }
+  routines?: { resources: Record<string, unknown>; schedules: SchedulesConfig; seed?: BlockDefinition<any, any>; view?: ViewDefinition }
 ) {
   return defineFlow({
     kind: ROSTER_FLOW,
@@ -57,7 +61,13 @@ export function defineWorkerRosterFlow(
     ...(routines === undefined ? {} : { schedules: routines.schedules }),
     ...(routines?.seed === undefined ? {} : { request: { onStarted: routines.seed } }),
     actions,
-    // FIX-2623: the roster, answered at user scope with no session.
-    views: { [ROSTER_VIEW]: defineRosterView(installation) }
+    // FIX-2623: the roster, answered at user scope with no session. FIX-2624:
+    // and what each of the user's workers spent, the same way.
+    views: {
+      [ROSTER_VIEW]: defineRosterView(installation),
+      [WORKER_USAGE_VIEW]: defineWorkerUsageView(installation),
+      // FIX-2624: the user's routines, the app's declared ones joined in.
+      ...(routines?.view === undefined ? {} : { [ROUTINES_VIEW]: routines.view })
+    }
   });
 }

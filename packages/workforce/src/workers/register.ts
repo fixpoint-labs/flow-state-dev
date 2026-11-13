@@ -19,8 +19,8 @@ import { setTaskChainLimit } from "./chain-limit";
 import { setMessageLimits, type MessageLimits } from "../messages/message-limits";
 import { messageReceivedProblem } from "../messages/message-received-entry";
 import { sendWithoutPassProblem } from "../messages/delivery";
-import { checkDeclaredRoutines, defineRoutineActions, type RoutinesOptions } from "../routines/routines";
-import { setRoutinesReach } from "../routines/routines-options";
+import { checkDeclaredRoutines, defineRoutineActions, seedDeclaredRoutines, type RoutinesOptions } from "../routines/routines";
+import { setRoutineSeed, setRoutinesReach } from "../routines/routines-options";
 import { assertPollCadence } from "../subscriptions/poll";
 import { defineScheduledWork } from "../schedules/scheduled-work";
 import type { WorkerInstallation } from "./installation";
@@ -90,6 +90,8 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
   }
   // The routines capability a worker flow uses, and the service flow's polling, read these from here.
   setRoutinesReach(installation, options.routines ?? {});
+  // FIX-2624: every worker request seeds the app's declared routines for its user, as a roster request does.
+  setRoutineSeed(installation, (ctx) => seedDeclaredRoutines(ctx, installation, options.routines ?? {}));
   checkWorkerFlows(installation.workerFlows());
   checkDeclaredRoutines(options.routines?.declared ?? []);
   const copies: FlowInstance[] = [];
@@ -137,7 +139,7 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
       reset: { inputSchema: reset.inputSchema, block: reset },
       ...routines.actions
     },
-    { resources: routines.resources, schedules: scheduled.schedules, seed: routines.seed }
+    { resources: routines.resources, schedules: scheduled.schedules, seed: routines.seed, view: routines.view }
   );
   copies.push(roster() as unknown as FlowInstance);
   return copies;

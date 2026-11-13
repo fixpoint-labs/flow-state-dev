@@ -60,7 +60,8 @@ import {
   commandCheck,
   harnessDrainBudgetMs,
   harnessReadinessView,
-  harnessUsageAction,
+  harnessUsageFlow,
+  HARNESS_USAGE_FLOW,
   resolveOwnership,
   upgradeKeptTurns,
   type HarnessFeeds,
@@ -122,8 +123,6 @@ import {
   type ProjectBlocks,
   type WorkstreamBlocks,
   backfillBoardWakes,
-  WORKER_USAGE_ACTION,
-  workerUsageAction,
 } from "@flow-state-dev/workforce";
 import {
   readDeclaredRoster,
@@ -304,9 +303,6 @@ async function loadTree(root: string): Promise<DeclaredRoster> {
  * Manager: it doesn't name the project coordinator itself, and reads it here.
  */
 const PROJECT_SETUP_VIEW = "projectSetup";
-
-/** The projects flow's action that answers how much of each harness's subscription is used. */
-export const HARNESS_USAGE_ACTION = "harnessUsage";
 
 // FIX-2624.
 /**
@@ -565,10 +561,10 @@ export interface OpenLabOptions {
    */
   errorReporter?: LabErrorReporter;
   /**
-   * How to read each harness's subscription usage, by harness name, for the
-   * Usage view and any worker that asks (`harnessUsage` on the projects
-   * flow). A reader runs only when someone asks for a fresh number. Absent:
-   * the query lists only what a harness recorded during its runs.
+   * How to read each harness's subscription usage, by harness name, served
+   * by the usage flow (`harnessUsageFlow`) to the Usage view. A reader runs
+   * only on a Re-check. Absent: the view lists only what a harness recorded
+   * during its runs.
    */
   usage?: Readonly<Record<string, HarnessUsageReader>>;
   /**
@@ -1246,12 +1242,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     actions: {
       ...projectBlocks.actions,
       ...workstreamBlocks.actions,
-      // How much of each harness's subscription the caller has used. Here
-      // because Shift Manager reads this flow first, so the Usage view and a
-      // worker call one address.
-      [HARNESS_USAGE_ACTION]: harnessUsageAction({ readers: options.usage ?? {} }),
-      // How many tokens each of the caller's workers used, beside it (FIX-2145).
-      [WORKER_USAGE_ACTION]: workerUsageAction(installation),
     },
     // Which harnesses can run here: what the start logged, read again on `{ refresh: true }`.
     // A view, read with no session (`harnessReadinessViewRef(PROJECTS_FLOW)`).
@@ -1280,6 +1270,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         ? {}
         : { [ERROR_REPORTER_INTAKE_FLOW]: (defineErrorReporterIntakeFlow({ reporter }) as unknown as () => FlowInstance)() }),
       [PROJECTS_FLOW]: projectsFlow,
+      // How much of each harness's subscription the caller has used: its view, and
+      // the Re-check the usage collection's `runBy` names (FIX-2624).
+      [HARNESS_USAGE_FLOW]: harnessUsageFlow({ readers: options.usage ?? {} })(),
       [service.id]: service,
     },
     copies,

@@ -22,6 +22,7 @@ export {
   type RecordedWorkClient,
 } from "./recorded-work";
 export { harnessReadinessViewRef } from "./readiness-view-ref";
+export { harnessUsageViewRef, recheckHarnessUsage } from "./usage-view-ref";
 export { reviewDetail, type ReviewCheck, type ReviewDetail, type ReviewLand } from "./review-detail";
 export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type WorkPlaceViewer } from "./work-place";
 export {
