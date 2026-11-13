@@ -42,7 +42,7 @@ import { PLANNER_FLOW, definePlannerFlow } from "./workforce/flows/workers/plann
 import { WORKER_FLOW, defineWorkerFlow, type WorkerControl } from "./workforce/flows/workers/worker.mts";
 
 /** The authored tree — the one path this code names. Everything else is walked. */
-export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
+const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
 /** Who the lab runs as — one user, one principal. */
 export const LAB_USER_ID = "u_multi_worker_collab";
@@ -54,7 +54,7 @@ export const LAB_DB_PATH = ".fsdev/data/multi-worker-collab.db";
 export const LAB_ORG_ID = DEFAULT_ORG_ID;
 
 /** The flow the inventory's worker entries are written from: the lab's own, carrying the writer. */
-export const INVENTORY_WRITER_FLOW = "inventory-writer";
+const INVENTORY_WRITER_FLOW = "inventory-writer";
 
 /**
  * The model a best-fit coordinator's evaluator would run on. The queue
@@ -63,7 +63,7 @@ export const INVENTORY_WRITER_FLOW = "inventory-writer";
 const ROUTE_MODEL = "openai/gpt-5.4-mini";
 
 /** Desk key -> the planner's delegate a row for that desk is filed for. The app's wiring — see the module header. */
-export const ROUTES: Readonly<Record<string, string>> = {
+const ROUTES: Readonly<Record<string, string>> = {
   build: "eng.builder",
   review: "eng.reviewer",
 };

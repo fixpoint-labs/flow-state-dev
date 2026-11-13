@@ -120,7 +120,7 @@ export const RUN_LAB_FAILURE = "The audit note's folder is read only.";
  * suspend on a user's approval of this, after the opening; `holdAsk`: only
  * once the Lab's `releaseAsk()` is called; `fail`: throw this, after the opening.
  */
-export type RunScript = { steps?: number; holdMs?: number; ask?: string; holdAsk?: boolean; fail?: string };
+type RunScript = { steps?: number; holdMs?: number; ask?: string; holdAsk?: boolean; fail?: string };
 
 /** The open Lab's ask gate: a `holdAsk` run asks once it resolves. One Lab is open at a time. */
 let askGate: { opened: Promise<void>; open(): void } = gate();

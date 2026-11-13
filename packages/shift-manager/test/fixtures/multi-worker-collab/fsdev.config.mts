@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file -- `fsdev` loads it by path (`--config`), so no import reaches it.
 /**
  * What `fsdev dev` serves — the whole of serving the hire.
  *

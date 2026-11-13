@@ -36,7 +36,7 @@ export interface TreeEdits {
 }
 
 /** A worker's folder under the tree, from its id: `team.worker`, or an org worker's bare id. */
-export function workerFolder(id: string): string {
+function workerFolder(id: string): string {
   const dot = id.indexOf(".");
   return dot < 0 ? join("org", "workers", id) : join("teams", id.slice(0, dot), "workers", id.slice(dot + 1));
 }

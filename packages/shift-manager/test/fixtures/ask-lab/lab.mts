@@ -49,7 +49,7 @@ import { fileURLToPath } from "node:url";
 import { ASKER_FLOW, defineAskerFlow } from "./asker.mts";
 
 /** The tree this Lab reads. */
-export const ASK_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
+const ASK_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
 
 /** One more worker, `ops.shift-coordinator`, that {@link AskLabOptions.shiftCoordinator} adds to the tree. */
 const SHIFT_COORDINATOR_TREE = join(dirname(fileURLToPath(import.meta.url)), "with-shift-coordinator");
@@ -58,7 +58,7 @@ const SHIFT_COORDINATOR_TREE = join(dirname(fileURLToPath(import.meta.url)), "wi
 export const ASK_LAB_USER_ID = "u_ask_lab";
 
 /** Read the tree, refusing it whole if anything did not load. The workforce kit reads it again, and claims its files. */
-export async function readAskLabTree(root: string = ASK_LAB_TREE): Promise<WorkforceFolder> {
+async function readAskLabTree(root: string = ASK_LAB_TREE): Promise<WorkforceFolder> {
   return readWorkforceFolder({ path: root, claim: () => undefined });
 }
 
@@ -72,7 +72,7 @@ function servedTree(shiftCoordinator: boolean): string {
 }
 
 /** The organization a bearer-gated ask-lab binds its user to. */
-export const ASK_LAB_ORG_ID = "org_ask_lab";
+const ASK_LAB_ORG_ID = "org_ask_lab";
 
 /**
  * A fail-closed resolver: the bearer's principal, or a 401 when none was
