@@ -14,7 +14,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { SuspensionResolverProvider, type SuspensionResolver } from "@flow-state-dev/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LandedOutcome, ReviewHold, shortBranch, takesReviewVerdict, NO_RESOLVER_UNANSWERABLE, type ReviewDetail } from "../../registry/components/review-hold";
+import { LandedOutcome, LandFailure, orderedLands, ReviewHold, shortBranch, takesReviewVerdict, NO_RESOLVER_UNANSWERABLE, type ReviewDetail } from "../../registry/components/review-hold";
 import { SuspensionCard } from "../../registry/components/suspension-card";
 import { SessionItemsProvider } from "../../registry/components/session-items-context";
 
@@ -188,6 +188,26 @@ describe("a review whose host can land the work offers two labelled accepts", ()
     rerender(<ReviewHold review={{ ...review, lands: [...review.lands] }} holdId="susp-3" answer={answer} />);
     expect(screen.getByRole("button", { name: "Retry: Merge locally" })).toBeTruthy();
     expect(screen.queryByText("Accepted")).toBeNull();
+  });
+
+  // A host that offers the accepts outside the card (a thread's own accept)
+  // orders them with the same helper, so a retry is first in both places.
+  it("orders the ways to land with a failed landing's way first, each way once, and keeps the review's order otherwise", () => {
+    const lands = ["pull-request", "merge"] as const;
+    expect(orderedLands(lands, null)).toEqual(["pull-request", "merge"]);
+    expect(orderedLands(lands, { land: "merge" })).toEqual(["merge", "pull-request"]);
+    expect(orderedLands(lands, { land: "pull-request" })).toEqual(["pull-request", "merge"]);
+    // A copy, so a caller sorting the result never reorders the review's own list.
+    expect(orderedLands(lands, null)).not.toBe(lands);
+  });
+
+  it("the failure line says which landing failed in its own words, and draws nothing when none did", () => {
+    const { container } = render(<LandFailure failed={null} />);
+    expect(container.textContent).toBe("");
+    render(<LandFailure failed={{ land: "pull-request", message: "GH005: refs longer than 255 bytes." }} />);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("Opening the PR failed: GH005: refs longer than 255 bytes.");
+    expect(alert.getAttribute("data-land-failed")).toBe("pull-request");
   });
 
   it("the done state says where the work went and what comes next", () => {
