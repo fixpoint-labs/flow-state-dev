@@ -140,11 +140,12 @@ describe("the refusal (V2, BR-3)", () => {
   });
 
   it("a Lab that names no organization for the user gets the refusal, never an unknown one", async () => {
-    // A Lab that holds no session of theirs and serves no roster flow to open one on.
+    // A Lab that holds no session of theirs and serves no roster flow: every roster route,
+    // its identity read included (FIX-2624), answers the engine's unknown-flow 404.
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
-      /\/api\/flows\/workforce-roster\/sessions$/.test(String(input instanceof Request ? input.url : input))
-        ? new Response(JSON.stringify({ error: "no flow" }), { status: 404 })
+      /\/api\/flows\/workforce-roster\//.test(String(input instanceof Request ? input.url : input))
+        ? new Response(JSON.stringify({ error: 'Unknown flow "workforce-roster"' }), { status: 404 })
         : real(input, init),
     );
     await openApp("/inbox", { conversations: false });
