@@ -117,7 +117,7 @@ interface BuilderConfig {
  *
  * @param options The installation, where finished work leaves its line, the
  *   host's gate, and whether the `work` entry takes a conversation's tasks.
- * @returns The flow `hireWorkforce` registers one copy of, for every builder.
+ * @returns The flow the workforce kit registers one copy of, for every builder.
  */
 export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
   const { installation, outbox } = options;
