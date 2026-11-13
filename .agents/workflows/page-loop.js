@@ -390,16 +390,14 @@ ${pending.map((f, i) => `${i + 1}. [${f.from}] ${one(f.text)}`).join('\n')}`,
   const read = await coldRead(reads.length + 1)
   if (!read) return failed('pass 9')
   reads.push(read)
-  if (pending.length) {
-    escalated = pending
+  const gaps = read.gaps.map((g) => ({ from: 'pass 9', text: g }))
+  // At the cap, everything still open goes to the owner in one list: pass 4 and 7, and this read's gaps.
+  if (pending.length || (gaps.length && rounds.length >= MAX_ROUNDS)) {
+    escalated = [...pending, ...gaps]
     break
   }
-  if (!read.gaps.length) break
-  if (rounds.length >= MAX_ROUNDS) {
-    escalated = read.gaps.map((g) => ({ from: 'pass 9', text: g }))
-    break
-  }
-  pending = read.gaps.map((g) => ({ from: 'pass 9', text: g }))
+  if (!gaps.length) break
+  pending = gaps
 }
 
 /** Pass 9: READERS fresh agents with the page text and the questions, then one grader with the key. */
@@ -503,10 +501,22 @@ const written = await agent(
 ${RECORD_TEXT}RECORD>>>`,
   { label: 'record', phase: 'Record', schema: RECORD_SCHEMA },
 )
-if (!written) log(`the record agent returned nothing; the record text is in the result, for ${RECORD}`)
+// A closed page whose record is not on disk, or does not pass the check CI runs, is not done.
+let status = escalated ? 'escalated' : 'complete'
+let at
+if (!written || !written.written) {
+  log(`no record written; the record text is in the result, for ${RECORD}`)
+  status = 'failed'
+  at = 'record'
+} else if (!escalated && written.checkerExit !== 0) {
+  log(`the record check failed on a page that closed:\n${written.checkerOutput}`)
+  status = 'failed'
+  at = 'record check'
+}
 
 return {
-  status: escalated ? 'escalated' : 'complete',
+  status,
+  ...(at ? { at } : {}),
   page: A.page,
   path: PATH,
   record: RECORD,

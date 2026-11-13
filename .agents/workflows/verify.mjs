@@ -10497,7 +10497,7 @@ const LOOP_PAGE = '---\ntitle: State and scopes\ntype: concept\n---\n\n# State a
  * A stub for every page-loop agent, by label. `editor` lists pass 7's verdicts in order (the last
  * repeats); `missed` lists, per cold read, the question numbers every reader gets wrong.
  */
-function loopResponder({ status = 'new', pageExists = false, found = true, editor = ['SHIP'], untrue = [], depthRows = [], missed = [], questions = loopQuestions, dead = [] } = {}) {
+function loopResponder({ status = 'new', pageExists = false, found = true, editor = ['SHIP'], untrue = [], depthRows = [], missed = [], questions = loopQuestions, dead = [], recorded = { written: true, checkerExit: 0, checkerOutput: 'ok' } } = {}) {
   let editorCalls = 0
   return (prompt, opts) => {
     const label = opts.label || ''
@@ -10519,7 +10519,7 @@ function loopResponder({ status = 'new', pageExists = false, found = true, edito
       const wrong = missed[Number(label.split(':')[1]) - 1] || []
       return { grades: [1, 2, 3].flatMap((reader) => questions.map((_, i) => ({ reader, question: i + 1, correct: !wrong.includes(i + 1) }))) }
     }
-    if (label === 'record') return { written: true, checkerExit: 0, checkerOutput: 'ok' }
+    if (label === 'record') return recorded
     throw new Error(`page-loop stub: no response for ${label}`)
   }
 }
@@ -10640,6 +10640,26 @@ check('page-loop: a gap that outlasts the cap escalates with the gap open', asyn
   assert.equal(result.rounds, 3)
   assert.equal(result.open[0].from, 'pass 9')
   assert.match(checkRecord(result.recordText).out, /record: no pass 10/)
+})
+
+check('page-loop: at the cap, the last cold read’s gaps join what pass 4 and 7 left open', async () => {
+  const { result } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ editor: ['REVISE'], missed: [[3]] }) })
+  assert.equal(result.status, 'escalated')
+  assert.deepEqual([...new Set(result.open.map((f) => f.from))], ['pass 7', 'pass 9'])
+  assert.match(result.recordText, /^- \[pass 9\] .*Q-THREE/m)
+})
+
+check('page-loop: a record not written, or failing the check on a page that closed, is not complete', async () => {
+  const unwritten = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ dead: ['record'] }) })
+  assert.equal(unwritten.result.status, 'failed')
+  assert.equal(unwritten.result.at, 'record')
+  assert.ok(unwritten.result.recordText.includes('## 9 · Cold read'), 'the text is still returned, so the caller can write it')
+  const red = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ recorded: { written: true, checkerExit: 1, checkerOutput: 'FAIL x' } }) })
+  assert.equal(red.result.status, 'failed')
+  assert.equal(red.result.at, 'record check')
+  // An escalated record is meant to fail the check (no pass 10), so that is no failure of the run.
+  const esc = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ editor: ['REVISE'], recorded: { written: true, checkerExit: 1, checkerOutput: 'record: no pass 10' } }) })
+  assert.equal(esc.result.status, 'escalated')
 })
 
 check('page-loop: a kept page skips the draft, and the record says so', async () => {

@@ -428,8 +428,8 @@ REVISE. Pass 5 and 6 findings are taken in the first round only. A cold-read gap
 a new cold read: fresh readers, the same questions. A page gets at most three rounds, the same three
 as [who writes them](#who-writes-them). A page with findings still open after the third is
 escalated: pass 9 still runs, and the record lists every round, opens with a `Loop: escalated` line
-naming what is open, and has no pass 10. The record check fails it until the owner reads the page,
-records pass 10 as `Read`, and drops the line. On a page that closed, the loop records pass 10 as
+naming what is open, and has no pass 10. The record check fails it until pass 10 is there: the
+owner reads the page, records pass 10 as `Read`, and drops the line. On a page that closed, the loop records pass 10 as
 `Not sampled`; the owner rewrites it when they read the page. PR feedback's twelve-round cap is a
 different limit and does not apply here.
 
