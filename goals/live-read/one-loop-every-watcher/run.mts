@@ -339,14 +339,13 @@ try {
   // hire, then the pins' watcher by a pin.
   const recover = async (who: readonly Watcher[], write: () => Promise<unknown>, shows: (w: Watcher) => boolean) => {
     for (const w of who) failNext.add(w);
-    const failedAt = Date.now();
     await write();
     await waitFor(() => who.every(shows), RECOVER_MS);
     // Graded per watcher, so a control that leaves one watcher green shows which.
     for (const w of who) {
       check(`b:failed-once ${w}`, !failNext.has(w), failNext.has(w) ? "never read after the write" : "its read failed once");
       const ok = shows(w);
-      check(`b:recovers ${w}`, ok, ok ? `showed the change within ${RECOVER_MS} ms of the write (${Date.now() - failedAt} ms for the group)` : `not within ${RECOVER_MS} ms`);
+      check(`b:recovers ${w}`, ok, ok ? `showed the change within ${RECOVER_MS} ms of the write` : `not within ${RECOVER_MS} ms`);
     }
   };
   const smBefore = snapshotReadAt;
