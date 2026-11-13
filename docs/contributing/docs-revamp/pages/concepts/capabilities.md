@@ -148,7 +148,7 @@ Helper functions a capability exposes on `ctx.cap.orders` are covered in [Write 
 
 ## How it fits with the others
 
-A kit packages a whole feature, with its flows and screens, that an app installs with one config object. A kit can contain capabilities, but a capability does not contain kits: it attaches to one block. Reach for a kit when the feature has screens or flows of its own, and a capability when you are bundling one ability for blocks. A capability can bring tools, but a tool is still a block the model calls, covered in [Generators and tools](./generators-and-tools.md).
+A kit packages a whole feature, with its flows and screens, that an app installs with one config object. A kit can contain capabilities, but a capability does not contain kits: it attaches to one block. Reach for a kit when the feature has screens or flows of its own, and a capability when you are bundling one ability for blocks. A capability can bring tools, but a tool is a block the model calls, covered in [Generators and tools](./generators-and-tools.md).
 
 ## Next
 

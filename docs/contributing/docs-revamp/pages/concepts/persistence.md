@@ -72,7 +72,7 @@ To use one store in development and another in production, give `stores` a named
 
 A session belongs to one user in one organization, fixed when it is created.
 
-User state is keyed by the user and the organization together. Alice, a customer of both `acme` and `globex`, has two user records, so the `plan` she saves in one is not there in the other. Org state is keyed by the organization alone, and every user in `acme` shares it. [Auth and tenancy](./auth-and-tenancy.md) covers where the user and organization come from.
+User state is keyed by the user and the organization together, so one person has one user record per organization. Alice, a customer of both `acme` and `globex`, has two. The `plan` she saves in `acme` is not there when she opens the support desk in `globex`. Bob, in `acme`, has a record of his own, so he does not see Alice's `plan` either. Org state is keyed by the organization alone, and every user in `acme` shares it. [Auth and tenancy](./auth-and-tenancy.md) covers where the user and organization come from.
 
 ## A run that is waiting
 
@@ -82,7 +82,7 @@ A run can stop for a user, to approve a refund, say. On SQLite or Postgres that 
 
 - **Data that outlives the process.** On SQLite or Postgres, `acme`'s sessions, Alice's `plan` and every resource are there after a restart.
 - **Runs that wait for a user.** An approval can sit overnight and be answered after a deploy.
-- **No filtering code.** A user in two organizations has two records, so no block writes `where org = ...`.
+- **No filtering code.** A record is per user and per organization, so what Alice saves in `acme` is never read in `globex`, and no block writes `where org = ...`.
 - **One line to change.** A flow never names a store, so moving `support` from SQLite to Postgres edits the `stores` line and nothing in the flow.
 
 ## How it fits with the others
