@@ -153,6 +153,7 @@ export {
 } from "./project-read";
 
 export { parseProjectRef, parseWorkstreamRef, projectRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
+export { PROJECTS_FLOW, PROJECTS_PATTERN } from "./project-keys";
 
 export { workstreamOpenedEntry } from "./workstream-lead";
 

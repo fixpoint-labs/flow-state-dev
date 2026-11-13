@@ -374,7 +374,7 @@ function leadDiffers(id: string, lead: string): ProjectRefusedError {
  * @throws When a lead flow declares no `onWorkstreamOpened` entry.
  * @example
  *   const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [agentFlow] });
- *   defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.actions } });
+ *   defineFlow({ kind: PROJECTS_FLOW, actions: { ...projects.actions, ...workstreams.actions } });
  */
 export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): WorkstreamBlocks {
   const { installation } = options;

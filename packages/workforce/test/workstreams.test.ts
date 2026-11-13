@@ -30,7 +30,7 @@ import {
 } from "../src/index";
 import { createWorkerInstallation } from "../src/workers/installation";
 import { ROSTER_FLOW } from "../src/workers/keys";
-import { bootProjectsHost, ORG, refusal, type ProjectsHost } from "./projects-harness";
+import { bootProjectsHost, ORG, refusal, type Caller, type ProjectsHost } from "./projects-harness";
 
 const apollo = { visibility: "shared" as const, id: "apollo" };
 const notes = { visibility: "private" as const, id: "notes" };
@@ -415,9 +415,36 @@ describe("an entry's report", () => {
     expect((await read("bob", { project: apollo, owner: "alice", id: "checkout" })).value).toEqual({ report: "ALICE-REPORT" });
     expect((await read("alice", { project: apollo, owner: "alice", id: "checkout" })).value).toEqual({ report: "ALICE-REPORT" });
     expect((await read("alice", { project: apollo, owner: "alice", id: "nowhere" })).value).toEqual({ report: null });
-    // A private address reaches only the reader's own user scope: Bob reading "notes" reads his own, which is empty.
-    expect((await read("bob", { project: notes, owner: "alice", id: "checkout" })).value).toEqual({ report: null });
     expect((await h.runtime.stores.session.list({ parentage: "all" })).length).toBe(before);
+  });
+
+  // FIX-2624: the view reads in the caller's own cells, so its reach is the caller's, never the owner's.
+  it("reaches another owner's report only in a shared project of the reader's own org", async () => {
+    const h = await boot();
+    await open(h, "alice", "checkout", "alice-lead");
+    await h.ok("alice", "lab", await h.lab("alice"), "updateWorkstream", { project: apollo, id: "checkout", report: "SHARED-REPORT" });
+    await h.ok("alice", "lab", await h.lab("alice"), "createProject", { id: "notes", title: "Notes", visibility: "private" });
+    await open(h, "alice", "drafts", "alice-notes-lead", notes);
+    await h.ok("alice", "lab", await h.lab("alice"), "updateWorkstream", { project: notes, id: "drafts", report: "PRIVATE-REPORT" });
+
+    const read = async (user: string, org: Caller, input: { project: typeof apollo | typeof notes; owner: string; id: string }) =>
+      (await createClient({ userId: user, fetcher: h.fetcherFor(user, org) }).view(workstreamReportView, input)).value.report;
+    const shared = { project: apollo, owner: "alice", id: "checkout" };
+    const own = { project: notes, owner: "alice", id: "drafts" };
+    // The owner reads both, so the two below read nothing for the reach, not for want of a report.
+    expect(await read("alice", ORG, shared)).toBe("SHARED-REPORT");
+    expect(await read("alice", ORG, own)).toBe("PRIVATE-REPORT");
+    // (a) Bob, in her org, reads her entry in the shared project.
+    expect(await read("bob", ORG, shared)).toBe("SHARED-REPORT");
+    // (b) Bob gets nothing for her entry in her private project.
+    expect(await read("bob", ORG, own)).toBeNull();
+    // (c) Carol, in another org, gets nothing for either; nor does Bob, signed in to another org.
+    expect(await read("carol", "beta", shared)).toBeNull();
+    expect(await read("carol", "beta", own)).toBeNull();
+    expect(await read("bob", "beta", shared)).toBeNull();
+    // A tenant does not fence an org cell: user and org scopes are shared across tenants by design
+    // (docs/architecture/state-and-scopes.md, "tenantId"), so Bob in another tenant of the same org reads it.
+    expect(await read("bob", { org: ORG, tenant: "other" }, shared)).toBe("SHARED-REPORT");
   });
 });
 

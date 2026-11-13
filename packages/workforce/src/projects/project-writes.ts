@@ -36,6 +36,7 @@ import { defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
 import type { ActionConfig, BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { retryOnConflict } from "./cas-retry";
+import { CHECK_REPOSITORY_VIEW } from "./project-keys";
 import {
   PROJECTS_RESOURCE,
   projectAddressSchema,
@@ -480,7 +481,9 @@ async function projectRowToChange(ctx: BlockContext, named: ProjectAddress | und
 
 /**
  * Build the project writes, the project read, the caller's project list and
- * the project files read.
+ * the project files read. Register them on a flow at `PROJECTS_FLOW`:
+ * the projects collections' `runBy` names that flow, so a client's project
+ * write runs there.
  *
  * @param options `mcpServers`: the MCP server names this host offers its
  *   projects. Absent: none, and a project can name no server.
@@ -488,7 +491,7 @@ async function projectRowToChange(ctx: BlockContext, named: ProjectAddress | und
  *   `ProjectBlocksOptions.checkRepository`).
  * @example
  *   const projects = defineProjectBlocks({ mcpServers: ["linear"] });
- *   defineFlow({ kind: "lab", actions: { ...projects.actions }, views: { ...projects.views } });
+ *   defineFlow({ kind: PROJECTS_FLOW, actions: { ...projects.actions }, views: { ...projects.views } });
  */
 export function defineProjectBlocks(options: ProjectBlocksOptions = {}): ProjectBlocks {
   const offered = [...(options.mcpServers ?? [])];
@@ -543,6 +546,6 @@ export function defineProjectBlocks(options: ProjectBlocksOptions = {}): Project
         description: "Read the files a project keeps: each file's path under the project and its size in bytes. Members only."
       }
     },
-    views: options.checkRepository === undefined ? {} : { checkRepository: defineCheckRepositoryView(options.checkRepository) }
+    views: options.checkRepository === undefined ? {} : { [CHECK_REPOSITORY_VIEW]: defineCheckRepositoryView(options.checkRepository) }
   };
 }
