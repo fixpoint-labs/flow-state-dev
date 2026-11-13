@@ -6,7 +6,7 @@ import { modeOfWorker } from "../modes";
 import { cn } from "../lib/utils";
 import { Composer } from "./Composer";
 import { PaneHeader } from "./PaneHeader";
-import { WorkingDots } from "./WorkingLine";
+import { WorkingDots } from "./WorkingDots";
 import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
 import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlier } from "./LoadEarlier";
