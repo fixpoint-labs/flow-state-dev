@@ -47,7 +47,7 @@ import { createInMemoryBus } from "./in-memory-bus";
 import { DEFAULT_RUNTIME_LOGGER } from "../execution/logging";
 import { FlowStateConfigError } from "../errors/flow-error";
 import type { BusTopic, ChangeBus, ChangeNotice } from "./types";
-import type { ChangeKind } from "@flow-state-dev/core/internal";
+import { unionNoticeIds, type ChangeKind } from "@flow-state-dev/core/internal";
 import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry } from "../stores/types";
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 
@@ -130,10 +130,21 @@ function noticeKey(notice: ChangeNotice): string {
   return `${scope}\u0000${tenantId}\u0000${id}\u0000${resource ?? ""}\u0000${notice.kind}\u0000${notice.origin?.requestId ?? ""}`;
 }
 
+// FIX-2625.
+/**
+ * `next` folded onto the notice `held` for the same topic, kind and origin:
+ * the ids of both, unioned up to the cap, or none when either names none.
+ */
+function fold(held: ChangeNotice | undefined, next: ChangeNotice): ChangeNotice {
+  const ids = next.ids === undefined ? undefined : unionNoticeIds(held === undefined ? [] : held.ids, next.ids);
+  const { ids: _named, ...notice } = next;
+  return ids === undefined ? notice : { ...notice, ids };
+}
+
 // FIX-1506.
 /**
  * Queue `notices` for `bus`, to go out at the end of this microtask turn,
- * folded by topic, kind and origin. Never throws, and a failed publish never
+ * folded by topic, kind and origin, their ids unioned (`fold`). Never throws, and a failed publish never
  * fails the write that raised it. Every publisher goes through this one:
  * the request and session store wrappers here, and the run's resource and
  * scope-state seams and the client's resource routes, and the
@@ -143,7 +154,10 @@ export function publishNotices(bus: ChangeBus, notices: readonly ChangeNotice[])
   let queued = pending.get(bus);
   const first = queued === undefined;
   if (queued === undefined) pending.set(bus, (queued = new Map()));
-  for (const notice of notices) queued.set(noticeKey(notice), notice);
+  for (const notice of notices) {
+    const key = noticeKey(notice);
+    queued.set(key, fold(queued.get(key), notice));
+  }
   if (!first) return;
   queueMicrotask(() => {
     const batch = pending.get(bus);
@@ -192,8 +206,8 @@ function userTopic(userId: string, tenantId: string | undefined): BusTopic {
   return { scope: "user", id: userId, tenantId: tenantId ?? "" };
 }
 
-function notice(topic: BusTopic, kind: ChangeKind): ChangeNotice {
-  return { topic, kind };
+function notice(topic: BusTopic, kind: ChangeKind, id?: string): ChangeNotice {
+  return id === undefined ? { topic, kind } : { topic, kind, ids: [id] };
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +223,12 @@ type SessionIdentity = {
   userId: string | undefined;
 };
 /** What a request write needs to name its topics. */
-type RequestIdentity = { sessionId: string | undefined; tenantId: string | undefined; userId: string | undefined };
+type RequestIdentity = {
+  requestId: string;
+  sessionId: string | undefined;
+  tenantId: string | undefined;
+  userId: string | undefined;
+};
 
 /** Most identities a store keeps before it forgets the oldest. */
 const IDENTITY_CACHE_LIMIT = 10_000;
@@ -268,6 +287,7 @@ class Identities {
 
   rememberRequest(id: string, record: RequestRecord): RequestIdentity {
     const identity: RequestIdentity = {
+      requestId: id,
       sessionId: record.sessionId ?? undefined,
       tenantId: record.tenantId ?? undefined,
       userId: record.userId ?? undefined
@@ -297,11 +317,15 @@ class Identities {
    * sessions shows, and a busy turn writes many.
    */
   sessionNotices(identity: SessionIdentity, kind: ChangeKind, toOwner = true): ChangeNotice[] {
+    // The session's own topic is that one session: it names nothing. Its
+    // parent's and owner's topics name it (FIX-2625).
     const notices = [notice(sessionTopic(identity.id, identity.tenantId), kind)];
     if (identity.parentSessionId !== undefined) {
-      notices.push(notice(sessionTopic(identity.parentSessionId, identity.tenantId), "run"));
+      notices.push(notice(sessionTopic(identity.parentSessionId, identity.tenantId), "run", identity.id));
     }
-    if (toOwner && identity.userId !== undefined) notices.push(notice(userTopic(identity.userId, identity.tenantId), "run"));
+    if (toOwner && identity.userId !== undefined) {
+      notices.push(notice(userTopic(identity.userId, identity.tenantId), "run", identity.id));
+    }
     return notices;
   }
 
@@ -319,12 +343,16 @@ class Identities {
     toOwner = true
   ): Promise<ChangeNotice[]> {
     if (identity?.sessionId === undefined) return [];
-    const notices = [notice(sessionTopic(identity.sessionId, identity.tenantId), kind)];
-    if (kind === "items") return notices;
-    if (toOwner && identity.userId !== undefined) notices.push(notice(userTopic(identity.userId, identity.tenantId), "run"));
+    // `items` name nothing: the session stream reads from its sequence number.
+    if (kind === "items") return [notice(sessionTopic(identity.sessionId, identity.tenantId), kind)];
+    // The request on its session's notice, the session on its owner's and parent's (FIX-2625).
+    const notices = [notice(sessionTopic(identity.sessionId, identity.tenantId), kind, identity.requestId)];
+    if (toOwner && identity.userId !== undefined) {
+      notices.push(notice(userTopic(identity.userId, identity.tenantId), "run", identity.sessionId));
+    }
     const session = await this.session(resolveSessionStorageKey(identity.sessionId, identity.tenantId));
     if (session?.parentSessionId !== undefined) {
-      notices.push(notice(sessionTopic(session.parentSessionId, identity.tenantId), "run"));
+      notices.push(notice(sessionTopic(session.parentSessionId, identity.tenantId), "run", identity.sessionId));
     }
     return notices;
   }

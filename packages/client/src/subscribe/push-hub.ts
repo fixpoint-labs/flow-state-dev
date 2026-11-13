@@ -109,7 +109,11 @@ function readServerFrame(value: unknown): PushServerFrame | undefined {
   if (topic.resource !== undefined && typeof topic.resource !== "string") return undefined;
   const scoped =
     topic.scope === "session" ? typeof topic.id === "string" : topic.scope === "user" || topic.scope === "org";
-  return scoped ? (frame as PushServerFrame) : undefined;
+  if (!scoped) return undefined;
+  // FIX-2625: ids that aren't a list of strings are dropped, never the notice: no ids reads everything.
+  const { ids, ...notice } = frame;
+  const named = Array.isArray(ids) && ids.every((id) => typeof id === "string");
+  return (named ? { ...notice, ids } : notice) as PushServerFrame;
 }
 
 /** Whether `subscribed` covers a notice under `heard`. */

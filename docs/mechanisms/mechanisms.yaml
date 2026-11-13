@@ -340,7 +340,7 @@ mechanisms:
     doc: packages/engine/README.md
 
   - id: change-bus
-    job: Tell whoever watches a scope (session, user, org, optionally one resource) that something under it changed, never what. Request and session writes publish through one wrapper; the session stream wakes on it. The `bus` slot of a stores profile; in memory by default, Postgres as the first adapter that crosses processes.
+    job: Tell whoever watches a scope (session, user, org, optionally one resource) that something under it changed, never its rows, naming the ids of what changed when the publisher holds them (a task, an entry's key, a session, a request), folded per turn up to one cap. Request and session writes publish through one wrapper; the session stream wakes on it. The `bus` slot of a stores profile; in memory by default, Postgres as the first adapter that crosses processes.
     package: "@flow-state-dev/engine"
     anchor: createInMemoryBus
     file: packages/engine/src/bus/in-memory-bus.ts
@@ -353,7 +353,7 @@ mechanisms:
     doc: packages/engine/README.md
 
   - id: push-delivery
-    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change. `client.live`, the live read, is the one loop every screen runs on it, which filters the notices it hears (the path rule), merges them, keeps one read in flight and at most one waiting, reports on change, and retries a failed read on the client's backoff.
+    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change. The socket is where a notice's ids reach a browser, so the app's per-scope `noticeIds` switch is applied there: off, a scope's notices carry no ids and no collection entry's path to a scope-wide subscription. `client.live`, the live read, is the one loop every screen runs on it, which filters the notices it hears (the path rule), merges them (unioning the ids of one topic and kind), keeps one read in flight and at most one waiting, reports on change, and retries a failed read on the client's backoff.
     package: "@flow-state-dev/engine"
     anchor: enablePushDelivery
     file: packages/engine/src/push/push-delivery.ts

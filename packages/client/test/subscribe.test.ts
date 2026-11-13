@@ -555,6 +555,22 @@ describe("client.subscribe on a host with push", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  // FIX-2625: ids reach the subscriber as sent; ids that aren't a list of
+  // strings are dropped, never the notice, so the reader reads everything.
+  it("passes a notice's ids, and drops ids that aren't a list of strings but keeps the notice", async () => {
+    const { fetcher } = server({ push: { transport: "websocket" } });
+    const { onChange, socket } = await connected(client(fetcher), [S1], undefined, true);
+    onChange.mockClear();
+    socket.frame({ type: "notice", ...notice(S1, "request"), ids: ["r1", "r2"] });
+    socket.frame({ type: "notice", ...notice(S1, "request"), ids: "r1" });
+    socket.frame({ type: "notice", ...notice(S1, "request"), ids: ["r1", 2] });
+    expect(onChange.mock.calls).toEqual([
+      [{ topic: S1, kind: "request", ids: ["r1", "r2"] }],
+      [{ topic: S1, kind: "request" }],
+      [{ topic: S1, kind: "request" }]
+    ]);
+  });
+
   it("reconnects at once when the server ends the socket at its age limit", async () => {
     const { fetcher, mints } = server({ push: { transport: "websocket" } });
     const { socket } = await connected(client(fetcher), [S1], 1000, true);

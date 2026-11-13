@@ -4,8 +4,9 @@
  * changed, published once the change can be read, and heard by whoever
  * subscribed to the topic.
  *
- * A notice never carries rows. It says *when* to read; the listener reads
- * *what* through the route it already reads with, which does its own checks.
+ * A notice never carries rows. It says *when* to read, and may name the ids
+ * of what changed; the listener reads *what* through the route it already
+ * reads with, which does its own checks.
  * Notices are at most once: no replay, no acks, nothing stored. A listener
  * that may have missed some reads again.
  *
@@ -36,13 +37,21 @@ export type BusTopic = {
 
 /**
  * One change: the topic it happened under, its kind, and optionally the
- * request that made it. Never the rows that changed.
+ * request that made it and the ids of what changed. Never the rows that
+ * changed.
  */
 export type ChangeNotice = {
   topic: BusTopic;
   kind: ChangeKind;
   /** The request that made the change, when a request made it. */
   origin?: { requestId: string };
+  // FIX-2625.
+  /**
+   * The ids of what changed, when the publisher holds them (`WireNotice.ids`).
+   * Absent means read everything, and no ids beats ids: a fold of a notice
+   * with ids and one without carries none.
+   */
+  ids?: string[];
 };
 
 /** Called with each notice a subscription hears. */

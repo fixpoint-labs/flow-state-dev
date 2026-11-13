@@ -149,6 +149,41 @@ export interface RuntimeConfig {
    * Read by `ctx.suspendForUser` with or without a request host, and exposed as `RequestHost.userDeadlineMs`.
    */
   userDeadlineMs?: number;
+  // FIX-2625 D2.
+  /**
+   * Which topic scopes' notices may name what changed, read by every push
+   * edge. On by default; `{ org: false }` turns ids off for the org scope: no
+   * notice there reaches a browser with `ids`, and a collection entry's
+   * notice reaches a scope-wide subscription on the bare scope topic. A
+   * subscription narrowed to that exact entry still hears its path, since its
+   * client named it.
+   */
+  noticeIds?: NoticeIdScopes;
+}
+
+// FIX-2625 D2.
+/** Per topic scope, whether its notices may name what changed. An unset scope is on. */
+export type NoticeIdScopes = { session?: boolean; user?: boolean; org?: boolean };
+
+const NOTICE_ID_SCOPES = new Set(["session", "user", "org"]);
+
+/**
+ * Refuse a `noticeIds` setting that names anything but a topic scope, or a
+ * value that isn't `true` or `false`: a typo would otherwise leave ids on in a
+ * scope its owner turned them off for.
+ *
+ * @throws When the setting isn't an object of `session`, `user` and `org` booleans.
+ */
+function assertNoticeIds(noticeIds: unknown): void {
+  if (noticeIds === undefined) return;
+  const entries = typeof noticeIds === "object" && noticeIds !== null && !Array.isArray(noticeIds) ? Object.entries(noticeIds) : undefined;
+  const bad = entries === undefined ? ["(not an object)"] : entries.filter(([scope, on]) => !NOTICE_ID_SCOPES.has(scope) || typeof on !== "boolean").map(([scope]) => scope);
+  if (bad.length > 0) {
+    throw new Error(
+      `noticeIds takes { session?, user?, org? }, each true or false; refused ${bad.join(", ")}. ` +
+        "An unset scope keeps its ids on."
+    );
+  }
 }
 
 /** The shortest deadline a user's stop may be given by the host: the sweep's resolution, one second. */
@@ -182,6 +217,7 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
   // router is validated too.
   assertMaxChildSessionListLimit(options.maxChildSessionListLimit);
   assertUserDeadline(options.userDeadlineMs);
+  assertNoticeIds(options.noticeIds);
   return {
     modelResolver: options.modelResolver,
     voiceProvider: options.voiceProvider,
@@ -201,7 +237,8 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     maxChildSessionListLimit: options.maxChildSessionListLimit,
     maxDebtAgeMs: options.maxDebtAgeMs,
     waitDeadlines: options.waitDeadlines,
-    userDeadlineMs: options.userDeadlineMs
+    userDeadlineMs: options.userDeadlineMs,
+    noticeIds: options.noticeIds
   };
 }
 

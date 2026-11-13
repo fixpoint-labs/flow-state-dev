@@ -363,13 +363,20 @@ class PgBus implements PostgresBus {
 }
 
 /**
- * The `NOTIFY` payload for `notice`: its topic and kind, and the bus's id;
- * `w: true` when it was widened to its scope to fit.
+ * The `NOTIFY` payload for `notice`: its topic, kind and ids, and the bus's
+ * id. Too large for `NOTIFY`, it drops the ids first (read everything), then
+ * widens to its scope (`w: true`). A collection entry's notice (a `resource`
+ * notice with ids) widens with its ids, since its path names the entry too: a
+ * scope with ids off must never be left a path the ids no longer mark
+ * (FIX-2625 D2).
  */
 function payloadOf(id: string, notice: ChangeNotice): string {
-  const { topic, kind } = notice;
-  const payload = JSON.stringify({ p: id, topic, kind });
-  if (Buffer.byteLength(payload) <= MAX_PAYLOAD_BYTES || topic.resource === undefined) return payload;
+  const { topic, kind, ids } = notice;
+  const payload = JSON.stringify({ p: id, topic, kind, ...(ids !== undefined ? { ids } : {}) });
+  if (Buffer.byteLength(payload) <= MAX_PAYLOAD_BYTES) return payload;
+  const bare = JSON.stringify({ p: id, topic, kind });
+  const entry = kind === "resource" && ids !== undefined;
+  if (!entry && (Buffer.byteLength(bare) <= MAX_PAYLOAD_BYTES || topic.resource === undefined)) return bare;
   if (!warnedOversized) {
     warnedOversized = true;
     console.warn(
@@ -382,14 +389,17 @@ function payloadOf(id: string, notice: ChangeNotice): string {
 
 /** A notice read off the wire, or `undefined` when it isn't one. */
 function noticeOf(message: object): ChangeNotice | undefined {
-  const { topic, kind } = message as { topic?: Partial<BusTopic>; kind?: unknown };
+  const { topic, kind, ids } = message as { topic?: Partial<BusTopic>; kind?: unknown; ids?: unknown };
   if (topic === undefined || typeof kind !== "string") return undefined;
   const { scope, id, tenantId, resource } = topic;
   if (typeof scope !== "string" || typeof id !== "string" || typeof tenantId !== "string") return undefined;
   if (resource !== undefined && typeof resource !== "string") return undefined;
+  // Ids that aren't a list of strings are dropped, never the notice: no ids reads everything.
+  const named = Array.isArray(ids) && ids.every((one) => typeof one === "string") ? { ids: ids as string[] } : {};
   return {
     topic: { scope, id, tenantId, ...(resource !== undefined ? { resource } : {}) },
-    kind: kind as ChangeNotice["kind"]
+    kind: kind as ChangeNotice["kind"],
+    ...named
   };
 }
 

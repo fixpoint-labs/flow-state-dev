@@ -236,6 +236,55 @@ describe("the Postgres bus · a notice too large for NOTIFY", () => {
   });
 });
 
+// FIX-2625: a notice's ids cross processes, and go first when the payload is
+// too large; an entry's notice that loses its ids loses its path with them,
+// since the path names the entry too.
+describe("the Postgres bus · a notice's ids", () => {
+  it("carries ids to another process's subscribers", async () => {
+    const network = new FakeNotifyNetwork();
+    const here = busOn(network);
+    const there = busOn(network);
+    const heard = hear(there, s1);
+    hear(here, s1);
+    await until(() => there.crossesProcesses && here.crossesProcesses);
+    await here.publish({ topic: { ...s1, resource: "tasks" }, kind: "board", ids: ["t1", "t2"] });
+    await until(() => heard.length === 1);
+    expect(heard[0]).toEqual({ topic: { ...s1, resource: "tasks" }, kind: "board", ids: ["t1", "t2"] });
+  });
+
+  it("drops the ids before it widens the topic, when they make the payload too large", async () => {
+    const network = new FakeNotifyNetwork();
+    const here = busOn(network);
+    const there = busOn(network);
+    const narrowed = hear(there, { ...s1, resource: "tasks" });
+    const other = hear(there, { ...s1, resource: "notes" });
+    hear(here, s1);
+    await until(() => there.crossesProcesses && here.crossesProcesses);
+    const ids = Array.from({ length: 100 }, (_, i) => `${"t".repeat(90)}${i}`);
+    await here.publish({ topic: { ...s1, resource: "tasks" }, kind: "board", ids });
+    await until(() => narrowed.length === 1);
+    expect(narrowed[0]).toEqual({ topic: { ...s1, resource: "tasks" }, kind: "board" });
+    await delay(10);
+    // Still narrowed: a view of another resource under the scope doesn't wake.
+    expect(other).toEqual([]);
+  });
+
+  it("widens a collection entry's notice when it drops its ids, so no path is left naming the entry", async () => {
+    const network = new FakeNotifyNetwork();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const here = busOn(network);
+    const there = busOn(network);
+    const scopeWide = hear(there, s1);
+    hear(here, s1);
+    await until(() => there.crossesProcesses && here.crossesProcesses);
+    // The path fits alone; with the id beside it, it doesn't.
+    const resource = `notes/${"n".repeat(4_500)}`;
+    await here.publish({ topic: { ...s1, resource }, kind: "resource", ids: [resource] });
+    await until(() => scopeWide.length === 1);
+    expect(scopeWide[0]).toEqual({ topic: s1, kind: "resource" });
+  });
+});
+
 describe("the Postgres bus · what it holds open", () => {
   it("opens no connection until a subscriber does, and hands it back when the last one leaves", async () => {
     const network = new FakeNotifyNetwork();

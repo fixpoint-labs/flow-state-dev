@@ -107,6 +107,32 @@ that entry keys already reach org members today. Then the push edge strips `ids`
 - **Changeset:** `minor` for `contracts`, `core`, `engine`, `store-postgres`, `client`, `react`, `orchestration` (the notice payload, the view option, the bus payload and the board's opt-in all ship); the glossary's
   *View* entry gains the partial answer in the implementation PR (ER-9). No new public term.
 
+## Decided during implementation
+
+Settled on the implementation PRs. Each narrows a decision above; none reverses one.
+
+- **The switch is the app's, on `RuntimeConfig`.** `noticeIds: { org: false }` on
+  `createFlowState` or `createFlowApiRouter` (`RuntimeConfig.noticeIds`), held on the router's
+  push state and read by every socket it opens. Not on `EnablePushDeliveryOptions`: that is per
+  host, so a second host (FIX-380's Ably arm) could forget it and leak. A key that isn't
+  `session`, `user` or `org`, or a value that isn't a boolean, is refused at construction, so a
+  typo can't leave ids on.
+- **An entry's id is its storage key**, the same string as the path it already names: the
+  direct read places entries by storage key, and the entry route reads by it.
+- **The push edge tells an entry's notice by its ids.** A `resource` notice that carries ids is a
+  collection entry's (a single resource's names none); with ids off its path is cut for a
+  scope-wide subscription. A single resource's notice keeps its resource name: a name the flow
+  declares, not an id.
+- **The Postgres bus widens an entry's notice when it drops its ids**, so a notice that lost the
+  mark the push edge reads never keeps the path. Any other notice drops its ids and stays narrowed.
+- **A session's own `run` notice names nothing**: the topic is that one session. Its parent's and
+  owner's name it.
+- **The board's read hides no row from a reader of its session.** `listTasks` lists every row the
+  resolved board holds, with no per-reader filter, and the session's stream already carries each
+  row's task id (`task-change` items), so a board notice names its task.
+- **The cap is 100** (`NOTICE_MAX_IDS`, `contracts/types/push-delivery`), one constant and one
+  union rule (`unionNoticeIds`) for the fold and the merge. A hundred 40-byte ids fit `NOTIFY`.
+
 ## Considered and dropped
 
 | Alternative | Why not |

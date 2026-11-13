@@ -21,6 +21,7 @@ import {
   assertMaxChildSessionListLimit,
   createRuntimeConfig,
   resolveStaleSweep,
+  type NoticeIdScopes,
   type RuntimeConfig
 } from "../runtime-config";
 import type { ErrorCaptureHandler } from "../errors/error-capture";
@@ -282,6 +283,16 @@ export type CreateFlowApiRouterOptions = {
    * process rather than once per host.
    */
   arbiter?: ConcurrencyArbiter;
+
+  // FIX-2625 D2.
+  /**
+   * Which topic scopes' notices may name what changed. On by default; pass
+   * `{ org: false }` where even an org's change timing is sensitive: no org
+   * notice then reaches a browser with ids or a collection entry's key, and
+   * every org resource watcher reads whole on any entry's change. Read by
+   * every push edge of this router.
+   */
+  noticeIds?: NoticeIdScopes;
 
   /**
    * @internal — set by `createFlowState`, which has already resolved its

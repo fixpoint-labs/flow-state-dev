@@ -12,7 +12,8 @@
  * notices and control frames back ({@link PushServerFrame}).
  *
  * Notices carry no rows. A notice says *that* something under a topic
- * changed; the client reads *what* through the route it already reads with.
+ * changed, and may name the ids of what changed; the client reads *what*
+ * through the route it already reads with.
  */
 import type { ChangeKind, WireTopic } from "./change-notice";
 
@@ -48,15 +49,43 @@ export type PushMintAnswer =
   | { transport: "websocket"; ticket: string; path: string; topics: WireTopic[] }
   | { transport: "ably"; tokenRequest: Record<string, unknown>; channels: string[]; topics: WireTopic[] };
 
+// FIX-2625.
+/**
+ * The most ids one notice carries. A fold or a merge that would carry more
+ * carries none, which means read everything.
+ */
+export const NOTICE_MAX_IDS = 100;
+
+/**
+ * The ids two notices of one topic and kind carry together: their union, in
+ * the order first named, or `undefined` (read everything) when either carries
+ * none or the union passes {@link NOTICE_MAX_IDS}. No ids beats ids. The one
+ * rule for it: the engine's fold and the client's merge both call this.
+ */
+export function unionNoticeIds(a: readonly string[] | undefined, b: readonly string[] | undefined): string[] | undefined {
+  if (a === undefined || b === undefined) return undefined;
+  const union = [...new Set([...a, ...b])];
+  return union.length > NOTICE_MAX_IDS ? undefined : union;
+}
+
 /**
  * A change notice as the socket delivers it: the topic it happened under (the
- * resource included when the change was narrowed to one), its kind, and the
- * request that made it, when a request did. Never the rows that changed.
+ * resource included when the change was narrowed to one), its kind, the
+ * request that made it, when a request did, and the ids of what changed, when
+ * the publisher knew them. Never the rows that changed.
  */
 export type WireNotice = {
   topic: WireTopic;
   kind: ChangeKind;
   origin?: { requestId: string };
+  /**
+   * Which rows changed: opaque ids the publisher already holds (a task on a
+   * `board` notice, an entry's storage key on a collection entry's `resource`
+   * notice, a session on a `run` notice, a request on a `request` notice), at
+   * most {@link NOTICE_MAX_IDS}. Absent: read everything. A hint, never data:
+   * a reader that can't use them reads everything.
+   */
+  ids?: string[];
 };
 
 /**

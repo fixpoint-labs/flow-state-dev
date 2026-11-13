@@ -16,6 +16,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { PUSH_MINT_MAX_TOPICS, type PushCapability, type PushMintAnswer } from "@flow-state-dev/core/internal";
 import type { ResolvedPrincipal } from "../transports/types";
 import type { ChangeBus } from "../bus/types";
+import type { NoticeIdScopes } from "../runtime-config";
 import type { FlowApiRouter } from "../routes/createFlowApiRouter";
 import { authorizeManagementRoute, type RouteAuthContext } from "../routes/route-auth";
 import { jsonResponse, loadCheckedSession } from "../routes/route-utils";
@@ -52,15 +53,17 @@ const PUSH_STATE = Symbol.for("@flow-state-dev/engine/pushState");
  */
 export type PushState = {
   bus: ChangeBus;
+  /** The app's per-scope ids setting (FIX-2625 D2), read by every socket. */
+  noticeIds?: NoticeIdScopes;
   /** The key tickets are signed and checked with, read on each use. Unset until push is on. */
   secret?: () => string;
   /** This router's random key, made once, so every host that turns push on shares it. */
   generated?: string;
 };
 
-/** Create a router's push state over its bus. */
-export function createPushState(bus: ChangeBus): PushState {
-  return { bus };
+/** Create a router's push state over its bus, with the app's per-scope ids setting. */
+export function createPushState(bus: ChangeBus, noticeIds?: NoticeIdScopes): PushState {
+  return { bus, ...(noticeIds !== undefined ? { noticeIds } : {}) };
 }
 
 /** Attach `state` to `router`, for {@link enablePushDelivery} to find. */
@@ -90,7 +93,8 @@ export function enablePushDelivery(router: FlowApiRouter, options: EnablePushDel
   const current = (): string => state.secret!();
   return {
     transport: "websocket",
-    openSocket: (userId, io) => openPushSocket({ bus: state.bus, secret: current, userId, io })
+    openSocket: (userId, io) =>
+      openPushSocket({ bus: state.bus, secret: current, userId, io, ...(state.noticeIds !== undefined ? { noticeIds: state.noticeIds } : {}) })
   };
 }
 

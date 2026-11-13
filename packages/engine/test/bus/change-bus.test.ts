@@ -305,6 +305,60 @@ describe("withChangeBus · every request and session write publishes its session
     expect(bob).toEqual([]);
   });
 
+  // FIX-2625: a notice names what changed, from the ids the wrapper already
+  // holds, so a reader of one row reads that row; items and own-session run
+  // notices name nothing.
+  it("names the request on its session's request notice, and the session on its owner's and parent's run notices", async () => {
+    const { stores, bus } = wired();
+    await stores.session.set("run_a", session("run_a", { parentSessionId: "s1" }), "any");
+    await stores.request.set("seed", request("seed", "run_a"), "any");
+    await tick();
+    await tick();
+    const parent = hear(bus, sessionTopic("s1"));
+    const own = hear(bus, sessionTopic("run_a"));
+    const owner = hear(bus, { scope: "user", id: "alice", tenantId: "" });
+
+    await stores.request.set("r1", request("r1", "run_a"), "any");
+    await tick();
+    await tick();
+    expect(own.map((n) => [n.kind, n.ids])).toEqual([["request", ["r1"]]]);
+    expect(parent.map((n) => [n.kind, n.ids])).toEqual([["run", ["run_a"]]]);
+    expect(owner.map((n) => [n.kind, n.ids])).toEqual([["run", ["run_a"]]]);
+
+    own.length = 0;
+    parent.length = 0;
+    owner.length = 0;
+    await stores.session.set("run_a", session("run_a", { parentSessionId: "s1", title: "renamed" }), "any");
+    await tick();
+    // The session's own topic is that one session: nothing to name.
+    expect(own.map((n) => [n.kind, n.ids])).toEqual([["run", undefined]]);
+    expect(parent.map((n) => [n.kind, n.ids])).toEqual([["run", ["run_a"]]]);
+    expect(owner.map((n) => [n.kind, n.ids])).toEqual([["run", ["run_a"]]]);
+
+    own.length = 0;
+    stores.request.persistItems("r1", [message("r1", "m1")]);
+    await tick();
+    await tick();
+    expect(own.map((n) => [n.kind, n.ids])).toEqual([["items", undefined]]);
+  });
+
+  it("folds two requests' notices on one session into one naming both", async () => {
+    const { stores, bus } = wired();
+    await stores.session.set("s1", session("s1"), "any");
+    await stores.request.set("r1", request("r1", "s1"), "any");
+    await stores.request.set("r2", request("r2", "s1"), "any");
+    await tick();
+    await tick();
+    const own = hear(bus, sessionTopic("s1"));
+    await Promise.all([
+      stores.request.set("r1", request("r1", "s1", { status: "completed" } as never), "any"),
+      stores.request.set("r2", request("r2", "s1", { status: "completed" } as never), "any")
+    ]);
+    await tick();
+    await tick();
+    expect(own.map((n) => [n.kind, n.ids])).toEqual([["request", ["r1", "r2"]]]);
+  });
+
   it("names the owner's user topic under the record's tenant", async () => {
     const { stores, bus } = wired();
     const t1 = hear(bus, { scope: "user", id: "alice", tenantId: "t1" });

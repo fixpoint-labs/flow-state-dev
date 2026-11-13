@@ -8,8 +8,8 @@
  * context under {@link BOARD_NOTICE_SEAM}: it fills the tenant from the
  * running request, names that request as the notice's origin, and publishes a
  * `board` notice on that run's bus, on the session's topic narrowed to the
- * board. The notice carries no rows: a view reads the board through its own
- * checked read.
+ * board. The notice carries no rows, only the changed task's id: a view reads
+ * the board through its own checked read.
  *
  * Framework-facing, like the dispatch seam: a symbol key, not a public
  * `ctx.publish`, so app code can't invent a topic.
@@ -22,6 +22,9 @@ export interface BoardChange {
   readonly sessionId: string;
   /** The board's id (the ledger's `collectionId`), which narrows the topic. */
   readonly board: string;
+  // FIX-2625.
+  /** The task whose row changed: the notice's id. */
+  readonly taskId: string;
 }
 
 /** The seam the engine attaches under {@link BOARD_NOTICE_SEAM}. */
