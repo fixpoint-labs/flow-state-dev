@@ -12,7 +12,7 @@ rules](#lint-rules) say what the figure check enforces.
 | [What the marks mean](#what-the-marks-mean) | The patterns, and the one meaning each has |
 | [The key](#the-key) | Required on every figure |
 | [Anatomy and canvas](#anatomy-and-canvas) | Sizes, columns, text |
-| [Light and dark](#light-and-dark) | Why a figure carries no colour |
+| [Light and dark](#light-and-dark) | Where a figure's colours come from |
 | [The figure brief](#the-figure-brief) | What to write before drawing |
 | [Render it and look at it](#render-it-and-look-at-it) | `render.sh`, and what to check |
 | [On the page](#on-the-page) | The `Figure` component |
@@ -26,7 +26,8 @@ Nothing here is new. The marks are the site's drawing classes, defined once in
 published as `@flow-state-dev/design-system/page.css`. The site inlines each SVG through
 [`apps/docs/src/components/Figure`](../../apps/docs/src/components/Figure/index.tsx), so the
 drawing takes the page's fonts and colour tokens. `apps/docs/scripts/lint-brand.mjs` already
-fails a published figure that carries a colour, a `<style>` block or an unknown class.
+fails a published figure that writes a colour value into the file, carries a `<style>` block
+or uses an unknown class.
 
 The meanings come from the thirteen figures published today. All thirteen key their hatching as
 `OUTLIVES THE REQUEST`. Compare a new figure against two of them:
@@ -137,13 +138,20 @@ to the writer or the reviewer: anything in the drawing is for the reader.
 
 ## Light and dark
 
-A figure file holds shapes, classes and text. It holds no colour, no font and no `<style>`
-block. `page.css` gives every class its Paper value and its Night value from the same tokens
-the page uses, so one file draws correctly in both.
+A figure is drawn in colour, but its colours come from the page, never from the file. The file
+holds shapes, classes and text, with no colour value, no font and no `<style>` block.
+`page.css` gives every class its Paper value and its Night value from the same tokens the page
+uses, so one file draws correctly in both.
+
+The palette is the page's own: paper for the ground, the inks for lines and text, the
+yellow highlighter (`hl`) for the one thing to look at, and red (`x`, `x-fill`) for a failure or
+a struck-out step. Colour marks emphasis, never category: two kinds of thing are told apart by
+line, hatch and label, not by giving each its own colour.
 
 - Text over the highlighter takes `on-hl`. The highlighter is the same yellow in both modes, and
   without `on-hl` the text turns pale on it at night.
-- The only fills are `hl`, `ground` under a plate, `ink` on an arrowhead or a dot, and the hatch.
+- The only fills are `hl`, `ground` under a plate, `ink` on an arrowhead or a dot, `x-fill` on a
+  failure mark, and the hatch.
   Do not cover a line with a filled shape.
 - A file like this shows as black shapes when opened on its own or on GitHub. That is expected.
   To see it, render it.
