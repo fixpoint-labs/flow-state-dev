@@ -105,3 +105,4 @@ in at least one app where it runs.
 ## Verdict log
 | Date | Commit | Pass | Verdict | Notes |
 |------|--------|------|---------|-------|
+| 2026-11-13 | claude/fix-2627-impl-e-b3 on 0a98c8621 | graders (model-free) | PASS | `heldSkills` now reads through the kit's reader; the apps' passes are model-backed and not run. "PASS — 42 grader cases (27 hollow, each refused), 32 verdict rules, 16 model switch rules, planting after a killed run, a signal mid-run, and a start that throws after serving · read: grader cases: 42; verdict rules: 32; model switch rules: 16" |
