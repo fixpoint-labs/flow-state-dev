@@ -125,8 +125,10 @@ const reads = new Map<Watcher, number[]>(WATCHERS.map((w) => [w, []]));
 /** While set, each watcher's read is answered only once `release` runs. */
 let held: Promise<void> | undefined;
 let release: () => void = () => {};
-/** Watchers whose next read answers 503. */
-const failNext = new Set<Watcher>();
+/** Watchers whose every read answers 503, while a write's notices land. */
+const failing = new Set<Watcher>();
+/** How many reads each watcher had answered 503 while it was failing. */
+const failedReads = new Map<Watcher, number>();
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -135,7 +137,10 @@ globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const w = WATCHERS.find((candidate) => auth === `Bearer ${tokenOf(candidate)}`);
   if (w !== undefined && isReadOf(w, url)) {
     reads.get(w)!.push(Date.now());
-    if (failNext.delete(w)) return new Response(JSON.stringify({ error: "down" }), { status: 503, headers: { "content-type": "application/json" } });
+    if (failing.has(w)) {
+      failedReads.set(w, (failedReads.get(w) ?? 0) + 1);
+      return new Response(JSON.stringify({ error: "down" }), { status: 503, headers: { "content-type": "application/json" } });
+    }
     if (held !== undefined) await held;
   }
   return realFetch(input, init);
@@ -338,16 +343,30 @@ try {
   // b — one failed read each, woken by one write, and then no notice: the roster's watchers by a
   // hire, then the pins' watcher by a pin.
   const recover = async (who: readonly Watcher[], write: () => Promise<unknown>, shows: (w: Watcher) => boolean) => {
-    for (const w of who) failNext.add(w);
+    for (const w of who) {
+      failing.add(w);
+      failedReads.set(w, 0);
+    }
     await write();
-    await waitFor(() => who.every(shows), RECOVER_MS);
+    // Every read fails until the write's last notice has reached every socket (one write sends
+    // several, and a watcher may hear them all), so after this only a retry can show the change.
+    await delay(200);
+    for (const w of who) failing.delete(w);
+    const closedAt = Date.now();
+    const shownAt = new Map<Watcher, number>();
+    await waitFor(() => {
+      for (const w of who) if (!shownAt.has(w) && shows(w)) shownAt.set(w, Date.now());
+      return shownAt.size === who.length;
+    }, RECOVER_MS);
     // Graded per watcher, so a control that leaves one watcher green shows which.
     for (const w of who) {
-      check(`b:failed-once ${w}`, !failNext.has(w), failNext.has(w) ? "never read after the write" : "its read failed once");
-      const ok = shows(w);
-      check(`b:recovers ${w}`, ok, ok ? `showed the change within ${RECOVER_MS} ms of the write` : `not within ${RECOVER_MS} ms`);
+      const n = failedReads.get(w) ?? 0;
+      check(`b:failed ${w}`, n > 0, n > 0 ? `${n} read(s) answered 503 while the write's notices landed` : "never read after the write");
+      const at = shownAt.get(w);
+      check(`b:recovers ${w}`, at !== undefined, at !== undefined ? `showed the change ${at - closedAt} ms after its last notice, with no other notice` : `not within ${RECOVER_MS} ms of its last notice`);
     }
   };
+
   const smBefore = snapshotReadAt;
   await recover(ROSTER_WATCHERS, () => hire("after-failure"), (w) =>
     w === "sm" ? snapshotReadAt > smBefore : w === "rp" ? rpCount === storeRoster.length + 1 : shown.get(w)!.ids.includes("after-failure"),
