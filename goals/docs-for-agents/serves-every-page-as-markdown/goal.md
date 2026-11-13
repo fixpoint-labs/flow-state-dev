@@ -19,3 +19,6 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-13 | f994c2b4 | n/a | PASS | 193 docs pages of 213 built HTML files (the held-out page included): each has its `.md` twin, no JSX outside code, worst prose drift 0.67% (limit 2%), all listed in `llms.txt`. A separate `FSD_API_REFERENCE=1` build also served and listed all 90 generated API pages, the trailing-slash root pages as `index.md` (not graded by this run). |
+| 2026-11-13 | origin/main 0e6c4f38 (`GOAL_CONTROL=main`) | n/a | FAIL (expected) | `markdown-exists` 193 of 193 pages (100%), so `held-out-passes` too. The site built. |
+| 2026-11-13 | 306646c5, the same change before its rebase onto main (`GOAL_CONTROL=tampered`) | n/a | FAIL (expected) | `no-jsx`, `prose-matches` (43.6%) and `listed` each fail on exactly the one page spoiled for it; nothing else fails. |
