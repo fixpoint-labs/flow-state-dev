@@ -48,6 +48,8 @@ Skipped: C-11 is kept in the sitemap, and the page was already at `capabilities.
 
 - Post-loop edit (escalation): fixed the five open pass-7 findings in plain words (the opening list split, `.with()` pointer, the scope sentence names the reader's action, the helper-functions line cut as the Next list covers it, the kit/capability sentence gives its reason). Re-ran check-docs-page.mjs: ok, 769 words.
 
+- Post-review edit (Gitar): lines 95 and 111 no longer say a generator's `tools:` is the complete list; a capability's control tools (a skills loader) come through anyway, worded as on C-03. Re-ran check-docs-page.mjs: ok.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the page as it was kept, sha256 983d89c465cd, and the 16 Reference row(s) pass 6 moved.
@@ -60,6 +62,8 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 3: `.with()` routing: a key naming a preset toggles it, every other key is config. Untrue: A non-preset key is routed to config only if the capability declares config and, for a closed object schema, the key is one of its fields. Otherwise `.with()` throws. A non-object bag is routed wholesale to config. (/home/user/flow-state-dev/packages/core/src/capability/define-capability.ts:171-197) The row is recorded corrected.
 
 - Post-loop edit: the three suspected inaccuracies, checked. Evaluators take `uses` (`packages/core/src/blocks/evaluator.ts:391`), so line 73 now says every kind of block takes it. A capability that brings context or tools to a non-generator throws when the block is built (`packages/core/src/capability/merge.ts:561-590`); lines 73 and 148 now say that plainly. Capabilities can declare state (`define-capability.ts:128-133`), so line 147 stands.
+
+- Post-review edit: control tools pass the fence by design, `packages/core/src/capability/types.ts:100-121`; generator collects them with the fence up, `generator.ts:3006-3035`.
 
 ## 6 · Depth pass
 

@@ -92,7 +92,7 @@ export const summarizeOrder = generator({
 
 ## Tools a block names itself
 
-A generator's `tools:` is the complete list of tools the model may call. Declare it and the tools a capability would have added are dropped.
+A generator's `tools:` replaces the tools a capability would add. A capability's built-in controls, such as a skills loader, come through anyway.
 
 ```ts title="src/flows/support/blocks/refund-reply.ts"
 import { generator } from "@flow-state-dev/core";
@@ -108,7 +108,7 @@ export const refundReply = generator({
 });
 ```
 
-`issueRefund` is another tool block, in `tools/issue-refund.ts`. The context section and the `orderLog` resource arrive, but `lookUpOrder` does not. Declaring `tools:` is what counts: `tools: []` means no tools at all, and leaving `tools:` out means the capability's tools reach the model. To keep one, name it in the list yourself.
+`issueRefund` is another tool block, in `tools/issue-refund.ts`. The context section and the `orderLog` resource arrive, but `lookUpOrder` does not. Declaring `tools:` is what counts: `tools: []` drops every capability tool except those built-in controls, and leaving `tools:` out means the capability's tools reach the model. To keep one, name it in the list yourself.
 
 ## A capability that takes a value
 
