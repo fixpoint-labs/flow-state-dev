@@ -51,8 +51,8 @@ it("opens with a worker's only own skill taken away, its emptied skills folder g
     harness: harnessStub({}).slot,
     workspace: { root: workspace, remotes: { allow: ["file"] } },
     coderWorkerId: "eng.coder",
-    mutateSkills: (seatId: string, skills: readonly { name: string }[]) =>
-      seatId === "eng.coder" ? skills.filter((skill) => skill.name !== "branch-naming") : skills,
+    mutateSkills: (workerId: string, skills: readonly { name: string }[]) =>
+      workerId === "eng.coder" ? skills.filter((skill) => skill.name !== "branch-naming") : skills,
   } as never);
   try {
     const copy = readdirSync(scratch).find((entry) => entry.startsWith("devforce-lab-tree-"));
