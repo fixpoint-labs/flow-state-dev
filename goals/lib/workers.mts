@@ -15,7 +15,7 @@
  * `copies` is every flow the kit serves: one copy per worker flow (the
  * built-in `agent` included, unless the goal fills one), and the roster flow.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -53,14 +53,20 @@ process.once("exit", () => {
 });
 
 /**
- * A workforce folder holding `workers`, each as its `WORKER.md`, and `files`
- * by path relative to the folder. It lives in a temporary directory removed
- * when the process exits.
+ * A workforce folder holding the folders in `from` (copied in order, a later
+ * one's files over an earlier one's), `workers`, each as its `WORKER.md`, and
+ * `files` by path relative to the folder. It lives in a temporary directory
+ * removed when the process exits.
  */
-export function workforceTree(workers: readonly Pick<WorkerManifest, "id" | "declared" | "body">[], files: Readonly<Record<string, string>> = {}): string {
+export function workforceTree(
+  workers: readonly Pick<WorkerManifest, "id" | "declared" | "body">[],
+  files: Readonly<Record<string, string>> = {},
+  from: readonly string[] = [],
+): string {
   const parent = mkdtempSync(join(tmpdir(), "fsd-goal-workforce-"));
   trees.push(parent);
   const root = join(parent, "workforce");
+  for (const folder of from) cpSync(folder, root, { recursive: true });
   const all: Record<string, string> = { ...Object.fromEntries(workers.map((worker) => [workerPath(worker.id), workerFile(worker)])), ...files };
   mkdirSync(root, { recursive: true });
   for (const [path, body] of Object.entries(all)) {
