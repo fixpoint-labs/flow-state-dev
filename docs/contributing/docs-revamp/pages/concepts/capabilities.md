@@ -9,7 +9,7 @@ import Capabilities from "./figures/capabilities.svg";
 
 # Capabilities
 
-A support generator (a block that calls a model) that answers questions about orders needs three things: the order data, held in a resource (named, stored data a block declares), a note in its prompt on how to use that data, and a tool that looks an order up. Wire them by hand and every generator that touches orders repeats the same three edits. Adding a second tool means finding all of them again.
+A support generator (a block that calls a model) that answers questions about orders needs the order data, a note in its prompt on how to use that data, and a tool that looks an order up. The data lives in a resource, which is named, stored data a block declares. Wire them by hand and every generator that touches orders repeats the same edits. Adding a second tool means finding all of them again.
 
 A capability is those pieces packaged under one name. A block lists it in `uses` and gets everything the capability carries. The examples are a support desk with an `orders` capability.
 
@@ -70,7 +70,7 @@ export const draftReply = generator({
 });
 ```
 
-`draftReply` has the `orderLog` resource, the context section in its prompt and `lookUpOrder` in its tool list. A flow that includes `draftReply` gets the resource from the block, so the flow declares nothing. Handlers, sequencers and routers take `uses` too. Context and tools only apply to a generator.
+`draftReply` has the `orderLog` resource, the context section in its prompt and `lookUpOrder` in its tool list. A flow that includes `draftReply` gets the resource from the block, so the flow declares nothing. Every kind of block takes `uses`, but context and tools are for generators: a capability that brings them to any other block fails when that block is built.
 
 ## Turning a part off
 
@@ -88,7 +88,7 @@ export const summarizeOrder = generator({
 });
 ```
 
-`.with()` returns a new capability and leaves `orders` alone, so `draftReply` keeps its tool. A misspelled preset name throws. [The Reference page](../reference/capabilities.md) covers how `.with()` treats other keys and the values some capabilities accept through it.
+`.with()` returns a new capability and leaves `orders` alone, so `draftReply` keeps its tool. A misspelled preset name throws. [The Reference page](../reference/capabilities.md) lists every key `.with()` accepts.
 
 ## Tools a block names itself
 
@@ -133,7 +133,7 @@ export function createOrdersCapability(options: { scope: "session" | "user" }) {
 }
 ```
 
-`scope: "session"` keeps the order log for one session, and `scope: "user"` keeps it across a user's sessions. Code that reads the log has to use the same scope. Two calls with different arguments need different names, which is why the scope is in the name.
+`scope: "session"` keeps the order log for one session, and `scope: "user"` keeps it across a user's sessions. Every block that reads the order log must list a capability built with the same scope. Two calls with different arguments need different names, which is why the scope is in the name.
 
 ## Who owns what it stores
 
@@ -145,13 +145,11 @@ A capability stores nothing itself. Its resource does, and the resource's `scope
 - **One line per block.** `uses: [orders]` brings the resource, the context and the tool, so no block repeats the wiring.
 - **A block can opt out of one part.** `orders.with({ tools: false })` changes one block. The others keep their tools.
 - **Types follow.** A block that lists a capability sees the state and resources the capability declares in its `ctx`, with no second declaration.
-- **Mistakes show up when the block is built.** A preset the block cannot take, or two different capabilities with one name, fail before the first request.
-
-Helper functions a capability exposes on `ctx.cap.orders` are covered in [Write a capability](../build/write-a-capability.md).
+- **Mistakes show up when the block is built.** Context or tools on a block that is not a generator, or two different capabilities with one name, fail before the first request.
 
 ## How it fits with the others
 
-A kit packages a whole feature, with its flows and screens, that an app installs with one config object. A kit can contain capabilities, but a capability does not contain kits: a block lists it in `uses`. Reach for a kit when the feature has screens or flows of its own, and a capability when you are bundling one ability for blocks.
+A kit packages a whole feature, with its flows and screens, that an app installs with one config object. A kit can contain capabilities. A capability never contains a kit, because a block lists a capability in `uses` and an app installs a kit. Reach for a kit when the feature has screens or flows of its own, and a capability when you are bundling one ability for blocks.
 
 ## Next
 

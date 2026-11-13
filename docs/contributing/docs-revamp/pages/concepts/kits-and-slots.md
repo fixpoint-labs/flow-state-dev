@@ -40,7 +40,7 @@ export default createFlowState({
 
 `workforce` brings a team of workers. `harnesses` adds a `coder` flow to it, and `claudeCode` supplies Claude Code to `harnesses`. A flow is a self-contained system inside your app that clients can call, and the kits' flows are served beside `help-desk`.
 
-Order in `kits` doesn't matter. Kits install in the order they require each other: `workforce`, then `harnesses`, then `claudeCode`. [Kits reference](../reference/kits.md) has the rule.
+Order in `kits` doesn't matter. Kits install in the order they require each other: `workforce`, then `harnesses`, then `claudeCode`. A missing one does matter: delete `workforce()` and keep `harnesses({})`, and the app refuses to start, naming the kit `harnesses` needs. [Kits reference](../reference/kits.md) has the rule.
 
 ## What a kit brings
 
@@ -49,7 +49,7 @@ Order in `kits` doesn't matter. Kits install in the order they require each othe
 Beside flows, a kit can bring:
 
 - **Config.** The options your app passes when it calls the kit, checked at that call. The [Kits reference](../reference/kits.md) lists the checks.
-- **A folder.** `workforce` reads `workforce/`, one `WORKER.md` file per worker, when the app starts. Which files count is spelled out in the [per-path rules](../reference/kits.md).
+- **A folder.** `workforce` reads `workforce/`, one `WORKER.md` file per worker, when the app starts. Anything else left in that folder, such as a stray `notes.txt`, stops the app from starting and is named in the error; the [per-path rules](../reference/kits.md) say which files count.
 - **Views.** A kit's flows bring their views, resources and capabilities with them. [Views](./views.md) shows what a screen reads.
 
 ## A slot
