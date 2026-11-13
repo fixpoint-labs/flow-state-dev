@@ -20,7 +20,7 @@ Each message the user sends starts a request: one run of one action, which is a 
 
 <Figure svg={OneRequest} caption="One request, and the session's list under it" description={"A dashed outline, because a request lasts one action run, holds four boxes joined by arrows that mean then. First the user message, complete at once. Second a tool call, a tool_output item for lookUpOrder that is in progress and then done. Third, highlighted, the reply: a message item that is in progress while its text grows piece by piece, as Your order, shipped, Tuesday. Fourth the end, item.done, when the reply is completed with its full text. Below the request is the session's list, hatched because it outlives the request, holding the same items in the same order."} />
 
-The user's message is complete the moment it appears. The tool call is one item that carries the tool's name and arguments when it starts, and gains its result when it finishes. The reply is one `message` item. It is added with empty text and the `in_progress` status, and the model's words arrive as small pieces appended to it. When the model finishes, the item is sent again whole, with the status `completed`.
+The user's message is complete the moment it appears. The tool call is one item that gains its result when it finishes. The reply is one `message` item that grows as the model's words arrive, then is sent again whole when the model finishes. [The items reference](../reference/items.md) has the events and statuses.
 
 So when the model is halfway through a sentence, the browser holds the user's message, the finished tool call, and the reply so far. It has not yet received the reply's done event.
 
@@ -48,28 +48,26 @@ export function TicketThread({ sessionId }: { sessionId: string }) {
 }
 ```
 
-`session.items` is every item in the session, in order, and the hook updates it as pieces arrive, so the reply grows on screen. The key combines `requestId` and `id`, because two requests can hold items with the same id. Drawing cards and tool calls too is [Rendering items](./rendering-items.md).
+`session.items` is every item in the session, in order, and the hook updates it as pieces arrive, so the reply grows on screen. The key pairs `requestId` with `id`, and the items reference says why. Drawing cards and tool calls too is [Rendering items](./rendering-items.md).
 
 ## The items you will meet
 
-Every item has an `id`, a `type`, a `status`, the `requestId` of the request that made it, and the block that made it. A block is the framework's unit of work, and [Blocks](./blocks.md) explains it.
+Each item has a `type` and a `status`, and records the block that made it. A block is the framework's unit of work, and [Blocks](./blocks.md) explains it. These four types are the ones this page uses.
 
 | Item | Made by | Seen by the next request's model |
 | --- | --- | --- |
 | `message` | The user's input, a generator, or `ctx.emit.message` | Yes |
-| `reasoning` | A generator, when the model writes out its thinking | Yes |
 | `tool_output` | A tool call | Yes |
 | `component` | `ctx.emit.component` | No |
 | `status` | `ctx.emit.status` | No |
-| `error` | The framework, when a request fails | No |
 
 [The items reference](../reference/items.md) lists every type, its fields and the visibility rules.
 
 ## A session keeps them
 
-A session belongs to the user who created it. Another user who asks for it gets a not-found. Its items are stored on each request's record, and the session's list is built from those records when it is read, in one order. A live view and a reloaded page show the same items in the same order. By default records live in memory and are gone on restart; a SQLite or Postgres store keeps them.
+A session belongs to the user who created it. A live view and a reloaded page show the same items in the same order. The default store keeps them in memory, so a server restart loses them; a SQLite or Postgres store keeps them. [The items reference](../reference/items.md) has what is stored and who can read it.
 
-The model's memory is a separate choice. A generator sees earlier items only when its `history` option is on, and then only the ones marked for history. Components, statuses and errors never reach it, so a progress card does not end up in the next prompt. `itemVisibility: { client: true, history: true }` on a generator shows its reply to the user and keeps it in the conversation.
+What the next request's model sees is a separate choice. A generator sees earlier items only when its `history` option is on, and the table's last column is the default for each type, so a progress card does not end up in the next prompt. The visibility options are in the reference.
 
 ## Emitting your own
 
@@ -96,13 +94,13 @@ export const checkOrder = handler({
 });
 ```
 
-The first argument names a React component the client registers, as `renderers={{ component: { "order-lookup": OrderLookup } }}`. The `key` makes the second call replace the first instead of stacking beside it. The data is replaced whole, not merged. A connected browser sees both updates, and a reload shows the latest.
+The first argument names a React component the client registers; [Rendering items](./rendering-items.md) shows how. The `key` makes the second call replace the first instead of stacking beside it.
 
-`ctx.emit.message(text)` adds a chat message that arrives in one piece and enters history. `ctx.emit.status(text)` sets a line of live text, shown as `statusMessage` on the session. A status is not stored, and neither is a component emitted with `transient: true`.
+`ctx.emit.message(text)` and `ctx.emit.status(text)` are the other two emitters. The items reference says what each one stores.
 
 ## From a terminal
 
-`fsdev run` prints each item as a line of JSON. This is the reply from the `hello-chat` example, shortened. A generator needs its model provider's key in the environment.
+`fsdev run` prints each item as a line of JSON. Below is the reply from the `hello-chat` example, shortened. A generator needs its model provider's key in the environment.
 
 ```bash
 fsdev run hello-chat chat -i '{"message":"Say hi in four words."}' --quiet
@@ -114,30 +112,30 @@ fsdev run hello-chat chat -i '{"message":"Say hi in four words."}' --quiet
 {"type":"item_done","item":{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Hi there, my friend!"}], …}}
 ```
 
-The terminal also prints trace rows such as `block_trace`, which never reach a browser.
+The terminal also prints trace rows such as `block_trace`. A browser's stream leaves them out unless the client asks for them, as [the items reference](../reference/items.md) explains.
 
 ## If the connection drops
 
-A request keeps running on the server when the browser's connection ends. The stream is a view onto it. Every event on the stream carries a sequence number, and a client that reconnects asks for everything after the last number it saw.
+A request keeps running on the server when the browser's connection ends. The stream is a view onto it, so a client that reconnects picks up after the last event it saw.
 
 <Figure svg={Dropped} caption="A dropped connection, resumed at the next number" description={"Three boxes in a row. On the left, the browser live, holding events 1 to 41 and the reply so far, Your order shi. In the middle, the request still running on the server, producing events 42 to 57 while nobody listens. A red line with a bar between the first two boxes marks the lost connection. On the right, highlighted, the browser back, asking starting_after=41, so events 42 onward are sent. An arrow runs from the middle box to the right one. The reply text snaps to its saved copy and then grows again."} />
 
-The browser client does this on its own. The pieces of a half-written reply are not replayed: the text jumps to the latest saved copy and grows again from there.
+The browser client does this on its own.
 
-When a reload happens mid-answer, the page loads the saved conversation, with the reply as far as it was last saved. With `autoResume: true`, as in the example above, the hook then attaches to the running request and carries on. Without it you get that one snapshot. Items marked `transient` were never saved, so they are gone.
+Reload mid-reply and the order A-1001 thread comes back with the reply as last saved. With `autoResume: true`, as in the example above, the hook then attaches to the running request and carries on.
 
-If the stream goes quiet, `session.isStuck` turns true so the page can show a banner, and `followRequest(requestId)` re-attaches. Heartbeats, retry rules and the other recovery calls are in [the items reference](../reference/items.md).
+Detecting a stalled stream, heartbeats and the recovery calls are in [the items reference](../reference/items.md).
 
 ## What it gets you
 
 - **The reply shows as it is written.** The reply is one item whose text grows, and `session.items` holds it.
-- **A reload loses nothing that was saved.** A dropped stream resumes at the next number.
+- **A reload brings the thread back.** Reload mid-reply and the order A-1001 thread returns, and with `autoResume` the reply carries on. A dropped stream resumes where it stopped.
 - **One list for everything the run does.** A message, a tool call and a progress card are all items in one ordered list, drawn by type.
 - **The model remembers what you choose.** Visibility is set per item, so a progress card never ends up in the next prompt.
 
 ## How it fits with the others
 
-Blocks emit items, and each item records which block made it. State and resources are separate. A `state_change` item tells a browser that something changed, and it is not the state itself; [State and scopes](./state-and-scopes.md) covers that.
+Blocks emit items, and each item records which block made it. State and resources are separate. A change to either reaches a browser as a short notice item, not as the state itself; [State and scopes](./state-and-scopes.md) covers that.
 
 ## Next
 
