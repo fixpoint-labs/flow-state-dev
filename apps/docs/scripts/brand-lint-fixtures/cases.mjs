@@ -37,6 +37,8 @@ export default [
   svg("good.single-quotes", null, null, LABEL, LABEL.replace('fill="#57544a"', "fill='#57544a'").replace('font-size="10px"', "font-size='10px'")),
   // Must pass: an arrow drawn as a path of M, H and V, on the canvas.
   svg("good.path-arrow", null, null, '<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="438" y1="64" x2="330" y2="64" marker-end="url(#ah)"/>', '<path class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" d="M 438 64 H 400 V 64 H 330" marker-end="url(#ah)"/>'),
+  // Must pass: a path whose numbers are in scientific notation; an exponent's e is part of its number, not a command.
+  svg("good.path-exponent", null, null, NAME, `${NAME}\n<path class="ink" fill="#1b1a15" d="M 1e2 110 L 1.2E2 110 L 100 1.2e+2 Z"/>`),
 
   // 1. Drawing only: no title, description or styling of its own, and only page.css's classes.
   svg("svg", "svg", "<title>: the page and <Figure> own it", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 200">', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 200">\n<title>A board</title>'),
@@ -86,6 +88,8 @@ export default [
   svg("canvas.rect-past-920", "canvas", "a <rect> reaching (938, 104), off the 920 × 200 canvas", DASH_BOX, DASH_BOX.replace('width="300"', 'width="500"')),
   svg("canvas.line-past-bottom", "canvas", "a <line> reaching (460, 260), off the 920 × 200 canvas", 'x1="0" y1="128" x2="920" y2="128"', 'x1="460" y1="128" x2="460" y2="260"'),
   svg("canvas.path-relative", "canvas", "a <path> reaching (940, 90), off the 920 × 200 canvas", NAME, `${NAME}\n<path class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" d="M 860 90 h 40 h 40" marker-end="url(#ah)"/>`),
+  svg("canvas.path-exponent", "canvas", "a <path> reaching (1000, 110), off the 920 × 200 canvas", NAME, `${NAME}\n<path class="ink" fill="#1b1a15" d="M 1e3 110 L 100 110 Z"/>`),
+  svg("canvas.path-unread", "canvas", 'a path "# 2" the lint does not read', NAME, `${NAME}\n<path class="ink" fill="#1b1a15" d="M 100 110 # 2"/>`),
   svg("canvas.path-arc", "canvas", 'a path command "A 4 4 0 0 1 108 110" the lint does not read', NAME, `${NAME}\n<path class="ink" fill="#1b1a15" d="M 100 110 A 4 4 0 0 1 108 110"/>`),
 
   // 8. Text class.
@@ -150,6 +154,10 @@ export default [
   page("embed.component-braces", "Board is used outside a <Figure>'s svg", "<div>{Board}</div>"),
   page("embed.component-expr", "Board is used outside a <Figure>'s svg", "<div>{true && Board}</div>"),
   page("embed.component-nested", "Board is used outside a <Figure>'s svg", "<div>{true ? Board : {a: 1}}</div>"),
+  // Must pass: Board as a property's name is no reference to the import.
+  { name: "good.property-names", base: "good.md", rule: null, expect: null, find: PROSE, replace: "<span>{({Board: 'ordinary text'}).Board}</span>" },
+  page("embed.component-shorthand", "Board is used outside a <Figure>'s svg", "<span>{({Board}).Board}</span>"),
+  page("embed.component-computed", "Board is used outside a <Figure>'s svg", "<span>{({[Board]: 1})}</span>"),
   page("embed.jsx-comment-hides", "Board is used outside a <Figure>'s svg", "{/* don't */}\n\n{Board}\n\nIt's set on the page with no caption or description."),
   page("embed.parse", "the page does not parse as MDX", "An expression that never closes: {Board"),
   page("embed.reference-full", "a figure set as an image", "![A board][board]\n\n[board]: ./good.svg"),
