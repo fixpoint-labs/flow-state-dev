@@ -20,7 +20,7 @@
  * their roster.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { topic, viewRef, type Client, type LiveRead, type SessionSummary } from "@flow-state-dev/client";
+import { topic, viewRef, type Client, type LiveRead } from "@flow-state-dev/client";
 import {
   DONE_STATUS,
   parseWorkstreamEntry,
