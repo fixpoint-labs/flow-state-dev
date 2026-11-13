@@ -21,7 +21,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
   };
 });
 
-import { createLabAdapter, type Activity, type ConversationView, type Unsubscribe, type WindowMark } from "../src/adapter";
+import { createLabAdapter, type Activity, type ConversationView, type LabTalk, type Unsubscribe, type WindowMark } from "../src/adapter";
 import { liveOver } from "./live-over";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -30,6 +30,7 @@ function host() {
   const calls: string[] = [];
   let requests: unknown[] = [];
   let summary: unknown;
+  let messages: unknown[] = [];
   let holdRequests: Promise<void> | undefined;
   let requestsFailing = 0;
   const sentIds: string[] = [];
@@ -51,6 +52,7 @@ function host() {
       const status = new URL(url, "http://x").searchParams.get("status");
       return json({ requests: status === null ? requests : requests.filter((r) => (r as { status?: string }).status === status) });
     }
+    if (path.includes("workforceMessages")) return json({ items: messages.map((m) => ({ topic: `workforce/messages/${(m as { id: string }).id}`, clientData: m })) });
     if (path.endsWith("/stream")) {
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
@@ -97,6 +99,7 @@ function host() {
     items: (next: unknown[]) => void (items = next),
     failRequestReads: (n: number) => void (requestsFailing = n),
     summary: (next: unknown) => void (summary = next),
+    messages: (next: unknown[]) => void (messages = next),
     holdRequestReads: () => {
       let release!: () => void;
       holdRequests = new Promise((r) => (release = r));
@@ -275,5 +278,49 @@ describe("watchWindow", () => {
     await until(() => h.count("/sessions/s1/requests") === 2);
     h.hear({ topic: { scope: "session", id: "s1" }, kind: "request" });
     await until(() => h.count("/sessions/s1/requests") === 3);
+  });
+});
+
+describe("watchTalk", () => {
+  const message = (id: string, at: number) => ({
+    id,
+    exchange: id,
+    from: "eng",
+    to: "pm",
+    text: `line ${id}`,
+    at,
+    fromSession: "conv_eng",
+    fromFlow: "agent",
+    toSession: "conv_pm",
+    toFlow: "agent",
+    hop: 1,
+    status: "delivered",
+  });
+
+  it("reads your message log on a notice of it under your user scope, not on a clock; at the old pace where push can miss one", async () => {
+    const h = host();
+    h.messages([message("msg_1", 1)]);
+    const lab = createLabAdapter(h.client);
+    await lab.openConversation("eng");
+    const shown: LabTalk[][] = [];
+    stops.push(lab.watchTalk("eng", (talk) => shown.push(talk)));
+    await until(() => shown.length === 1);
+    // The log is the user's: a message sent from any session lands under the user's scope.
+    const sub = h.subscriptions.find((s) => !s.closed && s.topics.some((t) => t.scope === "user"));
+    expect(sub?.topics).toEqual([{ scope: "user" }]);
+    expect(sub?.options.pollIntervalMs).toBe(1_500);
+
+    // Push covers the page: no read on a clock, and none for another resource of the user's.
+    await new Promise((r) => setTimeout(r, 1_700));
+    h.hear({ topic: { scope: "user", resource: "lab-pins" }, kind: "resource" });
+    h.hear({ topic: { scope: "user", resource: "workforce/workers/eng" }, kind: "resource" });
+    await settle();
+    expect(h.count("workforceMessages")).toBe(1);
+
+    h.messages([message("msg_1", 1), message("msg_2", 2)]);
+    h.hear({ topic: { scope: "user", resource: "workforce/messages/msg_2" }, kind: "resource" });
+    await until(() => shown.length === 2);
+    expect(shown[1]!.map((m) => m.id)).toEqual(["msg_1", "msg_2"]);
+    expect(h.count("workforceMessages")).toBe(2);
   });
 });
