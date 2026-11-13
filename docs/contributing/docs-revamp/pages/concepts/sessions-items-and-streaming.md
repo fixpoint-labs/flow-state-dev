@@ -48,13 +48,13 @@ export function TicketThread({ sessionId }: { sessionId: string }) {
 }
 ```
 
-`session.items` is every item in the session, in order, and the hook updates it as pieces arrive, so the reply grows on screen. The key pairs `requestId` with `id`, and the items reference says why. Drawing cards and tool calls too is [Rendering items](./rendering-items.md).
+`session.items` is every item in the session, in order, and the hook updates it as pieces arrive, so the reply grows on screen. The key pairs `requestId` with `id` because an item's `id` is unique only within its request. Drawing cards and tool calls too is [Rendering items](./rendering-items.md).
 
 ## The items you will meet
 
-Each item has a `type` and a `status`, and records the block that made it. A block is the framework's unit of work, and [Blocks](./blocks.md) explains it. These four types are the ones this page uses.
+Each item has a `type` and a `status`, and records the block that made it. A block is the framework's unit of work, and [Blocks](./blocks.md) explains it. These four types cover what this page shows.
 
-| Item | Made by | Seen by the next request's model |
+| Item | Made by | In a model's history by default |
 | --- | --- | --- |
 | `message` | The user's input, a generator, or `ctx.emit.message` | Yes |
 | `tool_output` | A tool call | Yes |
@@ -65,9 +65,9 @@ Each item has a `type` and a `status`, and records the block that made it. A blo
 
 ## A session keeps them
 
-A session belongs to the user who created it. A live view and a reloaded page show the same items in the same order. The default store keeps them in memory, so a server restart loses them; a SQLite or Postgres store keeps them. [The items reference](../reference/items.md) has what is stored and who can read it.
+A session belongs to the user who created it. Anyone else who asks for it, or for one of its requests, gets a 404, the same answer as for an id nobody has used. A live view and a reloaded page show the same items in the same order. The default store keeps them in memory, so a server restart loses them; a SQLite or Postgres store keeps them. [The items reference](../reference/items.md) has what is stored and who can read it.
 
-What the next request's model sees is a separate choice. A generator sees earlier items only when its `history` option is on, and the table's last column is the default for each type, so a progress card does not end up in the next prompt. The visibility options are in the reference.
+What the next request's model sees is a separate choice. A generator sees earlier items only when its `history` option is on, and then only the types marked Yes, unless you change an item's visibility. The options are in the reference.
 
 ## Emitting your own
 
@@ -94,7 +94,7 @@ export const checkOrder = handler({
 });
 ```
 
-The first argument names a React component the client registers; [Rendering items](./rendering-items.md) shows how. The `key` makes the second call replace the first instead of stacking beside it.
+The first argument names a React component the client registers; [Rendering items](./rendering-items.md) shows how. The `key` makes the second call replace the first instead of stacking beside it. The new data replaces the old whole, with no merge, so send every field each time. A reload shows only the latest copy.
 
 `ctx.emit.message(text)` and `ctx.emit.status(text)` are the other two emitters. The items reference says what each one stores.
 
@@ -118,11 +118,9 @@ The terminal also prints trace rows such as `block_trace`. A browser's stream le
 
 A request keeps running on the server when the browser's connection ends. The stream is a view onto it, so a client that reconnects picks up after the last event it saw.
 
-<Figure svg={Dropped} caption="A dropped connection, resumed at the next number" description={"Three boxes in a row. On the left, the browser live, holding events 1 to 41 and the reply so far, Your order shi. In the middle, the request running on the server, producing events 42 to 57 while nobody listens. A red line with a bar between the first two boxes marks the lost connection. On the right, highlighted, the browser back, asking starting_after=41, so events 42 onward are sent. An arrow runs from the middle box to the right one. The reply text snaps to its saved copy and then grows again."} />
+<Figure svg={Dropped} caption="A dropped connection, resumed at the next number" description={"Three boxes in a row. On the left, the browser live, holding events 1 to 41 and the reply so far, Your order shi. In the middle, the request running on the server, producing events 42 to 57 while nobody listens. A red line with a bar between the first two boxes marks the lost connection. On the right, highlighted, the browser back, asking starting_after=41, so events 42 onward are sent. An arrow runs from the middle box to the right one."} />
 
-The browser client does this on its own.
-
-Reload mid-reply and the order A-1001 thread comes back with the reply as last saved. With `autoResume: true`, as in the example above, the hook then attaches to the running request and carries on.
+When the stream ends before the request does, the browser client reconnects and resumes on its own, with no option to set. The pieces of text sent during the gap are not replayed one by one: the reply jumps to its latest saved text and carries on from there. A reload is different. Reload mid-reply and the order A-1001 thread comes back with the reply text saved so far, which can trail what was on screen by a moment. With `autoResume: true`, as in the example above, the hook then attaches to the running request and carries on.
 
 Detecting a stalled stream, heartbeats and the recovery calls are in [the items reference](../reference/items.md).
 
@@ -131,11 +129,11 @@ Detecting a stalled stream, heartbeats and the recovery calls are in [the items 
 - **The reply shows as it is written.** The reply is one item whose text grows, and `session.items` holds it.
 - **A reload brings the thread back.** Reload mid-reply and the order A-1001 thread returns, and with `autoResume` the reply carries on. A dropped stream resumes where it stopped.
 - **One list for everything the run does.** A message, a tool call and a progress card are all items in one ordered list, drawn by type.
-- **The model remembers what you choose.** Visibility is set per item, so a progress card never ends up in the next prompt.
+- **Progress cards stay out of the prompt.** Each item type has a default visibility, so a card shown to the user is not sent to the next request's model.
 
 ## How it fits with the others
 
-Blocks emit items, and each item records which block made it. State and resources are separate. A change to either reaches a browser as a short notice item, not as the state itself; [State and scopes](./state-and-scopes.md) covers that.
+Blocks emit items. State and resources are separate. A change to either reaches a browser as a short notice item, not as the state itself; [State and scopes](./state-and-scopes.md) covers that.
 
 ## Next
 
