@@ -28,14 +28,12 @@ export {
 export {
   PACKAGES_SLOT,
   readPackagesDirectory,
-  type ReadPackagesDirectoryResult,
 } from "./read-packages-directory";
 
 // The walk primitives under `walkTeams` (`classify`, `openRoot`,
 // `IGNORED_ENTRIES`, ...) are the engine's: `@flow-state-dev/engine/folder`.
 export {
   walkTeams,
-  type WalkedTeam,
 } from "./structural-directory";
 
 export {
@@ -48,7 +46,6 @@ export {
   REFERENCES_SLOT,
   RESOURCES_SLOT,
   WORKERS_LEVEL,
-  type DocumentSlot,
   siblingSlotPath,
 } from "./resource-convention";
 
