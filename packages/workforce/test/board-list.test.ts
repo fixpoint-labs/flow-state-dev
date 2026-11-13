@@ -232,10 +232,10 @@ describe("BoardList · the list (V1)", () => {
         sessionId: SESSION,
         boardRef: BOARD,
         client: hostClient(fixedSource([])),
-        slots: { empty: () => createElement("p", { "data-host-empty": "" }, "Nobody needs a person.") }
+        slots: { empty: () => createElement("p", { "data-host-empty": "" }, "Nothing needs you.") }
       })
     );
-    await waitFor(() => expect(document.querySelector("[data-host-empty]")?.textContent).toBe("Nobody needs a person."));
+    await waitFor(() => expect(document.querySelector("[data-host-empty]")?.textContent).toBe("Nothing needs you."));
   });
 
   it("publishes the props it takes, and no organization filter", () => {

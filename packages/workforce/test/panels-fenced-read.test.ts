@@ -14,7 +14,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, renderHook, waitFor } from "@testing-library/react";
 import { createElement } from "react";
-import type { FlowListEntry, SessionSummary } from "@flow-state-dev/client";
 import { usePanelItem, usePanelRows } from "../src/react/components/reads";
 import { Roster } from "../src/react/components/Roster";
 import { FlowProvider } from "@flow-state-dev/react";
@@ -50,32 +49,10 @@ async function settle(): Promise<void> {
   });
 }
 
-const flow = (kind: string): FlowListEntry => ({ kind }) as unknown as FlowListEntry;
-const session = (id: string): SessionSummary =>
-  ({
-    id,
-    flowKind: "agent",
-    userId: "u",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z"
-  }) as unknown as SessionSummary;
-const leaf = (address: string): FlowNavigatorLeaf => ({
-  kind: "agent",
-  address,
-  cardinality: "collection"
-});
 const page = (...topics: string[]) => ({
   items: topics.map((topic) => ({ topic, clientData: { topic } }))
 });
 
-function flowSource() {
-  const { calls, fn } = heldMethod<FlowListEntry[]>();
-  return { calls, listFlows: fn, flows: fn };
-}
-function sessionSource() {
-  const { calls, fn } = heldMethod<SessionSummary[]>();
-  return { calls, listSessions: fn, sessions: { list: fn } };
-}
 function entrySource() {
   const { calls, fn } = heldMethod<ReturnType<typeof page>>();
   return { calls, listCollectionResources: fn, resources: { listCollectionResources: fn } };
@@ -85,7 +62,6 @@ function itemSource() {
   return { calls, getCollectionResourceState: fn, resources: { getCollectionResourceState: fn } };
 }
 
-const kinds = (flows: readonly FlowListEntry[]) => flows.map((f) => f.kind);
 const topics = (entries: readonly { topic: string }[]) => entries.map((r) => r.topic);
 
 // ---------------------------------------------------------------------------

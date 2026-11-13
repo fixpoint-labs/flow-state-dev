@@ -131,7 +131,7 @@ function liveScopeDriver(sessionId: string, ref: string, client: PanelNoticeSour
  * the route stops returning one, through the client's shared
  * `readEveryCollectionPage` (up to `COLLECTION_READ_MAX_PAGES`, 1,000 pages).
  *
- * Deliberately no `loadMore`: the panels draw a standing list that a person
+ * Deliberately no `loadMore`: the panels draw a standing list that a user
  * scans, not a feed they page through, and a cursor the host cannot see is
  * worse than none. `limit` sets the page **size** the read requests each
  * time, not a cap on what the panel shows — a collection larger than `limit`

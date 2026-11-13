@@ -24,7 +24,7 @@ type PublishedRoster = (typeof rosterPropNames)[number];
 type PublishedBoard = (typeof boardColumnsPropNames)[number];
 type PublishedList = (typeof boardListPropNames)[number];
 
-/** Every key of every member, since `BoardListProps` is a union over its transport. */
+/** Every key of every variant, since `BoardListProps` is a union over its transport. */
 type KeysOf<T> = T extends unknown ? keyof T : never;
 
 /** Compiles only for `never`; the error names the offending key. */

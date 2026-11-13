@@ -28,7 +28,7 @@ export const Instructions: Story = {
     client: itemSource({
       workerId: "support.ada",
       flow: "support-agent",
-      instructions: "Answer billing questions. Hand refunds over $500 to a person.",
+      instructions: "Answer billing questions. Hand refunds over $500 to the billing lead.",
     }),
   },
 };
