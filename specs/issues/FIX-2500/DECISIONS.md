@@ -48,7 +48,7 @@ Then the three lines are dropped.
   render once turns have left the window and no fold has run. The fold is a `.tapIf` on that
   reader; the context half is a per-turn `uses` entry, with the resource declared statically.
 - **The opt-out is `defaults: { historySummary: false }`,** named after the thing it controls,
-  like `environment` and `skillsIndex`. `defaults: false` turns it off with the rest, and the
+  like `date` and `skillsIndex`. `defaults: false` turns it off with the rest, and the
   docs say so: it also stops keeping the thread. Absent, `{}` or `true` means on (BP-030).
   FIX-2498 owns the key and its validation, and blocks this implementation.
 - **An app's own summary replaces the default:** fold, context section and all. No refusal and
