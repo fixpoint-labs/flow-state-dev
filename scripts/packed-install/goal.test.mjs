@@ -15,6 +15,7 @@ import { test } from "node:test";
 import {
   changelogLines,
   gradeMovedNames,
+  isReleaseGrade,
   judge,
   judgeControl,
   outcomeOf,
@@ -265,15 +266,51 @@ test("a package that lost a name and has no summary line fails, naming the packa
   ]);
 });
 
-test("a summary line with the wrong count fails: it would tell an upgrader less broke than did", () => {
-  const stale = "- 2 unused exports are removed from the roots of the published `@flow-state-dev/*` packages (FIX-123).";
-  const lines = new Map([
-    ["@flow-state-dev/core", [stale]],
+// Other PRs keep dropping root names after the line's count was last set, and
+// their own CI never sees the merged rule, so an exact count on every main run
+// turns main red for drift nobody on that PR caused. Off release, a stale count
+// is a note with both numbers; the summary line itself is still required.
+const STALE = "- 2 unused exports are removed from the roots of the published `@flow-state-dev/*` packages (FIX-123).";
+const staleLines = () =>
+  new Map([
+    ["@flow-state-dev/core", [STALE]],
     ["@flow-state-dev/engine", [SUMMARY]],
   ]);
-  assert.deepEqual(gradeMovedNames(threeNames, lines), [
+
+test("off release, a summary line with a stale count passes and leaves a note with both numbers", () => {
+  const notes = [];
+  assert.deepEqual(gradeMovedNames(threeNames, staleLines(), { notes }), []);
+  assert.deepEqual(notes, ["@flow-state-dev/core: its changelog says 2 exports removed from the package roots; 3 were"]);
+});
+
+// The release is what an upgrader reads, so there the count must be the real
+// one: a stale count tells them less broke than did.
+test("grading a release, a summary line with a stale count fails", () => {
+  const notes = [];
+  assert.deepEqual(gradeMovedNames(threeNames, staleLines(), { release: true, notes }), [
     "@flow-state-dev/core: its changelog says 2 exports removed from the package roots; 3 were",
   ]);
+  assert.deepEqual(notes, [], "at release the stale count is a failure, not a note");
+});
+
+// The release is graded on the Version Packages PR, the one PR whose head is
+// `changeset-release/main` (the same signal release-docs-gate.yml keys on).
+// Every other run, a push to main or a dispatch, is not a release.
+test("a run grades a release only on the Version Packages PR", () => {
+  assert.equal(isReleaseGrade({ GITHUB_HEAD_REF: "changeset-release/main" }), true);
+  assert.equal(isReleaseGrade({ GITHUB_HEAD_REF: "fix/FIX-1-something" }), false);
+  assert.equal(isReleaseGrade({ GITHUB_HEAD_REF: "" }), false, "a push to main sets no head ref");
+  assert.equal(isReleaseGrade({}), false);
+});
+
+test("a package with no summary line fails whether or not a release is graded", () => {
+  const lines = new Map([
+    ["@flow-state-dev/core", [SUMMARY]],
+    ["@flow-state-dev/engine", ["- `C` is gone."]],
+  ]);
+  const missing = ["@flow-state-dev/engine: no changelog line says the 3 exports removed from the package roots"];
+  assert.deepEqual(gradeMovedNames(threeNames, lines), missing);
+  assert.deepEqual(gradeMovedNames(threeNames, lines, { release: true }), missing);
 });
 
 test("a dropped name that still compiles from the root fails, and a journey that walked no name fails", () => {

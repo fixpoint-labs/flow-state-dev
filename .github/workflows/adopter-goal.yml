@@ -4,10 +4,16 @@ name: Adopter goal
 # closure's upgrade journey, hold for someone who installs FSD from npm, read
 # off every push to main. It is not a
 # gate. Most assertions are expected to fail until the child that owns them
-# lands, so it never runs on a pull request (an expected fail would block
-# unrelated work) and never on release. A child dispatches it on its own branch
-# to show its cell pass before it flips its line in
+# lands, so it never runs on an ordinary pull request (an expected fail would
+# block unrelated work). A child dispatches it on its own branch to show its
+# cell pass before it flips its line in
 # scripts/packed-install/goal-manifest.json.
+#
+# It does run on the Version Packages PR (head `changeset-release/main`, the
+# signal release-docs-gate.yml keys on). That run grades the release: the
+# upgrade journey's changelog count must equal the exports the roots really
+# lost. On main a stale count is only a note, since other PRs keep dropping
+# root names after the count was set.
 #
 # Red means an outcome no longer matches the manifest, in either direction, or
 # an assertion could not run. Green means outcomes agree with the manifest, not
@@ -15,6 +21,7 @@ name: Adopter goal
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 # Every push to main gets its own reading, so main runs queue rather than
@@ -26,6 +33,7 @@ concurrency:
 jobs:
   adopter-goal:
     name: Adopter goal on installed tarballs
+    if: github.event_name != 'pull_request' || github.head_ref == 'changeset-release/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

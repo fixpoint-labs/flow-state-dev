@@ -66,7 +66,7 @@ table](../../epics/FIX-2447/SPEC.md#five-teams-before-and-after) is still walked
 
 | Assertion | Passes when |
 |---|---|
-| `j5:moved-name-named` | The upgrade fixture, a small app written against 0.4.0 that compiles and runs on the 0.4.0 tarballs first, is reinstalled on the pinned tarballs. Each moved root name in it fails to compile ([Q1](DECISIONS.md#q1), answered break: no `@deprecated` alias), and every package that lost one carries the changelog's summary line, which states the real count of exports the roots lost (amended Nov 12: the owner chose one summary line over a line per name, [D1](DECISIONS.md#d1)). No single child sees every move, so only the closure can walk them all |
+| `j5:moved-name-named` | The upgrade fixture, a small app written against 0.4.0 that compiles and runs on the 0.4.0 tarballs first, is reinstalled on the pinned tarballs. Each moved root name in it fails to compile ([Q1](DECISIONS.md#q1), answered break: no `@deprecated` alias), and every package that lost one carries the changelog's summary line, which states the count of exports the roots lost (amended Nov 12: the owner chose one summary line over a line per name, [D1](DECISIONS.md#d1)). The count must be the real one on the Version Packages PR; elsewhere a stale count is a note (amended Nov 13, [D1](DECISIONS.md#d1)). No single child sees every move, so only the closure can walk them all |
 
 ## What changes
 
