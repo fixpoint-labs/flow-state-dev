@@ -30,7 +30,7 @@
 <rect class="hl" fill="#e8f551" x="482" y="70" width="176" height="48"/>
 <rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="482" y="70" width="176" height="48"/>
 <text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="494" y="90">the session</text>
-<text class="sub on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="494" y="107">one conversation</text>
+<text class="sub on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="494" y="107">many requests, one log</text>
 <rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="482" y="126" width="176" height="48"/>
 <text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="494" y="146">session state</text>
 <text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="494" y="163">messageCount</text>
@@ -61,6 +61,6 @@
 <rect fill="url(#hatch)" x="244" y="388" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="244" y="388" width="26" height="11"/>
 <text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="278" y="398">OUTLIVES THE REQUEST</text>
 <rect class="hl" fill="#e8f551" x="460" y="388" width="26" height="11"/>
-<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="494" y="398">THE CONVERSATION</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="494" y="398">THE SESSION</text>
 </g>
 </svg>

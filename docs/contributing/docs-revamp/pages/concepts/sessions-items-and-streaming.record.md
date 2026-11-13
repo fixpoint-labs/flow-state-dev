@@ -45,6 +45,7 @@ Written by `docs-writer` (sonnet), 1014 words. Scenario: A support desk: a custo
 - After revise round 1, page sha256 d76b004a061b: exit 0.
 - After revise round 2, page sha256 02f3002b9a36: exit 0.
 - After revise round 3, page sha256 8db45476aeb3: exit 0.
+- After the owner's review edits, page sha256 a706f07764d9: exit 0.
 
 ## 5 · Fact check
 
@@ -54,6 +55,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 c60
 - Reference row 9: Row 9: block_trace and other trace rows appear on the fsdev run stream only and are never sent to browsers. Untrue: A browser stream omits trace events unless the client opts in with `?include=trace` (`includeTrace`). They are on the stream only when asked for, not only on `fsdev run`. (/home/user/flow-state-dev/packages/engine/src/routes/stream-routes.ts:106 and :178) The row is recorded corrected.
 - `ctx.emit.status(text)` sets a line of live text, shown as `statusMessage` on the session. A status is not stored. Untrue: A status is live-only by default, but `ctx.emit.status(message, { transient: false })` persists a status item. (/home/user/flow-state-dev/packages/core/src/types/block.ts:519-521)
 - Reference row 8: Row 8: status (live text shown as statusMessage, not stored). Untrue: Status defaults to transient (live-only). Passing `{ transient: false }` stores it as a status item. (/home/user/flow-state-dev/packages/core/src/types/block.ts:519-521) The row is recorded corrected.
+- After the owner's review edits, page sha256 a706f07764d9: Owner review, 2026-11-13: the session is where a flow keeps many requests as one record, a conversation for a chat and a log for a workflow. Codex review: a reconnect does not replay the missed text pieces, and the reply can lack those words until the message arrives whole; a reload reads the saved items. Checked: `replayRequestEvents` skips `content.delta` and loads no snapshot (`engine/src/streaming/resume.ts:130-160`).
 
 ## 6 · Depth pass
 

@@ -68,7 +68,7 @@ Look at the two kinds first. The handler is plain code with a schema for what go
 
 Then the connector. `cleanMessage` returns an object, and `draftReply` wants a string, so the second step begins with a small function that reshapes one into the other.
 
-`itemVisibility: { client: true, history: true }` shows the reply to the user and keeps it in the conversation. The [items reference](../reference/items.md) lists the other settings and the defaults for each kind of block.
+`itemVisibility: { client: true, history: true }` shows the reply to the user and keeps it in the model's history for later turns. The [items reference](../reference/items.md) lists the other settings and the defaults for each kind of block.
 
 A flow exposes a block as an action, a call a client can make. `defineFlow({ kind: "support", actions: { reply: { block: handleTicket } } })` makes this one callable as `reply`, because a sequencer is a block like any other.
 

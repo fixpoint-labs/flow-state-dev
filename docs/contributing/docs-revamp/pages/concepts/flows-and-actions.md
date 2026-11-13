@@ -1,7 +1,7 @@
 ---
 title: Flows and actions
 type: concept
-description: A flow is a backend with a name, and its actions are what a client can call.
+description: A flow is the top-level unit of your backend, the thing you register with the server and clients call. Its actions are what a client can call.
 ---
 
 import Figure from "@site/src/components/Figure";
@@ -9,11 +9,11 @@ import FlowsAndActions from "./figures/flows-and-actions.svg";
 
 # Flows and actions
 
-A flow is a backend with a name. It lists the actions a client can call, and each action runs a piece of your code. A client never reaches that code directly. It names a flow and an action, `support` and `reply`, and sends some input.
+A flow is the top-level unit of your backend: the thing you register with the server and that clients connect to. It lists the actions a client can call, and each action runs a piece of your code. A client never reaches that code directly. It names a flow and an action, `support` and `reply`, and sends some input.
 
 The example on this page is a support desk: a flow called `support` with an action called `reply`.
 
-<Figure svg={FlowsAndActions} caption="One flow definition, three things people call the flow" description={"Three columns, left to right. The first, in your code, is the flow.ts file with a defineFlow call whose kind is support and whose actions hold one action named reply; reply is highlighted as the name a client sends. An arrow, keyed as becomes or owns, runs to the second column, the registered flow in the running server: one support entry, answering every user, not kept per user. A second arrow runs to the third column, the sessions in the store, hatched because they outlive the request: alice's conversation with a count of 2 and bob's with a count of 1, one session per conversation."} />
+<Figure svg={FlowsAndActions} caption="One flow definition, three things people call the flow" description={"Three columns, left to right. The first, in your code, is the flow.ts file with a defineFlow call whose kind is support and whose actions hold one action named reply; reply is highlighted as the name a client sends. An arrow, keyed as becomes or owns, runs to the second column, the registered flow in the running server: one support entry, answering every user, not kept per user. A second arrow runs to the third column, the sessions in the store, hatched because they outlive the request: alice's session with a count of 2 and bob's with a count of 1, one session each."} />
 
 ## A flow with one action
 
@@ -38,19 +38,17 @@ export const reply = handler({
 
 ```ts title="src/flows/support/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
-import { z } from "zod";
 import { reply } from "./blocks/reply";
 
 export const supportFlow = defineFlow({
   kind: "support",
   actions: { reply },
-  session: { stateSchema: z.object({ replyCount: z.number().default(0) }) },
 });
 
 export default supportFlow();
 ```
 
-`defineFlow` takes a `kind`, the flow's id, which a client and `fsdev run` use to name it, and `actions`. The `session.stateSchema` declares the shape of what a session keeps, here the reply count the block writes. `defineFlow` returns the definition. Calling the definition makes the flow the server registers, which is the default export. The app lists it once:
+`defineFlow` takes a `kind`, the flow's id, which a client and `fsdev run` use to name it, and `actions`. The flow needs nothing about the reply count: `reply` declares the state it uses, and the flow picks that up from its blocks. `defineFlow` returns the definition. Calling the definition makes the flow the server registers, which is the default export. The app lists it once:
 
 ```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
@@ -110,9 +108,9 @@ export const fsd = createClient({ userId: "alice", baseUrl: "", fetcher });
 
 [Run a flow from your own code](../build/run-a-flow-from-code.md) covers calling an action with no client at all.
 
-## One definition, many conversations
+## One definition, many sessions
 
-"The flow" names different things. The definition is code in your repo. The registered flow is what the running server answers with, one per id, shared by every user. A session is one conversation with it, kept in the app's store.
+"The flow" names different things. The definition is code in your repo. The registered flow is what the running server answers with, one per id, shared by every user. A session is one running record of requests to it, kept in the app's store.
 
 Alice and Bob both send `reply` at once, each in their own session.
 
@@ -121,13 +119,13 @@ Alice and Bob both send `reply` at once, each in their own session.
 
 If Bob sends to Alice's session id, the server refuses it with `404 Unknown session`, the same answer it gives for an id that does not exist. Nothing is written, and the answer does not reveal that the session exists ([HTTP API reference](../reference/http-api.md)).
 
-A send with no `sessionId` starts a session of its own and does not return its id ([HTTP API reference](../reference/http-api.md)). To keep a conversation, create the session first and pass its id, as above.
+A send with no `sessionId` starts a session of its own and does not return its id ([HTTP API reference](../reference/http-api.md)). To keep later sends together, create the session first and pass its id, as above.
 
 ## What it gets you
 
 - **One name to call.** The client sends `reply` to `support`. The blocks behind it can change without the client changing.
 - **Checked input.** A bad call comes back as a failed request before the block runs.
-- **A conversation that remembers.** Call `reply` twice on one session and the second call sees the first's count. A new session starts at 1.
+- **A session that remembers.** Call `reply` twice on one session and the second call sees the first's count. A new session starts at 1.
 - **A client checked against the flow.** Rename an action and the client stops compiling.
 
 ## How it fits with the others

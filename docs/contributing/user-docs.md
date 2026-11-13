@@ -328,6 +328,14 @@ examples a page has.
 - **Kit** is a feature an app installs. **Slot** is an opening a kit leaves for other kits.
 - **View** is what a screen reads. **Flow**, **action**, **block**, **session**, **resource** keep
   the meanings in [`glossary.mjs`](./glossary.mjs).
+- **Flow** is the top-level unit of the backend: the thing you register with the server and that
+  clients connect to. It is a workflow, and an agent is one kind of workflow. Never "a backend" or
+  "a backend with a name": the backend holds flows.
+- **Session** is where a flow keeps many requests together as one record. A chat conversation is
+  one use of it and a workflow's log of activity is another, so never define a session as "a
+  conversation".
+- An example declares a thing where the code declares it. State a block uses is declared on the
+  block and reaches the flow from there, so a flow example does not repeat it.
 - Define a term the first time it appears on a page, in the same sentence. Every page stands alone.
 - The repo retires some everyday words. Say "user" for the signed-in human, never "person", and
   "worker" for someone on a team, never "member". `node scripts/check-retired-terms.mjs` names any

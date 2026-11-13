@@ -1,7 +1,7 @@
 ---
 title: Sessions, items and streaming
 type: concept
-description: A session is one conversation, everything that happens in it is an item, and items stream to the browser as they are made.
+description: A session keeps a flow's requests together as one record, everything that happens in it is an item, and items stream to the browser as they are made.
 ---
 
 import Figure from "@site/src/components/Figure";
@@ -10,7 +10,7 @@ import Dropped from "./figures/dropped-and-resumed.svg";
 
 # Sessions, items and streaming
 
-A session is one conversation. Everything that happens in it is an item: a chat message, a tool call, a progress card, an error. Items reach the browser while the work is running, so a reply appears as it is written. The session keeps them, so a reload brings the conversation back.
+A session is where a flow keeps many requests together as one record. For a chat it is the conversation; for a workflow it is the log of everything the work did. Everything that happens in it is an item: a message, a tool call, a progress card, an error. Items reach the browser while the work is running, so a reply appears as it is written. The session keeps them, so a reload brings them back.
 
 The example on this page is a support desk. A customer asks where order A-1001 is, the model looks it up, and then it writes the reply.
 
@@ -120,7 +120,7 @@ A request keeps running on the server when the browser's connection ends. The st
 
 <Figure svg={Dropped} caption="A dropped connection, resumed at the next number" description={"Three boxes in a row. On the left, the browser live, holding events 1 to 41 and the reply so far, Your order shi. In the middle, the request running on the server, producing events 42 to 57 while nobody listens. A red line with a bar between the first two boxes marks the lost connection. On the right, highlighted, the browser back, asking starting_after=41, so events 42 onward are sent. An arrow runs from the middle box to the right one."} />
 
-When the stream ends before the request does, the browser client reconnects and resumes on its own, with no option to set. The pieces of text sent during the gap are not replayed one by one: the reply jumps to its latest saved text and carries on from there. A reload is different. Reload mid-reply and the order A-1001 thread comes back with the reply text saved so far, which can trail what was on screen by a moment. With `autoResume: true`, as in the example above, the hook then attaches to the running request and carries on.
+When the stream ends before the request does, the browser client reconnects and resumes on its own, with no option to set. The pieces of text sent during the gap are not replayed, so the reply can be missing those words until the message finishes and arrives whole. A reload is different: it reads the saved items. Reload mid-reply and the order A-1001 thread comes back with the reply text saved so far, which can trail what was on screen by a moment. With `autoResume: true`, as in the example above, the hook then attaches to the running request and carries on.
 
 Detecting a stalled stream, heartbeats and the recovery calls are in [the items reference](../reference/items.md).
 
