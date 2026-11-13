@@ -88,7 +88,7 @@ The session is in the store. So are its state and its items, including the outpu
 
 The browser holds what it last received: the live item list and the snapshot. Unsent text in a message box is kept in `localStorage`, so a reload keeps it. A view is a read-only question a screen asks the server, such as the list of a user's open orders. Its answer is computed on each read and saved nowhere; the page keeps the last one in memory while the screen is open. [Views](../reference/views.md) says when it is read again.
 
-When a user edits a standard worker, their first edit makes their own copy under the same id. The `WORKER.md` in your repo does not change, and other users still see the standard one. [Workers](./workers.md) covers the rest.
+When a user edits a standard worker, their first edit makes their own copy under the same id. The `WORKER.md` in your repo does not change, and other users keep the standard one. [Workers](./workers.md) covers the rest.
 
 ## Which page to read for what
 
