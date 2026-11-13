@@ -1,0 +1,11 @@
+flowchart LR
+  H["held"] -->|"released"| P["pending"]
+  P -->|"claimed by a board worker"| I["in_progress"]
+  I -->|"worker returns"| C["completed"]
+  I -->|"fails with no retries left"| E["errored"]
+  I -->|"fails with retries left, or the lease lapses · up to 3 times"| P
+  P -->|"cancel"| X["cancelled"]
+  H -->|"cancel"| X
+  I -->|"cancel"| X
+  E -->|"a user's retry"| P
+  X -->|"a user's retry"| P

@@ -1,0 +1,23 @@
+**R1.** The page does not say. It uses "app" throughout, as the thing that registers flows, owns the `workforce/` folder and installs kits, but never defines it.
+
+**R2.** A kit is the unit an app installs: one config object, listed once. It has an imported, versioned package (flows, views, hooks, components) and, for Workforce, an app-owned `workforce/` folder. Kits meet through typed slots.
+
+**R3.** A flow is the code that runs a session. An app registers each flow once, and every worker that names it shares that copy.
+
+**R4.** The page does not say. It mentions blocks (tools are "blocks from its own folders", and hire, fork, edit and fire are "blocks the roster flow runs") but never defines the term.
+
+**R5.**
+- (a) A worker's instructions: change the body of its `WORKER.md` for a standard worker. A user changes their own copy or own worker.
+- (b) A whole feature such as coding agents: add a kit, like the harnesses kit.
+- (c) One step inside request handling: the page does not say. It names no unit for a single step.
+
+**P3.1.** No. A session belongs to one user and nobody else can open it, and the server refuses to create a session at another user's address. The worker contract also requires a flow to keep a worker's state private to the user. The page doesn't spell out memory specifically.
+
+**P3.2.** She can't change the file. She can edit `engineering.lead`, which creates her own copy under the same id that is read before the file, and she can reset it to delete the copy. She can also fork it into a new own worker, or hire a new one on a flow that isn't standard-only. Any of these is checked against the flow's schema first, and a refused one writes nothing. Bob still gets the file's version.
+
+**P3.3.** The page does not say. The delegate check it describes covers whether the worker is on this user's roster now, whether its row is readable, and whether its flow declares the contributor role. It doesn't say what happens to a worker that passes those but isn't in the session's delegate list.
+
+**Terms I had to guess or infer:**
+- "app", inferred from usage
+- "block", unclear beyond its being part of a worker's tools and the roster flow's operations
+- "step", which has no defined unit on the page

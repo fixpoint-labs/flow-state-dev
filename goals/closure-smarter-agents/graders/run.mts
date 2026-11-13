@@ -18,6 +18,8 @@ import { createClient } from "@flow-state-dev/client";
 import { createFlowState, createInProcessFetch, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { z } from "zod";
 import { act, FOLD_MARGIN, foldFillersPassed, planted, servedUntilStopped, skillFiles, turnChecksOf } from "../closure.mts";
+import { draw } from "../fixtures.mts";
+import { teammatesServe } from "../teammates/serve.mts";
 import { APP_MODELS, serveOnHaiku, claudeCodeSettings, closureModel, HAIKU, HAIKU_CONFIG, HAIKU_ID, haikuResolver, servedModel } from "../model.mts";
 
 /**
@@ -179,6 +181,11 @@ function controlSheet(runs: number): Sheet {
 const missingCell = controlSheet(3);
 delete missingCell.date!["kitchen-sink"];
 
+/** The checks Teammates is served with on `pass`: project data, like the other apps' checks, so the same fixture on every pass. */
+const coderDraw = draw();
+const teammatesChecks = (pass: "control" | "cut" | "wrap") =>
+  teammatesServe(coderDraw, { pass, switches: pass !== "wrap", root: "/repo", describe: "", commit: "", model: APP_MODELS }, "/scratch", "/workdir").env.TEAMMATES_CHECKS;
+
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
 const rules: [string, boolean, boolean][] = [
@@ -206,9 +213,11 @@ const rules: [string, boolean, boolean][] = [
   ["44 fillers do not pass a 50-turn window", foldFillersPassed(44, 50), false],
   ["the fillers stop only past the window, with a margin", foldFillersPassed(50, 50) === false && foldFillersPassed(50 + FOLD_MARGIN, 50), true],
   ["no window seen yet, keep going", foldFillersPassed(200, undefined), false],
-  ["the sweep finds a length line split across lines", sweepGuidance({ "a/WORKER.md": "Answer in a\nsentence or two, and say so." }).length === 1, true],
+  ["the sweep finds a done line split across lines", sweepGuidance({ "a/WORKER.md": "Check your work before you\nsay it is done." }).length === 1, true],
+  ["the sweep leaves an app's length line alone", sweepGuidance({ "a/WORKER.md": "Answer in a sentence or two, and say so." }).length === 0, true],
   ["the sweep finds a date line", sweepGuidance({ "a/WORKER.md": "Always state today's date first." }).length === 1, true],
   ["the sweep passes a worker with no such line", sweepGuidance({ "a/WORKER.md": "You are the main session. Read the project before you answer." }).length === 0, true],
+  ["Teammates gets the fixture's checks on every pass, the wrap included", (["control", "cut", "wrap"] as const).every((pass) => teammatesChecks(pass) === coderDraw.coder.check), true],
   ["a sheet all on one model is accepted", sheetModelProblems([{ app: "teammates", ask: "date", model: HAIKU }, { app: "kitchen-sink", ask: "sizing", model: HAIKU }]).length === 0, true],
   ["a sheet mixing two models is refused", sheetModelProblems([{ app: "teammates", ask: "date", model: HAIKU }, { app: "kitchen-sink", ask: "date", model: APP_MODELS }]).length > 0, true],
   ["a result with no model is refused", sheetModelProblems([{ app: "teammates", ask: "date" }]).length > 0, true],

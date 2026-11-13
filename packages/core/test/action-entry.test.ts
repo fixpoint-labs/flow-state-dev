@@ -31,15 +31,13 @@ describe("bare-block entries", () => {
     expect(flow().actions.plain).toEqual({ block: plain, userMessage });
   });
 
-  it("accepts a bare block for internal and task entries and reads", () => {
+  it("accepts a bare block for internal and task entries", () => {
     const flow = defineFlow({
       kind: "bare-entries",
       actions: {},
-      internal: { actions: { wake: plain } },
-      reads: { view: plain }
+      internal: { actions: { wake: plain } }
     });
     expect(flow().internal?.actions.wake).toEqual({ block: plain });
-    expect(flow().reads?.view).toEqual({ block: plain });
   });
 
   it("accepts a bare block as an instance's action override", () => {
@@ -53,10 +51,13 @@ describe("bare-block entries", () => {
     expect(Object.keys((flow as unknown as () => { actions: object })().actions)).toEqual([]);
   });
 
-  it("still refuses an entry that is neither a block nor `{ block }`", () => {
-    expect(() =>
-      defineFlow({ kind: "bad-read", actions: {}, reads: { view: {} as never } })
-    ).toThrow(/read "view" has no block/);
+  // FIX-2623: a flow's `reads` is removed; views replace it. Refused by name, so a
+  // flow written for it fails at definition rather than serving nothing (BP-030).
+  it("refuses a flow's reads, naming views", () => {
+    expect(() => defineFlow({ kind: "old-read", actions: {}, reads: { board: plain } } as never)).toThrow( // retired-name-refusal: the removed key, refused
+      /declares "reads", which was removed\. Declare each as a view/
+    );
+    expect(() => defineFlow({ kind: "old-read-empty", actions: {}, reads: {} } as never)).toThrow(/declares "reads"/); // retired-name-refusal: the removed key, refused
   });
 });
 
@@ -85,11 +86,6 @@ describe("action description falls back to the block's", () => {
   it("keeps a written description when an override swaps the block", () => {
     const flow = defineFlow({ kind: "desc-kept", actions: { run: { block: plain, description: "Run it." } } });
     expect(flow({ actions: { run: { block: chat } } as never }).actions.run.description).toBe("Run it.");
-  });
-
-  it("resolves a read's description the same way", () => {
-    const flow = defineFlow({ kind: "read-desc", actions: {}, reads: { view: chat } });
-    expect(flow().reads?.view.description).toBe("Answer a message.");
   });
 
   it("lets an MCP-exposed action rely on its block's description", () => {

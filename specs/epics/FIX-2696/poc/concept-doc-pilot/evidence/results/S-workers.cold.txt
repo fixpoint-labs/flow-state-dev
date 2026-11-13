@@ -1,0 +1,31 @@
+**R1. What is an app in Flow State?**
+The page does not say. It only mentions "the app" as the thing that installs workers via `fsdev.config.ts` and can add its own flows, without defining the term.
+
+**R2. What is a kit?**
+The page does not define it fully. It shows that a kit is installed with one line in `fsdev.config.ts` (e.g. `workforce({...})`) and that kits install workers and "fill each other's slots," with details deferred to the Kits page.
+
+**R3. What is a flow?**
+A flow is the code that runs a session. The worker's configuration says who it is and what it may do, while the flow says how it does it. A worker flow is an ordinary flow that accepts a worker's standard configuration, has a public `respond` action taking `{ message }`, and keeps a worker's state private to the user.
+
+**R4. What is a block?**
+The page does not say.
+
+**R5. Which one do you change for each?**
+(a) A worker's instructions: change the worker, meaning the body of its `WORKER.md` file (or the user's own copy). (b) Adding a whole feature such as coding agents: the page does not say which unit this is. It only shows that a kit is installed in config and that the framework ships a `coder` flow. (c) One step inside how a request is handled: the page does not say.
+
+**P3.1 Can Bob open Alice's conversation with her lead, or read what it remembers about her?**
+No. A session belongs to one user and nobody else can open it, and a worker flow keeps a worker's state private to the user. Bob would reach his own session with the standard `engineering.lead`, not Alice's.
+
+**P3.2 What can Alice do in the running app?**
+She can edit the standard lead, which creates her own copy under the same id that is read before the file until she resets it. She can also fork it into an own worker under a new id, or hire a new worker on a flow. Hiring or forking under the standard worker's id is refused, and she can't edit the file itself at run time. Any hire is checked first, so the flow must accept the configuration and every tool and skill name must resolve.
+
+**P3.3 The lead files a task for engineering.designer, which is not in its delegates. What happens?**
+The page does not say. It states that a delegate must be on the same user's roster and its flow must take tasks, and that naming a worker not on the roster is refused with `No worker "<id>" on your roster.` It does not say what happens when a rostered worker is simply missing from the delegates list. A session can change its own copy of the list, but the page doesn't say whether filing a task checks it.
+
+**Terms I had to guess the meaning of**
+- **App**: not defined; I treated it as the project that configures and runs Flow State.
+- **Kit**: only inferred from usage in the config example.
+- **Block**: does not appear on the page.
+- **Slots**: "how kits fill each other's slots" is not explained.
+- **Coding harness** and **task tools**: used without definition.
+- **Standard configuration** of a worker: not spelled out beyond the file settings shown.

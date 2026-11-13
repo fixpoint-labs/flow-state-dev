@@ -1,0 +1,117 @@
+---
+title: What Flow State is
+type: start
+description: An app you run and own, built from kits you install and typed pieces you can write yourself.
+---
+
+import Figure from "@site/src/components/Figure";
+import Layers from "./figures/layers.svg";
+
+# What Flow State is
+
+Most agent frameworks hand you parts. Flow State hands you an app.
+
+Run a starter and you have a team of AI workers, which are agents you brief in plain files, and a page to talk to them on. Behind both is a backend that streams their answers, keeps what they learned, and picks a run back up where it stopped after a crash. The code is in your repo. The data is in your database.
+
+Then you change it. A worker is a Markdown file, so you rewrite its brief. A feature is a kit, a bundle an app installs, so you add a line. When you want something nobody has built yet, you write it from blocks, the same typed pieces the kits are made of.
+
+<Figure svg={Layers} caption="What an app is made of" description={"Five layers, top to bottom. A starter, which you run: pages, a team of workers and config, all in your repo; you change a worker by editing its Markdown file. Kits, which you install: a feature in one line of config. An arrow means a kit fills a slot the other kit opened: claudeCode fills one in harnesses, and harnesses fills one in workforce. Kits are highlighted as the layer where features stack. Flows, which you call: actions, views, state and resources; every feature is a flow you can run from a terminal. Blocks, which you write: generator, handler, sequencer, router and evaluator, with one typed contract. The engine, which runs them: it serves, streams, stores and resumes; it comes with the framework and you host it."} />
+
+You start at the top and go down only as far as you need.
+
+## A starter is a whole app
+
+A starter comes with React pages, a team of workers, and the flows they run on. The Teammates starter is a small team you talk to one at a time. Its workers message each other where you can see it, and hand code changes to a coding agent.
+
+Each worker on that team is a file like this:
+
+```md title="workforce/teams/teammates/workers/researcher/WORKER.md"
+---
+name: researcher
+description: Finds facts for the team and says where each one came from.
+tools: [search, fetch]
+---
+
+You find facts: dates, prices, what a document or the code says. Look them up,
+never guess. Say where each fact came from.
+```
+
+Rewrite the brief, restart the app, and the researcher follows the new one. Add a folder with a second file and the team has a new worker.
+
+## A kit is a feature you install
+
+The team, with the task board its workers share, and the coding agents it hands work to all come from kits. The starter lists them:
+
+```ts title="fsdev.config.ts"
+import { claudeCode } from "@flow-state-dev/claude-code";
+import { createFlowState } from "@flow-state-dev/engine";
+import { harnesses } from "@flow-state-dev/harness-manager/kit";
+import { workforce } from "@flow-state-dev/workforce";
+
+export default createFlowState({
+  kits: [
+    workforce({ directory: "./workforce" }),
+    harnesses({ workspace: { root: "./runs", sourceRepo: ".", baseRef: "main" } }),
+    claudeCode(),
+  ],
+});
+```
+
+A kit brings its flows, the files it reads from your repo, and its views, which are the lists and details your pages show. A kit can also leave openings, called slots, for other kits to fill. `harnesses` opens a slot for coding agents and `claudeCode` fills it. A kit names the kits whose slots it fills, and never reaches into how they work.
+
+A kit that fills a slot can open slots of its own, so features stack. That is how one developer's app becomes the base for another's.
+
+## Kits are made of flows and blocks
+
+Under every kit are flows. A flow is a backend you call over HTTP. A client runs one of its actions, such as `chat`, and the flow streams results back as it produces them and keeps typed state between calls. Flows are built from blocks, and there are five kinds:
+
+| Block | What it does |
+| --- | --- |
+| Generator | Calls a model |
+| Handler | Runs your code |
+| Sequencer | Chains blocks into steps |
+| Router | Picks one block to run |
+| Evaluator | Asks a model a typed question |
+
+Blocks nest inside one another. Any block can also be handed to a model as a tool, a whole pipeline included:
+
+```ts title="src/flows/research/blocks/assistant.ts"
+import { generator, sequencer } from "@flow-state-dev/core";
+import { planQueries } from "./plan-queries";
+import { runSearches } from "./run-searches";
+import { summarize } from "./summarize";
+
+const research = sequencer({ name: "research" })
+  .step(planQueries)   // a generator: the model writes search queries
+  .step(runSearches)   // a handler: your code calls the search API
+  .step(summarize);    // a generator again
+
+export const assistant = generator({
+  name: "assistant",
+  model: "openai/gpt-6-luna",
+  prompt: "You help the user research a topic.",
+  tools: [research],   // the whole pipeline is one tool call
+});
+```
+
+You decide, step by step, where the model chooses and where your code does.
+
+## You build it with an agent
+
+Every flow runs from a terminal, with no server and no browser:
+
+```bash
+pnpm fsdev run hello-chat chat -i '{"message": "Hello!"}'
+```
+
+The run prints what happens as it happens, one JSON event per line. A coding agent can write a flow, run it, read what happened and fix it. Flow State is meant to be built this way, and [Build with your coding agent](./build-with-your-coding-agent.md) sets it up.
+
+## Where it stands
+
+Flow State is open source, written in TypeScript, and runs as a web service you host. It is an early preview. The starters are research software, and each one's README lists what isn't wired yet.
+
+## Next
+
+- [Run a starter](./run-a-starter.md) takes about ten minutes and one API key.
+- [How it fits together](./how-it-fits-together.md) goes through the layers above, one at a time.
+- [Add to an existing app](./add-to-an-existing-app.md) is the way in when you already have a product and want flows inside it.

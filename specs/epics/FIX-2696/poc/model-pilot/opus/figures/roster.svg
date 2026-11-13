@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 940 500">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+
+<!-- The folder -->
+<rect fill="url(#hatch)" x="24" y="56" width="236" height="10"/><line class="thin" x1="24" y1="66.5" x2="260" y2="66.5"/>
+<rect class="solid" x="24" y="56" width="236" height="196"/>
+<text class="lb" x="38" y="90">YOUR workforce/ FOLDER</text>
+<text class="sub" x="38" y="108">files in your repository</text>
+<line class="hi" x1="24" y1="120" x2="260" y2="120"/>
+<text class="t" x="38" y="142">teams/support/workers/</text>
+<text class="t" x="52" y="162">triage/WORKER.md</text>
+<text class="t" x="52" y="182">billing/WORKER.md</text>
+<text class="sub" x="38" y="214">the same for every user;</text>
+<text class="sub" x="38" y="230">a redeploy changes them</text>
+
+<!-- Alice's roster -->
+<rect class="solid" x="316" y="56" width="368" height="356"/>
+<text class="lb" x="330" y="82">ALICE'S ROSTER</text>
+<text class="sub" x="670" y="82" text-anchor="end">only Alice can reach it</text>
+
+<text class="lb" x="330" y="112">STANDARD</text>
+<rect class="thin" x="330" y="122" width="340" height="34"/>
+<text class="c" x="342" y="144">support.triage</text>
+<text class="sub" x="470" y="144">read from its file</text>
+<rect class="thin" x="330" y="164" width="340" height="34"/>
+<rect class="hl" x="331" y="165" width="338" height="32"/>
+<text class="c on-hl" x="342" y="186">support.billing</text>
+<text class="sub on-hl" x="470" y="186">edited: Alice's own copy</text>
+
+<line class="ln" x1="262" y1="150" x2="328" y2="150" marker-end="url(#ah)"/>
+<rect class="ground" x="268" y="128" width="54" height="15"/><text class="plate" x="295" y="139" text-anchor="middle">READS</text>
+
+<line class="hi" x1="316" y1="222" x2="684" y2="222"/>
+<text class="lb" x="330" y="248">HER OWN · ROWS IN HER DATA</text>
+<rect class="thin" x="330" y="258" width="340" height="34"/>
+<text class="c" x="342" y="280">scribe</text>
+<text class="sub" x="470" y="280">hired</text>
+<rect class="thin" x="330" y="300" width="340" height="34"/>
+<text class="c" x="342" y="322">my-triage</text>
+<text class="sub" x="470" y="322">forked from support.triage</text>
+<text class="sub" x="330" y="366">A hire or a fork reaches her next turn,</text>
+<text class="sub" x="330" y="382">on any process, with no restart.</text>
+
+<!-- Bob's roster -->
+<rect class="dash" x="316" y="432" width="368" height="56"/>
+<text class="lb" x="330" y="456">BOB'S ROSTER</text>
+<text class="sub" x="330" y="476">the standard workers, and his own; none of Alice's</text>
+<path class="ln" d="M142,252 L142,460 L314,460" marker-end="url(#ah)"/>
+
+<!-- What a user can do -->
+<text class="lb" x="716" y="82">WHAT A USER CAN DO</text>
+<line class="hs" x1="716" y1="92" x2="916" y2="92"/>
+<text class="n" x="716" y="120">01</text><text class="c" x="744" y="120">hire</text>
+<text class="t" x="744" y="138">adds a worker of her own</text>
+<text class="n" x="716" y="172">02</text><text class="c" x="744" y="172">fork</text>
+<text class="t" x="744" y="190">copies a worker, new id</text>
+<text class="n" x="716" y="224">03</text><text class="c" x="744" y="224">edit</text>
+<text class="t" x="744" y="242">changes her own; on a</text>
+<text class="t" x="744" y="258">standard one, makes</text>
+<text class="t" x="744" y="274">her own copy</text>
+<text class="n" x="716" y="306">04</text><text class="c" x="744" y="306">reset</text>
+<text class="t" x="744" y="324">deletes that copy</text>
+<text class="n" x="716" y="358">05</text><text class="c" x="744" y="358">fire</text>
+<text class="t" x="744" y="376">deletes one of her own</text>
+<text class="t x" x="744" y="394">refused on a standard one</text>
+</svg>

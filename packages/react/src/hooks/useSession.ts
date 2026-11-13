@@ -2016,19 +2016,15 @@ export function useSession(
     /**
      * Whether a resource change may move the scope's state read: the
      * snapshot holds a resource the change may belong to (a single, or a
-     * collection's count), or the scope's client data may derive from it.
+     * collection's count). Client data is exposed state fields only, which a
+     * resource change can't move.
      * The view doesn't know its resources' storage paths (`roster` stores
      * under `workforce/workers/…`), so any held resource can't be ruled out.
      */
     const stateCarries = (scope: "session" | "user" | "org", path: string): boolean => {
-      const current = snapshotNowRef.current;
-      const held = current?.resources?.[scope] ?? {};
+      const held = snapshotNowRef.current?.resources?.[scope] ?? {};
       // No manifest here, so each held resource's roots are unknown.
-      if (Object.keys(held).some((ref) => mayHold(path, storageRootsOf(undefined, ref)))) return true;
-      // Any client data: a derived value may read any of the scope's
-      // resources, so the cost is an extra read, never a stale view.
-      const clientData = current?.clientData?.[scope];
-      return clientData !== undefined && clientData !== null && Object.keys(clientData).length > 0;
+      return Object.keys(held).some((ref) => mayHold(path, storageRootsOf(undefined, ref)));
     };
 
     /** Whether this view's own stream will still deliver the change `requestId` made. */

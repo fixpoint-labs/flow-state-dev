@@ -147,7 +147,7 @@ function hiddenRequestResponse(
  * What a route addresses, and therefore who owns it.
  *
  * - `exempt` — no owner to check: public flow metadata, or `execute_action`,
- *   `run_read` and `run_view`, which resolve their own principal in their handlers.
+ *   `run_view`, both of which resolve their own principal in their handlers.
  * - `session` / `request` — owner is the stored record's `userId`.
  * - `blob` — a stored file, checked as the session that owns it is: whoever
  *   can read that session can read the file. A file no session
@@ -183,9 +183,6 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "list_flows":
     case "capabilities":
     case "execute_action":
-    // A read resolves its principal the way an action does, in its handler,
-    // and runs under the same session binding checks (`read-routes.ts`).
-    case "run_read":
     // FIX-2624: each resolves its caller in its handler through the declaring
     // flow's own resolver (`scope-address.ts`), never the body, query or
     // headers (BP-031); a send then runs as an action does.

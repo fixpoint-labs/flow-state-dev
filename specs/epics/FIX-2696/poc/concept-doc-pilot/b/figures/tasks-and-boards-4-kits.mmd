@@ -1,0 +1,8 @@
+flowchart LR
+  K["kits · workforce, harnesses"] -->|"install"| FL["flows that carry a board"]
+  FL --> TC["task collection · Alice's user scope"]
+  TC -->|"every change"| N["notice · the board changed"]
+  N --> V["board view · rows keyed by task"]
+  V --> U["Alice's screen · one hook"]
+  classDef proposed stroke-dasharray:4 3
+  class K,V,U proposed

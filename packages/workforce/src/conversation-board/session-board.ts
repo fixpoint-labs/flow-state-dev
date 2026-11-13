@@ -16,8 +16,8 @@
  *   `<tool>_tasks`, which answer `no_delegation_board` while the session
  *   doesn't file, and the four delegate actions (`addDelegate`,
  *   `removeDelegate`, `setFallback`, `listDelegates`).
- * - **The reads**: `reads`, the task list as a read named `listTasks_tasks`,
- *   which an app watches without storing a request per look.
+ * - **The view**: `views`, the task list as a session view named
+ *   `listTasks_tasks`, which an app watches with `useView`.
  * - **The entries**: `entries(turn)`, the internal entries the board runs on
  *   (a run of the board), its notices arrive on (`onTaskSettled`), and a
  *   worker's message arrives on, and the session state they keep
@@ -38,7 +38,7 @@
  *     session: { ...installation.session(board.sessionStateShape), serverOwned: board.serverOwned },
  *     resources: { ...installation.resources, ...board.resources },
  *     actions: { respond: { ... }, ...board.actions },
- *     reads: board.reads,
+ *     views: board.views,
  *     internal: { actions: board.entries(answer) }
  *   });
  * });
@@ -267,9 +267,6 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     fileRouted: board.fileRouted,
     /** The task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. A manager's. */
     actions: managerActions,
-    // FIX-2286.
-    /** The task list as a read, `listTasks_tasks`, stored nowhere, for the flow's `reads`. */
-    reads: board.reads,
     // FIX-2623.
     /** The task list as a session view, `listTasks_tasks`, for the flow's `views`. */
     views: board.views,

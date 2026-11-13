@@ -131,8 +131,8 @@ await runGoal(async (failures) => {
       if (status !== "completed") failures.push(`(b) ${worker.id}: request ended ${String(status)}`);
       const state = await call(router, "GET", ["sessions", sessionId, "state"]);
       const ran = ((await state.json()) as {
-        clientData?: { session?: { ran?: { instructions?: string | null; desk?: string | null; runs?: number } } };
-      }).clientData?.session?.ran;
+        clientData?: { session?: { instructions?: string | null; desk?: string | null; runs?: number } };
+      }).clientData?.session;
       if ((ran?.instructions ?? "").trim() !== worker.body.trim()) {
         failures.push(`(b) ${worker.id}: its nested block saw instructions ${JSON.stringify(ran?.instructions)}`);
       }
