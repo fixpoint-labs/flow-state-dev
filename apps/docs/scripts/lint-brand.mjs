@@ -23,6 +23,7 @@
  *
  * - defs (6), canvas (7), text-class (8), text-fit (9), arrow (10), key (11),
  *   key-marks (12), hatch (13), highlight (14), numbering (15).
+ * - element (5, in full): no transform anywhere, and no dx, dy or rotate on text.
  * - embed (16): the revamp's pages (`pages/` and `pilot/`) put each figure on the page
  *   as a `<Figure svg caption description />` with a short caption and a full description.
  *
@@ -260,6 +261,16 @@ function lintFigure(file, text, tree, out) {
   for (const attr of ["width", "height"]) if (svg.attrs[attr] !== undefined) at(svg, "canvas", `the root has a ${attr}; the page sizes it`);
   // Every geometry check reads these; one it cannot read is reported, never skipped.
   for (const node of all) {
+    // A figure is drawn in canvas coordinates: a transform would move a shape away from the coordinates every check reads.
+    if (node.attrs.transform !== undefined || /(?:^|;)\s*transform\s*:/.test(node.attrs.style ?? "")) {
+      at(node, "element", `a transform on <${node.name}>: a figure is drawn in canvas coordinates and takes no transforms`);
+    }
+    // Text sits where its x and y say; an offset or per-glyph position is not checked, so it is not allowed.
+    if (node.name === "text" || node.name === "tspan") {
+      for (const attr of ["dx", "dy", "rotate"].filter((a) => node.attrs[a] !== undefined)) {
+        at(node, "text-fit", `a ${attr} attribute on <${node.name}>: text is placed by one x and one y only`);
+      }
+    }
     for (const attr of GEOMETRY.filter((a) => node.attrs[a] !== undefined && Number.isNaN(num(node, a)))) {
       at(node, "canvas", `${attr}="${node.attrs[attr]}" is not a number in canvas units (unitless or px)`);
     }
@@ -404,15 +415,40 @@ function lintFigureEmbeds(file, text, out) {
     else if (caption.length > 60 || caption.endsWith(".")) at(`caption "${caption}" is over 60 characters or ends in a full stop`);
     if (words < 30) at(`the description is ${words} words: it says what the whole figure shows in 30 or more`);
   }
-  // An imported SVG goes on the page only as a <Figure>'s svg: not as its own component, nor in any other expression.
+  // An imported SVG goes on the page only as a <Figure>'s svg: not as its own component, nor named in any other
+  // expression (`{X}`, `{cond && X}`). A word inside a string literal is text, not the binding.
+  const strings = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
   for (const imp of text.matchAll(/^import\s+([A-Za-z_$][\w$]*)\s+from\s+["'][^"']*\.svg["']/gm)) {
     const name = imp[1];
-    for (const m of text.matchAll(new RegExp(`<${name}\\b|\\{\\s*${name}\\s*\\}`, "g"))) {
-      if (!svgProps.has(m.index)) {
-        out.push(finding(file, text, m.index, "embed", `${name} is used outside a <Figure>'s svg: use <Figure svg={${name}} caption description />`));
-      }
+    const word = new RegExp(`(?<![\\w$])${name}(?![\\w$])`);
+    const outside = (index) =>
+      out.push(finding(file, text, index, "embed", `${name} is used outside a <Figure>'s svg: use <Figure svg={${name}} caption description />`));
+    for (const m of text.matchAll(new RegExp(`<${name}\\b`, "g"))) outside(m.index);
+    for (const m of text.matchAll(/\{[^{}]*\}/g)) {
+      if (!svgProps.has(m.index) && word.test(m[0].replace(strings, ""))) outside(m.index);
     }
   }
+}
+
+/** A page with its fenced blocks and inline code spans blanked to spaces, lines and columns kept: code shows markup, it does not use it. */
+function blankCode(text) {
+  const blank = (s) => s.replace(/[^\n]/g, " ");
+  let fence = null;
+  const lines = text.split("\n").map((line) => {
+    const open = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      // A closing fence: the same character, at least as long, and nothing after it.
+      const close = /^\s*(`{3,}|~{3,})\s*$/.exec(line);
+      if (close && close[1][0] === fence[0] && close[1].length >= fence.length) fence = null;
+      return blank(line);
+    }
+    if (open) {
+      fence = open[1];
+      return blank(line);
+    }
+    return line;
+  });
+  return lines.join("\n").replace(/(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\1(?!`)/g, blank);
 }
 
 function lintStrokes(file, text, out) {
@@ -448,7 +484,7 @@ function lintFile(file, allowed) {
   const text = readFileSync(file, "utf8");
   const out = [];
   if (/\.mdx?$/.test(file)) {
-    lintFigureEmbeds(file, text, out);
+    lintFigureEmbeds(file, blankCode(text), out);
   } else if (file.endsWith(".svg")) {
     const tree = parseSvg(text);
     lintSvgShape(file, text, DRAWING_CLASSES, out);

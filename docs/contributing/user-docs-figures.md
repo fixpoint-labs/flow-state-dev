@@ -240,7 +240,10 @@ the clean ones trip any.
 3. Every `class` is one `page.css` defines under `.drawing`.
 4. No `stroke-width`, `stroke-dasharray` or `font-family` attribute. Classes set them.
 5. No `<image>`, `<foreignObject>`, `<a>`, `<script>`, `<tspan>`, gradient, filter, `opacity`,
-   `transform` on text or on a group around it, `textLength`, `<!DOCTYPE>` or `<!ENTITY>`.
+   `textLength`, `<!DOCTYPE>` or `<!ENTITY>`. A figure is drawn in canvas coordinates and takes no
+   transforms: no `transform` on any element, and text is placed by one `x` and one `y`, with no
+   `dx`, `dy` or `rotate`. The site's published diagrams, until they are redrawn, are held only to
+   no `transform` on text or on a group around it.
 6. `<defs>` holds exactly the `hatch` pattern and the `ah` marker, as printed above.
 
 **Canvas and text**
