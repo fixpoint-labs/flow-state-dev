@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 416">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="204" height="290"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">IN YOUR REPO</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="248" y="24" width="204" height="290"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="262" y="46">IN THE PROCESS</text>
+<rect fill="url(#hatch)" x="468" y="24" width="204" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="468" y1="34.5" x2="672" y2="34.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="468" y="24" width="204" height="290"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="482" y="56">IN YOUR STORE</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="688" y="24" width="204" height="290"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="702" y="46">IN THE BROWSER</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="70" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="90">fsdev.config.ts</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="107">kits · flows · stores</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="126" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="146">flow.ts</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="163">actions · state · blocks</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="182" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="202">blocks/</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="219">one block per file</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="238" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="258">WORKER.md</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="275">a worker's brief</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="262" y="70" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="274" y="90">FlowState</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="274" y="107">flows · models · stores</text>
+<rect class="dash" fill="none" stroke="#1b1a15" stroke-width="1.4" stroke-dasharray="5 4" x="262" y="126" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="274" y="146">request state</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="274" y="163">one run, then gone</text>
+<rect class="hl" fill="#e8f551" x="482" y="70" width="176" height="48"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="482" y="70" width="176" height="48"/>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="494" y="90">Alice's session</text>
+<text class="sub on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="494" y="107">one conversation</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="482" y="126" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="494" y="146">session state</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="494" y="163">messageCount</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="482" y="182" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="494" y="202">items</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="494" y="219">messages · tool results</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="702" y="70" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="714" y="90">session.items</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="714" y="107">the live reply list</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="702" y="126" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="714" y="146">snapshot</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="714" y="163">exposed state only</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="702" y="182" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="714" y="202">unsent text</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="714" y="219">kept in localStorage</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="702" y="238" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="714" y="258">view answer</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="714" y="275">last read; not stored</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="338" x2="920" y2="338"/>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="363">01</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="62" y="363">With no stores set, the store column is held in the process and a restart empties it.</text>
+<g id="key">
+<line class="dash" fill="none" stroke="#1b1a15" stroke-width="1.4" stroke-dasharray="5 4" x1="28" y1="394" x2="54" y2="394"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="398">LASTS ONE ACTION RUN</text>
+<rect fill="url(#hatch)" x="244" y="388" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="244" y="388" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="278" y="398">OUTLIVES THE REQUEST</text>
+<rect class="hl" fill="#e8f551" x="460" y="388" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="494" y="398">THE CONVERSATION</text>
+</g>
+</svg>
