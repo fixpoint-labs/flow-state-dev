@@ -10,9 +10,9 @@ import { useState } from "react";
 import { useDoc } from "@docusaurus/plugin-content-docs/client";
 import { markdownUrl } from "@site/scripts/agent-docs/index-files.mjs";
 
-type State = "idle" | "copied" | "failed";
+type CopyStatus = "idle" | "copied" | "failed";
 
-const LABEL: Record<State, string> = { idle: "Copy page", copied: "Copied", failed: "Couldn't copy" };
+const LABEL: Record<CopyStatus, string> = { idle: "Copy page", copied: "Copied", failed: "Couldn't copy" };
 
 async function fetchMarkdown(url: string): Promise<string> {
   const response = await fetch(url);
@@ -33,19 +33,19 @@ async function copyFrom(url: string): Promise<void> {
 /** A button that copies this docs page as Markdown. */
 export default function CopyPage(): ReactElement {
   const { metadata } = useDoc();
-  const [state, setState] = useState<State>("idle");
+  const [status, setStatus] = useState<CopyStatus>("idle");
   const url = markdownUrl(metadata.permalink);
   const copy = () => {
     copyFrom(url).then(
-      () => setState("copied"),
-      () => setState("failed"),
+      () => setStatus("copied"),
+      () => setStatus("failed"),
     );
-    setTimeout(() => setState("idle"), 2000);
+    setTimeout(() => setStatus("idle"), 2000);
   };
   return (
     <div className="copy-page">
       <button type="button" className="copy-page__button label" onClick={copy} aria-live="polite">
-        {LABEL[state]}
+        {LABEL[status]}
       </button>
     </div>
   );
