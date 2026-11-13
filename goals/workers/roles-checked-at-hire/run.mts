@@ -28,8 +28,10 @@ import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
   defineSessionBoard,
+  messageReceivedEntry,
   workerConfigSchema,
   workerFlow,
+  workerMessagesResources,
   workerTaskEntry,
   type WorkerInstallation,
   type WorkerManifest,
@@ -90,15 +92,19 @@ const doorInput = z.object({ message: z.string() });
 const turn = handler({ name: "roles-goal-turn", inputSchema: doorInput, execute: async () => "Noted." });
 const respond = { inputSchema: doorInput.strict(), block: turn, userMessage: (input: { message: string }) => input.message };
 
-/** A worker flow on `installation`, with the door and whatever `over` adds. */
+/** The message ear every flow the kit hires carries, so a fixture's one fault is its role fault. */
+const ear = (installation: WorkerInstallation, kind: string) => ({ onMessageReceived: messageReceivedEntry({ installation, flowKind: kind }) });
+
+/** A worker flow on `installation`, with the door, the message ear and whatever `over` adds. */
 function flowOn(installation: WorkerInstallation, kind: string, over: Record<string, unknown> = {}): unknown {
   return defineFlow({
     kind,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
     actions: { respond },
+    internal: { actions: ear(installation, kind) },
     ...over
   } as never);
 }
@@ -116,9 +122,9 @@ function kitFlow(
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-    resources: { ...installation.resources, ...board.resources },
+    resources: { ...installation.resources, ...workerMessagesResources, ...board.resources },
     actions: { respond, ...(actions ? board.actions : {}) },
-    internal: { actions: pick(board.entries(turn)) }
+    internal: { actions: { ...ear(installation, kind), ...pick(board.entries(turn)) } }
   } as never);
 }
 
