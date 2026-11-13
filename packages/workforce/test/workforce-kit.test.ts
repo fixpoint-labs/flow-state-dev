@@ -43,7 +43,7 @@ function tree(files: Record<string, string>): string {
 const LEAD = "---\nname: Lead\ndescription: Answers the user.\n---\nYou are Lead.";
 
 /** The least a worker flow is: a door, the worker's configuration, the installation's session, and an ear for messages. */
-function helperFlow(installation: WorkerInstallation, kind = "helper") {
+function helperFlow(installation: WorkerInstallation, flowName = "helper") {
   const door = handler({
     name: "helper-door",
     inputSchema: z.object({ message: z.string() }),
@@ -51,13 +51,13 @@ function helperFlow(installation: WorkerInstallation, kind = "helper") {
     execute: () => ({ reply: "ok" }),
   });
   return defineFlow({
-    kind,
+    kind: flowName,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources },
     actions: { respond: { block: door, userMessage: (input: { message: string }) => input.message } },
-    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: kind, hears: "task-sessions" }) } },
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: flowName, hears: "task-sessions" }) } },
   } as never);
 }
 
