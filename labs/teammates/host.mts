@@ -8,9 +8,9 @@
  * - **Lead, researcher and writer** run on the built-in `agent` flow, so each
  *   has `sendMessage` and one conversation where messages land. Memory is
  *   composed in through `uses` (read) and `afterAnswer` (record each turn).
- *   A history summary keeps what was said before the history window: its
- *   capability goes in `uses` and its fold runs as `beforeAnswer`, so a turn
- *   is summarized before it leaves the window the worker reads word for word.
+ *   What was said before the history window is kept by the built-in flow,
+ *   which folds older turns into a summary by default (workforce's history
+ *   summary section), so the lab wires none of its own.
  *   The flow's tool catalog holds web search and fetch, and `uses` adds
  *   reading the working folder's source; each worker's `tools:` line picks its
  *   own from them.
