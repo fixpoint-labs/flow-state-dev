@@ -28,7 +28,7 @@ import remarkParse from "remark-parse";
 import { unified } from "unified";
 
 /** Docusaurus's default admonition keywords (`@docusaurus/mdx-loader`'s admonitions plugin). */
-export const ADMONITIONS = ["secondary", "info", "success", "danger", "note", "tip", "warning", "important", "caution"];
+const ADMONITIONS = ["secondary", "info", "success", "danger", "note", "tip", "warning", "important", "caution"];
 
 const parser = unified().use(remarkParse).use(remarkFrontmatter).use(remarkMdx).use(remarkGfm).use(remarkDirective);
 

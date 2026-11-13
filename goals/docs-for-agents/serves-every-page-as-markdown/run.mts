@@ -30,8 +30,9 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { copyFileSync, cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { workspaceManifests } from "../../../scripts/workspace-members.mjs";
-import { fixturePath, goalTmpDir, REPO_ROOT, runGoal } from "../../lib/index.mts";
+import { goalTmpDir, REPO_ROOT, runGoal } from "../../lib/index.mts";
 import { article, drift, htmlText, jsxLeft, markdownPathOf, markdownText, words } from "./grade.mts";
 
 const control = process.env.GOAL_CONTROL ?? "";
@@ -59,7 +60,7 @@ function scratchTree(): void {
   }
   const pageDir = join(tree, "apps", "docs", "docs", "goal-held-out");
   execFileSync("mkdir", ["-p", pageDir]);
-  for (const name of ["held-out.mdx", "held-out.svg"]) copyFileSync(fixturePath(import.meta.url, name), join(pageDir, name));
+  for (const name of ["held-out.mdx", "held-out.svg"]) copyFileSync(fileURLToPath(new URL(`./pages/${name}`, import.meta.url)), join(pageDir, name));
 }
 
 function buildSite(): { code: number; log: string } {

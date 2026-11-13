@@ -2,7 +2,7 @@
 
 **Issue:** FIX-2700
 **Outcome:** A coding agent pointed at the docs reads them as text. Every docs page is served as clean Markdown at its URL plus `.md`, and `/llms.txt` lists every page with a link to that Markdown, from the next deploy on.
-**Input:** today's docs and guides, built by the production site build, plus one held-out page the run adds before building (`fixtures/held-out.mdx`: a `Figure`, a table, an admonition and a code tab under `<Tabs>`). The check never names a page: swapping the corpus for any other set of pages must still pass a correct build.
+**Input:** today's docs and guides, built by the production site build, plus one held-out page the run adds before building (`pages/held-out.mdx`, copied into the scratch tree: a `Figure`, a table, an admonition and a code tab under `<Tabs>`). The check never names a page: swapping the corpus for any other set of pages must still pass a correct build.
 **Signal:** for every built HTML page that holds a docs article (`theme-doc-markdown`), at the URL its canonical link gives:
 - **markdown-exists:** the build has that URL plus `.md` (a URL ending in `/` takes `index.md`). 100% of pages.
 - **no-jsx:** outside code, the Markdown has no component tag, import, export or `{…}` expression. 100%.
