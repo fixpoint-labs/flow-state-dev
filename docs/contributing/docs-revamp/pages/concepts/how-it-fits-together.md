@@ -10,11 +10,11 @@ import WhereThingsAreKept from "./figures/where-things-are-kept.svg";
 
 # How it fits together
 
-Alice opens the Acme help page, types "Where is my order?" and gets a wrong answer back. Where do you look? Between the text box and the reply sit a page, a server, a backend, a few functions and a database, and each has its own file and its own owner.
+Flow State is a backend for AI apps, built in layers. Your React page talks to a server, the server runs flows, and a flow does its work in blocks, small typed units of work. Each layer has one job and its own file.
 
-Flow State is those pieces, split so each one has a single job. This page follows Alice's message down through them and back, then shows where each thing it touches is kept, and says which page teaches each layer.
+This page shows the layers, what one request passes through on its way down and back, where each thing is kept, and which page teaches each layer.
 
-<Figure svg={OneMessage} caption="One message, top to bottom" description={"Four boxes stacked top to bottom with arrows between them. Your page, in the browser, calls session.sendAction with the action chat. The engine, on your server, checks the input and whose session it is; inside it sits Alice's session, hatched because it outlives the request. The flow, help-desk, names its actions. The blocks, chatGenerator and incrementMessageCount, sit inside a dashed box because one run of the action lasts only as long as that run. A downward arrow between each pair of boxes is the call, and an upward arrow is the reply streaming back as items."} />
+<Figure svg={OneMessage} caption="One message, top to bottom" description={"Four boxes stacked top to bottom with arrows between them. Your page, in the browser, calls session.sendAction with the action chat. The engine, on your server, checks the input and whose session it is; inside it sits the session, hatched because it outlives the request. The flow, help-desk, names its actions. The blocks, chatGenerator and incrementMessageCount, sit inside a dashed box because one run of the action lasts only as long as that run. A downward arrow between each pair of boxes is the call, and an upward arrow is the reply streaming back as items."} />
 
 ## An app, from the top
 
@@ -29,7 +29,7 @@ import helpDeskFlow from "./src/flows/help-desk/flow";
 export default createFlowState({
   kits: [workforce({ directory: "./workforce" })],
   flows: [helpDeskFlow],
-  stores: sqliteStores({ filename: "./acme.db" }),
+  stores: sqliteStores({ filename: "./app.db" }),
 });
 ```
 
@@ -43,49 +43,64 @@ export default createFlowState({
 
 ## What happens when you send a message
 
-On Alice's page, one call sends the message:
+Say a user sends a message to the help-desk flow. One call from the page does it:
 
 ```tsx title="src/app/send-button.tsx"
 import type { ReactElement } from "react";
 import { useFlow, useSession } from "@flow-state-dev/react";
 
 export function SendButton({ message }: { message: string }): ReactElement {
-  const flow = useFlow({ autoCreateSession: true });
-  const session = useSession(flow.activeSessionId);
+  const flow = useFlow({ flowKind: "help-desk", autoCreateSession: true });
+  const session = useSession(flow.activeSessionId, { flowKind: "help-desk" });
 
   return (
-    <button onClick={() => void session.sendAction("chat", { message })}>
+    <button
+      disabled={!flow.activeSessionId}
+      onClick={() => void session.sendAction("chat", { message })}
+    >
       Send
     </button>
   );
 }
 ```
 
-`useFlow` picks or creates Alice's session, one conversation. `useSession` is the page's handle on it, and `sendAction` runs an action on it. `session.items` is the live list of items, the pieces a flow streams out, so rendering it shows the reply as it arrives.
+`useFlow` picks or creates the user's session, one conversation. It needs the flow's kind to create one, which is why `flowKind` is set. The session id arrives a moment after the page loads, so the button stays disabled until `flow.activeSessionId` is set: `sendAction` throws without one. `useSession` is the page's handle on the session, and it needs the flow kind too, and `sendAction` runs an action on it. `session.items` is the live list of items, the pieces a flow streams out, so rendering it shows the reply as it arrives.
 
 From there the message makes these stops:
 
 1. The page posts to the action's route on the engine.
-2. The engine checks the message against the action's input schema and checks the session belongs to Alice. The [HTTP reference](../reference/http-api.md) lists the order and the errors.
+2. The engine checks the message against the action's input schema and checks the session belongs to the caller. The [HTTP reference](../reference/http-api.md) lists the order and the errors.
 3. The flow runs the action's block. In `help-desk` it is a sequencer, a block that runs blocks in order: `chatGenerator` calls the model, then `incrementMessageCount` updates the session's state.
 4. Each block emits items as it works. They arrive on the page as the model writes.
 5. State changes are saved as the blocks make them. When the run completes, the page gets the session's new state, called the snapshot.
 
-A dropped connection can pick the stream back up; [Streaming](../reference/streaming.md) says how.
+A dropped connection can pick the stream back up; [Items and the stream](../reference/items.md) says how.
+
+A second user who sends to someone else's session id is answered as if that session did not exist, before any block runs. Even the owner's page sees only the session-state fields the flow lists as exposed, not the whole state.
 
 ## Where things are kept
 
-<Figure svg={WhereThingsAreKept} caption="Where things are kept" description={"Four columns. In your repo: fsdev.config.ts, flow.ts, the blocks folder and WORKER.md. In the process: the FlowState handle, and request state drawn with a dashed outline because it lasts one action run. In your store, hatched because it outlives the request: Alice's session, highlighted as the idea to keep, then session state and items. In the browser: the live item list, the snapshot, unsent text kept in localStorage, and the last view answer, which the page holds only while the screen is open. A note says that with no stores set, the store column is held in the process and a restart empties it."} />
+<Figure svg={WhereThingsAreKept} caption="Where things are kept" description={"Four columns. In your repo: fsdev.config.ts, flow.ts, the blocks folder and WORKER.md. In the process: the FlowState handle. In your store, hatched because it outlives the request: the session, highlighted as the idea to keep, then session state, items, and request state drawn with a dashed outline because it belongs to one request only. In the browser: the live item list, the snapshot, unsent text kept in localStorage, and the last view answer, which the page holds only while the screen is open. A note says that with no stores set, the store column is held in the process and a restart empties it."} />
 
-Code is in your repo. What `createFlowState` returns lives in the process, and so does request state, the scratch space of one action run that the next request cannot see.
+Code is in your repo, and so are `WORKER.md` files. The app reads a kit's folder, such as `workforce/`, when it starts. What `createFlowState` returns lives in the process.
 
-Alice's session is in the store. So are its state and its items. All of that outlives the request, and on a store that persists it outlives a restart.
+The session is in the store. So are its state and its items, including the output each block recorded. Request state, the scratch space of one action run, is kept there too, with its request. No other request sees it. All of that outlives the request, and on a store that persists it outlives a restart. With no `stores` set, the store is memory: a restart empties it, the session included, and startup says so.
 
-The browser holds what it last received: the live item list and the snapshot. A view is a read-only question a screen asks the server, such as the list of Alice's open orders. Its answer is computed on each read and saved nowhere; the page keeps the last one in memory while the screen is open. [Views](../reference/views.md) says when it is read again.
+The browser holds what it last received: the live item list and the snapshot. Unsent text in a message box is kept in `localStorage`, so a reload keeps it. A view is a read-only question a screen asks the server, such as the list of a user's open orders. Its answer is computed on each read and saved nowhere; the page keeps the last one in memory while the screen is open. [Views](../reference/views.md) says when it is read again.
+
+When a user edits a standard worker, their first edit makes their own copy under the same id. The `WORKER.md` in your repo does not change, and other users still see the standard one. [Workers](./workers.md) covers the rest.
 
 ## Which page to read for what
 
-For Alice's wrong answer, run `fsdev run help-desk chat -i '{"message":"Where is my order?"}'`. It prints a line for each item a block adds, each stretch of streamed text and each state change, so you can see which block produced what. Then open the `help-desk` flow, then `chatGenerator`, then `incrementMessageCount`.
+When a worker answers wrong, open its `WORKER.md` first. The body is its instructions and the frontmatter is its configuration. A worker whose file names no `flow:` runs on the built-in `agent` flow with that body as instructions. If the file looks right, or names a flow, open that flow next, then the blocks inside it.
+
+To see which block produced the text, run the action from the terminal:
+
+```bash
+fsdev run help-desk chat -i '{"message":"Where is my order?"}'
+```
+
+It prints a line for each item a block adds, each stretch of streamed text and each state change. `--log-level debug` adds the events from blocks nested inside sequencers and routers.
 
 | Layer | What it is | Read |
 | --- | --- | --- |
