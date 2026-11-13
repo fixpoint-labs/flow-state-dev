@@ -61,7 +61,9 @@ const hired = hireLab({
 });
 
 const flowstate = createFlowState({
-  flows: Object.values(hired.flows),
+  kits: hired.kits,
+  fill: hired.fill,
+  flows: hired.flows,
   stores: { default: { primary: sqliteStores({ filename: LAB_DB_PATH }) } },
   // The documented DevTool setting: which user the navigator lists sessions
   // for. Not a wrapper — the same field any app sets.

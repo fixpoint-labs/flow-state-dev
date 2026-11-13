@@ -17,27 +17,26 @@
  *    assignee, and nothing reads it off the tree. That is what lets
  *    `swapped-desks` and `one-worker` file a row for the wrong delegate while
  *    each worker's own `WORKER.md` still says which desk it answers for.
- * 3. **The refusal policy.** `readDeclaredRoster` collects problems rather than
- *    throwing, which is right for a library and wrong here: a worker that failed
- *    to load is a worker this lab does not have, and a short roster that still
- *    runs proves something other than what is claimed.
+ * 3. **The topology.** A tree that didn't load is refused whole, as the
+ *    workforce kit refuses one; past that, the lab checks the tree is exactly
+ *    the team it names, since a short or padded roster that still runs proves
+ *    something other than what is claimed.
  */
 
-import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, type KitInstance } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { runAction } from "@flow-state-dev/engine";
 import {
   COORDINATOR_FLOW,
-  createWorkerInstallation,
-  defineCoordinatorFlow,
-  hireWorkforce,
   inventoryWorkers,
   inventoryWriterActions,
   openInventory,
+  workerFlow,
   type InventoryActionRequest,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
-import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import { readWorkforceFolder, type WorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { fileURLToPath } from "node:url";
 import { PLANNER_FLOW, definePlannerFlow } from "./workforce/flows/workers/planner.mts";
 import { WORKER_FLOW, defineWorkerFlow, type WorkerControl } from "./workforce/flows/workers/worker.mts";
@@ -86,7 +85,9 @@ export function routesFor(control: string): Record<string, string> {
 
 /** Everything the tree says, read once and refused whole if any of it did not load. */
 export interface LabTree {
-  roster: DeclaredRoster;
+  /** The tree's folder. */
+  root: string;
+  roster: WorkforceFolder;
   /** The coordinator's id — the team's front door, on Workforce's coordinator flow. */
   coordinatorId: string;
   /** The planner's id, read off the tree. */
@@ -110,11 +111,8 @@ export interface LabTree {
  * @throws Naming every problem in one pass, or the first missing fact.
  */
 export async function readLabTree(root: string = LAB_TREE): Promise<LabTree> {
-  const roster = await readDeclaredRoster(root);
-  if (roster.problems.length > 0) {
-    const lines = roster.problems.map((problem) => `${problem.layer} ${problem.path}: ${problem.error.message}`);
-    throw new Error(`the tree at ${root} did not load cleanly:\n  - ${lines.join("\n  - ")}`);
-  }
+  // The workforce kit reads it again when the lab starts, and claims its files; this read is the lab's own checks'.
+  const roster = await readWorkforceFolder({ path: root, claim: () => undefined });
 
   // Exactly the declared topology — one coordinator, one planner, two
   // workers, nothing else. A stray third worker would still hire and run, and
@@ -145,6 +143,7 @@ export async function readLabTree(root: string = LAB_TREE): Promise<LabTree> {
   }
 
   return {
+    root,
     roster,
     coordinatorId: coordinators[0]!.id,
     plannerId: planner.id,
@@ -168,55 +167,64 @@ export interface HireLabOptions {
   workerControl?: WorkerControl;
 }
 
-/** What a hire hands back: the flows a `FlowState` registers, and the installation they run. */
+/** What a hire hands back: what a `FlowState` installs, and the installation they run, once it has started. */
 export interface HiredLab {
-  flows: Record<string, FlowInstance>;
-  installation: WorkerInstallation;
+  /** The workforce kit, over the tree. */
+  kits: KitInstance[];
+  /** The kit's slots, as the lab fills them. */
+  fill: Record<string, unknown>;
+  /** The lab's own flows beside the kit's: the inventory writer. */
+  flows: FlowInstance[];
+  /** The installation the kit hired. Read only once the server has started. */
+  installation(): WorkerInstallation;
 }
 
 /**
- * Build the installation and the flows, and register one copy of each, plus
- * the inventory writer.
+ * Workforce as a kit over the tree, with the lab's worker flows in its slot,
+ * and the inventory writer.
  *
- * `hireWorkforce` refuses the WHOLE roster when any worker would be refused
- * on its first turn, so a refusal cannot leave a short roster running.
+ * The kit refuses the WHOLE roster when any worker would be refused on its
+ * first turn, so a refusal cannot leave a short roster running.
  */
 export function hireLab(options: HireLabOptions): HiredLab {
   const { tree } = options;
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({
-    standardWorkers: tree.roster.workers,
-    workerFlows: () => workerFlows as never,
-  });
-  workerFlows = {
-    [WORKER_FLOW]: {
-      flow: defineWorkerFlow({
-        installation,
-        outbox: options.outbox,
-        ...(options.workerControl === undefined ? {} : { control: options.workerControl }),
-      }),
-      roles: ["contributor"],
-    },
-    [PLANNER_FLOW]: { flow: definePlannerFlow({ installation }), roles: ["manager"] },
-    // The planner and the workers take no delegated post, so a post to the
-    // queue reaches nobody; its rows are the planner's to file.
-    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
-  };
-  const copies = hireWorkforce(installation);
+  let installation: WorkerInstallation | undefined;
   // The inventory's worker entries take caller-supplied rows, so the writer is internal only.
   const writer = defineFlow({
     kind: INVENTORY_WRITER_FLOW,
     internal: { actions: { ...inventoryWriterActions() } },
   } as never) as unknown as FlowInstance;
   return {
-    flows: { ...Object.fromEntries(copies.map((copy) => [copy.id, copy])), [INVENTORY_WRITER_FLOW]: writer },
-    installation,
+    // The planner and the workers take no delegated post, so a post to the
+    // queue reaches nobody; its rows are the planner's to file.
+    kits: [workforce({ directory: tree.root, coordinator: { routeModel: ROUTE_MODEL } })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        [WORKER_FLOW]: workerFlow(
+          (on) =>
+            defineWorkerFlow({
+              installation: on,
+              outbox: options.outbox,
+              ...(options.workerControl === undefined ? {} : { control: options.workerControl }),
+            }),
+          { roles: ["contributor"] },
+        ),
+        [PLANNER_FLOW]: workerFlow((on) => definePlannerFlow({ installation: on }), { roles: ["manager"] }),
+      },
+      // Kept for the boot's inventory, which lists the standard workers.
+      [workforce.slots.flows]: { hired: (on: WorkerInstallation) => ((installation = on), []) },
+    },
+    flows: [writer],
+    installation: () => {
+      if (installation === undefined) throw new Error("the lab's installation is read before the server started");
+      return installation;
+    },
   };
 }
 
 /** The part of a served `FlowState` the boot needs. */
 export interface LabServer {
-  getRuntime(): Promise<{ stores: unknown; runtimeConfig: unknown }>;
+  getRuntime(): Promise<{ stores: unknown; runtimeConfig: unknown; registry: { get(id: string): FlowInstance | undefined } }>;
 }
 
 /**
@@ -231,7 +239,7 @@ export interface LabServer {
 export async function openLab(server: LabServer, hired: HiredLab): Promise<void> {
   const runtime = await server.getRuntime();
   const run = async (request: InventoryActionRequest): Promise<unknown> => {
-    const flow = hired.flows[request.flowKind];
+    const flow = runtime.registry.get(request.flowKind);
     if (flow === undefined) throw new Error(`no flow is served under "${request.flowKind}"`);
     const result = (await runAction({
       flow,
@@ -250,7 +258,7 @@ export async function openLab(server: LabServer, hired: HiredLab): Promise<void>
     return result;
   };
   const binding = await openInventory(
-    { workers: inventoryWorkers(hired.installation) },
+    { workers: inventoryWorkers(hired.installation()) },
     { run, workerWriter: { flowKind: INVENTORY_WRITER_FLOW }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
   );
   if (binding.problems.length > 0) {

@@ -8,13 +8,10 @@
  * the credential every other read carries.
  */
 import { createBearerSecretPrincipalResolver, createFlowState, inMemoryStores, PrincipalResolutionError } from "@flow-state-dev/engine";
-import type { FlowInstance } from "@flow-state-dev/core/types";
-import {
-  createWorkerHireBlocks,
-  createWorkerInstallation,
-  defineAgentWorkerFlow,
-  defineWorkerRosterFlow,
-} from "@flow-state-dev/workforce";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient } from "@flow-state-dev/client";
@@ -32,22 +29,12 @@ afterEach(async () => {
 
 /** A Lab running `desk.amy`, a standard worker on `agent`, as one copy of the flow. */
 async function workerLab() {
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({
-    standardWorkers: [{ id: "desk.amy", declared: { description: "Answers the front desk." }, body: "You are Amy." }],
-    workerFlows: () => flows as never,
-  });
-  const agent = defineAgentWorkerFlow({ installation });
-  flows = { agent };
-  const blocks = createWorkerHireBlocks(installation);
-  const roster = defineWorkerRosterFlow(installation, {
-    hire: blocks.hire,
-    fire: blocks.fire,
-  });
-  const instances = [agent({ id: "agent" }), roster()] as unknown as FlowInstance[];
+  const directory = mkdtempSync(join(tmpdir(), "worker-lab-"));
+  mkdirSync(join(directory, "teams/desk/workers/amy"), { recursive: true });
+  writeFileSync(join(directory, "teams/desk/workers/amy/WORKER.md"), "---\ndescription: Answers the front desk.\n---\nYou are Amy.");
   const verify = createBearerSecretPrincipalResolver({ secret: SECRET, principal: { userId: USER, orgId: ORG } });
   const flowState = createFlowState({
-    flows: instances,
+    kits: [workforce({ directory })],
     stores: { default: { primary: inMemoryStores() } },
     resolvePrincipal: async (context: never) => {
       const principal = await verify(context);

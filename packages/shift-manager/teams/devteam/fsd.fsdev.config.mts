@@ -51,12 +51,11 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { CHECKOUT, CHECKOUTS } from "./fsd-checkouts.mts";
 import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS, FSD_SKILLS } from "./fsd-projects.mts";
 import { readClaudeCodeUsage } from "@flow-state-dev/claude-code";
 import { claudeCodeEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
-import { LAB_TREE, openLab, operatorGitHubToken } from "./host.mts";
+import { LAB_TREE, openLab, operatorGitHubToken, readLabTree } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
 
@@ -66,7 +65,7 @@ mkdirSync(dirname(STORE), { recursive: true });
 
 // Read off the tree, as DevTeam's profile reads it: the EM, and the coder its
 // doors file for, its first delegate on the coder worker flow.
-const roster = await readDeclaredRoster(LAB_TREE);
+const roster = await readLabTree(LAB_TREE);
 const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const em = roster.workers.find((w) => w.declared.flow === EM_FLOW);
 if (em === undefined) throw new Error("the DevTeam tree declares no EM");

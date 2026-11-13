@@ -29,19 +29,20 @@ import { type PrincipalResolver } from "@flow-state-dev/engine/host";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   COORDINATOR_FLOW,
-  createWorkerInstallation,
-  defineCoordinatorFlow,
-  hireWorkforce,
   inventoryWorkers,
   inventoryWriterActions,
-  resourcesFromDocs,
   defineProjectBlocks,
   openInventory,
+  workerFlow,
   type CreateProjectInput,
   type InventoryActionRequest,
+  type WorkerInstallation,
   PROJECTS_FLOW,
 } from "@flow-state-dev/workforce";
-import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import { readWorkforceFolder, type WorkforceFolder } from "@flow-state-dev/workforce/loader";
+import { cpSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,13 +57,18 @@ const SHIFT_COORDINATOR_TREE = join(dirname(fileURLToPath(import.meta.url)), "wi
 /** The one user this Lab runs as. */
 export const ASK_LAB_USER_ID = "u_ask_lab";
 
-/** Read the tree, refusing it whole if anything did not load. */
-export async function readAskLabTree(root: string = ASK_LAB_TREE): Promise<DeclaredRoster> {
-  const roster = await readDeclaredRoster(root);
-  if (roster.problems.length > 0) {
-    throw new Error(`the ask-lab tree did not load: ${roster.problems.map((p) => p.error.message).join("; ")}`);
-  }
-  return roster;
+/** Read the tree, refusing it whole if anything did not load. The workforce kit reads it again, and claims its files. */
+export async function readAskLabTree(root: string = ASK_LAB_TREE): Promise<WorkforceFolder> {
+  return readWorkforceFolder({ path: root, claim: () => undefined });
+}
+
+/** The folder the Lab serves: the tree, or with the shift coordinator's tree laid over it, a copy. */
+function servedTree(shiftCoordinator: boolean): string {
+  if (!shiftCoordinator) return ASK_LAB_TREE;
+  const copy = join(mkdtempSync(join(tmpdir(), "ask-lab-")), "workforce");
+  cpSync(ASK_LAB_TREE, copy, { recursive: true });
+  cpSync(SHIFT_COORDINATOR_TREE, copy, { recursive: true });
+  return copy;
 }
 
 /** The organization a bearer-gated ask-lab binds its user to. */
@@ -149,22 +155,11 @@ export type AskLabOptions = {
 /** Build, open and hand back the Lab. */
 export async function openAskLab(options: AskLabOptions = {}) {
   const orgId = options.bearer === undefined ? DEFAULT_ORG_ID : (options.orgId ?? ASK_LAB_ORG_ID);
-  const tree = await readAskLabTree();
-  if (options.shiftCoordinator === true) tree.workers.push(...(await readAskLabTree(SHIFT_COORDINATOR_TREE)).workers);
+  const root = servedTree(options.shiftCoordinator === true);
+  const tree = await readAskLabTree(root);
   const declared = options.inventoryDeclared !== false;
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => workerFlows as never });
-  const asker = defineAskerFlow(installation, resourcesFromDocs(tree.documents), {
-    projects: options.workersStartProjects,
-    inventory: declared,
-  });
-  workerFlows = {
-    [ASKER_FLOW]: { flow: asker, roles: ["contributor"] },
-    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
-  };
-  const copies = hireWorkforce(installation);
-  const flows: Record<string, FlowInstance> = {
-    ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+  let installation!: WorkerInstallation;
+  const own: Record<string, FlowInstance> = {
     // The worker write takes caller-supplied rows, so it is internal only.
     ...(declared
       ? {
@@ -182,7 +177,17 @@ export async function openAskLab(options: AskLabOptions = {}) {
   };
   const primary = inMemoryStores();
   const flowState = createFlowState({
-    flows: Object.values(flows),
+    kits: [workforce({ directory: root, coordinator: { routeModel: ROUTE_MODEL } })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        [ASKER_FLOW]: workerFlow(
+          (on) => defineAskerFlow(on, on.documents, { projects: options.workersStartProjects, inventory: declared }),
+          { roles: ["contributor"] },
+        ),
+      },
+      [workforce.slots.flows]: { hired: (on: WorkerInstallation) => ((installation = on), []) },
+    },
+    flows: Object.values(own),
     stores: { default: { primary } },
     durable: true,
     devtool: { userId: ASK_LAB_USER_ID, ...(options.bearer === undefined ? {} : { bearerToken: options.bearer }) },
@@ -190,6 +195,8 @@ export async function openAskLab(options: AskLabOptions = {}) {
   } as never);
 
   const router = (await flowState.getRouter()) as Record<string, (r: Request, c: unknown) => Promise<Response>>;
+  // Every flow the Lab serves, the kit's copies among them, by id.
+  const flows: Record<string, FlowInstance> = Object.fromEntries((await flowState.getRuntime()).registry.list().map((flow) => [flow.id, flow]));
   const call = async (method: "GET" | "POST" | "DELETE", path: string[], body?: unknown) => {
     const response = await router[method]!(
       new Request(`http://ask-lab.local/api/flows/${path.map(encodeURIComponent).join("/")}`, {
