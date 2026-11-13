@@ -55,12 +55,12 @@ import {
   workstreamEntryKey,
 } from "@flow-state-dev/workforce";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
 import { labPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 import { PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { createWiredLab, type ThreadView } from "../../../labs/claude-code-style/src/adapter.ts";
 import { createLabAdapter, type ConversationView, type LabTalk } from "../../../labs/teammates/src/adapter.ts";
-import { buildKitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-hire.ts";
+import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { followSessionItems, type SessionItems } from "../../../packages/shift-manager/src/lib/run.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useProjectRead } from "../../../packages/shift-manager/src/lib/projects.ts";
@@ -215,7 +215,7 @@ type Host = { handle: ServeHandle; base: string; stores: StoreRegistry };
  */
 async function host(bus: "default" | "not-crossing"): Promise<Host> {
   const registry = createFlowRegistry();
-  for (const copy of (await buildKitchenSinkWorkforce()).copies) registry.register(copy);
+  for (const copy of await kitFlows([kitchenSinkWorkforce()])) registry.register(copy);
   registry.register(deskFlow());
   // The lab's pins: a user resource the host declares, written through the default write flow.
   registry.register(defineFlow({ kind: PROJECTS_FLOW, resources: { labPins }, actions: {} } as never)() as unknown as FlowInstance);

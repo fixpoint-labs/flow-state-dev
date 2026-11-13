@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 import { z, type ZodTypeAny } from "zod";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 
-import { buildKitchenSinkWorkforce } from "../lib/workforce-hire";
+import { serveWorkforce } from "./workforce-host";
 import {
   COORDINATOR_ASK,
   COORDINATOR_FLOWS,
@@ -32,7 +32,8 @@ import {
 
 describe("the shell's names match the workforce tree", () => {
   it("lists every worker flow the app runs workers on, the coordinator's apart", async () => {
-    const { installation } = await buildKitchenSinkWorkforce();
+    const { installation, state } = await serveWorkforce();
+    await state.dispose();
     expect([...WORKER_FLOWS, ...COORDINATOR_FLOWS].sort()).toEqual(Object.keys(installation.workerFlows()).sort());
     expect([...COORDINATOR_FLOWS]).toEqual([COORDINATOR_FLOW]);
   });
@@ -44,7 +45,8 @@ describe("the shell's names match the workforce tree", () => {
  * field's name.
  */
 async function oneStringActions(flow: string): Promise<Record<string, string>> {
-  const { installation } = await buildKitchenSinkWorkforce();
+  const { installation, state } = await serveWorkforce();
+  await state.dispose();
   const factory = installation.workerFlows()[flow]!.flow as unknown as {
     actions: Record<string, { inputSchema?: ZodTypeAny; block: { inputSchema?: ZodTypeAny } }>;
   };

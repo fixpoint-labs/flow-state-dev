@@ -151,14 +151,15 @@ function installWorkforce(
     readonly flows: Readonly<Record<string, WorkforceFlowsBuilder>>;
   },
 ): FlowInstance[] {
-  const filled = slots.workerFlows;
+  const generated = config.generated ?? {};
+  // A worker flow keyed `agent` or `coordinator`, from the slot or the generated module, replaces the kit's own.
+  const filled = { ...generated.workerFlows, ...slots.workerFlows };
   if (config.agent !== undefined && Object.hasOwn(filled, AGENT_FLOW)) {
     throw new Error(`workforce: \`agent\` is configured, and \`workerFlows\` holds an "${AGENT_FLOW}" flow too. Keep one.`);
   }
   if (config.coordinator !== undefined && Object.hasOwn(filled, COORDINATOR_FLOW)) {
     throw new Error(`workforce: \`coordinator\` is configured, and \`workerFlows\` holds a "${COORDINATOR_FLOW}" flow too. Keep one.`);
   }
-  const generated = config.generated ?? {};
   /** What every flow this kit builds adds: the slot's capabilities and workforce's own two. */
   const added = (installation: WorkerInstallation): CapabilityRef[] =>
     [
@@ -194,7 +195,7 @@ function installWorkforce(
 
   const installation = createWorkerInstallation({
     standardWorkers: folder.workers,
-    workerFlows: { ...generated.workerFlows, ...filled, ...builtIn },
+    workerFlows: { ...filled, ...builtIn },
     ...(generated.workerBlocks === undefined ? {} : { workerBlocks: generated.workerBlocks as never }),
     ...(generated.packageBlocks === undefined ? {} : { packageBlocks: generated.packageBlocks as never }),
     ...(folder.documents.length === 0 ? {} : { documents: resourcesFromDocs([...folder.documents]) as never }),

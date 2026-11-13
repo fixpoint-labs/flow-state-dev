@@ -15,19 +15,18 @@
  * `activeSkills` at all.
  */
 import { describe, expect, it, vi } from "vitest";
-import { createFlowRegistry } from "@flow-state-dev/engine";
 import type { z } from "zod";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
-import { buildKitchenSinkWorkforce } from "../lib/workforce-hire";
+import { serveWorkforce } from "./workforce-host";
 
 vi.setConfig({ testTimeout: 30_000 });
 
 describe("scope-state defaults across Kitchen Sink's flows", () => {
   it("the coordinator reads the skills capability's activeSkills default on a fresh session", async () => {
-    const { copies } = await buildKitchenSinkWorkforce();
-    // Every copy registers on one server: the cross-flow user and org check passes too.
-    createFlowRegistry().registerMany(copies);
-    const coordinator = copies.find((copy) => copy.kind === COORDINATOR_FLOW);
+    // Every flow the kit serves registers on one server: the cross-flow user and org check passes too.
+    const { flows, state } = await serveWorkforce();
+    await state.dispose();
+    const coordinator = flows.get(COORDINATOR_FLOW);
     expect(coordinator).toBeDefined();
 
     // The schema the engine fills this flow's session reads from (the engine's

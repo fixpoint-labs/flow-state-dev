@@ -26,9 +26,10 @@ describe("support.fsd's lookups", () => {
   it("grants search-docs and fetch to support.fsd alone, and the workforce builds", async () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
     vi.stubEnv("GOAL_CONTROL", "");
-    const { buildKitchenSinkWorkforce } = await import("@/lib/workforce-hire");
-    const { installation, errors } = await buildKitchenSinkWorkforce();
-    expect(errors).toEqual([]);
+    // The kit refuses to start on any file it can't read, so starting is the clean read.
+    const { serveWorkforce } = await import("./workforce-host");
+    const { installation, state } = await serveWorkforce();
+    await state.dispose();
     expect(installation.standardWorker("support.fsd")?.declared.tools).toEqual(["search-docs", "fetch"]);
 
     const { workerBlocks } = await import("@/workforce/workforce.gen");

@@ -1,58 +1,40 @@
 /**
- * The kitchen-sink hire's package wiring: the generated `packageBlocks` reach
- * the hire, and a package the loader refused stops start.
+ * Kitchen-sink's workforce and packages: a package the loader refuses stops
+ * start, naming its folder.
  *
  * Every package problem is a start-time refusal, so a refused `PACKAGE.md` must
- * not boot the app with the worker quietly short that package. The loader's
- * `packageErrors` is the only place a refused instructions-only package shows,
- * which is why the app has to read it.
+ * not boot the app with the worker quietly short that package. The workforce
+ * kit reads the folder and refuses on it; this holds that for the app's own
+ * tree, on a copy with one package that doesn't load.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { workforce } from "@flow-state-dev/workforce/kit";
 
-const loader = vi.hoisted(() => ({ packageErrors: [] as Array<{ path: string; error: Error; kind: string }> }));
-const hired = vi.hoisted(() => ({ options: [] as unknown[] }));
+import { workforceRoot } from "../lib/workforce-kit";
+import * as generated from "../workforce/workforce.gen";
+import { serveWorkforce } from "./workforce-host";
 
-vi.mock("@flow-state-dev/workforce/loader", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@flow-state-dev/workforce/loader")>();
-  return {
-    ...actual,
-    readWorkforce: async (root: string) => {
-      const result = await actual.readWorkforce(root);
-      return { ...result, packageErrors: [...result.packageErrors, ...loader.packageErrors] };
-    },
-  };
-});
-
-vi.mock("@flow-state-dev/workforce", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@flow-state-dev/workforce")>();
-  return {
-    ...actual,
-    createWorkerInstallation: (...args: Parameters<typeof actual.createWorkerInstallation>) => {
-      hired.options.push(args[0]);
-      return actual.createWorkerInstallation(...args);
-    },
-  };
-});
-
-const { buildKitchenSinkWorkforce } = await import("../lib/workforce-hire");
-const { packageBlocks } = await import("../workforce/workforce.gen");
-
-afterEach(() => {
-  loader.packageErrors = [];
-  hired.options = [];
-});
-
-describe("the kitchen-sink hire and packages", () => {
-  it("passes the generated packageBlocks to the installation", async () => {
-    await buildKitchenSinkWorkforce();
-    expect(hired.options.length).toBeGreaterThan(0);
-    expect((hired.options[0] as { packageBlocks?: unknown }).packageBlocks).toBe(packageBlocks);
+describe("the kitchen-sink workforce and packages", () => {
+  it("starts on the app's own tree", async () => {
+    const { flows, state } = await serveWorkforce();
+    await state.dispose();
+    expect([...flows.keys()]).toEqual(expect.arrayContaining(["agent", "coordinator", "workforce-roster"]));
   });
 
   it("does not start when the loader refused a package, naming its folder", async () => {
-    const at = "teams/support/workers/iris/packages/refunds";
-    loader.packageErrors = [{ path: at, error: new Error("no PACKAGE.md"), kind: "package-load-failed" }];
-    await expect(buildKitchenSinkWorkforce()).rejects.toThrow(at);
-    expect(hired.options).toEqual([]);
+    const copy = join(mkdtempSync(join(tmpdir(), "kitchen-sink-packages-")), "workforce");
+    cpSync(workforceRoot, copy, { recursive: true });
+    const at = "teams/support/workers/devices/packages/refunds";
+    mkdirSync(join(copy, at), { recursive: true });
+    // A package whose PACKAGE.md names no description: the loader refuses it.
+    writeFileSync(join(copy, at, "PACKAGE.md"), "---\nname: refunds\n---\n");
+    const refused = await serveWorkforce(workforce({ directory: copy, generated, agent: { catalog: generated.blocks } })).then(
+      () => "started",
+      (error: Error) => error.message,
+    );
+    expect(refused).toContain(at);
   });
 });
