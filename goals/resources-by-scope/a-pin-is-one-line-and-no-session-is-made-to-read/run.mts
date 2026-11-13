@@ -240,7 +240,7 @@ await runGoal(async (failures, tell) => {
     {
       const changed: string[] = [];
       let reads = 0;
-      const read = async <T>(what: string, run: () => Promise<T>): Promise<T> => {
+      const read = async <T,>(what: string, run: () => Promise<T>): Promise<T> => {
         reads += 1;
         const before = await storeSnapshot();
         const value = await run();
@@ -287,7 +287,8 @@ await runGoal(async (failures, tell) => {
 
       // b:one-session-per-writer — Alice's two tabs and Bob's two tabs make their
       // first pin at once. Every send is held until all four have read, so the
-      // four first writes, and their session lookups, race.
+      // four first writes, and their session lookups, race. Each tab's pin must
+      // be stored too (b:both-changes-stored): the two tabs read one version.
       const tabs = { alice: [probe(base, "alice"), probe(base, "alice")], bob: [probe(base, "bob"), probe(base, "bob")] };
       const allRead = barrier(4);
       for (const tab of [...tabs.alice, ...tabs.bob]) {
@@ -312,7 +313,8 @@ await runGoal(async (failures, tell) => {
         if (used.size !== 1 || !used.has(theirs[0]?.id)) failures.push(`b:one-session-per-writer: ${who}'s pin requests ran in ${JSON.stringify([...used])}`);
         const expected = [...people[who].pins, `${who}-tab-1`, `${who}-tab-2`].sort();
         const stored = [...(await storedPins(who))].sort();
-        if (JSON.stringify(stored) !== JSON.stringify(expected)) failures.push(`b:one-session-per-writer: ${who}'s stored pins ${JSON.stringify(stored)}, expected ${JSON.stringify(expected)}`);
+        // Two tabs' changes at once are a concurrent edit too: both must be stored.
+        if (JSON.stringify(stored) !== JSON.stringify(expected)) failures.push(`b:both-changes-stored: ${who}'s two tabs' pins at once left ${JSON.stringify(stored)}, expected ${JSON.stringify(expected)}`);
       }
       if (fresh.length === 2 && new Set(fresh.map((s) => s.userId)).size === 2) {
         evidence.push(`b: four first pins at once (two tabs each) made one write session per writer (${fresh.length}), every pin stored`);

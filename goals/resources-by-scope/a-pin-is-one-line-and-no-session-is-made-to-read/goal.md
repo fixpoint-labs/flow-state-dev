@@ -1,0 +1,32 @@
+# resources by scope › a pin is one line and no session is made to read
+
+**Issue:** FIX-2624
+**Outcome:** A client reads any user or org resource it may read by scope and key with no session, writes it only through the flow the resource names (a plain write in one line), and learns its user and org without a session. Two people editing one org entry at once both keep their change, and nobody can name another user in the body to read or write as them.
+**Input:** One `serve()` host on a bound port over SQLite (`sqliteStores`), its resolver signing callers in from two headers (`x-user`, `x-org`), as a session cookie would. No model. Two flows, `threads` and `dashboard`, each declare a `pins` user resource (`runBy: "default"`), a `projects/*` org collection (`runBy: "default"`, with `canWrite`) and a `notes` user resource with no `runBy`, so every address has two declarers whose sign-in must agree. Alice and Bob are in org A, Carol in org B; each holds one pin, and each org one project, written to the store before any client call. Real clients (`createClient` over Node's `fetch`) call `client.resource(def)` and `client.flow(kind).identity()`. Held-out: the people, pins and projects are one table at the top of `run.mts`; any other set grades the same.
+**Signal:**
+- `a:own-pins` — Alice, Bob and Carol each read their own pins (`resource(pins).state()`), exactly what they hold.
+- `a:org-project` — each reads their org's project entry and list, and gets `null` for the other org's project by its key.
+- `a:no-session` — the session and request stores are the same after every one of the 12 reads (sessions 0 before and after).
+- `b:one-session-per-writer` — Alice's two tabs and Bob's two tabs make their first pin at once (every send held until all four have read): one new write session per writer, and every pin request ran in it.
+- `b:both-changes-stored` — Alice renames org A's project while Bob changes its lead, both having read the same version (Bob's write is sent after Alice's lands): the stored entry holds both. The four tabs' pins are all stored too.
+- `b:request-names-writer` — each write's request record (by the id its 202 answered) names the person who sent it, in a session bound to them.
+- `b:no-run-by-refused` — a write to `notes` answers 403 `not_writable` naming `runBy`; nothing is stored and no request is recorded.
+- `b:forged-user-ignored` — a client signed in as Alice that claims Bob (`userId` in the body and query) writes Alice's pins; Bob's are unchanged; the request names Alice.
+- `c:identity` — the identity read answers the signed-in user and org, for each person and for the forging client; the stores are unchanged.
+- `c:inventory` — `POC_EXPECT=gone bash specs/issues/FIX-2624/poc/helper-inventory/run.sh` exits 0: no use of the four own-session helpers remains.
+
+**Anti-game:** Every grade reads the stores (resource state, sessions, requests) or the HTTP answer, never a helper's return or the resource after one writer. The concurrent-edit leg is a two-writer race on one version, with the read versions recorded so a run where nothing raced fails. The first-write leg races four sends whose reads all landed first. The setup writes straight to the store, so leg a starts with no session at all and a read that made one would show.
+**Model:** n/a (access and writes are under test)
+**Run:** `pnpm tsx goals/resources-by-scope/a-pin-is-one-line-and-no-session-is-made-to-read/run.mts`
+**Controls:** scratch patches to engine modules, applied as the run loads them (`controls/patches.mts`, through `goals/lib/module-patch.mjs`); nothing is written to the checkout.
+- `GOAL_CONTROL=no-version-check` — the default write flow drops every `input.version` check (`default-write-flow.ts`), so a stale write lands over a newer one. Must FAIL `b:both-changes-stored`. It fails only that assertion: on the project and on the tabs' pins.
+- `GOAL_CONTROL=principal-from-body` — the scope routes take the caller from the `userId` the request claims (`resolveFlowCaller` in `scope-address.ts`). Must FAIL `b:forged-user-ignored`. It also fails `c:identity` for the forging client, since the identity read resolves its caller the same way: a known co-failure, not a leak.
+
+**Today vs the spec:** the spec's input names the pins resource without saying where it lives; this goal declares its own `pins` on the fixture's flows (the lab's pins resource is FIX-2628's to move), so the check doesn't depend on where an app keeps it. "A dashboard on its own flow" is read as a second flow declaring the same resources: every read and write here passes two declarers. The spec's third control row ("today's `main`: legs a and c FAIL") described the pre-implementation `main`; it can't be rerun on today's.
+
+## Verdict log
+| Date | Commit | Model | Verdict | Notes |
+|------|--------|-------|---------|-------|
+| 2026-11-13 | main `64e6c82a0` + this goal | n/a | PASS | a: 3 people read their own pins and their org's project (and nothing of the other org); sessions 0 → 0, request store unchanged across 12 reads · b: four first pins at once made one write session per writer (2), every pin stored; two updates from version 1 both stored (name and lead), bob's client sent 2 writes (a stale one refused, then re-applied); all 9 write requests name their writer; `notes` refused (403 not_writable: "Resource "notes" at user scope sets no runBy, so a client can't write it. …"); a userId of bob in the body and query of alice's client wrote alice's pins, bob's unchanged, the request names alice · c: 4 identity reads answered the signed-in user and org, store unchanged; inventory "PASS: no helper use remains; every hit is unrelated." |
+| 2026-11-13 | main `64e6c82a0` + this goal | n/a | FAIL (expected) | `no-version-check`: `b:both-changes-stored`: org A's project is {"name":"Apollo","lead":"bob","status":"draft"}, alice's rename lost; alice's two tabs' pins left ["alice-tab-2","thread-a1"], bob's ["bob-tab-2","thread-b1"]. Nothing else failed. The PASS row above is the same run without the patch |
+| 2026-11-13 | main `64e6c82a0` + this goal | n/a | FAIL (expected) | `principal-from-body`: `b:forged-user-ignored`: bob's pins ["thread-b1","bob-tab-1","bob-tab-2"] → [… "pinned-by-alice-claiming-bob"], the request names bob · `c:identity`: alice claiming bob read {"userId":"bob","orgId":"org-a"} (the known co-failure). The PASS row above is the same run without the patch |
