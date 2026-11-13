@@ -1104,19 +1104,19 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
     const { tasks: listed, topics } = await listedWithWaitingOn(sessionId);
     const rows = await Promise.all(
       listed.map(async (task): Promise<LabTask> => {
-        const { runSessionId: _session, run: link, holds: _holds, leaseUntil, ...row } = task;
+        const { runSessionId: _session, run: link, holds: _holds, leaseUntil, ...taskEntry } = task;
         const run = { ...(typeof link?.startedAt === "number" ? { startedAt: link.startedAt } : {}), ...(leaseUntil === undefined ? {} : { leaseUntil }) };
         // The harness its run reported; until one reports, the assignee's `harness` setting.
         const harness = task.spend?.harness ?? (await harnessOf(task));
         const pullRequests = await pullRequestsOf(task);
         // A coding task's output says how its review ended and where its work landed. Landing happens on an accept,
         // so the output is read once the run is done, or while it waits on a pull request it opened.
-        const output = harness !== undefined && (row.status === "completed" || pullRequests !== undefined) ? await outputOf(sessionId, task) : undefined;
-        const review = harness !== undefined && row.status === "completed" ? ((output?.review as LabTask["review"]) ?? null) : undefined;
+        const output = harness !== undefined && (taskEntry.status === "completed" || pullRequests !== undefined) ? await outputOf(sessionId, task) : undefined;
+        const review = harness !== undefined && taskEntry.status === "completed" ? ((output?.review as LabTask["review"]) ?? null) : undefined;
         const landed = landedOf(output?.landed);
-        const error = row.status === "errored" ? await errorOf(sessionId, task) : undefined;
+        const error = taskEntry.status === "errored" ? await errorOf(sessionId, task) : undefined;
         return {
-          ...row,
+          ...taskEntry,
           ...(Object.keys(run).length === 0 ? {} : { run }),
           ...(harness === undefined ? {} : { harness }),
           ...(pullRequests === undefined ? {} : { pullRequests }),
