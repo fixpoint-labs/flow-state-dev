@@ -44,7 +44,7 @@ export function htmlText(fragment: string): string {
 export function markdownText(markdown: string): string {
   return markdown
     // A fence's language is syntax; its title is shown above the code, so it is text.
-    .replace(/^([ \t]*)(```+|~~~+)(.*)$/gm, (_, indent, fence, info) => `${indent}${fence} ${/title="([^"]*)"/.exec(info)?.[1] ?? ""}`)
+    .replace(/^([ \t]*(?:>[ \t]*)*)(```+|~~~+)(.*)$/gm, (_, indent, fence, info) => `${indent}${fence} ${/title="([^"]*)"/.exec(info)?.[1] ?? ""}`)
     // An ordered list's numbers are drawn by the page's stylesheet, not written in its text.
     .replace(/^([ \t]*(?:>[ \t]*)*)\d+[.)][ \t]/gm, "$1")
     .replace(/\]\((?:<[^>]*>|[^)\s]*)(?:\s+"[^"]*")?\)/g, "]")
@@ -66,9 +66,9 @@ export function drift(markdown: Map<string, number>, html: Map<string, number>):
   return total === 0 ? (off === 0 ? 0 : 1) : off / total;
 }
 
-/** A component tag, import/export line, or expression left outside code. */
+/** A component tag, import/export line, or expression left outside code (a fence may sit in a blockquote). */
 export function jsxLeft(markdown: string): string | undefined {
-  const prose = markdown.replace(/^([ \t]*)(```+|~~~+)[\s\S]*?^\1\2[ \t]*$/gm, "").replace(/`[^`\n]*`/g, "");
+  const prose = markdown.replace(/^([ \t]*(?:>[ \t]*)*)(```+|~~~+)[\s\S]*?^\1\2[ \t]*$/gm, "").replace(/`[^`\n]*`/g, "");
   return /<[A-Z][\w.]*[\s/>]|^\s*(?:import|export)\s.+(?:from\s|=)|\{\/\*|(?<!\\)\{[^}\n]*\}/m.exec(prose)?.[0];
 }
 
