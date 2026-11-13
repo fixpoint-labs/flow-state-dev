@@ -14,7 +14,7 @@
  *
  * Every element's fallback attributes are replaced by the ones its classes give (after its `class`, in the order
  * above), and removed where its classes give none; a hatch fill (`fill="url(#hatch)"`) on an element whose classes
- * set no fill is kept. Text a class uppercases is not rewritten: it is reported, and the command exits 1, since SVG
+ * set no fill is kept, and every other attribute keeps its value and its quotes. Text a class uppercases is not rewritten: it is reported, and the command exits 1, since SVG
  * has no attribute for it and the text is the author's to put in capitals.
  */
 import { readFileSync, writeFileSync } from "node:fs";
@@ -96,19 +96,19 @@ export function withFallbacks(text, rules) {
   const token = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<[?!][^>]*>|<([\w:-]+)((?:\s+[\w:-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)(\s*\/?)>([^<]*)/g;
   const out = text.replace(token, (whole, name, attrText, close, after) => {
     if (!name) return whole;
-    const attrs = [...attrText.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map((a) => [a[1], a[2] ?? a[3]]);
+    const attrs = [...attrText.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map((a) => [a[1], a[2] ?? a[3], a[2] === undefined ? "'" : '"']);
     const cls = (attrs.find(([k]) => k === "class")?.[1] ?? "").split(/\s+/).filter(Boolean);
     const light = lightFallbacks(rules, name, cls);
     const hatch = light.fill === undefined && attrs.some(([k, v]) => k === "fill" && v.trim() === "url(#hatch)");
     const kept = attrs.filter(([k]) => !FALLBACK_PROPS.includes(k) || (hatch && k === "fill"));
-    const given = FALLBACK_PROPS.filter((p) => light[p] !== undefined).map((p) => [p, light[p]]);
+    const given = FALLBACK_PROPS.filter((p) => light[p] !== undefined).map((p) => [p, light[p], '"']);
     const at = kept.findIndex(([k]) => k === "class") + 1;
     const all = [...kept.slice(0, at), ...given, ...kept.slice(at)];
     // An entity (`&amp;`) is a character, not letters to put in capitals.
     const words = after.trim();
     const letters = words.replace(/&(?:#x[\da-f]+|#\d+|\w+);/gi, "");
     if (light["text-transform"] === "uppercase" && letters !== letters.toUpperCase()) capitals.push(`<${name} class="${cls.join(" ")}"> "${words}"`);
-    return `<${name}${all.map(([k, v]) => ` ${k}="${v}"`).join("")}${close}>${after}`;
+    return `<${name}${all.map(([k, v, q]) => ` ${k}=${q}${v}${q}`).join("")}${close}>${after}`;
   });
   return { text: out, capitals };
 }

@@ -517,27 +517,30 @@ let checks = await machineChecks(SKIP ? 'the page as it was kept' : 'the draft',
 if (!checks) return failed('pass 4')
 const checkRuns = [checks]
 
-const [depth, firstEdit] = await parallel([
-  () =>
-    agent(
+// Pass 5 after pass 6, beside pass 7: a row leaves the page for a Reference page, so it is checked
+// as the page is.
+const [checked, firstEdit] = await parallel([
+  async () => {
+    const depth = await agent(
       `You are pass 6 of the ten passes: the depth pass. ${STANDARD} For each paragraph of ${PATH}, ask: is this the model, or mechanism? Return each paragraph that is mechanism as the Reference row it becomes and the R-page (sitemap id, see ${SITEMAP}/reference.md) it belongs on. Read only.`,
       { label: 'pass-6', phase: 'Check', schema: DEPTH_SCHEMA, agentType: 'code-reader' },
-    ),
-  () => editor(1),
-])
-if (!depth) return failed('pass 6')
-if (!firstEdit) return failed('pass 7')
-const edits = [firstEdit]
-
-// Pass 5 after pass 6: a row leaves the page for a Reference page, so it is checked as the page is.
-const factCheck = await agent(
-  `You are pass 5 of the ten passes: the fact check. You have the page ${PATH}, the Reference rows below, and the code, and nothing else: do not read its fact sheet, the sitemap or any spec. Return each claim the page or a row makes that is not true, with what is true and its file and line. For a claim in a row, give the row's number and the whole row rewritten to be true; for one on the page, row 0 and "". Read only.
+    )
+    if (!depth) return { at: 'pass 6' }
+    const factCheck = await agent(
+      `You are pass 5 of the ten passes: the fact check. You have the page ${PATH}, the Reference rows below, and the code, and nothing else: do not read its fact sheet, the sitemap or any spec. Return each claim the page or a row makes that is not true, with what is true and its file and line. For a claim in a row, give the row's number and the whole row rewritten to be true; for one on the page, row 0 and "". Read only.
 
 REFERENCE ROWS (moved off the page by the depth pass):
 ${depth.rows.length ? depth.rows.map((r, i) => `${i + 1}. ${one(r.row)} (for ${one(r.referencePage)})`).join('\n') : 'None.'}`,
-  { label: 'pass-5', phase: 'Check', schema: FACT_CHECK_SCHEMA, agentType: 'code-reader' },
-)
-if (!factCheck) return failed('pass 5')
+      { label: 'pass-5', phase: 'Check', schema: FACT_CHECK_SCHEMA, agentType: 'code-reader' },
+    )
+    return factCheck ? { depth, factCheck } : { at: 'pass 5' }
+  },
+  () => editor(1),
+])
+if (!checked || checked.at) return failed(checked ? checked.at : 'pass 6')
+if (!firstEdit) return failed('pass 7')
+const { depth, factCheck } = checked
+const edits = [firstEdit]
 const pageUntrue = factCheck.untrue.filter((u) => u.row === 0)
 const rowUntrue = factCheck.untrue.filter((u) => u.row !== 0)
 // A row found untrue is recorded corrected, or the run stops: a Reference row never keeps an untrue claim.
@@ -554,7 +557,8 @@ const ROWS = depth.rows.map((r, i) => {
 let pending = [
   ...openFindings(),
   ...pageUntrue.map((u) => ({ from: 'pass 5', text: `${u.claim} Untrue: ${u.truth} (${u.where})` })),
-  ...depth.rows.map((r) => ({ from: 'pass 6', text: `Move to ${r.referencePage} as "${r.row}" and link it: the paragraph starting "${r.paragraph}"` })),
+  // The rows as pass 5 left them: the writer is never handed a row it found untrue.
+  ...ROWS.map((r) => ({ from: 'pass 6', text: `Move to ${r.referencePage} as "${r.row}" and link it: the paragraph starting "${r.paragraph}"` })),
 ]
 const rounds = []
 const reads = []

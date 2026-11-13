@@ -44,7 +44,8 @@
  * longer fail is reported, not trusted. `brand-lint-fixtures/figures/` holds only clean
  * figures and pages, `good.*`, which must pass every rule. Each case in
  * `brand-lint-fixtures/cases.mjs` edits one of them in memory and must trip its rule; a case
- * whose edit no longer applies fails too.
+ * whose edit no longer applies fails too. And `figure-fallbacks.mjs`, given `good.svg` with its
+ * fallbacks stripped, must write `good.svg` back.
  *
  * Usage: node scripts/lint-brand.mjs [file...]   (no files: the docs' own)
  */
@@ -54,7 +55,7 @@ import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { createProcessor } from "@mdx-js/mdx";
 import { fileURLToPath } from "node:url";
 import CASES from "./brand-lint-fixtures/cases.mjs";
-import { FALLBACK_COLOURS, FALLBACK_PROPS, fallbackValue, lightFallbacks as lightFallbacksFor, readFallbackRules } from "./figure-fallbacks.mjs";
+import { FALLBACK_COLOURS, FALLBACK_PROPS, fallbackValue, lightFallbacks as lightFallbacksFor, readFallbackRules, withFallbacks } from "./figure-fallbacks.mjs";
 
 const DOCS = join(dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURES = join(DOCS, "scripts/brand-lint-fixtures");
@@ -815,6 +816,13 @@ for (const fixtureCase of CASES) {
     }
   }
 }
+// The fallback writer, given the clean figure with its fallbacks stripped, must write back the clean figure: the
+// command a figure is given its fallbacks with agrees with the rule that checks them.
+const goodSvg = readFileSync(join(FIGURE_FIXTURES, "good.svg"), "utf8");
+const bare = goodSvg.replace(new RegExp(`\\s(${FALLBACK_PROPS.join("|")})\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "g"), (m, k, a, b) =>
+  k === "fill" && (a ?? b) === "url(#hatch)" ? m : "",
+);
+if (bare === goodSvg || withFallbacks(bare, FALLBACK_RULES).text !== goodSvg) broken.push("figure-fallbacks.mjs does not write back figures/good.svg from its classes");
 const silent = RULES.filter((rule) => !fixtureFindings.some((f) => f.found.some((x) => x.rule === rule)));
 if (silent.length) broken.push(`no fixture failure for ${silent.join(", ")}; the rule can no longer fail.`);
 if (broken.length) {

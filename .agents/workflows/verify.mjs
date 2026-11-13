@@ -10676,6 +10676,7 @@ check('page-loop: pass 5 runs after pass 6 and checks its rows, and a row it fin
   assert.match(result.recordText, /^- Reference row 1: ROW-CLAIM Untrue: .*recorded corrected\./m)
   const revise = calls.find((c) => c.label === 'pass-8:1').prompt
   assert.ok(revise.includes('PAGE-CLAIM') && !revise.includes('ROW-CLAIM'), 'the page claim goes to the writer; the row is corrected in the record')
+  assert.ok(revise.includes('as "ROW-ONE-FIXED') && !revise.includes('ROW-ONE defaults come from the flow scope schema'), 'the writer moves the corrected row, never the untrue one')
   assert.equal(checkRecord(result.recordText).code, 0)
   // A row finding with no corrected row, or naming a row pass 6 never moved, stops the run: fail closed.
   for (const bad of [{ ...untrue[1], corrected: ' ' }, { ...untrue[1], row: 3 }]) {
