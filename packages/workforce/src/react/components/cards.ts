@@ -32,7 +32,7 @@ export type BoardCardRow = {
 };
 
 /** Whether a row read off a board has the fields every card has. */
-export function isCard(value: unknown): value is BoardCard {
+function isCard(value: unknown): value is BoardCard {
   if (value === null || typeof value !== "object") return false;
   const row = value as Record<string, unknown>;
   return typeof row.id === "string" && typeof row.status === "string";
