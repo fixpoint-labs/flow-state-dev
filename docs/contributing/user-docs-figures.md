@@ -156,6 +156,11 @@ type included. The font stack, `'IBM Plex Mono', ui-monospace, monospace`, ends 
 assumes. The lint reads the values from `page.css`, resolving its cascade, and checks the two
 match. There is still no `<style>` block in the file.
 
+Draw with classes only and let a script write the fallbacks:
+`node apps/docs/scripts/figure-fallbacks.mjs --write <figure.svg>` sets each element's from the
+same reading of `page.css` the lint uses, and names any text a class uppercases that is not in
+capitals.
+
 The palette is the page's own: paper for the ground, the inks for lines and text, the
 yellow highlighter (`hl`) for the one thing to look at, and red (`x`, `x-fill`) for a failure or
 a struck-out step. Colour marks emphasis, never category: two kinds of thing are told apart by

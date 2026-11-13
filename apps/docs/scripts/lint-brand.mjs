@@ -44,7 +44,8 @@
  * longer fail is reported, not trusted. `brand-lint-fixtures/figures/` holds only clean
  * figures and pages, `good.*`, which must pass every rule. Each case in
  * `brand-lint-fixtures/cases.mjs` edits one of them in memory and must trip its rule; a case
- * whose edit no longer applies fails too.
+ * whose edit no longer applies fails too. And `figure-fallbacks.mjs`, given `good.svg` with its
+ * fallbacks stripped, must write `good.svg` back.
  *
  * Usage: node scripts/lint-brand.mjs [file...]   (no files: the docs' own)
  */
@@ -54,6 +55,7 @@ import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { createProcessor } from "@mdx-js/mdx";
 import { fileURLToPath } from "node:url";
 import CASES from "./brand-lint-fixtures/cases.mjs";
+import { FALLBACK_COLOURS, FALLBACK_PROPS, fallbackValue, lightFallbacks as lightFallbacksFor, readFallbackRules, withFallbacks } from "./figure-fallbacks.mjs";
 
 const DOCS = join(dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURES = join(DOCS, "scripts/brand-lint-fixtures");
@@ -143,70 +145,10 @@ function drawingClassNames() {
 }
 
 // What a figure carries as its own attributes, as page.css's light theme gives it: the colours (rule `colour`),
-// and the line and type properties (rule `fallback`). text-transform has no SVG attribute: where a class sets it
-// to uppercase, the text itself must be in capitals.
-const FALLBACK_COLOURS = ["fill", "stroke"];
-const FALLBACK_PROPS = [...FALLBACK_COLOURS, "stroke-width", "stroke-dasharray", "font-family", "font-size", "font-weight", "letter-spacing"];
-
-/**
- * page.css's `.drawing` rules that set a fallback property, each with its light-theme values, every `var()` resolved
- * through `:root`: `{ tag, classes, not, specificity, [property]: value }`, in source order. A value that does not
- * resolve to a literal, a font stack that does not end in a generic family, or a selector this cannot read, throws:
- * the fallback a figure must carry would be a guess.
- */
-function drawingFallbackRules() {
-  const css = readFileSync(PAGE_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-  // The bare `:root` block is Paper, the light theme; Night's are `:root[…]` and `:root:not(…)`.
-  const root = /:root\s*\{([^}]*)\}/.exec(css);
-  if (!root) throw new Error("page.css: no :root block to read the light theme from");
-  const tokens = Object.fromEntries([...root[1].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
-  const literal = (prop, value, where) => {
-    const ref = /^var\(\s*(--[\w-]+)\s*\)$/.exec(value);
-    const resolved = ref ? tokens[ref[1]] : value;
-    if (resolved === undefined || /var\(|currentcolor|inherit|initial|unset/i.test(resolved)) {
-      throw new Error(`page.css: ${where} is "${value}", which has no light-theme literal to check a fallback against`);
-    }
-    // Off the site the webfont is missing: the stack must end in a generic family, so the width text-fit assumes holds.
-    if (prop === "font-family" && !/(?:^|,)\s*monospace$/.test(resolved)) {
-      throw new Error(`page.css: ${where} is "${resolved}", which does not end in the generic monospace`);
-    }
-    return fallbackValue(resolved);
-  };
-  const property = new RegExp(`(?:^|;)\\s*(${[...FALLBACK_PROPS, "text-transform"].join("|")})\\s*:\\s*([^;]+)`, "g");
-  const rules = [];
-  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const decls = [...m[2].matchAll(property)];
-    if (!decls.length) continue;
-    for (const selector of m[1].split(",").map((s) => s.trim()).filter((s) => s.startsWith(".drawing "))) {
-      const compound = /^\.drawing\s+([a-z]+)?((?:\.[\w-]+)*)(?::not\(([a-z]+)\))?$/.exec(selector);
-      if (!compound) throw new Error(`page.css: cannot read the drawing selector "${selector}"`);
-      const [, tag, classText, not] = compound;
-      const classes = classText.split(".").filter(Boolean);
-      const rule = { tag, classes, not, specificity: classes.length * 100 + (tag ? 1 : 0) + (not ? 1 : 0) };
-      for (const [, prop, value] of decls) rule[prop] = literal(prop, value.trim(), `${selector} { ${prop} }`);
-      rules.push(rule);
-    }
-  }
-  return rules;
-}
-
-/** A value as an attribute carries it: whitespace collapsed, and double quotes as single (the attribute's are double). */
-const fallbackValue = (value) => value.trim().replace(/\s+/g, " ").replace(/"/g, "'");
-
+// and the line and type properties (rule `fallback`), read by figure-fallbacks.mjs, which also writes them. text-transform
+// has no SVG attribute: where a class sets it to uppercase, the text itself must be in capitals.
 /** The light values page.css gives an element, by its name and classes, for each fallback property and text-transform. */
-function lightFallbacks(node) {
-  const cls = classesOf(node);
-  const matching = FALLBACK_RULES.filter(
-    (r) => (!r.tag || r.tag === node.name) && r.classes.every((c) => cls.includes(c)) && r.not !== node.name,
-  );
-  const out = {};
-  for (const prop of [...FALLBACK_PROPS, "text-transform"]) {
-    // The cascade: the highest specificity wins, and among equals the later rule (a stable sort keeps source order).
-    const winner = matching.filter((r) => r[prop] !== undefined).sort((a, b) => a.specificity - b.specificity).at(-1);
-    if (winner) out[prop] = winner[prop];
-  }
-  return out;
-}
+const lightFallbacks = (node) => lightFallbacksFor(FALLBACK_RULES, node.name, classesOf(node));
 
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 /** XML's character references and five named entities as the characters they stand for; any other `&name;` is left as written. */
@@ -340,8 +282,12 @@ function shapePoints(node, unread) {
   const points = [];
   let [x, y] = [0, 0];
   let start = [0, 0];
-  for (const [, command, args] of (node.attrs.d ?? "").matchAll(/([a-zA-Z])([^a-zA-Z]*)/g)) {
-    const n = (args.match(/-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/gi) ?? []).map(Number);
+  const commands = pathCommands(node.attrs.d ?? "");
+  if (typeof commands === "string") {
+    unread(`a path "${commands}" the lint does not read: a figure's paths are commands and numbers`);
+    return points;
+  }
+  for (const { command, n, args } of commands) {
     const rel = command === command.toLowerCase();
     const step = { m: 2, l: 2, h: 1, v: 1, z: 0 }[command.toLowerCase()];
     if (step === undefined || (step && (!n.length || n.length % step))) {
@@ -359,6 +305,29 @@ function shapePoints(node, unread) {
     }
   }
   return points;
+}
+
+/**
+ * A path's `d` as its commands, each with its numbers: a number is read whole, exponent included (`1e2`), before any
+ * letter is read as a command, so an exponent's `e` never splits one. Anything that is neither a command letter, a
+ * number nor a separator returns the rest of `d` from there, unread.
+ */
+function pathCommands(d) {
+  const commands = [];
+  const token = /[\s,]*(?:([a-zA-Z])|([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?))/y;
+  let at = 0;
+  for (d = d.trimEnd(); at < d.length; ) {
+    token.lastIndex = at;
+    const m = token.exec(d);
+    if (!m || (m[2] !== undefined && !commands.length)) return d.slice(at).trim();
+    if (m[1]) commands.push({ command: m[1], n: [], args: "" });
+    else {
+      commands.at(-1).n.push(Number(m[2]));
+      commands.at(-1).args += ` ${m[2]}`;
+    }
+    at = token.lastIndex;
+  }
+  return commands;
 }
 const BOXES = new Set(["solid", "thin", "dash"]);
 
@@ -701,10 +670,21 @@ function lintFigureEmbeds(file, text, out) {
     else if (caption.length > 60 || caption.endsWith(".")) at(line, `caption "${caption}" is over 60 characters or ends in a full stop`);
     if (words < 30) at(line, `the description is ${words} words: it says what the whole figure shows in 30 or more`);
   }
-  // Any other reference to an imported SVG, in any expression, attribute or export. An import's own names declare, not use.
+  // Any other reference to an imported SVG, in any expression, attribute or export. An import's own names declare, not
+  // use, and a name in a property's place (`{Board: …}`, `x.Board`, a class member, `export { x as Board }`, a label)
+  // is no reference to the binding. Any other identifier of that name counts, a shadowing local included: one the
+  // lint cannot tell from the import fails.
   const declared = new Set(nodes.filter((n) => n.type === "ImportDeclaration").flatMap((n) => [...walk(n)]));
+  const notReference = new Set();
   for (const node of nodes) {
-    if (node.type === "Identifier" && svgs.has(node.name) && !allowed.has(node) && !declared.has(node)) {
+    const named = node.type === "Property" || node.type === "PropertyDefinition" || node.type === "MethodDefinition";
+    if (named && !node.computed) notReference.add(node.key);
+    if (node.type === "MemberExpression" && !node.computed) notReference.add(node.property);
+    if (node.type === "ExportSpecifier" && node.exported !== node.local) notReference.add(node.exported);
+    if (/^(?:Labeled|Break|Continue)Statement$/.test(node.type)) notReference.add(node.label);
+  }
+  for (const node of nodes) {
+    if (node.type === "Identifier" && svgs.has(node.name) && !allowed.has(node) && !declared.has(node) && !notReference.has(node)) {
       at(lineOf(node, 1), `${node.name} is used outside a <Figure>'s svg: use <Figure svg={${node.name}} caption description />`);
     }
   }
@@ -791,7 +771,7 @@ const allowed = allowedColours();
 const DRAWING_CLASSES = drawingClassNames();
 let FALLBACK_RULES;
 try {
-  FALLBACK_RULES = drawingFallbackRules();
+  FALLBACK_RULES = readFallbackRules(PAGE_CSS);
 } catch (err) {
   console.error(`brand lint: ${err.message}`);
   process.exit(1);
@@ -836,6 +816,13 @@ for (const fixtureCase of CASES) {
     }
   }
 }
+// The fallback writer, given the clean figure with its fallbacks stripped, must write back the clean figure: the
+// command a figure is given its fallbacks with agrees with the rule that checks them.
+const goodSvg = readFileSync(join(FIGURE_FIXTURES, "good.svg"), "utf8");
+const bare = goodSvg.replace(new RegExp(`\\s(${FALLBACK_PROPS.join("|")})\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "g"), (m, k, a, b) =>
+  k === "fill" && (a ?? b) === "url(#hatch)" ? m : "",
+);
+if (bare === goodSvg || withFallbacks(bare, FALLBACK_RULES).text !== goodSvg) broken.push("figure-fallbacks.mjs does not write back figures/good.svg from its classes");
 const silent = RULES.filter((rule) => !fixtureFindings.some((f) => f.found.some((x) => x.rule === rule)));
 if (silent.length) broken.push(`no fixture failure for ${silent.join(", ")}; the rule can no longer fail.`);
 if (broken.length) {

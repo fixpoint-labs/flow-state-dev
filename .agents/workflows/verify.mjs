@@ -9781,10 +9781,10 @@ check('INVARIANT: every gating field is schema-required', async () => {
     // that failed CI's check: each would send the page round again or end the run on a guess.
     'page-loop.js': {
       PLAN_SCHEMA: ['found', 'slug', 'title', 'type', 'status'],
-      FILES_SCHEMA: ['files', 'path', 'exists', 'recordSitemap', 'title', 'type'],
+      FILES_SCHEMA: ['files', 'path', 'exists', 'recordSitemap', 'title', 'type', 'scanned'],
       QUESTIONS_SCHEMA: ['questions', 'edge'],
       CHECKS_SCHEMA: ['checks', 'ok', 'page'],
-      FACT_CHECK_SCHEMA: ['untrue'],
+      FACT_CHECK_SCHEMA: ['untrue', 'row', 'corrected'],
       DEPTH_SCHEMA: ['rows'],
       EDITOR_SCHEMA: ['verdict', 'findings'],
       READER_SCHEMA: ['answers', 'guessed'],
@@ -10522,8 +10522,9 @@ const LOOP_PAGE = '---\ntitle: State and scopes\ntype: concept\n---\n\n# State a
  * A stub for every page-loop agent, by label. `editor` lists pass 7's verdicts in order (the last
  * repeats); `missed` lists, per cold read, the question numbers every reader gets wrong.
  */
-function loopResponder({ entries = { 'C-07': { slug: 'concepts/state-and-scopes', title: 'State and scopes', type: 'concept' } }, tree = {}, status = 'new', found = true, editor = ['SHIP'], untrue = [], depthEntries = [], missed = [], questions = loopQuestions, dead = [], page = LOOP_PAGE, recorded = { written: true, checkerExit: 0, checkerOutput: 'ok' } } = {}) {
+function loopResponder({ entries = { 'C-07': { slug: 'concepts/state-and-scopes', title: 'State and scopes', type: 'concept' } }, tree = {}, unscanned = [], status = 'new', found = true, editor = ['SHIP'], untrue = [], depthEntries = [], missed = [], questions = loopQuestions, dead = [], page = LOOP_PAGE, checksRed = [], recorded = { written: true, checkerExit: 0, checkerOutput: 'ok' } } = {}) {
   let editorCalls = 0
+  let checkCalls = 0
   return (prompt, opts) => {
     const label = opts.label || ''
     if (dead.some((d) => label.startsWith(d))) return null
@@ -10534,12 +10535,18 @@ function loopResponder({ entries = { 'C-07': { slug: 'concepts/state-and-scopes'
     // Pass 0's file scout answers for exactly the paths it is asked about, from the planted tree.
     if (label === 'inspect') {
       const paths = prompt.split('FILES:\n')[1].split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2))
-      return { files: paths.map((path) => (tree[path] ? { path, exists: true, recordSitemap: '', title: '', type: '', ...tree[path] } : { path, exists: false, recordSitemap: '', title: '', type: '' })) }
+      // `scanned` as the retired-terms area command would print it; `unscanned` lists the paths it keeps out.
+      const scanned = (path) => !unscanned.some((u) => path.startsWith(u))
+      return { files: paths.map((path) => (tree[path] ? { path, exists: true, recordSitemap: '', title: '', type: '', scanned: scanned(path), ...tree[path] } : { path, exists: false, recordSitemap: '', title: '', type: '', scanned: scanned(path) })) }
     }
-    if (label === 'pass-1') return { facts: 12, summary: 'twelve facts' }
+    if (label === 'pass-1') return { facts: 12 }
     if (label === 'pass-2') return { questions }
     if (label === 'pass-3') return { scenario: 'the support desk', words: 700, figures: [] }
-    if (label.startsWith('pass-4')) return { checks: [{ check: 'check-docs-page', ok: true, detail: 'ok' }], page }
+    // `checksRed` lists, per pass 4 run in order, the detail of a failing retired-terms check (or nothing).
+    if (label.startsWith('pass-4')) {
+      const red = checksRed[checkCalls++]
+      return { checks: [{ check: 'check-docs-page', ok: true, detail: 'ok' }, { check: 'retired-terms', ok: !red, detail: red || 'exit 0' }], page }
+    }
     if (label === 'pass-5') return { untrue }
     if (label === 'pass-6') return { rows: depthEntries }
     if (label.startsWith('pass-7')) {
@@ -10589,7 +10596,8 @@ check('page-loop: the passes run in order, 1 and 7 are docs-writer and docs-edit
   assert.equal(result.status, 'complete')
   assert.equal(result.path, 'docs/contributing/docs-revamp/pages/concepts/state-and-scopes.md', 'the page keeps its sitemap section')
   const order = calls.map((c) => passOf(c.label || '')).filter(Boolean).map(Number)
-  assert.deepEqual([...new Set(order)], [1, 2, 3, 4, 5, 6, 7, 9], 'nothing to revise skips pass 8, and pass 10 is the owner’s')
+  // Pass 5 follows pass 6, whose rows it checks; pass 7 runs beside pass 6.
+  assert.deepEqual([...new Set(order)], [1, 2, 3, 4, 6, 7, 5, 9], 'nothing to revise skips pass 8, and pass 10 is the owner’s')
   assert.equal(calls.find((c) => c.label === 'pass-1').agentType, 'docs-writer')
   assert.equal(calls.find((c) => c.label === 'pass-7:1').agentType, 'docs-editor')
   // The writer model is the epic's D4 test: it has to reach every pass that writes, and only those.
@@ -10637,13 +10645,91 @@ check('page-loop: an editor REVISE sends the page to one revise round, then pass
 check('page-loop: pass 5 and 6 findings go to round 1 once, and the moved rows land in Reference rows', async () => {
   const { result, calls } = await run('page-loop.js', {
     args: loopArgs,
-    respond: loopResponder({ untrue: [{ claim: 'UNTRUE-CLAIM', truth: 'it is not so', where: 'x.ts:3' }], depthEntries: [{ paragraph: 'The engine writes', row: 'WRITE-ROW', referencePage: 'R-07' }] }),
+    respond: loopResponder({ untrue: [{ claim: 'UNTRUE-CLAIM', truth: 'it is not so', where: 'x.ts:3', row: 0, corrected: '' }], depthEntries: [{ paragraph: 'The engine writes', row: 'WRITE-ROW', referencePage: 'R-07' }] }),
   })
   const revise = calls.find((c) => c.label === 'pass-8:1').prompt
   assert.ok(revise.includes('UNTRUE-CLAIM') && revise.includes('WRITE-ROW'), 'round 1 takes the fact check and the depth pass')
   assert.equal(labels(calls, 'pass-8').length, 1, 'pass 5 and 6 findings are taken once, not raised again')
   assert.equal(labels(calls, 'pass-7').length, 1, 'an editor that said SHIP is not asked again')
   assert.match(result.recordText, /## Reference rows\n\n- WRITE-ROW → R-07/)
+  assert.equal(checkRecord(result.recordText).code, 0)
+})
+
+check('page-loop: pass 5 runs after pass 6 and checks its rows, and a row it finds untrue is recorded corrected', async () => {
+  // The C-07 run: a row handed to R-01 kept the claim pass 5 had corrected on the page.
+  const moved = [
+    { paragraph: 'A block lists', row: 'ROW-ONE defaults come from the flow scope schema', referencePage: 'R-01' },
+    { paragraph: 'Flows share', row: 'ROW-TWO incompatible schemas are refused', referencePage: 'R-05' },
+  ]
+  const untrue = [
+    { claim: 'PAGE-CLAIM', truth: 'merged schema', where: 'defineFlow.ts:9', row: 0, corrected: '' },
+    { claim: 'ROW-CLAIM', truth: 'merged schema', where: 'defineFlow.ts:9', row: 1, corrected: 'ROW-ONE-FIXED defaults come from the flow merged schema' },
+  ]
+  const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ untrue, depthEntries: moved }) })
+  assert.equal(result.status, 'complete')
+  const order = calls.map((c) => c.label)
+  assert.ok(order.indexOf('pass-6') < order.indexOf('pass-5'), 'pass 5 has the rows pass 6 moved')
+  const factPrompt = calls.find((c) => c.label === 'pass-5').prompt
+  assert.ok(factPrompt.includes('1. ROW-ONE') && factPrompt.includes('2. ROW-TWO'), 'pass 5 is given every row, numbered')
+  assert.match(result.recordText, /## Reference rows\n\n- ROW-ONE-FIXED defaults come from the flow merged schema → R-01 \(corrected by pass 5\)\n- ROW-TWO incompatible schemas are refused → R-05\n/)
+  assert.ok(!result.recordText.includes('ROW-ONE defaults come from the flow scope schema →'), 'the untrue row is not recorded')
+  assert.match(result.recordText, /^- Reference row 1: ROW-CLAIM Untrue: .*recorded corrected\./m)
+  const revise = calls.find((c) => c.label === 'pass-8:1').prompt
+  assert.ok(revise.includes('PAGE-CLAIM') && !revise.includes('ROW-CLAIM'), 'the page claim goes to the writer; the row is corrected in the record')
+  assert.ok(revise.includes('as "ROW-ONE-FIXED') && !revise.includes('ROW-ONE defaults come from the flow scope schema'), 'the writer moves the corrected row, never the untrue one')
+  assert.equal(checkRecord(result.recordText).code, 0)
+  // A row finding with no corrected row, or naming a row pass 6 never moved, stops the run: fail closed.
+  for (const bad of [{ ...untrue[1], corrected: ' ' }, { ...untrue[1], row: 3 }]) {
+    const stopped = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ untrue: [bad], depthEntries: moved }) })
+    assert.equal(stopped.result.status, 'failed', JSON.stringify(bad))
+    assert.equal(stopped.result.at, 'pass 5')
+    assert.equal(labels(stopped.calls, 'record').length, 0)
+  }
+})
+
+check('page-loop: pass 4 runs the retired-terms check on the page, and a page outside what it scans is refused first', async () => {
+  // The C-07 run: the check scanned tracked files, the page was untracked, and every pass 4 passed.
+  const { calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder() })
+  const pass4 = calls.find((c) => c.label === 'pass-4:0').prompt
+  assert.ok(pass4.includes(";' docs/contributing/docs-revamp/pages/concepts/state-and-scopes.md"), 'the check is run on the page path')
+  assert.match(pass4, /NOT SCANNED/, 'and fails, not passes, when the page is outside what it scans')
+  assert.ok(!/check-retired-terms\.mjs`, for any line/.test(pass4), 'not the whole-tree run, which never reads an untracked page')
+  // The commands pass 4 and the scout run, run here against the real check: a page under specs/ is
+  // not scanned and exits 1; one under the revamp's pages is read and exits 0.
+  const command = (prompt, marker) => [...prompt.matchAll(/`(node --input-type=module -e '[^']*')/g)].map((m) => m[1]).find((c) => c.includes(marker))
+  const sh = (cmd, ...paths) => {
+    try {
+      return { code: 0, out: execFileSync('sh', ['-c', `${cmd} "$@"`, 'sh', ...paths], { cwd: join(HERE, '../..'), encoding: 'utf8' }) }
+    } catch (err) {
+      return { code: err.status, out: String(err.stdout) }
+    }
+  }
+  const page = command(pass4, 'census')
+  const kept = sh(page, 'specs/issues/FIX-2697/SPEC.md')
+  assert.equal(kept.code, 1, kept.out)
+  assert.match(kept.out, /NOT SCANNED: .* the history area/)
+  const read = sh(page, 'docs/contributing/docs-revamp/pages/blocks.md')
+  assert.equal(read.code, 0, read.out)
+  assert.match(read.out, /0 counted line\(s\) on docs\/contributing\/docs-revamp\/pages\/blocks\.md/)
+  const area = command(calls.find((c) => c.label === 'inspect').prompt, 'areaOf')
+  assert.match(sh(area, 'specs/x.md', 'docs/contributing/docs-revamp/pages/x.md').out, /^specs\/x\.md: NOT SCANNED\ndocs\/contributing\/docs-revamp\/pages\/x\.md: in scope\n$/)
+  // A target the scout reports unscanned stops the run before any agent writes.
+  const blocked = await run('page-loop.js', { args: { ...loopArgs, dir: 'specs/issues/FIX-2697/poc/loop-run' }, respond: loopResponder({ unscanned: ['specs/'] }) })
+  assert.equal(blocked.result.status, 'blocked')
+  assert.match(blocked.result.reason, /retired-terms check does not scan/)
+  assert.deepEqual(blocked.calls.map((c) => c.label), ['plan', 'inspect'])
+})
+
+check('page-loop: the record says what pass 1 wrote in one line, and a failing pass 4 in full once', async () => {
+  const { result } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ checksRed: ['line 9 [person] RED-DETAIL', 'line 9 [person] RED-AGAIN'] }) })
+  const body = (n) => result.recordText.split(/^## /m).find((p) => p.startsWith(`${n} ·`))
+  assert.equal(body(1).trim(), '1 · Fact sheet\n\nWritten by `docs-writer` (WRITER-MODEL): 12 facts, `docs/contributing/docs-revamp/pages/concepts/state-and-scopes.facts.md`.')
+  const runs = body(4).trim().split('\n').slice(2)
+  assert.equal(runs.length, 3, 'the draft, and the two rounds the red checks caused')
+  assert.match(runs[0], /^- After the draft, page sha256 [0-9a-f]{12}: exit 1\. Failed: retired-terms: line 9 \[person\] RED-DETAIL\.$/)
+  assert.match(runs[1], /^- After revise round 1, page sha256 [0-9a-f]{12}: exit 1\. Failed: retired-terms\.$/, 'a later red run names the check, not its output again')
+  assert.match(runs[2], /^- After revise round 2, page sha256 [0-9a-f]{12}: exit 0\.$/)
+  assert.ok(!body(4).includes('check-docs-page'), 'a passing check is not listed')
   assert.equal(checkRecord(result.recordText).code, 0)
 })
 
