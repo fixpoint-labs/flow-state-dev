@@ -55,12 +55,13 @@ driver answers what an app stops to ask the person (a tool approval: yes; a revi
 changes: accepted), as the person at the page would; a question a run asks is left waiting.
 
 **Switches:** on the control and the cut run, the scripts write `skills: activateTool: true` into
-the asked worker's `WORKER.md` for the run (Kitchen Sink: each specialist the desk routes to), and
-set Teammates' `TEAMMATES_CHECKS`. At the wrap they set nothing. The fitting skill is a fixture
+the asked worker's `WORKER.md` for the run (Kitchen Sink: each specialist the desk routes to).
+At the wrap they set nothing. The fitting skill is a fixture
 (its marker is held out) and is planted on every pass. Everything planted is journaled and put
 back after the run, and by the next run if the machine killed this one (`closure.mts` →
-`planted`). A project's checks (the labs' and Shift Manager's project row, Kitchen Sink's
-`KITCHEN_SINK_HARNESS_CHECKS`) are the project's data, a fixture on every pass.
+`planted`). A project's checks (the Claude Code-style lab's and Shift Manager's project row,
+Teammates' `TEAMMATES_CHECKS`, Kitchen Sink's `KITCHEN_SINK_HARNESS_CHECKS`) are the project's
+data, a fixture on every pass.
 
 **Sweep** (`verdict/run.mts`): no app's `WORKER.md` carries date or "done" guidance of its own
 (epic ER-3). Reported on every pass; a failure at the wrap.
