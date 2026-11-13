@@ -16,15 +16,10 @@ export {
 
 export {
   readWorkerSkills,
-  type ReadWorkerSkillsOptions,
-  type ReadWorkerSkillsResult,
   type WorkerSkillError,
-  type WorkerSkillErrorKind,
 } from "./read-worker-skills";
 
 export {
-  type ReadTeamsDirectoryResult,
-  type TeamManifestError,
   type TeamManifestErrorKind,
 } from "./read-teams-directory";
 
