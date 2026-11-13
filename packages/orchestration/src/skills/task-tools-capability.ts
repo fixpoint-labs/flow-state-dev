@@ -51,7 +51,7 @@
  * name rather than letting the schema drop it.
  */
 
-import { defineCapability, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
+import { defineCapability, FlowError, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
 import type { ActionConfig, BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import type { FileContent } from "@flow-state-dev/core/items";
@@ -69,6 +69,7 @@ import {
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskEditField,
+  type TaskFilter,
   type TaskInit,
   type TaskSettingsPatch,
   type TaskStatus,
@@ -106,7 +107,7 @@ import {
 } from "../tasks/helpers/wait-on-task";
 import { cancelAndResume } from "../tasks/helpers/user-stop";
 import { taskToolSuffix } from "./task-tool-suffix";
-import { listTasksOutputSchema, waitingShape } from "./task-listing";
+import { listedTaskSchema, listTasksOutputSchema, waitingShape } from "./task-listing";
 
 /** A filing's question as the board keeps it: a plain string is a question. */
 function askOf(question: string | { kind: "question" | "confirm"; prompt: string; onNo?: "cancel" | "continue" }): QuestionInit {
@@ -981,6 +982,110 @@ interface BuildTaskToolsOptions {
  * a question or a confirm on the row, or a task run's stop, each with what
  * it asks and when it falls due. One shape for every stop.
  */
+// FIX-2625: `listTasks` and the board's task-list view list rows through one
+// code path, so a view's partial answer equals its whole one row for row.
+const LIST_TASKS_DESCRIPTION =
+  "List tasks on your delegation board, optionally filtered by status, assignee, or the task " +
+  "whose request filed them (filedByTask). Each listed task carries its status note, never its output: " +
+  "read one task's output with getTask. Don't list to wait for a task you filed to end: end " +
+  "your turn, and its ending wakes you.";
+
+/** What `listTasks` and the board's task-list view take: optional filters. */
+const listTasksInputSchema = z.object({
+  status: z
+    .enum(["pending", "in_progress", "held", "completed", "errored", "cancelled"])
+    .optional(),
+  assignee: z.string().optional(),
+  filedByTask: z.string().optional().describe("Only the tasks this task's request filed: its pieces."),
+});
+
+/** The board's filter for a list input, or `undefined` for every row. */
+function taskListFilter(input: z.infer<typeof listTasksInputSchema>): TaskFilter | undefined {
+  const filter = {
+    ...(input.status !== undefined ? { status: input.status } : {}),
+    ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
+    ...(input.filedByTask !== undefined ? { filedByTask: input.filedByTask } : {}),
+  };
+  return Object.keys(filter).length > 0 ? filter : undefined;
+}
+
+/**
+ * `tasks` as `listTasks` lists them: each one's status note, never its
+ * output, and the latest completed follow-up of its chain, read from `board`
+ * (every row) in one pass. `claimless` (the board's own read, not a model's
+ * tool) adds what only a client reads: spend, times and the lease.
+ */
+function listedTaskEntries(tasks: readonly Task[], board: readonly Task[], claimless: boolean) {
+  const latest = latestCompletedByRoot(board);
+  return tasks.map((t) => ({
+    id: t.id,
+    goal: t.goal,
+    ...(t.title !== undefined ? { title: t.title } : {}),
+    status: t.status,
+    ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
+    attempts: t.attempts,
+    ...(t.statusNote !== undefined ? { statusNote: t.statusNote } : {}),
+    ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
+    ...(t.run != null ? { run: t.run } : {}),
+    // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
+    ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt, createdAt: t.createdAt } : {}),
+    ...(claimless && t.startedAt !== undefined ? { startedAt: t.startedAt } : {}),
+    ...(claimless && t.completedAt !== undefined ? { completedAt: t.completedAt } : {}),
+    ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
+    ...(claimless && t.leaseUntil != null ? { leaseUntil: t.leaseUntil } : {}),
+    ...waitingOf(t),
+    ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),
+  }));
+}
+
+/**
+ * The rows that show any of the tasks `ids` names: each one's own, and every
+ * row of its follow-up chain, since each shows the chain's latest completed
+ * follow-up (`current`). `undefined` when some id names no row on `board` (a
+ * deleted task, whose chain the board no longer knows): read everything.
+ */
+function tasksShowing(board: readonly Task[], ids: readonly string[]): Task[] | undefined {
+  const byId = new Map(board.map((t) => [t.id, t]));
+  const chains = new Set<string>();
+  for (const id of ids) {
+    const named = byId.get(id);
+    if (named === undefined) return undefined;
+    chains.add(named.followUpOf ?? named.id);
+  }
+  return board.filter((t) => chains.has(t.followUpOf ?? t.id));
+}
+
+/**
+ * One board's rows as its task-list view answers them (`views/task-list-view.ts`):
+ * the rows `listTasks_<suffix>` lists, from the same code, keyed by task id.
+ * A board notice for this board, on an unfiltered list, answers just the rows
+ * its tasks touch (`ctx.view.partial`); anything else answers whole.
+ */
+export function taskListBlockFor(collectionId: string, resolve: TaskCollectionResolver) {
+  const listedTasks = z.array(listedTaskSchema);
+  return handler({
+    name: `listTasks_${taskToolSuffix(collectionId)}`,
+    description: LIST_TASKS_DESCRIPTION,
+    inputSchema: listTasksInputSchema,
+    outputSchema: listedTasks,
+    execute: async (input, ctx) => {
+      const collection = await resolve(ctx);
+      // The list's refusal (no board this session can file on) is the view's, by its own name.
+      if (!collection) {
+        throw new FlowError(`The task list can't be read here: ${noBoardError.error}`, { code: noBoardError.error, retryable: false });
+      }
+      const board = collection.list();
+      const filter = taskListFilter(input);
+      const changed = ctx.view?.changed;
+      if (changed?.kind === "board" && changed.topic.resource === collectionId && filter === undefined) {
+        const touched = tasksShowing(board, changed.ids);
+        if (touched !== undefined) return ctx.view!.partial(listedTaskEntries(touched, board, true));
+      }
+      return listedTaskEntries(collection.list(filter), board, true);
+    },
+  });
+}
+
 function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskToolsOptions = {}) {
   const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false } = options;
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
@@ -1817,52 +1922,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
 
   const listTasks = defineTool({
     name: named("listTasks"),
-    description:
-      "List tasks on your delegation board, optionally filtered by status, assignee, or the task " +
-      "whose request filed them (filedByTask). Each listed task carries its status note, never its output: " +
-      "read one task's output with getTask. Don't list to wait for a task you filed to end: end " +
-      "your turn, and its ending wakes you.",
-    inputSchema: z.object({
-      status: z
-        .enum(["pending", "in_progress", "held", "completed", "errored", "cancelled"])
-        .optional(),
-      assignee: z.string().optional(),
-      filedByTask: z.string().optional().describe("Only the tasks this task's request filed: its pieces."),
-    }),
+    description: LIST_TASKS_DESCRIPTION,
+    inputSchema: listTasksInputSchema,
     outputSchema: listTasksOutputSchema,
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
-      const filter = {
-        ...(input.status !== undefined ? { status: input.status } : {}),
-        ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
-        ...(input.filedByTask !== undefined ? { filedByTask: input.filedByTask } : {}),
-      };
-      const tasks = collection.list(Object.keys(filter).length > 0 ? filter : undefined);
-      // Every chain's current in one pass over the board, never a walk per row.
-      const latest = latestCompletedByRoot(collection.list());
-      return {
-        ok: true as const,
-        tasks: tasks.map((t) => ({
-          id: t.id,
-          goal: t.goal,
-          ...(t.title !== undefined ? { title: t.title } : {}),
-          status: t.status,
-          ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
-          attempts: t.attempts,
-          ...(t.statusNote !== undefined ? { statusNote: t.statusNote } : {}),
-          ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
-          ...(t.run != null ? { run: t.run } : {}),
-          // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
-          ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt, createdAt: t.createdAt } : {}),
-          ...(claimless && t.startedAt !== undefined ? { startedAt: t.startedAt } : {}),
-          ...(claimless && t.completedAt !== undefined ? { completedAt: t.completedAt } : {}),
-          ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
-          ...(claimless && t.leaseUntil != null ? { leaseUntil: t.leaseUntil } : {}),
-          ...waitingOf(t),
-          ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),
-        })),
-      };
+      return { ok: true as const, tasks: listedTaskEntries(collection.list(taskListFilter(input)), collection.list(), claimless) };
     },
   });
 
@@ -2391,19 +2457,5 @@ export function taskToolActions(
       { block: tool, description: tool.description },
     ]),
   );
-}
-
-/**
- * One board's `listTasks_<suffix>` as the board's actions build it
- * (`claimless`), typed by its output: the block the board's task-list view
- * (`views/task-list-view.ts`) runs.
- */
-export function listTasksBlockFor(collectionId: string, resolve: TaskCollectionResolver) {
-  const listTasks = buildTaskTools(resolve, {
-    nameSuffix: taskToolSuffix(collectionId),
-    claimless: true,
-  }).find((tool) => tool.name === `listTasks_${taskToolSuffix(collectionId)}`) as BlockDefinition<z.ZodTypeAny, typeof listTasksOutputSchema> | undefined;
-  if (listTasks === undefined) throw new Error(`listTasksBlockFor("${collectionId}"): the task tools built no listTasks`);
-  return listTasks;
 }
 

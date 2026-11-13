@@ -361,6 +361,13 @@ export interface BlockContext<
    */
   settings: FlowStateSettings;
 
+  // FIX-2625 D1.
+  /**
+   * In a view's run, the change it may answer for and the call that answers
+   * for just those rows (`ctx.view.partial`). Absent outside a view.
+   */
+  view?: import("./view").ViewRunContext;
+
   // FIX-1331.
   /**
    * The flow copy this block is running in, narrowed to its create-time

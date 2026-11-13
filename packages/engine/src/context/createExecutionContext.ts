@@ -4138,6 +4138,8 @@ export async function createExecutionContext<
       ...(attachmentSeam !== undefined ? { [ATTACHMENT_SEAM]: attachmentSeam } : {}),
       ...(userAttachmentSeam !== undefined ? { [USER_ATTACHMENT_SEAM]: userAttachmentSeam } : {}),
       settings: options.settings ?? {},
+      // A view's run only (FIX-2625 D1): the change it may answer for.
+      ...(options.view !== undefined ? { view: options.view } : {}),
       request: requestHandle,
       session: sessionHandle,
       user: userHandle,
