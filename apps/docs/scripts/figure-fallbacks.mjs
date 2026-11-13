@@ -84,7 +84,7 @@ export function lightFallbacks(rules, name, classes) {
 }
 
 /** The page.css the docs site loads, as `apps/docs` resolves it. */
-export const pageCssPath = () =>
+const pageCssPath = () =>
   createRequire(join(dirname(fileURLToPath(import.meta.url)), "../package.json")).resolve("@flow-state-dev/design-system/page.css");
 
 /**
