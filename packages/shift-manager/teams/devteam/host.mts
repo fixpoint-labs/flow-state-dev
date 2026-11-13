@@ -59,13 +59,12 @@ import type { HarnessBlock, HarnessUsageReader } from "@flow-state-dev/core/harn
 import {
   commandCheck,
   harnessDrainBudgetMs,
-  harnessReadinessView,
   harnessUsageFlow,
   HARNESS_USAGE_FLOW,
   resolveOwnership,
   upgradeKeptTurns,
   type HarnessFeeds,
-  type HarnessReadinessRead,
+  type Harness,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
@@ -126,6 +125,7 @@ import {
 } from "@flow-state-dev/workforce";
 import { readWorkforceFolder, type WorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { workforce } from "@flow-state-dev/workforce/kit";
+import { harnesses } from "@flow-state-dev/harness-manager/kit";
 import { defineFlow } from "@flow-state-dev/core";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { execFileSync } from "node:child_process";
@@ -557,10 +557,13 @@ export interface OpenLabOptions {
    */
   usage?: Readonly<Record<string, HarnessUsageReader>>;
   /**
-   * Which coding harnesses can run on this machine (`startHarness`'s read),
-   * served as the projects flow's `readiness` view. Absent: no such view.
+   * The harnesses whose readiness this machine reports (`startHarness`'s), as
+   * harness values: the Lab installs the harness kit with them, its `coder`
+   * switched off (the Lab's coder is its own), so the kit's `harnesses` flow
+   * serves the `readiness` view and logs the entries at start. Absent: no
+   * harness kit.
    */
-  readiness?: HarnessReadinessRead;
+  harnessValues?: readonly Harness[];
   /**
    * The operator's GitHub token ({@link operatorGitHubToken}): a GitHub routine
    * reads GitHub with it, for the Lab's owner ({@link LAB_USER_ID}) only.
@@ -983,7 +986,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         });
   // What the workforce kit reads: the tree, or a copy with the controls' edits
   // written into its files (`edited-tree.mts`). The kit reads files, never records.
-  const tree = editedTree(root, {
+  const edited = editedTree(root, {
     declared: Object.fromEntries(
       workers.flatMap((worker, i) => {
         const before = roster.workers[i]!.declared;
@@ -1071,6 +1074,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const harnessNames = coderHarnessNames(options);
   // The worker model is the workforce kit's: every flow built on it is built
   // when the kit hires it, here, and the installation is kept for the Lab's handles.
+  // Order invariant: `installation` is set by the first `hired(…)` call, which the
+  // kit makes while it installs, before any request runs and before `getRuntime()`
+  // below returns. So a helper above that reads it at run time (`coderWorkerOf`,
+  // `flowOf`) or after start (the Lab's handles) always sees it set; nothing may
+  // read it while the Lab is being built.
   let installation!: WorkerInstallation;
   let hiredOn: { builtFlows: NonNullable<HireOptions["workerFlows"]>; projectsFlow: FlowInstance } | undefined;
   const hired = (on: WorkerInstallation) => {
@@ -1222,12 +1230,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ...projectBlocks.actions,
       ...workstreamBlocks.actions,
     },
-    // Which harnesses can run here: what the start logged, read again on `{ refresh: true }`.
-    // A view, read with no session (`harnessReadinessViewRef(PROJECTS_FLOW)`).
     views: {
       // Which worker each user's project coordinator runs as.
       [PROJECT_SETUP_VIEW]: projectSetupView(() => installation.projectCoordinator()?.worker ?? null),
-      ...(options.readiness === undefined ? {} : { readiness: harnessReadinessView(options.readiness) }),
     },
   } as never)() as unknown as FlowInstance;
   hiredOn = { builtFlows, projectsFlow };
@@ -1289,18 +1294,24 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const state = createFlowState({
     kits: [
       workforce({
-        directory: tree,
+        directory: edited.folder,
         // Clock routines and GitHub's polls tick from two indexes (`serve()` ticks both).
         routines: { index: scheduleIndexAt(clockDb), providers: [github], poll: { index: scheduleIndexAt(pollDb) } },
         github: { provider: github, poll: true },
         // Each user's coordinator for a project, when the tree declares it.
         ...(roster.workers.some((worker) => worker.id === PROJECT_COORDINATOR) ? { projectCoordinator: PROJECT_COORDINATOR } : {}),
       }),
+      // Which harnesses can run here: the harness kit's `readiness` view, read with no session, and its start log.
+      // Its coding worker flow is off: the Lab's coder is its own.
+      ...(options.harnessValues === undefined
+        ? []
+        : [harnesses({ workspace: workspaceHost ?? answerHost, logReadiness: true }).without(workforce.slots.workerFlows, "coder")]),
     ],
     fill: {
       [workforce.slots.workerFlows]: { ...Object.fromEntries(labFlows.map((name) => [name, labFlow(name)])), ...options.workerFlows },
       // The projects flow is built on the installation: its writes and the project setup read it.
       [workforce.slots.flows]: { devforce: (on: WorkerInstallation) => [hired(on).projectsFlow] },
+      ...(options.harnessValues === undefined ? {} : { [harnesses.slots.harnesses]: [...options.harnessValues] }),
     },
     flows: [
       ...(inventoryWriter === undefined ? [] : [inventoryWriter as unknown as FlowInstance]),
@@ -1343,6 +1354,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // The Error Reporter's runs write through these stores, and every host stops
   // the Lab through `state` (the configs export it, and `serve` disposes it),
   // so stopping it has to settle those runs first. See `drainReporter`.
+  // The copy of the tree a control wrote goes when the Lab is disposed, whoever stops it.
+  const disposeLab = state.dispose.bind(state);
+  state.dispose = async () => {
+    try {
+      await disposeLab();
+    } finally {
+      edited.remove();
+    }
+  };
+
   const reporterRuns = new AbortController();
   if (reporter !== undefined) {
     const disposeState = state.dispose.bind(state);

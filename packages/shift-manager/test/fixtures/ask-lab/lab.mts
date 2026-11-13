@@ -185,6 +185,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
           { roles: ["contributor"] },
         ),
       },
+      // Builds no flow: the entry only keeps the installation the kit hands it.
       [workforce.slots.flows]: { hired: (on: WorkerInstallation) => ((installation = on), []) },
     },
     flows: Object.values(own),

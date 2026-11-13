@@ -86,15 +86,34 @@ function refOf(path: string): string | undefined {
   return level === "" ? match[2]! : `${level}/${match[2]}`;
 }
 
+/** The folder the kit reads, and how to remove it once the Lab is done with it. */
+export interface EditedTree {
+  /** `root`, or the copy. */
+  readonly folder: string;
+  /** Remove the copy; nothing when the tree wasn't copied. Safe to call twice. */
+  remove(): void;
+}
+
 /**
  * The folder the kit should read: `root` when `edits` change nothing, else a
- * copy with them written in.
+ * copy with them written in, in a temporary folder its `remove` deletes.
  *
  * @throws When an edit names a worker, a skill or a document the tree doesn't have.
  */
-export function editedTree(root: string, edits: TreeEdits, label = "openLab"): string {
-  if (!changesAnything(edits)) return root;
-  const copy = join(mkdtempSync(join(tmpdir(), "devforce-lab-tree-")), "workforce");
+export function editedTree(root: string, edits: TreeEdits, label = "openLab"): EditedTree {
+  if (!changesAnything(edits)) return { folder: root, remove: () => undefined };
+  const parent = mkdtempSync(join(tmpdir(), "devforce-lab-tree-"));
+  const remove = () => rmSync(parent, { recursive: true, force: true });
+  try {
+    return { folder: write(root, join(parent, "workforce"), edits, label), remove };
+  } catch (error) {
+    remove();
+    throw error;
+  }
+}
+
+/** Copy `root` to `copy` and write `edits` into it. */
+function write(root: string, copy: string, edits: TreeEdits, label: string): string {
   cpSync(root, copy, { recursive: true });
   const workerFile = (id: string) => {
     const file = join(copy, workerFolder(id), "WORKER.md");

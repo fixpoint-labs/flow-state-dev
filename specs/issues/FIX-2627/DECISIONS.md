@@ -192,6 +192,13 @@ none reverses one.
   references to the installation, so the agent and coordinator flows declare them as a host
   that passed `documents` did; Shift Manager's ask-lab test now finds the asker's listing among
   others rather than alone.
+- **The DevTeam Lab's readiness is the harness kit's.** The Lab installs `harnesses` with its
+  `coder` switched off (its own coder flow is its policy, D1) and fills the slot with Claude Code,
+  whose check `startHarness` supplies. The `readiness` view moves from the projects flow to the
+  kit's `harnesses` flow, and the start-up table is the kit's `logReadiness` log, written once the
+  check answers rather than awaited before the Lab listens.
+- **A control's copy of the tree goes with the app.** The DevTeam Lab removes its copy when it is
+  disposed; kitchen-sink's, which the app reads for as long as it runs, when the process exits.
 - **The planted stray is named by its folder.** With nothing else under `workforce/flows/`, the
   claim pass names `flows`, the topmost entry no reader used; the goal check asserts that.
 

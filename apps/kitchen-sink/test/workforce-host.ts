@@ -26,6 +26,7 @@ export async function serveWorkforce(kit: KitInstance = kitchenSinkWorkforce()):
   let installation: WorkerInstallation | undefined;
   const state = createFlowState({
     kits: [kit],
+    // Builds no flow: the entry only keeps the installation the kit hands it.
     fill: { [workforce.slots.flows]: { read: (hired: WorkerInstallation) => ((installation = hired), []) } },
     stores: { test: { primary: inMemoryStores() } },
   });

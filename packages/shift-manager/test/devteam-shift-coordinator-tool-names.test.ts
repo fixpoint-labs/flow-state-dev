@@ -23,6 +23,7 @@ async function emptyInstallation(): Promise<WorkerInstallation> {
   let installation: WorkerInstallation | undefined;
   const state = createFlowState({
     kits: [workforce({ directory: mkdtempSync(join(tmpdir(), "no-workers-")) })],
+    // Builds no flow: the entry only keeps the installation the kit hands it.
     fill: { [workforce.slots.flows]: { read: (on: WorkerInstallation) => ((installation = on), []) } },
     stores: { test: { primary: inMemoryStores() } },
   });

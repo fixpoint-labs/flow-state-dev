@@ -212,6 +212,7 @@ export function hireLab(options: HireLabOptions): HiredLab {
         [PLANNER_FLOW]: workerFlow((on) => definePlannerFlow({ installation: on }), { roles: ["manager"] }),
       },
       // Kept for the boot's inventory, which lists the standard workers.
+      // Builds no flow: the entry only keeps the installation the kit hands it.
       [workforce.slots.flows]: { hired: (on: WorkerInstallation) => ((installation = on), []) },
     },
     flows: [writer],

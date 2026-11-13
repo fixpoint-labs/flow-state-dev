@@ -213,7 +213,7 @@ const lab = await openLab({
       readCodexUsage({ env: codexEnv(), ...(signal === undefined ? {} : { signal }) }),
     "claude-code": ({ signal } = {}) => readClaudeCodeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
-  readiness: harness.readiness,
+  harnessValues: harness.harnessValues,
   // A routine that follows a GitHub pull request reads GitHub with the operator's token, for the Lab's owner alone.
   githubToken: operatorGitHubToken(),
   // Clock routines and GitHub's polls, each from its own file beside the store.

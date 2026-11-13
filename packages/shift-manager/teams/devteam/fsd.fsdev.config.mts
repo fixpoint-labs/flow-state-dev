@@ -106,7 +106,7 @@ export const lab = await openLab({
   usage: {
     "claude-code": ({ signal } = {}) => readClaudeCodeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
-  readiness: harness.readiness,
+  harnessValues: harness.harnessValues,
   // As DevTeam's profile: GitHub routines on the operator's token, the two schedule indexes beside the store.
   githubToken: operatorGitHubToken(),
   scheduleIndexes: { clock: join(dirname(STORE), "fsd-clock.sqlite"), poll: join(dirname(STORE), "fsd-poll.sqlite") },

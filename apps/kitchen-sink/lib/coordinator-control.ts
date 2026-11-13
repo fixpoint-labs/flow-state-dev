@@ -20,7 +20,7 @@
  * Honoured only under `KITCHEN_SINK_TEST_MODE=1` (`goalControl`), so a control
  * can never reach a deployed build.
  */
-import { cpSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { workerFlow, type WorkerFlowBuilder, type WorkerInstallation } from "@flow-state-dev/workforce";
@@ -37,7 +37,10 @@ const FRONTMATTER = /^---\n([\s\S]*?)\n---\n/;
 export function workforceFolderUnderControl(root: string): string {
   const control = goalControl();
   if (control !== "no-route" && control !== "answers-go-on") return root;
-  const copy = join(mkdtempSync(join(tmpdir(), "kitchen-sink-workforce-")), "workforce");
+  const parent = mkdtempSync(join(tmpdir(), "kitchen-sink-workforce-"));
+  // The app reads the copy for as long as it runs, so it goes when the process does.
+  process.once("exit", () => rmSync(parent, { recursive: true, force: true }));
+  const copy = join(parent, "workforce");
   cpSync(root, copy, { recursive: true });
   for (const team of readdirSync(join(copy, "teams"))) {
     for (const worker of readdirSync(join(copy, "teams", team, "workers"))) {
