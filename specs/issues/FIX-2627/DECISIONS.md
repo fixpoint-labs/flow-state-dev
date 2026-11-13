@@ -156,6 +156,12 @@ none reverses one.
   `github` in config: the kit builds it. The kit adds the routine tools to the flows it builds as it
   adds consult, for the same reason (a capability over its own installation), and an entry keyed
   `agent` or `coordinator` in `workerFlows` replaces its own, which is then refused in config.
+- **Internal events are `internalEvents` in config, as GitHub's flow is `github`.** The internal
+  service flow needs the installation and its provider must join routines before the hire, so the
+  kit builds it from `internalEvents` (`topics`, `screens`, `capPerHour`, `maxOwnerRuns`), serves
+  it, and adds its provider to `routines.providers`. A worker flow, or a `flows` entry, reaches its
+  `publishEvent`, resources and tool through `internalEventsOf(installation)` with the
+  installation its builder is handed; nothing is added to the installation's type.
 - **Every reader problem refuses the start.** `readWorkforceFolder` throws on any problem the
   readers report, every one named, as an unclaimed file does: an app is never started short.
 - **The generated module is read whole, and checked.** Its maps are `workerFlows`, `blocks`,
