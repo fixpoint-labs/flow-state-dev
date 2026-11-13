@@ -42,13 +42,14 @@ import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { postgresStores } from "@flow-state-dev/store-postgres";
 import type { Task, TaskInit } from "@flow-state-dev/orchestration/tasks";
 import {
-  createWorkerInstallation,
   defineSessionBoard,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { startPostgres } from "../../lib/postgres.mts";
 import {
@@ -62,7 +63,8 @@ import {
   runGoal,
   silentLogger,
   sleep,
-  type ModulePatch
+  type ModulePatch,
+  workforceTree
 } from "../../lib/index.mts";
 import { createLabAdapter as teammatesLab } from "../../../labs/teammates/src/adapter.ts";
 import { createWiredLab as claudeCodeStyleLab } from "../../../labs/claude-code-style/src/adapter.ts";
@@ -147,8 +149,10 @@ globalThis.WebSocket = class TappedWebSocket extends NativeWebSocket {
 // a step for itself
 // ---------------------------------------------------------------------------
 
-const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
+const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared: { description: `The ${id} worker.`, ...declared }, body: "", skills: [] });
 const WORKERS: WorkerManifest[] = [worker("lead", { flow: "desk", delegates: ["eng.doer"] }), worker("eng.doer", { flow: "doer", delegates: [] })];
+/** The workers as the app's `workforce/` folder, which the kit reads. */
+const TREE = workforceTree(WORKERS);
 const STEP = "You are working a step you filed for yourself";
 const ANSWER = "The steps you filed for yourself have ended";
 
@@ -158,82 +162,90 @@ type Script = { op: "file"; tasks: TaskInit[] } | { op: "step"; id: string; goal
 const ranOn: Array<{ host: string; goal: string }> = [];
 
 function buildHost(name: string, stores: StoreAdapter): FlowState {
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => workerFlows as never });
-  const doorInput = z.object({ message: z.string() });
-  const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
-  const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
+  // The kit hands each worker flow's builder the installation it hired; both flows are built once on it.
+  let built: { desk: unknown; doer: unknown } | undefined;
+  let builtOn: WorkerInstallation | undefined;
+  const flowsOn = (installation: WorkerInstallation): { desk: unknown; doer: unknown } => {
+    if (built !== undefined && builtOn === installation) return built;
+    builtOn = installation;
+    const doorInput = z.object({ message: z.string() });
+    const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
+    const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
 
-  const deskTurn = handler({
-    name: "board-notices-desk-turn",
-    inputSchema: doorInput,
-    outputSchema: z.unknown(),
-    resources: { ...installation.resources, ...deskBoard.resources },
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      if (input.message.startsWith(STEP)) {
-        await sleep(STEP_MS);
-        return "step done";
-      }
-      if (input.message.startsWith(ANSWER)) return "answered";
-      if (input.message.startsWith('Task "')) return "heard";
-      const script = JSON.parse(input.message) as Script;
-      if (script.op === "chat") {
-        // A reply streaming in the conversation: items kept, no task touched.
-        for (let n = 0; n * 200 < script.ms; n += 1) {
-          ctx.emit.message(`part ${n} of a long reply`);
-          await sleep(200);
+    const deskTurn = handler({
+      name: "board-notices-desk-turn",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
+      resources: { ...installation.resources, ...deskBoard.resources },
+      execute: async (input, rawCtx) => {
+        const ctx = rawCtx as unknown as BlockContext;
+        if (input.message.startsWith(STEP)) {
+          await sleep(STEP_MS);
+          return "step done";
         }
-        return "chatted";
+        if (input.message.startsWith(ANSWER)) return "answered";
+        if (input.message.startsWith('Task "')) return "heard";
+        const script = JSON.parse(input.message) as Script;
+        if (script.op === "chat") {
+          // A reply streaming in the conversation: items kept, no task touched.
+          for (let n = 0; n * 200 < script.ms; n += 1) {
+            ctx.emit.message(`part ${n} of a long reply`);
+            await sleep(200);
+          }
+          return "chatted";
+        }
+        if (script.op === "step") {
+          const ref = await deskBoard.board.turnResolver(ctx as never);
+          await ref!.createTask({ id: script.id, goal: script.goal, assignee: "lead" });
+          return "planned";
+        }
+        const ref = await deskBoard.board.resolver(ctx as never);
+        return { ids: (await ref!.createTasks(script.tasks)).map((t) => t.id) };
       }
-      if (script.op === "step") {
-        const ref = await deskBoard.board.turnResolver(ctx as never);
-        await ref!.createTask({ id: script.id, goal: script.goal, assignee: "lead" });
-        return "planned";
-      }
-      const ref = await deskBoard.board.resolver(ctx as never);
-      return { ids: (await ref!.createTasks(script.tasks)).map((t) => t.id) };
-    }
-  });
-  const planned = deskBoard.planned(deskTurn);
-
-  const doerTurn = handler({
-    name: "board-notices-doer-turn",
-    inputSchema: doorInput,
-    outputSchema: z.unknown(),
-    execute: async (input) => {
-      ranOn.push({ host: name, goal: input.message });
-      await sleep(DOER_MS);
-      return `done: ${input.message}`;
-    }
-  });
-
-  const resolveWorker = (kind: string) =>
-    handler({
-      name: `board-notices-${kind}-resolve-worker`,
-      inputSchema: z.unknown(),
-      outputSchema: z.object({ worker: z.string() }),
-      resources: { ...installation.resources },
-      execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, kind)).id })
     });
-  const flowOf = (kind: string, board: ReturnType<typeof defineSessionBoard>, turn: unknown) =>
-    defineFlow({
-      kind,
-      configSchema: workerConfigSchema(),
-      session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-      resources: { ...installation.resources, ...board.resources },
-      request: { onStarted: resolveWorker(kind) },
-      actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
-      views: { ...board.views },
-      internal: { actions: board.entries(turn as never) },
-      task: { actions: { work: workerTaskEntry({ name: `board-notices-${kind}-task`, turn: turn as never }) } }
-    } as never);
-  workerFlows = {
-    desk: { flow: flowOf("desk", deskBoard, planned), roles: ["contributor", "manager"] },
-    doer: { flow: flowOf("doer", doerBoard, doerTurn), roles: ["contributor", "manager"] }
+    const planned = deskBoard.planned(deskTurn);
+
+    const doerTurn = handler({
+      name: "board-notices-doer-turn",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
+      execute: async (input) => {
+        ranOn.push({ host: name, goal: input.message });
+        await sleep(DOER_MS);
+        return `done: ${input.message}`;
+      }
+    });
+
+    const resolveWorker = (kind: string) =>
+      handler({
+        name: `board-notices-${kind}-resolve-worker`,
+        inputSchema: z.unknown(),
+        outputSchema: z.object({ worker: z.string() }),
+        resources: { ...installation.resources },
+        execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, kind)).id })
+      });
+    const flowOf = (kind: string, board: ReturnType<typeof defineSessionBoard>, turn: unknown) =>
+      defineFlow({
+        kind,
+        configSchema: workerConfigSchema(),
+        session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+        resources: { ...installation.resources, ...board.resources },
+        request: { onStarted: resolveWorker(kind) },
+        actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+        views: { ...board.views },
+        internal: { actions: board.entries(turn as never) },
+        task: { actions: { work: workerTaskEntry({ name: `board-notices-${kind}-task`, turn: turn as never }) } }
+      } as never);
+    return (built = { desk: flowOf("desk", deskBoard, planned), doer: flowOf("doer", doerBoard, doerTurn) });
   };
   return createFlowState({
-    flows: hireWorkforce(installation),
+    kits: [workforce({ directory: TREE })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        desk: workerFlow((installation) => flowsOn(installation).desk, { roles: ["contributor", "manager"] }),
+        doer: workerFlow((installation) => flowsOn(installation).doer, { roles: ["contributor", "manager"] })
+      }
+    },
     stores: { default: { primary: stores } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {
