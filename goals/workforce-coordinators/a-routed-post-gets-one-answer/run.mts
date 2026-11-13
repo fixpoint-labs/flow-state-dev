@@ -76,9 +76,10 @@ const LIVE = process.env.GOAL_LIVE === "1";
 const EXPECTED: Record<string, string[]> = {
   // Every delegate hears every post, and each answers it: every best-fit leg.
   "no-route": ["one", "lands", "followup", "held", "context", "fallback"],
-  // No answer ever lands, so the specialist on the first post holds every next
-  // one: lands, every leg the hold then diverts, and the answers on everyone.
-  "no-landing": ["one", "lands", "followup", "context", "fallback", "everyone"],
+  // No answer ever lands: lands, the fallback's context answer and the answers on everyone.
+  // Its turn fails, so the task ends with nothing open, and no hold keeps the next post:
+  // held, whose post is routed by a fresh evaluation instead.
+  "no-landing": ["lands", "held", "context", "everyone"],
   // No resolver names the org: every session lands in the development default.
   "no-org": ["org"],
   // The evaluation cannot see the account answer, so the follow-up falls back.
