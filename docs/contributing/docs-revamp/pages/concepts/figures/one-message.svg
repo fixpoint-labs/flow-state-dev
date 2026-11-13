@@ -6,14 +6,14 @@
 <rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="560" height="64"/>
 <text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">YOUR PAGE · IN THE BROWSER</text>
 <text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="70">session.sendAction("chat", { message })</text>
-<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="50">Alice presses Send. The page</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="50">Send is pressed. The page</text>
 <text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="67">calls the action chat.</text>
 <rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="128" width="560" height="120"/>
 <text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="150">THE ENGINE · ON YOUR SERVER</text>
 <text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="167">checks the input and whose session it is</text>
 <rect fill="url(#hatch)" x="42" y="180" width="532" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="42" y1="190.5" x2="574" y2="190.5"/>
 <rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="180" width="532" height="54"/>
-<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="56" y="212">ALICE'S SESSION</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="56" y="212">THE SESSION</text>
 <text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="170">Rejects bad input, then runs the</text>
 <text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="187">action on the session.</text>
 <rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="288" width="560" height="72"/>

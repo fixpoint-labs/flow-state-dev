@@ -102,13 +102,13 @@ Only observable behaviour, so the page can point a reader at one place per kind 
 - A kit's folder is read when the app starts. `engine/flowstate/types.ts:134`
 - A **standard worker** is one defined by files in the repo; every user has each. `apps/docs/docs/glossary.md:116`
 
-### In the process (gone when the request or process ends)
-- Request state lasts one action run: scratch space for one run; the next request cannot see it. `apps/docs/docs/fundamentals/state-and-scopes.md:20`, `:25`, `:472-479`
+### In the process (gone when the process ends)
 - With the default in-memory store nothing persists across a restart. `engine/flowstate/types.ts:171-172`; `apps/docs/docs/persistence/overview.md:7`, `:30`
 - The registered flows, the model resolver and the store connections live in the `FlowState` handle for the life of the process. `apps/docs/docs/server/setup.md:15-30`
 - An in-memory suspension is lost when the process ends, so durable execution is off by default on in-memory stores. `apps/docs/docs/advanced/durable-execution.md:38` (table row and sentence after)
 
-### In your store (outlives the request)
+### In your store
+- Request state belongs to one request, and no other request sees it. A request-state write goes through `createScopePersist` into `stores.request`, so it is kept with that request in the store, not only in the process. Verified in code: `engine/context/createExecutionContext.ts:2647-2672` (`const request = stores.request` at 2647; `persist: createScopePersist(requestRef, requestStateStore, ...)` at 2659-2668). Docs: `apps/docs/docs/fundamentals/state-and-scopes.md:20`, `:25`, `:472-479`
 - Three categories of stored data: scope state (session, user, org), resources, and items. `apps/docs/docs/persistence/overview.md:7`
 - The `primary` slot backs sessions, requests, users, orgs, active requests, checkpoints, content and traces. `apps/docs/docs/server/setup.md:78`, `apps/docs/docs/persistence/overview.md:11`
 - Adapters: in-memory (default, lost on restart), filesystem, SQLite, Postgres. `apps/docs/docs/persistence/overview.md:25-30`
@@ -132,7 +132,7 @@ Only observable behaviour, so the page can point a reader at one place per kind 
 | User state | One user, inside one organisation (keyed by user and org; one record per flow copy with `isolateUserState`). `apps/docs/docs/fundamentals/state-and-scopes.md:25` | That user's blocks; only that user's views. `apps/docs/docs/fundamentals/state-and-scopes.md:465` | `primary` | One per user per organisation |
 | Org state | The organisation. Keyed by org id; per flow copy with `isolateOrgState`. `apps/docs/docs/fundamentals/state-and-scopes.md:25` | Everyone in the organisation's blocks; the browser sees `client.expose` fields | `primary` | One per organisation |
 | Resource | Declared on a block or flow at `session`, `user` or `org` scope; lives with that scope's owner. `apps/docs/docs/resources/overview.md:43` | By its `client` config | `primary` (content and resource state). `apps/docs/docs/persistence/overview.md:7`, `:37` | A named container; a collection is a family keyed by a pattern. `apps/docs/docs/glossary.md:53-54` |
-| Request state | The one action run. `apps/docs/docs/fundamentals/state-and-scopes.md:472-479` | Blocks in that run; the next request cannot see it | Scratch for the run; not kept for the next request | One per request |
+| Request state | The one action run. `apps/docs/docs/fundamentals/state-and-scopes.md:472-479` | Blocks in that run; the next request cannot see it | The store (`stores.request`), kept with that request; no other request reads it. `engine/context/createExecutionContext.ts:2647-2672` | One per request |
 | A view's answer | Nobody; it is computed on each read from the data it reads (a session, or the caller's user or org). `core/types/view.ts:2-9`, `:29-33` | The caller who reads it; `user` and `org` views take identity from the verified principal, not the request. `core/types/view.ts:29-33` | **Not stored.** "a view adds no request, changes no row ... nothing is stored." `engine/test/session-views-store-nothing.test.ts:2-7`. The browser holds the last answer in React state (`useView` `value`). `react/hooks/useView.ts:13` | One shared read per view and input in a client, shared by every screen watching it. `react/hooks/useView.ts:7-11` |
 | `WORKER.md` (a standard worker) | You; a file in your repo | Every user gets each standard worker. `apps/docs/docs/glossary.md:116` | Your repo, read at start-up; a user's edit makes that user's own copy under the same id (`packages/workforce/src/workers/client.ts:218-223`) | One file per standard worker; one copy per user who edits it |
 | The unsent text in a message box | The browser's user | That browser | `localStorage` via `useDraft`. `react/hooks/useDraft.ts:2-12` | One per `namespace:id` |
@@ -162,7 +162,6 @@ Only observable behaviour, so the page can point a reader at one place per kind 
 
 ## Store-questions gaps (not answerable from allowed sources)
 
-- Whether a request's own **state** (request scope) is written to the store at all or lives only in the run: the docs say it lasts one action run and the next request cannot see it, and nothing more. The page can say that and no more.
 - Who can see a **resource** is set by its `client` config; per-resource defaults belong to the Resources Reference page.
 
 ## Revise round 1 notes
