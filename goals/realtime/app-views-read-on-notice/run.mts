@@ -63,7 +63,7 @@ import { createLabAdapter, type ConversationView, type LabTalk } from "../../../
 import { buildKitchenSinkWorkforce } from "../../../apps/kitchen-sink/workforce/hire.ts";
 import { followSessionItems, type SessionItems } from "../../../packages/shift-manager/src/lib/run.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
-import { projectReaderOf, useProjectRead } from "../../../packages/shift-manager/src/lib/projects.ts";
+import { useProjectRead } from "../../../packages/shift-manager/src/lib/projects.ts";
 import { useMessages } from "../../../packages/shift-manager/src/lib/messages.ts";
 import { conversationBoardRef } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { TaskProvider, useTask } from "../../../packages/shift-manager/src/lib/task.tsx";
