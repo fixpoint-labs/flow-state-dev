@@ -438,7 +438,10 @@ export interface AgentWorkerFlowOptions {
    * one worker does.
    */
   installation?: WorkerInstallation;
-  /** Session fields the app declares on this flow's sessions, server-written only. Needs `installation`. */
+  /**
+   * Session fields the app declares on this flow's sessions, server-written only. Needs `installation`.
+   * Every field is visible to the session's browser. Never put a secret here.
+   */
   sessionFields?: SessionFields;
 }
 
