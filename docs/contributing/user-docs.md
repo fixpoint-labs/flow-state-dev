@@ -49,8 +49,9 @@ why we chose that, and here's the alternative that would have been worse" does n
 
 A limit is allowed and often necessary. State it flat and move on. Don't argue for it.
 
-A clearly labelled migration section may explain the old and new caller behavior when
-the reader must act. Keep it to the migration action and consequences, not design history.
+When the reader must act on a change, that goes on the release's Upgrading page
+([`release-docs.md`](./release-docs.md#the-upgrading-page)), not on this one. Keep it to the
+action and its consequences, not design history.
 
 ## What a section contains
 
