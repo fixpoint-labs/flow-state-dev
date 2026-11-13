@@ -189,7 +189,7 @@ export function coderWorkerFlow(
         const filed = await filingConversationBoard(ctx);
         return filed === undefined
           ? undefined
-          : { tasks: filed.tasks, runOf: (row: Task) => ({ issue: taskIssueSegment(row.id), phase: phase.phase }) };
+          : { tasks: filed.tasks, runOf: (task: Task) => ({ issue: taskIssueSegment(task.id), phase: phase.phase }) };
       };
       /** A manager for one harness; `reviewChanges` makes a run that committed wait for your review. */
       const manager = (id: string, harness: Harness, reviewChanges: boolean) => {

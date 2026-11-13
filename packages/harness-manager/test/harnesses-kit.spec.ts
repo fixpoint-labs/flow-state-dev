@@ -59,7 +59,7 @@ function start(kits: Parameters<typeof createFlowState>[0]["kits"], fill: Record
 }
 
 /** The readiness view's rows, read as a client reads it: through the router, with no session. */
-async function readinessRows(state: FlowState): Promise<Array<{ harness: string; label: string; ready: boolean }>> {
+async function readinessEntries(state: FlowState): Promise<Array<{ harness: string; label: string; ready: boolean }>> {
   const router = await state.getRouter();
   const path = ["harnesses", "views", "readiness"];
   const res = await router.POST(
@@ -82,9 +82,9 @@ describe("the harness kit", () => {
     });
     await state.ready();
     expect([...state.meta.flowKeys].sort()).toEqual(["agent", "coder", "harnesses", "workforce-roster"]);
-    const rows = await readinessRows(state);
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows.map((row) => [row.harness, row.label, row.ready])).toEqual([
+    const entries = await readinessEntries(state);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.map((entry) => [entry.harness, entry.label, entry.ready])).toEqual([
       ["codex", "CODEX", true],
       ["cursor", "CURSOR", false],
     ]);
