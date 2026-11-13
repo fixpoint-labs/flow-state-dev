@@ -28,6 +28,7 @@
 import { defineKit, slot, type CapabilityRef, type UsesEntry } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
+import type { SessionFields } from "../workers/session-fields";
 import { AGENT_FLOW, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../agent-worker-flow";
 import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import { defineCoordinatorFlow, type CoordinatorFlowOptions } from "../coordinator/coordinator-flow";
@@ -99,7 +100,7 @@ export interface WorkforceConfig {
    * is refused, naming it, and the client reads it off the session.
    * Every field is visible to the session's browser. Never put a secret here.
    */
-  sessionFields?: Readonly<Record<string, ZodTypeAny>>;
+  sessionFields?: SessionFields;
 }
 
 /** Accepts any object: what the field holds is checked where it is used. */
@@ -209,6 +210,8 @@ function installWorkforce(
       createRoutinesCapability(installation),
     ] as CapabilityRef[];
 
+  /** The app's session fields, for the agent and coordinator flows the kit builds. */
+  const fields = config.sessionFields === undefined ? {} : { sessionFields: config.sessionFields };
   const builtIn: Record<string, WorkerFlowEntry> = {};
   if (!Object.hasOwn(filled, AGENT_FLOW)) {
     const { showSettings, ...agent } = config.agent ?? {};
@@ -218,7 +221,7 @@ function installWorkforce(
           ...(generated.blocks === undefined ? {} : { catalog: generated.blocks as never }),
           ...agent,
           installation,
-          ...(config.sessionFields === undefined ? {} : { sessionFields: config.sessionFields }),
+          ...fields,
           uses: [...(agent.uses ?? []), ...added(installation)],
         }),
       { showSettings: showSettings ?? [] },
@@ -230,7 +233,7 @@ function installWorkforce(
       defineCoordinatorFlow({
         ...coordinator,
         installation,
-        ...(config.sessionFields === undefined ? {} : { sessionFields: config.sessionFields }),
+        ...fields,
         agent: { ...coordinator.agent, uses: [...(coordinator.agent?.uses ?? []), ...added(installation)] },
       }),
     );

@@ -52,4 +52,9 @@ describe("sourceReadCapability", () => {
     const answer = (await read.config.execute({ path: "notes.txt", startLine: null, endLine: null }, createTestContext())) as { content?: string; text?: string };
     expect(JSON.stringify(answer)).toContain("SR-7731");
   });
+
+  it("is refused when it is built over a host with no read view", () => {
+    const { readSource: _readSource, ...noReadView } = workspace;
+    expect(() => sourceReadCapability({ workspace: noReadView })).toThrow(/no read view/);
+  });
 });
