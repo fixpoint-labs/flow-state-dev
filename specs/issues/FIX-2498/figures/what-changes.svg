@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="One worker's system prompt, today and after. Today, top to bottom: identity and the work-it-out rule, the team's text, the worker's own text, its packages' text, and a skills list only when the app turned on the load tool. After: the same four in the same order, unchanged; then the skills list, on by default, with one new line telling the worker to load a skill that fits even partly, shown only when the worker holds a skill; then a new environment block with today's date and time zone, the user, the conversation's project, and any line an app's capability adds. Either new block is turned off with the defaults key."
+<svg viewBox="0 0 940 400" role="img" aria-label="One worker's system prompt, today and after. Today, top to bottom: identity and the work-it-out rule, the team's text, the worker's own text, its packages' text, and a skills list only when the app turned on the load tool. After: the same four in the same order, unchanged; then the skills list, on by default, with one new line telling the worker to load a skill that fits even partly, shown only when the worker holds a skill; then a new date block with today's date and the server's time zone, and any line an app's capability adds, such as the user's time zone. Either new block is turned off with the defaults key."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,7 +36,7 @@
     <rect class="off" x="24" y="218" width="420" height="50" rx="4"/>
     <text class="t-h" x="38" y="240">Skills list</text>
     <text class="t-s" x="38" y="257">only when the app turned the load tool on</text>
-    <text class="t-s" x="24" y="300">No date anywhere. No user, project or app named.</text>
+    <text class="t-s" x="24" y="300">No date anywhere.</text>
   </g>
 
   <line class="rule" x1="470" y1="24" x2="470" y2="380"/>
@@ -56,10 +56,10 @@
     <text class="t-n" x="510" y="252">Skills list, plus: load one that fits even partly</text>
     <text class="t-s" x="510" y="269">only when the worker holds a skill</text>
     <rect class="new" x="496" y="288" width="420" height="92" rx="4"/>
-    <text class="tag" x="510" y="304">NEW · defaults.environment</text>
-    <text class="t-n" x="510" y="322">Environment: Thursday, 12 Nov 2026 (UTC)</text>
-    <text class="t-s" x="510" y="339">the user · the conversation's project, when set</text>
+    <text class="tag" x="510" y="304">NEW · defaults.date</text>
+    <text class="t-n" x="510" y="322">Date: Thursday, 12 Nov 2026 (UTC)</text>
+    <text class="t-s" x="510" y="339">the server's day, its time zone named</text>
     <rect class="app" x="510" y="348" width="392" height="24" rx="3"/>
-    <text class="t-a" x="520" y="364">an app's line, e.g. the surface, from its own capability</text>
+    <text class="t-a" x="520" y="364">an app's line, e.g. the user's time zone, from its own capability</text>
   </g>
 </svg>

@@ -1,15 +1,14 @@
-# FIX-2498 · Workers know today's date and where they are, and use the skills they hold
+# FIX-2498 · Workers know today's date, and use the skills they hold
 
 **Spec** · [Decisions](DECISIONS.md)
 
-## Five people, before and after
+## Four people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
 | **asks any worker "what's today's date?"** | Gets a guess. 0 of 3 runs right in all four apps on the [cut run](https://linear.app/fixpoint-labs/issue/FIX-2541#comment-725b3c1d) | Gets today's date, and the time zone it was read in |
-| **asks a worker something about themselves or the project** ("my open work", "this repo") | Is not told the user, the project or the app | The worker is told the user, the conversation's project and the app it runs in, every turn |
 | **asks a worker that holds a fitting skill, with no slash** | Sees no list of its skills unless the app turned one on. With it on, Teammates and Shift Manager still miss 1 run in 3 | The list is on, and the worker is told to load a skill that fits even partly before it answers |
-| **builds a workforce app** | Writes its own date line, as Kitchen Sink's chat assistant does | Gets the date with no code, and adds a fact such as the surface through a capability it already composes |
+| **builds a workforce app** | Writes its own date line, as Kitchen Sink's chat assistant does | Gets the date with no code, and adds a date fact only it knows, such as the user's time zone, through a capability it already composes |
 | **wants the old prompt back** | n/a | Turns off one section, or both, with `defaults` in the worker config |
 
 ## The goal, and how we'll know it's met
@@ -21,9 +20,9 @@ writing either line itself.**
 | Is it the right goal? | |
 |---|---|
 | **The real need** | The epic's outcome: workers answer time-sensitive asks and see their skills "without each app writing that guidance itself" ([FIX-2490](../../epics/FIX-2490/SPEC.md#the-goal-and-how-well-know-its-met)). The owner kept these two sections on [Nov 12](https://linear.app/fixpoint-labs/issue/FIX-2498) |
-| **Smaller, and rejected** | "Workers get a date line." Passes the date ask, leaves out the user, project and surface the epic names, and leaves the skill ask at 2 of 3 |
+| **Smaller, and rejected** | "Workers get a date line." Passes the date ask and leaves the skill ask at 2 of 3 |
 | **Bigger, and not this issue's** | Answers sized to the ask: cut, since sizing passed 3 of 3 everywhere without it |
-| **Not done if** | The closure's wrap pass did not run · the block leaves out a user or project the turn has · the date ask passes only because a run set a switch · Kitchen Sink still carries its own date line · a worker that holds no skill pays for an empty skills line · the skill ask passes because the ask named the skill |
+| **Not done if** | The closure's wrap pass did not run · the date ask passes only because a run set a switch · Kitchen Sink still carries its own date line · a worker that holds no skill pays for an empty skills line · the skill ask passes because the ask named the skill |
 
 ```mermaid
 flowchart LR
@@ -49,7 +48,7 @@ both asks already failed it.
 
 ## What changes
 
-![Two prompt stacks for one worker. Today: identity, team, worker, packages, and a skills list only when the app turned it on. After: the same four in the same order, then the skills list on by default with one line telling the worker to load a fitting skill, then an environment block with the date, time zone, user, project and any app line](figures/what-changes.svg)
+![Two prompt stacks for one worker. Today: identity, team, worker, packages, and a skills list only when the app turned it on. After: the same four in the same order, then the skills list on by default with one line telling the worker to load a fitting skill, then a date block with the date, its time zone and any app line](figures/what-changes.svg)
 
 Read the bottom of each stack: what the app and team wrote stays put, and the new blocks go
 after it ([D1](DECISIONS.md#d1)).
@@ -59,20 +58,20 @@ after it ([D1](DECISIONS.md#d1)).
 ```diff
   # a worker's WORKER.md frontmatter
 + defaults:
-+   environment: false   # no date block for this worker
++   date: false          # no date block for this worker
 +   skillsIndex: false   # no skills list, no load tool, no load line
 + # or: defaults: false   (both off; the prompt is today's)
 ```
 
-**An app that adds a fact to the environment block** (Shift Manager's surface):
+**An app that adds a fact to the date block** (an app that knows the user's time zone):
 
 ```diff
   const agentFlow = defineAgentWorkerFlow({
     installation,
     ...agentTurn,
 +   uses: [defineCapability({
-+     name: "surface",
-+     presets: { defaults: { context: () => ({ environment: "Surface: Shift Manager, in the browser" }) } }
++     name: "user-time-zone",
++     presets: { defaults: { context: () => ({ date: "The user's time zone: Europe/Berlin" }) } }
 +   })],
   });
 ```
@@ -82,7 +81,7 @@ after it ([D1](DECISIONS.md#d1)).
 ```diff
   context: {
 -   todaysDate: () => new Date().toLocaleDateString(),
-+   environment: workerEnvironment,   // exported by @flow-state-dev/workforce
++   date: workerDate,   // exported by @flow-state-dev/workforce
     voice: voiceContext
   },
 ```
@@ -99,8 +98,8 @@ no longer "off by default"), the workforce README (the skill loader, the `defaul
 ```mermaid
 flowchart LR
   L["workerDefaultLayer · order, opt-outs, ceiling"] --> P["prompt · identity, unchanged"]
-  L --> X["context · skills line, environment"]
-  A["an app's capability"] -->|"context environment"| X
+  L --> X["context · skills line, date"]
+  A["an app's capability"] -->|"context date"| X
   P --> M["one system message · prompt first, tagged context after"]
   X --> M
 ```
@@ -120,17 +119,17 @@ One module owns both sections; each renders after the worker's text, and an app 
 |---|---|
 | **Whatever tells a model the date**: Kitchen Sink's `todaysDate`, the only one (searched `todaysDate`, `today is`, `current date`, `toLocaleDateString` in `packages/`, `labs/`, `apps/kitchen-sink`) | **Replaced.** Still one way; Kitchen Sink composes the block (ER-3) |
 | **Whatever lets a worker find a skill** (mechanism `skills`): the load tool and listing, slash matching, `skills.active`, the classifier | **Builds on.** The listing is on by default; nothing new loads a skill |
-| Generator context keys that merge across contributors (mechanism `capability`) | **Builds on.** The block is the `environment` key; an app's capability adds to it |
+| Generator context keys that merge across contributors (mechanism `capability`) | **Builds on.** The block is the `date` key; an app's capability adds to it |
 | `skills.activateTool`, default off (contract C5) | **Amended.** Unset follows `defaults`; a set value wins. No skills, no cost |
 | Epic [D4](../../epics/FIX-2490/DECISIONS.md#d4): the layer is "the prompt array's single default entry" | **Amended in part** by [D1](DECISIONS.md#d1): one module still, but its new sections render as tagged context after the worker's text |
-| Epic [ER-1](../../epics/FIX-2490/DECISIONS.md#who-owns-what): sections, a `defaults` key, a 400-token ceiling, no app-supplied text | **Amended in part** by [D1](DECISIONS.md#d1): an app may add free-text lines to the environment block. The rest is kept: two sections, `environment` and `skillsIndex` |
+| Epic [ER-1](../../epics/FIX-2490/DECISIONS.md#who-owns-what): sections, a `defaults` key, a 400-token ceiling, no app-supplied text | **Amended in part** by [D1](DECISIONS.md#d1): an app may add free-text lines to the date block. The rest is kept: two sections, `date` and `skillsIndex` |
 | FIX-2492's per-turn date in Kitchen Sink | **Superseded** by the exported block, in the same change |
 | This issue's behaviour section | **Cut** by the owner on Nov 12. Not built |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | `workerDefaultLayer`, with the `defaults` key | `capability`; the prompt array; `workerConfigSchema` | New, as ER-1 locks: order, opt-outs, the ceiling |
-| The environment block, exported | `capability` context keys; `todaysDate` | Composed: a function under the `environment` key, the shape `todaysDate` already has |
+| The date block, exported | `capability` context keys; `todaysDate` | Composed: a function under the `date` key, the shape `todaysDate` already has |
 | The skills line | `skills` (`buildLoadCatalogContext`) | Composed: one line under the same `skills` key, only when the list prints |
 
 | The debt | |
@@ -145,15 +144,15 @@ under the ceiling.
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met):** the date and skill asks pass 3 of 3 in all
-four apps on the wrap pass. No ask reads the user, project or surface lines; the implementer's
-tests are their only proof. If wrong: a block that gets the date right and the rest wrong passes.
+four apps on the wrap pass. No ask reads the time zone or an app's line; the implementer's
+tests are their only proof. If wrong: a block that names the right day under the wrong zone passes.
 
 **[The debt](#whats-already-here-and-the-debt), net flat:** Kitchen Sink's date line goes, a
 `defaults` key and two sections come in. If wrong: every workforce worker pays tokens for
 blocks few of them use.
 
 1. **[D1](DECISIONS.md#d1) · The new blocks go after the worker's own text, and an app may add
-   its own free-text line to the environment block.** Amends the epic's D4 and ER-1. If wrong: the date sits where the model weighs it less,
+   its own free-text line to the date block.** Amends the epic's D4 and ER-1. If wrong: the date sits where the model weighs it less,
    and an app line nobody checks drifts from the block.
 2. **[D2](DECISIONS.md#d2) · "Today" is the server's day, with its time zone named.** If wrong:
    a user far from the server sees yesterday's or tomorrow's date near midnight.

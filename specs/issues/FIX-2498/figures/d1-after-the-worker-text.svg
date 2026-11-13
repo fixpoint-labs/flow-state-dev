@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, where the date and the skills line go in a worker's prompt, and whether an app may add its own line. Chosen: after the worker's own text, as tagged context, and an app may add a free-text environment line through a capability it already composes. Instead of: the epic's D4 and ER-1 as written, the sections in the prompt's single default entry at the front, and no app-supplied text. It comes down to the first row: at the front, the date changes the start of every worker's prompt each day, while after the worker's text the start stays the same. The price is the second row: the default layer is in two places, the prompt and the context, where D4 keeps it in one. Third row: an app can show a fact such as the surface, as unchecked free text that amends ER-1, where under ER-1 as written the surface cannot be shown. Locks in: a public environment context key that carries app text. Flips if: a run shows a worker ignores a date at the end but uses one at the front."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, where the date and the skills line go in a worker's prompt, and whether an app may add its own line. Chosen: after the worker's own text, as tagged context, and an app may add a free-text date line through a capability it already composes. Instead of: the epic's D4 and ER-1 as written, the sections in the prompt's single default entry at the front, and no app-supplied text. It comes down to the first row: at the front, the date changes the start of every worker's prompt each day, while after the worker's text the start stays the same. The price is the second row: the default layer is in two places, the prompt and the context, where D4 keeps it in one. Third row: an app can show a fact such as the user's time zone, as unchecked free text that amends ER-1, where under ER-1 as written that fact cannot be shown. Locks in: a public date context key that carries app text. Flips if: a run shows a worker ignores a date at the end but uses one at the front."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -79,7 +79,7 @@
     <text class="t-b" x="248" y="281">A capability it already composes</text>
     <text class="t-s" x="248" y="299">free text, unchecked; amends ER-1</text>
     <text class="mark minus" x="592" y="282">−</text>
-    <text class="t-b" x="612" y="281">No app line; the surface goes unshown</text>
+    <text class="t-b" x="612" y="281">No app line; the user's zone goes unshown</text>
     <text class="t-s" x="612" y="299">ER-1 kept: no app-supplied text</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
@@ -87,7 +87,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">A public environment key with app text</text>
+    <text class="t-b" x="32" y="371">A public date key with app text</text>
     <text class="t-s" x="32" y="389">renaming it later breaks every app line under it</text>
   </g>
 
