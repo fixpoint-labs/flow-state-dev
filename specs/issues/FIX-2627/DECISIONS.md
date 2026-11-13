@@ -147,6 +147,13 @@ other way, a stretch where the goals don't cover the install every app uses.
 Settled on the implementation branch (`claude/fix-2627-impl`). Each narrows a decision above;
 none reverses one.
 
+- **The three views are deferred to FIX-2725 (owner decision, 2026-11-13).** The worker
+  sessions, session turns and coding board views aren't built here. A view's block context
+  has no session read: it can't list a user's sessions or read a session's requests, and the
+  engine records no such read to wake a watcher. And a session view runs only on its own
+  session's flow, while a kit can't add a view to flows another kit builds. So
+  `listWorkerSessions`/`findWorkerSession`, claude-code-style's turn assembly and its
+  `boardOf`/`harnessOf` stay exactly as they are, and no `views` slot is built.
 - **Where the kits are imported from.** `workforce` from `@flow-state-dev/workforce/kit`, beside
   `harnesses` at `@flow-state-dev/harness-manager/kit`: both read the file system at start, so
   neither sits on a package root a browser bundle reaches.
@@ -156,6 +163,12 @@ none reverses one.
   `github` in config: the kit builds it. The kit adds the routine tools to the flows it builds as it
   adds consult, for the same reason (a capability over its own installation), and an entry keyed
   `agent` or `coordinator` in `workerFlows` replaces its own, which is then refused in config.
+- **Internal events are `internalEvents` in config, as GitHub's flow is `github`.** The internal
+  service flow needs the installation and its provider must join routines before the hire, so the
+  kit builds it from `internalEvents` (`topics`, `screens`, `capPerHour`, `maxOwnerRuns`), serves
+  it, and adds its provider to `routines.providers`. A worker flow, or a `flows` entry, reaches its
+  `publishEvent`, resources and tool through `internalEventsOf(installation)` with the
+  installation its builder is handed; nothing is added to the installation's type.
 - **Every reader problem refuses the start.** `readWorkforceFolder` throws on any problem the
   readers report, every one named, as an unclaimed file does: an app is never started short.
 - **The generated module is read whole, and checked.** Its maps are `workerFlows`, `blocks`,
