@@ -6,7 +6,7 @@
  * there is none to fetch and the control says it couldn't copy.
  */
 import type { ReactElement } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDoc } from "@docusaurus/plugin-content-docs/client";
 import { markdownUrl } from "@site/scripts/agent-docs/index-files.mjs";
 
@@ -34,13 +34,22 @@ async function copyFrom(url: string): Promise<void> {
 export default function CopyPage(): ReactElement {
   const { metadata } = useDoc();
   const [status, setStatus] = useState<CopyStatus>("idle");
+  // One reset timer, started once the copy settles, so a slow fetch still shows its result
+  // for the full two seconds; cleared on each click and on unmount.
+  const reset = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(reset.current), []);
   const url = markdownUrl(metadata.permalink);
   const copy = () => {
-    copyFrom(url).then(
-      () => setStatus("copied"),
-      () => setStatus("failed"),
-    );
-    setTimeout(() => setStatus("idle"), 2000);
+    clearTimeout(reset.current);
+    copyFrom(url)
+      .then(
+        () => setStatus("copied"),
+        () => setStatus("failed"),
+      )
+      .finally(() => {
+        clearTimeout(reset.current);
+        reset.current = setTimeout(() => setStatus("idle"), 2000);
+      });
   };
   return (
     <div className="copy-page">
