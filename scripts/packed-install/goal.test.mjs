@@ -167,7 +167,7 @@ test("a ratchet cell sees only its package's violations, and workforce's only it
   const violations = [
     { package: "@flow-state-dev/core", name: "x", detail: "no consumer" },
     { package: "@flow-state-dev/workforce", name: "WORKER_ENTRY", detail: "no consumer" },
-    { package: "@flow-state-dev/workforce", name: "hireWorkforce", detail: "no consumer" },
+    { package: "@flow-state-dev/workforce", name: "defineAgentWorkerFlow", detail: "no consumer" },
   ];
   assert.equal(ratchetFailures(violations, { package: "@flow-state-dev/engine" }).length, 0);
   assert.equal(ratchetFailures(violations, { package: "@flow-state-dev/core" }).length, 1);
