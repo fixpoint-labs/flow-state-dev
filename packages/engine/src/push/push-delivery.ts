@@ -53,7 +53,8 @@ const PUSH_STATE = Symbol.for("@flow-state-dev/engine/pushState");
  */
 export type PushState = {
   bus: ChangeBus;
-  /** The app's per-scope ids setting (FIX-2625 D2), read by every socket. */
+  // FIX-2625 D2.
+  /** The app's per-scope ids setting, read by every socket. */
   noticeIds?: NoticeIdScopes;
   /** The key tickets are signed and checked with, read on each use. Unset until push is on. */
   secret?: () => string;

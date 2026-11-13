@@ -362,13 +362,13 @@ class PgBus implements PostgresBus {
   }
 }
 
+// FIX-2625 D2.
 /**
  * The `NOTIFY` payload for `notice`: its topic, kind and ids, and the bus's
  * id. Too large for `NOTIFY`, it drops the ids first (read everything), then
  * widens to its scope (`w: true`). A collection entry's notice (a `resource`
  * notice with ids) widens with its ids, since its path names the entry too: a
- * scope with ids off must never be left a path the ids no longer mark
- * (FIX-2625 D2).
+ * scope with ids off must never be left a path the ids no longer mark.
  */
 function payloadOf(id: string, notice: ChangeNotice): string {
   const { topic, kind, ids } = notice;
