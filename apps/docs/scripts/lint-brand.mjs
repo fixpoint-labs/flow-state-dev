@@ -263,6 +263,8 @@ function lintFigure(file, text, tree, out) {
   for (const attr of ["width", "height"]) if (svg.attrs[attr] !== undefined) at(svg, "canvas", `the root has a ${attr}; the page sizes it`);
   // Every geometry check reads these; one it cannot read is reported, never skipped.
   for (const node of all) {
+    // One canvas: a nested <svg> is a new viewport, so the coordinates inside it are not the canvas's.
+    if (node.name === "svg") at(node, "element", "a nested <svg>: a figure is one canvas, drawn in its coordinates");
     // A figure is drawn in canvas coordinates: a transform would move a shape away from the coordinates every check reads.
     if (node.attrs.transform !== undefined || /(?:^|;)\s*transform\s*:/.test(node.attrs.style ?? "")) {
       at(node, "element", `a transform on <${node.name}>: a figure is drawn in canvas coordinates and takes no transforms`);
@@ -473,6 +475,7 @@ function lintFigureEmbeds(file, text, out) {
   for (const { name, attrs, line } of elements) {
     if (svgs.has(name)) at(line, `${name} is used outside a <Figure>'s svg: use <Figure svg={${name}} caption description />`);
     if (name === "img" && /\.svg\b/.test(stringOf(attrs.find((a) => a.name === "src")?.value) ?? "")) image(line);
+    if (name === "svg") at(line, "an inline <svg> on the page: a figure is its own file, put on through <Figure svg={…} />");
     if (name !== "Figure") continue;
     const prop = (key) => attrs.find((a) => a.name === key)?.value;
     const svg = prop("svg");

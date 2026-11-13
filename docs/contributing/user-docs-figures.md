@@ -242,7 +242,7 @@ the clean ones trip any.
 4. No `stroke-width`, `stroke-dasharray` or `font-family` attribute. Classes set them.
 5. No `<image>`, `<foreignObject>`, `<a>`, `<script>`, `<tspan>`, gradient, filter, `opacity`,
    `textLength`, `<!DOCTYPE>` or `<!ENTITY>`. A figure is drawn in canvas coordinates and takes no
-   transforms: no `transform` on any element, and text is placed by one `x` and one `y`, with no
+   transforms: no `transform` on any element, no `<svg>` inside the root, and text is placed by one `x` and one `y`, with no
    `dx`, `dy` or `rotate`. The site's published diagrams, until they are redrawn, are held only to
    no `transform` on text or on a group around it.
 6. `<defs>` holds exactly the `hatch` pattern and the `ah` marker, as printed above.
@@ -284,7 +284,7 @@ the clean ones trip any.
     `01 ·` prefix on layer labels, which a figure with numbered notes does not use.
 16. On the page: every figure is a `<Figure svg caption description />`. The caption is 60
     characters or fewer with no closing full stop, the description is 30 words or more, and no
-    line contains "Description for the site's".
+    line contains "Description for the site's". No figure is drawn inline as an `<svg>` on the page.
 
 Not lintable, so the cold read and the reviewer check it: that hatching and dashes are used
 where their meaning is true, and that the highlighted thing is the page's one idea.
