@@ -156,3 +156,11 @@ The page states the one-line model and links `../reference/kits.md` for each:
 - Start-up refusals: each throws at `createFlowState`, naming the kit and the slot (`kp:47-53`).
 
 `install` in the page example returns `{ flows: [] }`: the kit serves no flow of its own; its `coder` flow goes into `workforce`'s slot (`dk:95-98`).
+
+## 11. Revise round 2
+
+- The `contributes` timing sentence is gone from the page (no "runs once the slot is full"). The page says `coderFlow` receives every harness in the slot, `claudeCode`'s and any the app adds. The timing rule stays in section 10 for the reference (`dk:131-133`).
+- The page now says the `harnesses` slot is a list (`slot.list`, every entry appended) where the slot is declared, after the code, not in the `workerFlows` section (`dk:33-41`).
+- `requires` lets `harnesses` fill `workforce`'s slots only: a kit fills only slots of a kit it requires (`dk:121-123`, `kp:139-142`).
+- Chain figure caption: `harnesses` fills `workforce`'s slot; `claudeCode` fills `harnesses`'; `workforce` fills none. Matches the figure's labels (OPENS A SLOT, FILLS ONE OPENS ANOTHER, FILLS A SLOT).
+- The three examples' unresolved imports (`claudeCode`, `codexHarness`, `harnesses`, `workforce`) are the unbuilt surface, marked for reconcile at cutover; all three examples now carry the marker.

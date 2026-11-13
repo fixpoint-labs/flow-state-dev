@@ -17,7 +17,7 @@ A kit is a feature packaged so your app installs it with one entry in its config
 
 You list a kit in your config and it adds a feature, as a plugin does. The difference is who knows whom. A kit declares typed openings, and another kit fills one by naming it. The kit that owns the opening has never heard of the kit that fills it.
 
-<Figure svg={TheChain} caption="Three kits, each filling the slot below it" description={"Three boxes side by side. On the left, the workforce kit, which opens a slot named workerFlows. In the middle, the harnesses kit, which holds a coder entry and a slot of its own named harnesses; that slot is highlighted because the kit both fills a slot and opens one. On the right, the claudeCode kit, which holds one entry, Claude Code. An arrow runs from the coder entry to workerFlows, and another from the Claude Code entry to the harnesses slot; each means fills a slot. Notes say workforce has never heard of harnesses or claudeCode, harnesses adds a coder flow to workforce and opens a slot of its own, and claudeCode fills the slot harnesses opened."} />
+<Figure svg={TheChain} caption="A chain of three kits: harnesses fills a slot workforce opened, and claudeCode fills one harnesses opened" description={"Three boxes side by side. On the left, the workforce kit, which opens a slot named workerFlows. In the middle, the harnesses kit, which holds a coder entry and a slot of its own named harnesses; that slot is highlighted because the kit both fills a slot and opens one. On the right, the claudeCode kit, which holds one entry, Claude Code. An arrow runs from the coder entry to workerFlows, and another from the Claude Code entry to the harnesses slot; each means fills a slot. Notes say workforce has never heard of harnesses or claudeCode, harnesses adds a coder flow to workforce and opens a slot of its own, and claudeCode fills the slot harnesses opened."} />
 
 ## Three kits in a config file
 
@@ -48,17 +48,15 @@ Order in `kits` doesn't matter. Kits install in the order they require each othe
 
 Beside flows, a kit can bring:
 
-- **Config.** The options your app passes when it calls the kit, checked at that call. [Kits reference](../reference/kits.md) has the checks.
-- **A folder.** `workforce` reads `workforce/`, one `WORKER.md` file per worker, when the app starts. The per-path rules are in the [Kits reference](../reference/kits.md).
-- **Views.** The views, resources and capabilities of a kit's flows come with them. [Views](./views.md) shows what a screen reads.
+- **Config.** The options your app passes when it calls the kit, checked at that call. The [Kits reference](../reference/kits.md) lists the checks.
+- **A folder.** `workforce` reads `workforce/`, one `WORKER.md` file per worker, when the app starts. Which files count is spelled out in the [per-path rules](../reference/kits.md).
+- **Views.** A kit's flows bring their views, resources and capabilities with them. [Views](./views.md) shows what a screen reads.
 
 ## A slot
 
 The kit that owns a slot declares it and says what an entry looks like. `workforce` declares `workerFlows`. Every entry is checked against that declaration, and the owner receives what was filled in.
 
-The `harnesses` slot below is a list: every entry is appended. [Kits reference](../reference/kits.md) has the keyed alternative.
-
-A contribution goes in by the slot's key, which you read off the kit instead of typing it: `workforce.slots.workerFlows`. A kit can fill a slot only if it requires the owner. [Kits reference](../reference/kits.md) has the rule.
+A contribution goes in by the slot's key, which you read off the kit instead of typing it: `workforce.slots.workerFlows`. A kit can fill a slot only if it requires the owner, and the [requires rule](../reference/kits.md) is in the reference.
 
 ## A kit that fills one can open another
 
@@ -83,13 +81,15 @@ export const harnesses = defineKit({
 });
 ```
 
-`coderFlow` builds the `coder` flow from the harnesses it is given. `requires` makes `harnesses` install after `workforce` and lets it fill its slots. `contributes` puts `coder` in `workerFlows`, and `workforce` serves it as one of its own.
+`coderFlow` builds the `coder` flow from the harnesses it is given. `requires` makes `harnesses` install after `workforce` and lets it fill `workforce`'s slots. `contributes` puts `coder` in `workerFlows`, and `workforce` serves it as one of its own.
 
-`slots` opens `harnesses`' own slot. `contributes` runs once the slot is full, so `coderFlow` receives every harness in it: `claudeCode`'s, and any your app adds (below). `install` returns the flows the kit serves itself. `harnesses` serves none, because its `coder` flow goes into `workforce`.
+`slots` opens `harnesses`' own slot, and `slot.list` makes it a list: every entry is appended. ([Keyed slots](../reference/kits.md) take entries by key instead.) `coderFlow` receives every harness in the slot: `claudeCode`'s, and any your app adds (below). `install` returns the flows the kit serves itself. `harnesses` serves none, because its `coder` flow goes into `workforce`.
 
 ## Filling a slot from your app
 
 Say you want Codex beside Claude Code. The slot is the one `harnesses` opened, and your app fills it from `fsdev.config.ts`.
+
+{/* Reconcile at cutover: claudeCode, codexHarness, harnesses and workforce are specified and not yet exported; their import paths are placeholders. */}
 
 ```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
@@ -108,13 +108,13 @@ export default createFlowState({
 
 <Figure svg={YourAppFillsASlot} caption="The app fills a slot the way a kit does" description={"On the left, two boxes. The top one is the claudeCode kit, holding a Claude Code entry. The bottom one is your app, fsdev.config.ts, holding a codexHarness() entry, highlighted as the app's own entry. On the right, one box for the slot harnesses.slots.harnesses, opened by harnesses, holding a Claude Code row and a Codex row, with a note that every entry is checked against the slot's type. Two arrows, each meaning fills a slot, run from the two entries into the two rows. A line below says the app names the slot by its key, the way a kit does."} />
 
-To drop what a kit contributes, call `without` on it: `claudeCode({}).without(harnesses.slots.harnesses)`. [Kits reference](../reference/kits.md) has the rest of `fill` and `without`.
+To drop what a kit contributes, call `without` on it: `claudeCode({}).without(harnesses.slots.harnesses)`. The reference covers [the rest of `fill` and `without`](../reference/kits.md).
 
 ## What it gets you
 
 - **One entry adds a feature.** Listing `workforce` serves its flows beside `help-desk`, with no wiring.
 - **Features stack without edits.** `harnesses` adds a flow to `workforce`, and `claudeCode` adds to `harnesses`. Neither kit underneath changes.
-- **Mistakes stop at start-up.** A bad fill throws when `createFlowState` runs, naming the kit and the slot. [Kits reference](../reference/kits.md) lists each error.
+- **Mistakes stop at start-up.** A bad fill throws when `createFlowState` runs, naming the kit and the slot, and the reference lists [each error](../reference/kits.md).
 
 ## How it fits with the others
 

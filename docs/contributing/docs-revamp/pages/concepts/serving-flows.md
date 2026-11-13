@@ -64,7 +64,7 @@ MCP, webhooks and schedules are adapters you add to `createFlowState` with `adap
 
 **MCP.** The Model Context Protocol is how clients such as Claude Desktop use outside tools. With the MCP adapter, the actions of `support` become tools, and an MCP call is an action call. See [MCP server](../reference/mcp-server.md).
 
-**A webhook.** Stripe posting to your app is not an action call. A webhook has no action name for a caller to send. The flow says which block runs for which event, where a block is a unit of work.
+**A webhook.** Stripe posting to your app is not an action call. It posts to a webhook route, `POST /api/flows/billing/webhooks/stripe`, and no action name is involved. The flow says which block runs for which event, where a block is a unit of work.
 
 ```ts title="src/flows/billing/flow.ts"
 import { defineFlow, defineWebhookBinding } from "@flow-state-dev/core";
@@ -87,7 +87,13 @@ export default defineFlow({
 })();
 ```
 
-`input` turns Stripe's event into the input of `recordPayment`. `actions` is empty because there is nothing for a caller to call, and the run belongs to a `system` user. The flow holds no secret. The app adds a webhook adapter that checks Stripe's signature. See [Webhooks](../reference/webhooks.md) and the [Stripe recipe](../build/webhooks/stripe.md).
+The binding has the shape of an action, a block plus how to run it, but it lives on `webhooks` and never in `actions`. Stripe's event type picks it, so a caller cannot name it as an action, and it is never an MCP tool. `input` turns Stripe's event into the input of `recordPayment`. `actions` is empty because a flow that only receives webhooks has nothing for a caller to call.
+
+The flow holds routing and no secret. The app declares how to verify a delivery, with a webhook adapter in `adapters`: `createWebhookTransportAdapter({ providers: { stripe: { verify: stripeWebhookVerifier(...), eventType } } })`. `verify` checks Stripe's signature and `eventType` reads the event's type from the payload.
+
+A delivery with a bad signature is refused with `401` and nothing runs. A verified one is answered `202` at once and the block runs after the response, so a `202` does not mean `recordPayment` has finished. An event type with no binding is also answered `202` and ignored.
+
+With no `sessionId` on the binding, each event runs in its own fresh session. Derive one from the payload, as in ``sessionId: (e) => `customer-${e.payload.customer}` ``, and one customer's invoices share a session while another customer gets a separate one. No end user is involved, so the run uses the principal the flow's `authentication` names: here `defaultUserId: "system"` with `requireUser: false`. See [Webhooks](../reference/webhooks.md) and the [Stripe recipe](../build/webhooks/stripe.md).
 
 **A schedule.** A schedule is a name and a cron string on the flow, with the block to run. Flow State does not own the clock. Your scheduler, such as Vercel Cron or EventBridge, calls a URL the schedule adapter serves for that schedule when the time comes, and the adapter runs the block. It is not an action call either. See [Schedules](../reference/schedules.md).
 
