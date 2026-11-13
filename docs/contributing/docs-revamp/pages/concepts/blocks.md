@@ -9,9 +9,9 @@ import Blocks from "./figures/blocks.svg";
 
 # Blocks
 
-A customer writes in: "Where is my refund?" Before a reply goes back, a few things happen. The message is cleaned up. A model writes the answer, and may need to look up an order first. Each step is a different kind of work, and you want to change one without touching the others.
+A block is a typed unit of work that the framework runs: a name, a schema for what goes in, a schema for what comes out, and the work in between, which is your code or a model. You build a flow, the backend your app calls, by putting blocks together. Blocks can hold other blocks, so a whole pipeline is a block too.
 
-A block is one of those steps: a named piece of work with a typed input and a typed output. You build a flow, the backend your app calls, by putting blocks together. Blocks can hold other blocks, so a whole pipeline is a block too.
+An app is built from blocks so that each piece of work can be changed, traced and reused without touching the others. The example on this page is a support desk's reply pipeline: clean up a customer's message, have a model draft the answer, and let the model look up an order.
 
 <Figure svg={Blocks} caption="A flow's blocks, nested" description={"One large box, a sequencer named handleTicket, contains two steps joined by an arrow that means each step's output becomes the next step's input. The first step is a handler named cleanMessage, which trims long messages. The second is a generator named draftReply, which asks a model to write the reply. Inside draftReply, highlighted, is a handler named lookUpOrder that the model can call as a tool: a tool is a block too. Every box is a block, with typed input in and typed output out."} />
 
@@ -72,6 +72,18 @@ Then the connector. `cleanMessage` returns an object, and `draftReply` wants a s
 
 A flow exposes a block as an action, a call a client can make. `defineFlow({ kind: "support", actions: { reply: { block: handleTicket } } })` makes this one callable as `reply`, because a sequencer is a block like any other.
 
+## What passes between steps
+
+For `draftReply` to trust the value it receives, two blocks each declare their half of the contract. The producer, `cleanMessage`, declares an `outputSchema`. The consumer declares an `inputSchema`. Both are Zod schemas.
+
+The framework checks both at run time. After a block's `execute` runs, its output is checked against its `outputSchema`. Before `execute` runs, its input is checked against its `inputSchema`. When the shapes of two neighbouring steps differ, you reshape the value with a connector, the function in `.step(connector, block)`.
+
+The check happens when the flow runs, not when TypeScript compiles. Connecting `cleanMessage` straight to `draftReply` with no connector type-checks, then fails the first time it runs, because `draftReply` wants a string and gets an object.
+
+Two things follow:
+
+- If a block returns a value its `outputSchema` rejects, the block fails. The error names the block and the field, and shows in that block's row in the trace.- If you remove a block's `outputSchema`, it falls back to `z.any()`. Nothing is checked, and the next step's input is untyped. Removing a schema to silence an error hides the mismatch; it does not fix it.
+
 ## The five kinds
 
 | Kind | What it does | In this flow |
@@ -118,7 +130,7 @@ If `lookUpOrder` read a stored list of orders, it would declare that list as a r
 
 Each step in its own block gets you these:
 
-- **A finished block is a checkpoint.** Its output is recorded. On a store that persists, such as SQLite or Postgres, a run that dies after `cleanMessage` picks up at `draftReply` when you continue it. The message is not cleaned twice. The [blocks reference](../reference/blocks.md) covers how to continue a run.
+- **A finished block is a checkpoint.** Its output is recorded. On a store that persists, such as SQLite or Postgres, a run that dies after `cleanMessage` picks up at `draftReply` when you continue it. The message is not cleaned twice. This needs a store that persists. On the default in-memory store there is no checkpoint, so a crashed run cannot be continued. The [blocks reference](../reference/blocks.md) covers how to continue a run.
 - **A block can wait.** A block can pause the run for a user, such as a manager approving a refund, and carry on when the answer arrives. The wait survives a restart on a store that persists.
 - **Every block is traced.** Each time a block runs, the run is recorded, and the DevTool shows it. You can see which step was slow or wrong without adding any logging.
 - **A block moves.** It knows only its own input and output. `lookUpOrder` can be a step in this flow, a tool in another, and a piece of something a teammate builds later.

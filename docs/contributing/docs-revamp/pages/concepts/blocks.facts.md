@@ -152,9 +152,11 @@ Reference homes: the first two limits are R-01 rows ("how a block is invoked" an
 
 ## 8. Contract between blocks (Q4)
 
-- What a block declares so the next block can trust what it gets: `outputSchema` on the producer and `inputSchema` on the consumer. `.step(a).step(b)` types `b`'s input as `z.infer` of `a`'s `outputSchema`; a mismatch is a TypeScript error unless a connector reshapes it. `core/blocks/sequencer-methods.ts:163-181` (overloads: `step(block)` infers the next `TOutput` from `TOutSchema`; `step(connector, block)` takes `ConnectorFn<TOutput, TStepIn>`)
-- And at run time each side is checked: output by the producer's `outputSchema`, input by the consumer's `inputSchema`. `core/blocks/internal/build-block.ts:356-364`
-- A schema left off is `z.any()`: nothing is checked and the type is `any`. `core/blocks/internal/build-block.ts:210-211`
+- What a block declares so the next block can trust what it gets: `outputSchema` on the producer and `inputSchema` on the consumer. A mismatch between steps is reshaped with a connector, `.step(connector, block)`. `core/blocks/sequencer-methods.ts:163-181` (`step(connector, block)` takes `ConnectorFn<TOutput, TStepIn>`). **Not a compile-time error:** today's sequencer typing does not check one step's output against the next step's input (a record check type-checked `.step(draftReply)` with no connector). The page says the mismatch is caught at run time. [page]
+- At run time each side is checked: input against the consumer's `inputSchema` before `execute`, output against the producer's `outputSchema` after it. `core/blocks/internal/build-block.ts:356-366` [page]
+- A rejected value throws `Block "<name>" input|output validation failed at "<path>": <message>` and fails the block; the error shows in that block's trace row (`block_trace.error`, `items:59-112`). `core/blocks/internal/build-block.ts:152-171` [page]
+- A schema left off is `z.any()`: nothing is checked and the next step's input is untyped. `core/blocks/internal/build-block.ts:210-211` [page]
+- On the default in-memory store there is no checkpoint, so a crashed run cannot be continued (`dur:11`, `dur:32-36`). [page, one sentence in the checkpoint point]
 - Type helpers that read these schemas: [ref/type-helpers]. `apps/docs/docs/fundamentals/type-system.md`
 
 ## 9. The page's example (one scenario)
