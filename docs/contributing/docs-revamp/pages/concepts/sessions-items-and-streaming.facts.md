@@ -46,8 +46,8 @@ What the browser receives while a request runs. The page's claim: items arrive i
 - Every event on a request stream carries a `sequence_number`; the SSE frame's `id:` is `<requestId>:<sequence>`. `ct/events.ts:7-12`; `eng/streaming/encode-event.ts:13-22` [page: "every event has a number"]
 - Order the items are shown in: by time, then by the item's index in its request, then request id, then item id. Server and client use the same comparison, so a live view and a reload show the same order. `ct/order.ts:1-23` [page: "the same order live and after a reload"; the four-key comparison [ref]]
 - A text delta reaches the React hook's `items` batched to the next animation frame, so `items` updates at screen rate rather than per token. `rx/hooks/useSession.ts:967-989` [ref; the page does not describe batching]
-- What the browser does not receive: trace items (`block_trace`, `router_decision`, `state_snapshot`, `generator_step`) are never sent to a client; they travel only on the trace channel, which the DevTool opts into with `?include=trace`. `ct/resolve-visibility.ts:10-16`, `:31-36`; `eng/streaming/client-filter.ts:1-12`; `docs/streaming/trace-channel.md:9-14`, `:22-27`. [page: one sentence, linked; the trace channel is [ref]]
-- `fsdev run` prints the unfiltered stream, trace items included, so its output has rows a browser never gets. `fsdev` `packages/fsdev/src/commands/run.ts:487-496`, `:690-737`; [ran: `block_trace` rows in section 9]
+- What the browser does not receive by default: trace items (`block_trace`, `router_decision`, `state_snapshot`, `generator_step`) are left out of a client's stream unless the client asks for them: the request stream route keeps trace events when the URL has `?include=trace`, and the client and React hook expose it as `includeTrace`. `ct/resolve-visibility.ts:10-16`, `:31-36`; `eng/streaming/client-filter.ts:1-12`; `eng/routes/stream-routes.ts:106`, `:178`; `cl/client.ts:1025-1032`; `rx/hooks/useRequestStream.ts:60`; `docs/streaming/trace-channel.md:9-14`, `:22-27`. [page: one clause, linked, saying a browser's stream leaves them out unless the client asks; the rest is [ref]]
+- `fsdev run` prints the unfiltered stream, trace items included, so its output has rows a browser's stream leaves out by default. `fsdev` `packages/fsdev/src/commands/run.ts:487-496`, `:690-737`; [ran: `block_trace` rows in section 9]
 - `fsdev run` maps events to NDJSON types `item_added`, `item_updated`, `item_done`, `content_delta`, `state_change`, `flow_complete`, `error`. `packages/fsdev/src/commands/run.ts:56-65` [page: the three lines in section 9 only]
 
 ### Q1 answer ("the model is halfway through a sentence; what has the browser received?")
@@ -214,7 +214,7 @@ Each point is something the reader can observe in the support-desk example.
 
 - Blocks (C-02) are what emit items; an item records which block made it (`provenance.blockName`). `ct/types.ts:16-27`. [page: one clause]
 - Rendering items (C-10): the page links; it does not explain renderers. `docs/client/react.md:9-60`, `:318-363`. [ref]
-- State and resources are separate from items. A `state_change` or `resource_change` item tells a client that something changed; it is not the state. `ct/types.ts:559-573`; `docs/fundamentals/state-and-scopes.md:465`. [page: one clause; owned by the state concept page]
+- State and resources are separate from items. A `state_change` or `resource_change` item tells a client that something changed; it is not the state. `ct/types.ts:559-573`; `docs/fundamentals/state-and-scopes.md:465`. [page: one clause, without the type names ("a short notice item"), because neither type has a row on the page; owned by the state concept page]
 - Background work and task boards have their own sessions; a session's `childSessions` list is separate from `items` and is not folded into the transcript. `rx/hooks/useSession.ts:388-396`. [ref]
 - Where the word differs from other frameworks: "message" is one item type, not the whole transcript. A transcript here is the session's item list, which holds messages, tool calls, UI cards and statuses. `ov:7`. [page: optional; no "If you know" section is needed, because no mainstream framework word collides]
 
@@ -227,6 +227,14 @@ Each point is something the reader can observe in the support-desk example.
 ## 13. Left for Reference (rows the page links to)
 
 Each is observable behaviour, so it moves to `reference/items`, not away.
+
+- Item lifecycle (section 2): message added with empty text and `in_progress`, `content.delta` appends, `item.done` resends the whole item `completed`; a `tool_output` carries name and arguments at start and gains its result when done. The page keeps one sentence: the reply grows, then is sent whole.
+- Item fields and the per-type table (sections 3, 4); item identity: an id is unique within a request, so a list key is `requestId` plus `id` (the page states the key and links).
+- Session ownership detail: another user's request gets a not-found (`404`), a wrong organization `403` (section 5). The page keeps "a session belongs to the user who created it".
+- What persists: items live on the request record and the session list is assembled on read (section 5). The page keeps only the default (memory, lost on restart) and one alternative (SQLite or Postgres).
+- Item visibility rules, `history` option eligibility, `itemVisibility` flags (section 6). The page keeps that `history` must be on and the table's default column.
+- `ctx.emit.component` details: `key` replacement, data replaced whole, reload shows the latest; `ctx.emit.message`, `ctx.emit.status` (live only by default, `{ transient: false }` stores it), `transient: true` components (sections 4, 7). The page keeps that a key makes the second call replace the first.
+- Resume detail: sequence numbers and `starting_after`, no replay of text deltas, reload behaviour without `autoResume`, transient items absent after reload, `isStuck` and `followRequest` (section 8). The page keeps that a reconnect picks up after the last event, and that a reload mid-reply returns the thread, which `autoResume: true` carries on.
 
 - Item type table, with who emits it, client / history / transient columns. `ov:135-155`; `ct/types.ts:806-819`.
 - The visibility resolution table and `itemVisibility` on generators, multi-peer agents, parallel sub-agents, `selectForContext`. `it:328-388`; `ct/resolve-visibility.ts:38-49`.

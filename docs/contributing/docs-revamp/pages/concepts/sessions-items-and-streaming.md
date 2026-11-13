@@ -118,7 +118,7 @@ The terminal also prints trace rows such as `block_trace`. A browser's stream le
 
 A request keeps running on the server when the browser's connection ends. The stream is a view onto it, so a client that reconnects picks up after the last event it saw.
 
-<Figure svg={Dropped} caption="A dropped connection, resumed at the next number" description={"Three boxes in a row. On the left, the browser live, holding events 1 to 41 and the reply so far, Your order shi. In the middle, the request still running on the server, producing events 42 to 57 while nobody listens. A red line with a bar between the first two boxes marks the lost connection. On the right, highlighted, the browser back, asking starting_after=41, so events 42 onward are sent. An arrow runs from the middle box to the right one. The reply text snaps to its saved copy and then grows again."} />
+<Figure svg={Dropped} caption="A dropped connection, resumed at the next number" description={"Three boxes in a row. On the left, the browser live, holding events 1 to 41 and the reply so far, Your order shi. In the middle, the request running on the server, producing events 42 to 57 while nobody listens. A red line with a bar between the first two boxes marks the lost connection. On the right, highlighted, the browser back, asking starting_after=41, so events 42 onward are sent. An arrow runs from the middle box to the right one. The reply text snaps to its saved copy and then grows again."} />
 
 The browser client does this on its own.
 

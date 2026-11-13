@@ -44,7 +44,7 @@ The sequencer takes the first step's input and returns the last step's output.
 
 <Figure svg={Passes} caption="What passes between steps" description={"The sequencer handleTicket, which takes an object with a message and returns a string, drawn as a row of three boxes. A handler, cleanMessage, passes an object with text and truncated along an arrow to a highlighted connector, cleaned.text. The connector passes a string along a second arrow to a generator, draftReply. A line below says a step receives the step before it, and nothing earlier. The key explains the arrow as one step passing its output on, and the highlighted box as the reshaping step."} />
 
-A step receives the previous step's output, and nothing from earlier steps. When the next block wants a different shape, the reshaping goes between them. In `handleTicket` it is the function `(cleaned) => cleaned.text`, a connector that runs before `draftReply` and returns what `draftReply` takes. Neither block changes.
+A step receives the previous step's output, and nothing from earlier steps. When the next block wants a different shape, the reshaping goes between them. In `handleTicket` it is the function `(cleaned) => cleaned.text`, a connector that runs before `draftReply` and returns what `draftReply` takes. Neither block changes. TypeScript does not check that one step's output fits the next step's input, so a mismatch shows up at run time: the next block's `inputSchema` rejects the value, and the error names the block and the field.
 
 The reshaping can also stand on its own line, with `.map()`.
 
