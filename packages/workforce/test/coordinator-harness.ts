@@ -192,7 +192,16 @@ export type HostOptions = {
   durable?: boolean;
   /** More flows to register beside the fixture ones, keyed by flow name. */
   flows?: Record<string, FlowInstance>;
+  /** The coordinator's history window, in turns. Omitted, the framework's (50). */
+  historyWindow?: number;
+  /** The default history summary's scripted model (`earlier-turns`). Omitted, a fold has no script and fails. */
+  summary?: MockGeneratorInstance;
 };
+
+/** `flow` with its session's history window set to `turns`, or as it is when `turns` is unset. */
+function withWindow(flow: FlowInstance, turns: number | undefined): FlowInstance {
+  return turns === undefined ? flow : ({ ...flow, session: { ...(flow.session ?? {}), historyWindow: { turns } } } as FlowInstance);
+}
 
 /** One host of the app over `stores`. */
 export function bootHost(options: HostOptions = {}) {
@@ -228,7 +237,7 @@ export function bootHost(options: HostOptions = {}) {
   });
 
   const instances: Record<string, FlowInstance> = {
-    coordinator: coordinator() as unknown as FlowInstance,
+    coordinator: withWindow(coordinator() as unknown as FlowInstance, options.historyWindow),
     helper: helper() as unknown as FlowInstance,
     quiet: quiet() as unknown as FlowInstance,
     tasker: tasker() as unknown as FlowInstance,
@@ -252,6 +261,7 @@ export function bootHost(options: HostOptions = {}) {
       evaluators: { [COORDINATOR_ROUTE]: route },
       generators: {
         "coordinator-judgment": judgment,
+        ...(options.summary === undefined ? {} : { "earlier-turns": options.summary }),
         ...(options.languageRoute === undefined ? {} : { "coordinator-route-ask": options.languageRoute })
       }
     }),

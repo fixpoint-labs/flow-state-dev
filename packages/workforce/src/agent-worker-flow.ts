@@ -900,6 +900,12 @@ export interface AgentTurnShare {
    * coordinator's says each delegate's answer as a line from that delegate.
    */
   readonly history?: (input: unknown, ctx: BlockContext) => Promise<LLMMessage[]>;
+  /**
+   * The turns the history summary folds, read the way {@link history} reads
+   * them, so a fold keeps what the flow's reading adds (the coordinator's says
+   * who wrote each delegate's answer). Omitted, the turns as stored.
+   */
+  readonly readFoldedTurns?: (turns: LLMMessage[], ctx: BlockContext) => Promise<LLMMessage[]> | LLMMessage[];
 }
 
 const AGENT_TURN: AgentTurnShare = { kind: AGENT_FLOW, answerName: "agent-answer" };
@@ -1095,7 +1101,8 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     loaderOn: activateToolOn,
     skillsListing: buildLoadCatalogContext({ collectionKey: SKILLS_COLLECTION, initialSkills: workerCatalog }),
     modelOf: (ctx) => turnConfig(ctx).model,
-    appSummary: bringsHistorySummary(workerCapabilityCatalog)
+    ...(share.readFoldedTurns !== undefined ? { readFoldedTurns: share.readFoldedTurns } : {}),
+    hasAppHistorySummary: bringsHistorySummary(workerCapabilityCatalog)
   });
   const summary = defaultLayer.historySummary;
   // What the answer declares: the catalog's resources, and the summary's.

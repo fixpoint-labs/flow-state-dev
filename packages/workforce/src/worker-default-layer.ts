@@ -38,12 +38,12 @@
  * flow; an app that wants another date fact writes it under `date`.
  */
 import { z } from "zod";
-import { utility, type CapabilityRef } from "@flow-state-dev/core";
+import { handler, sequencer, utility, type CapabilityRef } from "@flow-state-dev/core";
 import { getBaseCapability } from "@flow-state-dev/core/capability";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext, LLMMessage } from "@flow-state-dev/core/types";
 import type { WorkerCapabilityCatalog } from "./worker-capabilities";
 
-/** One section of the default layer, by its key in `defaults`. They render skills index first, then date. */
+/** One section of the default layer, by its key in `defaults`. The context renders skills index, then date; the history summary reaches the answer through `uses`. */
 type WorkerDefaultSection = "skillsIndex" | "date" | "historySummary";
 
 /**
@@ -152,9 +152,17 @@ const HISTORY_SUMMARY_OBJECTIVES = [
   "Keep every name, date, code and number the user or another worker stated, word for word. Small talk can shrink; those never go."
 ];
 
+/** How a worker flow reads the turns it folds, when it reads its history its own way. */
+type ReadFoldedTurns = (turns: LLMMessage[], ctx: BlockContext) => Promise<LLMMessage[]> | LLMMessage[];
+
 /**
  * The history summary section: core's `historySummary` with the default
  * summarizer, both halves behind one reader of the worker's `defaults`.
+ *
+ * `readTurns` is the flow's own reading of its history, when it has one (the
+ * coordinator says who wrote each delegate's answer): the summarizer is
+ * handed the folded turns read that way, so what the summary stands for
+ * reads as the turns did.
  *
  * The fold runs when `on` says so; the summary and the history mark reach the
  * answer through `uses`, a per-turn entry, so a worker that turned it off
@@ -163,15 +171,32 @@ const HISTORY_SUMMARY_OBJECTIVES = [
  * resource is declared through `resources`, statically, since a per-turn
  * entry installs none.
  */
-function historySummarySection(configOf: (ctx: BlockContext) => LayerConfig, modelOf: (ctx: BlockContext) => string) {
+function historySummarySection(
+  configOf: (ctx: BlockContext) => LayerConfig,
+  modelOf: (ctx: BlockContext) => string,
+  readTurns: ReadFoldedTurns | undefined
+) {
+  const summarize = utility.summarizer({
+    name: "earlier-turns",
+    // The model the worker answers with.
+    model: (_input: unknown, ctx: BlockContext) => modelOf(ctx),
+    granularity: "detailed",
+    objectives: HISTORY_SUMMARY_OBJECTIVES
+  });
+  const foldInput = z.object({ summary: z.string().nullable(), turns: z.array(z.any()) });
   const earlier = utility.historySummary({
-    summarize: utility.summarizer({
-      name: "earlier-turns",
-      // The model the worker answers with.
-      model: (_input: unknown, ctx: BlockContext) => modelOf(ctx),
-      granularity: "detailed",
-      objectives: HISTORY_SUMMARY_OBJECTIVES
-    })
+    summarize:
+      readTurns === undefined
+        ? summarize
+        : sequencer({ name: "earlier-turns-read", inputSchema: foldInput })
+            .step(
+              handler({
+                name: "earlier-turns-as-read",
+                inputSchema: foldInput,
+                execute: async (input, ctx) => ({ summary: input.summary, turns: await readTurns(input.turns as LLMMessage[], ctx) })
+              })
+            )
+            .step(summarize)
   });
   const on = (ctx: BlockContext): boolean => defaultSectionOn(configOf(ctx).defaults, "historySummary");
   return {
@@ -212,7 +237,8 @@ export function bringsHistorySummary(catalog: WorkerCapabilityCatalog): boolean 
  *   worker can load, or `null` when it lists nothing: the line prints only
  *   beside it.
  * @param options.modelOf The model the turn's worker answers with.
- * @param options.appSummary Whether the app brought its own history summary
+ * @param options.readFoldedTurns The flow's own reading of the turns its summary folds.
+ * @param options.hasAppHistorySummary Whether the app brought its own history summary
  *   ({@link bringsHistorySummary}): then the layer has no summary section.
  * @returns `context`, an object-form context value keyed `skills` then
  *   `date`; and `historySummary`, the summary section's fold, per-turn `uses`
@@ -225,7 +251,9 @@ export function workerDefaultLayer(options: {
   skillsListing: (input: unknown, ctx: BlockContext) => Promise<string | null>;
   /** The model the turn's worker answers with, which its summary folds on. */
   modelOf: (ctx: BlockContext) => string;
-  appSummary: boolean;
+  /** The flow's own reading of the turns its summary folds, when its history reads them its own way. */
+  readFoldedTurns?: ReadFoldedTurns;
+  hasAppHistorySummary: boolean;
 }) {
   return {
     context: {
@@ -236,6 +264,8 @@ export function workerDefaultLayer(options: {
       date: (_input: unknown, ctx: BlockContext): string | null =>
         defaultSectionOn(options.configOf(ctx).defaults, "date") ? workerDate() : null
     },
-    historySummary: options.appSummary ? undefined : historySummarySection(options.configOf, options.modelOf)
+    historySummary: options.hasAppHistorySummary
+      ? undefined
+      : historySummarySection(options.configOf, options.modelOf, options.readFoldedTurns)
   };
 }
