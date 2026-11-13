@@ -42,6 +42,8 @@ Written by `docs-writer` (sonnet), 751 words. Scenario: A help-desk app that ins
 
 - Post-loop edit (escalation, the two pass-9 misses): line 43 now says a kit whose required kit is missing stops the app from starting; the folder bullet now says a stray entry in a kit's folder stops the app from starting and is named. The open pass-4 type-check errors are the placeholder imports the page already marks 'Reconcile at cutover' (kit factories specified, not yet exported); with those four declared as stubs the page code type-checks with 0 errors, so nothing else is open. Re-ran check-docs-page.mjs: ok.
 
+- Post-review edit (docs build): the chain figure's caption is cut to 55 characters for the brand lint's 60-character cap; the figure description, unchanged, still names who fills which slot. Re-ran lint-brand.mjs and check-docs-page.mjs: ok.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 6030ce3e30d6, and the 8 Reference row(s) pass 6 moved.
