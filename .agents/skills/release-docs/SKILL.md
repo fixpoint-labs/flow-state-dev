@@ -58,7 +58,16 @@ land on one concept page; one changeset may touch three.
   level of detail).
 - Prefer rewriting a page over appending to it. If a page now needs a section per feature to explain
   itself, the page is the wrong shape; restructure it.
-- A pre-1.0 `minor` can break callers: the affected page says what a reader changes in their code.
+- A pre-1.0 `minor` can break callers: what a reader changes in their code goes on the release's
+  **Upgrading** page, not on the affected page. The plan always has three rows for it: create
+  `reference/upgrading/<date>` (today's date, the branch's); remove the previous release's
+  Upgrading page; and repoint the sidebar entry, every inbound link and the client redirects in
+  `apps/docs/docusaurus.config.ts` so each earlier `reference/upgrading/<date>` address lands on
+  the new page (the build fails on a broken link). Every changeset a caller must act on is listed against the create row. The page's
+  shape and what earns a row are
+  [`release-docs.md`](../../../docs/contributing/release-docs.md#the-upgrading-page) → "The
+  Upgrading page". Before the docs cutover the site has no Reference section: skip all three rows and
+  say so in the PR.
 
 ## 4. Write
 
@@ -73,6 +82,9 @@ and the public surface. Never the spec narrative, never a changeset's issue ids.
    code here.
 
 Package READMEs are in scope: their API sections go through the same pair.
+Until the docs cutover, a package README also has a cut copy at
+`docs/contributing/docs-revamp/readmes/<dir>.md`: an edit to the long one lands in both, or CI's
+`check-cut-readmes.mjs` fails the PR.
 
 ## 5. Read it as a set
 

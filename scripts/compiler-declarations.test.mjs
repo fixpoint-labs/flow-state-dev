@@ -33,6 +33,13 @@ describe("compiler declarations", () => {
     assert.match(errors[0], /must match the root's/);
   });
 
+  it("lets the docs app declare the root's compiler for TypeDoc, and only the root's", () => {
+    assert.deepEqual(compilerDeclarationErrors("apps/docs/package.json", dev(ROOT_TS), ROOT_TS), []);
+    const errors = compilerDeclarationErrors("apps/docs/package.json", dev("npm:@typescript/native@^7.0.2"), ROOT_TS);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /must match the root's/);
+  });
+
   it("fails a non-example member that declares the compiler, even at the root's version", () => {
     const errors = compilerDeclarationErrors("packages/core/package.json", dev(ROOT_TS), ROOT_TS);
     assert.equal(errors.length, 1);
