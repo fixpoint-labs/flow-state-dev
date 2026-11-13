@@ -40,8 +40,8 @@ function hostClient<T extends { listCollectionResources: unknown }>(resources: T
   };
 }
 
-import { BoardList, boardListPropNames } from "../src/components/panels/BoardList";
-import { FlowProvider } from "../src/context/FlowContext";
+import { BoardList, boardListPropNames } from "../src/react/panels/BoardList";
+import { FlowProvider } from "@flow-state-dev/react";
 
 const BOARD = "eng.feature.triage";
 const SESSION = "s1";

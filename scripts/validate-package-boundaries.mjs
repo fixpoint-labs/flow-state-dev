@@ -96,11 +96,16 @@ const packageRules = {
   // workforce's loader so the kit system does not depend on one kit
   // (FIX-2626). It imports only core types and node:fs, never the runtime,
   // so the rest of the engine stays denied.
+  //
+  // React is reached only from its `/react` entry (`src/react/`), the
+  // components bound to its views (FIX-2627): React is an optional peer, so
+  // the package root and every other entry stay free of it.
   workforce: {
     allow: new Set(["contracts", "core", "orchestration", "client"]),
     typeOnly: new Set([]),
     deny: new Set(["engine", "react", "patterns"]),
-    allowSubpaths: new Set(["@flow-state-dev/engine/folder"])
+    allowSubpaths: new Set(["@flow-state-dev/engine/folder"]),
+    allowUnder: { dir: "src/react", specifiers: new Set(["@flow-state-dev/react/internal"]) }
   }
 };
 
@@ -208,6 +213,11 @@ for (const pkg of packages) {
       // A subpath a package's rules name exactly is allowed on its own, and
       // adds no edge: it stands outside the target's runtime.
       if (rules.allowSubpaths?.has(specifier)) {
+        continue;
+      }
+      // A specifier allowed only under one folder of the package, and only there.
+      const under = rules.allowUnder;
+      if (under !== undefined && under.specifiers.has(specifier) && filePath.startsWith(path.join(rootDir, "packages", pkg, under.dir) + path.sep)) {
         continue;
       }
 

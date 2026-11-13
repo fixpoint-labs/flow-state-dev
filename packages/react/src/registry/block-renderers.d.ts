@@ -1,0 +1,54 @@
+/**
+ * Renderer registry types used by FlowProvider and item renderers.
+ *
+ * Renderers are keyed by item type. For `component` and `container` items,
+ * a secondary lookup by `item.component` resolves a specific component.
+ *
+ * Any slot accepts `false` to explicitly suppress rendering (overrides
+ * built-in fallbacks).
+ */
+import type { ComponentType } from "react";
+/**
+ * Component shape accepted in renderer maps.
+ *
+ * Uses `any` because TypeScript's function parameter contravariance prevents
+ * `ComponentType<{ item: MessageItem }>` from being assignable to
+ * `ComponentType<{ item: OutputItem }>`. The runtime contract is that
+ * ItemRenderer passes `{ item }` with the correct item type for each slot.
+ * Consumers narrow the type in their component signature.
+ */
+export type BlockComponentType = ComponentType<any>;
+/**
+ * Canonical renderer registry shape.
+ *
+ * - Class-based item types (`message`, `reasoning`, etc.) are resolved directly.
+ * - `component` and `container` use a secondary keyed map.
+ * - Pass `false` to explicitly suppress rendering for a type.
+ */
+export type RendererRegistry = {
+    message?: BlockComponentType | false;
+    reasoning?: BlockComponentType | false;
+    block_trace?: BlockComponentType | false;
+    tool_output?: BlockComponentType | false;
+    status?: BlockComponentType | false;
+    source?: BlockComponentType | false;
+    error?: BlockComponentType | false;
+    /**
+     * Custom renderer for `type === "suspension"` items. Pass `false` to suppress
+     * inline rendering (for headless layouts that use `useSuspensions` + a modal/sidebar).
+     * When unset, `<ApprovalRenderer>` renders as the built-in fallback.
+     */
+    suspension?: BlockComponentType | false;
+    component?: Record<string, BlockComponentType | false>;
+    container?: Record<string, BlockComponentType | false>;
+};
+/**
+ * Resolves a renderer for a given item type and optional component key.
+ *
+ * Returns:
+ * - `BlockComponentType` — custom renderer to use
+ * - `false` — explicitly suppressed (caller should return null)
+ * - `undefined` — no renderer registered (fall through to fallback)
+ */
+export declare function resolveRenderer(renderers: RendererRegistry | undefined, itemType: string, componentKey?: string): BlockComponentType | false | undefined;
+//# sourceMappingURL=block-renderers.d.ts.map

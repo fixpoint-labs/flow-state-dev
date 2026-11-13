@@ -4,7 +4,7 @@
  * `baseUrl`, `apiPath` and `fetcher`. Internal to the panels and not exported.
  */
 import type { Client } from "@flow-state-dev/client";
-import { useClient } from "../../internal/useClient";
+import { useClient } from "@flow-state-dev/react/internal";
 
 /**
  * The host's client, else the provider's. The provider's is built every

@@ -1,0 +1,2054 @@
+/**
+ * Session-focused reactive hook for session lifecycle, request streaming, and item views.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ClientHttpError, compareItemOrder, createRequestStreamStore, createSSEClientFromResponse, topic } from "@flow-state-dev/client";
+import { followSession, mayReplaceItem, readSessionHistory, liveRead, mayHold, storageRootsOf } from "@flow-state-dev/client/internal";
+// Canonical helper from the zero-dependency contracts layer (value-import).
+// Previously hand-mirrored here because react may only type-import core.
+import { resolveItemVisibility } from "@flow-state-dev/contracts";
+import { useFlowContext } from "../context/FlowContext";
+import { useClient } from "../internal/useClient";
+import { answerStop } from "../internal/answerStop";
+import { isReducibleStateChange, isReplayableStateChange, mergeStateChangeIntoSnapshot } from "../internal/mergeStateChangeIntoSnapshot";
+import { isReducibleResourceChange, mergeResourceChangeIntoSnapshot } from "../internal/mergeResourceChangeIntoSnapshot";
+/** How many live state and resource changes the view keeps for reads in flight to put back. */
+const KEPT_LIVE_CHANGES = 256;
+/**
+ * In live mode, how soon a shown request read as not yet ended is read
+ * again, first and at most: the wait doubles between the two.
+ */
+const RUNNING_STATUS_REREAD_MS = 1_000;
+const RUNNING_STATUS_REREAD_MAX_MS = 30_000;
+/**
+ * Whether a live change can be put back on top of a read that may already
+ * hold it (see `isReplayableStateChange`). A resource change carries the
+ * whole entry, so it always can.
+ */
+function isRepeatable(item) {
+    return item.type === "resource_change" || isReplayableStateChange(item);
+}
+const TERMINAL_REQUEST_STATUSES = new Set([
+    "completed",
+    "failed",
+    "incomplete",
+    "interrupted",
+    "aborted"
+]);
+/** Whether a request with this status has ended (a suspended one has not). */
+function hasEnded(status) {
+    return TERMINAL_REQUEST_STATUSES.has(status);
+}
+/**
+ * Rows the mount's in-progress lookup reads.
+ *
+ * Above one so the lookup can report on a request that is no longer the
+ * newest: under `allow` concurrency the session's latest request and the one
+ * that was running when the snapshot was read can be different requests, both
+ * in flight. A session with more than this many requests genuinely running at
+ * once falls back to the same behaviour as before — the older one reads as
+ * finished and earns one spare snapshot read, never a missed one.
+ */
+const IN_PROGRESS_LOOKUP_LIMIT = 10;
+/**
+ * The id of the user message the view shows for a request while it is sent,
+ * until the server's own copy replaces it.
+ */
+function optimisticIdOf(requestId) {
+    return `item_msg_optimistic_${requestId}`;
+}
+/**
+ * The id of the stop record the view shows for a request the person stopped,
+ * until the server's own stop record for it arrives.
+ */
+function abortItemIdOf(requestId) {
+    return `item_status_aborted_${requestId}`;
+}
+/**
+ * Ask the server to stop `requestId`, and say whether it refused because the
+ * request already finished. A 409 can also mean the request was resumed before
+ * the stop reached it, which needs the stop sent again; a second 409 is a
+ * finished request. Other failures are best-effort: the server treats the
+ * disconnect that follows as "interrupted".
+ */
+async function serverRefusedStop(flow, requestId) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            await flow.request(requestId).abort();
+            return false;
+        }
+        catch (cause) {
+            if (!(cause instanceof ClientHttpError && cause.status === 409))
+                return false;
+        }
+    }
+    return true;
+}
+/** The code of the status item that records a request was stopped. */
+const STOP_CODE = "system.request_aborted";
+/** Whether `item` is a record that `requestId` was stopped: the server's or the view's own. */
+function isStopRecordOf(item, requestId) {
+    if (item.requestId !== requestId || item.type !== "status")
+        return false;
+    const detail = item.detail;
+    return typeof detail === "object" && detail !== null && detail.code === STOP_CODE;
+}
+/**
+ * The key the view holds an item under: request and item id together, since
+ * two requests can keep the same id (a keyed item's id comes from its key).
+ */
+function itemKey(requestId, itemId) {
+    return `${requestId}\u0000${itemId}`;
+}
+/** {@link itemKey} of an item. */
+function keyOfItem(item) {
+    return itemKey(item.requestId, item.id);
+}
+/**
+ * Whether a copy of an item is finished. The view joins three sources that can
+ * deliver one item in any order: its own request stream, the session stream,
+ * and snapshots. Once the view holds a finished copy, an unfinished copy of
+ * that item is older than it, whichever source it came from.
+ */
+function isFinished(item) {
+    return item !== undefined && item.status !== "in_progress";
+}
+/** How many content parts a message or reasoning item holds. */
+function partCount(item) {
+    if (item.type === "message")
+        return item.content?.length ?? 0;
+    if (item.type === "reasoning")
+        return item.summary?.length ?? 0;
+    return 0;
+}
+function normalizeFlowKind(flowKind) {
+    const trimmed = flowKind.trim();
+    if (trimmed.length === 0) {
+        throw new Error("useSession requires non-empty flow kind");
+    }
+    return trimmed;
+}
+function resolveItemsConfig(options) {
+    if (options === false) {
+        return {
+            enabled: false,
+            includeTransient: false
+        };
+    }
+    if (typeof options === "object") {
+        return {
+            enabled: true,
+            includeTransient: options.includeTransient === true,
+            itemTypes: options.itemTypes
+        };
+    }
+    // Default: client-visible items, no transients.
+    return {
+        enabled: true,
+        includeTransient: false
+    };
+}
+/**
+ * Client-side item filter. The server already strips non-client items from the
+ * SSE stream, so this only handles transience and explicit type filtering.
+ */
+function passesItemFilter(item, filter) {
+    if (!filter.includeTransient && item.transient === true) {
+        return false;
+    }
+    if (filter.itemTypes !== undefined && filter.itemTypes.length > 0) {
+        return filter.itemTypes.includes(item.type);
+    }
+    return true;
+}
+export function useSession(sessionId, options) {
+    const context = useFlowContext();
+    const resolvedFlowKind = normalizeFlowKind(options?.flowKind ?? context.flowKind ?? "");
+    const userId = options?.userId ?? context.userId ?? "devuser";
+    const baseUrl = options?.baseUrl ?? context.baseUrl;
+    const autoResume = options?.autoResume === true;
+    const live = options?.live === true;
+    const stuckThresholdMs = options?.stuckThresholdMs ?? 30_000;
+    // Decompose the items option into stable primitives so that an inline object
+    // literal doesn't cause a new reference on every render.
+    const itemsOption = options?.items;
+    const itemsEnabled = itemsOption !== false;
+    const itemsIncludeTransient = typeof itemsOption === "object" && itemsOption !== null && !Array.isArray(itemsOption)
+        ? itemsOption.includeTransient === true
+        : false;
+    const itemsTypesKey = typeof itemsOption === "object" && itemsOption !== null && !Array.isArray(itemsOption)
+        ? itemsOption.itemTypes?.join(",")
+        : undefined;
+    const itemConfig = useMemo(() => resolveItemsConfig(options?.items), 
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable primitives, not object ref
+    [itemsEnabled, itemsIncludeTransient, itemsTypesKey]);
+    // Read off as a primitive rather than memoizing the options object: callers
+    // pass `childSessions` as an inline literal, so a new object identity every
+    // render would re-create `refreshChildSessions` and re-fire the mount read on
+    // every render. `undefined` when the app named no page — see the note on the
+    // read below for why nothing is substituted here.
+    const childSessionLimit = options?.childSessions?.limit;
+    const [detail, setDetail] = useState(null);
+    const [snapshot, setSnapshot] = useState(null);
+    const [latestRequest, setLatestRequest] = useState(null);
+    // The status the stream of the request the view follows last reported.
+    const [streamStatus, setStreamStatus] = useState(null);
+    // The record of a shown request that isn't the newest, from a status read.
+    const [readFollowed, setReadFollowed] = useState(null);
+    // The shown request whose record was last read for `followedRequest`.
+    const followedReadRef = useRef(null);
+    const [items, setItems] = useState([]);
+    // Mid-stream resource_change notices. These items are transient on the SSE
+    // stream and are therefore filtered out of `items` by default — so a hook
+    // like `useResourceCollection` cannot observe them through the items log.
+    // Track them in a small, per-request-scoped array so subscribers can react
+    // to mid-stream resource mutations (e.g., a memo flipping from `writing` to
+    // `published`) without forcing the consumer to set `includeTransient: true`.
+    const [resourceChanges, setResourceChanges] = useState([]);
+    const resourceChangeSeqRef = useRef(0);
+    // `live: true` only. Which requests' changes this view's own stream will
+    // still deliver, so a notice one of them made is skipped (FIX-1506 D2): a
+    // send whose POST is still out, and the request the open stream follows.
+    // Once that stream closes, at the end, on a drop or when another replaces
+    // it, the request's notices are heard again: a write after the terminal
+    // status (`onFinished`, an error observer) reaches no stream.
+    const pendingOwnRef = useRef(new Set());
+    const streamRequestIdRef = useRef(null);
+    // Background work running under this session. Read from the server, never
+    // derived from the conversation's own items — a ChildSession is a separate
+    // session, not a message.
+    const [childSessions, setChildSessions] = useState([]);
+    const [childSessionsStale, setChildSessionsStale] = useState(false);
+    // `live: true` only. The unfinished runs the session stream last named, kept
+    // past the page `childSessions` reads; null until a stream has named any.
+    const [liveRuns, setLiveRuns] = useState(null);
+    // `live: true` only. The stream had named the runs and has stopped following
+    // the session: a reconnect failed, or it was refused for good. The rows stay,
+    // the last the view heard, and read as stale until a connection names the
+    // runs again.
+    const [liveLapsed, setLiveLapsed] = useState(false);
+    // The session whose first snapshot has been applied: the live stream opens
+    // only after it, so its first read covers the gap the snapshot left.
+    const [snapshotAppliedFor, setSnapshotAppliedFor] = useState(undefined);
+    // Every live copy the view took, by key, with its place in arrival order,
+    // until a snapshot whose read began after it arrived settles it. The count
+    // is how many copies have arrived so far.
+    const liveItemsRef = useRef(new Map());
+    const liveArrivalsRef = useRef(0);
+    // The server time the applied snapshot's read began. The live stream starts
+    // from it, so nothing kept after that read is missed however long the
+    // snapshot took to arrive.
+    const snapshotAtRef = useRef(undefined);
+    // Snapshot reads overlap: the mount read and its catch-up, a request's
+    // closing read, `refresh()`. Each takes a place in order when it is
+    // requested, and one lands only if no read requested after it has landed:
+    // an older read can lack an item a newer one settled, and no stream sends
+    // that item again.
+    const snapshotSequenceRef = useRef(0);
+    const snapshotAppliedSequenceRef = useRef(0);
+    // A snapshot is two halves, applied apart: its items (guarded above) and
+    // its state, which state-only reads also read. Each half lands only if no
+    // read of it requested later has landed: a state-only read that lands late
+    // doesn't rewind state, and a full read that lands after a newer
+    // state-only read still loads its items and keeps the newer state.
+    const stateSequenceRef = useRef(0);
+    const stateAppliedSequenceRef = useRef(0);
+    // Whether a full snapshot of this session has landed: a state-only read
+    // merges into one, and before then the mount read brings state anyway.
+    const snapshotLandedRef = useRef(false);
+    // The live state and resource changes the request stream merged, in
+    // arrival order, numbered. A read of state that was out when one arrived
+    // may not hold it, so it is put back on top of what the read returned.
+    const liveChangesRef = useRef([]);
+    const liveChangeCountRef = useRef(0);
+    // The number of the newest live change dropped from the kept window: a read
+    // requested before it can't be checked against what it missed.
+    const liveChangesDroppedThroughRef = useRef(0);
+    // A state-only read that landed before the first full snapshot: newer than
+    // the state the mount read holds, so that read loads it instead, with the
+    // live changes since it landed on top.
+    const heldStateRef = useRef(null);
+    // Request status reads take a place in order; only the last one requested
+    // lands, and a session change retires every one in flight.
+    const followedReadSequenceRef = useRef(0);
+    // Bumped on every session change. A stop or dismissal that awaited the
+    // server checks it before touching the view: the session it began in may
+    // be gone, and its reads would land on the next one.
+    const sessionGenerationRef = useRef(0);
+    // The error a snapshot read that failed left, with that read's place in
+    // order. A read requested after it that lands takes it away; an older one
+    // landing late does not, and no read takes away an error from anywhere else.
+    const snapshotFailureRef = useRef(null);
+    // Two guards, and they answer different questions. The generation asks
+    // "is this response still about the thing we are reading?" and advances
+    // whenever the read identity changes (session id, or the client itself,
+    // which is rebuilt when `baseUrl` changes). The sequence asks "of two
+    // responses that are both still relevant, which is newer?" — needed
+    // because the mount read, an action-start read and a manual `refresh()`
+    // all share one identity and can be in flight together.
+    const childSessionGenerationRef = useRef(0);
+    const childSessionSequenceRef = useRef(0);
+    const childSessionAppliedSequenceRef = useRef(0);
+    const [isLoading, setIsLoading] = useState(sessionId !== undefined);
+    const [loadingSessionId, setLoadingSessionId] = useState(sessionId);
+    if (sessionId !== loadingSessionId) {
+        setLoadingSessionId(sessionId);
+        setIsLoading(sessionId !== undefined);
+    }
+    const [isStreaming, setIsStreaming] = useState(false);
+    const [isFinishing, setIsFinishing] = useState(false);
+    const [isStuck, setIsStuck] = useState(false);
+    // Request-scoped status slot mirror — driven by status items arriving in the
+    // SSE stream. Always tracked (even when transient items are filtered from
+    // `items`) so consumers can render a single in-flight indicator.
+    const [statusMessage, setStatusMessage] = useState("");
+    const [error, setError] = useState(null);
+    const streamHandleRef = useRef(null);
+    /** The requestId of the currently in-flight request, used for abort. */
+    const activeRequestIdRef = useRef(null);
+    /**
+     * Captured at the moment the SSE stream emits `onError`, before
+     * `activeRequestIdRef` is cleared. Lets `dismissRequest` target the
+     * request that just dropped — `latestRequest.id` may not have caught
+     * up yet, and `activeRequestIdRef` is null by the time the user clicks
+     * the "Dismiss" button.
+     */
+    const latestRequestIdAfterDropRef = useRef(null);
+    /** The last event a request stream delivered, for `followRequest` to resume after. */
+    const lastStreamEventRef = useRef(null);
+    /**
+     * Requests the person stopped whose stop the server has not yet shown in a
+     * snapshot. The view keeps its own stop record for each until a snapshot
+     * holds the server's: a read taken before the engine wrote its record
+     * would otherwise erase the stop, and the turn would read as running. A
+     * stop pressed while the turn's POST is still out is also read from here,
+     * when the POST answers.
+     */
+    const stoppedRequestsRef = useRef(new Set());
+    /** Requests the person stopped or dismissed: `followRequest` does not pick them back up. */
+    const letGoRef = useRef(new Set());
+    /**
+     * Wall-clock timestamp of the most recent SSE event or heartbeat. The
+     * watchdog reads this to decide whether the stream has gone silent
+     * past `stuckThresholdMs`.
+     */
+    const lastEventAtRef = useRef(Date.now());
+    /**
+     * Mirror of `isStuck` state. Reads from a ref let `sendAction` and
+     * `dismissRequest` consult the latest stuck-flag without depending on
+     * the `isStuck` state directly, which would churn their useCallback
+     * identities every time the watchdog flips.
+     */
+    const isStuckRef = useRef(false);
+    /**
+     * Mirror of `latestRequest` state. Same motive as `isStuckRef` —
+     * `dismissRequest`'s id-resolution chain reads this without taking
+     * `latestRequest` as a dep, so the callback stays stable across
+     * request lifecycle transitions.
+     */
+    const latestRequestRef = useRef(null);
+    const storeRef = useRef(createRequestStreamStore({ keyOf: keyOfItem }));
+    // Item ids the filter rejected this stream. The shared store keeps deltas for
+    // not-yet-present items buffered (so early deltas survive), so a filtered item
+    // — which never enters the store — would otherwise buffer deltas forever.
+    // Mirrors the filter seam in `bindStoreToCallbacks`: drop its deltas on
+    // arrival. Reset per stream in `attachToStream`.
+    const rejectedItemIdsRef = useRef(new Set());
+    /**
+     * Buffer for `state_change` items received before the initial snapshot
+     * lands. The reducer (`mergeStateChangeIntoSnapshot`) bails when
+     * `prev === null`, so without this buffer any state mutations emitted
+     * between SSE subscribe and snapshot fetch resolution would be lost —
+     * users would only see the terminal snapshot's "all published" state
+     * with no intermediate transitions. Drained in `applySnapshot`.
+     */
+    const pendingStateChangesRef = useRef([]);
+    // FIX-739.
+    /**
+     * Buffer for `live: true` `resource_change` items received before the initial
+     * snapshot lands — the resource-side twin of `pendingStateChangesRef`.
+     * `mergeResourceChangeIntoSnapshot` bails when `prev === null`, so
+     * mid-stream resource deltas emitted before the snapshot resolves would be
+     * lost without this buffer. Drained in `applySnapshot`.
+     */
+    const pendingResourceChangesRef = useRef([]);
+    const flushHandleRef = useRef(null);
+    /** Tracks whether resource changes occurred during streaming, so we can batch one refresh at completion. */
+    const resourceChangedDuringStreamRef = useRef(false);
+    // FIX-523.
+    /**
+     * Subscribers attached via `subscribeAudioDelta`. The set lives
+     * on a ref so handler identities can mutate over the lifetime of a
+     * subscriber without forcing re-renders. We dispatch synchronously inside
+     * the SSE callback so downstream consumers (the audio player) get the
+     * chunk before any React state update batching.
+     */
+    const audioDeltaListenersRef = useRef(new Set());
+    // Mirror state into refs so callbacks that consult these values can
+    // stay stable across renders. Without these mirrors, `sendAction` and
+    // `dismissRequest` would have to take the underlying state as deps and
+    // get recreated on every state transition (defeating useCallback's
+    // identity stability).
+    useEffect(() => {
+        isStuckRef.current = isStuck;
+    }, [isStuck]);
+    useEffect(() => {
+        latestRequestRef.current = latestRequest;
+    }, [latestRequest]);
+    const cancelScheduledFlush = useCallback(() => {
+        if (flushHandleRef.current === null) {
+            return;
+        }
+        if (typeof window !== "undefined" && typeof window.cancelAnimationFrame === "function") {
+            window.cancelAnimationFrame(flushHandleRef.current);
+        }
+        else {
+            clearTimeout(flushHandleRef.current);
+        }
+        flushHandleRef.current = null;
+    }, []);
+    // One client for every call and stream this view makes, memoized so a
+    // re-render keeps its streams open.
+    const fsd = useClient({ userId, baseUrl });
+    const sessionsApi = fsd.sessions;
+    const flow = useMemo(() => fsd.flow(resolvedFlowKind), [fsd, resolvedFlowKind]);
+    /**
+     * Fetch the single most recent request for this session.
+     *
+     * Returns the record it read (or `null`) as well as storing it, so a caller
+     * that needs the value it just fetched does not have to wait a render for
+     * the state to settle. The mount effect uses this to tell "the latest
+     * request was still running when we read the snapshot" from "the session was
+     * already idle" — see the catch-up read below.
+     */
+    const refreshLatestRequest = useCallback(async () => {
+        if (sessionId === undefined) {
+            setLatestRequest(null);
+            return null;
+        }
+        const generation = sessionGenerationRef.current;
+        try {
+            const list = await sessionsApi.requests(sessionId, { limit: 1 });
+            // The session changed while the read was out: it describes the last one.
+            if (generation !== sessionGenerationRef.current)
+                return null;
+            const latest = list[0] ?? null;
+            setLatestRequest(latest);
+            return latest;
+        }
+        catch {
+            // Best effort — a missing latest request shouldn't surface as a
+            // session-level error. Consumers see the previous value.
+            return null;
+        }
+    }, [sessionId, sessionsApi]);
+    /**
+     * Re-read this session's background work.
+     *
+     * One read per call — there is no digest and no coalescing, because the
+     * panel is current as of the caller's last interaction, or with `live`, the
+     * last run that started or finished. A failed read keeps the rows already
+     * on screen and raises `childSessionsStale`; it never clears the list,
+     * because showing nothing would claim the work went away.
+     */
+    const refreshChildSessions = useCallback(async () => {
+        if (sessionId === undefined) {
+            setChildSessions([]);
+            setChildSessionsStale(false);
+            return;
+        }
+        const generation = childSessionGenerationRef.current;
+        const sequence = ++childSessionSequenceRef.current;
+        try {
+            const rows = await sessionsApi.children(sessionId, 
+            // Omitted entirely when the app named no page, so the route applies
+            // its own default rather than being handed a number this side guessed.
+            childSessionLimit === undefined ? undefined : { limit: childSessionLimit });
+            // Superseded: we are now reading a different session, or the same
+            // session from a different backend.
+            if (generation !== childSessionGenerationRef.current)
+                return;
+            // A newer read of this same session already landed. Applying this one
+            // would regress the list — including turning a finished row back into
+            // an unfinished one.
+            if (sequence <= childSessionAppliedSequenceRef.current)
+                return;
+            childSessionAppliedSequenceRef.current = sequence;
+            setChildSessions(rows);
+            setChildSessionsStale(false);
+        }
+        catch {
+            if (generation !== childSessionGenerationRef.current)
+                return;
+            // A failure is an outcome, so it is ordered like one. Without this a
+            // slow read that rejects after a newer read succeeded would flag fresh
+            // rows as stale; and because a failure that skipped the ordering never
+            // advanced the applied sequence, an older read settling later would
+            // then be applied on top and clear the flag.
+            if (sequence <= childSessionAppliedSequenceRef.current)
+                return;
+            childSessionAppliedSequenceRef.current = sequence;
+            // Keep the last known rows, but stop presenting them as current.
+            setChildSessionsStale(true);
+        }
+    }, [sessionId, sessionsApi, childSessionLimit]);
+    const flushContentDeltas = useCallback(() => {
+        flushHandleRef.current = null;
+        if (storeRef.current.flushDeltas()) {
+            setItems(storeRef.current.getSorted());
+        }
+    }, []);
+    const scheduleContentFlush = useCallback(() => {
+        if (flushHandleRef.current !== null) {
+            return;
+        }
+        if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+            flushHandleRef.current = window.requestAnimationFrame(() => {
+                flushContentDeltas();
+            });
+            return;
+        }
+        flushHandleRef.current = setTimeout(() => {
+            flushContentDeltas();
+        }, 0);
+    }, [flushContentDeltas]);
+    /**
+     * Take one copy of an item from a live source: the view's own request
+     * stream (`own`) or the session stream (`session`). Every live copy comes
+     * through here, so each rule of the join holds whichever source it came
+     * from:
+     *
+     * - The server's user message for a request replaces the one the view
+     *   showed while that request was sent.
+     * - A finished copy stands: no unfinished copy replaces it, and no finished
+     *   copy the server stamped earlier (a keyed item's earlier emission). Nor
+     *   does a session copy replace a finished one stamped the same; that is a
+     *   repeat, or the view's own copy, which can hold a part added since the
+     *   session's read.
+     * - A finished copy holds every text delta, so any still queued for the
+     *   item are older than it.
+     * - The copy is remembered in arrival order, so a snapshot whose read began
+     *   before it arrived doesn't take it away (see `applySnapshot`).
+     *
+     * Returns whether the view changed.
+     */
+    const takeLiveItem = useCallback((item, from) => {
+        const store = storeRef.current;
+        const replacedOptimistic = item.type === "message" &&
+            item.role === "user" &&
+            store.deleteById(itemKey(item.requestId, optimisticIdOf(item.requestId)));
+        const key = keyOfItem(item);
+        const held = store.getById(key);
+        const repeat = held !== undefined && isFinished(held) && compareItemOrder(item, held) === 0;
+        if (!mayReplaceItem(held, item) || (from === "session" && repeat))
+            return replacedOptimistic;
+        if (isFinished(item))
+            store.discardDeltas(key);
+        liveArrivalsRef.current += 1;
+        liveItemsRef.current.set(key, liveArrivalsRef.current);
+        store.upsert(item);
+        return true;
+    }, []);
+    /** Take a snapshot read's place in order, as it is requested. */
+    const beginStateRead = useCallback(() => ({ sequence: ++stateSequenceRef.current, changesBefore: liveChangeCountRef.current }), []);
+    /** Take a snapshot read's place in order, as it is requested. */
+    const beginSnapshotRead = useCallback(() => ({
+        arrivalsBefore: liveArrivalsRef.current,
+        sequence: ++snapshotSequenceRef.current,
+        state: beginStateRead()
+    }), [beginStateRead]);
+    /**
+     * State, with the live changes numbered after `after` put back on top.
+     * A read carries no version to say which of them it holds, so only the
+     * changes after the last one that can't be put back (see `isRepeatable`)
+     * are: none lands over the effect of an `increment`, `push`, `atomic` or
+     * updater patch the read may hold. What the read lacks of those comes
+     * with the next read, at the latest the one at the request's end, taken
+     * with its stream closed. `null` when changes in the window were dropped
+     * from the kept list: the view keeps the state it has until that read.
+     */
+    const withLiveChanges = useCallback((next, after, heldThrough = false) => {
+        if (after < liveChangesDroppedThroughRef.current)
+            return null;
+        const since = liveChangesRef.current.filter(({ n }) => n > after);
+        // `heldThrough`: `next` is known to hold no change after `after` (a
+        // response already in hand then), so every one is put back.
+        let from = 0;
+        if (!heldThrough) {
+            since.forEach(({ item }, index) => {
+                if (!isRepeatable(item))
+                    from = index + 1;
+            });
+        }
+        let merged = next;
+        for (const { item } of since.slice(from)) {
+            const changed = item.type === "state_change"
+                ? mergeStateChangeIntoSnapshot(merged, item)
+                : mergeResourceChangeIntoSnapshot(merged, item);
+            if (changed !== null)
+                merged = changed;
+        }
+        return { clientData: merged.clientData, resources: merged.resources };
+    }, []);
+    /**
+     * The state half of a read, or `null` when a read of state requested after
+     * it has already landed, or the live changes that arrived while it was out
+     * can't be put back on top of it (see `withLiveChanges`).
+     */
+    const takeState = useCallback((next, read) => {
+        if (read.sequence <= stateAppliedSequenceRef.current)
+            return null;
+        stateAppliedSequenceRef.current = read.sequence;
+        return withLiveChanges(next, read.changesBefore);
+    }, [withLiveChanges]);
+    /** Keep a live state or resource change the stream merged, for reads in flight to put back. */
+    const keepLiveChange = useCallback((item) => {
+        const kept = liveChangesRef.current;
+        kept.push({ n: ++liveChangeCountRef.current, item });
+        if (kept.length > KEPT_LIVE_CHANGES) {
+            const dropped = kept.splice(0, kept.length - KEPT_LIVE_CHANGES);
+            liveChangesDroppedThroughRef.current = dropped[dropped.length - 1].n;
+        }
+    }, []);
+    /**
+     * Load a snapshot over the view, unless a read requested after this one has
+     * already landed; returns whether it did. It settles the live copies that
+     * had arrived when its read was requested, and none that came after.
+     */
+    const applySnapshot = useCallback((nextSnapshot, read, nextDetail) => {
+        if (read.sequence <= snapshotAppliedSequenceRef.current)
+            return false;
+        snapshotAppliedSequenceRef.current = read.sequence;
+        // A read requested after the one that failed has landed: the view is
+        // current again, so that failure no longer describes it.
+        const failure = snapshotFailureRef.current;
+        if (failure !== null && read.sequence > failure.sequence) {
+            snapshotFailureRef.current = null;
+            setError((current) => (current === failure.error ? null : current));
+        }
+        const { arrivalsBefore } = read;
+        snapshotAtRef.current = nextSnapshot.at;
+        // Drain any state_changes that arrived while snapshot was null. The
+        // snapshot represents server state at fetch time; replaying queued
+        // events on top brings the local view up to whatever state the
+        // server has emitted since. Events emitted *before* the snapshot's
+        // read time are already reflected in `nextSnapshot.clientData`, so
+        // re-applying them is at worst idempotent — the next forward
+        // state_change in the queue overwrites any momentary regression.
+        const pending = pendingStateChangesRef.current;
+        pendingStateChangesRef.current = [];
+        let merged = nextSnapshot;
+        for (const sc of pending) {
+            const next = mergeStateChangeIntoSnapshot(merged, sc);
+            if (next !== null) {
+                merged = next;
+            }
+        }
+        // Drain buffered live resource_change deltas the same way (FIX-739).
+        const pendingResources = pendingResourceChangesRef.current;
+        pendingResourceChangesRef.current = [];
+        for (const resourceChange of pendingResources) {
+            const next = mergeResourceChangeIntoSnapshot(merged, resourceChange);
+            if (next !== null) {
+                merged = next;
+            }
+        }
+        // The state half: unless a newer read of state has landed (then the
+        // view keeps that, with what the stream merged into it since).
+        // A state-only read that landed before this one is newer than it.
+        // The session's detail was read with the state, so it goes with it.
+        const heldState = heldStateRef.current;
+        heldStateRef.current = null;
+        const superseded = read.state.sequence <= stateAppliedSequenceRef.current;
+        const state = takeState(merged, read.state) ??
+            (heldState !== null ? withLiveChanges({ ...merged, ...heldState.state }, heldState.changesAt, true) : null);
+        if (!superseded) {
+            if (nextDetail !== undefined)
+                setDetail(nextDetail);
+        }
+        else if (heldState !== null) {
+            setDetail(heldState.detail);
+        }
+        snapshotLandedRef.current = true;
+        setSnapshot((prev) => state !== null ? { ...merged, ...state } : prev === null ? merged : { ...merged, clientData: prev.clientData, resources: prev.resources });
+        if (!itemConfig.enabled) {
+            storeRef.current.clear();
+            setItems([]);
+            return true;
+        }
+        const filtered = [...(nextSnapshot.items ?? [])]
+            .filter((item) => passesItemFilter(item, {
+            includeTransient: itemConfig.includeTransient,
+            itemTypes: itemConfig.itemTypes
+        }))
+            .sort(compareItemOrder);
+        // Put back what the snapshot must not take from the view. A live copy
+        // that arrived after the read was requested can be newer than what the
+        // read saw, or missing from it, however long the read took; it stays
+        // until a later snapshot settles it. A copy that arrived before is
+        // settled here. What the session stream sends is already kept, so the
+        // read holds it or shows it is gone. (The view's own stream can run a
+        // moment ahead of what is kept; its request's closing snapshot settles
+        // those.) And a read taken while an item was still being written holds
+        // it unfinished, where the view may already hold it finished, or holds
+        // an earlier copy of a keyed item the view already holds a later one of.
+        const held = storeRef.current.getRaw();
+        storeRef.current.loadSnapshot(filtered);
+        const live = liveItemsRef.current;
+        for (const kept of held) {
+            const key = keyOfItem(kept);
+            const loaded = storeRef.current.getById(key);
+            const arrival = live.get(key);
+            if (arrival !== undefined && arrival > arrivalsBefore) {
+                if (mayReplaceItem(loaded, kept))
+                    storeRef.current.upsert(kept);
+            }
+            else {
+                live.delete(key);
+                if (loaded !== undefined && !mayReplaceItem(kept, loaded))
+                    storeRef.current.upsert(kept);
+            }
+        }
+        // Put back the view's own stop record for each request the person
+        // stopped, until a snapshot holds the server's record of that stop.
+        const stopped = stoppedRequestsRef.current;
+        for (const requestId of [...stopped]) {
+            if ((nextSnapshot.items ?? []).some((item) => isStopRecordOf(item, requestId))) {
+                stopped.delete(requestId);
+                continue;
+            }
+            const shown = held.find((item) => item.requestId === requestId && item.id === abortItemIdOf(requestId));
+            if (shown !== undefined)
+                storeRef.current.upsert(shown);
+        }
+        setItems(storeRef.current.getSorted());
+        return true;
+    }, [itemConfig.enabled, itemConfig.includeTransient, itemConfig.itemTypes, takeState, withLiveChanges]);
+    /**
+     * Show the error a snapshot read met, unless a read requested after it has
+     * already landed: the view is current then, whatever this one met.
+     */
+    const failSnapshotRead = useCallback((read, cause) => {
+        if (read.sequence <= snapshotAppliedSequenceRef.current)
+            return;
+        const error = cause instanceof Error ? cause : new Error(String(cause));
+        snapshotFailureRef.current = { error, sequence: read.sequence };
+        setError(error);
+    }, []);
+    const fetchSessionSnapshot = useCallback(async () => {
+        if (sessionId === undefined) {
+            return null;
+        }
+        if (!itemConfig.enabled) {
+            return sessionsApi.state(sessionId, {
+                includeItems: false
+            });
+        }
+        // The client's paged read: it starts over when the history moves under
+        // it, and fails rather than show part of the history as all of it.
+        return readSessionHistory(sessionsApi, sessionId, { itemTypes: itemConfig.itemTypes });
+    }, [sessionId, sessionsApi, itemConfig.enabled, itemConfig.itemTypes]);
+    const refreshSnapshot = useCallback(async () => {
+        if (sessionId === undefined) {
+            return;
+        }
+        const read = beginSnapshotRead();
+        try {
+            const [nextDetail, nextSnapshot] = await Promise.all([
+                sessionsApi.get(sessionId),
+                fetchSessionSnapshot()
+            ]);
+            // The detail was read with the snapshot, so it lands with its state.
+            if (nextSnapshot !== null)
+                applySnapshot(nextSnapshot, read, nextDetail);
+        }
+        catch (cause) {
+            failSnapshotRead(read, cause);
+        }
+    }, [sessionId, sessionsApi, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead]);
+    /**
+     * Read one request's record for `followedRequest`, when the latest-request
+     * read doesn't cover it. Best effort, like that read: on failure the
+     * stream's status stands.
+     */
+    const readFollowedStatus = useCallback((requestId) => {
+        const sequence = ++followedReadSequenceRef.current;
+        flow
+            .request(requestId)
+            .status()
+            .then((record) => sequence === followedReadSequenceRef.current &&
+            setReadFollowed({
+                id: record.id,
+                status: record.status,
+                startedAtMs: record.startedAtMs,
+                ...(record.completedAtMs !== undefined ? { completedAtMs: record.completedAtMs } : {})
+            }), () => undefined);
+    }, [flow]);
+    /**
+     * Read the record of a request whose stream no longer reports on it: the
+     * latest-request read, and the request's own status when a request sent
+     * beside it is newer.
+     */
+    const readRecordOf = useCallback((requestId) => {
+        // The status read takes its place in order now, not when the latest
+        // read answers: a status read requested meanwhile (for a request shown
+        // since, or another session) is newer, and this one must not follow it.
+        const sequence = followedReadSequenceRef.current;
+        void refreshLatestRequest().then((latest) => {
+            if (sequence !== followedReadSequenceRef.current)
+                return;
+            if (latest?.id !== requestId)
+                readFollowedStatus(requestId);
+        });
+    }, [refreshLatestRequest, readFollowedStatus]);
+    /**
+     * Re-read the session's state and detail, and no items: one state read
+     * with `includeItems: false`, merged into the snapshot on screen through
+     * the same state half a full read uses. Rejects when the read fails, so the
+     * live read can try again on its own; a failed read leaves state as it was.
+     */
+    const readState = useCallback(async () => {
+        if (sessionId === undefined)
+            return;
+        const read = beginStateRead();
+        const [nextDetail, next] = await Promise.all([
+            sessionsApi.get(sessionId),
+            sessionsApi.state(sessionId, { includeItems: false })
+        ]);
+        const superseded = read.sequence <= stateAppliedSequenceRef.current;
+        const state = takeState(next, read);
+        if (!superseded && snapshotLandedRef.current)
+            setDetail(nextDetail);
+        if (state === null)
+            return;
+        if (!snapshotLandedRef.current) {
+            // The mount read is still out and holds older state: it loads this.
+            heldStateRef.current = { state, detail: nextDetail, changesAt: liveChangeCountRef.current };
+            return;
+        }
+        setSnapshot((prev) => (prev === null ? prev : { ...prev, ...state }));
+    }, [sessionId, sessionsApi, beginStateRead, takeState]);
+    /**
+     * {@link readState}, best effort, like `refreshLatestRequest`: a failed
+     * read leaves state as it was, and the next read of either kind brings it
+     * current.
+     */
+    const refreshState = useCallback(async () => {
+        try {
+            await readState();
+        }
+        catch {
+            // Best effort: see above.
+        }
+    }, [readState]);
+    /**
+     * Attach to an existing request's stream, optionally resuming from a cursor.
+     * Used by both sendAction (new requests) and autoResume (in-progress requests).
+     *
+     * When `inlineResponse` is provided, SSE events are consumed directly from
+     * the POST action response body (inline streaming) instead of opening a
+     * separate GET connection. This is essential on serverless platforms where
+     * POST and GET may hit different instances.
+     */
+    const attachToStream = useCallback((requestId, startingAfter, inlineResponse) => {
+        if (streamHandleRef.current !== null) {
+            streamHandleRef.current.close();
+            streamHandleRef.current = null;
+        }
+        setIsStreaming(true);
+        setStreamStatus({ id: requestId, status: "in_progress" });
+        // Resumed after its last event, the stream skips a status that already
+        // said the request no longer blocks: keep what the view had. From the
+        // start, only this stream's own events may set where a resume picks up.
+        if (startingAfter === undefined) {
+            setIsFinishing(false);
+            lastStreamEventRef.current = null;
+        }
+        setIsStuck(false);
+        latestRequestIdAfterDropRef.current = null;
+        rejectedItemIdsRef.current.clear();
+        // Baseline the watchdog at stream open so it doesn't fire instantly
+        // on the first slow response.
+        lastEventAtRef.current = Date.now();
+        // New request — reset any lingering status from a previous request so
+        // the in-flight indicator starts at "Thinking…" until a block emits.
+        setStatusMessage("");
+        const filter = {
+            includeTransient: itemConfig.includeTransient,
+            itemTypes: itemConfig.itemTypes
+        };
+        const sseCallbacks = {
+            onEvent: (event) => {
+                lastEventAtRef.current = Date.now();
+                lastStreamEventRef.current = { requestId, sequence: event.sequence_number };
+            },
+            onHeartbeat: () => {
+                lastEventAtRef.current = Date.now();
+            },
+            onItemAdded: (event) => {
+                if (event.item.type === "status") {
+                    const statusItem = event.item;
+                    if (statusItem.blocked === false) {
+                        setIsFinishing(true);
+                    }
+                    // Mirror the server-side status slot. Items carry the slot value
+                    // whether the caller passed a message or just updated signals, so
+                    // we always track the latest. Filtered separately below (status
+                    // items are transient by default).
+                    if (typeof statusItem.message === "string") {
+                        setStatusMessage(statusItem.message);
+                    }
+                }
+                // resource_change and state_change are the framework's two
+                // invalidation paths (both InvalidationItem leaves in core). There are
+                // two resource_change shapes:
+                //
+                //   - LIVE (`client.live: true`, carries an inline `delta`, FIX-739):
+                //     merge the projected delta into the cached snapshot mid-stream —
+                //     same mechanism as state_change — and skip the refetch path so a
+                //     subscribed useCollectionResource/useResource updates with no
+                //     HTTP round-trip.
+                //   - DEFAULT (no delta): resources have separate content endpoints,
+                //     so flag a single batched snapshot refetch at completion rather
+                //     than firing per-change fetches (which burst during
+                //     artifact-heavy flows). The onRequestStatus handler checks the
+                //     flag; the notice channel drives collection-hook invalidation.
+                if (event.item.type === "resource_change") {
+                    const rc = event.item;
+                    if (isReducibleResourceChange(rc)) {
+                        // Live: merge the delta into the snapshot so a subscribed item
+                        // updates with no refetch. A create or delete also changes
+                        // membership/cardinality, which the per-item overlay handles but
+                        // `count` / list pages don't — flag a single batched refetch at
+                        // completion to reconcile those (mid-stream item state stays live).
+                        if (rc.changeType === "created" || rc.changeType === "deleted") {
+                            resourceChangedDuringStreamRef.current = true;
+                        }
+                        keepLiveChange(rc);
+                        setSnapshot((prev) => {
+                            if (prev === null) {
+                                pendingResourceChangesRef.current.push(rc);
+                                return prev;
+                            }
+                            return mergeResourceChangeIntoSnapshot(prev, rc);
+                        });
+                    }
+                    else {
+                        resourceChangedDuringStreamRef.current = true;
+                        resourceChangeSeqRef.current++;
+                        const notice = {
+                            resourcePath: rc.resourcePath,
+                            changeType: rc.changeType,
+                            seq: resourceChangeSeqRef.current
+                        };
+                        setResourceChanges((prev) => [...prev, notice]);
+                    }
+                }
+                // FIX-576: reduce session/user/org-scope state_change items into the
+                // cached snapshot's clientData so useClientData reflects mid-stream
+                // patches without waiting for the terminal-status snapshot refresh.
+                // Falls through to the items-log path below for non-transient cases.
+                //
+                // Race: the SSE stream subscribes immediately when an action is
+                // dispatched, but the initial snapshot fetch is async. State_change
+                // items that land before the snapshot resolves can't merge (the
+                // reducer needs a non-null prev), so buffer them here and replay
+                // in `applySnapshot` once the snapshot lands. Without this buffer,
+                // first-run sessions miss every intermediate state transition.
+                if (isReducibleStateChange(event.item)) {
+                    const sc = event.item;
+                    keepLiveChange(sc);
+                    setSnapshot((prev) => {
+                        if (prev === null) {
+                            pendingStateChangesRef.current.push(sc);
+                            return prev;
+                        }
+                        return mergeStateChangeIntoSnapshot(prev, sc);
+                    });
+                }
+                if (!passesItemFilter(event.item, filter)) {
+                    // Never enters the store — drop any deltas it streams (buffered ones
+                    // now, future ones via the rejected set) so they don't accumulate.
+                    rejectedItemIdsRef.current.add(event.item.id);
+                    storeRef.current.discardDeltas(keyOfItem(event.item));
+                    return;
+                }
+                if (takeLiveItem(event.item, "own"))
+                    setItems(storeRef.current.getSorted());
+            },
+            onItemDone: (event) => {
+                if (!passesItemFilter(event.item, filter)) {
+                    rejectedItemIdsRef.current.add(event.item.id);
+                    storeRef.current.discardDeltas(keyOfItem(event.item));
+                    return;
+                }
+                if (takeLiveItem(event.item, "own"))
+                    setItems(storeRef.current.getSorted());
+            },
+            onItemUpdated: (event) => {
+                // Every patch comes before its item finishes, so on a finished copy
+                // it is older than it (a resumed stream replays from the start). An
+                // item the view doesn't hold, the filter's rejects among them, has
+                // nothing to patch.
+                const key = itemKey(event.requestId, event.itemId);
+                const held = storeRef.current.getById(key);
+                if (held === undefined || isFinished(held))
+                    return;
+                if (!storeRef.current.applyItemPatch(key, event.patch))
+                    return;
+                // The patched copy is live, like any copy `takeLiveItem` takes: a
+                // snapshot whose read began before it arrived doesn't take it away.
+                liveArrivalsRef.current += 1;
+                liveItemsRef.current.set(key, liveArrivalsRef.current);
+                setItems(storeRef.current.getSorted());
+            },
+            onContentAdded: (event) => {
+                const key = itemKey(event.requestId, event.itemId);
+                // On a finished copy, a part it already has is older than it. A part
+                // added after the item finished (synthesized audio, say) is new.
+                const held = storeRef.current.getById(key);
+                if (held !== undefined && isFinished(held) && event.contentIndex < partCount(held))
+                    return;
+                if (storeRef.current.applyContentAdded(key, event.contentIndex, event.content)) {
+                    setItems(storeRef.current.getSorted());
+                }
+            },
+            onContentDelta: (event) => {
+                // Skip deltas for items the filter already rejected — they will never
+                // enter the store, so buffering them just grows the queue.
+                if (rejectedItemIdsRef.current.has(event.itemId))
+                    return;
+                const key = itemKey(event.requestId, event.itemId);
+                // Every text delta comes before its item finishes.
+                if (isFinished(storeRef.current.getById(key)))
+                    return;
+                storeRef.current.accumulateDelta(key, event.contentIndex, event.delta);
+                scheduleContentFlush();
+            },
+            onContentDone: (event) => {
+                // Settle the slot to its authoritative final content (drops any
+                // queued delta for it). Inherited from the shared store — the prior
+                // hand-rolled callbacks had no content.done handler.
+                const key = itemKey(event.requestId, event.itemId);
+                if (storeRef.current.applyContentDone(key, event.contentIndex, event.content)) {
+                    setItems(storeRef.current.getSorted());
+                }
+            },
+            onContentAudioDelta: (event) => {
+                // Fan out to subscribers (useVoice or any external consumer
+                // that attached via session.subscribeAudioDelta). A misbehaving
+                // listener must not block delivery to the rest of the set.
+                for (const listener of audioDeltaListenersRef.current) {
+                    try {
+                        listener(event);
+                    }
+                    catch {
+                        // Swallow — the listener's caller owns reporting.
+                    }
+                }
+            },
+            onSessionMetadataChanged: (event) => {
+                setDetail((prev) => {
+                    if (prev === null) {
+                        return prev;
+                    }
+                    return {
+                        ...prev,
+                        ...(event.title !== undefined ? { title: event.title } : {}),
+                        ...(event.description !== undefined ? { description: event.description } : {}),
+                        ...(event.tags !== undefined ? { tags: event.tags } : {}),
+                        ...(event.metadata !== undefined
+                            ? { metadata: { ...prev.metadata, ...event.metadata } }
+                            : {})
+                    };
+                });
+            },
+            onRequestStatus: (event) => {
+                // A suspension closes the stream with the request not ended: its
+                // record says where it goes next (resumed elsewhere, say), so the
+                // stream's status does not stand over it.
+                setStreamStatus(event.status === "suspended" ? (current) => (current?.id === requestId ? null : current) : { id: requestId, status: event.status });
+                if (event.status === "completed" ||
+                    event.status === "failed" ||
+                    event.status === "incomplete" ||
+                    event.status === "interrupted" ||
+                    event.status === "aborted" ||
+                    event.status === "suspended") {
+                    flushContentDeltas();
+                    setIsStreaming(false);
+                    setIsFinishing(false);
+                    setIsStuck(false);
+                    latestRequestIdAfterDropRef.current = null;
+                    // Status slot clears automatically on request termination per FIX-387.
+                    setStatusMessage("");
+                    activeRequestIdRef.current = null;
+                    streamHandleRef.current?.close();
+                    streamHandleRef.current = null;
+                    // Refresh on completion, or on failure/incomplete/aborted if resources
+                    // changed during streaming (batched instead of per-change).
+                    // A completed request reads the whole snapshot: the view's own
+                    // stream can run a moment ahead of what is kept, and this closing
+                    // read settles those items. However else it ended, re-read state
+                    // only (resources included, so a create or delete mid-stream is
+                    // reconciled too): what it wrote as it ended, a failure record
+                    // say, may have come after the stream's last event.
+                    resourceChangedDuringStreamRef.current = false;
+                    if (event.status === "completed") {
+                        void refreshSnapshot();
+                    }
+                    else {
+                        void refreshState();
+                    }
+                    // Refresh the latestRequest summary so consumers can render
+                    // recovery affordances (e.g. a Resume button when status moves
+                    // to `interrupted`). It is this request's record too, unless a
+                    // request sent beside it is newer: then read this one's own.
+                    readRecordOf(requestId);
+                }
+            },
+            onClose: () => {
+                // The inline stream ended with no terminal event: the server cut off
+                // a reader that fell behind, or the connection ended early. The
+                // request runs on, so follow it on its own stream from the last
+                // event this view applied; that stream resumes itself from then on.
+                // A stream the view closed (a stop, a terminal status, a new
+                // request) never gets here.
+                if (streamHandleRef.current !== handle || !followingInline)
+                    return;
+                followingInline = false;
+                const last = lastStreamEventRef.current;
+                handle = follow(last?.requestId === requestId ? last.sequence : startAfter);
+                streamHandleRef.current = handle;
+            },
+            onError: () => {
+                // Capture the in-flight requestId BEFORE clearing the active ref so
+                // the watchdog and any subsequent dismissRequest() call still have a
+                // target to address. After capturing, clear the active ref — its
+                // role is "stream is open"; the post-error sentinel is
+                // latestRequestIdAfterDropRef.
+                if (activeRequestIdRef.current !== null) {
+                    latestRequestIdAfterDropRef.current = activeRequestIdRef.current;
+                    activeRequestIdRef.current = null;
+                }
+                flushContentDeltas();
+                setIsStreaming(false);
+                setStatusMessage("");
+                streamHandleRef.current?.close();
+                streamHandleRef.current = null;
+                // A dropped stream no longer reports on the request: its record
+                // says where it is, until a resume follows it again.
+                setStreamStatus((current) => (current?.id === requestId ? null : current));
+                readRecordOf(requestId);
+            }
+        };
+        const startAfter = startingAfter !== undefined ? Number(startingAfter) : undefined;
+        const follow = (after) => flow.request(requestId).stream({ startingAfter: after, ...sseCallbacks });
+        let followingInline = inlineResponse !== undefined;
+        let handle = inlineResponse !== undefined
+            ? createSSEClientFromResponse({ response: inlineResponse, ...sseCallbacks })
+            : follow(startAfter);
+        streamHandleRef.current = handle;
+        streamRequestIdRef.current = requestId;
+        pendingOwnRef.current.delete(requestId);
+    }, [
+        itemConfig.includeTransient,
+        itemConfig.itemTypes,
+        flow,
+        refreshSnapshot,
+        refreshState,
+        readRecordOf,
+        keepLiveChange,
+        scheduleContentFlush,
+        flushContentDeltas,
+        takeLiveItem
+    ]);
+    // Retire every childSession read in flight and clear the axis whenever what
+    // we are reading — or where we are reading it from — changes. Declared
+    // before the load effect below so the generation has already advanced by
+    // the time the new identity's first read is issued.
+    useEffect(() => {
+        childSessionGenerationRef.current += 1;
+        childSessionAppliedSequenceRef.current = 0;
+        setChildSessions([]);
+        setChildSessionsStale(false);
+    }, [sessionId, sessionsApi]);
+    // The mount read. Besides a `live` view's run notices, this is the only
+    // read that is not tied to a user interaction: it covers arriving at a
+    // conversation that already has background work running.
+    useEffect(() => {
+        void refreshChildSessions();
+    }, [refreshChildSessions]);
+    useEffect(() => {
+        // Every read in flight was requested for what the view showed before: a
+        // previous session, or another item filter. None may land now.
+        snapshotAppliedSequenceRef.current = snapshotSequenceRef.current;
+        stateAppliedSequenceRef.current = stateSequenceRef.current;
+        snapshotLandedRef.current = false;
+        liveChangesRef.current = [];
+        liveChangesDroppedThroughRef.current = liveChangeCountRef.current;
+        heldStateRef.current = null;
+        followedReadRef.current = null;
+        followedReadSequenceRef.current += 1;
+        sessionGenerationRef.current += 1;
+        setStreamStatus(null);
+        setReadFollowed(null);
+        if (sessionId === undefined) {
+            resourceChangedDuringStreamRef.current = false;
+            resourceChangeSeqRef.current = 0;
+            storeRef.current.clear();
+            liveItemsRef.current.clear();
+            pendingStateChangesRef.current = [];
+            pendingResourceChangesRef.current = [];
+            cancelScheduledFlush();
+            setDetail(null);
+            setSnapshot(null);
+            setLatestRequest(null);
+            setItems([]);
+            setResourceChanges([]);
+            setError(null);
+            return;
+        }
+        let cancelled = false;
+        setError(null);
+        setSnapshotAppliedFor(undefined);
+        void (async () => {
+            // The snapshot read in flight, if any: a failure while one is out is
+            // that read's, and a later read that lands takes it away.
+            let reading;
+            try {
+                // The catch-up below has to know the latest request was still running
+                // BEFORE the snapshot was read, and a status read that RACES the
+                // snapshot cannot establish that: the server may serve the snapshot
+                // while the request is still running and serve the status after it
+                // completed, leaving the status terminal while the snapshot is
+                // already stale — so the catch-up would be skipped in exactly the
+                // case it exists for. Reading the status first makes a terminal
+                // status proof that the snapshot taken after it is current.
+                // Sequential on the autoResume path only; every other consumer keeps
+                // the single parallel round trip.
+                const latestBeforeSnapshot = autoResume ? await refreshLatestRequest() : null;
+                if (cancelled) {
+                    return;
+                }
+                const read = beginSnapshotRead();
+                reading = read;
+                const [nextDetail, nextSnapshot] = await Promise.all([
+                    sessionsApi.get(sessionId),
+                    fetchSessionSnapshot(),
+                    autoResume
+                        ? Promise.resolve(latestBeforeSnapshot)
+                        : refreshLatestRequest()
+                ]);
+                reading = undefined;
+                if (cancelled) {
+                    return;
+                }
+                if (nextSnapshot !== null) {
+                    // Not landing means a read of this session requested since has.
+                    applySnapshot(nextSnapshot, read, nextDetail);
+                    setSnapshotAppliedFor(sessionId);
+                }
+                // Auto-resume: if enabled, check if latest request is in-progress and attach.
+                if (autoResume &&
+                    itemConfig.enabled &&
+                    nextDetail?.latestRequestId !== undefined &&
+                    streamHandleRef.current === null) {
+                    // More than one row because this list answers two questions, and the
+                    // second one needs to see past the newest entry: which request to
+                    // attach to, and whether the request that was running before the
+                    // snapshot is still running. Under `allow` concurrency both can be
+                    // in flight at once, and a single-row read returns only the newer —
+                    // making the older one's absence prove nothing.
+                    const requests = await sessionsApi.requests(sessionId, {
+                        status: "in_progress",
+                        limit: IN_PROGRESS_LOOKUP_LIMIT
+                    });
+                    if (cancelled)
+                        return;
+                    const activeRequest = requests.find((r) => r.id === nextDetail.latestRequestId);
+                    // Catching up is about ONE request: the one that was running when
+                    // the snapshot was read. It is worth doing exactly when that request
+                    // has since finished — then the snapshot may predate its final items
+                    // and no stream will ever replay them, because a stream is
+                    // request-scoped and the one we might attach to is a different,
+                    // newer request.
+                    //
+                    // So the condition is its terminality, read from the list above
+                    // rather than inferred from whether anything is attachable. Absence
+                    // from an in-progress list that would have contained it is the only
+                    // evidence here that it finished; "we are attaching to something
+                    // else" is not, because concurrency allows it to still be running.
+                    const olderStillRunning = requests.some((r) => r.id === latestBeforeSnapshot?.id);
+                    if (latestBeforeSnapshot?.status === "in_progress" && !olderStillRunning) {
+                        // It was running before the snapshot and is no longer running, so
+                        // it finished inside that window. The snapshot we applied may
+                        // predate its final items, and without this the session sits
+                        // incomplete until the consumer remounts or refreshes by hand.
+                        //
+                        // Ordered before the attach below: `applySnapshot` loads the
+                        // snapshot over the item store, so running it after a stream had
+                        // opened would drop whatever that stream had already delivered.
+                        const catchUpRead = beginSnapshotRead();
+                        reading = catchUpRead;
+                        const catchUpSnapshot = await fetchSessionSnapshot();
+                        reading = undefined;
+                        if (cancelled)
+                            return;
+                        if (catchUpSnapshot !== null) {
+                            applySnapshot(catchUpSnapshot, catchUpRead);
+                        }
+                        // The summary has to agree with the items we just caught up on.
+                        // `latestRequest` still holds the in-progress record read before
+                        // the snapshot. When nothing is attachable nothing else will ever
+                        // correct it — no stream, so no terminal status event. Leaving it
+                        // would show completed work beside a summary that reads in-flight
+                        // — the same inconsistency this branch exists to remove, one
+                        // field over.
+                        await refreshLatestRequest();
+                        if (cancelled)
+                            return;
+                    }
+                    if (activeRequest !== undefined) {
+                        // The hook now carries this request, so a stop reaches it.
+                        activeRequestIdRef.current = activeRequest.id;
+                        attachToStream(activeRequest.id);
+                    }
+                }
+            }
+            catch (cause) {
+                if (!cancelled) {
+                    if (reading !== undefined)
+                        failSnapshotRead(reading, cause);
+                    else
+                        setError(cause instanceof Error ? cause : new Error(String(cause)));
+                }
+            }
+            finally {
+                if (!cancelled) {
+                    setIsLoading(false);
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [sessionId, sessionsApi, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead, autoResume, itemConfig.enabled, attachToStream, refreshLatestRequest]);
+    // Clean up when sessionId changes — close old stream and reset request state
+    // so the new session isn't blocked by the previous session's in-flight request.
+    // Resets every request-scoped ref the watchdog reads, so a session switch
+    // can't smuggle a stale `activeRequestIdRef` or `lastEventAtRef` into the
+    // new session and trip a false-positive `isStuck`.
+    useEffect(() => {
+        return () => {
+            if (streamHandleRef.current !== null) {
+                streamHandleRef.current.close();
+                streamHandleRef.current = null;
+            }
+            setIsStreaming(false);
+            setIsFinishing(false);
+            setIsStuck(false);
+            activeRequestIdRef.current = null;
+            latestRequestIdAfterDropRef.current = null;
+            stoppedRequestsRef.current.clear();
+            letGoRef.current.clear();
+            lastEventAtRef.current = Date.now();
+            cancelScheduledFlush();
+        };
+    }, [sessionId, cancelScheduledFlush]);
+    // `live: true`: follow the whole session. The latest refresher is read
+    // through a ref so a new identity doesn't reopen the connection.
+    const refreshChildSessionsRef = useRef(refreshChildSessions);
+    refreshChildSessionsRef.current = refreshChildSessions;
+    // The session the applied snapshot read, as the stream is told to follow
+    // it. A snapshot that lands from another session under the id (deleted and
+    // created again) opens the stream again, on that one.
+    const followedSessionCreatedAt = snapshot?.sessionCreatedAt;
+    useEffect(() => {
+        if (!live || sessionId === undefined || snapshotAppliedFor !== sessionId)
+            return;
+        const filter = {
+            includeTransient: itemConfig.includeTransient,
+            itemTypes: itemConfig.itemTypes
+        };
+        // Held finished already: a request this view sent (its own stream
+        // delivered it), or a repeat across a reconnect. Held unfinished: a
+        // partial copy, because this view's own stream dropped partway through
+        // the item or is still behind, and the finished copy replaces it. A same
+        // id from another request is a different item, held under its own key, as
+        // a reload holds it.
+        const acceptItem = ({ item }) => {
+            if (!itemConfig.enabled || !passesItemFilter(item, filter))
+                return;
+            if (takeLiveItem(item, "session"))
+                setItems(storeRef.current.getSorted());
+        };
+        // Every connection names the runs first. Until one has, the stream has
+        // vouched for nothing, so a stream refused or dropped before then leaves
+        // the view as it would be without `live` (BR-16).
+        const close = followSession({
+            sessionId,
+            client: fsd,
+            after: { at: snapshotAtRef.current, sessionCreatedAt: followedSessionCreatedAt },
+            itemTypes: itemConfig.itemTypes,
+            onItem: acceptItem,
+            onRuns: (event) => {
+                setLiveRuns(event.runs);
+                setLiveLapsed(false);
+                void refreshChildSessionsRef.current();
+            },
+            // A reconnect failed, or the stream was refused for good. Nothing may
+            // say when the runs finish, so none of the rows may read as working.
+            onLapsed: () => setLiveLapsed(true)
+        });
+        return () => {
+            close();
+            setLiveRuns(null);
+            setLiveLapsed(false);
+        };
+    }, [
+        live,
+        sessionId,
+        snapshotAppliedFor,
+        followedSessionCreatedAt,
+        fsd,
+        takeLiveItem,
+        itemConfig.enabled,
+        itemConfig.includeTransient,
+        itemConfig.itemTypes
+    ]);
+    // What `childSessions` shows: the page, plus any unfinished run the stream
+    // named that the page lacks (older than the page, or started since it was
+    // read). Those are unfinished by construction.
+    const visibleChildSessions = useMemo(() => {
+        if (liveRuns === null)
+            return childSessions;
+        const listed = new Set(childSessions.map((row) => row.id));
+        const missing = liveRuns
+            .filter((run) => !listed.has(run.id))
+            .map((run) => ({ ...run, status: "active" }));
+        return missing.length === 0 ? childSessions : [...childSessions, ...missing];
+    }, [childSessions, liveRuns]);
+    // `live: true`: hear other sessions' changes to the scopes this view reads
+    // (FIX-1506). After the first snapshot, one subscription to the session's,
+    // the user's and the org's topics. It acts on `state` and `resource` only;
+    // items, requests and runs are the session stream's. A notice this view's
+    // own request made is skipped. Each resource change is handed to the
+    // resource hooks as it arrives; the scope's state is read again through the
+    // client's live read: one in flight, one waiting, a failed one tried again.
+    const readStateRef = useRef(readState);
+    readStateRef.current = readState;
+    const snapshotNowRef = useRef(snapshot);
+    snapshotNowRef.current = snapshot;
+    useEffect(() => {
+        if (!live || sessionId === undefined || snapshotAppliedFor !== sessionId)
+            return;
+        /** Hand resource changes to the resource hooks, as the view's own stream does. */
+        const announce = (paths) => {
+            if (paths.length === 0)
+                return;
+            const notices = paths.map((resourcePath) => {
+                resourceChangeSeqRef.current++;
+                return { resourcePath, changeType: "updated", seq: resourceChangeSeqRef.current };
+            });
+            setResourceChanges((prev) => [...prev, ...notices]);
+        };
+        /** Every resource the snapshot holds, for a read of everything. */
+        const everyResource = () => {
+            const resources = snapshotNowRef.current?.resources;
+            if (resources === undefined)
+                return [];
+            return ["session", "user", "org"].flatMap((scope) => Object.keys(resources[scope] ?? {}));
+        };
+        /**
+         * Whether a resource change may move the scope's state read: the
+         * snapshot holds a resource the change may belong to (a single, or a
+         * collection's count). Client data is exposed state fields only, which a
+         * resource change can't move.
+         * The view doesn't know its resources' storage paths (`roster` stores
+         * under `workforce/workers/…`), so any held resource can't be ruled out.
+         */
+        const stateCarries = (scope, path) => {
+            const held = snapshotNowRef.current?.resources?.[scope] ?? {};
+            // No manifest here, so each held resource's roots are unknown.
+            return Object.keys(held).some((ref) => mayHold(path, storageRootsOf(undefined, ref)));
+        };
+        /** Whether this view's own stream will still deliver the change `requestId` made. */
+        const carriedByOwnStream = (requestId) => pendingOwnRef.current.has(requestId) ||
+            (streamHandleRef.current !== null && streamRequestIdRef.current === requestId);
+        /** A notice another session's change made, which this view's stream won't carry. */
+        const fromElsewhere = (notice) => (notice.kind === "state" || notice.kind === "resource") &&
+            !(notice.origin !== undefined && carriedByOwnStream(notice.origin.requestId));
+        /**
+         * Hand each change to the resource hooks as it arrives, before the live
+         * read filters and merges it: a connect, a reconnect, a tick, or a bus
+         * that may have missed some, hands them everything the view holds. This
+         * reads nothing itself.
+         */
+        const handOn = (notice) => {
+            if (notice === null || notice.kind === "resync")
+                return announce(everyResource());
+            if (notice.kind !== "resource" || !fromElsewhere(notice))
+                return;
+            const path = notice.topic.resource;
+            announce(path === undefined ? everyResource() : [path]);
+        };
+        // The scope's state, read again on a `state` notice, and on a `resource`
+        // notice its state may carry. A connect, a tick and a `resync` read too.
+        const stateReads = liveRead((topics, options) => fsd.subscribe(topics, {
+            ...options,
+            onChange: (notice) => {
+                handOn(notice);
+                options.onChange(notice);
+            }
+        }), [topic.session(sessionId), topic.user(), topic.org()], {
+            read: () => readStateRef.current(),
+            readNow: false,
+            hear: (notice) => {
+                if (!fromElsewhere(notice))
+                    return false;
+                const path = notice.topic.resource;
+                return notice.kind === "state" || path === undefined || stateCarries(notice.topic.scope, path);
+            }
+        });
+        return () => stateReads.close();
+    }, [live, sessionId, snapshotAppliedFor, fsd]);
+    // Stuck-request watchdog. Polls a clock against `lastEventAtRef`; if the
+    // SSE stream has produced no event or heartbeat in `stuckThresholdMs`
+    // while a request is (or just was) in flight, flip `isStuck` so the host
+    // can render a dismiss affordance. This is a genuine side effect (timer
+    // polling for an external signal), not derived state — `useEffect` is
+    // the right primitive (BP-010).
+    useEffect(() => {
+        if (!Number.isFinite(stuckThresholdMs) || stuckThresholdMs <= 0) {
+            return;
+        }
+        const tickMs = Math.max(1000, Math.floor(stuckThresholdMs / 4));
+        const timer = setInterval(() => {
+            const inFlight = activeRequestIdRef.current !== null ||
+                latestRequestIdAfterDropRef.current !== null;
+            if (!inFlight)
+                return;
+            const gap = Date.now() - lastEventAtRef.current;
+            if (gap > stuckThresholdMs) {
+                setIsStuck(true);
+            }
+        }, tickMs);
+        return () => {
+            clearInterval(timer);
+        };
+    }, [stuckThresholdMs]);
+    /**
+     * Insert a synthetic abort `status` item into the local items log so the
+     * user has a visible record of the request being stopped. Idempotent on
+     * the same `requestId` (the id is derived from it, so a second call
+     * overwrites the same map entry).
+     */
+    const injectSyntheticAbortItem = useCallback((requestId) => {
+        if (!itemConfig.enabled)
+            return;
+        const abortItem = {
+            id: abortItemIdOf(requestId),
+            type: "status",
+            status: "completed",
+            requestId,
+            itemIndex: storeRef.current.size(),
+            provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
+            ts: Date.now(),
+            message: "Request was stopped.",
+            detail: { code: STOP_CODE }
+        };
+        storeRef.current.upsert(abortItem);
+        setItems(storeRef.current.getSorted());
+    }, [itemConfig.enabled]);
+    const dismissRequest = useCallback(async (requestId) => {
+        const targetId = requestId ??
+            latestRequestIdAfterDropRef.current ??
+            activeRequestIdRef.current ??
+            latestRequestRef.current?.id ??
+            null;
+        if (targetId === null) {
+            console.warn("[flow-state] dismissRequest: no in-flight or recent request to dismiss");
+            return;
+        }
+        letGoRef.current.add(targetId);
+        const generation = sessionGenerationRef.current;
+        try {
+            await flow.request(targetId).abort();
+        }
+        catch {
+            // Network failure or a 409 against an already-terminal record both
+            // land here. The local cleanup below still runs so the UI clears.
+        }
+        // The session changed while the stop was out: the view, its stream and
+        // its reads belong to the next one now.
+        if (generation !== sessionGenerationRef.current)
+            return;
+        streamHandleRef.current?.close();
+        streamHandleRef.current = null;
+        activeRequestIdRef.current = null;
+        latestRequestIdAfterDropRef.current = null;
+        flushContentDeltas();
+        setIsStreaming(false);
+        setIsFinishing(false);
+        setIsStuck(false);
+        injectSyntheticAbortItem(targetId);
+        // The stream closed without an end; the record says how it ended.
+        setStreamStatus((current) => (current?.id === targetId ? null : current));
+        // Pull authoritative server state — covers 409 (already terminal)
+        // and 404 (unknown id) gracefully without surfacing them as errors.
+        void refreshSnapshot();
+        readRecordOf(targetId);
+    }, [
+        flow,
+        flushContentDeltas,
+        injectSyntheticAbortItem,
+        refreshSnapshot,
+        readRecordOf
+    ]);
+    const sendAction = useCallback(async (action, input, actionOptions) => {
+        if (sessionId === undefined) {
+            throw new Error("useSession.sendAction requires a sessionId");
+        }
+        // Discovery, at the start of the interaction (not at its resolution).
+        // This is what makes the panel current as of the moment the user acted,
+        // and it is deliberately not gated on already knowing about a
+        // ChildSession — gating it that way is how a just-launched job would
+        // never be discovered at all.
+        void refreshChildSessions();
+        // Auto-dismiss a stuck prior request before kicking off a new one.
+        // The synthetic abort item from `dismissRequest` keeps the prior
+        // attempt visible in the items log instead of silently dropping it.
+        // Reads via refs so this callback's identity stays stable across
+        // every isStuck/latestRequest state transition (a cold-path check
+        // shouldn't churn the cb that consumers pass as a prop).
+        if (isStuckRef.current &&
+            (latestRequestIdAfterDropRef.current !== null ||
+                activeRequestIdRef.current !== null ||
+                latestRequestRef.current !== null)) {
+            await dismissRequest();
+        }
+        if (streamHandleRef.current !== null) {
+            streamHandleRef.current.close();
+            streamHandleRef.current = null;
+        }
+        setError(null);
+        setIsFinishing(false);
+        setIsStuck(false);
+        latestRequestIdAfterDropRef.current = null;
+        const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        activeRequestIdRef.current = requestId;
+        // Known before the POST, so a notice the run publishes before its
+        // stream opens is skipped too. Only when the view will follow the
+        // stream: without items, nothing else carries the change here. Once
+        // the send settles, only an attached stream covers it.
+        if (itemConfig.enabled)
+            pendingOwnRef.current.add(requestId);
+        // Optimistic user message: inject immediately so the user sees their own
+        // message without waiting for the server round-trip. The server's own
+        // user message for this request replaces it, from whichever stream
+        // delivers it first (`takeLiveItem`).
+        if (actionOptions?.userMessage !== undefined && itemConfig.enabled) {
+            const optimisticItem = {
+                id: optimisticIdOf(requestId),
+                type: "message",
+                role: "user",
+                status: "completed",
+                transient: false,
+                requestId,
+                itemIndex: -1,
+                provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
+                ts: Date.now(),
+                content: [{ type: "output_text", text: actionOptions.userMessage }, ...(actionOptions.attachments ?? [])]
+            };
+            storeRef.current.upsert(optimisticItem);
+            setItems(storeRef.current.getSorted());
+        }
+        try {
+            // Send with `stream: true` to POST with Accept: text/event-stream.
+            // On serverless (Vercel), this returns the SSE stream directly from
+            // the POST response — keeping action execution and event delivery
+            // on the same function instance. Falls back to 202 JSON + separate
+            // GET stream for servers that don't support inline streaming.
+            const postResponse = await flow.send(action, input, {
+                sessionId,
+                requestId,
+                metadata: actionOptions?.metadata,
+                attachments: actionOptions?.attachments,
+                stream: true
+            });
+            const accepted = {
+                status: "in_progress",
+                request: {
+                    id: requestId,
+                    flowKind: resolvedFlowKind,
+                    actionName: action,
+                    status: "in_progress"
+                }
+            };
+            // Stopped while the POST was out. That stop may have reached nothing,
+            // since the server had no request yet; now it does. Stop it, and
+            // don't pick the turn back up.
+            if (stoppedRequestsRef.current.has(requestId)) {
+                postResponse.body?.cancel().catch(() => { });
+                if (await serverRefusedStop(flow, requestId)) {
+                    // The turn finished before the stop reached it: drop the view's
+                    // stop record and read the finished turn.
+                    stoppedRequestsRef.current.delete(requestId);
+                    storeRef.current.deleteById(abortItemIdOf(requestId));
+                    await refreshSnapshot();
+                }
+                return accepted;
+            }
+            const contentType = postResponse.headers.get("content-type") ?? "";
+            if (contentType.includes("text/event-stream")) {
+                if (itemConfig.enabled) {
+                    // Inline streaming: consume SSE events from the POST response body.
+                    attachToStream(requestId, undefined, postResponse);
+                }
+                else {
+                    // Items disabled — release the unconsumed SSE body.
+                    postResponse.body?.cancel().catch(() => { });
+                }
+                return accepted;
+            }
+            // Fallback: server returned 202 JSON (no inline streaming support).
+            const response = (await postResponse.json());
+            if (itemConfig.enabled) {
+                attachToStream(response.request.id);
+            }
+            if (!itemConfig.enabled && response.status === "completed") {
+                await refreshSnapshot();
+            }
+            return response;
+        }
+        catch (cause) {
+            const normalized = cause instanceof Error ? cause : new Error(String(cause));
+            setError(normalized);
+            setIsStreaming(false);
+            throw normalized;
+        }
+        finally {
+            pendingOwnRef.current.delete(requestId);
+        }
+    }, [
+        sessionId,
+        resolvedFlowKind,
+        flow,
+        itemConfig.enabled,
+        attachToStream,
+        refreshSnapshot,
+        refreshChildSessions,
+        dismissRequest
+    ]);
+    const getOwnedItems = useCallback((ownedBy) => {
+        return storeRef.current.getOwnedBy(ownedBy);
+    }, []);
+    const getItemsByAgent = useCallback((agentName) => items.filter((item) => item.agentName === agentName), [items]);
+    const getItemsByVisibility = useCallback((predicate) => items.filter((item) => {
+        const resolved = resolveItemVisibility(item);
+        if (predicate.client !== undefined && resolved.client !== predicate.client)
+            return false;
+        if (predicate.history !== undefined && resolved.history !== predicate.history)
+            return false;
+        return true;
+    }), [items]);
+    const abortRequest = useCallback(async () => {
+        const requestId = activeRequestIdRef.current;
+        if (requestId === null)
+            return;
+        stoppedRequestsRef.current.add(requestId);
+        letGoRef.current.add(requestId);
+        // Mark the request as abort-requested in the persistent store. This
+        // flag lets the server distinguish an intentional stop from an
+        // accidental disconnect (browser reload, network drop). A refused stop
+        // means the request finished first: the server's account of it stands,
+        // so the view stops claiming a stop.
+        const generation = sessionGenerationRef.current;
+        const refused = await serverRefusedStop(flow, requestId);
+        if (refused)
+            stoppedRequestsRef.current.delete(requestId);
+        if (generation !== sessionGenerationRef.current)
+            return;
+        // The view moved to another request while the stop was out (one followed
+        // once the stopped request ended, say): that one keeps its stream.
+        const following = activeRequestIdRef.current;
+        if (following === null || following === requestId) {
+            // Close the SSE connection. On the server, request.signal fires
+            // and the catch block checks the abortRequested flag to decide
+            // between "aborted" (intentional) or "interrupted" (accidental).
+            streamHandleRef.current?.close();
+            streamHandleRef.current = null;
+            activeRequestIdRef.current = null;
+            latestRequestIdAfterDropRef.current = null;
+            flushContentDeltas();
+            setIsStreaming(false);
+            setIsFinishing(false);
+            setIsStuck(false);
+        }
+        if (!refused) {
+            injectSyntheticAbortItem(requestId);
+            // The stream closed, so it reports no end: the stop is the end.
+            setStreamStatus((current) => (current?.id === requestId ? { id: requestId, status: "aborted" } : current));
+        }
+        else {
+            // The request ended first; its record, not the closed stream, says how.
+            setStreamStatus((current) => (current?.id === requestId ? null : current));
+            readRecordOf(requestId);
+        }
+        // The stream closed with the stop, so what the request wrote to state as
+        // it stopped never reaches the view through it.
+        void refreshState();
+    }, [flow, flushContentDeltas, injectSyntheticAbortItem, refreshState, readRecordOf]);
+    const followRequest = useCallback((requestId) => {
+        // Resume only the stream that dropped: anything since (an end, a
+        // session change, a stop) clears the drop, and the view's state for it.
+        if (letGoRef.current.has(requestId))
+            return false;
+        const last = lastStreamEventRef.current;
+        const resume = latestRequestIdAfterDropRef.current === requestId && last?.requestId === requestId;
+        activeRequestIdRef.current = requestId;
+        attachToStream(requestId, resume ? String(last.sequence) : undefined);
+        return true;
+    }, [attachToStream]);
+    const refresh = useCallback(async (refreshOptions) => {
+        // Refreshes the whole view, background work included. Under the
+        // interaction-only design this is also the app's way to bring a
+        // just-launched job onto the screen without sending another action.
+        // `items: false` leaves the item history out.
+        const readState = refreshOptions?.items === false ? refreshState : refreshSnapshot;
+        await Promise.all([readState(), refreshChildSessions()]);
+    }, [refreshSnapshot, refreshState, refreshChildSessions]);
+    // The request the view shows last: the one its newest item belongs to.
+    const shownRequestId = items.at(-1)?.requestId ?? null;
+    // A shown request the view hasn't followed (after a reload, say) and the
+    // latest-request read doesn't name: read its record once. One the view
+    // follows is read when its stream ends (see `attachToStream`).
+    const shownStreamStatus = streamStatus?.id === shownRequestId ? streamStatus.status : null;
+    const unfollowedShownId = shownRequestId !== null && latestRequest !== null && latestRequest.id !== shownRequestId && shownStreamStatus === null
+        ? shownRequestId
+        : null;
+    useEffect(() => {
+        if (unfollowedShownId === null || followedReadRef.current === unfollowedShownId)
+            return;
+        followedReadRef.current = unfollowedShownId;
+        readFollowedStatus(unfollowedShownId);
+    }, [unfollowedShownId, readFollowedStatus]);
+    // In live mode, a shown request no stream follows whose record reads as
+    // not yet ended is read again until it says the request has: the session
+    // stream carries the request's items but not its end. Its record is the
+    // latest-request read when it is the latest, else its own status. The wait
+    // doubles each time, and every read schedules the next, a failed one too.
+    const [runningRereads, setRunningRereads] = useState({ id: null, count: 0 });
+    const shownIsLatest = shownRequestId !== null && latestRequest?.id === shownRequestId;
+    const shownRecordStatus = shownIsLatest
+        ? latestRequest.status
+        : readFollowed !== null && readFollowed.id === shownRequestId
+            ? readFollowed.status
+            : null;
+    // No record yet (its first read failed, say) counts as not yet ended.
+    const runningReadId = live &&
+        shownStreamStatus === null &&
+        (shownIsLatest || unfollowedShownId !== null) &&
+        (shownRecordStatus === null || !hasEnded(shownRecordStatus))
+        ? shownRequestId
+        : null;
+    const runningRereadCount = runningRereads.id === runningReadId ? runningRereads.count : 0;
+    useEffect(() => {
+        if (runningReadId === null)
+            return;
+        const wait = Math.min(RUNNING_STATUS_REREAD_MAX_MS, RUNNING_STATUS_REREAD_MS * 2 ** runningRereadCount);
+        const timer = setTimeout(() => {
+            setRunningRereads({ id: runningReadId, count: runningRereadCount + 1 });
+            if (shownIsLatest)
+                void refreshLatestRequest();
+            else
+                readFollowedStatus(runningReadId);
+        }, wait);
+        return () => clearTimeout(timer);
+    }, [runningReadId, runningRereadCount, shownIsLatest, refreshLatestRequest, readFollowedStatus]);
+    const followedRequest = useMemo(() => {
+        if (shownRequestId === null)
+            return null;
+        const record = latestRequest?.id === shownRequestId
+            ? {
+                id: latestRequest.id,
+                status: latestRequest.status,
+                ...(latestRequest.startedAtMs !== undefined ? { startedAtMs: latestRequest.startedAtMs } : {}),
+                ...(latestRequest.completedAtMs !== undefined ? { completedAtMs: latestRequest.completedAtMs } : {}),
+                ...(latestRequest.failedAtMs !== undefined ? { failedAtMs: latestRequest.failedAtMs } : {})
+            }
+            : readFollowed?.id === shownRequestId
+                ? readFollowed
+                : null;
+        // A running stream is newer than any record; an ended one is settled by
+        // the record once it says so too.
+        if (shownStreamStatus === null)
+            return record;
+        if (!hasEnded(shownStreamStatus) || record === null || !hasEnded(record.status)) {
+            return { ...record, id: shownRequestId, status: shownStreamStatus };
+        }
+        return record;
+    }, [shownRequestId, latestRequest, readFollowed, shownStreamStatus]);
+    const resumeLatestRequest = useCallback(async () => {
+        if (sessionId === undefined)
+            return;
+        // Discovery. This path calls the recovery client directly and bypasses
+        // both `sendAction` and `performInlineReentry`, so it needs its own read:
+        // retrying a failed parent after a child finished would otherwise leave
+        // the panel stale.
+        void refreshChildSessions();
+        const target = latestRequest;
+        if (target === null)
+            return;
+        if (target.status !== "interrupted" && target.status !== "failed") {
+            // Server only retries interrupted/failed records; bail rather than
+            // round-trip and surface a 409.
+            return;
+        }
+        if (streamHandleRef.current !== null) {
+            streamHandleRef.current.close();
+            streamHandleRef.current = null;
+        }
+        setError(null);
+        try {
+            // Re-enter through the record's OWNER, the instance that ran it. The
+            // stored kind is metadata; for a collection it names no instance, and
+            // for a legacy record the bound address is the singleton it implies.
+            const retried = await fsd.flow(target.flowId ?? resolvedFlowKind).request(target.id).retry();
+            const newRequestId = retried.id;
+            activeRequestIdRef.current = newRequestId;
+            attachToStream(newRequestId);
+            // The new request is fresh in_progress; reflect it immediately so any
+            // UI gating on `latestRequest.status === "interrupted"` updates without
+            // waiting for the next list fetch.
+            void refreshLatestRequest();
+        }
+        catch (cause) {
+            const normalized = cause instanceof Error ? cause : new Error(String(cause));
+            setError(normalized);
+            throw normalized;
+        }
+    }, [
+        sessionId,
+        latestRequest,
+        fsd,
+        resolvedFlowKind,
+        attachToStream,
+        refreshLatestRequest,
+        refreshChildSessions
+    ]);
+    // Shared by answerSuspension (FIX-811) and continueRequest (FIX-865): both
+    // re-enter an existing request's own id via a single inline-streaming POST,
+    // never followed by a second POST — once the request has gone out, the
+    // server has already accepted it (SSE or 202), so a fallback POST would
+    // race/409 against the now-resolved record. On a non-streaming 202,
+    // reconnect via GET instead of re-posting.
+    const performInlineReentry = useCallback(async (requestId, post) => {
+        // Discovery — the shared path behind `answerSuspension` and
+        // `continueRequest`. A parent that launches background work after a
+        // human approval gate comes through here, not through `sendAction`.
+        void refreshChildSessions();
+        if (streamHandleRef.current !== null) {
+            streamHandleRef.current.close();
+            streamHandleRef.current = null;
+        }
+        setError(null);
+        setIsFinishing(false);
+        setIsStuck(false);
+        latestRequestIdAfterDropRef.current = null;
+        activeRequestIdRef.current = requestId;
+        try {
+            const postResponse = await post();
+            const contentType = postResponse.headers.get("content-type") ?? "";
+            if (contentType.includes("text/event-stream")) {
+                if (itemConfig.enabled) {
+                    attachToStream(requestId, undefined, postResponse);
+                }
+                else {
+                    postResponse.body?.cancel().catch(() => { });
+                    void refreshSnapshot();
+                    void refreshLatestRequest();
+                }
+                return;
+            }
+            // Fallback: server returned 202 JSON (no inline streaming). Re-attach
+            // via GET and pull the snapshot so the resolution still surfaces.
+            postResponse.body?.cancel().catch(() => { });
+            if (itemConfig.enabled) {
+                attachToStream(requestId);
+            }
+            void refreshSnapshot();
+            void refreshLatestRequest();
+        }
+        catch (cause) {
+            const normalized = cause instanceof Error ? cause : new Error(String(cause));
+            activeRequestIdRef.current = null;
+            setError(normalized);
+            throw normalized;
+        }
+    }, [
+        itemConfig.enabled,
+        attachToStream,
+        refreshSnapshot,
+        refreshLatestRequest,
+        refreshChildSessions
+    ]);
+    // The reason of each stop the view holds, read at call time so the
+    // callback keeps one identity while items stream in.
+    const itemsRef = useRef(items);
+    itemsRef.current = items;
+    const answerSuspension = useCallback(async (args) => {
+        // A suspension id is unique within its request only, so match both.
+        const stop = itemsRef.current.find((item) => item.type === "suspension" &&
+            item.requestId === args.requestId &&
+            item.suspensionId === args.suspensionId);
+        // Streamed from the POST: essential on serverless, where a separate GET
+        // stream can't reach the in-flight continuation.
+        await performInlineReentry(args.requestId, () => answerStop(flow.request(args.requestId), stop?.reason, { suspensionId: args.suspensionId, action: args.action, data: args.data }, { stream: true }));
+    }, [flow, performInlineReentry]);
+    const continueRequest = useCallback(async (requestId) => {
+        if (sessionId === undefined)
+            return;
+        await performInlineReentry(requestId, () => flow.request(requestId).continue({ stream: true }));
+    }, [sessionId, flow, performInlineReentry]);
+    const subscribeAudioDelta = useCallback((handler) => {
+        audioDeltaListenersRef.current.add(handler);
+        return () => {
+            audioDeltaListenersRef.current.delete(handler);
+        };
+    }, []);
+    return {
+        flowKind: resolvedFlowKind,
+        sessionId,
+        userId,
+        orgId: detail?.orgId,
+        isLoading,
+        isStreaming,
+        isFinishing,
+        isStuck,
+        canSendAction: !isStreaming || isFinishing,
+        statusMessage,
+        error,
+        detail,
+        snapshot,
+        latestRequest,
+        items,
+        resourceChanges,
+        childSessions: visibleChildSessions,
+        childSessionsStale: childSessionsStale || liveLapsed,
+        getOwnedItems,
+        getItemsByAgent,
+        getItemsByVisibility,
+        sendAction,
+        abortRequest,
+        dismissRequest,
+        resumeLatestRequest,
+        answerSuspension,
+        continueRequest,
+        followRequest,
+        refresh,
+        followedRequest,
+        subscribeAudioDelta
+    };
+}
+//# sourceMappingURL=useSession.js.map

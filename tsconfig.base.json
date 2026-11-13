@@ -37,7 +37,6 @@
       "@flow-state-dev/engine/resource-template": ["./packages/engine/src/resource-template-loader.ts"],
       "@flow-state-dev/client": ["./packages/client/src/index.ts"],
       "@flow-state-dev/react": ["./packages/react/src/index.ts"],
-      "@flow-state-dev/react/workforce": ["./packages/react/src/workforce/index.ts"],
       "@flow-state-dev/react/voice": ["./packages/react/src/voice/index.ts"],
       "@flow-state-dev/react/internal": ["./packages/react/src/internal.ts"],
       "@flow-state-dev/testing": ["./packages/testing/src/index.ts"],

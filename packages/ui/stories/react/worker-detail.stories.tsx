@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { WorkerDetail } from "@flow-state-dev/react/workforce";
+import { WorkerDetail } from "@flow-state-dev/workforce/react";
 
 import {
   failingItemSource,

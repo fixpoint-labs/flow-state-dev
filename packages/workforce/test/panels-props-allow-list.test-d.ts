@@ -16,9 +16,9 @@
  *
  * Typecheck is the run: `pnpm --filter @flow-state-dev/react typecheck`.
  */
-import { rosterPropNames, type RosterProps } from "../src/components/panels/Roster";
-import { boardColumnsPropNames, type BoardColumnsProps } from "../src/components/panels/BoardColumns";
-import { boardListPropNames, type BoardListProps } from "../src/components/panels/BoardList";
+import { rosterPropNames, type RosterProps } from "../src/react/panels/Roster";
+import { boardColumnsPropNames, type BoardColumnsProps } from "../src/react/panels/BoardColumns";
+import { boardListPropNames, type BoardListProps } from "../src/react/panels/BoardList";
 
 type PublishedRoster = (typeof rosterPropNames)[number];
 type PublishedBoard = (typeof boardColumnsPropNames)[number];

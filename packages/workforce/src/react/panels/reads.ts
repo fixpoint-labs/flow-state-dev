@@ -15,7 +15,7 @@
 import { useMemo } from "react";
 import { readEveryCollectionPage, topic, type Client, type ResourcesApi } from "@flow-state-dev/client";
 import { liveRead, storageRootsOf } from "@flow-state-dev/client/internal";
-import { useFencedRead, type ReadDriver } from "../../internal/useFencedRead";
+import { useFencedRead, type ReadDriver } from "@flow-state-dev/react/internal";
 
 // BR-29.
 /**
