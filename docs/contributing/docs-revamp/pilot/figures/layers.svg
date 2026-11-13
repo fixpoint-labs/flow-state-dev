@@ -1,53 +1,53 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 572">
 <defs>
-<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
-<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
 </defs>
-<rect class="solid" x="28" y="24" width="560" height="72"/>
-<text class="lb" x="42" y="46">01 · YOU RUN IT</text>
-<text class="nm" x="42" y="68">A starter</text>
-<text class="sub" x="42" y="85">pages · a team of workers · config, all in your repo</text>
-<text class="t" x="612" y="56">Change a worker by editing</text>
-<text class="t" x="612" y="73">its Markdown file.</text>
-<rect class="solid" x="28" y="112" width="560" height="120"/>
-<text class="lb" x="42" y="134">02 · YOU INSTALL THEM</text>
-<rect class="hl" x="38" y="142" width="52" height="24"/>
-<text class="nm on-hl" x="42" y="159">Kits</text>
-<text class="sub" x="100" y="159">a feature in one line of config</text>
-<rect class="thin" x="42" y="182" width="150" height="36"/>
-<text class="c" x="117" y="204" text-anchor="middle">workforce</text>
-<line class="ln" x1="228" y1="200" x2="194" y2="200" marker-end="url(#ah)"/>
-<rect class="thin" x="228" y="182" width="150" height="36"/>
-<text class="c" x="303" y="204" text-anchor="middle">harnesses</text>
-<line class="ln" x1="414" y1="200" x2="380" y2="200" marker-end="url(#ah)"/>
-<rect class="thin" x="414" y="182" width="150" height="36"/>
-<text class="c" x="489" y="204" text-anchor="middle">claudeCode</text>
-<text class="t" x="612" y="158">Kits build on each other:</text>
-<text class="t" x="612" y="175">claudeCode adds to harnesses,</text>
-<text class="t" x="612" y="192">harnesses adds to workforce.</text>
-<rect class="solid" x="28" y="248" width="560" height="72"/>
-<text class="lb" x="42" y="270">03 · YOU CALL THEM</text>
-<text class="nm" x="42" y="292">Flows</text>
-<text class="sub" x="42" y="309">actions · views · state · resources</text>
-<text class="t" x="612" y="280">Every feature is a flow you</text>
-<text class="t" x="612" y="297">can run from a terminal.</text>
-<rect class="solid" x="28" y="336" width="560" height="72"/>
-<text class="lb" x="42" y="358">04 · YOU WRITE THEM</text>
-<text class="nm" x="42" y="380">Blocks</text>
-<text class="sub" x="42" y="397">generator · handler · sequencer · router · evaluator</text>
-<text class="t" x="612" y="368">One typed contract:</text>
-<text class="t" x="612" y="385">input in, output out.</text>
-<rect class="solid" x="28" y="424" width="560" height="72"/>
-<text class="lb" x="42" y="446">05 · IT RUNS THEM</text>
-<text class="nm" x="42" y="468">The engine</text>
-<text class="sub" x="42" y="485">serves · streams · stores · resumes</text>
-<text class="t" x="612" y="456">Comes with the framework.</text>
-<text class="t" x="612" y="473">You host it.</text>
-<line class="hi" x1="0" y1="520" x2="920" y2="520"/>
+<rect class="solid" fill="none" stroke="#1b1a15" x="28" y="24" width="560" height="72"/>
+<text class="lb" fill="#57544a" x="42" y="46">01 · YOU RUN IT</text>
+<text class="nm" fill="#1b1a15" x="42" y="68">A starter</text>
+<text class="sub" fill="#57544a" x="42" y="85">pages · a team of workers · config, all in your repo</text>
+<text class="t" fill="#3d3a32" x="612" y="56">Change a worker by editing</text>
+<text class="t" fill="#3d3a32" x="612" y="73">its Markdown file.</text>
+<rect class="solid" fill="none" stroke="#1b1a15" x="28" y="112" width="560" height="120"/>
+<text class="lb" fill="#57544a" x="42" y="134">02 · YOU INSTALL THEM</text>
+<rect class="hl" fill="#e8f551" x="38" y="142" width="52" height="24"/>
+<text class="nm on-hl" fill="#1b1a15" x="42" y="159">Kits</text>
+<text class="sub" fill="#57544a" x="100" y="159">a feature in one line of config</text>
+<rect class="thin" fill="none" stroke="#1b1a15" x="42" y="182" width="150" height="36"/>
+<text class="c" fill="#1b1a15" x="117" y="204" text-anchor="middle">workforce</text>
+<line class="ln" fill="none" stroke="#1b1a15" x1="228" y1="200" x2="194" y2="200" marker-end="url(#ah)"/>
+<rect class="thin" fill="none" stroke="#1b1a15" x="228" y="182" width="150" height="36"/>
+<text class="c" fill="#1b1a15" x="303" y="204" text-anchor="middle">harnesses</text>
+<line class="ln" fill="none" stroke="#1b1a15" x1="414" y1="200" x2="380" y2="200" marker-end="url(#ah)"/>
+<rect class="thin" fill="none" stroke="#1b1a15" x="414" y="182" width="150" height="36"/>
+<text class="c" fill="#1b1a15" x="489" y="204" text-anchor="middle">claudeCode</text>
+<text class="t" fill="#3d3a32" x="612" y="158">Kits build on each other:</text>
+<text class="t" fill="#3d3a32" x="612" y="175">claudeCode adds to harnesses,</text>
+<text class="t" fill="#3d3a32" x="612" y="192">harnesses adds to workforce.</text>
+<rect class="solid" fill="none" stroke="#1b1a15" x="28" y="248" width="560" height="72"/>
+<text class="lb" fill="#57544a" x="42" y="270">03 · YOU CALL THEM</text>
+<text class="nm" fill="#1b1a15" x="42" y="292">Flows</text>
+<text class="sub" fill="#57544a" x="42" y="309">actions · views · state · resources</text>
+<text class="t" fill="#3d3a32" x="612" y="280">Every feature is a flow you</text>
+<text class="t" fill="#3d3a32" x="612" y="297">can run from a terminal.</text>
+<rect class="solid" fill="none" stroke="#1b1a15" x="28" y="336" width="560" height="72"/>
+<text class="lb" fill="#57544a" x="42" y="358">04 · YOU WRITE THEM</text>
+<text class="nm" fill="#1b1a15" x="42" y="380">Blocks</text>
+<text class="sub" fill="#57544a" x="42" y="397">generator · handler · sequencer · router · evaluator</text>
+<text class="t" fill="#3d3a32" x="612" y="368">One typed contract:</text>
+<text class="t" fill="#3d3a32" x="612" y="385">input in, output out.</text>
+<rect class="solid" fill="none" stroke="#1b1a15" x="28" y="424" width="560" height="72"/>
+<text class="lb" fill="#57544a" x="42" y="446">05 · IT RUNS THEM</text>
+<text class="nm" fill="#1b1a15" x="42" y="468">The engine</text>
+<text class="sub" fill="#57544a" x="42" y="485">serves · streams · stores · resumes</text>
+<text class="t" fill="#3d3a32" x="612" y="456">Comes with the framework.</text>
+<text class="t" fill="#3d3a32" x="612" y="473">You host it.</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" x1="0" y1="520" x2="920" y2="520"/>
 <g id="key">
-<line class="ln" x1="28" y1="544" x2="54" y2="544" marker-end="url(#ah)"/>
-<text class="lb" x="62" y="548">FILLS A SLOT THE OTHER KIT OPENED</text>
-<rect class="hl" x="342" y="538" width="26" height="11"/>
-<text class="lb" x="376" y="548">WHERE FEATURES STACK</text>
+<line class="ln" fill="none" stroke="#1b1a15" x1="28" y1="544" x2="54" y2="544" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" x="62" y="548">FILLS A SLOT THE OTHER KIT OPENED</text>
+<rect class="hl" fill="#e8f551" x="342" y="538" width="26" height="11"/>
+<text class="lb" fill="#57544a" x="376" y="548">WHERE FEATURES STACK</text>
 </g>
 </svg>

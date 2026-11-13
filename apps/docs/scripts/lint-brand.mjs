@@ -6,14 +6,17 @@
  * - colour: in custom.css every colour literal is one of page.css's token values —
  *   paper, the inks, the highlighter or red, in Paper or Night — and no colour name or
  *   other colour function appears. A diagram carries no colour literal at all: it reads
- *   the page's tokens through page.css's drawing classes.
+ *   the page's tokens through page.css's drawing classes. A figure held to the whole
+ *   standard (below) is the exception: each element carries, as `fill=` and `stroke=`, the
+ *   light value page.css gives its classes, read from page.css at lint time, and nothing else.
  * - stroke: every stroke width is 1, 1.3 or 1.4 (diagrams, and page.css's drawing classes).
  * - dash: every dash pattern is `5 4`.
  * - info: `custom.css` never names `--info`, the app register's blue.
  * - font: no `<text>` (or anything around it) is set in a font other than the mono.
  * - svg: a diagram has no `<title>`, `<desc>`, `<style>` or `style=` (the page and
  *   `<Figure>` own those), and uses only the drawing classes page.css defines.
- * - fill, attr, element: a diagram's only `fill` attribute is the hatch, it sets no
+ * - fill, attr, element: a diagram's only `fill` attribute is the hatch (a held figure's
+ *   fallback fills aside), it sets no
  *   stroke-width, dash or font by attribute, and it has no image, link, script, tspan,
  *   gradient, filter, opacity, text under a transform, `textLength`, DOCTYPE or ENTITY.
  *
@@ -30,17 +33,19 @@
  *
  * Before linting the real files it lints `scripts/brand-lint-fixtures/`, which break
  * every rule on purpose, and fails unless each rule fires there: a rule that can no
- * longer fail is reported, not trusted. Under `brand-lint-fixtures/figures/`, `<rule>.svg`
- * and `<rule>.<case>.svg` (or `.md`) must trip that rule, and `good.*` (`good.<case>.*`
- * included) must pass every rule.
+ * longer fail is reported, not trusted. `brand-lint-fixtures/figures/` holds only clean
+ * figures and pages, `good.*`, which must pass every rule. Each case in
+ * `brand-lint-fixtures/cases.mjs` edits one of them in memory and must trip its rule; a case
+ * whose edit no longer applies fails too.
  *
  * Usage: node scripts/lint-brand.mjs [file...]   (no files: the docs' own)
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { createProcessor } from "@mdx-js/mdx";
 import { fileURLToPath } from "node:url";
+import CASES from "./brand-lint-fixtures/cases.mjs";
 
 const DOCS = join(dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURES = join(DOCS, "scripts/brand-lint-fixtures");
@@ -129,6 +134,57 @@ function drawingClassNames() {
   return new Set([...css.matchAll(/\.drawing\s+(?:[a-z]+)?\.([a-z][\w-]*)/g)].map((m) => m[1]));
 }
 
+/**
+ * page.css's `.drawing` rules that set a fill or stroke, each with its light-theme values, every `var()` resolved
+ * through `:root`: `{ tag, classes, not, specificity, fill?, stroke? }`, in source order. A value that does not
+ * resolve to a literal, or a selector this cannot read, throws: the fallback a figure must carry would be a guess.
+ */
+function drawingColourRules() {
+  const css = readFileSync(PAGE_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  // The bare `:root` block is Paper, the light theme; Night's are `:root[…]` and `:root:not(…)`.
+  const root = /:root\s*\{([^}]*)\}/.exec(css);
+  if (!root) throw new Error("page.css: no :root block to read the light theme from");
+  const tokens = Object.fromEntries([...root[1].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
+  const literal = (value, where) => {
+    const ref = /^var\(\s*(--[\w-]+)\s*\)$/.exec(value);
+    const resolved = ref ? tokens[ref[1]] : value;
+    if (resolved === undefined || /var\(|currentcolor|inherit|initial|unset/i.test(resolved)) {
+      throw new Error(`page.css: ${where} is "${value}", which has no light-theme literal to check a fallback against`);
+    }
+    return resolved.replace(/\s+/g, " ");
+  };
+  const rules = [];
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const decls = [...m[2].matchAll(/(?:^|;)\s*(fill|stroke)\s*:\s*([^;]+)/g)];
+    if (!decls.length) continue;
+    for (const selector of m[1].split(",").map((s) => s.trim()).filter((s) => s.startsWith(".drawing "))) {
+      const compound = /^\.drawing\s+([a-z]+)?((?:\.[\w-]+)*)(?::not\(([a-z]+)\))?$/.exec(selector);
+      if (!compound) throw new Error(`page.css: cannot read the drawing selector "${selector}"`);
+      const [, tag, classText, not] = compound;
+      const classes = classText.split(".").filter(Boolean);
+      const rule = { tag, classes, not, specificity: classes.length * 100 + (tag ? 1 : 0) + (not ? 1 : 0) };
+      for (const [, prop, value] of decls) rule[prop] = literal(value.trim(), `${selector} { ${prop} }`);
+      rules.push(rule);
+    }
+  }
+  return rules;
+}
+
+/** The light fill and stroke page.css gives an element, by its name and classes: `{ fill?, stroke? }`. */
+function lightColours(node) {
+  const cls = classesOf(node);
+  const matching = COLOUR_RULES.filter(
+    (r) => (!r.tag || r.tag === node.name) && r.classes.every((c) => cls.includes(c)) && r.not !== node.name,
+  );
+  const out = {};
+  for (const prop of ["fill", "stroke"]) {
+    // The cascade: the highest specificity wins, and among equals the later rule (a stable sort keeps source order).
+    const winner = matching.filter((r) => r[prop] !== undefined).sort((a, b) => a.specificity - b.specificity).at(-1);
+    if (winner) out[prop] = winner[prop];
+  }
+  return out;
+}
+
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 /** XML's character references and five named entities as the characters they stand for; any other `&name;` is left as written. */
 const decodeEntities = (s) =>
@@ -179,7 +235,7 @@ const holds = (box, x, y) =>
   x >= num(box, "x") && x <= num(box, "x") + num(box, "width") && y >= num(box, "y") && y <= num(box, "y") + num(box, "height");
 
 /** Rules 2, 4 and 5 of the figure standard, which every diagram keeps: fills, attributes, elements. */
-function lintSvgAttributes(file, text, tree, out) {
+function lintSvgAttributes(file, text, tree, held, out) {
   const BANNED = /^(?:image|foreignObject|a|script|tspan|linearGradient|radialGradient|filter)$/;
   // An entity can hide any markup (a <script> included) from this lint's parser, and SVGO expands it on the site.
   for (const m of text.matchAll(/<!(DOCTYPE|ENTITY)\b/gi)) {
@@ -187,7 +243,8 @@ function lintSvgAttributes(file, text, tree, out) {
   }
   for (const node of descendants(tree)) {
     const at = (rule, detail) => out.push(finding(file, text, node.index, rule, detail));
-    if (node.attrs.fill !== undefined && node.attrs.fill !== "url(#hatch)") {
+    // A figure held to the whole standard carries fallback fills, which rule 2's colour check reads instead.
+    if (!held && node.attrs.fill !== undefined && node.attrs.fill !== "url(#hatch)") {
       at("fill", `fill="${node.attrs.fill}": the only fill attribute is the hatch; a fill comes from hl, ground, ink or x-fill`);
     }
     for (const attr of ["stroke-width", "stroke-dasharray", "font-family"]) {
@@ -208,9 +265,15 @@ const DEFS_TEXT = `<defs>
 <pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
 <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
 </defs>`;
-/** A parsed element as one string: its name, its attributes in order, its trimmed text and its children's. */
+/**
+ * A parsed element as one string: its name, its attributes in order, its trimmed text and its children's. The
+ * fallback colours are left out: the colour rule checks those against page.css.
+ */
 const shape = (node) =>
-  `<${node.name}${Object.entries(node.attrs).map(([k, v]) => ` ${k}="${v}"`).join("")}>${node.text.trim()}${node.children.map(shape).join("")}</${node.name}>`;
+  `<${node.name}${Object.entries(node.attrs)
+    .filter(([k]) => k !== "fill" && k !== "stroke")
+    .map(([k, v]) => ` ${k}="${v}"`)
+    .join("")}>${node.text.trim()}${node.children.map(shape).join("")}</${node.name}>`;
 const DEFS = shape(parseSvg(DEFS_TEXT).children[0]);
 // Each text class, and its width in units per character.
 const UNITS = { lb: 7.5, nm: 9, sub: 6.3, c: 7.5, t: 7.2, n: 6.6, plate: 7.3 };
@@ -249,6 +312,24 @@ function lintFigure(file, text, tree, out) {
   const drawing = all.filter((n) => n.attrs.id !== "key" && !within(n, (p) => p.attrs.id === "key" || p.name === "defs"));
   const rects = drawing.filter((n) => n.name === "rect");
   const same = (a, b) => ["x", "y", "width"].every((k) => num(a, k) === num(b, k));
+
+  // 2. Each element carries, as fill= and stroke=, the light values page.css gives its classes, so the file shows
+  // its colours off the site; the site's class rules override them in both themes. Nothing else carries a colour.
+  for (const node of [svg, ...all]) {
+    const light = lightColours(node);
+    const tag = `<${node.name}${node.attrs.class ? ` class="${node.attrs.class}"` : ""}>`;
+    for (const prop of ["fill", "stroke"]) {
+      const carried = node.attrs[prop]?.trim().replace(/\s+/g, " ");
+      if (prop === "fill" && carried === "url(#hatch)" && light.fill === undefined) continue;
+      if (light[prop] === undefined) {
+        if (carried !== undefined) at(node, "colour", `${prop}="${carried}" on ${tag}: its classes set no ${prop} in page.css`);
+      } else if (carried === undefined) {
+        at(node, "colour", `${tag} has no ${prop}="${light[prop]}", the light value page.css gives it`);
+      } else if (carried !== light[prop]) {
+        at(node, "colour", `${prop}="${carried}" on ${tag} is not "${light[prop]}", the light value page.css gives it`);
+      }
+    }
+  }
 
   // 6. The two definitions, as printed.
   const defs = all.filter((n) => n.name === "defs");
@@ -525,19 +606,24 @@ const inside = (dir, file) => !relative(dir, resolve(file)).startsWith("..");
 const heldToStandard = (file) => HELD_TO_STANDARD.some((dir) => inside(dir, file));
 
 /** Every finding for one file: a diagram, a page (`.md`, `.mdx`) or a stylesheet. */
-function lintFile(file, allowed) {
-  const text = readFileSync(file, "utf8");
+function lintFile(file, allowed, text = readFileSync(file, "utf8")) {
   const out = [];
   if (/\.mdx?$/.test(file)) {
     lintFigureEmbeds(file, text, out);
   } else if (file.endsWith(".svg")) {
     const tree = parseSvg(text);
+    const held = heldToStandard(file);
     lintSvgShape(file, text, DRAWING_CLASSES, out);
-    lintColours(file, text, allowed, out);
+    // A held figure's fill= and stroke= are its fallback colours, which lintFigure checks against page.css; any
+    // other colour literal still fails here.
+    const colours = held
+      ? text.replace(/(\s(?:fill|stroke)\s*=\s*")([^"]*)"/g, (m, head, value) => `${head}${" ".repeat(value.length)}"`)
+      : text;
+    lintColours(file, colours, allowed, out);
     lintStrokes(file, text, out);
     lintFonts(file, text, out);
-    lintSvgAttributes(file, text, tree, out);
-    if (heldToStandard(file)) lintFigure(file, text, tree, out);
+    lintSvgAttributes(file, text, tree, held, out);
+    if (held) lintFigure(file, text, tree, out);
   } else {
     const css = text.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " "));
     lintColours(file, css, allowed, out);
@@ -570,22 +656,45 @@ function svgsUnder(dir) {
 
 const allowed = allowedColours();
 const DRAWING_CLASSES = drawingClassNames();
+let COLOUR_RULES;
+try {
+  COLOUR_RULES = drawingColourRules();
+} catch (err) {
+  console.error(`brand lint: ${err.message}`);
+  process.exit(1);
+}
 const show = (f) => `${f.file.startsWith(DOCS) ? relative(DOCS, f.file) : f.file}:${f.line} ${f.rule}: ${f.detail}`;
 
-// 1. The fixtures must trip every rule, or a rule has stopped working. A figure fixture
-// `<rule>.svg` or `<rule>.<case>.svg` (or `.md`) must trip its own rule, and `good.*` none: a
-// rule that fires on a clean figure would fail every figure for nothing.
-const fixtures = [
-  ...readdirSync(FIXTURES).map((f) => join(FIXTURES, f)).filter((f) => statSync(f).isFile()),
-  ...readdirSync(FIGURE_FIXTURES).map((f) => join(FIGURE_FIXTURES, f)),
-];
-const fixtureFindings = fixtures.map((file) => ({ file, found: lintFile(file, allowed) }));
+// 1. The fixtures must trip every rule, or a rule has stopped working. The clean figure fixtures
+// (`figures/good.*`) must trip none: a rule that fires on a clean figure would fail every figure
+// for nothing. Each case in `cases.mjs` edits one of them in memory and must trip its rule.
 const broken = [];
+const fixtureFindings = [
+  ...readdirSync(FIXTURES).map((f) => join(FIXTURES, f)).filter((f) => statSync(f).isFile() && !f.endsWith(".mjs")),
+  ...readdirSync(FIGURE_FIXTURES).map((f) => join(FIGURE_FIXTURES, f)),
+].map((file) => ({ file, found: lintFile(file, allowed) }));
 for (const { file, found } of fixtureFindings.filter((f) => inside(FIGURE_FIXTURES, f.file))) {
-  const rule = relative(FIGURE_FIXTURES, file).split(".")[0];
-  if (rule === "good") broken.push(...found.map((f) => `the clean fixture fails ${show(f)}`));
-  else if (!RULES.includes(rule)) broken.push(`${relative(DOCS, file)} names no rule`);
-  else if (!found.some((f) => f.rule === rule)) broken.push(`${relative(DOCS, file)} does not trip ${rule}`);
+  if (!basename(file).startsWith("good.")) broken.push(`${relative(DOCS, file)}: a figure fixture file is a clean one, good.*; a failing case belongs in cases.mjs`);
+  else broken.push(...found.map((f) => `the clean fixture fails ${show(f)}`));
+}
+for (const fixtureCase of CASES) {
+  const file = join(FIGURE_FIXTURES, `${fixtureCase.name}${extname(fixtureCase.base)}`);
+  const finds = [fixtureCase.find].flat();
+  const replaces = [fixtureCase.replace].flat();
+  let text = readFileSync(join(FIGURE_FIXTURES, fixtureCase.base), "utf8");
+  const stale = finds.filter((find, i) => {
+    if (!text.includes(find) || find === replaces[i]) return true;
+    text = text.replace(find, () => replaces[i]);
+    return false;
+  });
+  if (!RULES.includes(fixtureCase.rule)) broken.push(`case ${fixtureCase.name} names no rule`);
+  else if (finds.length !== replaces.length) broken.push(`case ${fixtureCase.name} has ${finds.length} finds and ${replaces.length} replaces`);
+  else if (stale.length) broken.push(`case ${fixtureCase.name}: ${JSON.stringify(stale[0])} is not in ${fixtureCase.base}, so the case changes nothing`);
+  else {
+    const found = lintFile(file, allowed, text);
+    fixtureFindings.push({ file, found });
+    if (!found.some((f) => f.rule === fixtureCase.rule)) broken.push(`case ${fixtureCase.name} does not trip ${fixtureCase.rule}`);
+  }
 }
 const silent = RULES.filter((rule) => !fixtureFindings.some((f) => f.found.some((x) => x.rule === rule)));
 if (silent.length) broken.push(`no fixture failure for ${silent.join(", ")}; the rule can no longer fail.`);

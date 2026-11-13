@@ -1,55 +1,55 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 462">
 <defs>
-<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
-<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
 </defs>
-<rect fill="url(#hatch)" x="28" y="24" width="472" height="10"/><line class="thin" x1="28" y1="34.5" x2="500" y2="34.5"/>
-<rect class="solid" x="28" y="24" width="472" height="260"/>
-<text class="lb" x="42" y="56">THE TASKS · STORED ON A RESOURCE</text>
-<text class="nm" x="42" y="78">The list</text>
-<line class="hi" x1="28" y1="92" x2="500" y2="92"/>
-<text class="lb" x="42" y="112">ID</text><text class="lb" x="140" y="112">STATUS</text><text class="lb" x="270" y="112">WAITS ON</text>
-<line class="hi" x1="28" y1="122" x2="500" y2="122"/>
-<text class="c" x="42" y="146">acme</text><text class="c" x="140" y="146">completed</text>
-<line class="hi" x1="28" y1="160" x2="500" y2="160"/>
-<text class="c" x="42" y="184">globex</text><text class="c" x="140" y="184">in_progress</text>
-<line class="hi" x1="28" y1="198" x2="500" y2="198"/>
-<text class="c" x="42" y="222">initech</text><text class="c" x="140" y="222">in_progress</text>
-<line class="hi" x1="28" y1="236" x2="500" y2="236"/>
-<rect class="hl" x="36" y="246" width="456" height="28"/>
-<text class="c on-hl" x="42" y="264">compare</text><text class="c on-hl" x="140" y="264">pending</text><text class="c on-hl" x="270" y="264">acme, globex, initech</text>
-<rect class="dash" x="612" y="24" width="280" height="260"/>
-<text class="lb" x="626" y="56">THE DRAIN · RUNS IN A REQUEST</text>
-<text class="c" x="626" y="78">board.drain</text>
-<line class="hi" x1="612" y1="92" x2="892" y2="92"/>
-<text class="c" x="626" y="122">claim a ready task</text>
-<line class="hi" x1="612" y1="140" x2="892" y2="140"/>
-<text class="c" x="626" y="170">run its block</text>
-<line class="hi" x1="612" y1="188" x2="892" y2="188"/>
-<text class="c" x="626" y="218">record the result</text>
-<line class="hi" x1="612" y1="236" x2="892" y2="236"/>
-<text class="sub" x="626" y="264">then again, until nothing is ready</text>
-<line class="ln" x1="612" y1="118" x2="502" y2="118" marker-end="url(#ah)"/>
-<rect class="ground" x="543.7" y="111" width="24.6" height="15"/><text class="plate" x="556" y="122" text-anchor="middle">01</text>
-<line class="ln" x1="612" y1="214" x2="502" y2="214" marker-end="url(#ah)"/>
-<rect class="ground" x="543.7" y="207" width="24.6" height="15"/><text class="plate" x="556" y="218" text-anchor="middle">02</text>
-<line class="hi" x1="0" y1="308" x2="920" y2="308"/>
-<text class="n" x="28" y="334">01</text>
-<text class="t" x="60" y="334">The drain claims a task that is ready: everything it waits on is completed. compare is not, yet.</text>
-<text class="n" x="28" y="359">02</text>
-<text class="t" x="60" y="359">It runs the task's block, records the result on the list, and takes the next ready task.</text>
-<text class="n" x="28" y="384">03</text>
-<text class="t" x="60" y="384">The drain ends with its action run. The list stays, and a task added later waits for the next drain.</text>
-<text class="n" x="28" y="409">04</text>
-<text class="t" x="60" y="409">Stored on the request instead, which is the default, the list ends when that request does.</text>
+<rect fill="url(#hatch)" x="28" y="24" width="472" height="10"/><line class="thin" fill="none" stroke="#1b1a15" x1="28" y1="34.5" x2="500" y2="34.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" x="28" y="24" width="472" height="260"/>
+<text class="lb" fill="#57544a" x="42" y="56">THE TASKS · STORED ON A RESOURCE</text>
+<text class="nm" fill="#1b1a15" x="42" y="78">The list</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" x1="28" y1="92" x2="500" y2="92"/>
+<text class="lb" fill="#57544a" x="42" y="112">ID</text><text class="lb" fill="#57544a" x="140" y="112">STATUS</text><text class="lb" fill="#57544a" x="270" y="112">WAITS ON</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" x1="28" y1="122" x2="500" y2="122"/>
+<text class="c" fill="#1b1a15" x="42" y="146">acme</text><text class="c" fill="#1b1a15" x="140" y="146">completed</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" x1="28" y1="160" x2="500" y2="160"/>
+<text class="c" fill="#1b1a15" x="42" y="184">globex</text><text class="c" fill="#1b1a15" x="140" y="184">in_progress</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" x1="28" y1="198" x2="500" y2="198"/>
+<text class="c" fill="#1b1a15" x="42" y="222">initech</text><text class="c" fill="#1b1a15" x="140" y="222">in_progress</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" x1="28" y1="236" x2="500" y2="236"/>
+<rect class="hl" fill="#e8f551" x="36" y="246" width="456" height="28"/>
+<text class="c on-hl" fill="#1b1a15" x="42" y="264">compare</text><text class="c on-hl" fill="#1b1a15" x="140" y="264">pending</text><text class="c on-hl" fill="#1b1a15" x="270" y="264">acme, globex, initech</text>
+<rect class="dash" fill="none" stroke="#1b1a15" x="612" y="24" width="280" height="260"/>
+<text class="lb" fill="#57544a" x="626" y="56">THE DRAIN · RUNS IN A REQUEST</text>
+<text class="c" fill="#1b1a15" x="626" y="78">board.drain</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" x1="612" y1="92" x2="892" y2="92"/>
+<text class="c" fill="#1b1a15" x="626" y="122">claim a ready task</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" x1="612" y1="140" x2="892" y2="140"/>
+<text class="c" fill="#1b1a15" x="626" y="170">run its block</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" x1="612" y1="188" x2="892" y2="188"/>
+<text class="c" fill="#1b1a15" x="626" y="218">record the result</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" x1="612" y1="236" x2="892" y2="236"/>
+<text class="sub" fill="#57544a" x="626" y="264">then again, until nothing is ready</text>
+<line class="ln" fill="none" stroke="#1b1a15" x1="612" y1="118" x2="502" y2="118" marker-end="url(#ah)"/>
+<rect class="ground" fill="#f0ece1" x="543.7" y="111" width="24.6" height="15"/><text class="plate" fill="#1b1a15" x="556" y="122" text-anchor="middle">01</text>
+<line class="ln" fill="none" stroke="#1b1a15" x1="612" y1="214" x2="502" y2="214" marker-end="url(#ah)"/>
+<rect class="ground" fill="#f0ece1" x="543.7" y="207" width="24.6" height="15"/><text class="plate" fill="#1b1a15" x="556" y="218" text-anchor="middle">02</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" x1="0" y1="308" x2="920" y2="308"/>
+<text class="n" fill="#1b1a15" x="28" y="334">01</text>
+<text class="t" fill="#3d3a32" x="60" y="334">The drain claims a task that is ready: everything it waits on is completed. compare is not, yet.</text>
+<text class="n" fill="#1b1a15" x="28" y="359">02</text>
+<text class="t" fill="#3d3a32" x="60" y="359">It runs the task's block, records the result on the list, and takes the next ready task.</text>
+<text class="n" fill="#1b1a15" x="28" y="384">03</text>
+<text class="t" fill="#3d3a32" x="60" y="384">The drain ends with its action run. The list stays, and a task added later waits for the next drain.</text>
+<text class="n" fill="#1b1a15" x="28" y="409">04</text>
+<text class="t" fill="#3d3a32" x="60" y="409">Stored on the request instead, which is the default, the list ends when that request does.</text>
 <g id="key">
-<line class="ln" x1="28" y1="436" x2="54" y2="436" marker-end="url(#ah)"/>
-<text class="lb" x="62" y="440">THE DRAIN WORKS A TASK</text>
-<line class="dash" x1="259" y1="436" x2="285" y2="436"/>
-<text class="lb" x="293" y="440">LASTS ONE ACTION RUN</text>
-<rect fill="url(#hatch)" x="475" y="430" width="26" height="11"/><rect class="thin" x="475" y="430" width="26" height="11"/>
-<text class="lb" x="509" y="440">OUTLIVES THE REQUEST</text>
-<rect class="hl" x="691" y="430" width="26" height="11"/>
-<text class="lb" x="725" y="440">CANNOT START YET</text>
+<line class="ln" fill="none" stroke="#1b1a15" x1="28" y1="436" x2="54" y2="436" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" x="62" y="440">THE DRAIN WORKS A TASK</text>
+<line class="dash" fill="none" stroke="#1b1a15" x1="259" y1="436" x2="285" y2="436"/>
+<text class="lb" fill="#57544a" x="293" y="440">LASTS ONE ACTION RUN</text>
+<rect fill="url(#hatch)" x="475" y="430" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" x="475" y="430" width="26" height="11"/>
+<text class="lb" fill="#57544a" x="509" y="440">OUTLIVES THE REQUEST</text>
+<rect class="hl" fill="#e8f551" x="691" y="430" width="26" height="11"/>
+<text class="lb" fill="#57544a" x="725" y="440">CANNOT START YET</text>
 </g>
 </svg>
