@@ -2554,9 +2554,6 @@ importers:
       '@flow-state-dev/memory':
         specifier: workspace:*
         version: link:../memory
-      '@flow-state-dev/store-sqlite':
-        specifier: workspace:*
-        version: link:../store-sqlite
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing

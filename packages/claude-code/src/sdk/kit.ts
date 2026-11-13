@@ -34,7 +34,7 @@ import { claudeCodeWorkRecorderResources } from "./work-collections";
 import { claudeCodeWorkspaceResources } from "./workspace-collections";
 
 /** The flow the kit serves Claude Code's collections on. */
-export const CLAUDE_CODE_FLOW = "claude-code";
+const CLAUDE_CODE_FLOW = "claude-code";
 
 /** The permission modes a coding run works in with nobody to approve a tool call. */
 type PermissionMode = "acceptEdits" | "plan";

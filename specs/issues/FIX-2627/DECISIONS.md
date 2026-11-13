@@ -142,6 +142,39 @@ other way, a stretch where the goals don't cover the install every app uses.
   `readWorkforceFolder`, `Harness`, `sourceReadCapability`, `sessionFields`; each enters FIX-2447's export ratchet.
 - **Changesets:** `minor` for workforce, harness-manager, claude-code, codex, cursor and react.
 
+## Decided during implementation
+
+Settled on the implementation branch (`claude/fix-2627-impl`). Each narrows a decision above;
+none reverses one.
+
+- **Where the kits are imported from.** `workforce` from `@flow-state-dev/workforce/kit`, beside
+  `harnesses` at `@flow-state-dev/harness-manager/kit`: both read the file system at start, so
+  neither sits on a package root a browser bundle reaches.
+- **The workforce kit's config carries what a host passed to the hire.** `agent`, `coordinator`,
+  `consult`, `routines`, `taskChainLimit`, `messages`, `projectCoordinator`, and `generated`, the
+  app's `workforce.gen.ts` imported whole. GitHub's service flow, which needs the installation, is
+  `github` in config: the kit builds it. The kit adds the routine tools to the flows it builds as it
+  adds consult, for the same reason (a capability over its own installation), and an entry keyed
+  `agent` or `coordinator` in `workerFlows` replaces its own, which is then refused in config.
+- **Every reader problem refuses the start.** `readWorkforceFolder` throws on any problem the
+  readers report, every one named, as an unclaimed file does: an app is never started short.
+- **The `Harness` type lives at harness-manager's root** (type only); Codex and Cursor take a
+  type dependency on it. Its `agent` is harness-manager's `HarnessSlot`, so no feeds type moves.
+- **Claude Code's plan mode is a second harness**, `claude-code-plan`, which `claudeCode({ plan: true })`
+  fills. The coding worker flow takes no per-harness worker settings, so claude-code-style's two
+  plan workers say `harness: claude-code-plan` instead of `permissionMode: plan`.
+- **The coding worker flow is claude-code-style's `harness-thread` with teammates' policy as
+  options.** Its door talks to the run's session; checks run only on a run that changed files;
+  readiness is checked before a task starts on any app; `review`, `pullRequests`, `judge`,
+  `checks`, `project` and `runTimeoutMs` are the kit's config, and a worker's `review:` line wins
+  over the kit's. `codingDrainBudgetMs(config)` gives a host the shutdown wait.
+- **The start-up readiness log is the kit's, opt-in** (`logReadiness`), since the hosts no longer
+  hold a readiness read; FIX-2391's goal grades it.
+- **Teammates reads its workers' delegates with `readWorkforceFolder`** for its context view: the
+  roster view (FIX-2623's, installed unchanged) carries no delegates.
+- **The planted stray is named by its folder.** With nothing else under `workforce/flows/`, the
+  claim pass names `flows`, the topmost entry no reader used; the goal check asserts that.
+
 ## Considered and dropped
 
 | Alternative | Why not |

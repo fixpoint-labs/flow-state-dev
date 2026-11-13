@@ -111,7 +111,6 @@
   },
   "devDependencies": {
     "@flow-state-dev/memory": "workspace:*",
-    "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "cron-parser": "^5.5.0",

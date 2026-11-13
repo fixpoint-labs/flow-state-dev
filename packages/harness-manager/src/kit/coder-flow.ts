@@ -63,7 +63,7 @@ import { CODER_FLOW } from "../coder-flow-name";
 export { CODER_FLOW };
 
 /** One run's wall-clock budget when the kit names none. */
-export const DEFAULT_RUN_TIMEOUT_MS = 20 * 60_000;
+const DEFAULT_RUN_TIMEOUT_MS = 20 * 60_000;
 
 /** How long a run's checks may take together when the kit names no bound. */
 const CHECKS_TIMEOUT_MS = 10 * 60_000;

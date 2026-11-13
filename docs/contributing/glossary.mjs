@@ -670,6 +670,12 @@ export const ENTRIES = [
     retires: [],
   },
   {
+    term: "Harness",
+    means: "A coding agent a run drives as a block (Claude Code, Codex, Cursor): handed a prompt, it runs its own loop in a working folder and returns a run handle. As a value (`Harness`, from `@flow-state-dev/harness-manager`) it is what fills the harness kit's `harnesses` slot: `{ id, label?, agent, readiness, pass, usage?, models? }`. A worker's `harness:` line names one by `id`.",
+    decision: "Owner, 2026-11-11 (epic FIX-2618 O1, the harness shape); FIX-2627",
+    retires: [],
+  },
+  {
     term: "Live read",
     means: "`client.live`: keep a screen current on change notices. It filters the notices a screen hears, merges them, runs one read at a time with at most one waiting, reports a value only when it changed, and retries a failed read on its own. Every watch in the framework and its apps is one; a view's hook builds on it.",
     decision: "Owner, 2026-11-11 (FIX-2551 D1, epic FIX-2618 ER-7)",

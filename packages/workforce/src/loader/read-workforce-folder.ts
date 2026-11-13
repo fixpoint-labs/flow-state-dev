@@ -59,7 +59,7 @@ const CLAIMED: readonly RegExp[] = [
 ];
 
 /** Whether `rel`, a slash-separated path in the folder, is one workforce reads. */
-export function isWorkforcePath(rel: string): boolean {
+function isWorkforcePath(rel: string): boolean {
   return CLAIMED.some((rule) => rule.test(rel));
 }
 
