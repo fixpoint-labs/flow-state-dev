@@ -4,8 +4,8 @@
  * the server.
  *
  * Each field joins the session's state schema, its `serverOwned` list (a
- * create that seeds it is refused with a 400 naming it, BP-031) and what the
- * client reads of the session. A field named like one workforce keeps is
+ * create that seeds it is refused with a 400 naming it) and what the client
+ * reads of the session. A field named like one workforce keeps is
  * refused: the app would overwrite a key workforce writes.
  */
 import type { SessionConfig } from "@flow-state-dev/core/types";

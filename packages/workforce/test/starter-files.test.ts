@@ -1,7 +1,7 @@
 /**
  * Workforce's starter files: the registry item an app copies in with
- * `fsdev ui add workforce-starter` (FIX-2626's copy-in) is one team with one
- * worker on the built-in agent flow, and nothing else: no flow file (D1).
+ * `fsdev ui add workforce-starter` (the registry copy-in) is one team with one
+ * worker on the built-in agent flow, and nothing else: no flow file.
  *
  * Graded on the app those files make: copied into an empty app, the kit
  * starts on them, every file claimed, and the roster view lists the worker
