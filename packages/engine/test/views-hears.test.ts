@@ -42,9 +42,9 @@ function flow(): FlowInstance {
       items: view("items", (ctx) => ctx.session.items.all().length),
       board: view("board", async (ctx) => {
         const ledger = ctx.resources.desk;
-        const rows = await ledger.list();
+        const entries = await ledger.list();
         recordBoardRead(ctx, { board: "desk", sessionIds: [ctx.session.identity.id, "filer-2", ctx.session.identity.id], ledger });
-        return rows.length;
+        return entries.length;
       }),
       boardNoSession: view("board-no-session", async (ctx) => {
         const ledger = ctx.resources.desk;
