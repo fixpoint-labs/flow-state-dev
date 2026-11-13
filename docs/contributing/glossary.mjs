@@ -1226,7 +1226,7 @@ const EXEMPTIONS = [
   {
     id: "english-kind",
     terms: ["kind"],
-    strip: /\b(?:a|an|any|one|the same|this|that|what|which|some|every|each|another|other|same|no|either|second|different)\s+kinds?\s+of\b|\bkinds\s+of\b|\bof (?:any|that|this|each|either|one|the same) kind\b|\b(?:the same|same) kind\b|\bkindly\b|\bkinder\b|\bBe kind\b/gi,
+    strip: /\b(?:a|an|any|one|the same|this|that|what|which|some|every|each|another|other|same|no|either|second|different)\s+kinds?\s+of\b|\bkinds\s+of\b|\bof (?:any|that|this|each|either|one|the same) kind\b|\b(?:the same|same) kind\b|\b(?:two|three|four|five|six|seven|eight|nine|ten|\d+) kinds\b|\bkindly\b|\bkinder\b|\bBe kind\b/gi,
     why: "the English word",
   },
   {

@@ -353,7 +353,7 @@ async function machineChecks(after, n) {
   const out = await agent(
     `You are pass 4 of the ten passes: the machine checks on ${PATH}. Run each and report it: its result line (the word count, for check-docs-page), and the failing lines when it fails:
 - \`node scripts/check-docs-page.mjs ${PATH}\` (budget, banned words, code titles, fences)
-- a type-check of every TypeScript example on the page, against the workspace packages
+- a type-check of every TypeScript example on the page, against the workspace packages, in a scratch folder of its own named for this page (\`apps/kitchen-sink/.docs-tc-${A.page}\`, since other pages' loops may run at the same time), deleted afterwards
 - the retired-terms check on this page alone, from the repository root: \`${RETIRED_PAGE} ${PATH}\`. It is ok only on exit 0; \`NOT SCANNED\` means the check did not read the page, and is a failure
 - \`node apps/docs/scripts/lint-brand.mjs <each figure the page shows>\`, when it shows any
 Then return the page file's full text verbatim. Edit nothing.`,
