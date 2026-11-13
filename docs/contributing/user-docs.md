@@ -328,9 +328,12 @@ examples a page has.
 - **Kit** is a feature an app installs. **Slot** is an opening a kit leaves for other kits.
 - **View** is what a screen reads. **Flow**, **action**, **block**, **session**, **resource** keep
   the meanings in [`glossary.mjs`](./glossary.mjs).
-- **Flow** is the top-level unit of the backend: the thing you register with the server and that
-  clients connect to. It is a workflow, and an agent is one kind of workflow. Never "a backend" or
-  "a backend with a name": the backend holds flows.
+- **Flow** is the top-level unit of the backend: a self-contained system inside your app, with the
+  actions it exposes and its own scope of data, registered with the server for clients to call.
+  What it does inside is open: an agent that responds, works in the background and is woken by
+  other flows, a controller that handles requests, or any other self-contained mechanism. The
+  definition is like a class and each registered flow an instance. Never "a backend", "a backend
+  with a name" or "a workflow": the backend holds flows, and a flow is more than a workflow.
 - **Session** is where a flow keeps many requests together as one record. A chat conversation is
   one use of it and a workflow's log of activity is another, so never define a session as "a
   conversation".
