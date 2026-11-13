@@ -56,3 +56,6 @@ graft/
 
 # Playwright writes its last-run state here on every run.
 test-results/
+
+# Page-loop pass 4 type-check scratch folders
+apps/kitchen-sink/.docs-tc-*/

@@ -6,6 +6,8 @@ Loop: escalated after 3 revise round(s) with 1 finding(s) open. Pass 10 is the o
 
 - [pass 9] "`supportAgent` already gets tools from a capability through `uses`. You edit it to add `tools: [lookUpOrder]`. Which tools can the model call now?" missed by 3 of 3 readers; the key: Only `lookUpOrder`. Declaring `tools` on a generator fences it: tools a capability would contribute are dropped once the block declares `tools`, even `tools: []`. Declaring nothing leaves the capability's tools in (section 5, `fence:1-30`, `cfg:73`). The model only gets what you hand it, so the list you declare is all it can reach (section 7). To keep the capability's tools, list them yourself.
 
+Post-loop edits (after pass 9, by the coordinator, checked against the fact sheet): the open pass-9 item is answered on the page in one sentence, that declaring `tools`, even `tools: []`, drops the tools a capability would add. The Next link now names what Composition covers.
+
 ## 1 · Fact sheet
 
 Written by `docs-writer` (sonnet): 62 facts, `docs/contributing/docs-revamp/pages/concepts/generators-and-tools.facts.md`.

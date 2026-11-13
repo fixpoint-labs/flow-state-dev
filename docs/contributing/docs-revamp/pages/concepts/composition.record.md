@@ -6,6 +6,8 @@ Loop: escalated after 3 revise round(s) with 1 finding(s) open. Pass 10 is the o
 
 - [pass 9] "A teammate edits cleanMessage so it returns { body, truncated } instead of { text, truncated }. The connector `(cleaned) => cleaned.text` before draftReply is left unchanged. Does TypeScript catch this when you build? If not, when and how does it show up?" missed by 3 of 3 readers; the key: Don't rely on a compile-time check. A step's input is not type-checked against the previous step's output when you build. The step and connector signatures leave the block's input untyped (`any`), and tsc reported no error for a mismatched chain. The mistake shows up at run time. When the draftReply step runs, its own inputSchema rejects the value, and the error names the block and the field: `Block "draftReply" input validation failed at "<path>": <message>`. Fact sheet 'Read this first' item 1 (sm:163-180, bb:152-170, :356, build-block.test.ts:64).
 
+Post-loop edits (after pass 9, by the coordinator, checked against the fact sheet): the open pass-9 item is answered on the page in one sentence, that TypeScript does not check one step's output against the next step's input, so a mismatch shows at run time when the next block's `inputSchema` rejects the value.
+
 ## 1 · Fact sheet
 
 Written by `docs-writer` (sonnet): 121 facts, `docs/contributing/docs-revamp/pages/concepts/composition.facts.md`.
