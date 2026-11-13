@@ -1,5 +1,6 @@
+// FIX-2536 review.
 /**
- * GitHub's poll on a busy or quiet pull request (FIX-2536 review): what a
+ * GitHub's poll on a busy or quiet pull request: what a
  * conditional request or a long list must not hide.
  *
  * Why these matter: a finished CI run doesn't change the pull request, so a

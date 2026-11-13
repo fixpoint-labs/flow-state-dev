@@ -112,7 +112,8 @@ describe("BoardColumns live", () => {
 });
 
 describe("a live panel whose read failed", () => {
-  it("reads again on its own within 2 s, with no notice, and draws what lands (D2)", async () => {
+  // FIX-2551 D2.
+  it("reads again on its own within 2 s, with no notice, and draws what lands", async () => {
     const host = hostClient("workforce/workers/*", "roster");
     host.client.resources.listCollectionResources.mockRejectedValueOnce(new Error("down"));
     render(createElement(Roster, { sessionId: SESSION, client: host.client as never, live: true }));

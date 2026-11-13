@@ -1,6 +1,7 @@
+// FIX-2536.
 /**
- * `@flow-state-dev/vercel/schedules` with `@flow-state-dev/scheduled` absent
- * (FIX-2536): that package is an optional peer, so the module must load
+ * `@flow-state-dev/vercel/schedules` with `@flow-state-dev/scheduled` absent:
+ * that package is an optional peer, so the module must load
  * without it. An app that only uses `createGetToPostCronShim` installs no
  * schedule index.
  *

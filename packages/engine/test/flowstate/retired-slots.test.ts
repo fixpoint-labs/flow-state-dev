@@ -1,8 +1,9 @@
+// FIX-824.
 /**
  * A profile names only slots that do something or have their store on the way.
  * `queue` and `scheduler` backed nothing and have no store coming, so a typed
  * profile that names either fails to compile (`pnpm typecheck` checks the
- * `@ts-expect-error` lines below). `blobs` backs attachments (FIX-824), so a
+ * `@ts-expect-error` lines below). `blobs` backs attachments, so a
  * profile with `primary`, `bus` and `blobs` still constructs.
  */
 import { describe, expect, it } from "vitest";

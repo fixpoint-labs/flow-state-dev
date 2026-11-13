@@ -1,5 +1,6 @@
+// FIX-2624, Cursor 5865490275.
 /**
- * Structural (FIX-2624, Cursor 5865490275): the no-session routes ask who the
+ * Structural: the no-session routes ask who the
  * caller is in one place, `resolveFlowCaller`, always at the address of the
  * flow whose rules apply. A second `resolvePrincipal` call in these files is
  * how a principal gets derived from a flow other than the one that runs (the

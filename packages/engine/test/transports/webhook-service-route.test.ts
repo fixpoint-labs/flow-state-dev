@@ -1,5 +1,6 @@
+// FIX-2535 D1.
 /**
- * The webhook transport's service route (FIX-2535 D1): a verified delivery on
+ * The webhook transport's service route: a verified delivery on
  * a provider entry declared as `service` is normalized and each event routed
  * through the flow's internal entry as `service:<provider>`, in the org the
  * host's principal resolver names, never a session made from the event. The

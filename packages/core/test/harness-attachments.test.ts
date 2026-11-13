@@ -1,7 +1,8 @@
+// FIX-2519; epic FIX-2516 ER-5.
 /**
- * A turn's files on a harness's run input (FIX-2519). They ride as stored
+ * A turn's files on a harness's run input. They ride as stored
  * files' references, never bytes; a harness refuses a type it doesn't take,
- * naming the file and itself, before its run starts (epic FIX-2516 ER-5); and
+ * naming the file and itself, before its run starts; and
  * it reads the bytes only through the engine's seam, so a context with no
  * reader is a named failure rather than a turn run without its files.
  */

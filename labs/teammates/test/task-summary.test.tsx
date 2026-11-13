@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
+// FIX-2396.
 /**
  * A coding task's popup sums up what its run did, so you don't open each step
- * group to learn it (FIX-2396): one line, "Edited 1 file · ran 1 command",
+ * group to learn it: one line, "Edited 1 file · ran 1 command",
  * with a chip per file. The files are what the run's harness recorded,
  * read through harness-manager's `readRecordedWork`, never re-parsed from the
  * steps; a harness that records none (Codex and Cursor today) gets no file

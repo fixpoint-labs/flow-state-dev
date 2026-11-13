@@ -1,5 +1,6 @@
+// FIX-2534; screens, FIX-2537.
 /**
- * A host for subscriptions on the real engine (FIX-2534; screens, FIX-2537): the board host's
+ * A host for subscriptions on the real engine: the board host's
  * worker flows, a `follower` worker flow whose sessions subscribe (its
  * actions are the four routine verbs a worker's tools run, so a test calls them
  * as a model would, with no model), and a GitHub service flow that routes

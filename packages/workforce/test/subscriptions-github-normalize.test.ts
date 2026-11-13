@@ -1,5 +1,6 @@
+// FIX-2535; FIX-2538 runs on `addressed`.
 /**
- * GitHub's normalize (FIX-2535): a GitHub event, as a webhook delivers it or a
+ * GitHub's normalize: a GitHub event, as a webhook delivers it or a
  * poll rebuilds it from the API, as the normalized events a service flow
  * routes.
  *
@@ -8,7 +9,7 @@
  * (a session hears a review twice); a pull request versioned by its
  * `updated_at` would make a later API read look new too. Who sent it decides
  * the sender screen, which fails closed: an outsider's comment must not read
- * as a member's. And `addressed` is what FIX-2538 runs on in every mode, so a
+ * as a member's. And `addressed` is what a worker's reply screen runs on in every mode, so a
  * quoted reply or a pasted snippet must never read as asking the agent.
  */
 import { describe, expect, it } from "vitest";

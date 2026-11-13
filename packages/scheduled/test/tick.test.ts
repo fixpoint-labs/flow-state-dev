@@ -1,5 +1,6 @@
+// FIX-2536.
 /**
- * The shared schedule tick (FIX-2536): one body that Vercel's per-beat handler
+ * The shared schedule tick: one body that Vercel's per-beat handler
  * and `serve()`'s interval both run.
  *
  * Why these matter: a long-lived host has no cron of its own, so this tick is

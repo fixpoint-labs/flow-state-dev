@@ -1,5 +1,6 @@
+// FIX-2624.
 /**
- * User and org resources with no session (FIX-2624): read by scope and key,
+ * User and org resources with no session: read by scope and key,
  * written only through the flow `runBy` names, and the identity read.
  *
  * The checks are on the stores, not on what a route answers about itself: a

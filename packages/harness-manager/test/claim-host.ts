@@ -84,7 +84,8 @@ export interface SeenRun {
   cwd: string;
   prompt: string;
   resume: string | null;
-  /** The files the run was handed beside the prompt (FIX-2522), when it was handed any. */
+  // FIX-2522.
+  /** The files the run was handed beside the prompt, when it was handed any. */
   attachments?: HarnessRunInput["attachments"];
 }
 

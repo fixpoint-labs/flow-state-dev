@@ -1,5 +1,6 @@
+// FIX-2379.
 /**
- * The task-row view (`taskView`, FIX-2379): the one status and *waiting on
+ * The task-row view (`taskView`): the one status and *waiting on
  * you* vocabulary every workforce app reads a row through.
  *
  * The bug it exists to remove is a row that waits on the user reading as

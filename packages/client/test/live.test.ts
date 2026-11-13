@@ -1,3 +1,4 @@
+// FIX-1506: the path rule.
 /**
  * `client.live`: the one live read. Every package and app that keeps a
  * screen current on change notices goes through it, so what these cases pin
@@ -7,7 +8,7 @@
  * - the filter runs before the merge, so a notice nobody hears never turns a
  *   waiting read into a read of everything;
  * - the merge keeps one notice, and hands `null` for several different ones;
- * - the path rule rules a path out only when it is sure (FIX-1506: a false
+ * - the path rule rules a path out only when it is sure (a false
  *   yes costs one read, a false no leaves a screen stale);
  * - a value is reported only when it changed;
  * - a failed read tries again on its own, 1 s doubling to 30 s, and says the
@@ -185,7 +186,8 @@ describe("liveRead: the path rule", () => {
     });
   });
 
-  it("mayHold: FIX-1506's rule, every doubt a yes", () => {
+  // FIX-1506's rule.
+  it("mayHold: the path rule, every doubt a yes", () => {
     expect(mayHold("roster/a", ["roster"])).toBe(true);
     expect(mayHold("workforce/workers/a", ["roster", "workforce/workers"])).toBe(true);
     expect(mayHold("workforce/other/a", ["roster", "workforce/workers"])).toBe(false);
@@ -237,7 +239,8 @@ describe("liveRead: what it reports", () => {
   });
 });
 
-describe("liveRead: a failed read recovers on its own (D2)", () => {
+// FIX-2551 D2.
+describe("liveRead: a failed read recovers on its own", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 

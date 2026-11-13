@@ -1,6 +1,7 @@
+// FIX-2624.
 /**
- * The roster's writes go through the workers collection's `runBy` flow
- * (FIX-2624): a hire, fork, edit, fire or reset is a send addressed to the
+ * The roster's writes go through the workers collection's `runBy` flow:
+ * a hire, fork, edit, fire or reset is a send addressed to the
  * user's workers collection, run by the roster flow in a write session the
  * server keeps per writer. No roster session is found or made to write, and the
  * organization a worker's conversation is derived under is the one the

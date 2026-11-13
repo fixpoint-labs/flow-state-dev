@@ -1,5 +1,6 @@
+// FIX-2675.
 /**
- * The bound on what a request's SSE stream holds for its reader (FIX-2675),
+ * The bound on what a request's SSE stream holds for its reader,
  * through the HTTP routes: a reader that falls behind gets its stream ended
  * and resumes by sequence number, and a 202 answer fills no live stream.
  */

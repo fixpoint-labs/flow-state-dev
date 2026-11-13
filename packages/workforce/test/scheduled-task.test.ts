@@ -1,5 +1,6 @@
+// FIX-2085.
 /**
- * A clock routine is a schedule that files an ordinary task (FIX-2085): one in
+ * A clock routine is a schedule that files an ordinary task: one in
  * the user's schedule collection, fired through the scheduled-dispatch
  * endpoint, files a task on the named worker's board in the user's own
  * conversation with it, through the board's own filing, as the user. The user's

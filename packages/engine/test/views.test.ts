@@ -77,7 +77,8 @@ const readsNothing = handler({
   execute: () => ({ ok: true })
 });
 
-/** FIX-2621's probe: the view's only read is one user resource, made one block down, in a sequencer step. */
+// FIX-2621's probe.
+/** The probe: the view's only read is one user resource, made one block down, in a sequencer step. */
 const probeStep = handler({
   name: "probe-step",
   inputSchema: z.unknown(),

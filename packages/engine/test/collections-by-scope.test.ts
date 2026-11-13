@@ -1,5 +1,6 @@
+// FIX-2624.
 /**
- * User and org collections with no session (FIX-2624): entries listed and read
+ * User and org collections with no session: entries listed and read
  * by scope and key, and written and deleted only through the flow `runBy` names.
  *
  * The checks are on the stores: a read leaves the session and request stores

@@ -353,7 +353,7 @@ describe("adopting an old task draft when storage is full", () => {
 });
 
 // FIX-2522.
-describe("a line's files (FIX-2522)", () => {
+describe("a line's files", () => {
   /** An uploader that answers with a stored file's reference, as the Lab does. */
   const uploader = () => ({
     upload: vi.fn(async (request: { data: Blob; mediaType?: string; filename?: string }): Promise<FileContent> => ({

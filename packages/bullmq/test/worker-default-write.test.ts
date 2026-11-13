@@ -1,5 +1,6 @@
+// FIX-2624.
 /**
- * A default write run on a queue worker (FIX-2624). The router enqueues a
+ * A default write run on a queue worker. The router enqueues a
  * resource send addressed to the default write flow; the worker resolves flows
  * on its own registry and never builds a host, so it must hold the framework's
  * built-in flows itself. End to end on the real engine: the job runs, the
