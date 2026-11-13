@@ -27,8 +27,9 @@ published as `@flow-state-dev/design-system/page.css`. The site inlines each SVG
 [`apps/docs/src/components/Figure`](../../apps/docs/src/components/Figure/index.tsx), so the
 drawing takes the page's fonts and colour tokens. `apps/docs/scripts/lint-brand.mjs` already
 fails a published figure that writes a colour value into the file, carries a `<style>` block
-or uses an unknown class. A figure held to this standard carries each colour's light value as
-a fallback, which the lint checks against `page.css` (see [Light and dark](#light-and-dark)).
+or uses an unknown class. A figure held to this standard carries the light value of each
+colour, line and type property as a fallback, which the lint checks against `page.css` (see
+[Light and dark](#light-and-dark)).
 
 The meanings come from the thirteen figures published today. All thirteen key their hatching as
 `OUTLIVES THE REQUEST`. Compare a new figure against two of them:
@@ -129,26 +130,31 @@ text centred on it; `01` takes a rect 24.6 wide.
 (`acme`, `engineering.lead`). No option names unless the page teaches them. No sentence addressed
 to the writer or the reviewer: anything in the drawing is for the reader.
 
-**The two definitions** every figure starts with, unchanged (the `stroke=` and `fill=` are their
-light fallbacks, see [Light and dark](#light-and-dark)):
+**The two definitions** every figure starts with, unchanged (the `stroke=`, `stroke-width=` and
+`fill=` are their light fallbacks, see [Light and dark](#light-and-dark)):
 
 ```svg
 <defs>
-<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
 <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
 </defs>
 ```
 
 ## Light and dark
 
-A figure's colours come from the page tokens. `page.css` gives every class its Paper value and
-its Night value from the same tokens the page uses, so one file draws correctly in both. The file
-also carries the light (Paper) value of each as a fallback: every element whose class sets a
-`fill` or `stroke` in `page.css` carries `fill=` and `stroke=` with exactly that value, the
-hatch line and the arrowhead included, and no other element carries a colour. On the site the
-class rules override these attributes, in Paper and in Night; opened on its own or on GitHub, the
-file shows its light colours instead of black shapes. The lint reads the values from `page.css`
-and checks the two match. There is still no font and no `<style>` block in the file.
+A figure's colours, lines and type come from the page tokens. `page.css` gives every class its
+Paper value and its Night value from the same tokens the page uses, so one file draws correctly in
+both. The file also carries the light (Paper) value of each as a fallback: every element carries,
+as attributes with exactly the value `page.css`'s light theme gives its classes, its `fill`,
+`stroke`, `stroke-width`, `stroke-dasharray`, `font-family`, `font-size`, `font-weight` and
+`letter-spacing`, the hatch line and the arrowhead included, and nothing carries one its classes
+do not set. SVG has no attribute for `text-transform`, so where a class uppercases its text the
+text is written in capitals. On the site the class rules override these attributes, in Paper and
+in Night; opened on its own or on GitHub, the file draws as the site's Paper does, dashes and
+type included. The font stack, `'IBM Plex Mono', ui-monospace, monospace`, ends in the generic
+`monospace`, so where the webfont is missing the text keeps the advance width the text-fit rule
+assumes. The lint reads the values from `page.css`, resolving its cascade, and checks the two
+match. There is still no `<style>` block in the file.
 
 The palette is the page's own: paper for the ground, the inks for lines and text, the
 yellow highlighter (`hl`) for the one thing to look at, and red (`x`, `x-fill`) for a failure or
@@ -160,8 +166,8 @@ line, hatch and label, not by giving each its own colour.
 - The only fills are `hl`, `ground` under a plate, `ink` on an arrowhead or a dot, `x-fill` on a
   failure mark, and the hatch.
   Do not cover a line with a filled shape.
-- Opened on its own or on GitHub, a figure shows its light colours but not the page's font, line
-  weights or dashes, which only the classes set. To see it as the site draws it, render it.
+- Opened on its own or on GitHub, a figure draws in its Paper fallbacks, in whatever monospace
+  the viewer has. To see it as the site draws it, in both modes, render it.
 
 ## The figure brief
 
@@ -252,7 +258,13 @@ clean one trips any.
    or a colour name. The site's published diagrams, until they are redrawn, carry no colour
    literal at all, and their only `fill` attribute is `fill="url(#hatch)"`.
 3. Every `class` is one `page.css` defines under `.drawing`.
-4. No `stroke-width`, `stroke-dasharray` or `font-family` attribute. Classes set them.
+4. Classes set line and type. A figure under `docs/contributing/docs-revamp/` carries their light
+   values as fallbacks, as rule 2 does for colour: `stroke-width`, `stroke-dasharray`,
+   `font-family`, `font-size`, `font-weight` and `letter-spacing`, each exactly as `page.css`'s
+   light theme gives the element's classes, and none its classes do not set; text a class
+   uppercases is written in capitals. The lint reports these as `fallback`. The site's published
+   diagrams, until they are redrawn, carry no `stroke-width`, `stroke-dasharray` or `font-family`
+   attribute.
 5. No `<image>`, `<foreignObject>`, `<a>`, `<script>`, `<tspan>`, gradient, filter, `opacity`,
    `textLength`, `<!DOCTYPE>` or `<!ENTITY>`. A figure is drawn in canvas coordinates and takes no
    transforms: no `transform` on any element, no `<svg>` inside the root, and text is placed by one `x` and one `y`, with no

@@ -15,9 +15,12 @@
  * - font: no `<text>` (or anything around it) is set in a font other than the mono.
  * - svg: a diagram has no `<title>`, `<desc>`, `<style>` or `style=` (the page and
  *   `<Figure>` own those), and uses only the drawing classes page.css defines.
- * - fill, attr, element: a diagram's only `fill` attribute is the hatch (a held figure's
- *   fallback fills aside), it sets no
- *   stroke-width, dash or font by attribute, and it has no image, link, script, tspan,
+ * - fallback: a held figure (below) also carries the light values page.css gives its classes
+ *   for stroke-width, stroke-dasharray, font-family, font-size, font-weight and
+ *   letter-spacing, and writes in capitals text a class uppercases.
+ * - fill, attr, element: a diagram's only `fill` attribute is the hatch, it sets no
+ *   stroke-width, dash or font by attribute (a held figure's fallbacks aside), and it has no
+ *   image, link, script, tspan,
  *   gradient, filter, opacity, text under a transform, `textLength`, DOCTYPE or ENTITY.
  *
  * A figure under `docs/contributing/docs-revamp/`, in any folder, and the figure fixtures, are
@@ -60,7 +63,7 @@ const PREDATE_STANDARD = ["pages/blocks.md", "pages/figures/blocks.svg"].map((p)
 
 const RULES = [
   "colour", "stroke", "dash", "info", "font", "svg", "fill", "attr", "element",
-  "defs", "canvas", "text-class", "text-fit", "arrow", "key", "key-marks", "hatch", "highlight", "numbering", "embed",
+  "fallback", "defs", "canvas", "text-class", "text-fit", "arrow", "key", "key-marks", "hatch", "highlight", "numbering", "embed",
 ];
 const STROKES = new Set(["1", "1.3", "1.4"]);
 const DASHES = new Set(["5 4", "none"]);
@@ -134,28 +137,40 @@ function drawingClassNames() {
   return new Set([...css.matchAll(/\.drawing\s+(?:[a-z]+)?\.([a-z][\w-]*)/g)].map((m) => m[1]));
 }
 
+// What a figure carries as its own attributes, as page.css's light theme gives it: the colours (rule `colour`),
+// and the line and type properties (rule `fallback`). text-transform has no SVG attribute: where a class sets it
+// to uppercase, the text itself must be in capitals.
+const FALLBACK_COLOURS = ["fill", "stroke"];
+const FALLBACK_PROPS = [...FALLBACK_COLOURS, "stroke-width", "stroke-dasharray", "font-family", "font-size", "font-weight", "letter-spacing"];
+
 /**
- * page.css's `.drawing` rules that set a fill or stroke, each with its light-theme values, every `var()` resolved
- * through `:root`: `{ tag, classes, not, specificity, fill?, stroke? }`, in source order. A value that does not
- * resolve to a literal, or a selector this cannot read, throws: the fallback a figure must carry would be a guess.
+ * page.css's `.drawing` rules that set a fallback property, each with its light-theme values, every `var()` resolved
+ * through `:root`: `{ tag, classes, not, specificity, [property]: value }`, in source order. A value that does not
+ * resolve to a literal, a font stack that does not end in a generic family, or a selector this cannot read, throws:
+ * the fallback a figure must carry would be a guess.
  */
-function drawingColourRules() {
+function drawingFallbackRules() {
   const css = readFileSync(PAGE_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   // The bare `:root` block is Paper, the light theme; Night's are `:root[…]` and `:root:not(…)`.
   const root = /:root\s*\{([^}]*)\}/.exec(css);
   if (!root) throw new Error("page.css: no :root block to read the light theme from");
   const tokens = Object.fromEntries([...root[1].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
-  const literal = (value, where) => {
+  const literal = (prop, value, where) => {
     const ref = /^var\(\s*(--[\w-]+)\s*\)$/.exec(value);
     const resolved = ref ? tokens[ref[1]] : value;
     if (resolved === undefined || /var\(|currentcolor|inherit|initial|unset/i.test(resolved)) {
       throw new Error(`page.css: ${where} is "${value}", which has no light-theme literal to check a fallback against`);
     }
-    return resolved.replace(/\s+/g, " ");
+    // Off the site the webfont is missing: the stack must end in a generic family, so the width text-fit assumes holds.
+    if (prop === "font-family" && !/(?:^|,)\s*monospace$/.test(resolved)) {
+      throw new Error(`page.css: ${where} is "${resolved}", which does not end in the generic monospace`);
+    }
+    return fallbackValue(resolved);
   };
+  const property = new RegExp(`(?:^|;)\\s*(${[...FALLBACK_PROPS, "text-transform"].join("|")})\\s*:\\s*([^;]+)`, "g");
   const rules = [];
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const decls = [...m[2].matchAll(/(?:^|;)\s*(fill|stroke)\s*:\s*([^;]+)/g)];
+    const decls = [...m[2].matchAll(property)];
     if (!decls.length) continue;
     for (const selector of m[1].split(",").map((s) => s.trim()).filter((s) => s.startsWith(".drawing "))) {
       const compound = /^\.drawing\s+([a-z]+)?((?:\.[\w-]+)*)(?::not\(([a-z]+)\))?$/.exec(selector);
@@ -163,21 +178,24 @@ function drawingColourRules() {
       const [, tag, classText, not] = compound;
       const classes = classText.split(".").filter(Boolean);
       const rule = { tag, classes, not, specificity: classes.length * 100 + (tag ? 1 : 0) + (not ? 1 : 0) };
-      for (const [, prop, value] of decls) rule[prop] = literal(value.trim(), `${selector} { ${prop} }`);
+      for (const [, prop, value] of decls) rule[prop] = literal(prop, value.trim(), `${selector} { ${prop} }`);
       rules.push(rule);
     }
   }
   return rules;
 }
 
-/** The light fill and stroke page.css gives an element, by its name and classes: `{ fill?, stroke? }`. */
-function lightColours(node) {
+/** A value as an attribute carries it: whitespace collapsed, and double quotes as single (the attribute's are double). */
+const fallbackValue = (value) => value.trim().replace(/\s+/g, " ").replace(/"/g, "'");
+
+/** The light values page.css gives an element, by its name and classes, for each fallback property and text-transform. */
+function lightFallbacks(node) {
   const cls = classesOf(node);
-  const matching = COLOUR_RULES.filter(
+  const matching = FALLBACK_RULES.filter(
     (r) => (!r.tag || r.tag === node.name) && r.classes.every((c) => cls.includes(c)) && r.not !== node.name,
   );
   const out = {};
-  for (const prop of ["fill", "stroke"]) {
+  for (const prop of [...FALLBACK_PROPS, "text-transform"]) {
     // The cascade: the highest specificity wins, and among equals the later rule (a stable sort keeps source order).
     const winner = matching.filter((r) => r[prop] !== undefined).sort((a, b) => a.specificity - b.specificity).at(-1);
     if (winner) out[prop] = winner[prop];
@@ -247,7 +265,8 @@ function lintSvgAttributes(file, text, tree, held, out) {
     if (!held && node.attrs.fill !== undefined && node.attrs.fill !== "url(#hatch)") {
       at("fill", `fill="${node.attrs.fill}": the only fill attribute is the hatch; a fill comes from hl, ground, ink or x-fill`);
     }
-    for (const attr of ["stroke-width", "stroke-dasharray", "font-family"]) {
+    // A held figure carries these as fallbacks, which lintFigure checks against page.css instead.
+    for (const attr of held ? [] : ["stroke-width", "stroke-dasharray", "font-family"]) {
       if (node.attrs[attr] !== undefined) at("attr", `a ${attr} attribute: the drawing classes set it`);
     }
     if (BANNED.test(node.name)) at("element", `<${node.name}> has no place in a drawing`);
@@ -267,11 +286,11 @@ const DEFS_TEXT = `<defs>
 </defs>`;
 /**
  * A parsed element as one string: its name, its attributes in order, its trimmed text and its children's. The
- * fallback colours are left out: the colour rule checks those against page.css.
+ * fallbacks are left out: the colour and fallback rules check those against page.css.
  */
 const shape = (node) =>
   `<${node.name}${Object.entries(node.attrs)
-    .filter(([k]) => k !== "fill" && k !== "stroke")
+    .filter(([k]) => !FALLBACK_PROPS.includes(k))
     .map(([k, v]) => ` ${k}="${v}"`)
     .join("")}>${node.text.trim()}${node.children.map(shape).join("")}</${node.name}>`;
 const DEFS = shape(parseSvg(DEFS_TEXT).children[0]);
@@ -313,21 +332,26 @@ function lintFigure(file, text, tree, out) {
   const rects = drawing.filter((n) => n.name === "rect");
   const same = (a, b) => ["x", "y", "width"].every((k) => num(a, k) === num(b, k));
 
-  // 2. Each element carries, as fill= and stroke=, the light values page.css gives its classes, so the file shows
-  // its colours off the site; the site's class rules override them in both themes. Nothing else carries a colour.
+  // 2 and 4. Each element carries, as attributes, the light values page.css gives its classes: its colours (rule
+  // colour) and its line and type (rule fallback), so the file draws right off the site; on the site the class rules
+  // override them in both themes. Nothing carries a value its classes do not set.
   for (const node of [svg, ...all]) {
-    const light = lightColours(node);
+    const light = lightFallbacks(node);
     const tag = `<${node.name}${node.attrs.class ? ` class="${node.attrs.class}"` : ""}>`;
-    for (const prop of ["fill", "stroke"]) {
-      const carried = node.attrs[prop]?.trim().replace(/\s+/g, " ");
+    for (const prop of FALLBACK_PROPS) {
+      const rule = FALLBACK_COLOURS.includes(prop) ? "colour" : "fallback";
+      const carried = node.attrs[prop] === undefined ? undefined : fallbackValue(node.attrs[prop]);
       if (prop === "fill" && carried === "url(#hatch)" && light.fill === undefined) continue;
       if (light[prop] === undefined) {
-        if (carried !== undefined) at(node, "colour", `${prop}="${carried}" on ${tag}: its classes set no ${prop} in page.css`);
+        if (carried !== undefined) at(node, rule, `${prop}="${carried}" on ${tag}: its classes set no ${prop} in page.css`);
       } else if (carried === undefined) {
-        at(node, "colour", `${tag} has no ${prop}="${light[prop]}", the light value page.css gives it`);
+        at(node, rule, `${tag} has no ${prop}="${light[prop]}", the light value page.css gives it`);
       } else if (carried !== light[prop]) {
-        at(node, "colour", `${prop}="${carried}" on ${tag} is not "${light[prop]}", the light value page.css gives it`);
+        at(node, rule, `${prop}="${carried}" on ${tag} is not "${light[prop]}", the light value page.css gives it`);
       }
+    }
+    if (light["text-transform"] === "uppercase" && content(node) !== content(node).toUpperCase()) {
+      at(node, "fallback", `${tag} "${content(node)}" is not in capitals: page.css uppercases it, and SVG has no attribute to`);
     }
   }
 
@@ -614,10 +638,10 @@ function lintFile(file, allowed, text = readFileSync(file, "utf8")) {
     const tree = parseSvg(text);
     const held = heldToStandard(file);
     lintSvgShape(file, text, DRAWING_CLASSES, out);
-    // A held figure's fill= and stroke= are its fallback colours, which lintFigure checks against page.css; any
-    // other colour literal still fails here.
+    // A held figure's fill= and stroke= are its fallback colours, in either XML quoting, which lintFigure checks
+    // against page.css; any other colour literal still fails here.
     const colours = held
-      ? text.replace(/(\s(?:fill|stroke)\s*=\s*")([^"]*)"/g, (m, head, value) => `${head}${" ".repeat(value.length)}"`)
+      ? text.replace(/(\s(?:fill|stroke)\s*=\s*)(["'])(.*?)\2/g, (m, head, quote, value) => `${head}${quote}${" ".repeat(value.length)}${quote}`)
       : text;
     lintColours(file, colours, allowed, out);
     lintStrokes(file, text, out);
@@ -656,9 +680,9 @@ function svgsUnder(dir) {
 
 const allowed = allowedColours();
 const DRAWING_CLASSES = drawingClassNames();
-let COLOUR_RULES;
+let FALLBACK_RULES;
 try {
-  COLOUR_RULES = drawingColourRules();
+  FALLBACK_RULES = drawingFallbackRules();
 } catch (err) {
   console.error(`brand lint: ${err.message}`);
   process.exit(1);
@@ -687,13 +711,15 @@ for (const fixtureCase of CASES) {
     text = text.replace(find, () => replaces[i]);
     return false;
   });
-  if (!RULES.includes(fixtureCase.rule)) broken.push(`case ${fixtureCase.name} names no rule`);
+  if (fixtureCase.rule !== null && !RULES.includes(fixtureCase.rule)) broken.push(`case ${fixtureCase.name} names no rule`);
   else if (finds.length !== replaces.length) broken.push(`case ${fixtureCase.name} has ${finds.length} finds and ${replaces.length} replaces`);
   else if (stale.length) broken.push(`case ${fixtureCase.name}: ${JSON.stringify(stale[0])} is not in ${fixtureCase.base}, so the case changes nothing`);
   else {
     const found = lintFile(file, allowed, text);
     fixtureFindings.push({ file, found });
-    if (!found.some((f) => f.rule === fixtureCase.rule)) broken.push(`case ${fixtureCase.name} does not trip ${fixtureCase.rule}`);
+    // A case with no rule is a clean one: it must pass every rule.
+    if (fixtureCase.rule === null) broken.push(...found.map((f) => `the clean case ${fixtureCase.name} fails ${show(f)}`));
+    else if (!found.some((f) => f.rule === fixtureCase.rule)) broken.push(`case ${fixtureCase.name} does not trip ${fixtureCase.rule}`);
   }
 }
 const silent = RULES.filter((rule) => !fixtureFindings.some((f) => f.found.some((x) => x.rule === rule)));
