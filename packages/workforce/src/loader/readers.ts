@@ -20,22 +20,14 @@ export {
 } from "./read-worker-skills";
 
 export {
-  type TeamManifestErrorKind,
-} from "./read-teams-directory";
-
-export {
   readReferencesDirectory,
   readResourcesDirectory,
   type ReadResourcesDirectoryResult,
-  type ResourceDocError,
-  type ResourceDocErrorKind,
 } from "./read-resources-directory";
 
 export {
   PACKAGES_SLOT,
   readPackagesDirectory,
-  type PackageError,
-  type PackageErrorKind,
   type ReadPackagesDirectoryResult,
 } from "./read-packages-directory";
 
