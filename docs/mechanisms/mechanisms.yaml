@@ -179,6 +179,18 @@ mechanisms:
     status: canonical
     doc: docs/architecture/items.md
 
+  - id: attachment
+    job: A file a user attaches rides a turn as one reference (`fsd-blob:<id>` in `FileContent.data`), never as bytes. The bytes live in the blob store, and one resolver (engine's `resolveAttachment`) reads them. Contracts owns the reference and the limits; core's `recordAttachments` (the session list) and `readAttachment` (the tool) are this job's too, though they sit in `packages/core/src/helpers/` beside harness-steering, so the classifier's directory rule names that row for them.
+    package: "@flow-state-dev/contracts"
+    anchor: toBlobRef
+    file: packages/contracts/src/attachments.ts
+    builtOn: [contracts, item, store]
+    overlaps:
+      - { id: store, relation: distinct-jobs, note: "The blob store is the store profile's `blobs` slot and keeps bytes; this row is the reference a turn carries and the one resolver that reads it." }
+      - { id: coding-harness, relation: distinct-jobs, note: "A harness reads a turn's files through readHarnessTurnFiles, which calls the one resolver; it adds no second way to carry or read a file." }
+    status: canonical
+    doc: docs/architecture/server-and-client.md
+
   - id: model
     job: Turn a model id into a provider client, with fallback. Engine re-exports it; there is no second resolver.
     package: "@flow-state-dev/core"
