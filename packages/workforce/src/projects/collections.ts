@@ -24,7 +24,9 @@
  * reason would give each flow its own copy, and every reader but the writer
  * would read empty).
  *
- * Only `projects` has a browser read. Project files are read through
+ * Only `projects` has a browser read, and a client write: a client sends a
+ * project write to the collection, and it runs on the projects flow the host
+ * registers at {@link PROJECTS_FLOW} (`runBy`). Project files are read through
  * `readProjectFiles`, which checks `members` first, so the collection has no
  * browser read.
  *
@@ -34,6 +36,7 @@
 
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
+import { PROJECTS_FLOW, PROJECTS_PATTERN } from "./project-keys";
 
 /** The resource-map ref of the projects collection. Pinned: Shift Manager reads it by this name. */
 export const PROJECTS_RESOURCE = "projects";
@@ -184,9 +187,11 @@ export function defineProjectsCollection() {
 }
 
 const PROJECTS_COLLECTION = defineResourceCollection({
-  pattern: "projects/*",
+  pattern: PROJECTS_PATTERN,
   scope: "org",
   flowIsolation: SHARED_ACROSS_FLOWS,
+  // FIX-2624: a client's project write runs on the host's projects flow, whose actions check membership.
+  runBy: { flow: PROJECTS_FLOW },
   stateSchema: projectResourceStateSchema,
   client: { state: { read: true }, expose: PROJECT_CLIENT_FIELDS }
 });
@@ -206,9 +211,10 @@ export function definePrivateProjectsCollection() {
 }
 
 const PRIVATE_PROJECTS_COLLECTION = defineResourceCollection({
-  pattern: "projects/*",
+  pattern: PROJECTS_PATTERN,
   scope: "user",
   flowIsolation: SHARED_ACROSS_FLOWS,
+  runBy: { flow: PROJECTS_FLOW },
   stateSchema: projectResourceStateSchema,
   client: { state: { read: true }, expose: PROJECT_CLIENT_FIELDS }
 });

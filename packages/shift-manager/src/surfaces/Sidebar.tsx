@@ -33,7 +33,7 @@ import type { Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
 import { openTasks, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
-import { projectReaderOf, useProjectRead, type WorkstreamEntry } from "../lib/projects";
+import { useProjectRead, type WorkstreamEntry } from "../lib/projects";
 import type { Project } from "../lib/reads";
 import { initialsOf } from "../lib/shell";
 import { useShiftCoordinatorWorking } from "../lib/working";
@@ -279,12 +279,10 @@ function SidebarRail({
 function ProjectGroup({
   project,
   route,
-  reader,
   readAt,
 }: {
   project: Project;
   route: Route;
-  reader: string | null;
   readAt: number;
 }) {
   // `null` follows the route; a toggle overrides it.
@@ -293,7 +291,7 @@ function ProjectGroup({
   // A project's address is its visibility and its id: a private project and a shared one can share an id.
   const here = route.level === "project" && route.projectId === id && (route.visibility ?? "shared") === visibility;
   const open = toggled ?? here;
-  const { read, reread } = useProjectRead({ visibility, id }, open ? reader : null, readAt);
+  const { read, reread } = useProjectRead({ visibility, id }, open, readAt);
   const testId = visibility === "private" ? `nav-project-private-${id}` : `nav-project-${id}`;
   const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries : undefined;
   const to = (entry?: { owner: string; id: string }): Route => ({
@@ -383,11 +381,10 @@ function ProjectsSection({ snapshot, route, onRetry }: { snapshot: LoadedSnapsho
   if (!view.ok) {
     return <SectionFailure what="Projects" failure={view.failure} onRetry={onRetry} testId="projects-failure" />;
   }
-  const reader = projectReaderOf(snapshot.sessions);
   return (
     <>
       {view.value.projects.map((project) => (
-        <ProjectGroup key={`${project.visibility}/${project.id}`} project={project} route={route} reader={reader} readAt={snapshot.readAt} />
+        <ProjectGroup key={`${project.visibility}/${project.id}`} project={project} route={route} readAt={snapshot.readAt} />
       ))}
     </>
   );

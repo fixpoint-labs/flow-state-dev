@@ -30,14 +30,19 @@ let failing = false;
 let projectReads = 0;
 const client = {
   userId: "u_1",
-  resources: {
-    getCollectionResourceState: async () => {
-      projectReads += 1;
-      if (failing) throw new Error("unavailable");
-      return { clientData: { id: "apollo", title, ownerUserId: "u_1" } };
-    },
-    listCollectionResources: async () => ({ items: entries }),
-  },
+  // The direct read by scope (FIX-2624): the project by its key, and its entries by one prefix.
+  resource: ({ pattern }: { pattern: string }) =>
+    pattern === "projects/*"
+      ? {
+          entry: () => ({
+            read: async () => {
+              projectReads += 1;
+              if (failing) throw new Error("unavailable");
+              return { value: { id: "apollo", title, ownerUserId: "u_1" }, version: 1 };
+            },
+          }),
+        }
+      : { list: async () => ({ items: entries.map((entry) => ({ topic: entry.storageKey, storageKey: entry.storageKey, value: entry.clientData, version: 1 })) }) },
   live: (topics: readonly WireTopic[], options: Parameters<typeof liveRead>[2]) => liveRead(subscribe as never, topics, options),
 };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => ({ client }) }));
@@ -48,7 +53,7 @@ import { useProjectRead, type ProjectAddress } from "../src/lib/projects";
 type Shown = ReturnType<typeof useProjectRead>["read"];
 const shown: Shown[] = [];
 function Probe({ address, readAt }: { address: ProjectAddress; readAt: number }) {
-  const { read } = useProjectRead(address, "s_reader", readAt);
+  const { read } = useProjectRead(address, true, readAt);
   shown.push(read);
   return null;
 }

@@ -53,6 +53,7 @@ export {
   PRIVATE_WORKSTREAMS_RESOURCE,
   projectRef,
   workstreamRef,
+  WORKSTREAMS_PATTERN,
   WORKSTREAMS_RESOURCE,
   workstreamsAccessor,
   workstreamStorageKey,
@@ -78,6 +79,9 @@ export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_COMPONENT } from "./messages/keys";
 export { SCHEDULES_PATTERN } from "./schedules/keys";
 export { LIST_ROUTINES_ACTION, ROUTINE_VERBS } from "./routines/keys";
 export { routinesView } from "./routines/routines-view-ref";
+export { workstreamReportView } from "./projects/workstream-report-view-ref";
+export { checkRepositoryView } from "./projects/check-repository-view-ref";
+export { PROJECTS_FLOW, PROJECTS_PATTERN } from "./projects/project-keys";
 export { listedRoutineSchema, routineMakerSchema, type ListedRoutine, type RoutineMaker } from "./routines/listed-routine";
 export {
   WORKER_MESSAGES_PATTERN,

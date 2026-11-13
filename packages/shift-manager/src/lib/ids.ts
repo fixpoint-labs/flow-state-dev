@@ -13,9 +13,3 @@ export function newSessionId(prefix: string, separator = "-"): string {
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
   return `${prefix}${separator}${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
-
-/**
- * The prefix of the usage session Usage opens when the user's one reading id
- * is another organization's (`usage.ts`). The snapshot never hears it.
- */
-export const USAGE_SESSION_PREFIX = "usage-own";

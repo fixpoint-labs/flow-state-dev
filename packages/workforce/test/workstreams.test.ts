@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import { defineFlow, defineResourceCollection, handler, sequencer } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { createWorkforceClient } from "../src/browser";
+import { createWorkforceClient, workstreamReportView } from "../src/browser";
 import {
   defineProjectBlocks,
   defineWorkstreamBlocks,
@@ -29,7 +29,8 @@ import {
   workstreamRef
 } from "../src/index";
 import { createWorkerInstallation } from "../src/workers/installation";
-import { bootProjectsHost, ORG, refusal, type ProjectsHost } from "./projects-harness";
+import { ROSTER_FLOW } from "../src/workers/keys";
+import { bootProjectsHost, ORG, refusal, type Caller, type ProjectsHost } from "./projects-harness";
 
 const apollo = { visibility: "shared" as const, id: "apollo" };
 const notes = { visibility: "private" as const, id: "notes" };
@@ -340,9 +341,20 @@ describe("opening a workstream", () => {
     await h.ok("alice", "lead", stalled, "respond", { message: "still here" });
     expect((await h.sessionsWith("workstreamId", ref)).map((s) => s.id).sort()).toEqual([named, stalled].sort());
 
-    const client = createWorkforceClient(createClient({ userId: "alice", fetcher: h.fetcherFor("alice") }));
+    // The entry is read by scope with no session: drop the roster sessions the hire left, and
+    // watch every request, so a lookup that found or made one to read through shows in both.
+    for (const session of await h.runtime.stores.session.list({ parentage: "all" })) {
+      if (session.flowKind === ROSTER_FLOW) await h.runtime.stores.session.delete(session.id);
+    }
+    const asked: string[] = [];
+    const fetcher = h.fetcherFor("alice");
+    const client = createWorkforceClient(
+      createClient({ userId: "alice", fetcher: (input, init) => (asked.push(`${init?.method ?? "GET"} ${String(input)}`), fetcher(input, init)) })
+    );
     expect((await client.findWorkerSession({ worker: "alice-lead", workstreamId: address }))?.id).toBe(named);
     expect((await client.ensureWorkerSession({ worker: "alice-lead", workstreamId: address })).id).toBe(named);
+    expect((await h.runtime.stores.session.list({ parentage: "all" })).filter((s) => s.flowKind === ROSTER_FLOW)).toEqual([]);
+    expect(asked.filter((line) => line.includes(ROSTER_FLOW) && !/\/(views\/[^/?]+|identity)(\?|$)/.test(line))).toEqual([]);
   });
 
   it("hands out no session for a workstream whose entry names none yet, and starts none", async () => {
@@ -386,6 +398,53 @@ describe("opening a workstream", () => {
     expect(found?.id).toBe(out.workstream.sessionId);
     // A lookup that doesn't name the workstream never returns its session.
     expect(await client.findWorkerSession({ worker: "alice-lead" })).toBeUndefined();
+  });
+});
+
+// FIX-2624.
+describe("an entry's report", () => {
+  it("is the workstreams' report view: anyone in a shared project's org reads it, with no session made to read", async () => {
+    const h = await boot();
+    await open(h, "alice", "checkout", "alice-lead");
+    await h.ok("alice", "lab", await h.lab("alice"), "updateWorkstream", { project: apollo, id: "checkout", report: "ALICE-REPORT" });
+    const before = (await h.runtime.stores.session.list({ parentage: "all" })).length;
+
+    const read = (user: string, input: { project: typeof apollo | typeof notes; owner: string; id: string }) =>
+      createClient({ userId: user, fetcher: h.fetcherFor(user) }).view(workstreamReportView, input);
+    // Bob reads Alice's entry in the project they share; a workstream with no report, or none, reads as none.
+    expect((await read("bob", { project: apollo, owner: "alice", id: "checkout" })).value).toEqual({ report: "ALICE-REPORT" });
+    expect((await read("alice", { project: apollo, owner: "alice", id: "checkout" })).value).toEqual({ report: "ALICE-REPORT" });
+    expect((await read("alice", { project: apollo, owner: "alice", id: "nowhere" })).value).toEqual({ report: null });
+    expect((await h.runtime.stores.session.list({ parentage: "all" })).length).toBe(before);
+  });
+
+  // FIX-2624: the view reads in the caller's own cells, so its reach is the caller's, never the owner's.
+  it("reaches another owner's report only in a shared project of the reader's own org", async () => {
+    const h = await boot();
+    await open(h, "alice", "checkout", "alice-lead");
+    await h.ok("alice", "lab", await h.lab("alice"), "updateWorkstream", { project: apollo, id: "checkout", report: "SHARED-REPORT" });
+    await h.ok("alice", "lab", await h.lab("alice"), "createProject", { id: "notes", title: "Notes", visibility: "private" });
+    await open(h, "alice", "drafts", "alice-notes-lead", notes);
+    await h.ok("alice", "lab", await h.lab("alice"), "updateWorkstream", { project: notes, id: "drafts", report: "PRIVATE-REPORT" });
+
+    const read = async (user: string, org: Caller, input: { project: typeof apollo | typeof notes; owner: string; id: string }) =>
+      (await createClient({ userId: user, fetcher: h.fetcherFor(user, org) }).view(workstreamReportView, input)).value.report;
+    const shared = { project: apollo, owner: "alice", id: "checkout" };
+    const own = { project: notes, owner: "alice", id: "drafts" };
+    // The owner reads both, so the two below read nothing for the reach, not for want of a report.
+    expect(await read("alice", ORG, shared)).toBe("SHARED-REPORT");
+    expect(await read("alice", ORG, own)).toBe("PRIVATE-REPORT");
+    // (a) Bob, in her org, reads her entry in the shared project.
+    expect(await read("bob", ORG, shared)).toBe("SHARED-REPORT");
+    // (b) Bob gets nothing for her entry in her private project.
+    expect(await read("bob", ORG, own)).toBeNull();
+    // (c) Carol, in another org, gets nothing for either; nor does Bob, signed in to another org.
+    expect(await read("carol", "beta", shared)).toBeNull();
+    expect(await read("carol", "beta", own)).toBeNull();
+    expect(await read("bob", "beta", shared)).toBeNull();
+    // A tenant does not fence an org cell: user and org scopes are shared across tenants by design
+    // (docs/architecture/state-and-scopes.md, "tenantId"), so Bob in another tenant of the same org reads it.
+    expect(await read("bob", { org: ORG, tenant: "other" }, shared)).toBe("SHARED-REPORT");
   });
 });
 

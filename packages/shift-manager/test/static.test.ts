@@ -101,11 +101,10 @@ describe("V8", () => {
     expect(namedIn(`const worker = "${planted}";`, names)).toEqual([planted]);
   });
 
-  it("reads the worker inventory and the projects on workforce's roster flow, and opens no reader on any other flow", async () => {
-    const { ROSTER_FLOW } = await import("@flow-state-dev/workforce");
+  // FIX-2624.
+  it("opens a reader session on no flow: the worker inventory and the projects are read by scope", async () => {
     const reads = await import("../src/lib/reads");
-    expect(reads.PROJECT_READER_FLOW).toBe(ROSTER_FLOW);
-    expect(Object.keys(reads).filter((name) => name.endsWith("_READER_FLOW"))).toEqual(["PROJECT_READER_FLOW"]);
+    expect(Object.keys(reads).filter((name) => /_READER_FLOW$/.test(name))).toEqual([]);
   });
 
   it("reads conversation boards from the collection their task actions are named for", async () => {

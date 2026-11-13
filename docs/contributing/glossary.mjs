@@ -681,9 +681,16 @@ export const ENTRIES = [
     term: "Direct read",
     means: "Reading a user or org resource, or a collection's entries, by its scope and key, with no session: `client.resource(def)`. The caller is resolved through the sign-in of the flow that declares the resource, and the answer is the resource's client projection and its version. No block runs.",
     decision: "Owner, 2026-11-11 (epic FIX-2618 O3, ER-3; FIX-2624)",
-    // Own, lab and reader session retire with FIX-2624's last PR, scoped to apps and labs (the
-    // engine's and orchestration's `ownSession` options mean a run's own session).
-    retires: [],
+    retires: [
+      {
+        id: "own-session-helpers",
+        check: "sweep",
+        // FIX-2624: a session found or made only to read is gone from the apps and labs. Scoped to
+        // them: the engine's and orchestration's `ownSession` options mean a run's own session.
+        files: /^(apps|labs|examples)\/.*\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$|^packages\/shift-manager\/(src|teams|test)\//,
+        pattern: /\b(ownSessions?|labSessions?|readerSessionId|withReaderSessions|openReaderSession)\b/,
+      },
+    ],
   },
   {
     term: "Default write flow",

@@ -24,7 +24,7 @@ import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { allTasks, shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import { handToShiftCoordinator } from "../lib/outbox";
-import { projectReaderOf, readProject, type WorkstreamEntry } from "../lib/projects";
+import { readProject, type WorkstreamEntry } from "../lib/projects";
 import { navigate, type Route } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import type { Gaps } from "../gaps";
@@ -62,17 +62,16 @@ type Workstreams = { key: string; project: string; to: (entry: WorkstreamEntry) 
  */
 function useWorkstreams(snapshot: LoadedSnapshot, client: Client | undefined): Workstreams[] {
   const [reads, setReads] = useState<Workstreams[]>([]);
-  const reader = projectReaderOf(snapshot.sessions);
   const projects = snapshot.projects.ok ? snapshot.projects.value.rows : [];
   const addresses = projects.map((p) => `${p.visibility}/${p.id}`).join("\n");
   useEffect(() => {
-    if (client === undefined || reader === null) return;
+    if (client === undefined) return;
     let live = true;
     void Promise.all(
       projects.map(async (project): Promise<Workstreams> => {
         const key = `${project.visibility}/${project.id}`;
         try {
-          const read = await readProject(client, reader, { visibility: project.visibility, id: project.id });
+          const read = await readProject(client, { visibility: project.visibility, id: project.id });
           const to = (entry: WorkstreamEntry): Route => ({
             level: "project",
             projectId: project.id,
@@ -89,9 +88,9 @@ function useWorkstreams(snapshot: LoadedSnapshot, client: Client | undefined): W
     return () => {
       live = false;
     };
-    // Read again only when the set of projects or the reader changes, never on a timer.
+    // Read again only when the set of projects changes, never on a timer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, reader, addresses]);
+  }, [client, addresses]);
   return reads;
 }
 

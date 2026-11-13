@@ -18,7 +18,7 @@ import { LIST_ROUTINES_ACTION, ROSTER_FLOW } from "@flow-state-dev/workforce/bro
 import { runAction } from "../src/lib/action";
 import { connect } from "../src/lib/connection";
 import { readProject, type ProjectAddress } from "../src/lib/projects";
-import { createLabReader, readerSessionId } from "../src/lib/reads";
+import { createLabReader } from "../src/lib/reads";
 import { toRoutines } from "../src/lib/routines";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createBareRemote } from "../teams/devteam/scratch-repo.mts";
@@ -98,9 +98,10 @@ describe("the EM manages its routines", () => {
     served = await serveLab(lab.state);
     const client: Client = connect({ userId: ALICE.userId, baseUrl: served.baseUrl, bearerToken: ALICE.bearer });
     await createLabReader(client).read();
-    const reader = readerSessionId(ALICE.userId, "projects");
-    await runAction(client, "projects", reader, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: EM });
-    const workstream = (await readProject(client, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!.sessionId!;
+    // The session on the projects flow the workstream is opened through, made on its first send.
+    const opener = `projects-${ALICE.userId}`;
+    await runAction(client, "projects", opener, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: EM });
+    const workstream = (await readProject(client, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!.sessionId!;
 
     await runAction(client, EM_FLOW, workstream, "respond", { message: "Every Monday at 9, check the open pull requests." });
 

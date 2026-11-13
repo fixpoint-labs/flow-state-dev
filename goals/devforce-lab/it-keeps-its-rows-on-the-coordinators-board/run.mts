@@ -41,7 +41,6 @@ import { runGoal, silentLogger } from "../../lib/index.mts";
 import { labApi, labRoutes } from "../../lib/shift-manager.mts";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { readProject } from "../../../packages/shift-manager/src/lib/projects.ts";
-import { createLabReader, PROJECT_READER_FLOW, readerSessionId } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
@@ -162,8 +161,7 @@ await runGoal(async (failures) => {
     const before = failures.length;
     for (const [label, user] of [["Bob", LAB_USERS.member], ["the outsider", LAB_USERS.outsider]] as const) {
       const client = connect({ userId: user.userId, baseUrl: origin, bearerToken: user.bearer });
-      await createLabReader(client).read();
-      const read = await readProject(client, readerSessionId(user.userId, PROJECT_READER_FLOW), STOREFRONT);
+      const read = await readProject(client, STOREFRONT);
       const entry = read?.entries.find((e) => e.owner === LAB_USERS.owner.userId && e.id === "feature");
       if (entry === undefined) {
         note("b:reads-the-entry", `${label} reads Storefront's entries as ${show(read?.entries.map((e) => [e.owner, e.id]))}, without Alice's feature`);

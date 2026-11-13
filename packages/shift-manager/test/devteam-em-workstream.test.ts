@@ -30,7 +30,7 @@ import { runAction } from "../src/lib/action";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
 import { readEntryReport, readProject, type ProjectAddress } from "../src/lib/projects";
-import { createLabReader, readerSessionId } from "../src/lib/reads";
+import { createLabReader } from "../src/lib/reads";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_ORG_ID, LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
@@ -193,11 +193,12 @@ describe("the EM files from the workstream it leads", () => {
     served = await serveLab(lab.state);
     const client: Client = connect({ userId: ALICE.userId, baseUrl: served.baseUrl, bearerToken: ALICE.bearer });
     await createLabReader(client).read();
-    const reader = readerSessionId(ALICE.userId, "projects");
+    // The session on the projects flow the workstream is opened through, made on its first send.
+    const opener = `projects-${ALICE.userId}`;
 
     // Alice opens `feature` herself, with the EM as its lead, through the route the app opens one with.
-    await runAction(client, "projects", reader, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: EM });
-    const hers = (await readProject(client, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
+    await runAction(client, "projects", opener, "openWorkstream", { project: STOREFRONT, id: "feature", title: "Feature", lead: EM });
+    const hers = (await readProject(client, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
     expect(hers).toMatchObject({ lead: EM });
     const workstream = hers.sessionId!;
     expect(workstream).toBeTruthy();
@@ -230,8 +231,8 @@ describe("the EM files from the workstream it leads", () => {
     }
 
     // The EM updated her entry, and her project screen reads the report.
-    const entry = (await readProject(client, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
-    expect(await readEntryReport(client, reader, STOREFRONT, entry)).toBe(REPORT);
+    const entry = (await readProject(client, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!;
+    expect(await readEntryReport(client, STOREFRONT, entry)).toBe(REPORT);
 
     // Every session the job made is Alice's: her workstream session, and each task's session under it.
     const sessions = await runtime.stores.session.list({ orgId: LAB_ORG_ID, parentage: "all" });

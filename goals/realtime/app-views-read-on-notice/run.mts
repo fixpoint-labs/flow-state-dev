@@ -57,6 +57,7 @@ import {
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
 import { labPins } from "../../../labs/claude-code-style/workforce/flows/user-marks.mts";
+import { PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { createWiredLab, type ThreadView } from "../../../labs/claude-code-style/src/adapter.ts";
 import { createLabAdapter, type ConversationView, type LabTalk } from "../../../labs/teammates/src/adapter.ts";
 import { buildKitchenSinkWorkforce } from "../../../apps/kitchen-sink/workforce/hire.ts";
@@ -217,7 +218,7 @@ async function host(bus: "default" | "not-crossing"): Promise<Host> {
   for (const copy of (await buildKitchenSinkWorkforce()).copies) registry.register(copy);
   registry.register(deskFlow());
   // The lab's pins: a user resource the host declares, written through the default write flow.
-  registry.register(defineFlow({ kind: "projects", resources: { labPins }, actions: {} } as never)() as unknown as FlowInstance);
+  registry.register(defineFlow({ kind: PROJECTS_FLOW, resources: { labPins }, actions: {} } as never)() as unknown as FlowInstance);
   const memory = createInMemoryStores();
   const notCrossing = crossingBus();
   notCrossing.setCrossing(false);
@@ -328,7 +329,7 @@ function mountViews(on: Host, sessionId: string) {
     const { snapshot, refresh } = useLab();
     labRead = refresh;
     const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
-    const { read } = useProjectRead({ visibility: "shared", id: PROJECT }, loaded === undefined ? null : projectReaderOf(loaded.sessions), loaded?.readAt ?? 0);
+    const { read } = useProjectRead({ visibility: "shared", id: PROJECT }, loaded !== undefined, loaded?.readAt ?? 0);
     const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries.map((e) => e.id) : undefined;
     const key = entries === undefined ? null : entries.join(",");
     useEffect(() => {
@@ -382,7 +383,7 @@ function mountViews(on: Host, sessionId: string) {
   };
 }
 
-/** Before the views mount: alice's roster session (Shift Manager's project reader) and the shared project. */
+/** Before the views mount: alice's roster and the shared project. */
 async function opened(writer: Client, sessionId: string): Promise<void> {
   await createWorkforceClient(writer).roster();
   await (await writer.flow("desk").send("openProject", {}, { sessionId })).wait();

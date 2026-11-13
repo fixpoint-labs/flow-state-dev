@@ -18,7 +18,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary, WireNotice, WireTopic } from "@flow-state-dev/client";
 import { App } from "../src/App";
 import { LabProvider, useLab } from "../src/lib/lab-data";
-import { inboxSection, PROJECT_READER_FLOW, readerSessionId, type LabSnapshot } from "../src/lib/reads";
+import { inboxSection, type LabSnapshot } from "../src/lib/reads";
+import { ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { liveRead } from "@flow-state-dev/client/internal";
 import { heard, heardSessionIds, SNAPSHOT_POLL_MS, snapshotPaths } from "../src/lib/snapshot-subscribe";
@@ -100,7 +101,7 @@ const settle = () => act(() => new Promise((r) => setTimeout(r, 20)));
 beforeEach(() => {
   opened.length = 0;
   subscribe.mockClear();
-  sessions = [session("conv-1"), session(readerSessionId(USER, "roster"), "roster"), session("usage-own-abc", "codex")];
+  sessions = [session("conv-1")];
   readAt = Date.UTC(2026, 10, 4, 14, 2);
   reads = 0;
   held = undefined;
@@ -159,25 +160,23 @@ describe("what the snapshot hears", () => {
     expect(snapshotHears(notice({ scope: "org" }, "resync"))).toBe(true);
   });
 
-  it("subscribes every listed session but Shift Manager's own, and leaves out a run whose parent it hears", () => {
+  it("subscribes every listed session, and leaves out a run whose parent it hears", () => {
     const listed = [
       session("conv-1"),
-      session(readerSessionId(USER, "roster"), "roster"),
-      session(readerSessionId(USER, "codex"), "codex"),
-      session("usage-own-1a2b", "codex"),
       session("task-1", "doer", "conv-1"),
       session("sub-1", "doer", "task-1"),
       session("orphan-run", "doer", "not-listed"),
     ];
     // task-1's writes reach conv-1 as `run`. sub-1's reach only task-1, which is left out, so it is heard itself.
-    expect(heardSessionIds(listed, USER)).toEqual(["conv-1", "orphan-run", "sub-1"]);
+    expect(heardSessionIds(listed)).toEqual(["conv-1", "orphan-run", "sub-1"]);
   });
 
-  it("leaves out the roster session Routines reads through, even when its id was generated", () => {
-    // Workforce's client opens a roster session without an id; the project reader reuses it, and
-    // Routines runs an action on it after every read. Hearing it would make each read start the next.
-    const listed = [session("conv-1"), session("roster-generated-7f3a", PROJECT_READER_FLOW)];
-    expect(heardSessionIds(listed, USER)).toEqual(["conv-1"]);
+  // FIX-2624.
+  it("hears a roster session like any other: Shift Manager reads through none of the user's sessions", () => {
+    // Routines, Usage and the projects are views and direct reads now, so no listed session is
+    // Shift Manager's own, and a roster session a worker's write used is the user's to hear.
+    const listed = [session("conv-1"), session(`${ROSTER_FLOW}-own-${USER}`, ROSTER_FLOW), session("roster-generated-7f3a", ROSTER_FLOW)];
+    expect(heardSessionIds(listed)).toEqual(["conv-1", "roster-generated-7f3a", `${ROSTER_FLOW}-own-${USER}`].sort());
   });
 });
 
