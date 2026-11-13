@@ -69,8 +69,9 @@ The caller gives you a surface brief. It should carry only:
   destination's create/update/remove, and for an epic, which child publishes the shared story.
 - **Draft** — only from an older spec set's `DOCS.md`: its applicable prose/examples. Keep only
   reader-facing content, not design rationale.
-An explicitly labelled migration section may describe the actions a reader must take
-from an old public contract to the new one; it is not permission to retell design history.
+The actions a reader must take from an old public contract to the new one go in a row on the
+release's Upgrading page (`docs/contributing/release-docs.md` → "The Upgrading page"), never in a
+section of the page you are writing; a row is not permission to retell design history.
 
 A brief carrying rationale, before/after framing, or a defect description is a contaminated brief.
 Use the surface facts in it and drop the rest. Never quote a brief; verify against the code.
