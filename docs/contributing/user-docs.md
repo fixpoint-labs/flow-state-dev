@@ -137,7 +137,7 @@ Pages already the right shape, as models for each type:
 | `concept` opening | `apps/docs/guides/building-agents.md` | "There isn't one." |
 
 The three pilots set the voice. On depth and figures this standard wins over them: the pilots
-and `docs-revamp/pages/blocks.md` predate [the concept/reference contract](#concepts-and-reference)
+predate [the concept/reference contract](#concepts-and-reference)
 and carry mechanism and a "What it won't do" section that later pages do not.
 
 ## Concepts and Reference
@@ -177,8 +177,11 @@ For building a model up part by part, keeping one cast of examples and giving ea
 claim, follow [`concept-doc`](../../.agents/skills/concept-doc/SKILL.md) → "Writing rules".
 Its shape is for internal model docs; a concept page uses this outline.
 
-1. **Opening**, two short paragraphs, no heading. A situation the reader has been in, then the idea
-   in plain words.
+1. **Opening**, one or two short paragraphs, no heading. Say what the thing is and what it is for,
+   in plain words. Open on a situation only when the page's idea is the answer to a problem the
+   reader has had, such as a run lost to a crash or two workers claiming one task. Do not invent a
+   person or a story to introduce a structure, a list of parts or a definition: "Flow State is a
+   backend for AI apps, in layers" needs no Alice.
 2. **The model, in a figure** (see [Figures](#figures)).
 3. **The smallest working example**, with a few sentences that point at the parts.
 4. **Two to five sections**, one per question a reader asks next. Headings are plain statements or
@@ -402,8 +405,8 @@ figures:  brief ─ draw ─ render light + dark ─ figure lint ─ compare wit
 2. **Cold-read questions**, written before any draft exists, by an agent that has not read one.
    Five or six scenario questions a reader should answer after the page, at least two of them edge
    cases (a failure, a second user, an edit), each with its answer from the fact sheet.
-3. **Draft.** Choose one concrete scenario with names in it. Write the opening and the outline
-   first; if the opening needs a framework term to make sense, start again. Then write to about
+3. **Draft.** Pick the page's one example where it teaches with examples, and give it names only
+   where the names do work. Write the opening (see the outline above) and the outline first; if the opening needs a framework term to make sense, start again. Then write to about
    700 words of prose for a concept page, well under its budget, stating nothing that is not on
    the fact sheet.
 4. **Machine checks.** The word budget, the banned words and the code titles
