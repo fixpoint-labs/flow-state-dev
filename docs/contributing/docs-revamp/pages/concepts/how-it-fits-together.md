@@ -29,7 +29,7 @@ import { workforce } from "@flow-state-dev/workforce";
 import helpDeskFlow from "./src/flows/help-desk/flow";
 
 export default createFlowState({
-  kits: [workforce({ model: "openai/gpt-6-luna" })],
+  kits: [workforce({ directory: "./workforce" })],
   flows: [helpDeskFlow],
   stores: sqliteStores({ filename: "./app.db" }),
 });
@@ -73,9 +73,9 @@ export function SendButton({ message }: { message: string }): ReactElement {
 From there:
 
 1. The page sends the action to the engine.
-2. The engine checks the input against the action's schema and checks that the session is the caller's. A session answers only the user who owns it; the [sessions reference](../reference/sessions.md) covers what happens otherwise.
+2. The engine checks the input against the action's schema and checks that the session is the caller's. A session answers only the user who owns it: send to someone else's session id and the engine refuses before any block runs, answering as if the session did not exist.
 3. The flow runs the action's block. In `help-desk` that is a sequencer, a block that runs blocks in order: `chatGenerator` calls the model, then `incrementMessageCount` updates the session's state.
-4. Blocks emit **items**, the pieces a flow streams out, and they reach the page as the model writes. `session.items` is the live list of them.
+4. Blocks emit **items**, the pieces a flow streams out, and they reach the page as the model writes. `session.items` is the live list of them. Each block run is also recorded, with its output, as a trace item the page does not receive by default.
 5. When the run completes, the page receives the session's new state.
 
 If the stream drops, the page picks it up where it left off. [Sessions, items and streaming](./sessions-items-and-streaming.md) has the detail.
@@ -92,15 +92,15 @@ The browser holds what it last received: the live items and the snapshot, the st
 
 ## Which page to read for what
 
-Say the reply to "Where is my order?" is wrong. Open the `help-desk` flow, then the blocks inside it. To see which block produced the text, run the action from a terminal:
+Say the reply to "Where is my order?" is wrong. If a worker gave it, open its `WORKER.md` first: the body is its instructions, run on the built-in `agent` flow unless the file names a flow of yours. Otherwise, or if the file looks right, open the flow, then the blocks inside it. To run the action without the page, use the terminal. It prints each event as a JSON line:
 
 ```bash
 fsdev run help-desk chat -i '{"message":"Where is my order?"}'
 ```
 
-The [CLI reference](../reference/cli.md) lists what it prints and the flags that set the input and the session.
+The [CLI reference](../reference/cli.md) lists the flags that set the input and the session. To see each block's trace, open the DevTool with `fsdev dev`.
 
-| Layer | Read |
+| To learn about | Read |
 | --- | --- |
 | Kit | [Kits and slots](./kits-and-slots.md) |
 | Flow | [Flows and actions](./flows-and-actions.md) |
