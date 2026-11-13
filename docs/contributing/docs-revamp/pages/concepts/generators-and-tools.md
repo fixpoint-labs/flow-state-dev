@@ -164,5 +164,5 @@ A router also picks what runs next, but your code makes the pick. In a generator
 
 - [Generators reference](../reference/generators.md) lists every option, the loop limits, and how failed calls and bad output behave.
 - [Blocks](./blocks.md) covers the five kinds and how they nest.
-- [Composition](./composition.md) covers parallel steps, loops and error recovery in a sequencer.
+- [Composition](./composition.md) covers sequences, routers, parallel steps and side chains.
 - [Models](./models.md) covers choosing and configuring the model a generator calls.
