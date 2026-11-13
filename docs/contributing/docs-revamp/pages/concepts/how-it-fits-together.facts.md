@@ -152,3 +152,13 @@ Item facts:
 - **Anatomy guide "ephemeral session".** `apps/docs/guides/anatomy-of-a-flow.md:74` says an action sent without a `sessionId` creates "an ephemeral one (or a persisted one, depending on flow config)". Not verified against code; left off. `useSession.sendAction` requires a session id (`react/hooks/useSession.ts:2194-2196`).
 - **A "starter" is not a package.** The plan's layer stack from S-1 is not citable. Layer order here comes from `docs/glossary.md:23`. Nothing citable defines a starter.
 - **Resource visibility defaults** belong to the Resources Reference page; this sheet gives only "by its `client` config".
+
+## Revise round 3 notes (pass 8, round 1 of this pass)
+
+- Unsent draft text in `localStorage` is framework behavior (`useDraft`, `react/hooks/useDraft.ts:2-12`), not the example app's. The sentence left the page prose for a client Reference row (R-14, provisional slug `../reference/client.md`); the figure still draws the box.
+- "Each block's recorded output" is observable only through the trace channel and DevTool, not from the API on this page. Cut from the page (Reference).
+- `sendAction` throwing without a session id (`react/hooks/useSession.ts:2194-2196`): moved to the React API reference (`../reference/api/react.md`). The page keeps that `useFlow` finds or creates the session.
+- Another user's session answered as unknown (`engine/routes/action-routes.ts:274-279`): page keeps "A session answers only the user who owns it" and links R-20 (provisional `../reference/sessions.md`).
+- `fsdev run` output format (`docs/cli/agent-dev-loop.md:13-14`): moved to R-35 (provisional `../reference/cli.md`).
+- A worker's `WORKER.md` body is its instructions and a record may name `flow:` (`packages/workforce/README.md:5-7`, `:40-43`, `:60-62`); the page now says so in one clause where `triage` first appears.
+- `session.items` now first appears in step 4 (`hc-app:72-73`).
