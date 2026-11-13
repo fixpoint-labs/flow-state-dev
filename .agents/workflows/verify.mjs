@@ -10657,7 +10657,7 @@ check('page-loop: pass 5 and 6 findings go to round 1 once, and the moved rows l
 
 check('page-loop: pass 5 runs after pass 6 and checks its rows, and a row it finds untrue is recorded corrected', async () => {
   // The C-07 run: a row handed to R-01 kept the claim pass 5 had corrected on the page.
-  const rows = [
+  const moved = [
     { paragraph: 'A block lists', row: 'ROW-ONE defaults come from the flow scope schema', referencePage: 'R-01' },
     { paragraph: 'Flows share', row: 'ROW-TWO incompatible schemas are refused', referencePage: 'R-05' },
   ]
@@ -10665,7 +10665,7 @@ check('page-loop: pass 5 runs after pass 6 and checks its rows, and a row it fin
     { claim: 'PAGE-CLAIM', truth: 'merged schema', where: 'defineFlow.ts:9', row: 0, corrected: '' },
     { claim: 'ROW-CLAIM', truth: 'merged schema', where: 'defineFlow.ts:9', row: 1, corrected: 'ROW-ONE-FIXED defaults come from the flow merged schema' },
   ]
-  const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ untrue, depthEntries: rows }) })
+  const { result, calls } = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ untrue, depthEntries: moved }) })
   assert.equal(result.status, 'complete')
   const order = calls.map((c) => c.label)
   assert.ok(order.indexOf('pass-6') < order.indexOf('pass-5'), 'pass 5 has the rows pass 6 moved')
@@ -10680,7 +10680,7 @@ check('page-loop: pass 5 runs after pass 6 and checks its rows, and a row it fin
   assert.equal(checkRecord(result.recordText).code, 0)
   // A row finding with no corrected row, or naming a row pass 6 never moved, stops the run: fail closed.
   for (const bad of [{ ...untrue[1], corrected: ' ' }, { ...untrue[1], row: 3 }]) {
-    const stopped = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ untrue: [bad], depthEntries: rows }) })
+    const stopped = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ untrue: [bad], depthEntries: moved }) })
     assert.equal(stopped.result.status, 'failed', JSON.stringify(bad))
     assert.equal(stopped.result.at, 'pass 5')
     assert.equal(labels(stopped.calls, 'record').length, 0)

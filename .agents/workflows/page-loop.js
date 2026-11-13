@@ -542,13 +542,13 @@ if (!firstEdit) return failed('pass 7')
 const { depth, factCheck } = checked
 const edits = [firstEdit]
 const pageUntrue = factCheck.untrue.filter((u) => u.row === 0)
-const rowUntrue = factCheck.untrue.filter((u) => u.row !== 0)
+const referenceUntrue = factCheck.untrue.filter((u) => u.row !== 0)
 // A row found untrue is recorded corrected, or the run stops: a Reference row never keeps an untrue claim.
-if (rowUntrue.some((u) => u.row > depth.rows.length || !one(u.corrected))) {
+if (referenceUntrue.some((u) => u.row > depth.rows.length || !one(u.corrected))) {
   return failed('pass 5', { reason: 'pass 5 found a Reference row untrue, and named no row it has or gave no corrected row' })
 }
-const ROWS = depth.rows.map((r, i) => {
-  const fixed = rowUntrue.filter((u) => u.row === i + 1).at(-1)
+const REFERENCES = depth.rows.map((r, i) => {
+  const fixed = referenceUntrue.filter((u) => u.row === i + 1).at(-1)
   return fixed ? { ...r, row: fixed.corrected, corrected: true } : r
 })
 
@@ -558,7 +558,7 @@ let pending = [
   ...openFindings(),
   ...pageUntrue.map((u) => ({ from: 'pass 5', text: `${u.claim} Untrue: ${u.truth} (${u.where})` })),
   // The rows as pass 5 left them: the writer is never handed a row it found untrue.
-  ...ROWS.map((r) => ({ from: 'pass 6', text: `Move to ${r.referencePage} as "${r.row}" and link it: the paragraph starting "${r.paragraph}"` })),
+  ...REFERENCES.map((r) => ({ from: 'pass 6', text: `Move to ${r.referencePage} as "${r.row}" and link it: the paragraph starting "${r.paragraph}"` })),
 ]
 const rounds = []
 const reads = []
@@ -668,7 +668,7 @@ section(
     .join('\n'),
 )
 if (!escalated) section(10, 'Owner read', 'Not sampled. The owner replaces this with `Read`, the date and what they found, when they read the page.')
-sections.push(`## Reference rows\n\n${list(ROWS.map((r) => `${r.row} → ${r.referencePage}${r.corrected ? ' (corrected by pass 5)' : ''}`), 'None.')}`)
+sections.push(`## Reference rows\n\n${list(REFERENCES.map((r) => `${r.row} → ${r.referencePage}${r.corrected ? ' (corrected by pass 5)' : ''}`), 'None.')}`)
 
 const head = [`# ${TITLE} · record`, '', `Sitemap: ${A.page}`]
 if (escalated) {
