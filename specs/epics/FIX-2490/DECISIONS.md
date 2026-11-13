@@ -56,7 +56,7 @@ the kill line cuts it, and that is the decision working, not reversing.
 |---|---|
 | **Instead of** | Defaults in core's generator, so every app gets them, workforce or not · or each layer as its own prompt entry or capability |
 | **Because** | [FIX-2369 ER-2](../FIX-2369/DECISIONS.md#who-owns-what) keeps the generator unopinionated, and that holds. The seam in `agent-worker-flow.ts` says an org-wide layer of configurable text is where the seam is re-decided rather than widened; per-layer opt-outs are that point. Named sections fix the "where does TEAM.md end" problem the analysis found |
-| **Locks in** | One ordered list of named sections, each a fixed text with an opt-out, owned by FIX-2498 and built as one module (`workerDefaultLayer`) that is the prompt array's single default entry. Opt-outs are one `defaults` key in the worker-config bag (`workerConfigSchema`), and `defaults: false` turns every section off; no new `defineAgentWorkerFlow` option. The layer reaches workers built without an installation; only identity, which reads the roster, still needs one. No registry, no app-supplied section text. The one core change (FIX-2499) is a no-op for a caller that sets nothing new |
+| **Locks in** | One ordered list of named sections, each a fixed text with an opt-out, owned by FIX-2498 and built as one module (`workerDefaultLayer`) with two places: identity in the prompt array's default entry, and the new sections after the worker's own text, as tagged context (**amended** by [FIX-2498 D1](../../issues/FIX-2498/DECISIONS.md#d1); this card said the array's single entry, at the front, where the date would change the start of every prompt each day). Opt-outs are one `defaults` key in the worker-config bag (`workerConfigSchema`), and `defaults: false` turns every section off; no new `defineAgentWorkerFlow` option. The layer reaches workers built without an installation; only identity, which reads the roster, still needs one. No registry, and no app-supplied section text except `date` lines ([ER-1](#who-owns-what)). The one core change (FIX-2499) is a no-op for a caller that sets nothing new |
 
 Engineering, not asked: it moves no product outcome, and the sign-off's D1 already fixes who
 gets the defaults.
@@ -102,12 +102,12 @@ consumed; a *uses* cell is a place a child must not re-decide.
 
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
-| ER-1 | Every new layer is a named section of workforce's default layer (`workerDefaultLayer`), on by default, with its own opt-out ([D1](#d1), [D4](#d4)). Opt-outs are one `defaults` key in the worker-config bag (`defaults: { environment: false }`); `defaults: false` turns them all off. The fixed sections stay under a published ceiling of 400 tokens (1,600 characters), the estimate of about 250 plus a margin, with a test that fails past it; identity, the summary's content and each skill's entry are outside it. No section is a capability, a registry entry or app-supplied text | FIX-2498 decides · FIX-2500 consumes | The spec-set review |
+| ER-1 | Every new layer is a named section of workforce's default layer (`workerDefaultLayer`), on by default, with its own opt-out ([D1](#d1), [D4](#d4)). Opt-outs are one `defaults` key in the worker-config bag (`defaults: { date: false }`); `defaults: false` turns them all off. The fixed sections stay under a published ceiling of 400 tokens (1,600 characters), the estimate of about 250 plus a margin, with a test that fails past it; identity, the summary's content, each skill's entry and an app's `date` lines are outside it. No section is a capability or a registry entry, and none takes app-supplied text, except that an app may add free-text lines under the `date` key through capabilities it composes (amended in part by [FIX-2498 D1](../../issues/FIX-2498/DECISIONS.md#d1)) | FIX-2498 decides · FIX-2500 consumes | The spec-set review |
 | ER-2 | Core gains mechanism, not defaults. A core change is a no-op for a caller that sets nothing new; workforce's worker flow is where it turns on | FIX-2499 | FIX-2499's spec review |
-| ER-3 | A layer that replaces an app's own patch deletes that patch in the same change: an app's length line, a hand-built coding prompt. Kitchen Sink's `todaysDate` goes only in the change that makes its standalone assistant compose the exported environment formatter | Each child | The closure's sweep |
+| ER-3 | A layer that replaces an app's own patch deletes that patch in the same change: an app's length line, a hand-built coding prompt. Kitchen Sink's `todaysDate` goes only in the change that makes its standalone assistant compose the exported `date` block | Each child | The closure's sweep |
 | ER-4 | The coding brief's "check before done" takes its checks from `commandCheck`'s own `commands` option. No second list; the report is never the verdict ([D5](#d5)) | FIX-2502 · FIX-2494, 2495 consume | FIX-2502's spec review; the closure's coder leg |
 | ER-5 | A harness's own preset is appended to, never replaced | FIX-2494 builds · FIX-2502 consumes | FIX-2502's spec review |
-| ER-6 | No layer is implemented before the cut run reports on the closure issue. A layer, or a section of FIX-2498, whose ask passes 3 of 3 is cancelled or dropped, citing the run ([D2](#d2)). The environment section is exempt and kept regardless: only Kitchen Sink gets a date from the bugs. A cut of the skills index or the summary drops its content and keeps its default flip ([D1](#d1)): the wrap sets no switch | The coordinator | Each wake |
+| ER-6 | No layer is implemented before the cut run reports on the closure issue. A layer, or a section of FIX-2498, whose ask passes 3 of 3 is cancelled or dropped, citing the run ([D2](#d2)). The `date` section is exempt and kept regardless: only Kitchen Sink gets a date from the bugs. A cut of the skills index or the summary drops its content and keeps its default flip ([D1](#d1)): the wrap sets no switch | The coordinator | Each wake |
 | ER-7 | The closure's scripts serve each app as it ships and drive it over its public API, as the existing goals for these apps do, and assert on the worker's answer on a real model, each with a control that fails on `0df5c85` (`main` before the bug fixes, pinned). Each ask runs 3 times and passes only on 3 of 3; a control fails if any run fails, and each ask must fail its control in at least one app where it runs. An ask that needs a mechanism to fire (a summary fold, a held skill) asserts it fired first; a run where it did not fails. "Where it runs" means where the ask's precondition can hold: the Claude Code-style lab has no fold on `main`, so it runs the fold ask only at the wrap, and FIX-2500's cut is read on Teammates alone. The control and the cut run turn on today's skills listing; the wrap sets no switch | FIX-2541 | The closure's spec review |
 | ER-8 | Consumed issues keep their parents: FIX-2387 and FIX-2388 (FIX-2369), FIX-2174 (FIX-2171), FIX-2467, FIX-2073 | The coordinator | Each refresh |
 
@@ -115,12 +115,12 @@ consumed; a *uses* cell is a place a child must not re-decide.
 
 | Seam | Between | Rule |
 |---|---|---|
-| `agent-worker-flow.ts` prompt array, `worker-identity.ts`, `workerConfigSchema` | FIX-2491, 2493, 2498, 2500, and FIX-2073 | The bugs land first: FIX-2491's step default, and FIX-2493 so every later section reaches the EM. FIX-2498 makes `workerDefaultLayer` the array's one default entry and replaces the seam's "do not grow" comment; FIX-2500 adds a section to that module, not to the array. FIX-2073's line goes in the behaviour section |
+| `agent-worker-flow.ts` prompt array, `worker-identity.ts`, `workerConfigSchema` | FIX-2491, 2493, 2498, 2500, and FIX-2073 | The bugs land first: FIX-2491's step default, and FIX-2493 so every later section reaches the EM. FIX-2498 makes `workerDefaultLayer` own the array's default entry and the tagged context after the worker's text ([its D1](../../issues/FIX-2498/DECISIONS.md#d1)), and replaces the seam's "do not grow" comment; FIX-2500 adds a section to that module, not to the array, and says which of the two places its summary uses. FIX-2073's line goes in the behaviour section |
 | `labs/teammates/src/flows/coder.ts` | FIX-2495, FIX-2502, and FIX-2369's merge order on that file | FIX-2495's local fix first; FIX-2502 replaces the builder. FIX-2369's [build order](../FIX-2369/DECISIONS.md#coordination-seams) row for this file governs the merge order |
 | `packages/shift-manager/teams/devteam/harness.mts` | FIX-2494, FIX-2502 | FIX-2494 switches to the preset with appended text; FIX-2502 swaps that text for the brief |
 | harness-manager's `buildPrompt` | FIX-2502, FIX-2388 | The brief composes `heldPromptSection`, `PromptRunContext.task` and FIX-2388's issue section, and reads `commandCheck`'s `commands` |
 | Search, fetch and project-source tools | FIX-2496, FIX-2499 | FIX-2496 wires them with today's descriptions; FIX-2499 adds their guidance fields |
-| Kitchen Sink chat agent's date | FIX-2492, FIX-2498 | The assistant is a standalone core generator, not a worker, so the section never reaches it. FIX-2492's per-turn date stays until FIX-2498 exports the environment formatter and has the assistant compose it; that change deletes the local fix (ER-3) |
+| Kitchen Sink chat agent's date | FIX-2492, FIX-2498 | The assistant is a standalone core generator, not a worker, so the section never reaches it. FIX-2492's per-turn date stays until FIX-2498 exports the `date` block and has the assistant compose it; that change deletes the local fix (ER-3) |
 
 ## Decided in review, recorded so no child reopens them
 
@@ -131,7 +131,7 @@ consumed; a *uses* cell is a place a child must not re-decide.
 
 Round 1, from the analyst and `reuse-review` on e99e96f:
 
-- **FIX-2497 and FIX-2501 fold into FIX-2498** (PM restraint cut). Environment is a constant
+- **FIX-2497 and FIX-2501 fold into FIX-2498** (PM restraint cut). The `date` section is text
   beside `TOOL_USE_RULE`; the index is a default flip on `createSkillsLibrary`. Each keeps its
   own opt-out, so the kill line still cuts one alone. Both are Duplicate in Linear.
 - **The step budget is a workforce default** (analysis #1, EM). FIX-2491 raises it to about 50
@@ -146,7 +146,7 @@ Round 1, from the analyst and `reuse-review` on e99e96f:
 Round 2, from the [second look](https://github.com/fixpoint-labs/flow-state-dev/pull/4672#issuecomment-6631454763)
 and Codex's [review of DECISIONS.md](https://github.com/fixpoint-labs/flow-state-dev/pull/4672#discussion_r4468037697) on 5a275b3, EM calls:
 
-- **The environment section skips the cut run** (second look #1). FIX-2492 dates Kitchen Sink
+- **The `date` section skips the cut run** (second look #1). FIX-2492 dates Kitchen Sink
   only; the other three apps have no date at all, and the section is the first outcome bullet.
   In ER-6.
 - **The coder leg asserts on `commandCheck`'s record** (#1). The run record's `checks`; the
@@ -162,9 +162,9 @@ and Codex's [review of DECISIONS.md](https://github.com/fixpoint-labs/flow-state
   them; identity still needs the roster. In FIX-2498's scope here and in Linear.
 - **One deep module** (#4, implementer note on FIX-2498). `workerDefaultLayer` owns section
   order, the opt-outs and the "`undefined`, never `""`" rule; the array keeps one entry for it.
-- **Kitchen Sink's date stays until its assistant composes the shared formatter** (#5 and
-  Codex). The assistant is a standalone core `generator`, not a worker, so the environment
-  section never reaches it. FIX-2498 exports the formatter and has the assistant compose it,
+- **Kitchen Sink's date stays until its assistant composes the shared `date` block** (#5 and
+  Codex). The assistant is a standalone core `generator`, not a worker, so the `date`
+  section never reaches it. FIX-2498 exports the block and has the assistant compose it,
   deleting FIX-2492's fix in that change. ER-3 and the seam.
 - **Q1's alternative priced on its card** (the second look). The owner answered it after merge;
   see [Q1](#q1).
@@ -208,6 +208,23 @@ named three places this epic said otherwise. The epic now follows the child:
   `main`", which moves as children merge and could let a control pass for the wrong reason.
   ER-7.
 
+<a name="on-fix-2498s-amendment"></a>
+On FIX-2498's amendment: the owner approved the issue's spec by merging
+[#5163](https://github.com/fixpoint-labs/flow-state-dev/pull/5163) (83907b7c1). Its
+[D1](../../issues/FIX-2498/DECISIONS.md#d1) amends two calls here, and the owner renamed a
+section. The epic follows the child:
+
+- **The default layer has two places** ([D4](#d4)). Identity stays the prompt array's default
+  entry; the new sections go after the worker's own text, as tagged context, so the date does
+  not change the start of every prompt each day. FIX-2500 says which place its summary uses.
+- **An app may add `date` lines** ([ER-1](#who-owns-what), in part). Free text, through a
+  capability it already composes, under the public `date` key; outside the ceiling and
+  unchecked. The rest of ER-1 holds: no section is a capability or a registry entry, and no
+  other app text.
+- **The section is `date`, not "environment"**, a name the owner keeps for something else. It
+  holds today's date, its weekday and the server's time zone. No user, no project and no
+  surface line: no ask measures them (ER-6), and a surface line would be its own key and issue.
+
 ## How it got here
 
 - **Filed (Nov 2)** — epic and twelve children from the harness comparison. D1 to D3 settled
@@ -223,5 +240,8 @@ named three places this epic said otherwise. The epic now follows the child:
 - **FIX-2541 aligned (Nov 4)** — the owner merged the closure's spec (#4711). The epic follows
   it: the summary's cut on Teammates alone, the apps on their real path, the control pinned to
   `0df5c85`. A third amendment PR.
+- **FIX-2498 amends D4 and ER-1 (Nov 13)** — the owner merged its spec (#5163): the new sections
+  go after the worker's text, an app may add `date` lines, and the section is renamed `date`. A
+  fourth amendment PR.
 
 **Open:** none.
