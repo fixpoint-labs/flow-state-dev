@@ -1,184 +1,154 @@
 # Facts for how-it-fits-together.md (concept, C-01)
 
-Paths are from the repo root. Sources are only what a fact sheet may cite: existing user docs, the exported surface and its doc comments, tests, `examples/`. No spec, no `docs/internal/`, no `CLAUDE.md`.
+Every fact the page may state, with file and line, from what a fact sheet may cite: existing user docs, the exported surface and its doc comments, tests, `examples/`. No spec, no `docs/internal/`, no `CLAUDE.md`, no `docs/architecture/`.
 
-Short forms: `core` = `packages/core/src`; `engine` = `packages/engine/src`; `react` = `packages/react/src`; `hc-flow` = `examples/hello-chat/src/flows/hello-chat/flow.ts`; `hc-cfg` = `examples/hello-chat/fsdev.config.ts`; `hc-app` = `examples/hello-chat/src/app.tsx`; `hc-route` = `examples/hello-chat/app/api/flows/[[...path]]/route.ts`.
+Short forms (paths from the repo root): `core` = `packages/core/src`; `engine` = `packages/engine/src`; `react` = `packages/react/src`; `client` = `packages/client/src`; `docs` = `apps/docs/docs`; `hc-cfg` = `examples/hello-chat/fsdev.config.ts`; `hc-flow` = `examples/hello-chat/src/flows/hello-chat/flow.ts`; `hc-app` = `examples/hello-chat/src/app.tsx`; `hc-route` = `examples/hello-chat/app/api/flows/[[...path]]/route.ts`. Names in the example (`hello-chat`, `chat`) come from `examples/hello-chat`; the page's own app (help desk) is the page's choice and carries the same shapes.
 
-## Read this first: three things the page cannot state as built
+## Read this first: things the page cannot state as built
 
-1. **No kit ships yet.** `defineKit`, the `kits` and `fill` options and the install machinery are built. `workforce(...)`, `harnesses(...)` and `claudeCode()` are not exported by any package: `grep defineKit packages/*/src` finds only `core/kit/*`, and `workforce`'s `index.ts` has no kit. The `kits: [workforce(...), harnesses(...), claudeCode()]` config exists only in the pilot page (`docs/contributing/docs-revamp/pilot/what-flow-state-is.md:42-52`) and in two doc comments (`core/kit/define-kit.ts:5`, `engine/flowstate/types.ts:128`). A page that shows `createFlowState({ kits })` with those names is stating a surface not yet built; reconcile at cutover. The built way to get workers today is `hireWorkforce(...)` (`packages/workforce/README.md:5-9`, `:30-34`), registered through `flows`.
-2. **The page plan says `send` and `useFlow`.** `useFlow` (`react/hooks/useFlow.ts:58`) lists flows and sessions and creates/selects a session. It has no send. Sending from a React page is `useSession(sessionId).sendAction(action, input, options)` (`react/hooks/useSession.ts:441-445`, example `hc-app:47-64`). `send(action, input, { sessionId })` is a method on the client's flow handle (`packages/client/src/client.ts:841-877`, used at `packages/workforce/README.md:44-46`).
-3. **`stores` and `flows` are not the whole config.** `createFlowState({ kits, flows, stores })` is valid: all three are optional fields (`engine/flowstate/types.ts:124`, `:137`, `:178`). `flows` is a list, `readonly FlowInstance[]` (`types.ts:124`), though `apps/docs/docs/server/setup.md:22` and `apps/docs/docs/persistence/overview.md:38` print a record (`flows: { myFlow }`). The type wins; the list is what `hc-cfg:17-18` uses.
-
-## The layers (what each is, one sentence, and where it is taught)
-
-- Packages stack in layers; a package uses only the layers under it. `apps/docs/docs/glossary.md:15`, `:21-25`
-- Contracts (item types, block instance ids) is the bottom layer; Core builds on it; Engine, Client, React, Orchestration sit on Core; Workforce and the hosts/stores sit above; Shift Manager sits on top. `apps/docs/docs/glossary.md:23` (figure description)
-- Workforce imports Core and Orchestration, nothing from Engine. `apps/docs/docs/glossary.md:25`
-- Contracts holds the shapes shared by the server and the browser; Core re-exports them and adds the builders. `apps/docs/docs/glossary.md:35`
-- Engine runs flows. Store adapters (`store-sqlite`, `store-postgres`) and host adapters (`node`, `next`, `vercel`) plug into it. `apps/docs/docs/glossary.md:65`
-- The client is how code outside the server talks to your flows; it works in Node, browser and edge, with no React or DOM dependency; it speaks HTTP and SSE, or calls an engine in the same process. `apps/docs/docs/client/overview.md:7`
-- The React package wraps the client with hooks and renderers. `apps/docs/docs/client/overview.md:9`
-- Ecosystem packages (patterns, tools, skills, UI, memory) are built on the runtime but are not part of it; you can ship a flow without any. `apps/docs/docs/ecosystem/overview.md:5-9`, `:11-21`
-
-### Kit (one sentence)
-- A kit packages a feature so an app installs it with one config object. `core/kit/define-kit.ts:3-5`
-- A kit declares its config (`config`), the kits it `requires`, the `slots` other kits fill, what it `contributes` to the slots of kits it requires, an optional folder it owns (`directory`), and an `install` that returns the flows it serves. `core/kit/define-kit.ts:6-9`, `:117-151`
-- A kit's name: lowercase letters, digits, single hyphens, unique in an app. `core/kit/define-kit.ts:117-118`; listed twice is refused, `engine/flowstate/kits.ts:56-62`
-- A slot is a typed place other kits fill: keyed (by key; a key given twice is refused naming both) or list (appended in install order, the app's last). `core/kit/define-kit.ts:22-48`
-- Only a kit that requires the slot's owner can fill it. `core/kit/define-kit.ts:123-124`; refused otherwise, `engine/flowstate/kits.ts:140`
-- `createFlowState({ kits })` takes kits in any order and installs in `requires` order. `engine/flowstate/types.ts:126-131`
-- A kit's flows are served beside the app's `flows`. `engine/flowstate/types.ts:130-131`; test `engine/test/flowstate/kits.test.ts:92`
-- The app can fill slots itself with `fill`, by slot key. `engine/flowstate/types.ts:139-145`
-- A kit's folder is read at start-up; any file in it that no reader used rejects `ready()` and every request, naming each file. `engine/flowstate/types.ts:134-136`; `engine/flowstate/kits.ts:268-290`
-- Wrong kit config throws at construction: the factory checks config against the kit's schema. `core/kit/define-kit.ts:250-256`
-- A kit "composes existing pieces": resources, views and capabilities ride on the flows its install returns. `core/kit/define-kit.ts:9-10`
-
-### Flow (one sentence)
-- `defineFlow({ kind, actions, session: { stateSchema, client: { expose } } })` returns the flow; calling it returns an instance you register. `hc-flow:78-91`, `:95`; `core/flow/defineFlow.ts:1-9`
-- A flow is the deployable unit: it bundles blocks, state and client visibility into one registerable object. `apps/docs/guides/anatomy-of-a-flow.md:44`
-- A flow's `kind` is its name to the engine; its address is its id (the kind unless the instance was given another). `engine/flowstate/types.ts:119-123`; `apps/docs/docs/glossary.md:158`
-- An action is a named entry point on a flow that wraps one root block. `apps/docs/docs/glossary.md:49` (Action row); `hc-flow:80-85`
-- A flow can also declare `views`. `core/flow/defineFlow.ts:185`, `:1490`
-
-### Block (one sentence)
-- A block is a typed unit of work with an input schema and an output schema; you define it, the framework runs it. `apps/docs/docs/glossary.md:41`; `docs/contributing/docs-revamp/pages/blocks.facts.md` (block facts, `core/types/block.ts:1195-1217`)
-- Exactly five kinds: handler (plain code), generator (a model call), evaluator (a model judgment), sequencer (runs blocks in order), router (picks one block to run). `apps/docs/docs/glossary.md:42`; `core/types/block.ts:43`
-- A sequencer is itself a block, so it can be an action's block. `core/blocks/sequencer-methods.ts:156-162`; `hc-flow:71-73`, `:82-83`
-- A block can be a generator's tool. `core/blocks/generator.ts:422`; `apps/docs/docs/glossary.md:46`
+1. **No kit ships yet.** `defineKit`, the `kits` and `fill` options and the install and slot machinery are built (`core/kit/define-kit.ts`, `engine/flowstate/types.ts:130-145`, `engine/flowstate/kits.ts`). The kit factories the doc comments name, `workforce({ model })` and `harnesses({})`, are not exported: `grep -rl defineKit packages/*/src` finds only `core/index.ts` and `core/kit/*`, and `packages/workforce/src/index.ts` exports no kit. Their only appearance is in two doc comments (`core/kit/define-kit.ts:5`, `engine/flowstate/types.ts:~128`). A page showing `kits: [workforce(...)]` states a surface specified and not built: mark it for reconciling at cutover. The built way to get workers today is `hireWorkforce(installation)`, whose flows are registered through `flows` (`packages/workforce/README.md:5-9`, `:36-39`).
+2. **The plan says `useFlow` and `send`.** `useFlow` lists flows and sessions and creates and selects a session (`react/hooks/useFlow.ts:55-62`, `:135-152`); it returns no send. From a React page, sending is `useSession(sessionId).sendAction(action, input, options?)` (`react/hooks/useSession.ts:441-445`; used at `hc-app:47-64`). `send(action, input, { sessionId })` is a method of the client's flow handle (`client/client.ts:855-862`; used at `packages/workforce/README.md:58-59`).
+3. **`flows` is a list.** `flows?: readonly FlowInstance[]`, each served under its own `flow.id`, two with one id refused (`engine/flowstate/types.ts:119-124`). `hc-cfg:17-18` passes `flows: [helloChatFlow]`. Two docs pages print a record (`docs/server/setup.md:22`, `docs/persistence/overview.md:38`); the type wins.
 
 ## The app in one file
 
-- `createFlowState(options)` assembles the runtime from declarative config and returns a `FlowState` handle whose router initialises lazily on first request. `engine/flowstate/createFlowState.ts:1325-1335`
-- `hc-cfg` is the whole wiring for the example app: `createFlowState({ flows: [helloChatFlow], onError })`, default-exported. `hc-cfg:14-22`
-- With `stores` omitted, data is held in memory and nothing persists across a restart; startup says so. `engine/flowstate/types.ts:169-172`
-- `stores` takes one adapter (`sqliteStores({ filename })`), or named profiles chosen per environment. `engine/flowstate/types.ts:173-178`
-- A route file mounts the handle: `export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate)`. `hc-route:1-8`; `packages/next/src/createNextHandler.ts:4`, `:37`
-- The same file serves `fsdev run` and `fsdev dev`: put the config in `fsdev.config.ts` default-exported. `apps/docs/docs/server/setup.md:30`; `hc-cfg:1-9`
-- The engine can also be called with no HTTP server: `fsdev run` and `runAction`. `apps/docs/docs/server/setup.md:9`
-- A host adapter mounts the handle as route handlers (`node`, `next`, `vercel`). `apps/docs/docs/glossary.md:73`
+- `createFlowState(options)` returns a handle built from declarative config; `kits`, `flows`, `stores` are all optional fields (`engine/flowstate/types.ts:124`, `:137`, `:178`). `docs/server/setup.md:7-10`: the engine registers your flows, runs actions, persists state and streams results; you describe it once with `createFlowState`.
+- The whole wiring of the example app: `createFlowState({ flows: [helloChatFlow], onError })`, default-exported from `fsdev.config.ts`. `hc-cfg:14-22`
+- The same file is imported by the web route and loaded by the `fsdev` CLI. `hc-cfg:2-4`
+- A route file mounts the handle: `export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate)`. `hc-route:10`. One `[[...path]]` route is enough. `apps/docs/guides/anatomy-of-a-flow.md:111`
+- Host adapters (`node`, `next`, `vercel`) serve a FlowState from one kind of host. `docs/glossary.md:73`
+- The engine can run with no HTTP server: `fsdev run`, `runAction`. `docs/server/setup.md:9`; `docs/cli/agent-dev-loop.md:8`
+- `stores` takes one adapter (`sqliteStores({ filename })`) or named profiles chosen per environment; omitted, data is held in memory, nothing persists across a restart, and startup says so. `engine/flowstate/types.ts:168-178`
 
-## What happens when you send a message (the stops, in order)
+## The layers: one sentence each, and what teaches it
 
-One page action, from the browser. Names from the example: flow `hello-chat`, action `chat`, input `{ message }`.
+- The framework is built in layers; a package uses only the layers under it. `docs/glossary.md:15`, `:25`
+- Order, bottom to top (the glossary figure's description): Contracts (item types, block instance ids); Core (blocks, flows, actions, scopes, resources, capabilities); Engine, Client, React, Orchestration, and the smaller packages Memory, Tools and Workspace; the hosts and stores built on Engine, Workforce (on Core and Orchestration), Patterns and Harness manager; Shift Manager on top. `docs/glossary.md:23`
+- Workforce imports Core and Orchestration and nothing from Engine. `docs/glossary.md:25`
+- Engine runs flows and stores what they write. Store adapters (`store-sqlite`, `store-postgres`) and host adapters plug into it. `docs/glossary.md:23`, `:72-73`
+- The client is how code outside the server talks to your flows: Node, browser and edge, no React or DOM dependency; HTTP and SSE, or an engine in the same process. `docs/client/overview.md:7`
+- The React package wraps the client with hooks and renderers. `docs/client/overview.md:9`
+- Patterns, tools, skills, UI and memory are built on the runtime and are not part of it; you can ship a flow without any. `docs/ecosystem/overview.md:5-9`, `:11-21`
+- Most higher terms are a lower term with a name and a rule added; a worker is a resource one user owns, naming the flow that runs it. `docs/glossary.md:17`
+- Orchestration builds task boards from the Core primitives; Workforce builds workers, coordinators and projects; Shift Manager is an app that reads what Workforce writes. `docs/glossary.md:15`
 
-1. **Page calls the action.** `session.sendAction("chat", { message })`. `hc-app:47-64`; signature `react/hooks/useSession.ts:441-445`. `sendAction` throws if the hook has no `sessionId`. `react/hooks/useSession.ts:2195-2196`
-2. **The page shows the user's line at once** when you pass `userMessage`; the server's copy replaces it. `react/hooks/useSession.ts:2227-2248`; doc `:436-440`
-3. **POST to the flow's action route.** With a session: `POST /api/flows/<flow>/<sessionId>/actions/<action>`; without: `POST /api/flows/<flow>/actions/<action>`. `packages/client/src/client.ts:857-861`; routes `engine/routes/router.ts:130-140`
-4. **The server answers inline or with 202.** If the request has `Accept: text/event-stream`, the POST response is the SSE stream (status 200). Otherwise it answers `202` with `{ status: "in_progress", request: { id, flowKind, flowId, actionName, status }, session }` and the client follows the request on a separate GET stream. `engine/routes/action-routes.ts:327-362`. `useSession.sendAction` asks for the inline stream and falls back to the 202 path. `react/hooks/useSession.ts:2262-2318`
-5. **Refusals before anything runs.** A session that another user or organisation owns is answered as an unknown session. `engine/routes/action-routes.ts:272-280`. The input is validated against the action's `inputSchema` before any block runs; invalid input returns a validation error. `apps/docs/guides/anatomy-of-a-flow.md:72`
-6. **The action's root block runs.** In `hc-flow` that is a sequencer: `chatGenerator` (the model call), then `incrementMessageCount` as a tap. `hc-flow:71-73`. Each step's output is the next step's input; a `.tap` runs for its state change only and the previous output stays the result. `hc-flow:68-70`; `core/blocks/sequencer-methods.ts:163-166`
-7. **Items stream out as blocks emit them.** A generator with `itemVisibility: { client: true, history: true }` streams its message to the client and keeps it in history. `hc-flow:42-52`. A generator with `itemVisibility` unset produces no auto-emitted items. `core/blocks/generator.ts:1271-1275`. A handler shows nothing unless it emits through `ctx.emit`. `docs/architecture/blocks.md:65` (via `blocks.facts.md`); `core/types/block.ts:466`
-8. **State changes are saved as blocks make them**, each emitting a `state_change` item on the wire (`apps/docs/docs/fundamentals/state-and-scopes.md:463`); on completion, lifecycle hooks fire and the request is marked complete (`apps/docs/guides/anatomy-of-a-flow.md:77`). The page calls the refetched state "the snapshot" and says so where it first appears. The client refetches the authoritative snapshot on `request.completed`. `apps/docs/docs/fundamentals/state-and-scopes.md:461`
-9. **The page re-renders** from `session.items` (the live item list) and from the snapshot's exposed state. `hc-app:50`, `:72-73`. `useSession` folds the stream's events into a live item list. `apps/docs/docs/streaming/overview.md:19`
-10. **A stream that drops can resume**: events carry sequence numbers; the client sends `Last-Event-ID` or `starting_after` and the server replays what was missed. `apps/docs/guides/anatomy-of-a-flow.md:103-105`; `apps/docs/docs/fundamentals/overview.md:42`
+### Kit
+- A kit packages a feature so an app installs it with one config object. `core/kit/define-kit.ts:3-5`
+- It declares its config (`config`), the kits it `requires`, the typed places other kits fill (`slots`), what it fills in the kits it requires (`contributes`), an optional folder it owns (`directory`), and an `install` that returns the flows it serves. `core/kit/define-kit.ts:5-9`, `:117-125`
+- It composes existing pieces: resources, views and capabilities ride on the flows its install returns. `core/kit/define-kit.ts:9-10`
+- Name: lowercase letters, digits, single hyphens, unique in an app; a kit listed twice is refused. `core/kit/define-kit.ts:117`; `engine/flowstate/kits.ts:56-62`
+- `createFlowState({ kits })` takes kits in any order and installs them in `requires` order; their flows are served beside `flows`. `engine/flowstate/types.ts:126-131`; test `engine/test/flowstate/kits.test.ts:92`
+- Only a kit that requires a slot's owner can fill the slot; the app fills slots itself with `fill`, by slot key. `core/kit/define-kit.ts:123-124`; `engine/flowstate/kits.ts:138-141`; `engine/flowstate/types.ts:139-145`
+- A kit's folder is read at start-up; a file in it that no reader used rejects `ready()` and every request, naming each file. `engine/flowstate/types.ts:133-136`
 
-Item facts the page may use:
-- Every artifact a block run produces is an item; items stream over SSE and are, in most cases, persisted. `apps/docs/docs/streaming/overview.md:7`
-- Items belong to requests; requests belong to sessions; the session exposes the items of all its requests as one timeline. `apps/docs/docs/streaming/overview.md:9`
-- Three roles: streaming output, session history, LLM context. `apps/docs/docs/streaming/overview.md:11-17`
-- A request is one run of one action on one session. `apps/docs/docs/glossary.md:71`
+### Flow
+- `defineFlow({ kind, requireUser, actions, session: { stateSchema, client: { expose } } })` returns a definition; calling it (`helloChatFlow()`) returns the instance you register. `hc-flow:78-95`
+- A flow is the deployable unit: blocks, state and client visibility in one registerable object. `apps/docs/guides/anatomy-of-a-flow.md:44`
+- `kind` names the flow to the engine; its address is its id, the kind unless the instance was given another. `engine/flowstate/types.ts:119-123`
+- An action is a named entry point on a flow. It wraps one root block and adds an input schema, hooks, a token budget and durability settings. `docs/glossary.md:49`; `hc-flow:80-85`
+- `userMessage` on an action makes the framework emit the user's line as a message item. `hc-flow:76-77`
+- A flow can also declare `views`. `core/types/flow.ts:60-62`
 
-## Which layer to open first when an answer is wrong
+### Block
+- A block is a typed unit of work with an input schema and an output schema; you define it, the framework runs it. `docs/glossary.md:41`
+- Exactly five kinds: handler (plain code), generator (a model call), evaluator (a model judgment), sequencer (runs blocks in order), router (picks one block to run). `docs/glossary.md:42`; `core/types/block.ts:43`
+- A sequencer is itself a block, so it can be an action's block. `core/blocks/sequencer-methods.ts:154-162`; `hc-flow:71-73`, `:82-83`
+- A block listed in a generator's `tools` is a tool; there is no separate tool type. `docs/glossary.md:46`
+- `.tap(block)` runs a block for its state change only; the previous step's output stays the result. `hc-flow:68-70`
 
-Only observable behaviour, so the page can point a reader at one place per kind of wrong.
+## What happens when you send a message: the stops, in order
 
-- A worker's brief is the Markdown body of its `WORKER.md`; the file's frontmatter is its configuration. `packages/workforce/README.md:5-7`, `:21-26`, `:62-64`
-- A worker whose file names no `flow:` runs on the built-in `agent` flow; its body becomes its instructions. `packages/workforce/README.md:40-43`
-- A worker whose file names `flow: <worker flow>` runs on that worker flow, and the flow decides what a worker may declare. `packages/workforce/README.md:60-66`
-- So a worker's wrong answer has three places to look, in order of effort: the file (instructions/model/tools), then the flow it names, then the blocks inside that flow. *(This ordering is the page's advice, built from the three facts above, not a documented procedure.)*
-- To see which block produced what: `fsdev run <flow> <action> -i '<json>'` prints one JSON event per line to stdout (`item_added`, `content_delta`, `state_change`, `flow_complete`, `error`) and runtime logs to stderr; `--log-level debug` adds nested-block events inside sequencers and routers. `apps/docs/docs/cli/agent-dev-loop.md:8`, `:13-14`, `:50`
-- `fsdev run` uses the app's `fsdev.config.ts` (its models and stores) when run from the app directory. `apps/docs/docs/cli/agent-dev-loop.md:33`
-- The DevTool shows sessions, items, state and execution traces over HTTP and SSE; started with `pnpm fsdev dev`. `apps/docs/docs/devtool/overview.md:8-18`
-- Each block execution is recorded as a `block_trace` item (input, output, error). `apps/docs/docs/streaming/items.md:57-112`; the trace items are hidden from clients by default and opted into with `?include=trace`. `apps/docs/docs/streaming/trace-channel.md:5-16`, `:30-36`
-- When a block fails, `block_trace.error` is `{ message, code?, details? }`. `apps/docs/docs/streaming/items.md:112`
-- Wrong **state** shown on a page: the browser sees only the fields a scope's `client.expose` (or `derived`) lists. `core/types/flow.ts:59-66`; `hc-flow:88-90`; `apps/docs/docs/fundamentals/state-and-scopes.md:25`
+Example: flow `hello-chat`, action `chat`, input `{ message }`.
 
-## Where things are kept — four columns
+1. **The page calls the action.** `session.sendAction("chat", { message })`. `hc-app:47-64`; signature `react/hooks/useSession.ts:441-445`. With no `sessionId` it throws. `react/hooks/useSession.ts:2194-2196`
+2. **The page shows the user's line at once** when `userMessage` is passed; the server's copy replaces it. `react/hooks/useSession.ts:436-438`, `:2237-2250`
+3. **POST to the action's route.** With a session: `POST /api/flows/<flow>/<sessionId>/actions/<action>`; without: `POST /api/flows/<flow>/actions/<action>`. `client/client.ts:857-861`; `engine/routes/router.ts:128-140`
+4. **The server answers with the stream or with 202.** With `Accept: text/event-stream` the POST response is the SSE stream (200). Otherwise `202` with `{ status: "in_progress", request: { id, flowKind, flowId, actionName, status }, session }`, and the client follows the request on a separate GET stream. `engine/routes/action-routes.ts:327-362`. `sendAction` asks for the inline stream and falls back to the 202 path. `react/hooks/useSession.ts:2260-2266`
+5. **Refusals before anything runs.** A session another user or organization owns is answered as an unknown session; neither the owner nor the session's existence reaches the caller. `engine/routes/action-routes.ts:274-279`. Input is validated against the action's `inputSchema` before any block runs; invalid input returns a validation error. `apps/docs/guides/anatomy-of-a-flow.md:72`
+6. **The root block runs.** In the example a sequencer: `chatGenerator` (the model call), then `incrementMessageCount` as a tap. `hc-flow:68-73`
+7. **Items stream out as blocks emit them.** A generator with `itemVisibility: { client: true, history: true }` streams its message to the client and keeps it in history (`hc-flow:42-52`); with `itemVisibility` unset it emits no items (`core/blocks/generator.ts:1269-1275`). A handler shows nothing unless it emits through `ctx.emit` (`core/types/block.ts:466`).
+8. **State changes are written as blocks make them,** each emitting a `state_change` item. `docs/fundamentals/state-and-scopes.md:463`. On completion lifecycle hooks fire and the request is marked complete (`apps/docs/guides/anatomy-of-a-flow.md:77`); the client refetches the authoritative snapshot on `request.completed` (`docs/fundamentals/state-and-scopes.md:461`).
+9. **The page re-renders** from `session.items` and the snapshot's exposed state (`session.snapshot?.clientData?.session?.messageCount`). `hc-app:50`, `:72-73`. `useSession` folds stream events into a live item list. `docs/streaming/overview.md:19`
+10. **A dropped stream resumes** from its sequence number: the client sends `Last-Event-ID` or `starting_after`, the server replays what was missed. `apps/docs/guides/anatomy-of-a-flow.md:103-105`; `docs/fundamentals/overview.md:42`
+
+Item facts:
+- Every artifact a block run produces is an item; items stream over SSE and are, in most cases, persisted. `docs/streaming/overview.md:7`
+- Items belong to requests; requests belong to sessions; the session exposes the items of all its requests as one timeline. `docs/streaming/overview.md:9`
+- Three jobs: streaming output, session history, LLM context. `docs/streaming/overview.md:11-17`
+- A request is one run of one action on one session. `docs/glossary.md:71`
+
+## Where to look when an answer is wrong
+
+- A worker is a configuration plus an owner, run by the flow it names. `packages/workforce/README.md:5-6`
+- A worker's brief is the Markdown body of its `WORKER.md`; its frontmatter is its configuration. `packages/workforce/README.md:5-7`, `:21-26`
+- A worker whose record names no `flow:` runs on the built-in `agent` flow; its body becomes its instructions and steers its answers. `packages/workforce/README.md:40-43`
+- A worker whose record names `flow: <kind>` runs on that flow you wrote. `packages/workforce/README.md:60-62`
+- So, in order of effort: the worker's file, then the flow it names, then the blocks inside that flow. *(The ordering is the page's advice built from the three facts above, not a documented procedure.)*
+- `fsdev run <flow> <action> -i '<json>'` runs the same engine as the server against the same stores. Stdout is one JSON line per event (`item_added`, `content_delta`, `state_change`, `flow_complete`, `error`); stderr carries runtime logs. `docs/cli/agent-dev-loop.md:8`, `:13-14`
+- Run from the app directory, `fsdev run` uses the app's `fsdev.config.ts` models and stores. `docs/cli/agent-dev-loop.md:33`
+- The DevTool shows sessions, items, state and execution traces; started with `fsdev dev`. `docs/devtool/overview.md:8-19`
+- Each block execution is recorded as a `block_trace` item. `docs/advanced/block-memoization-and-replay.md:7`; `docs/streaming/items.md:57-112`. Trace items are hidden from clients by default and opted into with `?include=trace`. `docs/streaming/trace-channel.md:5-16`
+- A block's trace carries its failure as `block_trace.error`, `{ message, code?, details? }`. `docs/streaming/items.md:112`
+- Wrong state on a page: the browser sees only the fields a scope's `client.expose` lists. `core/types/flow.ts:57-66`; `hc-flow:88-90`; `docs/fundamentals/state-and-scopes.md:25`
+
+## Where things are kept: four columns
 
 ### In your repo
-- Flow code (`defineFlow`, blocks), `fsdev.config.ts`, and a kit's folder (e.g. `workforce/teams/<team>/workers/<name>/WORKER.md`) are files in your repo. `hc-cfg`; `hc-flow`; `packages/workforce/README.md:13-23`
-- A worker's file ID: team and worker folder give the id `team.worker`; an org worker's id is its folder name alone. `packages/workforce/README.md:93-95` (field table, `id`)
-- A kit's folder is read when the app starts. `engine/flowstate/types.ts:134`
-- A **standard worker** is one defined by files in the repo; every user has each. `apps/docs/docs/glossary.md:116`
+- Flow code (`defineFlow`, blocks) and `fsdev.config.ts`. `hc-cfg`; `hc-flow`
+- A standard worker is a `WORKER.md` file under `workforce/teams/<team>/workers/<name>/`; every user has each. `packages/workforce/README.md:11-23`; `docs/glossary.md:116`
+- A kit's folder is read when the app starts. `engine/flowstate/types.ts:133-136`
 
-### In the process (gone when the process ends)
-- With the default in-memory store nothing persists across a restart. `engine/flowstate/types.ts:171-172`; `apps/docs/docs/persistence/overview.md:7`, `:30`
-- The registered flows, the model resolver and the store connections live in the `FlowState` handle for the life of the process. `apps/docs/docs/server/setup.md:15-30`
-- An in-memory suspension is lost when the process ends, so durable execution is off by default on in-memory stores. `apps/docs/docs/advanced/durable-execution.md:38` (table row and sentence after)
+### In the process (gone when it ends)
+- With the default in-memory store nothing persists across a restart. `engine/flowstate/types.ts:169-172`; `docs/persistence/overview.md:25`
+- A suspension held in memory is lost when the process ends, so durable execution is off by default on in-memory stores. `docs/advanced/durable-execution.md:38`
 
 ### In your store
-- Request state belongs to one request, and no other request sees it. A request-state write goes through `createScopePersist` into `stores.request`, so it is kept with that request in the store, not only in the process. Verified in code: `engine/context/createExecutionContext.ts:2647-2672` (`const request = stores.request` at 2647; `persist: createScopePersist(requestRef, requestStateStore, ...)` at 2659-2668). Docs: `apps/docs/docs/fundamentals/state-and-scopes.md:20`, `:25`, `:472-479`
-- Three categories of stored data: scope state (session, user, org), resources, and items. `apps/docs/docs/persistence/overview.md:7`
-- The `primary` slot backs sessions, requests, users, orgs, active requests, checkpoints, content and traces. `apps/docs/docs/server/setup.md:78`, `apps/docs/docs/persistence/overview.md:11`
-- Adapters: in-memory (default, lost on restart), filesystem, SQLite, Postgres. `apps/docs/docs/persistence/overview.md:25-30`
+- Three kinds of stored data: scope state (session, user, org), resources, items. `docs/persistence/overview.md:7`
+- The required `primary` slot backs sessions, requests, users, orgs, active requests, checkpoints, content and traces. `docs/server/setup.md:78`
+- Adapters: in-memory (default), file, SQLite, Postgres. `docs/persistence/overview.md:25-28`
 - The store is chosen by `stores` on `createFlowState`. `engine/flowstate/types.ts:168-178`
 
 ### In the browser
-- The active session id is React state in `useFlow`; with `autoCreateSession` it creates a session on mount when none exists, and by default selects the most recent one. `react/hooks/useFlow.ts:18-29`, `:141-152`
-- The live item list and the snapshot are held by `useSession` in React state/refs. `react/hooks/useSession.ts:649`, `:2188-2330`
-- A snapshot read returns the session's exposed state (`snapshot.clientData`) and its items. `react/hooks/useSession.ts:527-528`; `hc-app:50`
-- `useDraft(namespace, id)` keeps unsent message text in `localStorage` so a reload keeps what was typed; if storage throws it is kept in memory only. `react/hooks/useDraft.ts:2-12`, `:63`
-- Nothing else in the React or client packages writes to `localStorage`/`sessionStorage`/IndexedDB. Checked: `grep -rn "localStorage\|sessionStorage\|indexedDB" packages/react/src packages/client/src` finds only `useDraft.ts`.
+- The active session id is React state in `useFlow`; with `autoCreateSession` it creates a session on mount when none exists, and by default selects the most recent. `react/hooks/useFlow.ts:18-29`, `:141-152`
+- `useSession` holds the live item list and the snapshot in React state. `docs/streaming/overview.md:19`; `react/hooks/useSession.ts:2188-2330`
+- A snapshot read returns the session's exposed state (`snapshot.clientData`) and items. `hc-app:50`
+- `useView` holds the last answer as `value`, `undefined` until the first answer lands. `react/hooks/useView.ts:13-14`
+- `useDraft(namespace, id)` keeps unsent message text in `localStorage` under `<namespace>:<id>`; storage that throws leaves it in memory. `react/hooks/useDraft.ts:2-12`. It is the only `localStorage` use in `packages/react/src` and `packages/client/src` (`grep -rn "localStorage\|sessionStorage\|indexedDB"` over both finds only `useDraft.ts:2,23,36,37`).
 
 ## The four questions, for each stored part
 
 | Part | Who owns it | Who can see it | Where stored | How many |
 | --- | --- | --- | --- | --- |
-| Session | The user who created it, in one organisation. A request naming a session another user or organisation owns is answered as an unknown session. `engine/routes/action-routes.ts:272-280`; `apps/docs/docs/fundamentals/state-and-scopes.md:25`, `:503` | That user. The browser sees only what the session's `client.expose` lists. `apps/docs/docs/fundamentals/state-and-scopes.md:25` | The `primary` store. `apps/docs/docs/server/setup.md:78` | Many per user per flow: `useFlow` lists them (`react/hooks/useFlow.ts:137-139`). A session is one conversation (`apps/docs/docs/fundamentals/state-and-scopes.md:35`) |
-| Session state | The session. Keyed by session id, and by tenant id when one is sent. `apps/docs/docs/fundamentals/state-and-scopes.md:25`, `:511` | Blocks of that session; the browser sees `client.expose` fields only | `primary` | One record per session |
-| Items (messages, tool results, block traces) | The request that produced them, collected on the session. `apps/docs/docs/streaming/overview.md:9` | Conversational items reach the client by their `itemVisibility`; `block_trace`, `router_decision`, `state_snapshot` are hidden from clients and read by the DevTool opt-in. `apps/docs/docs/streaming/overview.md:43-58`; `apps/docs/docs/streaming/trace-channel.md:5-16` | On the request record, in the `primary` store. `apps/docs/docs/streaming/overview.md:9` | Many per request; one `block_trace` per block execution (lifecycle patched in place). `apps/docs/docs/streaming/items.md:175` |
-| A block's output | Recorded as the block's `block_trace.output` on the request that ran it. `apps/docs/docs/advanced/block-memoization-and-replay.md:7` | Not shown to the browser. Read by the DevTool via the trace channel, or by a downstream block as its input | In the item log (the request record) on a store that persists | One per block execution. Recorded up to 256 KiB serialised; larger is recorded as a placeholder with a 512-character preview. `apps/docs/docs/streaming/items.md:149-155` |
-| User state | One user, inside one organisation (keyed by user and org; one record per flow copy with `isolateUserState`). `apps/docs/docs/fundamentals/state-and-scopes.md:25` | That user's blocks; only that user's views. `apps/docs/docs/fundamentals/state-and-scopes.md:465` | `primary` | One per user per organisation |
-| Org state | The organisation. Keyed by org id; per flow copy with `isolateOrgState`. `apps/docs/docs/fundamentals/state-and-scopes.md:25` | Everyone in the organisation's blocks; the browser sees `client.expose` fields | `primary` | One per organisation |
-| Resource | Declared on a block or flow at `session`, `user` or `org` scope; lives with that scope's owner. `apps/docs/docs/resources/overview.md:43` | By its `client` config | `primary` (content and resource state). `apps/docs/docs/persistence/overview.md:7`, `:37` | A named container; a collection is a family keyed by a pattern. `apps/docs/docs/glossary.md:53-54` |
-| Request state | The one action run. `apps/docs/docs/fundamentals/state-and-scopes.md:472-479` | Blocks in that run; the next request cannot see it | The store (`stores.request`), kept with that request; no other request reads it. `engine/context/createExecutionContext.ts:2647-2672` | One per request |
-| A view's answer | Nobody; it is computed on each read from the data it reads (a session, or the caller's user or org). `core/types/view.ts:2-9`, `:29-33` | The caller who reads it; `user` and `org` views take identity from the verified principal, not the request. `core/types/view.ts:29-33` | **Not stored.** "a view adds no request, changes no row ... nothing is stored." `engine/test/session-views-store-nothing.test.ts:2-7`. The browser holds the last answer in React state (`useView` `value`). `react/hooks/useView.ts:13` | One shared read per view and input in a client, shared by every screen watching it. `react/hooks/useView.ts:7-11` |
-| `WORKER.md` (a standard worker) | You; a file in your repo | Every user gets each standard worker. `apps/docs/docs/glossary.md:116` | Your repo, read at start-up; a user's edit makes that user's own copy under the same id (`packages/workforce/src/workers/client.ts:218-223`) | One file per standard worker; one copy per user who edits it |
-| The unsent text in a message box | The browser's user | That browser | `localStorage` via `useDraft`. `react/hooks/useDraft.ts:2-12` | One per `namespace:id` |
+| Session | The user who created it, in one organization; a request naming another user's or organization's session is answered as an unknown session. `engine/routes/action-routes.ts:274-279`; `docs/fundamentals/state-and-scopes.md:25` | That user's requests. The browser sees only what `client.expose` lists. `docs/fundamentals/state-and-scopes.md:25` | `primary` store. `docs/server/setup.md:78` | Many per user per flow: `useFlow` lists them (`react/hooks/useFlow.ts:135-139`). One session is one conversation (`docs/fundamentals/state-and-scopes.md:35`) |
+| Session state | The session; keyed by session id, and by tenant id when one is sent. `docs/fundamentals/state-and-scopes.md:25` | Blocks of that session; the browser, `client.expose` fields only | `primary` | One record per session |
+| Items (messages, tool results, traces) | The request that produced them, collected on the session. `docs/streaming/overview.md:9` | Conversational items by their `itemVisibility`; `block_trace`, `router_decision`, `state_snapshot` hidden from clients, opt-in for the DevTool. `docs/streaming/trace-channel.md:5-16` | On the request record, `primary`. `docs/streaming/overview.md:9` | Many per request |
+| A block's output | The request that ran it, as that block's `block_trace.output`. `docs/advanced/block-memoization-and-replay.md:7` | Not sent to the browser; the DevTool reads it through the trace channel; a downstream block gets it as input | The item log on the request record, on a store that persists; with the default in-memory store it goes when the process does (`engine/flowstate/types.ts:169-172`) | One per block execution; recorded up to 256 KiB serialized, a larger value as a placeholder with a 512-character preview. `docs/streaming/items.md:149-155` |
+| User state | One user in one organization (keyed by user and org; one record per flow copy with `isolateUserState`). `docs/fundamentals/state-and-scopes.md:25` | That user's blocks and views; the browser, `client.expose` fields. `docs/fundamentals/state-and-scopes.md:465` | `primary` | One per user per organization |
+| Org state | The organization; keyed by org id, per flow copy with `isolateOrgState`. `docs/fundamentals/state-and-scopes.md:25` | Blocks of everyone in the organization; the browser, `client.expose` fields | `primary` | One per organization |
+| Request state | One action run. `docs/fundamentals/state-and-scopes.md:20`, `:472-479` | Blocks in that run; the next request cannot see it. `docs/fundamentals/state-and-scopes.md:25` | Written through to `stores.request`, kept with that request. `engine/context/createExecutionContext.ts:2645-2668` | One per request |
+| Resource | Declared at `session`, `user` or `org` scope; lives with that scope. `docs/resources/overview.md:43` | By its `client` config. `docs/fundamentals/state-and-scopes.md:468` | `primary` (content and resource state). `docs/persistence/overview.md:7` | A named container; a collection is a family keyed by a pattern. `docs/glossary.md:53-54` |
+| A view's answer | Nobody: it is computed on each read of the data it reads (a session, or the caller's user or org). `core/types/view.ts:2-9` | The caller who reads it; `user` and `org` views take identity from the verified principal. `core/types/view.ts:29-33` | **Not stored**: "a view adds no request, changes no row ... nothing is stored" (`engine/test/session-views-store-nothing.test.ts:2-7`). The browser holds the last answer as `value` while the screen is open (`react/hooks/useView.ts:13`) | One shared read per view and input in a client, shared by every screen watching it. `react/hooks/useView.ts:7-9` |
+| Standard worker (`WORKER.md`) | You; a file in your repo | Every user has each standard worker. `docs/glossary.md:116` | Your repo, read at start-up. A user's first edit copies it to that user's own roster under the same id and the change lands on the copy. `workforce/src/workers/client.ts:218-223` (`workforce` = `packages/workforce`) | One file per standard worker; one copy per user who edits it |
+| Unsent text in a message box | The browser's user | That browser | `localStorage` via `useDraft`. `react/hooks/useDraft.ts:2-12` | One per `namespace:id` |
 
 ## Answer key for the plan's four questions (facts only)
 
-1. *Wrong answer from a worker: which layer first, which next?* The worker's file (`WORKER.md` body and frontmatter) first, because the body is its instructions on the built-in `agent` flow (`packages/workforce/README.md:40-43`). If the file is right or names its own `flow:`, the flow and then its blocks (`packages/workforce/README.md:60-66`; `fsdev run` shows each block's events, `apps/docs/docs/cli/agent-dev-loop.md:13-14`, `:50`).
-2. *Kit / flow / block, one sentence each.* Kit: a feature an app installs with one config entry; it brings flows, a folder it reads, and slots (`core/kit/define-kit.ts:3-10`). Flow: the deployable unit, with actions, state and client visibility, served under its id (`apps/docs/guides/anatomy-of-a-flow.md:44`). Block: a typed unit of work, one of five kinds (`apps/docs/docs/glossary.md:41-42`).
-3. *Stops a message makes before text comes back.* Page action call, POST to the action route, validation and session check, the action's root block (sequencer: generator, then tap), items streamed over SSE, state committed, page re-renders (list above, steps 1-9).
-4. *Which outlive the request?* A session: yes (stored in `primary`; many requests share it, `apps/docs/docs/fundamentals/state-and-scopes.md:35`). A block's output: yes, as part of the recorded item log on a store that persists, but with the default in-memory store it goes when the process does (`engine/flowstate/types.ts:171-172`). A view's answer: no, computed per read, nothing stored (`engine/test/session-views-store-nothing.test.ts:2-7`).
+1. *A worker gives a wrong answer: which layer first, which next?* The worker's file first: its body is its instructions on the built-in `agent` flow (`packages/workforce/README.md:40-43`). If the file is right, or names its own `flow:` (`:60-62`), the flow, then its blocks; `fsdev run` prints each block's events (`docs/cli/agent-dev-loop.md:13-14`).
+2. *Kit, flow, block, one sentence each.* Kit: a feature an app installs with one config entry; it brings flows, a folder it reads and slots (`core/kit/define-kit.ts:3-10`). Flow: the deployable unit, with actions, state and client visibility, served under its id (`apps/docs/guides/anatomy-of-a-flow.md:44`). Block: a typed unit of work, one of five kinds (`docs/glossary.md:41-42`).
+3. *Stops before text comes back.* The page calls the action; POST to the action route; session check and input validation; the root block runs (generator, then tap); items stream over SSE; state is written and the snapshot refetched; the page re-renders (steps 1-9).
+4. *Which outlive the request?* A session: yes, stored in `primary`, shared by its requests (`docs/fundamentals/state-and-scopes.md:35`). A block's output: yes on a store that persists, as part of the item log; on the default in-memory store it goes with the process (`engine/flowstate/types.ts:169-172`). A view's answer: no, computed per read, nothing stored (`engine/test/session-views-store-nothing.test.ts:2-7`).
 
-## Limits a reader would assume otherwise (for linking to Reference, not for the page)
+## Limits a reader would assume otherwise (Reference rows, not page text)
 
-- A view cannot write and cannot call a model: a write is refused with `read_only` (409) and a generator or model call with `view_model_call` (422). `engine/test/views.test.ts:321-345`; `core/types/view.ts:4-6`
-- Memory-only default: with `stores` omitted, restart loses sessions. `engine/flowstate/types.ts:171-172`
-- A fresh `fsdev run` against a multi-instance or Postgres-backed app uses the app's config. `apps/docs/docs/cli/agent-dev-loop.md:33`
+- A view cannot write and cannot call a model: a write is refused with `read_only`, a model call with `view_model_call`. `engine/test/views.test.ts:321-345`; `core/types/view.ts:4-6`
+- With `stores` omitted, a restart loses sessions. `engine/flowstate/types.ts:169-172`
+- `block_trace` output above 256 KiB serialized is recorded as a placeholder. `docs/streaming/items.md:149-155`
 
-## Contradictions and doubts found (for the caller)
+## Contradictions and doubts for the caller
 
-- **Edit of a standard worker.** `apps/docs/docs/glossary.md:116` says "Nobody can edit one. To change it for yourself, fork it." The code says the first edit of a standard worker copies it to the user's own roster under the same id (`packages/workforce/src/workers/client.ts:218-223`; `packages/workforce/test/worker-roster.test.ts:34-48` and `:137-143` show hire, fork and fire onto a standard id are refused, the standard is unchanged for everyone). The pilot (`docs/contributing/docs-revamp/pilot/workers.md`, "Whose worker it is") agrees with the code. The glossary line is stale. This page should not repeat either wording; if it mentions editing, use the code's.
-- **`flows` as a record vs a list.** See "three things" above, item 3.
-- **`useFlow`/`send`.** See "three things" above, item 2.
-- **Anatomy guide, "ephemeral session".** `apps/docs/guides/anatomy-of-a-flow.md:74` says an action sent without a `sessionId` creates "an ephemeral one (or a persisted one, depending on flow config)". Not verified against code in this pass; left off the sheet. The page's example always sends with a session.
-- **"The server is generated... one catch-all route in Next.js is enough"** (`apps/docs/guides/anatomy-of-a-flow.md:111`): confirmed by `hc-route` (one `[[...path]]` route, four methods).
-- **Plan's figure "layer stack from S-1"** is not a source a fact sheet may cite. The layer order above comes from `apps/docs/docs/glossary.md:23` and `docs/contributing/docs-revamp/pilot/what-flow-state-is.md:21` (a draft page, cited for the starter / kits / flows / blocks / engine ordering only).
-- **A "starter" is not a package.** Pilot calls the layer a starter (`pilot/what-flow-state-is.md:25-41`); nothing in code or published docs defines it. `apps/kitchen-sink` and `examples/hello-chat` exist as apps. Do not describe a starter as built on this page without the caller confirming.
-
-## Store-questions gaps (not answerable from allowed sources)
-
-- Who can see a **resource** is set by its `client` config; per-resource defaults belong to the Resources Reference page.
-
-## Revise round 1 notes
-
-- The page's `kits: [workforce({ directory })]` stays: the revamp README ("The pages are written for the release that carries kits") sanctions a specified-not-built surface. Type-checked against a declaration `workforce(options: { directory?: string; model?: string }): KitInstance` from `docs/architecture/kits.md`; whether `model` is required is an open reconciliation item at cutover.
-- The page no longer states that a block's output is recorded with the items, the localStorage draft detail, the validation order, or resume by sequence number. Those are Reference rows (stores, client, HTTP API, streaming), linked from the page. Reference slugs (`http-api`, `streaming`, `views`) are provisional until those pages exist.
-- The debugging paragraph follows Alice's path (`fsdev run`, then `help-desk`, `chatGenerator`, `incrementMessageCount`); the worker answer-key entry above is no longer on the page.
-
-## Revise round 2 notes
-
-- `workforce(...)` stays: the page's `fsdev.config.ts` type-checks against the declaration for the specified-not-built kit (see round 1); the standard allows that for an unbuilt surface. `flows: [helpDeskFlow]` needs a `FlowInstance` (`engine/flowstate/types.ts:124`), so the page says `helpDeskFlow` is the instance `flow.ts` default-exports (`hc-flow:95`, `hc-cfg:17-18`).
-- A view is defined on the page as a read-only question a screen asks the server, computed per read and not stored (`core/types/view.ts:2-9`, `engine/test/session-views-store-nothing.test.ts:2-7`). The page holds the last answer in React state while the screen is open (`react/hooks/useView.ts:13`).
-- `session.items` is defined at first use as the live item list (`apps/docs/docs/streaming/overview.md:19`).
-- `fsdev run` prints one JSON line per event: `item_added`, `content_delta`, `state_change`, `flow_complete`, `error` (`apps/docs/docs/cli/agent-dev-loop.md:13-14`). The page names the first three in plain words.
-- The two views links are different pages: `../reference/views.md` (when a view is read again) and `./views.md` (the concept).
-
-## Revise round 3 notes
-
-- Wording only: the page says `helpDeskFlow` is what `flow.ts` default-exports (a flow instance, `hc-flow:95`, `engine/flowstate/types.ts:124`), and the Block row says "one of five types", so neither line trips the retired-term check. The five-sort claim is unchanged (`core/types/block.ts:43`).
-- `workforce(...)` still is not exported by `@flow-state-dev/workforce`; the page keeps it as the specified-not-built kit factory (revamp README, "Those kit factories are specified and not built"; user-docs.md allows a not-yet-built surface). Reconcile at cutover.
+- **Standard worker edits.** `docs/glossary.md:116` says "Nobody can edit one. To change it for yourself, fork it." The code says the first edit of a standard worker copies it to the user's own roster under the same id (`packages/workforce/src/workers/client.ts:218-223`); the standard is unchanged for everyone. The glossary line is stale. The page should use the code's wording or not mention editing.
+- **`flows` record vs list.** See item 3 above.
+- **`useFlow` has no send.** See item 2 above.
+- **Anatomy guide "ephemeral session".** `apps/docs/guides/anatomy-of-a-flow.md:74` says an action sent without a `sessionId` creates "an ephemeral one (or a persisted one, depending on flow config)". Not verified against code; left off. `useSession.sendAction` requires a session id (`react/hooks/useSession.ts:2194-2196`).
+- **A "starter" is not a package.** The plan's layer stack from S-1 is not citable. Layer order here comes from `docs/glossary.md:23`. Nothing citable defines a starter.
+- **Resource visibility defaults** belong to the Resources Reference page; this sheet gives only "by its `client` config".
