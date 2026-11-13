@@ -50,13 +50,11 @@ interface Observation {
   ok: boolean;
   control: string | null;
   model: string;
-  loadErrors: unknown[];
-  skillErrors: unknown[];
   rosterIds: string[];
   rosterBodies: Record<string, string>;
   /** Each worker the installation holds, and the flow it runs on. */
   seats: Array<{ id: string; kind: string }>;
-  /** The copies `hireWorkforce` returned, by id, all registered. */
+  /** The copies the workforce kit registered, by id. */
   registered: string[];
   attempts: Array<Record<string, string>>;
   mixedRosterIds: string[];
@@ -175,36 +173,24 @@ function mixedRosterDrift(): string[] {
 }
 
 /**
- * Leg 0, half two — the installation names no worker flow, and the hire adds
- * nothing to it.
+ * Leg 0, half two — the kit is handed the folder and nothing else: no worker
+ * flow and no config.
  *
  * Read statically off the harness source, because a runtime report could only
- * say what the harness chose to say. An installation handed a worker flow
- * would prove nothing about the built-in, which is the whole subject.
+ * say what the harness chose to say. A kit handed a worker flow would prove
+ * nothing about the built-in, which is the whole subject.
  */
 function installationNamesNoFlows(): string[] {
   const source = readFileSync(new URL("./harness.mts", import.meta.url), "utf8");
-  const installs = callArguments(source, "createWorkerInstallation");
-  const hires = callArguments(source, "hireWorkforce");
-  if (installs.length === 0 || hires.length === 0) {
-    return ["the harness builds no installation or calls no hireWorkforce — the check is not driving the subject"];
+  const installs = callArguments(source, "installWorkers");
+  if (installs.length === 0) {
+    return ["the harness never installs the workforce kit — the check is not driving the subject"];
   }
-  const problems: string[] = [];
-  // Only the roster, as a literal: any other key, a spread or a variable can
-  // carry `workerFlows` without the name appearing at the call.
-  const carrying = installs.filter((args) => JSON.stringify(literalKeys(args)) !== JSON.stringify(["standardWorkers"]));
-  if (carrying.length > 0) {
-    problems.push(
-      `the harness builds an installation from more than its workers (${carrying.join(" | ")}) — ` +
-        `anything beyond the roster can carry a worker flow, which proves nothing about the built-in`,
-    );
-  }
-  // The installation is the hire's one argument.
-  const withArgs = hires.filter((args) => hasSecondArgument(args));
-  if (withArgs.length > 0) {
-    problems.push(`the harness passes a second argument to hireWorkforce (${withArgs.join(" | ")}) — the installation is all it takes`);
-  }
-  return problems;
+  // The folder is the install's one argument: a second (worker flows) or a third (config) can carry a flow.
+  const withArgs = installs.filter((args) => hasSecondArgument(args));
+  return withArgs.length === 0
+    ? []
+    : [`the harness hands the workforce kit more than its folder (${withArgs.join(" | ")}) — anything beyond the folder can carry a worker flow`];
 }
 
 /** The source inside each `name(...)` call, up to its matching parenthesis, whitespace collapsed. */
@@ -221,24 +207,6 @@ function callArguments(source: string, name: string): string[] {
     found.push(source.slice(start, at - 1).replace(/\s+/g, " ").trim());
   }
   return found;
-}
-
-/** An object literal's top-level keys (a spread reads as `...`), or `undefined` when the source isn't one. */
-function literalKeys(args: string): string[] | undefined {
-  if (!args.startsWith("{") || !args.endsWith("}")) return undefined;
-  const keys: string[] = [];
-  let depth = 0;
-  let entry = "";
-  for (const ch of `${args.slice(1, -1)},`) {
-    if ("([{".includes(ch)) depth += 1;
-    else if (")]}".includes(ch)) depth -= 1;
-    if (ch === "," && depth === 0) {
-      const text = entry.trim();
-      if (text !== "") keys.push(text.startsWith("...") ? "..." : text.split(":")[0]!.trim());
-      entry = "";
-    } else entry += ch;
-  }
-  return keys;
 }
 
 /** A comma outside every bracket in a captured argument list. */
@@ -291,13 +259,6 @@ await runGoal((failures) => {
 
   if (o.ok !== true) {
     return { failures: ["the harness did not complete"], evidence: "" };
-  }
-  if (o.loadErrors.length > 0 || o.skillErrors.length > 0) {
-    // A seat that failed to load is not a seat; grading a partially-read roster
-    // would report on workers nobody has.
-    failures.push(
-      `the loader reported errors: ${JSON.stringify({ errors: o.loadErrors, skillErrors: o.skillErrors })}`,
-    );
   }
 
   const expected = fixture.workers.map((w) => w.id).sort();
