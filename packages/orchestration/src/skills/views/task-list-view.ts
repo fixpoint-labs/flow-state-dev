@@ -10,9 +10,10 @@
 import { defineView } from "@flow-state-dev/core";
 import { taskListBlockFor, type TaskCollectionResolver } from "../task-tools-capability";
 
+// FIX-2625.
 /**
  * One board's task list as a session view: its rows, keyed by task id. It
- * answers for just the rows a board notice's tasks touch (FIX-2625), through
+ * answers for just the rows a board notice's tasks touch, through
  * the same list code as the action. See {@link taskToolViews}.
  */
 function taskListView(collectionId: string, resolve: TaskCollectionResolver) {
