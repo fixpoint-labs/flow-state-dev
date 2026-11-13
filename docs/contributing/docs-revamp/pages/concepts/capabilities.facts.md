@@ -194,6 +194,12 @@ Shape of the four plan examples (names are the page's; the API is cited):
 
 - The page's example is the made-up `orders` capability from section 10, built with `defineCapability`, `defineResource` and `handler`. Every block type-checks against `@flow-state-dev/core` source. The earlier memory example was untrue: `workingMemoryCapability` is named `workingMemory`, has no `remember` or `recall`, and ships no presets, context formatter or tools (`packages/memory/src/capabilities.ts:49-89`). Nothing on the page cites it.
 - Presets are toggled with `.with({ tools: false })` (`dc:155-167`, `cw:38-48`). The page does not name `.presets()` or `.config()` as call sites; those are Reference.
-- Moved to `reference/capabilities` (R-10) and not stated on the page: dependencies and install-once, `.with()` routing and refusals, open config validation and conflicts, what each field installs, the type-inference table and its limits, merge and collision rules, addressing modes (R-01), dynamic `uses`, the type-only overrides. Control tools keep one sentence (`fn:178-223`).
+- Moved to `reference/capabilities` (R-10) and not stated on the page: dependencies and install-once, `.with()` routing and refusals, open config validation and conflicts, what each field installs, the type-inference table and its limits, merge and collision rules, addressing modes (R-01), dynamic `uses`, the type-only overrides. Control tools are Reference only; the page no longer mentions them (`fn:178-223`).
 - "Mistakes show up when the block is built" replaces "factory time" (`ct:301-313`, `bi:292-338`, `mg:158-165`).
 - Links: `../build/write-a-capability.md` (B-32), `../reference/capabilities.md` (R-10), `./resources.md`, `./kits-and-slots.md`, `./generators-and-tools.md`.
+
+## 14. Revision 2
+
+- The page carries a model figure, `figures/capabilities.svg`: the `orders` capability with its resource, context preset and tools preset, listed by `draftReply` (all three parts) and by `summarizeOrder` (`.with({ tools: false })`: resource and context only). Each claim restates sections 2 and 4 (`bi:124-186`, `ct:80-93`, `dc:155-167`). Hatching marks the resource as stored (section 9).
+- "Generator" and "resource" are defined in the opening sentence where first used. The example block that switches tools off is `summarizeOrder`.
+- The tools rule is worded as "declaring `tools:`" (`fn:106-118`, `fn:225-236`).

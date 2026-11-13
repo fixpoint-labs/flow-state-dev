@@ -4,11 +4,16 @@ type: concept
 description: A capability bundles the tools, context and resources for one ability, so a block gets all of it with one line.
 ---
 
+import Figure from "@site/src/components/Figure";
+import Capabilities from "./figures/capabilities.svg";
+
 # Capabilities
 
-A support generator that answers questions about orders needs three things: the order data, a note in its prompt on how to use that data, and a tool that looks an order up. Wire them by hand and every generator that touches orders repeats the same three edits. Adding a second tool means finding all of them again.
+A support generator (a block that calls a model) that answers questions about orders needs three things: the order data, held in a resource (named, stored data a block declares), a note in its prompt on how to use that data, and a tool that looks an order up. Wire them by hand and every generator that touches orders repeats the same three edits. Adding a second tool means finding all of them again.
 
-A capability is those pieces packaged under one name. A block lists it in `uses` and gets everything the capability carries. A generator is the block that calls a model, and a resource is named, stored data a block declares. The examples are a support desk with an `orders` capability.
+A capability is those pieces packaged under one name. A block lists it in `uses` and gets everything the capability carries. The examples are a support desk with an `orders` capability.
+
+<Figure svg={Capabilities} caption="One capability, listed by two blocks" description={"On the left, one box named orders, highlighted, is a capability. It holds three parts: a hatched resource named orderLog, a context preset that says to quote the order number, and a tools preset holding lookUpOrder. Two arrows run from it to two generator blocks on the right, each arrow meaning the block lists the capability in uses. The first block, draftReply, lists orders and receives all three parts: resource, context and tools. The second block, summarizeOrder, lists orders with the tools preset switched off and receives only the resource and the context. Hatching marks the resource as stored data that outlives the request."} />
 
 ## A capability, defined once
 
@@ -69,7 +74,7 @@ export const draftReply = generator({
 
 ## Turning a part off
 
-A reply drafter that should see the order context but never call a tool switches the `tools` preset off for that block.
+An order summarizer that should see the order context but never call a tool switches the `tools` preset off for that block.
 
 ```ts title="src/flows/support/blocks/summarize-order.ts"
 import { generator } from "@flow-state-dev/core";
@@ -103,9 +108,7 @@ export const refundReply = generator({
 });
 ```
 
-`issueRefund` is another tool block, in `tools/issue-refund.ts`. The context section and the `orderLog` resource arrive, but `lookUpOrder` does not. Declaring the slot is what counts: `tools: []` means no tools at all, and leaving `tools:` out means the capability's tools reach the model. To keep one, name it in the list yourself.
-
-Some tools, called controls, appear because the block's own settings asked for them, like the skill loader. They reach the model whatever `tools:` says.
+`issueRefund` is another tool block, in `tools/issue-refund.ts`. The context section and the `orderLog` resource arrive, but `lookUpOrder` does not. Declaring `tools:` is what counts: `tools: []` means no tools at all, and leaving `tools:` out means the capability's tools reach the model. To keep one, name it in the list yourself.
 
 ## A capability that takes a value
 
@@ -148,7 +151,7 @@ Helper functions a capability exposes on `ctx.cap.orders` are covered in [Write 
 
 ## How it fits with the others
 
-A kit packages a whole feature, with its flows and screens, that an app installs with one config object. A kit can contain capabilities, but a capability does not contain kits: it attaches to one block. Reach for a kit when the feature has screens or flows of its own, and a capability when you are bundling one ability for blocks. A capability can bring tools, but a tool is a block the model calls, covered in [Generators and tools](./generators-and-tools.md).
+A kit packages a whole feature, with its flows and screens, that an app installs with one config object. A kit can contain capabilities, but a capability does not contain kits: it attaches to one block. Reach for a kit when the feature has screens or flows of its own, and a capability when you are bundling one ability for blocks.
 
 ## Next
 
