@@ -32,6 +32,7 @@ import { copyFileSync, cpSync, existsSync, readdirSync, readFileSync, rmSync, st
 import { dirname, join, relative } from "node:path";
 import { workspaceManifests } from "../../../scripts/workspace-members.mjs";
 import { fixturePath, goalTmpDir, REPO_ROOT, runGoal } from "../../lib/index.mts";
+import { article, drift, htmlText, jsxLeft, markdownPathOf, markdownText, words } from "./grade.mts";
 
 const control = process.env.GOAL_CONTROL ?? "";
 if (!["", "main", "tampered"].includes(control)) throw new Error(`unknown GOAL_CONTROL "${control}"; this goal knows "main" and "tampered"`);
@@ -79,77 +80,6 @@ function htmlFiles(dir: string): string[] {
     const path = join(dir, name);
     return statSync(path).isDirectory() ? htmlFiles(path) : name.endsWith(".html") ? [path] : [];
   });
-}
-
-function decode(text: string): string {
-  return text
-    .replace(/&nbsp;|&#160;/g, " ")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&#x27;/g, "'")
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
-    .replace(/&amp;/g, "&");
-}
-
-/** The rendered article's HTML: the `theme-doc-markdown` element, matched to its closing tag. */
-function article(html: string): string | undefined {
-  const at = html.search(/<div[^>]*class="theme-doc-markdown[ "]/);
-  if (at === -1) return undefined;
-  const tag = /<\/?div\b[^>]*>/g;
-  tag.lastIndex = at;
-  let depth = 0;
-  for (let m = tag.exec(html); m; m = tag.exec(html)) {
-    depth += m[0].startsWith("</") ? -1 : 1;
-    if (depth === 0) return html.slice(at, m.index + m[0].length);
-  }
-  return undefined;
-}
-
-/** What a reader gets from the article: its text, with each drawing read as its description. */
-function htmlText(fragment: string): string {
-  return decode(
-    fragment
-      .replace(/<svg\b[\s\S]*?<\/svg>/g, (svg) => ` ${/<desc\b[^>]*>([\s\S]*?)<\/desc>/.exec(svg)?.[1] ?? ""} `)
-      .replace(/<script[\s\S]*?<\/script>/g, " ")
-      .replace(/<style[\s\S]*?<\/style>/g, " ")
-      .replace(/<[^>]+>/g, " "),
-  );
-}
-
-/** The Markdown's text, without what is syntax rather than prose: link targets and code-fence info. */
-function markdownText(markdown: string): string {
-  return markdown
-    .replace(/^(\s*)(```+|~~~+).*$/gm, "$1$2")
-    .replace(/\]\((?:<[^>]*>|[^)\s]*)(?:\s+"[^"]*")?\)/g, "]")
-    .replace(/^\s*\[[^\]]+\]:\s*\S+.*$/gm, "");
-}
-
-function words(text: string): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const w of text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []) counts.set(w, (counts.get(w) ?? 0) + 1);
-  return counts;
-}
-
-/** How far the Markdown's words are from the HTML's, as a share of the HTML's word count. */
-function drift(markdown: Map<string, number>, html: Map<string, number>): number {
-  let off = 0;
-  let total = 0;
-  for (const n of html.values()) total += n;
-  for (const w of new Set([...markdown.keys(), ...html.keys()])) off += Math.abs((markdown.get(w) ?? 0) - (html.get(w) ?? 0));
-  return total === 0 ? (off === 0 ? 0 : 1) : off / total;
-}
-
-/** A component tag, import/export line, or expression left outside code. */
-function jsxLeft(markdown: string): string | undefined {
-  const prose = markdown.replace(/^(\s*)(```+|~~~+)[\s\S]*?^\1\2\s*$/gm, "").replace(/`[^`\n]*`/g, "");
-  return /<[A-Z][\w.]*[\s/>]|^\s*(?:import|export)\s.+(?:from\s|=)|\{\/\*|(?<!\\)\{[^}\n]*\}/m.exec(prose)?.[0];
-}
-
-/** The Markdown URL rule: the page's URL plus `.md`; a URL ending in `/` takes `index.md`. */
-function markdownPathOf(url: string): string {
-  return url.endsWith("/") ? `${url}index.md` : `${url}.md`;
 }
 
 /** Spoil three pages' output, so each assertion has one page it must fail on. */

@@ -701,6 +701,11 @@ jobs:
       - name: Build docs site
         run: pnpm docs:build
 
+      # The docs-as-text step the build above runs: each MDX component's one text form, the
+      # refusal of a component without one, the Markdown URL rule, llms.txt's layout.
+      - name: Docs as Markdown tests
+        run: node --test apps/docs/scripts/agent-docs/agent-docs.test.mjs
+
       # The API reference build below runs `packages:build` itself, and renders
       # each package's section only when its declarations changed since the
       # cached render (the generator checks each entry's key, so a stale restore

@@ -81,7 +81,7 @@ import TabItem from "@theme/TabItem";
 `);
   assertNoJsx(out);
   assert.match(out, /### npm\n\n```bash\nnpm i x\n```/);
-  assert.match(out, /### pnpm\n\n```bash\npnpm add x\n```/, "a tab with no label is headed by its value");
+  assert.match(out, /```\n\n### pnpm\n\n```bash\npnpm add x\n```/, "a tab with no label is headed by its value, at the margin");
 });
 
 test("a component with no text form fails, naming the file and line", () => {

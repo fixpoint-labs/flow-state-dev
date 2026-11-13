@@ -170,7 +170,12 @@ function component(ctx, node) {
     case "Figure":
       return `**${stringProp(ctx, node, "caption")}**\n\n${stringProp(ctx, node, "description")}`;
     case "Tabs":
-      return inner(ctx, node).trim();
+      return node.children
+        .map((child) => {
+          if (child.type === "mdxJsxFlowElement" && child.name === "TabItem") return component(ctx, child).trim();
+          throw new Error(`${where(ctx, child)}: <Tabs> holds only <TabItem>s`);
+        })
+        .join("\n\n");
     case "TabItem": {
       const label = stringProp(ctx, node, "label", { optional: true }) ?? stringProp(ctx, node, "value");
       return `${"#".repeat(headingDepth(ctx, node))} ${label}\n\n${inner(ctx, node).trim()}\n`;

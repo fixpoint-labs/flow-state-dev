@@ -416,6 +416,28 @@ main:not(.fs-landing)::before {
   border-radius: 0;
 }
 
+/* ── Copy page: the page's Markdown, for a chat with a coding agent ──
+   A label-style control on the right, above the title, framed by a hairline. */
+
+.copy-page {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+.copy-page__button {
+  padding: 4px 10px;
+  border: 1px solid var(--hairline-structural);
+  background: transparent;
+  cursor: pointer;
+}
+
+.copy-page__button:hover,
+.copy-page__button:focus-visible {
+  color: var(--ink1);
+  border-color: var(--ink1);
+}
+
 /* ── Scrollbars: a thin hairline thumb on a clear track ── */
 
 * {
