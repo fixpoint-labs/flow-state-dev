@@ -13,7 +13,7 @@
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="28" y1="158" x2="300" y2="158"/>
 <text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="182">issueRefund</text><text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="190" y="182">handler</text>
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="28" y1="196" x2="300" y2="196"/>
-<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="262">the model picks the order;</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="262">the model picks which order;</text>
 <text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="279">your code checks, then refunds</text>
 <rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="324" y="24" width="272" height="270"/>
 <text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="338" y="46">A PIPELINE AS ONE TOOL</text>

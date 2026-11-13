@@ -73,7 +73,7 @@ A tool that fails does not end the run. The model is told what went wrong and ca
 
 ## How much the model decides
 
-<Figure svg={GeneratorSpectrum} caption="The same reply, with the model deciding more" description={"Three columns side by side, each a version of the support reply. The first, a check after the model, is a sequencer named handleTicket that runs supportAgent, then checkRefundPolicy, then issueRefund: the model picks the order, and your code checks and then refunds. The second, a pipeline as one tool, is supportAgent with one tool, refund, which is a sequencer holding checkRefundPolicy and then issueRefund. The check row is highlighted: the model decides whether to call refund, and when it does the check runs before the refund. The third, free tool choice, is supportAgent with lookUpOrder and issueRefund, and the model picks which, in what order and when to stop."} />
+<Figure svg={GeneratorSpectrum} caption="The same reply, with the model deciding more" description={"Three columns side by side, each a version of the support reply. The first, a check after the model, is a sequencer named handleTicket that runs supportAgent, then checkRefundPolicy, then issueRefund: the model picks which order to refund, and your code checks and then refunds. The second, a pipeline as one tool, is supportAgent with one tool, refund, which is a sequencer holding checkRefundPolicy and then issueRefund. The check row is highlighted: the model decides whether to call refund, and when it does the check runs before the refund. The third, free tool choice, is supportAgent with lookUpOrder and issueRefund, and the model picks which, in what order and when to stop."} />
 
 The third column is the `supportAgent` you started with: the model picks which tool, in what order and when to stop.
 
@@ -105,6 +105,7 @@ The first way puts your code after the model, in a sequencer, a block that runs 
 ```ts title="src/flows/support/blocks/handle-ticket.ts"
 import { sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
+import { issueRefund } from "../tools/issue-refund";
 import { checkRefundPolicy } from "./check-refund-policy";
 import { supportAgent } from "./support-agent";
 
@@ -117,7 +118,7 @@ export const handleTicket = sequencer({
   .step(issueRefund);
 ```
 
-The model picks the order. The check and the refund are your code, and they run in that order.
+The model picks which order to refund. The check and the refund are your code, and the check always runs first.
 
 The second way is a pipeline as the tool. A sequencer in `tools` reaches the model as one tool, with a name, a description and an input schema. The model never sees its steps.
 
