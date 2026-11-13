@@ -70,7 +70,10 @@ the project-spec, deliberately has no lifecycle of its own (see below).
     after a dependency merges, and the assembled end-to-end goal.
 
   `app-review.js` lives beside them under the same contract and harness. It isn't a lifecycle
-  step; it is the fan-out of the standalone `app-review` skill.
+  step; it is the fan-out of the standalone `app-review` skill. `page-loop.js` does too: one docs
+  page through the ten writing passes and the record CI reads
+  ([`user-docs.md`](user-docs.md#writing-a-page-the-ten-passes)). Its revise rounds are capped
+  there, not by the PR-feedback cap.
 
   **A script cannot wait, prompt, subscribe, or touch the filesystem.** So every *gate*, every
   PR subscription, the `.orchestration/` store, and turn-ending stay with the coordinator; the
