@@ -86,13 +86,13 @@ If the stream drops, the page picks it up where it left off. [Sessions, items an
 
 Code and `WORKER.md` files are in your repo. What `createFlowState` returns lives in the process.
 
-The session is in your store, with its state and its items. All of that outlives the request, and on a store that persists it outlives a restart. Request state is scratch space for one action run. It is written to the store with its request, and only that run can see it. With no `stores`, the store is memory: a restart empties it, sessions included.
+The session is in your store, with its state and its items. All of that outlives the request, and on a store that persists it outlives a restart. Request state is scratch space for one action run, and only that run can see it. With no `stores`, the store is memory: a restart empties it, sessions included.
 
 The browser holds what it last received: the live items and the snapshot, the state the flow chose to expose. A view is a read-only question a screen asks the server, such as a user's open orders. Its answer is computed on each read. The server doesn't keep it, and the browser holds only the last answer while the screen is open. See [State and scopes](./state-and-scopes.md), [Views](./views.md) and the [client reference](../reference/client.md) for what the browser keeps locally.
 
 ## Which page to read for what
 
-Say a worker, `triage`, whose `WORKER.md` names `flow: help-desk`, gives a wrong answer. Open that file first. If it looks right, open the `help-desk` flow, then the blocks inside it. To see which block produced the text, run the action from a terminal:
+Say the reply to "Where is my order?" is wrong. Open the `help-desk` flow, then the blocks inside it. To see which block produced the text, run the action from a terminal:
 
 ```bash
 fsdev run help-desk chat -i '{"message":"Where is my order?"}'
@@ -111,14 +111,14 @@ The [CLI reference](../reference/cli.md) lists what it prints and the flags that
 
 ## What it gets you
 
-- **The conversation survives.** The session lives in your store, so with `sqliteStores` a user comes back after a restart and finds it. With no `stores`, a restart empties it.
+- **The conversation survives.** The session lives in your store, so with `sqliteStores` a user comes back after a restart and finds it.
 - **A dropped connection loses nothing.** The stream picks up where it stopped, so a half-written reply finishes.
 - **The browser sees only what the flow exposes.** Everything else in session state stays on the server.
 - **You can test without the page.** `fsdev run` runs the same action on the same engine and stores, from a terminal.
 
 ## How it fits with the others
 
-Each layer uses only the ones beneath it, so the page never reaches into a block and a block never knows about React. Code outside the server, in Node or at the edge, talks to your flows through the client, and `@flow-state-dev/react` wraps that client in hooks. Kits, patterns, tools and memory are built on the runtime and are not part of it: you can ship a flow with none of them.
+Each layer uses only the ones beneath it, so the page never reaches into a block and a block never knows about React. Code that isn't a React page, such as a script or an edge function, calls your flows through `@flow-state-dev/client`, and `@flow-state-dev/react` wraps that client in hooks. Kits are built on the engine; you can ship a flow with none.
 
 ## Next
 

@@ -171,3 +171,11 @@ Item facts:
 - Session ownership sentence merged into step 2; R-20 link moved there.
 - Added "What it gets you" (store persistence `engine/flowstate/types.ts:168-178`; stream resume `anatomy-of-a-flow.md:103-105`; `client.expose` `state-and-scopes.md:25`; `fsdev run` stores `agent-dev-loop.md:33`) and "How it fits with the others" (layers `docs/glossary.md:25`; client `docs/client/overview.md:7-9`; `docs/ecosystem/overview.md:5-9`).
 - `workforce` kit factory remains specified and not exported; the page keeps its cutover comment.
+
+## Revise round 3 notes (pass 8, round 3)
+
+- Debugging section carries the page's own example ("Where is my order?"); the `triage` worker is cut from the page. The worker-first ordering stays in the sheet as a Reference fact, not page text.
+- Request state: "scratch space for one action run, and only that run can see it" (`docs/fundamentals/state-and-scopes.md:25`); the store-write mechanism left the page (`engine/context/createExecutionContext.ts:2645-2668`).
+- Closing paragraph names `@flow-state-dev/client` (`docs/client/overview.md:7-9`) and says "Kits are built on the engine; you can ship a flow with none" (`docs/ecosystem/overview.md:5-9`). Patterns, tools, memory no longer named.
+- "With no `stores`, a restart empties it" appears once in prose (Where things are kept) and in the figure note; cut from the bullets.
+- `workforce` kit factory still specified and not exported; the type-check failure on `fsdev.config.ts` is the expected one, marked by the cutover comment (user-docs.md, code examples: specified-not-built surfaces check against a declaration file removed at cutover).
