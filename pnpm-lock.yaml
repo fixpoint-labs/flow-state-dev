@@ -274,6 +274,9 @@ importers:
       '@docusaurus/preset-classic':
         specifier: ^3.10.2
         version: 3.10.2(@algolia/client-search@5.49.1)(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(@typescript/typescript6@6.0.2)(lightningcss@1.32.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(search-insights@2.17.3)
+      '@docusaurus/utils':
+        specifier: 3.10.2
+        version: 3.10.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@flow-state-dev/design-system':
         specifier: workspace:*
         version: link:../../labs/design-system
@@ -292,6 +295,24 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.4(react@19.2.4)
+      remark-directive:
+        specifier: 3.0.1
+        version: 3.0.1
+      remark-frontmatter:
+        specifier: 5.0.0
+        version: 5.0.0
+      remark-gfm:
+        specifier: 4.0.1
+        version: 4.0.1
+      remark-mdx:
+        specifier: 3.1.1
+        version: 3.1.1
+      remark-parse:
+        specifier: 11.0.0
+        version: 11.0.0
+      unified:
+        specifier: 11.0.5
+        version: 11.0.5
     devDependencies:
       '@docusaurus/module-type-aliases':
         specifier: ^3.10.2

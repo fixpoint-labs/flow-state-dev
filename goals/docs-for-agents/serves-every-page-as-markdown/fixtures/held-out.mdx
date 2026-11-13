@@ -1,0 +1,40 @@
+---
+title: A held-out page
+description: One page with a figure, a table, an admonition and a code tab, built beside the real ones.
+---
+
+import Figure from "@site/src/components/Figure";
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+import HeldOutDrawing from "./held-out.svg";
+
+A page the goal adds to the site before it builds, so the check sees each component the
+site uses on a page nobody tuned the check to.
+
+<Figure svg={HeldOutDrawing} caption="A draft becomes published" description={"Two boxes joined by a line. The left box is the draft a writer edits; the right box is the published page a reader sees."} />
+
+| Stage | Who reads it | How long it lasts |
+|---|---|---|
+| Draft | The writer | Until it is published |
+| Published | Every reader | Until it is replaced |
+
+:::caution Mind the order
+Publish the page before you link to it, or the link breaks.
+:::
+
+## Running it
+
+<Tabs>
+  <TabItem value="npm" label="With npm">
+    ```bash
+    npm run publish-page -- --draft held-out
+    ```
+  </TabItem>
+  <TabItem value="pnpm" label="With pnpm">
+    ```bash
+    pnpm publish-page --draft held-out
+    ```
+  </TabItem>
+</Tabs>
+
+Either command prints the page's address when it is done.
