@@ -5,11 +5,11 @@
  * `@ai-sdk/gateway` — only an app's node_modules can. Nothing is added to
  * kitchen-sink; it is the working directory, not the subject.
  *
- * Drives the path a team adopting the framework would: read worker Markdown
- * files from disk, build the installation over them with NO worker flows so
- * only the built-in `agent` flow can answer, register the copies `hireWorkforce`
- * returns, and ask each worker a question over the real HTTP route, in a
- * session on the one `agent` copy that names it.
+ * Drives the path a team adopting the framework would: point the workforce
+ * kit at a folder of worker Markdown files with NO worker flows, so only the
+ * built-in `agent` flow can answer, serve the copies the kit registers, and
+ * ask each worker a question over the real HTTP route, in a session on the
+ * one `agent` copy that names it.
  *
  * OBSERVES ONLY — every assertion lives in run.mts. This file must not decide
  * whether anything passed; it reports what happened on one `__GOAL__` line.
@@ -21,9 +21,9 @@
  * test and letting a transient fault in it be retried away as model flakiness.
  * Hiring happens once; only the question is repeated.
  *
- * Controls (`GOAL_CONTROL`) perturb THIS FILE, never the fixture tree, so the
- * fixture-integrity leg still passes and the expected failure arrives from
- * reply grading:
+ * Controls (`GOAL_CONTROL`) perturb THIS FILE, never the fixture tree (a
+ * changed body is written to a copy of it), so the fixture-integrity leg
+ * still passes and the expected failure arrives from reply grading:
  *   withhold-instructions  drop each worker's body before hiring
  *   cross-wire             give each seat its sibling's body
  *   partial-hire           admit the valid record from the mixed roster
@@ -31,14 +31,12 @@
 import { createGateway } from "@ai-sdk/gateway";
 import { createModelResolver } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import {
-  AGENT_FLOW,
-  WORKER_ID_STATE_KEY,
-  createWorkerInstallation,
-  hireWorkforce,
-  inventoryWorkers,
-} from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { AGENT_FLOW, WORKER_ID_STATE_KEY, inventoryWorkers, type WorkerInstallation, type WorkerManifest } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 
 const MODEL = process.env.GOAL_MODEL ?? "vercel:openai/gpt-5.4-mini";
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -111,14 +109,45 @@ function assistantText(items: Item[]): string {
     .trim();
 }
 
+// The harness runs from the app's root and can't import `goals/lib`, so the
+// three steps it needs of `goals/lib/workers.mts` are written out here.
+
+/** What the workforce kit reads of `directory`. */
+const readTree = (directory: string) => readWorkforceFolder({ path: directory, claim: () => undefined });
+
+/** `workers` written as a workforce folder, each as its `WORKER.md`, in a temporary directory. */
+function workforceTree(workers: readonly WorkerManifest[]): string {
+  const root = join(mkdtempSync(join(tmpdir(), "fsd-goal-builtin-")), "workforce");
+  for (const worker of workers) {
+    const dot = worker.id.indexOf(".");
+    const folder = dot < 0 ? join(root, "org", "workers", worker.id) : join(root, "teams", worker.id.slice(0, dot), "workers", worker.id.slice(dot + 1));
+    mkdirSync(folder, { recursive: true });
+    const keys = Object.entries(worker.declared).map(([key, value]) => `${key}: ${JSON.stringify(value)}`);
+    writeFileSync(join(folder, "WORKER.md"), `---\n${keys.join("\n")}\n---\n${worker.body}\n`);
+  }
+  return root;
+}
+
+/** The workforce kit over `directory`, installed as an app's start does, and what it hired and serves. */
+async function installWorkers(directory: string) {
+  let installation: WorkerInstallation | undefined;
+  const state = createFlowState({
+    kits: [workforce({ directory })],
+    fill: { [workforce.slots.flows]: { harness: (hired: WorkerInstallation) => ((installation = hired), []) } },
+    stores: { dev: { primary: inMemoryStores() } },
+  });
+  await state.ready();
+  const copies = (await state.getRuntime()).registry.list();
+  await state.dispose();
+  return { installation: installation!, copies };
+}
+
 async function main(): Promise<void> {
   const out: Record<string, unknown> = { ok: false, control: CONTROL || null, model: MODEL };
 
   // ---- the roster, from files alone ---------------------------------------
-  const loaded = await readWorkforce(WORKFORCE_DIR);
-  out.loadErrors = loaded.errors ?? [];
-  out.skillErrors = loaded.skillErrors ?? [];
-
+  // The kit's reader: a file it can't load stops the harness, as it stops an app's start.
+  const loaded = await readTree(WORKFORCE_DIR);
   const workers = loaded.workers.map((w) => ({ ...w }));
   if (CONTROL === "withhold-instructions") {
     for (const w of workers) w.body = "";
@@ -131,11 +160,11 @@ async function main(): Promise<void> {
   out.rosterIds = workers.map((w) => w.id);
   out.rosterBodies = Object.fromEntries(workers.map((w) => [w.id, w.body]));
 
-  // THE calls under test: an installation over the files' workers that names
-  // no worker flow, so only the built-in `agent` can answer, and the copies it
-  // registers.
-  const installation = createWorkerInstallation({ standardWorkers: workers });
-  const copies = hireWorkforce(installation);
+  // THE call under test: the workforce kit over the files' workers, naming no
+  // worker flow, so only the built-in `agent` can answer, and the copies it
+  // registers. A control that changed a body hands the kit a copy of the tree.
+  const changed = CONTROL === "withhold-instructions" || CONTROL === "cross-wire";
+  const { installation, copies } = await installWorkers(changed ? workforceTree(workers) : WORKFORCE_DIR);
   // Each worker, and the flow it runs on.
   const seats = inventoryWorkers(installation).map((seat) => ({ id: seat.id, kind: seat.kind }));
   out.seats = seats;
@@ -241,7 +270,7 @@ async function main(): Promise<void> {
   out.attempts = attempts;
 
   // ---- the mixed roster: one valid worker, one naming an unregistered kind -
-  const mixed = await readWorkforce(MIXED_DIR);
+  const mixed = await readTree(MIXED_DIR);
   const mixedRecords = mixed.workers.map((w) => ({ ...w }));
   out.mixedRosterIds = mixedRecords.map((w) => w.id);
 
@@ -251,9 +280,8 @@ async function main(): Promise<void> {
   try {
     // The failure mode the leg exists to catch: admit the good record and
     // report the bad one, instead of refusing the whole call.
-    const admitted = CONTROL === "partial-hire" ? mixedRecords.filter((w) => w.id === MIXED_VALID_ID) : mixedRecords;
-    const mixedInstallation = createWorkerInstallation({ standardWorkers: admitted });
-    returned = hireWorkforce(mixedInstallation);
+    const admitted = CONTROL === "partial-hire" ? workforceTree(mixedRecords.filter((w) => w.id === MIXED_VALID_ID)) : MIXED_DIR;
+    returned = (await installWorkers(admitted)).copies;
   } catch (error) {
     threw = true;
     refusal = error instanceof Error ? error.message : String(error);

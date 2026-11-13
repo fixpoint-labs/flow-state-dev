@@ -46,8 +46,8 @@ import { randomBytes } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build, type Plugin } from "esbuild";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { REPO_ROOT, loadFixture, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, loadFixture, readTree, runGoal } from "../../lib/index.mts";
+import type { WorkerManifest } from "@flow-state-dev/workforce";
 import { answerSeats } from "./bundled-host.mts";
 
 interface Fixture {
@@ -283,11 +283,12 @@ await runGoal(async (failures) => {
   const generated = (await import(pathToFileURL(join(TREE, "workforce.gen.ts")).href)) as {
     workerFlows: Record<string, unknown>;
   };
-  const roster = await readWorkforce(TREE);
-  if (roster.errors.length > 0) {
-    fail("d:tree", `the fixture tree did not load: ${roster.errors.map((e) => e.path).join(", ")}`);
-  }
-  let workers = roster.workers;
+  // The kit's reader: a file it can't load is a start refusal, named.
+  const roster = await readTree(TREE).catch((error: Error) => {
+    fail("d:tree", `the fixture tree did not load: ${error.message}`);
+    return { workers: [] as WorkerManifest[] };
+  });
+  let workers: readonly WorkerManifest[] = roster.workers;
   if (CONTROL === "shared-settings") {
     // One configuration for every seat: the first seat's declared keys, each
     // seat keeping only its own id.

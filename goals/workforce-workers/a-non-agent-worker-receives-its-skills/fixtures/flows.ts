@@ -16,28 +16,28 @@
  * the bag a worker is handed is refused. They run a different action set on
  * purpose — see `controlActions` below.
  *
- * Each member of the pair is built on its own installation, read from the
- * fixture trees here, because a flow declares one installation's session:
- * `controlInstallation` holds the good workers and the legacy one on the
- * no-contract flow, `twinInstallation` the good workers and one on the
- * hand-rolled flow. The pair stays two top-level `defineFlow` calls, which
- * `goals/scripts/validate-control-shape.mts` reads.
+ * Each member of the pair is built on its own installation, the workforce
+ * kit's over its own folder, because a flow declares one installation's
+ * session: `controlTree` holds the good workers and the legacy one on the
+ * no-contract flow, `twinTree` the good workers and one on the hand-rolled
+ * flow. The pair stays two top-level builders returning `defineFlow` calls,
+ * which `goals/scripts/validate-control-shape.mts` reads.
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
-  createWorkerInstallation,
   workerConfigOf,
+  workerFlow,
   workerConfigSchema,
   workerMessagesResources,
   type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
 import { hearsMessages, workerDoor } from "../../../lib/worker-door.mts";
+import { workforceTree } from "../../../lib/workers.mts";
 
 export const TRIAGE_KIND = "request-triage";
 export const NO_CONTRACT_KIND = "request-triage-legacy";
@@ -45,9 +45,8 @@ export const HAND_ROLLED_KIND = "request-triage-handrolled";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-/** The good tree's workers, and the control tree's legacy one. */
-const good = (await readWorkforce(join(here, "workforce"))).workers;
-const legacy = (await readWorkforce(join(here, "no-contract"))).workers;
+/** The good tree: two seats on the triage flow, each with its own skills. */
+export const goodTree = join(here, "workforce");
 
 /** The one worker on the hand-rolled flow, hand-built: the twin's positive half. */
 export const HAND_ROLLED_WORKER: WorkerManifest = {
@@ -169,19 +168,11 @@ export function defineTriageFlow(installation: WorkerInstallation) {
   });
 }
 
-let controlFlows: Record<string, unknown> = {};
 /** The good workers, and the legacy one on the no-contract flow. */
-export const controlInstallation = createWorkerInstallation({
-  standardWorkers: [...good, ...legacy],
-  workerFlows: () => controlFlows as never
-});
+export const controlTree = workforceTree([], {}, [goodTree, join(here, "no-contract")]);
 
-let twinFlows: Record<string, unknown> = {};
 /** The good workers, and the one on the hand-rolled flow. */
-export const twinInstallation = createWorkerInstallation({
-  standardWorkers: [...good, HAND_ROLLED_WORKER],
-  workerFlows: () => twinFlows as never
-});
+export const twinTree = workforceTree([HAND_ROLLED_WORKER], {}, [goodTree]);
 
 /**
  * The control: a schema that **cannot take the bag a worker is handed**,
@@ -194,7 +185,8 @@ export const twinInstallation = createWorkerInstallation({
  * contract keys and omits the one that makes the bag unacceptable, so only the
  * structural cause is left.
  */
-export const noContractFlow = defineFlow({
+export const noContractFlow = (installation: WorkerInstallation) =>
+  defineFlow({
   kind: NO_CONTRACT_KIND,
   cardinality: "collection",
   configSchema: z.object({
@@ -209,11 +201,11 @@ export const noContractFlow = defineFlow({
     // `workerSkills` omitted — the single reason the bag is refused.
     desk: z.string().default("front")
   }),
-  resources: { ...controlInstallation.resources, ...workerMessagesResources },
-  request: { onStarted: loadWorker(controlInstallation, NO_CONTRACT_KIND) },
+  resources: { ...installation.resources, ...workerMessagesResources },
+  request: { onStarted: loadWorker(installation, NO_CONTRACT_KIND) },
   actions: controlActions,
-  internal: { actions: hearsMessages(controlInstallation, NO_CONTRACT_KIND) },
-  session: { ...controlInstallation.session(seatState.shape), client: clientView }
+  internal: { actions: hearsMessages(installation, NO_CONTRACT_KIND) },
+  session: { ...installation.session(seatState.shape), client: clientView }
 });
 
 /**
@@ -224,7 +216,8 @@ export const noContractFlow = defineFlow({
  * Runs `controlActions` like its twin, so the pair differs in exactly one
  * thing: whether its `configSchema` declares `workerSkills`.
  */
-export const handRolledFlow = defineFlow({
+export const handRolledFlow = (installation: WorkerInstallation) =>
+  defineFlow({
   kind: HAND_ROLLED_KIND,
   cardinality: "collection",
   configSchema: z.object({
@@ -237,12 +230,15 @@ export const handRolledFlow = defineFlow({
     delegates: z.array(z.string()).default([]),
     desk: z.string().default("front")
   }),
-  resources: { ...twinInstallation.resources, ...workerMessagesResources },
-  request: { onStarted: loadWorker(twinInstallation, HAND_ROLLED_KIND) },
+  resources: { ...installation.resources, ...workerMessagesResources },
+  request: { onStarted: loadWorker(installation, HAND_ROLLED_KIND) },
   actions: controlActions,
-  internal: { actions: hearsMessages(twinInstallation, HAND_ROLLED_KIND) },
-  session: { ...twinInstallation.session(seatState.shape), client: clientView }
+  internal: { actions: hearsMessages(installation, HAND_ROLLED_KIND) },
+  session: { ...installation.session(seatState.shape), client: clientView }
 });
 
-controlFlows = { [TRIAGE_KIND]: defineTriageFlow(controlInstallation), [NO_CONTRACT_KIND]: noContractFlow };
-twinFlows = { [TRIAGE_KIND]: defineTriageFlow(twinInstallation), [HAND_ROLLED_KIND]: handRolledFlow };
+/** The control tree's worker flows. */
+export const controlFlows = { [TRIAGE_KIND]: workerFlow(defineTriageFlow), [NO_CONTRACT_KIND]: workerFlow(noContractFlow) };
+
+/** The twin tree's worker flows. */
+export const twinFlows = { [TRIAGE_KIND]: workerFlow(defineTriageFlow), [HAND_ROLLED_KIND]: workerFlow(handRolledFlow) };
