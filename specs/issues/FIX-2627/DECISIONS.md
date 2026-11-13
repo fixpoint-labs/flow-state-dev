@@ -158,6 +158,13 @@ none reverses one.
   `agent` or `coordinator` in `workerFlows` replaces its own, which is then refused in config.
 - **Every reader problem refuses the start.** `readWorkforceFolder` throws on any problem the
   readers report, every one named, as an unclaimed file does: an app is never started short.
+- **The generated module is read whole, and checked.** Its maps are `workerFlows`, `blocks`,
+  `resourceModules`, `workerBlocks` and `packageBlocks`; any other key, or one that isn't a plain
+  record, is refused at construction. A worker flow is the generated module's or the slot's,
+  never both (refused, naming it); either one keyed `agent` or `coordinator` replaces the kit's
+  own, which is then refused in config. `resourceModules` splits as hosts split it by hand
+  (`splitResourceModules`): its capabilities go in the `uses` of the flows the kit builds, its
+  resources beside the folder's documents.
 - **The `Harness` type lives at harness-manager's root** (type only); Codex and Cursor take a
   type dependency on it. Its `agent` is harness-manager's `HarnessSlot`, so no feeds type moves.
 - **Claude Code's plan mode is a second harness**, `claude-code-plan`, which `claudeCode({ plan: true })`
