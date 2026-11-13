@@ -1,0 +1,71 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="A worker's turn, today and after. Today: skills match, then the answer, reading the last 50 turns; older turns drop out, and only Teammates folds them into a summary, through wiring of its own. After: in the turn the agent, coordinator and error-reporter flows share, skills match, then the fold puts older turns into a running summary, then the answer reads the summary and the turns after it. The summary is a section of workforce's default layer, in the context. Three ways skip it: a worker file with defaults historySummary false, a worker file with defaults false, or an app that brings its own summary, which replaces the default. Teammates' own wiring is removed."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .out   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-code{ fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-gone{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="today">
+    <rect class="lane" x="16" y="14" width="908" height="108" rx="6"/>
+    <text class="t-lbl" x="32" y="34">TODAY · EVERY APP BUT TEAMMATES</text>
+    <rect class="n-box" x="32" y="48" width="170" height="56" rx="5"/>
+    <text class="t-b" x="46" y="72">skills match</text>
+    <path class="arrow" d="M202 76 H 262"/><path class="head" d="M262 72 L270 76 L262 80 Z"/>
+    <rect class="n-box" x="270" y="48" width="290" height="56" rx="5"/>
+    <text class="t-b" x="284" y="72">answer</text>
+    <text class="t-s" x="284" y="90">reads the last 50 turns; older ones drop out</text>
+    <rect class="gone" x="590" y="48" width="318" height="56" rx="5"/>
+    <text class="t-b" x="604" y="72">Teammates only: its own fold</text>
+    <text class="t-gone" x="604" y="90">wired in the lab · removed by this change</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="16" y="136" width="908" height="140" rx="6"/>
+    <text class="t-lbl" x="32" y="156">AFTER · THE TURN AGENT, COORDINATOR AND ERROR-REPORTER FLOWS SHARE</text>
+    <rect class="n-box" x="32" y="172" width="170" height="56" rx="5"/>
+    <text class="t-b" x="46" y="196">skills match</text>
+    <path class="arrow" d="M202 200 H 262"/><path class="head" d="M262 196 L270 200 L262 204 Z"/>
+    <rect class="new" x="270" y="172" width="290" height="56" rx="5"/>
+    <text class="t-b" x="284" y="196">fold · on by default</text>
+    <text class="t-s" x="284" y="214">older turns into a running summary</text>
+    <path class="arrow" d="M560 200 H 582"/><path class="head" d="M582 196 L590 200 L582 204 Z"/>
+    <rect class="n-box" x="590" y="172" width="318" height="56" rx="5"/>
+    <text class="t-b" x="604" y="196">answer</text>
+    <text class="t-s" x="604" y="214">the summary, then the turns after it</text>
+    <text class="t-code" x="270" y="250">workerDefaultLayer · section historySummary · in the context</text>
+    <text class="t-s" x="270" y="266">Teammates' summarizer, moved (D1) · the worker's own model</text>
+  </g>
+
+  <g id="ways-out">
+    <rect class="lane" x="16" y="290" width="908" height="116" rx="6"/>
+    <text class="t-lbl" x="32" y="310">THREE WAYS THE DEFAULT IS SKIPPED</text>
+    <rect class="out" x="32" y="324" width="280" height="64" rx="5"/>
+    <text class="t-code" x="46" y="348">defaults: { historySummary: false }</text>
+    <text class="t-s" x="46" y="368">one worker, in its WORKER.md</text>
+    <rect class="out" x="330" y="324" width="280" height="64" rx="5"/>
+    <text class="t-code" x="344" y="348">defaults: false</text>
+    <text class="t-s" x="344" y="368">one worker, every default off</text>
+    <rect class="out" x="628" y="324" width="280" height="64" rx="5"/>
+    <text class="t-b" x="642" y="348">the app's own summary</text>
+    <text class="t-s" x="642" y="368">in uses: it replaces the default</text>
+  </g>
+</svg>
