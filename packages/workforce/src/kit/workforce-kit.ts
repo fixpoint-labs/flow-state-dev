@@ -28,6 +28,7 @@
 import { defineKit, slot, type CapabilityRef, type UsesEntry } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
+import type { SessionFields } from "../workers/session-fields";
 import { AGENT_FLOW, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../agent-worker-flow";
 import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import { defineCoordinatorFlow, type CoordinatorFlowOptions } from "../coordinator/coordinator-flow";
@@ -42,6 +43,7 @@ import { resourcesFromDocs } from "../resources-from-docs";
 import { splitResourceModules } from "../split-resource-modules";
 import { createRoutinesCapability, type RoutinesOptions } from "../routines/routines";
 import { githubServiceFlow, type GitHubServiceFlowOptions } from "../service-flows/github/service-flow";
+import { internalServiceFlow, type InternalServiceFlow, type InternalServiceFlowOptions } from "../service-flows/internal-events/service-flow";
 import { createWorkerInstallation, type WorkerInstallation } from "../workers/installation";
 import { hireWorkforce } from "../workers/register";
 import { workerFlow } from "../workers/worker-flow";
@@ -85,6 +87,13 @@ export interface WorkforceConfig {
   routines?: RoutinesOptions;
   /** GitHub's service flow, which delivers GitHub's events to the conversations that follow them. Omitted: none. */
   github?: Omit<GitHubServiceFlowOptions, "installation">;
+  /**
+   * Internal events: the topics a session may publish on and a routine may
+   * follow. The kit serves the internal service flow, adds its provider to
+   * routines, and a worker flow built on the installation reaches its
+   * publish through {@link internalEventsOf}. Omitted: none.
+   */
+  internalEvents?: Omit<InternalServiceFlowOptions, "installation">;
   /** The app's generated `workforce.gen.ts`, imported whole. */
   generated?: GeneratedWorkforce;
   /** The most tasks one top task may have under it. Omitted: 100. */
@@ -99,7 +108,7 @@ export interface WorkforceConfig {
    * is refused, naming it, and the client reads it off the session.
    * Every field is visible to the session's browser. Never put a secret here.
    */
-  sessionFields?: Readonly<Record<string, ZodTypeAny>>;
+  sessionFields?: SessionFields;
 }
 
 /** Accepts any object: what the field holds is checked where it is used. */
@@ -128,6 +137,7 @@ const configSchema: z.ZodType<WorkforceConfig, z.ZodTypeDef, WorkforceConfig> = 
     consult: object<ConsultSessionsOptions>().optional(),
     routines: object<RoutinesOptions>().optional(),
     github: object<Omit<GitHubServiceFlowOptions, "installation">>().optional(),
+    internalEvents: object<Omit<InternalServiceFlowOptions, "installation">>().optional(),
     generated: generatedSchema.optional(),
     taskChainLimit: z.number().int().positive().optional(),
     messages: object<MessageLimits>().optional(),
@@ -209,6 +219,8 @@ function installWorkforce(
       createRoutinesCapability(installation),
     ] as CapabilityRef[];
 
+  /** The app's session fields, for the agent and coordinator flows the kit builds. */
+  const fields = config.sessionFields === undefined ? {} : { sessionFields: config.sessionFields };
   const builtIn: Record<string, WorkerFlowEntry> = {};
   if (!Object.hasOwn(filled, AGENT_FLOW)) {
     const { showSettings, ...agent } = config.agent ?? {};
@@ -218,7 +230,7 @@ function installWorkforce(
           ...(generated.blocks === undefined ? {} : { catalog: generated.blocks as never }),
           ...agent,
           installation,
-          ...(config.sessionFields === undefined ? {} : { sessionFields: config.sessionFields }),
+          ...fields,
           uses: [...(agent.uses ?? []), ...added(installation)],
         }),
       { showSettings: showSettings ?? [] },
@@ -230,7 +242,7 @@ function installWorkforce(
       defineCoordinatorFlow({
         ...coordinator,
         installation,
-        ...(config.sessionFields === undefined ? {} : { sessionFields: config.sessionFields }),
+        ...fields,
         agent: { ...coordinator.agent, uses: [...(coordinator.agent?.uses ?? []), ...added(installation)] },
       }),
     );
@@ -245,12 +257,35 @@ function installWorkforce(
     ...(folder.references.length === 0 ? {} : { references: referencesFromDocs([...folder.references]) as never }),
     ...(config.projectCoordinator === undefined ? {} : { projectCoordinator: config.projectCoordinator }),
   });
+  // Built before the hire: its provider joins routines, and the worker flows the hire builds reach its publish.
+  const internal = config.internalEvents === undefined ? undefined : internalServiceFlow({ ...config.internalEvents, installation });
+  if (internal !== undefined) internalEvents.set(installation, internal);
+  const routines =
+    internal === undefined ? config.routines : { ...config.routines, providers: [...(config.routines?.providers ?? []), internal.provider] };
   const copies = hireWorkforce(installation, {
     ...(config.taskChainLimit === undefined ? {} : { taskChainLimit: config.taskChainLimit }),
     ...(config.messages === undefined ? {} : { messages: config.messages }),
-    ...(config.routines === undefined ? {} : { routines: config.routines }),
+    ...(routines === undefined ? {} : { routines }),
   });
   const built = Object.values(slots.flows).flatMap((build) => build(installation) as FlowInstance[]);
   const github = config.github === undefined ? [] : [githubServiceFlow({ ...config.github, installation }) as unknown as FlowInstance];
-  return [...copies, ...github, ...built];
+  const service = internal === undefined ? [] : [internal.flow as unknown as FlowInstance];
+  return [...copies, ...github, ...service, ...built];
+}
+
+/** The internal events each installation the kit hired serves, by installation. */
+const internalEvents = new WeakMap<WorkerInstallation, InternalServiceFlow>();
+
+/**
+ * The internal events the workforce kit serves for `installation`: its
+ * `publishEvent`, the resources a block that calls it declares, and its tool
+ * as a capability. Call it in a worker flow's builder, or a `flows` builder,
+ * with the installation it is handed.
+ *
+ * @throws When the kit that hired `installation` has no `internalEvents` config.
+ */
+export function internalEventsOf(installation: WorkerInstallation): InternalServiceFlow {
+  const internal = internalEvents.get(installation);
+  if (internal === undefined) throw new Error("internalEventsOf: the workforce kit was given no `internalEvents`, so it serves none.");
+  return internal;
 }
