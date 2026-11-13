@@ -33,7 +33,9 @@ import { readWorkforceFolder, type WorkforceFolder } from "../loader/read-workfo
 import { consultSessionsCapability, type ConsultSessionsOptions } from "../messages/consult";
 import type { MessageLimits } from "../messages/message-limits";
 import { referencesFromDocs } from "../references-from-docs";
+import type { ResourceModules } from "../resource-modules";
 import { resourcesFromDocs } from "../resources-from-docs";
+import { splitResourceModules } from "../split-resource-modules";
 import { createRoutinesCapability, type RoutinesOptions } from "../routines/routines";
 import { githubServiceFlow, type GitHubServiceFlowOptions } from "../service-flows/github/service-flow";
 import { createWorkerInstallation, type WorkerInstallation } from "../workers/installation";
@@ -51,10 +53,16 @@ export type WorkforceCoordinatorOptions = Omit<CoordinatorFlowOptions, "installa
 
 /** What `fsdev gen` renders into `workforce/workforce.gen.ts`: the app imports it and hands it over whole. */
 export interface GeneratedWorkforce {
-  /** One worker flow per file under `flows/workers/`. */
+  /** One worker flow per file under `flows/workers/`. One named `agent` or `coordinator` replaces the kit's own. */
   readonly workerFlows?: Readonly<Record<string, WorkerFlowEntry>>;
   /** One block per file under `blocks/`: the agent flow's tool catalog, when its config names none. */
   readonly blocks?: Readonly<Record<string, BlockDefinition<any, any>>>;
+  /**
+   * One export per TypeScript file in a `resources/` folder: its capabilities
+   * go in the `uses` of the agent and coordinator flows the kit builds, and
+   * its resources beside the folder's documents, for a worker to be granted.
+   */
+  readonly resourceModules?: ResourceModules;
   /** The blocks each standard worker's own folders register. */
   readonly workerBlocks?: Readonly<Record<string, Readonly<Record<string, BlockDefinition<any, any>>>>>;
   /** The blocks each package carries. */
@@ -86,6 +94,22 @@ export interface WorkforceConfig {
 /** Accepts any object: what the field holds is checked where it is used. */
 const object = <T>() => z.custom<T>((value) => typeof value === "object" && value !== null);
 
+/** A generated map: a plain record. */
+const generatedMap = z.record(z.unknown());
+
+/** The generated module's maps, and no other: a misspelled one is refused rather than dropped. */
+const generatedSchema = object<GeneratedWorkforce>().pipe(
+  z
+    .object({
+      workerFlows: generatedMap.optional(),
+      blocks: generatedMap.optional(),
+      resourceModules: generatedMap.optional(),
+      workerBlocks: z.record(generatedMap).optional(),
+      packageBlocks: z.record(generatedMap).optional(),
+    })
+    .strict() as never,
+) as unknown as z.ZodType<GeneratedWorkforce, z.ZodTypeDef, GeneratedWorkforce>;
+
 const configSchema: z.ZodType<WorkforceConfig, z.ZodTypeDef, WorkforceConfig> = z
   .object({
     agent: object<WorkforceAgentOptions>().optional(),
@@ -93,7 +117,7 @@ const configSchema: z.ZodType<WorkforceConfig, z.ZodTypeDef, WorkforceConfig> = 
     consult: object<ConsultSessionsOptions>().optional(),
     routines: object<RoutinesOptions>().optional(),
     github: object<Omit<GitHubServiceFlowOptions, "installation">>().optional(),
-    generated: object<GeneratedWorkforce>().optional(),
+    generated: generatedSchema.optional(),
     taskChainLimit: z.number().int().positive().optional(),
     messages: object<MessageLimits>().optional(),
     projectCoordinator: z.string().min(1).optional(),
@@ -135,18 +159,28 @@ function installWorkforce(
   folder: WorkforceFolder,
   slots: { readonly workerFlows: Readonly<Record<string, WorkerFlowEntry>>; readonly uses: readonly UsesEntry[] },
 ): FlowInstance[] {
-  const filled = slots.workerFlows;
+  const generated = config.generated ?? {};
+  // A worker flow is the generated module's or the slot's, never both; one
+  // keyed `agent` or `coordinator` from either replaces the kit's own, which
+  // is then not configured.
+  const both = Object.keys(generated.workerFlows ?? {}).filter((name) => Object.hasOwn(slots.workerFlows, name));
+  if (both.length > 0) {
+    throw new Error(`workforce: the generated module and \`workerFlows\` both hold ${both.map((name) => `"${name}"`).join(", ")}. Keep one.`);
+  }
+  const filled: Record<string, WorkerFlowEntry> = { ...generated.workerFlows, ...slots.workerFlows };
   if (config.agent !== undefined && Object.hasOwn(filled, AGENT_FLOW)) {
-    throw new Error(`workforce: \`agent\` is configured, and \`workerFlows\` holds an "${AGENT_FLOW}" flow too. Keep one.`);
+    throw new Error(`workforce: \`agent\` is configured, and the app's worker flows hold an "${AGENT_FLOW}" flow too. Keep one.`);
   }
   if (config.coordinator !== undefined && Object.hasOwn(filled, COORDINATOR_FLOW)) {
-    throw new Error(`workforce: \`coordinator\` is configured, and \`workerFlows\` holds a "${COORDINATOR_FLOW}" flow too. Keep one.`);
+    throw new Error(`workforce: \`coordinator\` is configured, and the app's worker flows hold a "${COORDINATOR_FLOW}" flow too. Keep one.`);
   }
-  const generated = config.generated ?? {};
+  // The `resources/` folders' TypeScript modules: capabilities for the flows, resources for the grants.
+  const modules = splitResourceModules(generated.resourceModules ?? {});
   /** What every flow this kit builds adds: the slot's capabilities and workforce's own two. */
   const added = (installation: WorkerInstallation): CapabilityRef[] =>
     [
       ...slots.uses,
+      ...modules.capabilities,
       consultSessionsCapability(installation, config.consult ?? {}),
       createRoutinesCapability(installation),
     ] as CapabilityRef[];
@@ -178,10 +212,10 @@ function installWorkforce(
 
   const installation = createWorkerInstallation({
     standardWorkers: folder.workers,
-    workerFlows: { ...generated.workerFlows, ...filled, ...builtIn },
+    workerFlows: { ...filled, ...builtIn },
     ...(generated.workerBlocks === undefined ? {} : { workerBlocks: generated.workerBlocks as never }),
     ...(generated.packageBlocks === undefined ? {} : { packageBlocks: generated.packageBlocks as never }),
-    ...(folder.documents.length === 0 ? {} : { documents: resourcesFromDocs([...folder.documents]) as never }),
+    documents: { ...resourcesFromDocs([...folder.documents]), ...modules.resources } as never,
     ...(folder.references.length === 0 ? {} : { references: referencesFromDocs([...folder.references]) as never }),
     ...(config.projectCoordinator === undefined ? {} : { projectCoordinator: config.projectCoordinator }),
   });

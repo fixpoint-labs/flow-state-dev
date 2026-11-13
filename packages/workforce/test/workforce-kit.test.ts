@@ -43,7 +43,7 @@ function tree(files: Record<string, string>): string {
 const LEAD = "---\nname: Lead\ndescription: Answers the user.\n---\nYou are Lead.";
 
 /** The least a worker flow is: a door, the worker's configuration, the installation's session, and an ear for messages. */
-function helperFlow(installation: WorkerInstallation) {
+function helperFlow(installation: WorkerInstallation, kind = "helper") {
   const door = handler({
     name: "helper-door",
     inputSchema: z.object({ message: z.string() }),
@@ -51,13 +51,13 @@ function helperFlow(installation: WorkerInstallation) {
     execute: () => ({ reply: "ok" }),
   });
   return defineFlow({
-    kind: "helper",
+    kind,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources },
     actions: { respond: { block: door, userMessage: (input: { message: string }) => input.message } },
-    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "helper", hears: "task-sessions" }) } },
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: kind, hears: "task-sessions" }) } },
   } as never);
 }
 
@@ -132,5 +132,43 @@ describe("workforce as a kit", () => {
     const { registry } = await state.getRuntime();
     const agent = registry.get("agent") as unknown as { resources?: Record<string, unknown> };
     expect(Object.keys(agent.resources ?? {})).toContain("probe");
+  });
+
+  it("serves the app's generated agent flow in place of the built-in one", async () => {
+    const directory = tree({ "teams/core/workers/lead/WORKER.md": LEAD, "flows/workers/agent.ts": "export {};" });
+    // The generated module's `agent`: a flow of the app's own under the built-in's name.
+    const generated = { workerFlows: { agent: workerFlow((installation) => helperFlow(installation, "agent")) } };
+    const state = track(createFlowState({ kits: [workforce({ directory, generated })], stores }));
+    await state.ready();
+    const { registry } = await state.getRuntime();
+    const agent = registry.get("agent") as unknown as { actions: Record<string, { block: { name: string } }> };
+    expect(agent.actions.respond?.block.name).toBe("helper-door");
+  });
+
+  it("installs the generated resource modules: a resource a worker is granted, and a capability its flow uses", async () => {
+    const directory = tree({
+      "teams/core/workers/lead/WORKER.md":
+        "---\nname: Lead\ndescription: Answers the user.\nresources:\n  - teams/core/notes\ncapabilities:\n  probe: []\n---\nYou are Lead.",
+      "teams/core/resources/notes.ts": "export {};",
+      "teams/core/resources/probe.ts": "export {};",
+    });
+    const notes = defineResource({ scope: "user", stateSchema: z.object({ text: z.string().default("") }) });
+    const probe = defineCapability({
+      name: "probe",
+      resources: { probeCount: defineResource({ scope: "user", stateSchema: z.object({ n: z.number().default(0) }) }) },
+    });
+    const generated = { resourceModules: { "teams/core/notes": notes, "teams/core/probe": probe } };
+    const state = track(createFlowState({ kits: [workforce({ directory, generated } as never)], stores }));
+    await state.ready();
+    const { registry } = await state.getRuntime();
+    const agent = registry.get("agent") as unknown as { resources?: Record<string, unknown> };
+    expect(Object.keys(agent.resources ?? {})).toEqual(expect.arrayContaining(["teams/core/notes", "probeCount"]));
+  });
+
+  it("refuses a generated module with a map it doesn't know, at construction", () => {
+    const directory = tree({ "teams/core/workers/lead/WORKER.md": LEAD });
+    // `workerFlow` for `workerFlows`: a misspelled map would otherwise be dropped in silence.
+    expect(() => workforce({ directory, generated: { workerFlow: {} } as never })).toThrow(/generated/);
+    expect(() => workforce({ directory, generated: { blocks: "nope" } as never })).toThrow(/generated/);
   });
 });
