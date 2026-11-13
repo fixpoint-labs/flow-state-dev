@@ -7,13 +7,14 @@
  * {@link workerSpendHook} builds, which `installation.session()` puts on every
  * worker flow: its model calls by model, and each harness run a harness
  * reported through `reportHarnessSpend`. {@link recordWorkerSpend} adds it to
- * the user's record for that worker and day, and {@link workerUsageAction}
- * reads a period of records back, one row per worker.
+ * the user's record for that worker and day, and the roster flow's
+ * `workerUsage` view ({@link defineWorkerUsageView}) reads a period of
+ * records back, one row per worker, with no session.
  *
  * ## One writer, one reader
  *
  * - **Per user.** The collection is `user`-scoped, so a reader sees only the
- *   spend of requests they made. The query takes no user argument.
+ *   spend of requests they made. The view takes no user argument.
  * - **Writes add, atomically.** Two requests ending at once for one worker and
  *   day both land. A failed write is logged and never fails the request.
  * - **A dollar figure only where one was billed.** A source's `costUsd` sums
@@ -32,10 +33,10 @@
  * request that suspends and resumes counts once per ending) or a harness name
  * with its billing (`kind: "harness"`, `runs` counts runs).
  */
-import { defineCapability, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { defineCapability, defineResourceCollection, defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
 import { addRequestSpendSource, requestSpendSources } from "@flow-state-dev/core/internal";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { RequestEndHook, RequestSpend, SessionRequestEndHook } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { WORKER_ID_STATE_KEY } from "./keys";
@@ -43,9 +44,6 @@ import type { WorkerInstallation, WorkerTurnContext } from "./installation";
 
 /** Accessor key and storage prefix for the usage records. */
 export const WORKER_USAGE_RESOURCE = "worker-usage" as const;
-
-/** The query's action name: `actions: { [WORKER_USAGE_ACTION]: workerUsageAction(installation) }`. */
-export const WORKER_USAGE_ACTION = "workerUsage" as const;
 
 /** The longest period the query reads, in days. */
 export const WORKER_USAGE_MAX_DAYS = 90;
@@ -106,7 +104,7 @@ const workerUsageCapability = defineCapability({
   resources: { [WORKER_USAGE_RESOURCE]: workerUsageCollection }
 });
 
-/** One worker's usage for a period, as {@link workerUsageAction} answers it. */
+/** One worker's usage for a period, as the `workerUsage` view answers it. */
 export interface WorkerUsageView {
   /** The worker's id. */
   worker: string;
@@ -282,24 +280,35 @@ const workerUsageViewSchema = z.object({
   bySource: z.array(workerSourceSpendSchema)
 });
 
+const workerUsageInputSchema = z.object({ days: z.number().int().min(1).max(WORKER_USAGE_MAX_DAYS).optional() });
+const workerUsageOutputSchema = z.object({ workers: z.array(workerUsageViewSchema) });
+
+/** The worker usage view, as {@link defineWorkerUsageView} builds it. Import as a type in client code. */
+export type WorkerUsageViewDefinition = ViewDefinition<
+  BlockDefinition<typeof workerUsageInputSchema, typeof workerUsageOutputSchema>,
+  "user"
+>;
+
+// FIX-2624.
 /**
- * The `workerUsage` query, as one flow-level action a host puts on one flow:
- * `actions: { [WORKER_USAGE_ACTION]: workerUsageAction(installation) }`.
+ * The `workerUsage` view, which the roster flow serves at user scope with no
+ * session (`workerUsageView` is the client's handle).
  *
  * Input `{ days?: number }`, 1 to {@link WORKER_USAGE_MAX_DAYS}, default
  * {@link WORKER_USAGE_DEFAULT_DAYS}: today and the days before it, in UTC.
- * Output `{ workers }`, one {@link WorkerUsageView} per worker that spent in
- * the period, ordered by id. Zero-model.
+ * Answers `{ workers }`, one {@link WorkerUsageView} per worker that spent in
+ * the period, ordered by id. A pure read of the caller's own records; zero-model.
  */
-export function workerUsageAction(installation: WorkerInstallation) {
-  return {
+export function defineWorkerUsageView(installation: WorkerInstallation): WorkerUsageViewDefinition {
+  return defineView({
+    scope: "user",
     description:
       "How many tokens each of your workers used, by model and coding harness, over the last `days` UTC days " +
       `(default ${WORKER_USAGE_DEFAULT_DAYS}). A cost appears only where a harness reported one on an API key.`,
     block: handler({
       name: "worker-usage",
-      inputSchema: z.object({ days: z.number().int().min(1).max(WORKER_USAGE_MAX_DAYS).optional() }),
-      outputSchema: z.object({ workers: z.array(workerUsageViewSchema) }),
+      inputSchema: workerUsageInputSchema,
+      outputSchema: workerUsageOutputSchema,
       uses: [workerUsageCapability],
       resources: { ...installation.resources },
       execute: async (input, ctx: BlockContext) => {
@@ -307,5 +316,5 @@ export function workerUsageAction(installation: WorkerInstallation) {
         return { workers: await readWorkerUsage(ctx, input.days ?? WORKER_USAGE_DEFAULT_DAYS, onRoster) };
       }
     })
-  };
+  }) as WorkerUsageViewDefinition;
 }

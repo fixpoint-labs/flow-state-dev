@@ -137,7 +137,14 @@ export async function removeSchedule(ctx: BlockContext, key: string): Promise<vo
 export function scheduleResources(index?: ScheduleIndex) {
   // Shared across flows, as the subscriptions are: a worker flow that isolates its users' state
   // still writes the schedules the roster lists and fires.
-  const collection = defineScheduleCollection({ pattern: SCHEDULES_PATTERN, flowIsolation: false, ...(index === undefined ? {} : { index }) });
+  // A client reads its own and pauses or deletes one through the roster flow's routine verbs (FIX-2624).
+  const collection = defineScheduleCollection({
+    pattern: SCHEDULES_PATTERN,
+    flowIsolation: false,
+    client: { state: { read: true } },
+    runBy: { flow: ROSTER_FLOW },
+    ...(index === undefined ? {} : { index })
+  });
   // The dispatch endpoint's record of each schedule's last fired time, in the
   // same cell: read by no one here, deleted with its schedule.
   const firedRecords = defineResourceCollection({
@@ -207,7 +214,9 @@ function scheduledTaskBlock(installation: WorkerInstallation) {
  * resolver the roster flow fires schedules through.
  */
 export function defineScheduledWork(installation: WorkerInstallation, index?: ScheduleIndex) {
-  const resources = scheduleResources(index);
+  // FIX-2624: the installation's own schedule collection, which every worker flow declares too.
+  // Its index forwards to `index`, the one `hireWorkforce` was given.
+  const resources = { [SCHEDULES_RESOURCE]: installation.resources[SCHEDULES_RESOURCE], [FIRED_RECORDS_RESOURCE]: installation.resources[FIRED_RECORDS_RESOURCE] };
   const schedules: SchedulesConfig = {
     resolve: createResourceCollectionScheduleResolver({
       collection: resources[SCHEDULES_RESOURCE],

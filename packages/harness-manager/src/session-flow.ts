@@ -62,8 +62,8 @@
  * request publishes its end: the request's own spend, as every harness reports it into the
  * request (`reportHarnessSpend`), folded by orchestration's `requestSpendView`
  * so a turn reads like a task. And a subscription window a harness hears
- * about during a run (`onUsage`) lands in the person's usage record, read
- * through the flow's `harnessUsage` query.
+ * about during a run (`onUsage`) lands in the person's usage record, which a
+ * host serves with `harnessUsageFlow`.
  *
  * **Where a session starts** (`start`) is the person's pick at create, fixed
  * like the model: a ref to cut a new branch from, an existing branch, or a
@@ -125,7 +125,6 @@ import type {
   HarnessSessionHook,
   HarnessSteerHook,
   HarnessUsageHook,
-  HarnessUsageReader,
 } from "@flow-state-dev/core/harness";
 import { readRequestTotalSpend, requestHostOf } from "@flow-state-dev/core/internal";
 import {
@@ -152,7 +151,7 @@ import {
   type CommandCheckOptions,
 } from "./command-check";
 import { assertPositiveInt } from "./guards";
-import { harnessUsageAction, recordHarnessUsage } from "./harness-usage";
+import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import {
   MAX_APPROVAL_STEPS,
   grantMatches,
@@ -451,7 +450,7 @@ export interface HarnessSessionFeeds {
   readonly onSteerable: HarnessSteerHook;
   /**
    * Records a subscription window the harness heard about during the run in
-   * the person's usage record, read through the flow's `harnessUsage` query.
+   * the person's usage record, which a host serves with `harnessUsageFlow`.
    * A harness whose vendor sends none never calls it.
    */
   readonly onUsage: HarnessUsageHook;
@@ -494,12 +493,6 @@ export interface HarnessSessionFlowOptions {
    * fail the turn. Unset, nothing runs.
    */
   readonly verify?: CommandCheckOptions<HarnessSessionVerifyContext>;
-  /**
-   * One reader per harness for the flow's `harnessUsage` query, keyed by the
-   * harness's name, run only when a caller asks it to refresh. Unset, the
-   * query reads only what runs recorded.
-   */
-  readonly usageReaders?: Readonly<Record<string, HarnessUsageReader>>;
   // FIX-2432.
   /**
    * A user approves each tool call the harness hasn't been told it may make:
@@ -1178,15 +1171,14 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         concurrency: "defer",
       },
       steer,
-      // What each harness's subscription has used, as `onUsage` recorded it.
-      harnessUsage: harnessUsageAction({ readers: options.usageReaders ?? {} }),
       removeWorktree: { block: removeWorktree, concurrency: "reject" },
     },
     views: { changes: defineView({ scope: "session", block: changes, description: "What one turn's commits changed: its files and lines, or one file's patch." }) },
     request: { onFinished: turnEnd },
     // The user's worktree rows: the host writes them through this flow's
     // workspace, and every session and agent of the user reads them.
-    resources: { [WORKTREES]: worktreesCollection },
+    // And the person's usage record, which `onUsage` writes (FIX-2624: read through `harnessUsageFlow`).
+    resources: { [WORKTREES]: worktreesCollection, [HARNESS_USAGE]: harnessUsageCollection },
     // The model may read the rows through core's resource tools, never write
     // them: only the workspace host writes a row.
     resourceVisibility: (_ctx, resource) => (resource.name === WORKTREES ? "read-only" : "visible"),

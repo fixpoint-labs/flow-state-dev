@@ -1791,7 +1791,7 @@ function createManagerCapability(options: {
     resources: {
       [RUNS]: runRecordCollection,
       // Where `onUsage` records the subscription windows a run reports, in the
-      // run owner's row. The usage query declares the same definition object.
+      // run owner's row. The usage flow declares the same definition object.
       [HARNESS_USAGE]: harnessUsageCollection,
       // Where the branch check writes the pull requests on the run's branch.
       // The harness blocks declare the same definition object.
@@ -1973,7 +1973,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // the board's accessor is worse: the live-claim fence would consult unrelated
   // rows, quietly defeating the whole attempt-fence mechanism while every test
   // that does not stage two attempts still passes. The usage record is the
-  // third: a run's usage windows would land where the usage query never reads.
+  // third: a run's usage windows would land where the usage view never reads.
   //
   // Merging the manager's entries LAST would prevent all three, and it is the
   // wrong fix: the host's declaration would simply not work, with nothing

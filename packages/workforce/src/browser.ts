@@ -28,6 +28,7 @@ export {
   type WorkforceClientSource
 } from "./workers/client";
 export { rosterView } from "./workers/roster-view-ref";
+export { workerUsageView } from "./workers/worker-usage-ref";
 export type { RosterView } from "./workers/roster-view";
 export {
   deriveWorkerSessionId,
@@ -76,6 +77,7 @@ export { ERROR_REPORTER_FLOW } from "./error-reporter/keys";
 export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_COMPONENT } from "./messages/keys";
 export { SCHEDULES_PATTERN } from "./schedules/keys";
 export { LIST_ROUTINES_ACTION, ROUTINE_VERBS } from "./routines/keys";
+export { routinesView } from "./routines/routines-view-ref";
 export { listedRoutineSchema, routineMakerSchema, type ListedRoutine, type RoutineMaker } from "./routines/listed-routine";
 export {
   WORKER_MESSAGES_PATTERN,

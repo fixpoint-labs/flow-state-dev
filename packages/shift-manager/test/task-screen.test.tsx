@@ -219,7 +219,7 @@ describe("a row with no run (BR-3)", () => {
     expect(reads()).toBe(after);
   }, 30_000);
 
-  it("re-reads an in-progress row with no link every 2 s, and opens its run once the link arrives, with no reload", async () => {
+  it("re-reads an in-progress row with no link, and opens its run once the link arrives, with no reload", async () => {
     const opened = await openLab();
     const row = await heldRow(opened, false);
     // The board answers without this row's link for its first reads, as it
@@ -236,7 +236,7 @@ describe("a row with no run (BR-3)", () => {
       return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
     });
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
-    expect((await screen.findByTestId("session-no-run")).textContent).toMatch(/checks again every 2 seconds/);
+    expect((await screen.findByTestId("session-no-run")).textContent).toMatch(/shows here as soon as the board links it/);
     const session = await screen.findByTestId("session", {}, { timeout: 8_000 });
     expect(session.getAttribute("data-request-id")).toBe(row.run!.requestId);
     expect(hidden).toBe(0);
@@ -256,9 +256,12 @@ function rewriteRows(match: (url: string) => boolean, edit: (rows: Array<Record<
     const url = String(input instanceof Request ? input.url : input);
     const response = await real(input, init);
     if (!match(url) || !response.ok) return response;
-    const body = (await response.json()) as { items: Array<{ clientData: Record<string, unknown> }> };
-    const edited = edit(body.items.map((i) => i.clientData));
-    body.items = edited.map((clientData, n) => ({ ...(body.items[n] ?? body.items[0]!), clientData }));
+    // A session-addressed read carries each row as `clientData`; a read by scope (the worker
+    // inventory, FIX-2624) carries it as `value`.
+    const body = (await response.json()) as { items: Array<{ clientData?: Record<string, unknown>; value?: Record<string, unknown> }> };
+    const field = /\/api\/flows\/resources\/(user|org)\//.test(url) ? "value" : "clientData";
+    const edited = edit(body.items.map((i) => i[field]!));
+    body.items = edited.map((data, n) => ({ ...(body.items[n] ?? body.items[0]!), [field]: data }));
     return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
   });
 }

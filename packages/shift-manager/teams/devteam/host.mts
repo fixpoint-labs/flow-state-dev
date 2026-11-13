@@ -48,7 +48,7 @@ import {
   type FlowState
 } from "@flow-state-dev/engine";
 import { ensureSessionRecord, type PrincipalResolver } from "@flow-state-dev/engine/host";
-import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
+import { defineCapability, defineView, handler, sequencer } from "@flow-state-dev/core";
 import {
   encodeUserSegment,
   type BlockContext,
@@ -59,8 +59,9 @@ import type { HarnessBlock, HarnessUsageReader } from "@flow-state-dev/core/harn
 import {
   commandCheck,
   harnessDrainBudgetMs,
-  harnessReadinessAction,
-  harnessUsageAction,
+  harnessReadinessView,
+  harnessUsageFlow,
+  HARNESS_USAGE_FLOW,
   resolveOwnership,
   upgradeKeptTurns,
   type HarnessFeeds,
@@ -122,8 +123,6 @@ import {
   type ProjectBlocks,
   type WorkstreamBlocks,
   backfillBoardWakes,
-  WORKER_USAGE_ACTION,
-  workerUsageAction,
 } from "@flow-state-dev/workforce";
 import {
   readDeclaredRoster,
@@ -300,31 +299,28 @@ async function loadTree(root: string): Promise<DeclaredRoster> {
 }
 
 /**
- * The projects flow's action that names this Lab's project setup, for Shift
+ * The projects flow's view that names this Lab's project setup, for Shift
  * Manager: it doesn't name the project coordinator itself, and reads it here.
  */
-export const PROJECT_SETUP_ACTION = "projectSetup";
+const PROJECT_SETUP_VIEW = "projectSetup";
 
-/** The projects flow's action that answers how much of each harness's subscription is used. */
-export const HARNESS_USAGE_ACTION = "harnessUsage";
-
+// FIX-2624.
 /**
- * The projects flow's action that answers which coding harnesses can run on
- * this machine, each with what to run when it can't; `{ refresh: true }`
- * checks again.
+ * The project setup as a user-scope view, read with no session: the worker
+ * each user's project coordinator runs as (`projectCoordinator`), or `null`
+ * when the tree declares none. The Lab's configuration, the same for every
+ * caller; it reads no resource, so its answer names no topic.
  */
-export const HARNESS_READINESS_ACTION = "harnessReadiness";
-
-/**
- * The project setup as the projects flow answers it: the installation's
- * project coordinator, or `null` when the tree doesn't declare one.
- */
-function projectSetup(installation: WorkerInstallation) {
-  return handler({
-    name: "devforce-project-setup",
-    inputSchema: z.object({}).strict(),
-    outputSchema: z.object({ projectCoordinator: z.string().nullable() }),
-    execute: () => ({ projectCoordinator: installation.projectCoordinator()?.worker ?? null }),
+export function projectSetupView(projectCoordinator: () => string | null) {
+  return defineView({
+    scope: "user",
+    block: handler({
+      name: "devforce-project-setup",
+      description: "Name this Lab's project setup: the worker each user's project coordinator runs as.",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ projectCoordinator: z.string().nullable() }),
+      execute: () => ({ projectCoordinator: projectCoordinator() }),
+    }),
   });
 }
 
@@ -565,15 +561,15 @@ export interface OpenLabOptions {
    */
   errorReporter?: LabErrorReporter;
   /**
-   * How to read each harness's subscription usage, by harness name, for the
-   * Usage view and any worker that asks (`harnessUsage` on the projects
-   * flow). A reader runs only when someone asks for a fresh number. Absent:
-   * the query lists only what a harness recorded during its runs.
+   * How to read each harness's subscription usage, by harness name, served
+   * by the usage flow (`harnessUsageFlow`) to the Usage view. A reader runs
+   * only on a Re-check. Absent: the view lists only what a harness recorded
+   * during its runs.
    */
   usage?: Readonly<Record<string, HarnessUsageReader>>;
   /**
    * Which coding harnesses can run on this machine (`startHarness`'s read),
-   * served as `harnessReadiness` on the projects flow. Absent: no such action.
+   * served as the projects flow's `readiness` view. Absent: no such view.
    */
   readiness?: HarnessReadinessRead;
   /**
@@ -1246,19 +1242,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     actions: {
       ...projectBlocks.actions,
       ...workstreamBlocks.actions,
-      [PROJECT_SETUP_ACTION]: {
-        block: projectSetup(installation),
-        description:
-          "Name this Lab's project setup: the worker each user's project coordinator runs as.",
-      },
-      // How much of each harness's subscription the caller has used. Here
-      // because Shift Manager reads this flow first, so the Usage view and a
-      // worker call one address.
-      [HARNESS_USAGE_ACTION]: harnessUsageAction({ readers: options.usage ?? {} }),
-      // Which harnesses can run here, beside it: what the start logged, read again on request.
-      ...(options.readiness === undefined ? {} : { [HARNESS_READINESS_ACTION]: harnessReadinessAction(options.readiness) }),
-      // How many tokens each of the caller's workers used, beside it (FIX-2145).
-      [WORKER_USAGE_ACTION]: workerUsageAction(installation),
+    },
+    // Which harnesses can run here: what the start logged, read again on `{ refresh: true }`.
+    // A view, read with no session (`harnessReadinessViewRef(PROJECTS_FLOW)`).
+    views: {
+      // Which worker each user's project coordinator runs as.
+      [PROJECT_SETUP_VIEW]: projectSetupView(() => installation.projectCoordinator()?.worker ?? null),
+      ...(options.readiness === undefined ? {} : { readiness: harnessReadinessView(options.readiness) }),
     },
   } as never)();
 
@@ -1280,6 +1270,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         ? {}
         : { [ERROR_REPORTER_INTAKE_FLOW]: (defineErrorReporterIntakeFlow({ reporter }) as unknown as () => FlowInstance)() }),
       [PROJECTS_FLOW]: projectsFlow,
+      // How much of each harness's subscription the caller has used: its view, and
+      // the Re-check the usage collection's `runBy` names (FIX-2624).
+      [HARNESS_USAGE_FLOW]: harnessUsageFlow({ readers: options.usage ?? {} })(),
       [service.id]: service,
     },
     copies,

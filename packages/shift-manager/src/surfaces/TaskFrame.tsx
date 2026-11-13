@@ -49,7 +49,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
       <EmptyState title="No such task on this board" testId="task-missing">
         The board {boardRef} holds no task "{taskId}".
         {task.gaveUp ? (
-          <button type="button" className="ml-1 underline" onClick={task.retryRow}>
+          <button type="button" className="ml-1 underline" onClick={task.retryRow} data-testid="task-missing-retry">
             Retry
           </button>
         ) : null}

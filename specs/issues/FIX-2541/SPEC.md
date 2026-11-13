@@ -64,8 +64,8 @@ starting map; the drivers confirm each one on the app.
 | Knowledge | researcher | researcher | support `fsd` | researcher |
 
 **The switches.** On the control and the cut run, the scripts turn on what `main` has but
-leaves off: `skills.activateTool` with a fitting skill held, in all four apps, and Teammates'
-checks. Teammates already folds (its `historySummary`). The Claude Code-style lab has no fold
+leaves off: `skills.activateTool` with a fitting skill held, in all four apps. Each app's
+checks are project data, set on every pass. Teammates already folds (its `historySummary`). The Claude Code-style lab has no fold
 to switch on: that is the [open question](DECISIONS.md#open). At the wrap the scripts set
 nothing.
 

@@ -29,6 +29,16 @@ function clientsFor(lab: Lab): Client {
   };
   return {
     userId: "u1",
+    // The organization is the identity read's; the inventory is read by org scope (FIX-2624).
+    flow: () => ({ identity: async () => ({ userId: "u1", orgId: ORG }), createSession: async () => ({ id: "s1" }) }),
+    resource: (def: { scope: string; pattern?: string }) => ({
+      list: async () => ({
+        items:
+          def.scope === "org" && def.pattern === "inventory/workers/*"
+            ? lab.workers.map((data, i) => ({ topic: `workers-${i}`, storageKey: `inventory/workers/${data.id}`, value: data, version: 1 }))
+            : [],
+      }),
+    }),
     sessions: {
       list: async () => [{ id: "s1", flowKind: "workforce-roster", parentSessionId: null, updatedAt: 0 }],
       get: async () => ({ orgId: ORG }),

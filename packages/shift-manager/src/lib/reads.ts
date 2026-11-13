@@ -15,18 +15,18 @@
  *    invisible. This is also Shift Manager's first read: when the Lab refuses it
  *    for want of a verified organization, the snapshot is only that refusal
  *    and nothing else is read.
- * 2. **The organization**, off a listed session. The listing only ever holds
- *    sessions in the organization the Lab resolved for the user, and a
- *    session records it. A user who holds no session of their own on the
- *    roster flow yet has one opened on it first (`withReaderSessions`), and the Lab stamps it with the organization it
- *    resolves for them, so a user on a first visit is read like any other.
- *    A Lab that still lists the user no session (it serves no roster) names
- *    no organization, and gets the refusal too: Shift Manager never draws a
- *    Lab under an unknown one (ER-4).
- * 3. **The inventory**: the organization's worker collection, found by its
- *    published key pattern in the manifest of a listed session whose flow
- *    declares it (the roster flow does). Nothing about the tree is written in
- *    Shift Manager; this is where every worker and team name comes from.
+ * 2. **The organization**, from the roster flow's identity read: the user
+ *    and organization the Lab acts as under that flow's sign-in, with no
+ *    session. A Lab that serves no roster flow names no organization, and
+ *    gets the refusal too: Shift Manager never draws a Lab under an unknown
+ *    one (ER-4). A user who holds no session of their own on the roster flow
+ *    yet has one opened on it (`withReaderSessions`), which the project
+ *    reads still go through.
+ * 3. **The inventory**: the organization's worker collection, read by org
+ *    scope and its published key pattern with no session; every flow that
+ *    declares it (the roster flow does) serves the one collection. Nothing
+ *    about the tree is written in Shift Manager; this is where every worker
+ *    and team name comes from.
  * 4. **Every conversation's board**: the tasks a
  *    conversation filed sit in one collection at the user's own scope,
  *    each under its conversation's partition, so one read through any
@@ -261,11 +261,12 @@ export type Ask = {
 };
 
 /**
- * Why a Lab that lists the user no session, even after one was asked for on
- * the reader flows, is refused: nothing it serves says which organization they are in.
+ * Why a Lab is refused when nothing it serves says which organization the
+ * user is in: it serves no roster flow to ask the identity read under, or the
+ * identity read names none.
  */
-function noOrganization(userId: string, why = "it holds no session of theirs and serves no roster flow to open one on"): string {
-  return `The Lab names no organization for ${userId}: ${why}, and a session is where the Lab records the organization it puts them in. Shift Manager's README lists what a Lab opens at boot.`;
+function noOrganization(userId: string, why = "it serves no roster flow to ask it under"): string {
+  return `The Lab names no organization for ${userId}: ${why}. Shift Manager asks the roster flow's identity read which organization the Lab puts them in; its README lists what a Lab serves.`;
 }
 
 /** What an ask's card says when its session names no owning flow. */
@@ -353,6 +354,31 @@ const ASK_READ_BATCH = 6;
  * other 404 (the roster flow answering for its view) is a failure, not "no roster".
  */
 const NO_ROSTER_FLOW = `Unknown flow "${ROSTER_FLOW}"`;
+
+// FIX-2624.
+/**
+ * Every entry of a user or org collection the user may read, by scope and key
+ * pattern, with no session: the direct read (`client.resource`), paged through
+ * the client's one cursor loop (`readEveryCollectionPage`), whose ceiling and
+ * repeated-cursor check it keeps. Each row carries the entry's client
+ * projection as `clientData`, as a session-addressed read does, so one parser
+ * reads either. A 404 is no flow declaring the collection, or a caller none of
+ * them signs in.
+ */
+export function readEveryScopeEntry(client: Client, scope: "user" | "org", pattern: string) {
+  const collection = client.resource({ scope, pattern });
+  const pages = {
+    listCollectionResources: async (_sessionId: string, _ref: string, options: { limit?: number; cursor?: string } = {}) => {
+      const page = await collection.list(options);
+      return {
+        items: page.items.map((entry) => ({ topic: entry.topic, storageKey: entry.storageKey, clientData: entry.value })),
+        ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
+      };
+    },
+  };
+  // No session: the direct read takes none, so the loop's session and ref are the address's.
+  return readEveryCollectionPage(pages, scope, pattern, { limit: PAGE_SIZE });
+}
 
 /** What a user's ask asks for: an approval, a review, or a question (an input). */
 function askTypeOf(item: SuspensionItem): Ask["kind"] {
@@ -802,43 +828,29 @@ export function createLabReader(client: Client): LabReader {
     }
   };
 
+  // FIX-2624.
   /**
-   * Find the worker inventory through the first listed session whose flow
-   * declares it, and read it there.
+   * The organization's worker inventory, read by org scope with no session:
+   * every flow that declares it (the roster flow does) serves the one
+   * collection. None declaring it answers 404.
    */
-  const readInventory = async (sessions: SessionSummary[]): Promise<Section<Inventory>> => {
-    const byFlow = new Map<string, string>();
-    for (const session of sessions) {
-      if (session.parentSessionId == null && !byFlow.has(session.flowKind)) byFlow.set(session.flowKind, session.id);
-    }
-    for (const [flow, sessionId] of byFlow) {
-      let manifest: ResourceManifest;
-      try {
-        manifest = await manifestFor(flow, sessionId);
-      } catch (error) {
-        return { ok: false, failure: describeFailure(error) };
-      }
-      const workersRef = manifest.resources.find(
-        (r) => r.kind === "collection" && r.pattern === WORKER_INVENTORY_PATTERN && r.client.state?.read === true,
-      )?.ref;
-      if (workersRef === undefined) continue;
-      try {
-        const workers = (await readCollection(sessionId, workersRef))
-          .map((r) => toWorker(r.clientData))
-          .filter((worker): worker is Worker => worker !== undefined);
-        // Every Workforce Lab's roster flow declares the workers, so none there is the Lab not having
-        // opened its inventory, or these pages looking for keys it no longer writes: said below.
-        if (workers.length > 0) return { ok: true, value: { workers } };
-        break;
-      } catch (error) {
-        return { ok: false, failure: describeFailure(error) };
-      }
+  const readInventory = async (): Promise<Section<Inventory>> => {
+    try {
+      const workers = (await readEveryScopeEntry(client, "org", WORKER_INVENTORY_PATTERN))
+        .map((r) => toWorker(r.clientData))
+        .filter((worker): worker is Worker => worker !== undefined);
+      // Every Workforce Lab's roster flow declares the workers, so none there is the Lab not having
+      // opened its inventory, or these pages looking for keys it no longer writes: said below.
+      if (workers.length > 0) return { ok: true, value: { workers } };
+    } catch (error) {
+      const failure = describeFailure(error);
+      if (failure.httpStatus !== 404) return { ok: false, failure };
     }
     return {
       ok: false,
       failure: {
         message:
-          `No inventory to read: none of this user's sessions is on a flow that declares the organization's worker inventory (${WORKER_INVENTORY_PATTERN}) with a worker in it. Either the Lab booted without opening its inventory, or these pages are an older build than the Lab and look for keys it no longer uses: rebuild them (pnpm --filter @flow-state-dev/shift-manager build) and reload.`,
+          `No inventory to read: none of this Lab's flows declares the organization's worker inventory (${WORKER_INVENTORY_PATTERN}) with a worker in it. Either the Lab booted without opening its inventory, or these pages are an older build than the Lab and look for keys it no longer uses: rebuild them (pnpm --filter @flow-state-dev/shift-manager build) and reload.`,
       },
     };
   };
@@ -1011,23 +1023,24 @@ export function createLabReader(client: Client): LabReader {
     } catch (error) {
       return firstFailure(describeFailure(error));
     }
-    // Before the organization is read, on purpose, even though a Lab with no
-    // reader flow answers it 404 on every refused read: a reading session is
-    // the only session a first-visit user can have for the org to be read off.
-    const readers = await withReaderSessions(sessions);
-    sessions = readers.sessions;
+    // FIX-2624: the organization is the identity read's, under the roster
+    // flow's sign-in, with no session. A Lab that serves no roster flow names
+    // none, and Shift Manager never draws a Lab under an unknown one (ER-4).
     let orgId: string | undefined;
     try {
-      const first = sessions[0];
-      const opened = readers.failure;
-      if (first === undefined) return opened === null ? { refused: { message: noOrganization(client.userId) } } : firstFailure(opened);
-      orgId = (await client.sessions.get(first.id)).orgId;
+      orgId = (await client.flow(ROSTER_FLOW).identity()).orgId;
     } catch (error) {
-      return firstFailure(describeFailure(error));
+      const failure = describeFailure(error);
+      if (failure.httpStatus === 404 && failure.message === NO_ROSTER_FLOW) return { refused: { message: noOrganization(client.userId) } };
+      return firstFailure(failure);
     }
-    if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(client.userId, "their session records none") } };
+    if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(client.userId, "its identity read names none") } };
 
-    const [inventory, ownWorkers] = await Promise.all([readInventory(sessions), readOwnWorkers()]);
+    // The user's own session on the roster flow, which the project reads still go through.
+    const readers = await withReaderSessions(sessions);
+    sessions = readers.sessions;
+
+    const [inventory, ownWorkers] = await Promise.all([readInventory(), readOwnWorkers()]);
 
     const [conversationBoards, asks, resources, projects] = await Promise.all([
       readConversationBoards(sessions),

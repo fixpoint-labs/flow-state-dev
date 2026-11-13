@@ -2,6 +2,7 @@
 /** Messages: both sides, newest first, grouped by exchange; a sent message is its own tool line. */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ClientHttpError } from "@flow-state-dev/client";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { firstLine, exchangesOf, toMessages, type WorkerMessageResourceState } from "../src/lib/messages";
@@ -12,7 +13,8 @@ vi.mock("@flow-state-dev/client", async (original) => ({
   ...(await original<typeof import("@flow-state-dev/client")>()),
   readEveryCollectionPage: (...a: unknown[]) => readPages(...a),
 }));
-const lab = { client: { userId: "u_1", resources: {} }, refresh: vi.fn() };
+const resource = vi.fn((def: { scope: string; pattern?: string }) => ({ ...def, list: vi.fn() }));
+const lab = { client: { userId: "u_1", resources: {}, resource }, refresh: vi.fn() };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 
 import { Messages } from "../src/surfaces/Messages";
@@ -34,10 +36,12 @@ const ask = row({ id: "msg_a", from: "researcher", to: "coordinator", at: 1_000,
 const answer = row({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, exchange: "msg_a", inReplyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
 const other = row({ id: "msg_c", from: "helper-a", to: "helper-b", at: 2_000, status: "refused", reason: "dispatch-rejected: down" });
 
-const snapshot = { sessions: [{ id: "workforce-roster-own-u_1", flowKind: "workforce-roster", parentSessionId: null }], readAt: 1 } as unknown as LoadedSnapshot;
+// FIX-2624: the user holds no session at all; the log is read by user scope.
+const snapshot = { sessions: [], readAt: 1 } as unknown as LoadedSnapshot;
 
 beforeEach(() => {
   readPages.mockReset();
+  resource.mockClear();
   window.history.replaceState(null, "", "/messages");
 });
 afterEach(() => cleanup());
@@ -59,11 +63,11 @@ describe("the message log, as exchanges", () => {
 });
 
 describe("the Messages view", () => {
-  it("lists every message with both sides, read through the user's roster session, and opens either side's session", async () => {
+  it("lists every message with both sides, read by user scope with no session, and opens either side's session", async () => {
     readPages.mockResolvedValue([ask, answer, other].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
     render(<Messages snapshot={snapshot} />);
     const lines = await screen.findAllByTestId("message");
-    expect(readPages.mock.calls[0]![1]).toBe("workforce-roster-own-u_1");
+    expect(resource).toHaveBeenCalledWith({ scope: "user", pattern: "workforce/messages/*" });
     expect(lines.map((l) => `${l.getAttribute("data-from")}>${l.getAttribute("data-to")}`)).toEqual([
       "coordinator>researcher",
       "researcher>coordinator",
@@ -110,6 +114,12 @@ describe("the Messages view", () => {
     readPages.mockResolvedValue([]);
     render(<Messages snapshot={snapshot} />);
     expect((await screen.findByTestId("messages-empty")).textContent).toContain("No messages yet");
+  });
+
+  it("says this Lab keeps no log when no flow declares it", async () => {
+    readPages.mockRejectedValue(new ClientHttpError("Request failed (404) Not Found", { status: 404, body: { error: "unknown_resource" } }));
+    render(<Messages snapshot={snapshot} />);
+    expect((await screen.findByTestId("messages-empty")).textContent).toContain("keeps no roster");
   });
 
   it("says what the Lab answered when the log didn't load", async () => {

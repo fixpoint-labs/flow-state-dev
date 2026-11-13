@@ -4,15 +4,17 @@
  *
  * A run fails with no warning when a subscription window runs out. This
  * collection holds the last reading of every window, per person and per
- * harness, and {@link harnessUsageAction} is the one way to read it: a Usage
- * screen and a worker call the same query and get the same rows, each with
- * its age.
+ * harness. A host serves it with {@link harnessUsageFlow}: its `usage` view
+ * answers the stored rows, each with its age, and its `recheck` action asks
+ * each harness again and stores the reading.
  *
  * ## One writer, one reader
  *
  * {@link recordHarnessUsage} is the only writer and {@link readHarnessUsage}
- * the only reader. Nothing else opens the collection, and it is not readable
- * from a client on its own, so a row can never be shown without its age.
+ * the only reader. A client reads the rows through the `usage` view, which
+ * works out each age, and writes only by sending `recheck` to the collection,
+ * which its `runBy` flow ({@link HARNESS_USAGE_FLOW}) runs in the caller's own
+ * write session.
  *
  * - **A write never goes backwards.** A reading older than the stored one is
  *   refused whole: its status, account and plan as much as its windows. A
@@ -50,13 +52,13 @@
  *
  * ## Read when someone looks
  *
- * A registered reader runs only when a caller asks for `refresh`, at most once
- * a minute per person and harness, counted from the last *attempt*, so a
- * failing reader costs one try a minute rather than one per render. Concurrent
- * refreshes share one call. A read without `refresh` starts nothing.
+ * A registered reader runs only on a Re-check, at most once a minute per
+ * person and harness, counted from the last *attempt*, so a failing reader
+ * costs one try a minute rather than one per render. Concurrent Re-checks
+ * share one call. The view starts nothing.
  *
- * `rolledOver` and `ageMs` are worked out when the query reads, by the
- * server's clock, so a browser whose clock is off draws what the query said.
+ * `rolledOver` and `ageMs` are worked out when the view reads, by the
+ * server's clock, so a browser whose clock is off draws what the view said.
  *
  * ## A named limit: `user` scope is the bare user id
  *
@@ -64,9 +66,9 @@
  * this row. It is filled only by a reader on the person's own machine and
  * holds no email, so the exposure is that person's plan and percents.
  */
-import { defineCapability, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { defineCapability, defineFlow, defineResourceCollection, defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type {
   HarnessUsageReader,
   HarnessUsageReading,
@@ -75,9 +77,9 @@ import type {
 import { harnessUsageWindowSchema } from "@flow-state-dev/core/harness";
 import { z } from "zod";
 import { assertSafeSegment, hashKeySegment } from "./workspace";
+import { HARNESS_USAGE, HARNESS_USAGE_FLOW, HARNESS_USAGE_PATTERN, HARNESS_USAGE_RECHECK, HARNESS_USAGE_VIEW } from "./usage-keys";
 
-/** Accessor key and storage prefix for the usage record. */
-export const HARNESS_USAGE = "harness-usage" as const;
+export { HARNESS_USAGE, HARNESS_USAGE_FLOW };
 
 /** How often a registered reader may be tried, per person and harness: once a minute. */
 export const USAGE_REFRESH_EVERY_MS = 60_000;
@@ -130,12 +132,14 @@ export const harnessUsageStateSchema = z.object({
 
 export type HarnessUsageState = z.infer<typeof harnessUsageStateSchema>;
 
+// FIX-2624.
 /**
  * The collection. `llmWritable: false`: the writer below is its only writer.
- * Not client-readable: the query is the read path.
+ * A client writes it only through Re-check, which {@link HARNESS_USAGE_FLOW}
+ * runs (`runBy`), and reads it through that flow's view, which adds each age.
  */
 export const harnessUsageCollection = defineResourceCollection({
-  pattern: `${HARNESS_USAGE}/**`,
+  pattern: HARNESS_USAGE_PATTERN,
   // A person's own subscriptions, at the run record's scope and principal.
   scope: "user",
   // BP-027: a user-scoped collection defaults to shared across flows.
@@ -144,11 +148,18 @@ export const harnessUsageCollection = defineResourceCollection({
   prefetchMode: "lazy",
   stateSchema: harnessUsageStateSchema,
   llmWritable: false,
+  // A client's Re-check runs on the usage flow, in the caller's write session.
+  runBy: { flow: HARNESS_USAGE_FLOW },
+  // A client reads only its own rows; the view is how a screen reads them, with their ages.
+  client: { state: { read: true } },
+  // The hashed account and the server's clocks stay on the server: every client read drops them,
+  // as the view does. The writer and the reader here see them through the handle.
+  secret: ["account", "accountAt", "noSubscriptionAt", "lastAttemptAt"],
 });
 
 /**
- * The collection, installed on the action that reads it and on the manager
- * and session door whose runs write it.
+ * The collection, installed on the usage flow that reads and re-checks it and
+ * on the manager, session flow and session door whose runs write it.
  */
 const harnessUsageCapability = defineCapability({
   name: "harness-manager:usage",
@@ -358,68 +369,100 @@ export async function readHarnessUsage(
     }));
 }
 
-/** Options for {@link harnessUsageAction}. */
-export interface HarnessUsageActionOptions {
+/** Options for {@link harnessUsageFlow}. */
+export interface HarnessUsageFlowOptions {
   /**
    * One reader per harness, keyed by the harness's name (`codex`). Each runs
-   * only when a caller asks for `refresh`. A harness with no reader is still
-   * listed when something has written its row.
+   * only on a Re-check. A harness with no reader is still listed when
+   * something has written its row.
    */
   readers: Readonly<Record<string, HarnessUsageReader>>;
-  /** How long a reader may take before the query reads `unavailable`. Default {@link USAGE_READ_TIMEOUT_MS}. */
+  /** How long a reader may take before Re-check stores `unavailable`. Default {@link USAGE_READ_TIMEOUT_MS}. */
   timeoutMs?: number;
 }
 
+const usageViewOutputSchema = z.object({ harnesses: z.array(usageRowSchema) });
+const usageViewInputSchema = z.object({});
+
+/** The usage view, as {@link harnessUsageFlow} builds it. Import as a type in client code. */
+export type HarnessUsageViewDefinition = ViewDefinition<
+  BlockDefinition<typeof usageViewInputSchema, typeof usageViewOutputSchema>,
+  "user"
+>;
+
+// FIX-2624.
 /**
- * The `harnessUsage` query, as one flow-level action a host puts on exactly
- * one flow: `actions: { harnessUsage: harnessUsageAction({ readers }) }`.
+ * The usage flow a host registers once, at {@link HARNESS_USAGE_FLOW}:
+ * `flows: [harnessUsageFlow({ readers })(), ...]`. The collection's `runBy`
+ * names it, so it is the flow a client's Re-check runs on.
  *
- * Input `{ refresh?: boolean }`. Output `{ harnesses }`, one
- * {@link HarnessUsageView} per harness. Zero-model. A refresh that fails or
- * times out still answers, with the stored rows and a `refreshError`.
+ * - **`usage`**, a user-scope view: `{ harnesses }`, one
+ *   {@link HarnessUsageView} per harness, sorted by name, the readers'
+ *   harnesses listed even before anything is stored. Starts nothing. A screen
+ *   reads it with no session (`harnessUsageViewRef` from `/browser`).
+ * - **`recheck`**, the write: asks each reader, at most once a minute per
+ *   person and harness, and stores what it says. A reader that fails or is
+ *   slow stores why beside the last good reading. Answers `{ asked }`, the
+ *   harnesses asked this time. A client sends it to the collection
+ *   (`recheckHarnessUsage` from `/browser`); zero-model.
  */
-export function harnessUsageAction(options: HarnessUsageActionOptions) {
+export function harnessUsageFlow(options: HarnessUsageFlowOptions) {
   const readers = Object.fromEntries(
     Object.entries(options.readers).map(([harness, reader]) => [assertSafeSegment("harness", harness), reader]),
   );
   const timeoutMs = options.timeoutMs ?? USAGE_READ_TIMEOUT_MS;
-  // One call in flight per organization, person and harness, shared by every refresh that asks meanwhile.
+  // One call in flight per organization, person and harness, shared by every Re-check that asks meanwhile.
   // The map lives in this process: another host process keeps its own, and only the
   // once-a-minute claim on the stored row holds across them.
-  const inFlight = new Map<string, Promise<void>>();
+  const inFlight = new Map<string, Promise<boolean>>();
 
-  const refreshOne = (ctx: BlockContext, harness: string, reader: HarnessUsageReader): Promise<void> => {
+  const recheckOne = (ctx: BlockContext, harness: string, reader: HarnessUsageReader): Promise<boolean> => {
     const flight = `${orgOf(ctx)}\u0000${userOf(ctx)}\u0000${harness}`;
     const running = inFlight.get(flight);
-    if (running !== undefined) return running;
+    if (running !== undefined) return running.then(() => false);
     const started = (async () => {
-      if (!(await claimAttempt(ctx, harness, Date.now()))) return;
+      if (!(await claimAttempt(ctx, harness, Date.now()))) return false;
       const reading = await readWithin(reader, harness, timeoutMs);
       await recordHarnessUsage(ctx, harness, reading, Date.now());
+      return true;
     })().finally(() => inFlight.delete(flight));
     inFlight.set(flight, started);
     return started;
   };
 
-  return {
+  const usage = defineView({
+    scope: "user",
     description:
       "How much of each coding harness's subscription is used: every window's percent and reset, " +
-      "with how old the reading is. `refresh: true` asks the harness first, at most once a minute.",
+      "with how old the reading is. Starts nothing: Re-check asks the harnesses.",
     block: handler({
       name: "harness-usage",
-      inputSchema: z.object({ refresh: z.boolean().optional() }),
-      outputSchema: z.object({ harnesses: z.array(usageRowSchema) }),
+      inputSchema: usageViewInputSchema,
+      outputSchema: usageViewOutputSchema,
       uses: [harnessUsageCapability],
-      execute: async (input, ctx: BlockContext) => {
-        if (input.refresh === true) {
-          await Promise.all(Object.entries(readers).map(([harness, reader]) => refreshOne(ctx, harness, reader)));
-        }
-        return { harnesses: await readHarnessUsage(ctx, Date.now(), Object.keys(readers)) };
-      },
+      execute: async (_input, ctx: BlockContext) => ({ harnesses: await readHarnessUsage(ctx, Date.now(), Object.keys(readers)) }),
     }),
-  };
-}
+  }) as HarnessUsageViewDefinition;
 
+  const recheck = handler({
+    name: "harness-usage-recheck",
+    description: "Ask each coding harness how much of its subscription is used, at most once a minute, and store the reading.",
+    inputSchema: z.object({}),
+    outputSchema: z.object({ asked: z.array(z.string()) }),
+    uses: [harnessUsageCapability],
+    execute: async (_input, ctx: BlockContext) => {
+      const entries = Object.entries(readers);
+      const asked = await Promise.all(entries.map(([harness, reader]) => recheckOne(ctx, harness, reader)));
+      return { asked: entries.filter((_, i) => asked[i]).map(([harness]) => harness) };
+    },
+  });
+
+  return defineFlow({
+    kind: HARNESS_USAGE_FLOW,
+    actions: { [HARNESS_USAGE_RECHECK]: { block: recheck } },
+    views: { [HARNESS_USAGE_VIEW]: usage },
+  } as never);
+}
 
 /**
  * Take this minute's attempt for `harness`, or refuse when the last attempt,
@@ -512,7 +555,7 @@ function collectionOf(ctx: BlockContext): UsageCollectionRef {
   if (ref === undefined || typeof (ref as UsageCollectionRef).upsert !== "function") {
     throw new Error(
       `[harness-manager] the "${HARNESS_USAGE}" collection is not registered on this flow; ` +
-        `install it with harnessUsageAction rather than reading usage some other way.`,
+        `install it with harnessUsageFlow rather than reading usage some other way.`,
     );
   }
   return ref as UsageCollectionRef;

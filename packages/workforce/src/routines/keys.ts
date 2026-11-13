@@ -7,6 +7,10 @@
 /** The verb a screen lists the user's routines through, on the roster flow. */
 export const LIST_ROUTINES_ACTION = "listRoutines";
 
+// FIX-2624.
+/** The roster flow's view of the user's routines, read with no session: the stored ones and the app's declared ones. */
+export const ROUTINES_VIEW = "routines";
+
 /** The four routine verbs, the same names as roster actions and as a worker's tools. */
 export const ROUTINE_VERBS = {
   list: LIST_ROUTINES_ACTION,

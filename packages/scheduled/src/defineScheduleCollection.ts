@@ -21,6 +21,7 @@
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";
+import type { CollectionClientConfig, ResourceRunBy } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { parseNextFireAt } from "./parseNextFireAt";
 import type { ScheduleIndex, ScheduleIndexEntry } from "./scheduleIndex";
@@ -94,6 +95,18 @@ export interface DefineScheduleCollectionOptions {
    * and fired by another.
    */
   flowIsolation?: boolean;
+  // FIX-2624.
+  /**
+   * The collection's client config, as on `defineResourceCollection`.
+   * Omitted, no client reads the schedules.
+   */
+  client?: CollectionClientConfig;
+  /**
+   * The flow a client's write of a schedule runs through, as on
+   * `defineResourceCollection`; it needs a `client` that reads state.
+   * Omitted, a client can't write the schedules.
+   */
+  runBy?: ResourceRunBy;
 }
 
 /**
@@ -113,7 +126,9 @@ export function defineScheduleCollection(
     // has the stored target it requires and the schedule fires (BR-19,
     // FIX-1545).
     stampOrgId: true,
-    ...(opts.flowIsolation === undefined ? {} : { flowIsolation: opts.flowIsolation })
+    ...(opts.flowIsolation === undefined ? {} : { flowIsolation: opts.flowIsolation }),
+    ...(opts.client === undefined ? {} : { client: opts.client }),
+    ...(opts.runBy === undefined ? {} : { runBy: opts.runBy })
   };
 
   const { index } = opts;

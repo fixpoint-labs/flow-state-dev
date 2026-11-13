@@ -30,6 +30,7 @@ import {
   SUBSCRIPTIONS_RESOURCE
 } from "./keys";
 import { routineMakerSchema } from "../routines/listed-routine";
+import { ROSTER_FLOW } from "../workers/keys";
 
 /** The most terms a listed screen carries. */
 const MAX_SCREEN_TERMS = 20;
@@ -172,13 +173,20 @@ const threadIndexResourceStateSchema = z.object({ subscriptions: z.record(indexE
 
 type ThreadIndexResourceState = z.infer<typeof threadIndexResourceStateSchema>;
 
-/** The subscriptions, at `workforce/subscriptions/*` in the user's scope, shared across flows. Server-written. */
+// FIX-2624.
+/**
+ * The subscriptions, at `workforce/subscriptions/*` in the user's scope, shared
+ * across flows. Server-written: a client reads its own, and pauses or deletes
+ * one through the roster flow's routine verbs.
+ */
 const subscriptionsCollection = defineResourceCollection({
   pattern: SUBSCRIPTIONS_PATTERN,
   scope: "user",
   flowIsolation: false,
   prefetchMode: "lazy",
-  stateSchema: subscriptionResourceStateSchema
+  stateSchema: subscriptionResourceStateSchema,
+  client: { state: { read: true } },
+  runBy: { flow: ROSTER_FLOW }
 });
 
 /** The cursors, at `workforce/subscription-cursors/*` in the user's scope. Server-only. */

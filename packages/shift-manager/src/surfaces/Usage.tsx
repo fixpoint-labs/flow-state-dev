@@ -1,7 +1,7 @@
 // FIX-2141; FIX-2145.
 /**
  * Usage: how much of each coding harness's subscription the user
- * has used, window by window, from the Lab's one usage query.
+ * has used, window by window, from the Lab's one usage view.
  *
  * A number is never shown without where it came from and how old it is. A
  * window whose reset has passed shows when it reset instead of its old

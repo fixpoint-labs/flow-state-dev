@@ -67,9 +67,9 @@ anything a page edited after the loop. Then an edit needs pass 4 only.
   FIX-2705 moves it to `apps/docs/{docs,guides}/**` in the cutover PR. An empty file list fails.
 - **The figure lint extends `apps/docs/scripts/lint-brand.mjs`** with `FIGURES.md` rules 6 to
   16, and runs each rule's fixture first, as that lint does today.
-- **A page kept from today's site skips pass 3, the draft** (the epic's amended D4), and runs
-  every other pass. Its record marks pass 3 skipped; the record check accepts that mark only on a
-  page the sitemap lists as kept.
+- **A page kept from today's site, a pilot or a page already drafted skips pass 3, the draft**
+  (the epic's amended D4), and runs every other pass. Its record marks pass 3 skipped; the record
+  check accepts that mark only on a page the sitemap lists as kept, piloted or drafted.
 
 ## Considered and dropped
 

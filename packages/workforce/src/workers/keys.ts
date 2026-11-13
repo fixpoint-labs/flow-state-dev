@@ -144,6 +144,10 @@ export const ROSTER_FLOW = "workforce-roster";
 /** The roster view's name on the roster flow (`defineRosterView`). */
 export const ROSTER_VIEW = "roster";
 
+// FIX-2624.
+/** The worker usage view's name on the roster flow (`defineWorkerUsageView`). */
+export const WORKER_USAGE_VIEW = "workerUsage";
+
 // FIX-1802.
 /**
  * The session-state field that names the flow a task session's filer runs

@@ -190,6 +190,18 @@ decision above; none reverses one.
 - **`maxInstances` counts every entry in the cell** (`countInstances`, as a run's create does),
   so the default write flow and a run enforce one cap. **An `ownerPrivate` collection can't take
   `runBy`:** `runBy` needs entries a client can read, and `ownerPrivate` refuses a browser read.
+- **An app's declared routines are seeded on the user's first request to any of the
+  installation's flows:** a worker's turn, or a roster write such as hire, pause or delete
+  ([#5153](https://github.com/fixpoint-labs/flow-state-dev/pull/5153), the owner's decision).
+  Opening Routines used to seed them, because it ran a roster request. Once the list is a view,
+  it runs no request, a view can't write, and nothing seeds at sign-in, so a user who only
+  talks to a worker would never get the app's routines. Every worker flow now declares the
+  routine collections through `installation.resources`, and each worker request seeds when it
+  ends; the roster seeds as each request starts, as before. The seed is idempotent: each
+  declared routine is written once per user, keyed `cfg_…`; a later request writes nothing,
+  and two first requests at once still leave one row each. Until a user's first request, the
+  `routines` view lists the declared routines joined to what is stored, so they show before
+  they are seeded.
 
 ## Considered and dropped
 
@@ -257,5 +269,8 @@ mechanism list, `main` since the watermark and FIX-2623's draft.
   calls the build settled are recorded [above](#decided-during-implementation): one caller per
   address per request, the signed-out 404, projection with `runBy`, `admittedBy`, the write
   flow's context, the bare user-entry notice, and the cap and `ownerPrivate` rules.
+- **Amended 2026-11-12, from the implementation PR [#5153](https://github.com/fixpoint-labs/flow-state-dev/pull/5153)**:
+  the seed point for an app's declared routines is the user's first request to any of the
+  installation's flows, by the owner's decision on #5153 ([above](#decided-during-implementation)).
 
 **Open: none.** [The org write rule](#d3) was decided by the owner on 2026-11-11: refuse to start.

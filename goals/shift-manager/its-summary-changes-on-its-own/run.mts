@@ -60,7 +60,7 @@ import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, sleep, type ModulePatch } from "../../lib/index.mts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { runAction } from "../../../packages/shift-manager/src/lib/action.ts";
-import { runUsageQuery } from "../../../packages/shift-manager/src/lib/usage.ts";
+import { readHarnessUsageView } from "../../../packages/shift-manager/src/lib/usage.ts";
 import { readerSessionId } from "../../../packages/shift-manager/src/lib/reads.ts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -225,13 +225,13 @@ function buildHost(stores: StoreAdapter): { state: FlowState; flows: Record<stri
     doer: { flow: flowOf("doer", doerBoard, doerTurn), roles: ["contributor", "manager"] },
   };
 
-  // What Schedules and Usage run on every snapshot read: an action on the user's reading session.
+  // What Routines runs on every snapshot read: an action on the user's reading session. Usage's
+  // Re-check and view need no session of Shift Manager's (FIX-2624), and this host serves no usage.
   const answer = (name: string, output: unknown) =>
     handler({ name, inputSchema: z.object({}).passthrough(), outputSchema: z.unknown(), execute: async () => output });
   const probe = defineFlow({
     kind: PROBE_FLOW,
     actions: {
-      harnessUsage: { inputSchema: z.object({}).passthrough(), block: answer("probe-usage", { harnesses: [] }) },
       [LIST_ROUTINES_ACTION]: { inputSchema: z.object({}).passthrough(), block: answer("probe-routines", { routines: [] }) },
     },
   } as never);
@@ -321,7 +321,7 @@ function mountProvider(on: Host) {
       if (loaded === undefined) return;
       shown.push({ at: Date.now(), readAt: loaded.readAt, needsYou: loaded.inbox.ok ? loaded.inbox.value.length : undefined, sessions: loaded.sessions.map((s) => s.id) });
       void runAction(client, PROBE_FLOW, readerSessionId(client.userId, PROBE_FLOW), LIST_ROUTINES_ACTION, {}).catch(() => {});
-      void runUsageQuery(client, PROBE_FLOW).catch(() => {});
+      void readHarnessUsageView(client).catch(() => {});
     }, [loaded, client]);
     return null;
   }

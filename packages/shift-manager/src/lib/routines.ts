@@ -1,14 +1,16 @@
-// FIX-2085; FIX-2614.
+// FIX-2085; FIX-2614; FIX-2624.
 /**
- * The user's routines: Workforce's `listRoutines`, run on the user's roster
- * session, with `pauseRoutine` and `deleteRoutine` beside it. A clock routine
- * files a task on a worker's board when it is due, its next run worked out
- * from its cron and time zone when the list is read; an event routine follows
- * one thread, its events reaching a worker's conversation as messages.
+ * The user's routines: the roster flow's `routines` view, read with no
+ * session, the app's declared routines joined in, and `pauseRoutine` and
+ * `deleteRoutine` sent to the routines collection, which the roster flow
+ * writes in the user's own write session. A clock routine files a task on a
+ * worker's board when it is due, its next run worked out from its cron and
+ * time zone when the list is read; an event routine follows one thread, its
+ * events reaching a worker's conversation as messages.
  */
 import { useCallback, useEffect, useState } from "react";
-import { LIST_ROUTINES_ACTION, ROSTER_FLOW, ROUTINE_VERBS, listedRoutineSchema, type RoutineMaker } from "@flow-state-dev/workforce/browser";
-import { runAction } from "./action";
+import { ClientHttpError } from "@flow-state-dev/client";
+import { ROUTINE_VERBS, SCHEDULES_PATTERN, listedRoutineSchema, routinesView, type RoutineMaker } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
 import { describeFailure, type Failure } from "./reads";
 
@@ -67,41 +69,44 @@ export type RoutineChange = (change: { pause: string; paused: boolean } | { dele
 
 /**
  * The list, read when the view opens, again on each Lab read (`readAt`), and
- * after each change. A later read keeps the last list until it lands; only a
- * failed first read shows.
+ * after each change. `routines` is `null` when this Lab serves no roster flow
+ * (404). A later read keeps the last list until it lands; only a failed first
+ * read shows.
  */
-export function useRoutines(
-  readerSessionId: string | null,
-  readAt: number
-): { routines: Routine[] | undefined; failure: Failure | undefined; reread: () => void; change: RoutineChange } {
+export function useRoutines(readAt: number): {
+  routines: Routine[] | null | undefined;
+  failure: Failure | undefined;
+  reread: () => void;
+  change: RoutineChange;
+} {
   const { client } = useLab();
-  const [routines, setRoutines] = useState<Routine[] | undefined>(undefined);
+  const [routines, setRoutines] = useState<Routine[] | null | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
   useEffect(() => {
-    if (readerSessionId === null) return;
     let closed = false;
-    runAction(client, ROSTER_FLOW, readerSessionId, LIST_ROUTINES_ACTION, {})
-      .then(({ output }) => {
+    client
+      .view(routinesView, {})
+      .then(({ value }) => {
         if (closed) return;
-        setRoutines(toRoutines(output));
+        setRoutines(toRoutines(value));
         setFailure(undefined);
       })
       .catch((error: unknown) => {
-        if (!closed) setFailure(describeFailure(error));
+        if (closed) return;
+        if (error instanceof ClientHttpError && error.status === 404) setRoutines(null);
+        else setFailure(describeFailure(error));
       });
     return () => {
       closed = true;
     };
-  }, [client, readerSessionId, readAt, reads]);
+  }, [client, readAt, reads]);
   const reread = useCallback(() => setReads((n) => n + 1), []);
   const change = useCallback<RoutineChange>(
     async (wanted) => {
-      if (readerSessionId === null) return "This Lab keeps no roster for you.";
       const [verb, input] = "delete" in wanted ? [ROUTINE_VERBS.delete, { id: wanted.delete }] : [ROUTINE_VERBS.pause, { id: wanted.pause, paused: wanted.paused }];
       try {
-        const { output } = await runAction(client, ROSTER_FLOW, readerSessionId, verb, input);
-        const answer = output as { ok?: unknown; error?: unknown } | undefined;
+        const answer = await client.resource({ scope: "user", pattern: SCHEDULES_PATTERN }).send<{ ok?: unknown; error?: unknown } | undefined>(verb, input);
         if (answer?.ok !== true) return typeof answer?.error === "string" ? answer.error : "The Lab gave no answer.";
         return undefined;
       } catch (error: unknown) {
@@ -110,7 +115,7 @@ export function useRoutines(
         setReads((n) => n + 1);
       }
     },
-    [client, readerSessionId]
+    [client]
   );
   return { routines, failure: routines === undefined ? failure : undefined, reread, change };
 }

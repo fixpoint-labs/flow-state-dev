@@ -1,18 +1,17 @@
 /**
  * Harness readiness: the kept read, its refresh, its refusal, the formatter,
- * the action through a real flow, the view through a real router, and the
+ * the view through a real router, and the
  * coordinator's context entry.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient } from "@flow-state-dev/client";
 import { defineFlow } from "@flow-state-dev/core";
 import type { HarnessReadiness, HarnessReadinessCheck } from "@flow-state-dev/core/harness";
-import { createFlowApiRouter, createFlowRegistry, createFlowState, disposeFlowApiRouter, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createFlowApiRouter, createFlowRegistry, disposeFlowApiRouter } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   formatHarnessReadiness,
   harnessReadiness,
-  harnessReadinessAction,
   harnessReadinessCapability,
   harnessReadinessView,
   READINESS_GUIDANCE,
@@ -159,37 +158,6 @@ describe("formatHarnessReadiness", () => {
         "? Claude Code: The check did not answer within 0.02 s.",
       ].join("\n"),
     );
-  });
-});
-
-describe("harnessReadinessAction — through a real flow", () => {
-  it("returns the rows, and refresh: true checks again", async () => {
-    const codex = scripted([SIGNED_OUT, READY]);
-    const readiness = harnessReadiness({ codex: { label: "Codex", check: codex.check } });
-    const flow = defineFlow({ kind: "readiness-flow", actions: { harnessReadiness: harnessReadinessAction(readiness) } } as never)({
-      id: "readiness-flow",
-    } as never);
-    const state = createFlowState({ flows: [flow], stores: { test: { primary: inMemoryStores() } }, defaultProfile: "test" } as never);
-    const rt = (await (state as any).getRuntime()) as { stores: unknown; runtimeConfig: object };
-    const act = async (input: unknown): Promise<HarnessReadinessView[]> => {
-      const result = (await runAction({
-        flow,
-        actionName: "harnessReadiness",
-        input,
-        userId: "alice",
-        orgId: "org_1",
-        sessionId: `s_${Math.random().toString(36).slice(2)}`,
-        stores: rt.stores,
-        runtimeConfig: { ...rt.runtimeConfig },
-      } as never)) as { output?: { harnesses: HarnessReadinessView[] }; error?: unknown };
-      if (result.error !== undefined) throw new Error(JSON.stringify(result.error));
-      return result.output!.harnesses;
-    };
-
-    expect((await act({}))[0]).toMatchObject({ harness: "codex", label: "Codex", ready: false });
-    expect((await act({}))[0]!.ready).toBe(false);
-    expect((await act({ refresh: true }))[0]!.ready).toBe(true);
-    expect(codex.calls()).toBe(2);
   });
 });
 

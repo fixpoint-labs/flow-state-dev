@@ -10,7 +10,6 @@
 import { useState } from "react";
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
 import { workerLabel, type LoadedSnapshot } from "../lib/derive";
-import { projectReaderOf } from "../lib/projects";
 import { useRoutines, type Routine, type RoutineChange } from "../lib/routines";
 
 /** When a clock routine is next due, in the page's time zone: weekday, date and 24-hour time. */
@@ -101,8 +100,7 @@ function RoutineLine({ routine, change }: { routine: Routine; change: RoutineCha
 }
 
 export function Routines({ snapshot }: { snapshot: LoadedSnapshot }) {
-  const reader = projectReaderOf(snapshot.sessions);
-  const { routines, failure, reread, change } = useRoutines(reader, snapshot.readAt);
+  const { routines, failure, reread, change } = useRoutines(snapshot.readAt);
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="routines">
@@ -111,13 +109,15 @@ export function Routines({ snapshot }: { snapshot: LoadedSnapshot }) {
         <Meta role="control" className="mt-1 block text-muted-foreground" testId="routines-summary">
           {routines === undefined
             ? "Reading…"
-            : `${routines.length} ${routines.length === 1 ? "routine runs" : "routines run"} as you: on a clock, soonest first, then on an event.`}
+            : routines === null
+              ? "This Lab keeps no routines."
+              : `${routines.length} ${routines.length === 1 ? "routine runs" : "routines run"} as you: on a clock, soonest first, then on an event.`}
         </Meta>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-[22px] py-3">
         {failure !== undefined ? (
           <SectionFailure what="Routines" failure={failure} onRetry={reread} testId="routines-failure" />
-        ) : reader === null ? (
+        ) : routines === null ? (
           <EmptyState title="No routines" testId="routines-empty">
             This Lab keeps no roster for you, so it keeps no routines.
           </EmptyState>

@@ -21,6 +21,22 @@ export interface RoutinesReach {
 
 const given = new WeakMap<object, RoutinesReach>();
 
+// FIX-2624.
+/** The seed of the app's declared routines for the running user, as `hireWorkforce` sets it per installation. */
+type RequestSeed = (ctx: import("@flow-state-dev/core/types").BlockContext) => Promise<unknown>;
+
+const seeds = new WeakMap<object, RequestSeed>();
+
+/** Keep the declared routines' seed for `installation`, which every worker request runs. `hireWorkforce` calls it. */
+export function setRoutineSeed(installation: object, seed: RequestSeed): void {
+  seeds.set(installation, seed);
+}
+
+/** The declared routines' seed `installation`'s `hireWorkforce` set; `undefined` before it runs. */
+export function routineSeedOf(installation: object): RequestSeed | undefined {
+  return seeds.get(installation);
+}
+
 /** Keep `options` for `installation`. `hireWorkforce`'s `routines` calls it. */
 export function setRoutinesReach(installation: object, options: RoutinesReach): void {
   given.set(installation, options);
