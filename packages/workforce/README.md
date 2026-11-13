@@ -543,7 +543,6 @@ A worker flow is an ordinary flow. What makes it *hireable* is that its `configS
 | `workerTools` | The blocks this worker's `tools:` resolved to from its own folders and the packages it holds, already resolved. Imposed on every worker, present and empty when there are none. Live blocks, not names — names that resolved to the worker flow's catalog stay on the worker flow's own `tools` setting. |
 | `workerPackages?` | The [packages](#packages-from-files) this worker holds, in the order it holds them: `{ name, path, instructions?, tools }[]`, where `tools` is the package's blocks. Imposed when the worker holds at least one, absent otherwise. |
 | `workerId` | The worker's own id, the one a coordinator's `delegates:` and a task's `assignee` name it by. Imposed on every worker. A block reads it from the worker the turn loaded (`installation.resolveWorker(ctx, flow).config.workerId`), never from `ctx.flow.config`, which the shared copy holds once for every worker. |
-| `defaults?` | Which [default-layer sections](#what-every-worker-is-told) the worker turns off: `false` for all, or `{ date?: false, skillsIndex?: false }`. Authored, never imposed. A section name the layer doesn't know is refused. A worker flow that renders no layer accepts it and does nothing with it. |
 
 So hiring imposes `instructions` when the body is not empty, `workerSkills`, `workerTools` and `workerId`
 always, `teamInstructions` when the worker's team wrote a `TEAM.md`, and `workerPackages` when the worker
@@ -711,52 +710,13 @@ a capability brings — context, storage, helpers — arrives whatever `tools:` 
 What does reach a worker without appearing in `tools:` is a **control**, which is framework
 machinery rather than a tool from the app's catalog, switched on by the worker's own settings:
 
-- the **skill loader**, which pulls a skill the worker already holds into the turn. A worker that
-  holds a skill gets it by default (see [What every worker is told](#what-every-worker-is-told));
-  `skills.activateTool: false` turns it off and `true` turns it on even for a worker with no skill;
+- the **skill loader**, when a worker sets `skills.activateTool: true` — it pulls a skill the worker
+  already holds into the turn;
 - the **controls a capability preset declares**, when the worker selects that preset in its
   `capabilities:` key — a preset's `controlTools` reach the worker even with `tools: []`.
 
 The four standing-rules tools (`rules/read`, `rules/add`, `rules/change`, `rules/remove`) sit
 outside `tools:` too: see [Standing rules](#standing-rules).
-
-#### What every worker is told
-
-After its own prompt (identity, team, its own file, its packages), every worker on the built-in
-`agent` flow and on the `coordinator` flow is shown two sections, as tagged context:
-
-- **`date`**: today's date with its weekday, read from the server's clock on every turn, and the
-  server's time zone named. It is the server's day, not the user's.
-- **`skillsIndex`**: for a worker that holds a skill it can load, the list of those skills, the
-  skill loader, and one line telling it to load a skill that fits the request, even in part,
-  before it answers. A worker that holds no skill gets none of it and pays nothing.
-
-Turn either off in the worker's file:
-
-```yaml
-defaults:
-  date: false          # no date block
-  skillsIndex: false   # no skills list, no loader, no load line
-# or: defaults: false  (both off)
-```
-
-A `skills.activateTool` the worker sets wins over `defaults`: `false` keeps the loader and list
-off, `true` keeps them on.
-
-An app adds its own line to the date block by writing under the `date` context key from a
-capability it composes, such as the user's time zone when the app knows it:
-
-```ts
-const agentFlow = defineAgentWorkerFlow({
-  installation,
-  uses: [defineCapability({
-    name: "user-time-zone",
-    presets: { defaults: { context: () => ({ date: "The user's time zone: Europe/Berlin" }) } }
-  })],
-});
-```
-
-A generator that isn't a worker can use the same block: `context: { date: workerDate }`.
 
 #### The memory recipe
 
@@ -2864,7 +2824,6 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 |--------|-------------|
 | `defineAgentWorkerFlow(options?)` | Build the `agent` worker flow, the one the framework ships. With `installation` it is the copy every worker on `agent` shares: it declares the installation's session and documents, loads the turn's worker in `request.onStarted`, and refuses a turn whose input names a worker; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `respond` (public) and a `work` task entry that takes the tasks a conversation files for its workers. |
 | `AGENT_FLOW` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
-| `workerDate()` | Today's date block, read from the server's clock on each call: the weekday and date, the ISO date, and the server's time zone. A generator context value, `context: { date: workerDate }`; the built-in worker flow renders it under `date` (see [What every worker is told](#what-every-worker-is-told)). |
 | `takeFinishedTasks` / `finishedTaskSchema` / `FinishedTask` | A handler block that takes the tasks this conversation filed whose endings haven't been heard yet, says each as a line under its delegate's name, and returns them as `{ taskId, ending, worker?, line }[]`. Input is ignored. `[]` outside a turn a user's own message started (see [Answering again with finished tasks](#answering-again-with-finished-tasks)). |
 | `finishedTasksAnswerAgain({ message? })` / `FinishedTasksAnswerAgainOptions` | The block `answerAgain: true` uses: `takeFinishedTasks`, then `{ message }` naming each finished task and how it ended, or `{}` when nothing finished. `message(finished)` replaces the default wording. |
 | `delegateAnswerOf(item)` / `delegateAnswerMetadata({ worker, taskId })` / `DelegateAnswer` | A delegate's answer that landed in a conversation as written (a task filed with `resultTo: "conversation"`, routed or not), as its message item marks it: `{ worker, taskId }`, or `undefined` for any other item. `delegateAnswerMetadata` is the `metadata` such a line is emitted with. Also on `./browser`. |

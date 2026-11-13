@@ -32,11 +32,8 @@
 import { z } from "zod";
 import type { BlockContext } from "@flow-state-dev/core/types";
 
-/** The sections, in the order they render. */
-export const WORKER_DEFAULT_SECTIONS = ["skillsIndex", "date"] as const;
-
-/** One section of the default layer, by its key in `defaults`. */
-export type WorkerDefaultSection = (typeof WORKER_DEFAULT_SECTIONS)[number];
+/** One section of the default layer, by its key in `defaults`. They render skills index first, then date. */
+type WorkerDefaultSection = "skillsIndex" | "date";
 
 /**
  * The most characters the layer's fixed text may take, with its longest
@@ -68,7 +65,7 @@ export const workerDefaultsSchema = z
 export type WorkerDefaults = z.infer<typeof workerDefaultsSchema>;
 
 /** Whether `section` is on for a worker whose `defaults` key is `defaults`. */
-export function defaultSectionOn(defaults: WorkerDefaults, section: WorkerDefaultSection): boolean {
+function defaultSectionOn(defaults: WorkerDefaults, section: WorkerDefaultSection): boolean {
   if (defaults === false) return false;
   return defaults?.[section] !== false;
 }
