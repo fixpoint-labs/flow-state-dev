@@ -67,6 +67,52 @@ const STANDARD = 'Read docs/contributing/user-docs.md first; it is the standard 
 /** One line of a finding, safe inside a record section: no line of it can open a new section. */
 const one = (s) => String(s ?? '').replace(/\s+/g, ' ').trim()
 
+/**
+ * The first 12 hex digits of the SHA-256 of `text` as UTF-8, the same digits `sha256sum` prints for
+ * the file. Passes 4 and 5 name the page revision they checked with it, so a record for an edited
+ * page never repeats its base's entries (`check-docs-page.mjs --changed-since` rejects that). Plain
+ * JS: a workflow script has no imports.
+ */
+function sha256(text) {
+  const bytes = []
+  for (const ch of String(text)) {
+    const c = ch.codePointAt(0)
+    if (c < 0x80) bytes.push(c)
+    else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63))
+    else if (c < 0x10000) bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+    else bytes.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+  }
+  const bits = bytes.length * 8
+  bytes.push(0x80)
+  while (bytes.length % 64 !== 56) bytes.push(0)
+  for (let i = 56; i >= 0; i -= 8) bytes.push(Math.floor(bits / 2 ** i) & 255)
+  const primes = []
+  for (let n = 2; primes.length < 64; n++) if (primes.every((q) => n % q)) primes.push(n)
+  const frac = (x) => ((x - Math.floor(x)) * 2 ** 32) >>> 0
+  const K = primes.map((q) => frac(Math.cbrt(q)))
+  const h = primes.slice(0, 8).map((q) => frac(Math.sqrt(q)))
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n))
+  for (let at = 0; at < bytes.length; at += 64) {
+    const w = []
+    for (let i = 0; i < 64; i++) {
+      if (i < 16) w[i] = ((bytes[at + 4 * i] << 24) | (bytes[at + 4 * i + 1] << 16) | (bytes[at + 4 * i + 2] << 8) | bytes[at + 4 * i + 3]) >>> 0
+      else {
+        const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3)
+        const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10)
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0
+      }
+    }
+    let [a, b, c, d, e, f, g, k] = h
+    for (let i = 0; i < 64; i++) {
+      const t1 = (k + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i]) >>> 0
+      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0
+      ;[k, g, f, e, d, c, b, a] = [g, f, e, (d + t1) >>> 0, c, b, a, (t1 + t2) >>> 0]
+    }
+    ;[a, b, c, d, e, f, g, k].forEach((v, i) => (h[i] = (h[i] + v) >>> 0))
+  }
+  return h.map((v) => v.toString(16).padStart(8, '0')).join('').slice(0, 12)
+}
+
 const PLAN_SCHEMA = {
   type: 'object',
   properties: {
@@ -234,6 +280,78 @@ const failed = (at, extra = {}) => {
   return { status: 'failed', page: A.page, at, ...extra }
 }
 
+// --- Pass helpers -------------------------------------------------------------------------------
+// Declared before the flow that calls them. They read the run's state declared below (PATH,
+// QUESTIONS, `checks`, `edits`); the flow calls each only once that state is set.
+
+/** Pass 4 on the page as it stands. `after` says what last changed it, for the record. */
+async function machineChecks(after, n) {
+  phase(n === 0 ? 'Check' : 'Revise')
+  const out = await agent(
+    `You are pass 4 of the ten passes: the machine checks on ${PATH}. Run each and report it: its result line (the word count, for check-docs-page), and the failing lines when it fails:
+- \`node scripts/check-docs-page.mjs ${PATH}\` (budget, banned words, code titles, fences)
+- a type-check of every TypeScript example on the page, against the workspace packages
+- \`node scripts/check-retired-terms.mjs\`, for any line of this page it names
+- \`node apps/docs/scripts/lint-brand.mjs <each figure the page shows>\`, when it shows any
+Then return the page file's full text verbatim. Edit nothing.`,
+    { label: `pass-4:${n}`, phase: n === 0 ? 'Check' : 'Revise', schema: CHECKS_SCHEMA },
+  )
+  return out && { ...out, after, ok: out.checks.every((c) => c.ok), sha: sha256(out.page) }
+}
+
+/** Pass 7, round `n`. */
+function editor(n) {
+  return agent(
+    `You are pass 7 of the ten passes: review the prose of ${PATH}${n > 1 ? ` again, after revise round ${n - 1}` : ''}. Return your verdict and line-anchored findings.`,
+    { label: `pass-7:${n}`, phase: n === 1 ? 'Check' : 'Revise', schema: EDITOR_SCHEMA, agentType: 'docs-editor' },
+  )
+}
+
+/** What is open after the latest pass 4 and pass 7: each `{ from, text }`. */
+function openFindings() {
+  const out = checks.checks.filter((c) => !c.ok).map((c) => ({ from: 'pass 4', text: `${c.check}: ${c.detail}` }))
+  const edit = edits.at(-1)
+  if (edit.verdict === 'REVISE') out.push(...edit.findings.map((f) => ({ from: 'pass 7', text: f })))
+  return out
+}
+
+/** Pass 9: READERS fresh agents with the page text and the questions, then one grader with the key. */
+async function coldRead(n) {
+  phase('Cold read')
+  const page = checks.page
+  const numbered = QUESTIONS.map((q, i) => `${i + 1}. ${q.question}`).join('\n')
+  const answers = await parallel(
+    Array.from({ length: READERS }, (_, r) => () =>
+      agent(
+        `Use no tools: read nothing, search nothing, run nothing. Below is one documentation page and ${QUESTIONS.length} questions. Answer each from the page alone, one answer per question, in order. If the page does not say, answer "The page does not say." Then list every term you had to guess at.
+
+PAGE:
+${page}
+
+QUESTIONS:
+${numbered}`,
+        { label: `pass-9:${n}:reader-${r + 1}`, phase: 'Cold read', schema: READER_SCHEMA },
+      ),
+    ),
+  )
+  const readers = answers.map((a, r) => (a ? { reader: r + 1, ...a } : null)).filter(Boolean)
+  if (readers.length < 2) return null
+  const graded = await agent(
+    `Grade cold readers' answers against the answer key. An answer is correct when it reaches the key's answer; wording does not matter. Return one grade per reader per question. Use no tools.
+
+KEY:
+${QUESTIONS.map((q, i) => `${i + 1}. ${q.question}\n   Answer: ${q.answer}`).join('\n')}
+
+ANSWERS:
+${readers.map((r) => `Reader ${r.reader}:\n${r.answers.map((a, i) => `  ${i + 1}. ${one(a)}`).join('\n')}`).join('\n')}`,
+    { label: `pass-9:${n}:grade`, phase: 'Cold read', schema: GRADE_SCHEMA },
+  )
+  if (!graded) return null
+  const missed = QUESTIONS.map((q, i) => readers.filter((r) => !graded.grades.some((g) => g.reader === r.reader && g.question === i + 1 && g.correct)).length)
+  const gaps = QUESTIONS.flatMap((q, i) => (missed[i] * 2 > readers.length ? [`"${q.question}" missed by ${missed[i]} of ${readers.length} readers; the key: ${q.answer}`] : []))
+  return { n, readers: readers.length, missed, gaps, guessed: [...new Set(readers.flatMap((r) => r.guessed.map(one)))] }
+}
+
 // --- Plan ---------------------------------------------------------------------------------------
 
 phase('Plan')
@@ -297,21 +415,6 @@ ${ENTRY}`,
 
 // --- Passes 4 to 7 ------------------------------------------------------------------------------
 
-/** Pass 4 on the page as it stands. `after` says what last changed it, for the record. */
-async function machineChecks(after, n) {
-  phase(n === 0 ? 'Check' : 'Revise')
-  const out = await agent(
-    `You are pass 4 of the ten passes: the machine checks on ${PATH}. Run each and report it, with the failing lines:
-- \`node scripts/check-docs-page.mjs ${PATH}\` (budget, banned words, code titles, fences)
-- a type-check of every TypeScript example on the page, against the workspace packages
-- \`node scripts/check-retired-terms.mjs\`, for any line of this page it names
-- \`node apps/docs/scripts/lint-brand.mjs <each figure the page shows>\`, when it shows any
-Then return the page file's full text verbatim. Edit nothing.`,
-    { label: `pass-4:${n}`, phase: n === 0 ? 'Check' : 'Revise', schema: CHECKS_SCHEMA },
-  )
-  return out && { ...out, after, ok: out.checks.every((c) => c.ok) }
-}
-
 let checks = await machineChecks(SKIP ? 'the page as it was kept' : 'the draft', 0)
 if (!checks) return failed('pass 4')
 const checkRuns = [checks]
@@ -334,23 +437,7 @@ if (!depth) return failed('pass 6')
 if (!firstEdit) return failed('pass 7')
 const edits = [firstEdit]
 
-/** Pass 7, round `n`. */
-function editor(n) {
-  return agent(
-    `You are pass 7 of the ten passes: review the prose of ${PATH}${n > 1 ? ` again, after revise round ${n - 1}` : ''}. Return your verdict and line-anchored findings.`,
-    { label: `pass-7:${n}`, phase: n === 1 ? 'Check' : 'Revise', schema: EDITOR_SCHEMA, agentType: 'docs-editor' },
-  )
-}
-
 // --- Revise rounds and the cold read -------------------------------------------------------------
-
-/** What is open after the latest pass 4 and pass 7: each `{ from, text }`. */
-function openFindings() {
-  const out = checks.checks.filter((c) => !c.ok).map((c) => ({ from: 'pass 4', text: `${c.check}: ${c.detail}` }))
-  const edit = edits.at(-1)
-  if (edit.verdict === 'REVISE') out.push(...edit.findings.map((f) => ({ from: 'pass 7', text: f })))
-  return out
-}
 
 let pending = [
   ...openFindings(),
@@ -387,6 +474,11 @@ ${pending.map((f, i) => `${i + 1}. [${f.from}] ${one(f.text)}`).join('\n')}`,
     pending = openFindings()
   }
 
+  // The cold-read join, reached when nothing is pending or the round cap is spent. Three exits:
+  //   - success: nothing pending and no gap; the page closes and pass 10 is recorded Not sampled;
+  //   - gap -> revise: under the cap, the gaps become the next round's findings and the loop re-enters;
+  //   - escalate: at the cap, everything still open (pass 4 and 7, and this read's gaps) goes to the
+  //     owner, and the record carries no pass 10.
   const read = await coldRead(reads.length + 1)
   if (!read) return failed('pass 9')
   reads.push(read)
@@ -398,43 +490,6 @@ ${pending.map((f, i) => `${i + 1}. [${f.from}] ${one(f.text)}`).join('\n')}`,
   }
   if (!gaps.length) break
   pending = gaps
-}
-
-/** Pass 9: READERS fresh agents with the page text and the questions, then one grader with the key. */
-async function coldRead(n) {
-  phase('Cold read')
-  const page = checks.page
-  const numbered = QUESTIONS.map((q, i) => `${i + 1}. ${q.question}`).join('\n')
-  const answers = await parallel(
-    Array.from({ length: READERS }, (_, r) => () =>
-      agent(
-        `Use no tools: read nothing, search nothing, run nothing. Below is one documentation page and ${QUESTIONS.length} questions. Answer each from the page alone, one answer per question, in order. If the page does not say, answer "The page does not say." Then list every term you had to guess at.
-
-PAGE:
-${page}
-
-QUESTIONS:
-${numbered}`,
-        { label: `pass-9:${n}:reader-${r + 1}`, phase: 'Cold read', schema: READER_SCHEMA },
-      ),
-    ),
-  )
-  const readers = answers.map((a, r) => (a ? { reader: r + 1, ...a } : null)).filter(Boolean)
-  if (readers.length < 2) return null
-  const graded = await agent(
-    `Grade cold readers' answers against the answer key. An answer is correct when it reaches the key's answer; wording does not matter. Return one grade per reader per question. Use no tools.
-
-KEY:
-${QUESTIONS.map((q, i) => `${i + 1}. ${q.question}\n   Answer: ${q.answer}`).join('\n')}
-
-ANSWERS:
-${readers.map((r) => `Reader ${r.reader}:\n${r.answers.map((a, i) => `  ${i + 1}. ${one(a)}`).join('\n')}`).join('\n')}`,
-    { label: `pass-9:${n}:grade`, phase: 'Cold read', schema: GRADE_SCHEMA },
-  )
-  if (!graded) return null
-  const missed = QUESTIONS.map((q, i) => readers.filter((r) => !graded.grades.some((g) => g.reader === r.reader && g.question === i + 1 && g.correct)).length)
-  const gaps = QUESTIONS.flatMap((q, i) => (missed[i] * 2 > readers.length ? [`"${q.question}" missed by ${missed[i]} of ${readers.length} readers; the key: ${q.answer}`] : []))
-  return { n, readers: readers.length, missed, gaps, guessed: [...new Set(readers.flatMap((r) => r.guessed.map(one)))] }
 }
 
 // --- The record ---------------------------------------------------------------------------------
@@ -459,9 +514,13 @@ section(
 section(
   4,
   'Machine checks',
-  checkRuns.map((c) => `- After ${c.after}: ${c.ok ? 'pass' : 'FAIL'}. ${c.checks.map((x) => `${one(x.check)} ${x.ok ? 'ok' : `failed (${one(x.detail)})`}`).join('; ')}`).join('\n'),
+  checkRuns.map((c) => `- After ${c.after}, page sha256 ${c.sha}: ${c.ok ? 'pass' : 'FAIL'}. ${c.checks.map((x) => `${one(x.check)} ${x.ok ? 'ok' : 'failed'} (${one(x.detail)})`).join('; ')}`).join('\n'),
 )
-section(5, 'Fact check', list(factCheck.untrue.map((u) => `${u.claim} Untrue: ${u.truth} (${u.where})`), 'No untrue claim found.'))
+section(
+  5,
+  'Fact check',
+  `Checked against the code: the page as pass 4 read it after ${checkRuns[0].after}, sha256 ${checkRuns[0].sha}.\n\n${list(factCheck.untrue.map((u) => `${u.claim} Untrue: ${u.truth} (${u.where})`), 'No untrue claim found.')}`,
+)
 section(6, 'Depth pass', depth.rows.length ? `${depth.rows.length} paragraph(s) of mechanism, moved in revise round 1; see Reference rows.` : 'Every paragraph is the model; none moved.')
 section(
   7,

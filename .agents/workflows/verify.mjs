@@ -41,7 +41,8 @@
 
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9708,7 +9709,16 @@ function loadSchemas(file) {
     // schemas are declared once at the top level and a duplicate `const` would not evaluate.
     if (seen.has(m[1])) continue
     seen.add(m[1])
-    decls.push(balancedDecl(src, m.index))
+    const decl = balancedDecl(src, m.index)
+    // A const computed from the run (`const A = … args`, `const PATH = … plan.slug` in page-loop)
+    // cannot evaluate outside one; skip it. A schema that fails this way is missing from the result,
+    // and the gating check fails on it by name.
+    try {
+      new Function(`${[...decls, decl].join('\n')}\nreturn ${m[1]}`)()
+    } catch {
+      continue
+    }
+    decls.push(decl)
     names.push(m[1])
   }
   return new Function(`${decls.join('\n')}\nreturn { ${names.join(', ')} }`)()
@@ -9765,6 +9775,20 @@ check('INVARIANT: every gating field is schema-required', async () => {
       GAP_SCHEMA: ['issueFiled', 'ready'],
       GOAL_SCHEMA: ['passed', 'evidence'],
       BUILD_SCHEMA: ['id', 'status'],
+    },
+    // Every field the loop branches on, or gates the record on. An omitted `ok` would read as a
+    // failing check, an omitted `correct` as a missed question, an omitted `checkerExit` as a record
+    // that failed CI's check: each would send the page round again or end the run on a guess.
+    'page-loop.js': {
+      PLAN_SCHEMA: ['found', 'slug', 'status', 'pageExists'],
+      QUESTIONS_SCHEMA: ['questions', 'edge'],
+      CHECKS_SCHEMA: ['checks', 'ok', 'page'],
+      FACT_CHECK_SCHEMA: ['untrue'],
+      DEPTH_SCHEMA: ['rows'],
+      EDITOR_SCHEMA: ['verdict', 'findings'],
+      READER_SCHEMA: ['answers', 'guessed'],
+      GRADE_SCHEMA: ['grades', 'reader', 'question', 'correct'],
+      RECORD_SCHEMA: ['written', 'checkerExit'],
     },
   }
   for (const [file, schemas] of Object.entries(gating)) {
@@ -10497,7 +10521,7 @@ const LOOP_PAGE = '---\ntitle: State and scopes\ntype: concept\n---\n\n# State a
  * A stub for every page-loop agent, by label. `editor` lists pass 7's verdicts in order (the last
  * repeats); `missed` lists, per cold read, the question numbers every reader gets wrong.
  */
-function loopResponder({ status = 'new', pageExists = false, found = true, editor = ['SHIP'], untrue = [], depthRows = [], missed = [], questions = loopQuestions, dead = [], recorded = { written: true, checkerExit: 0, checkerOutput: 'ok' } } = {}) {
+function loopResponder({ status = 'new', pageExists = false, found = true, editor = ['SHIP'], untrue = [], depthEntries = [], missed = [], questions = loopQuestions, dead = [], page = LOOP_PAGE, recorded = { written: true, checkerExit: 0, checkerOutput: 'ok' } } = {}) {
   let editorCalls = 0
   return (prompt, opts) => {
     const label = opts.label || ''
@@ -10506,9 +10530,9 @@ function loopResponder({ status = 'new', pageExists = false, found = true, edito
     if (label === 'pass-1') return { facts: 12, summary: 'twelve facts' }
     if (label === 'pass-2') return { questions }
     if (label === 'pass-3') return { scenario: 'the support desk', words: 700, figures: [] }
-    if (label.startsWith('pass-4')) return { checks: [{ check: 'check-docs-page', ok: true, detail: 'ok' }], page: LOOP_PAGE }
+    if (label.startsWith('pass-4')) return { checks: [{ check: 'check-docs-page', ok: true, detail: 'ok' }], page }
     if (label === 'pass-5') return { untrue }
-    if (label === 'pass-6') return { rows: depthRows }
+    if (label === 'pass-6') return { rows: depthEntries }
     if (label.startsWith('pass-7')) {
       const verdict = editor[Math.min(editorCalls++, editor.length - 1)]
       return { verdict, findings: verdict === 'REVISE' ? ['line 9: "the substrate" is an internal'] : [] }
@@ -10598,7 +10622,7 @@ check('page-loop: an editor REVISE sends the page to one revise round, then pass
 check('page-loop: pass 5 and 6 findings go to round 1 once, and the moved rows land in Reference rows', async () => {
   const { result, calls } = await run('page-loop.js', {
     args: loopArgs,
-    respond: loopResponder({ untrue: [{ claim: 'UNTRUE-CLAIM', truth: 'it is not so', where: 'x.ts:3' }], depthRows: [{ paragraph: 'The engine writes', row: 'WRITE-ROW', referencePage: 'R-07' }] }),
+    respond: loopResponder({ untrue: [{ claim: 'UNTRUE-CLAIM', truth: 'it is not so', where: 'x.ts:3' }], depthEntries: [{ paragraph: 'The engine writes', row: 'WRITE-ROW', referencePage: 'R-07' }] }),
   })
   const revise = calls.find((c) => c.label === 'pass-8:1').prompt
   assert.ok(revise.includes('UNTRUE-CLAIM') && revise.includes('WRITE-ROW'), 'round 1 takes the fact check and the depth pass')
@@ -10660,6 +10684,50 @@ check('page-loop: a record not written, or failing the check on a page that clos
   // An escalated record is meant to fail the check (no pass 10), so that is no failure of the run.
   const esc = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ editor: ['REVISE'], recorded: { written: true, checkerExit: 1, checkerOutput: 'record: no pass 10' } }) })
   assert.equal(esc.result.status, 'escalated')
+})
+
+check('page-loop: a second clean run on an edited page writes new pass 4 and 5 entries, so CI\'s --changed-since check passes', async () => {
+  // CI runs the checker with `--changed-since` on a PR, and it rejects a record whose pass 4 or 5
+  // body matches the base's when the page changed. A clean run's bodies must therefore carry what
+  // identifies the page revision they checked, or re-running the loop on an edited page could
+  // never pass CI.
+  const edited = LOOP_PAGE.replace('A support desk keeps a few kinds of state.', 'A support desk keeps three kinds of state — one per scope.')
+  const first = await run('page-loop.js', { args: loopArgs, respond: loopResponder() })
+  const second = await run('page-loop.js', { args: loopArgs, respond: loopResponder({ page: edited }) })
+  assert.equal(second.result.status, 'complete')
+  const body = (text, n) => text.split(/^## /m).find((p) => p.startsWith(`${n} ·`))
+  for (const n of [4, 5]) {
+    assert.notEqual(body(second.result.recordText, n), body(first.result.recordText, n), `pass ${n} reads the same on the edited page`)
+    // The identifier is the page text's sha256, so anyone can match it to the revision with sha256sum.
+    assert.ok(body(second.result.recordText, n).includes(createHash('sha256').update(edited).digest('hex').slice(0, 12)), `pass ${n} names the revision it checked`)
+  }
+  const repo = mkdtempSync(join(tmpdir(), 'page-loop-git-'))
+  const pages = join(repo, 'docs/contributing/docs-revamp/pages')
+  const git = (...a) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd: repo, encoding: 'utf8' })
+  const commit = (page, record) => {
+    writeFileSync(join(pages, 'state-and-scopes.md'), page)
+    writeFileSync(join(pages, 'state-and-scopes.record.md'), record)
+    git('add', '-A')
+    git('commit', '-qm', 'loop run')
+  }
+  try {
+    mkdirSync(pages, { recursive: true })
+    git('init', '-q')
+    commit(LOOP_PAGE, first.result.recordText)
+    commit(edited, second.result.recordText)
+    let code = 0
+    let out
+    try {
+      out = execFileSync(process.execPath, [join(HERE, '../../scripts/check-docs-page.mjs'), '--root', repo, '--changed-since', 'HEAD^1'], { encoding: 'utf8' })
+    } catch (err) {
+      code = err.status
+      out = String(err.stdout)
+    }
+    assert.match(out, /state-and-scopes\.md/, 'the checker read the edited page')
+    assert.equal(code, 0, `CI's check rejects the second run's record:\n${out}`)
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
 })
 
 check('page-loop: a kept page skips the draft, and the record says so', async () => {
