@@ -137,7 +137,7 @@ export function createOrdersCapability(options: { scope: "session" | "user" }) {
 
 ## Who owns what it stores
 
-A capability stores nothing itself. What it carries can: the resource it declares, whose scope is set on the resource. With `scope: "session"`, one `orderLog` exists per session, and the browser sees it only if the resource's client config exposes fields. [Resources](./resources.md) covers where it lives and how it is exposed.
+A capability stores nothing itself. Its resource does, and the resource's `scope` decides who owns the data. With `scope: "session"`, one `orderLog` exists per session, and the browser sees it only if the resource's client config exposes fields. [Resources](./resources.md) covers where it lives and how it is exposed.
 
 ## What it gets you
 
@@ -151,7 +151,7 @@ Helper functions a capability exposes on `ctx.cap.orders` are covered in [Write 
 
 ## How it fits with the others
 
-A kit packages a whole feature, with its flows and screens, that an app installs with one config object. A kit can contain capabilities, but a capability does not contain kits: it attaches to one block. Reach for a kit when the feature has screens or flows of its own, and a capability when you are bundling one ability for blocks.
+A kit packages a whole feature, with its flows and screens, that an app installs with one config object. A kit can contain capabilities, but a capability does not contain kits: a block lists it in `uses`. Reach for a kit when the feature has screens or flows of its own, and a capability when you are bundling one ability for blocks.
 
 ## Next
 

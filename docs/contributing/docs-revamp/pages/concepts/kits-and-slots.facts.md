@@ -164,3 +164,9 @@ The page states the one-line model and links `../reference/kits.md` for each:
 - `requires` lets `harnesses` fill `workforce`'s slots only: a kit fills only slots of a kit it requires (`dk:121-123`, `kp:139-142`).
 - Chain figure caption: `harnesses` fills `workforce`'s slot; `claudeCode` fills `harnesses`'; `workforce` fills none. Matches the figure's labels (OPENS A SLOT, FILLS ONE OPENS ANOTHER, FILLS A SLOT).
 - The three examples' unresolved imports (`claudeCode`, `codexHarness`, `harnesses`, `workforce`) are the unbuilt surface, marked for reconcile at cutover; all three examples now carry the marker.
+
+## 12. Revise round 3
+
+- No page change. The pass-4 type-check found 8 errors, all unresolved imports of the unbuilt surface (`claudeCode`, `codexHarness`, `harnesses`, `workforce`, `@flow-state-dev/harnesses`). The page marks all three examples "Reconcile at cutover". `defineKit`, `slot`, `createFlowState`, `kits` and `fill` type-check clean against the source.
+- Those imports stay until the kits are built. `user-docs.md` (Code examples) accepts a specified, unbuilt surface checked against a declaration file written for it and removed at cutover; the placeholder imports are that case, not an error in the page.
+- At cutover, replace each import with the built export and re-run the type-check; the `kits`/`fill`/`requires` fit is only checked for real then.
