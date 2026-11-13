@@ -32,6 +32,9 @@
  * - element (5, in full): no transform anywhere, and no dx, dy or rotate on text; only the
  *   elements a figure is drawn with (`FIGURE_ELEMENTS`), no href, and a viewBox only on the
  *   root and the defs' marker.
+ * - attr (4 and 5, in full): only the attributes each element is drawn with (`FIGURE_ATTRIBUTES`),
+ *   besides the fallbacks.
+ * - canvas (7, in full): every rect, line and path stays on the 920 × H canvas.
  * - embed (16): the revamp's pages (`pages/` and `pilot/`) put each figure on the page
  *   as a `<Figure svg caption description />` with a short caption and a full description. Pages
  *   are read with the MDX parser the site uses; one that does not parse fails.
@@ -301,6 +304,62 @@ const UNITS = { lb: 7.5, nm: 9, sub: 6.3, c: 7.5, t: 7.2, n: 6.6, plate: 7.3 };
 // The elements a held figure is drawn with, as the standard's figures use them (svg only as the root).
 const FIGURE_ELEMENTS = new Set(["svg", "defs", "pattern", "marker", "g", "rect", "line", "path", "text"]);
 const DEFS_ONLY = new Set(["pattern", "marker"]);
+// Attributes off the allow-list that a rule of their own already reports, so each is reported once, by that rule.
+const OWN_CHECK = new Set([
+  "href", "xlink:href", "viewBox", "preserveAspectRatio", "transform", "dx", "dy", "rotate", "style",
+  "opacity", "fill-opacity", "stroke-opacity", "filter", "textLength",
+]);
+// The attributes each of those elements carries in the standard's figures, besides the fallbacks (FALLBACK_PROPS),
+// which the fallback rules check. marker-start pairs with the ah marker's auto-start-reverse.
+const FIGURE_ATTRIBUTES = Object.fromEntries(
+  Object.entries({
+    svg: "xmlns viewBox",
+    defs: "",
+    pattern: "id width height patternUnits patternTransform",
+    marker: "id viewBox refX refY markerWidth markerHeight orient",
+    g: "id text-anchor",
+    rect: "class x y width height",
+    line: "class x1 y1 x2 y2 marker-start marker-end",
+    path: "class d marker-start marker-end",
+    text: "class x y text-anchor",
+  }).map(([name, attrs]) => [name, new Set(attrs.split(" ").filter(Boolean))]),
+);
+
+/**
+ * The canvas points a rect, line or path reaches; none for other elements. A path is read from its M, L, H, V and Z
+ * commands, absolute or relative; any other command (a curve, an arc) is reported through `unread`, since where it
+ * draws is not checked.
+ */
+function shapePoints(node, unread) {
+  if (node.name === "rect") {
+    const [x, y, w, h] = ["x", "y", "width", "height"].map((a) => num(node, a));
+    return [[x, y], [x + w, y + h]];
+  }
+  if (node.name === "line") return [[num(node, "x1"), num(node, "y1")], [num(node, "x2"), num(node, "y2")]];
+  if (node.name !== "path") return [];
+  const points = [];
+  let [x, y] = [0, 0];
+  let start = [0, 0];
+  for (const [, command, args] of (node.attrs.d ?? "").matchAll(/([a-zA-Z])([^a-zA-Z]*)/g)) {
+    const n = (args.match(/-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/gi) ?? []).map(Number);
+    const rel = command === command.toLowerCase();
+    const step = { m: 2, l: 2, h: 1, v: 1, z: 0 }[command.toLowerCase()];
+    if (step === undefined || (step && (!n.length || n.length % step))) {
+      unread(`a path command "${command}${args.trim() ? ` ${args.trim()}` : ""}" the lint does not read: a figure's paths use M, L, H, V and Z`);
+      return points;
+    }
+    if (step === 0) [x, y] = start;
+    for (let i = 0; i < n.length; i += step) {
+      const c = command.toLowerCase();
+      if (c === "h") x = rel ? x + n[i] : n[i];
+      else if (c === "v") y = rel ? y + n[i] : n[i];
+      else [x, y] = rel ? [x + n[i], y + n[i + 1]] : [n[i], n[i + 1]];
+      if (c === "m" && i === 0) start = [x, y];
+      points.push([x, y]);
+    }
+  }
+  return points;
+}
 const BOXES = new Set(["solid", "thin", "dash"]);
 
 /** The mark a shape draws, as the key names it: hatch, dash, hl, ln, ln-dash or x (red); null for none. */
@@ -371,6 +430,12 @@ function lintFigure(file, text, tree, out) {
     at(svg, "canvas", `viewBox "${svg.attrs.viewBox ?? ""}" is not 0 0 920 H with a whole-number H`);
   }
   for (const attr of ["width", "height"]) if (svg.attrs[attr] !== undefined) at(svg, "canvas", `the root has a ${attr}; the page sizes it`);
+  const canvas = /^0 0 920 (\d+)$/.exec(svg.attrs.viewBox ?? "");
+  const height = canvas ? Number(canvas[1]) : null;
+  // The root's width and height are the canvas rule's to report.
+  for (const attr of Object.keys(svg.attrs).filter((a) => !FIGURE_ATTRIBUTES.svg.has(a) && a !== "width" && a !== "height")) {
+    at(svg, "attr", `a ${attr} attribute on the root <svg>: not one a figure is drawn with`);
+  }
   // Every geometry check reads these; one it cannot read is reported, never skipped.
   for (const node of all) {
     // One canvas: a nested <svg> is a new viewport, so the coordinates inside it are not the canvas's.
@@ -386,6 +451,17 @@ function lintFigure(file, text, tree, out) {
     }
     for (const attr of ["viewBox", "preserveAspectRatio"].filter((a) => node.attrs[a] !== undefined)) {
       if (!(node.name === "marker" && within(node, (p) => p.name === "defs"))) at(node, "element", `a ${attr} on <${node.name}>: only the root sets the viewport`);
+    }
+    // Only the attributes a figure's elements are drawn with: anything else (writing-mode, baseline-shift…) can
+    // change where or how text and shapes draw.
+    for (const attr of Object.keys(node.attrs).filter((a) => !FIGURE_ATTRIBUTES[node.name]?.has(a) && !FALLBACK_PROPS.includes(a) && !OWN_CHECK.has(a))) {
+      at(node, "attr", `a ${attr} attribute on <${node.name}>: not one a figure is drawn with`);
+    }
+    // Shapes stay on the canvas, 0 to 920 across and 0 to its height down.
+    if (height !== null && !within(node, (p) => p.name === "defs")) {
+      for (const [x, y] of shapePoints(node, (detail) => at(node, "canvas", detail))) {
+        if (x < 0 || x > 920 || y < 0 || y > height) at(node, "canvas", `a <${node.name}> reaching (${x}, ${y}), off the 920 × ${height} canvas`);
+      }
     }
     // A figure is drawn in canvas coordinates: a transform would move a shape away from the coordinates every check reads.
     if (node.attrs.transform !== undefined || /(?:^|;)\s*transform\s*:/.test(node.attrs.style ?? "")) {
@@ -729,14 +805,19 @@ for (const fixtureCase of CASES) {
     return false;
   });
   if (fixtureCase.rule !== null && !RULES.includes(fixtureCase.rule)) broken.push(`case ${fixtureCase.name} names no rule`);
-  else if (finds.length !== replaces.length) broken.push(`case ${fixtureCase.name} has ${finds.length} finds and ${replaces.length} replaces`);
+  else if ((fixtureCase.rule === null) !== (fixtureCase.expect === null) || (fixtureCase.rule !== null && !fixtureCase.expect)) {
+    broken.push(`case ${fixtureCase.name} needs an expect, the part of the message its branch of ${fixtureCase.rule} gives (null only for a clean case)`);
+  } else if (finds.length !== replaces.length) broken.push(`case ${fixtureCase.name} has ${finds.length} finds and ${replaces.length} replaces`);
   else if (stale.length) broken.push(`case ${fixtureCase.name}: ${JSON.stringify(stale[0])} is not in ${fixtureCase.base}, so the case changes nothing`);
   else {
     const found = lintFile(file, allowed, text);
     fixtureFindings.push({ file, found });
-    // A case with no rule is a clean one: it must pass every rule.
+    // A case with no rule is a clean one: it must pass every rule. Any other must trip its rule's own branch: the
+    // rule alone could be tripped by a neighbouring branch while the one the case is for no longer fires.
     if (fixtureCase.rule === null) broken.push(...found.map((f) => `the clean case ${fixtureCase.name} fails ${show(f)}`));
-    else if (!found.some((f) => f.rule === fixtureCase.rule)) broken.push(`case ${fixtureCase.name} does not trip ${fixtureCase.rule}`);
+    else if (!found.some((f) => f.rule === fixtureCase.rule && f.detail.includes(fixtureCase.expect))) {
+      broken.push(`case ${fixtureCase.name} does not trip ${fixtureCase.rule} with "${fixtureCase.expect}"`);
+    }
   }
 }
 const silent = RULES.filter((rule) => !fixtureFindings.some((f) => f.found.some((x) => x.rule === rule)));

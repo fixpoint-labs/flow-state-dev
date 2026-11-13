@@ -242,10 +242,12 @@ fixtures. Rule 16 holds the revamp's pages in `pages/` and `pilot/`, and any `.m
 the lint. The site's published diagrams get rules 1 to 5 only, until they are redrawn. Before the real files, the lint runs its
 fixtures. `apps/docs/scripts/brand-lint-fixtures/figures/` holds the clean figures and pages,
 `good.*`, which must pass every rule. Each case in `brand-lint-fixtures/cases.mjs` breaks one
-rule by editing a clean one in memory (`{ name, base, find, replace, rule }`), named for the
-rule's name in the lint's output (`key`, `key.two-keys`). The lint fails if a case's `find` is
-not in its base, if a case does not trip its rule, if a rule is tripped by no fixture, or if a
-clean one trips any.
+rule by editing a clean one in memory (`{ name, base, find, replace, rule, expect }`), named for
+the rule's name in the lint's output (`key`, `key.two-keys`). `expect` is part of the message the
+broken branch gives, so each branch of a rule has a case of its own. The lint fails if a case's
+`find` is not in its base, if a case does not give a finding of its rule containing its `expect`,
+if a rule is tripped by no fixture, or if a clean one (a case with `rule` and `expect` null, or a
+`good.*` file) trips any.
 
 **Banned constructs**
 
@@ -272,13 +274,23 @@ clean one trips any.
    and `<marker>` (inside the `<defs>` only), `<g>`, `<rect>`, `<line>`, `<path>` and `<text>`, and
    no other element: no `<use>`, `<symbol>`, `<switch>`, `<clipPath>` or `<mask>`. No element has an
    `href` or `xlink:href`, and only the root and the `ah` marker have a `viewBox` or
-   `preserveAspectRatio`. The site's published diagrams, until they are redrawn, are held only to
-   no `transform` on text or on a group around it.
+   `preserveAspectRatio`. Each element carries only the attributes the standard's figures draw
+   with, besides the fallbacks of rules 2 and 4: `svg` `xmlns viewBox`; `pattern` `id width
+   height patternUnits patternTransform`; `marker` `id viewBox refX refY markerWidth markerHeight
+   orient`; `g` `id text-anchor`; `rect` `class x y width height`; `line` `class x1 y1 x2 y2
+   marker-start marker-end`; `path` `class d marker-start marker-end`; `text` `class x y
+   text-anchor`. Any other (`writing-mode`, `dominant-baseline`, `word-spacing`…) is an `attr`
+   finding. The site's published diagrams, until they are redrawn, are held only to no
+   `transform` on text or on a group around it.
 6. `<defs>` holds exactly the `hatch` pattern and the `ah` marker, as printed above.
 
 **Canvas and text**
 
-7. The root is `viewBox="0 0 920 H"` with whole-number `H`, and has no `width` or `height`.
+7. The root is `viewBox="0 0 920 H"` with whole-number `H`, and has no `width` or `height`. Every
+   `rect`, `line` and `path` outside the `<defs>` stays on the canvas, 0 to 920 across and 0 to `H`
+   down (the canvas edge, not the 28 margin: a full-width rule runs edge to edge). A `path` is
+   read from its `M`, `L`, `H`, `V` and `Z` commands, absolute or relative; any other command is a
+   finding.
 8. Every `<text>` has exactly one of `lb`, `nm`, `sub`, `c`, `t`, `n`, `plate`, with `on-hl` or
    `x` as the only additions. `lb` and `plate` text is capitals.
 9. Text fits. Width is characters times the class's units per character, and its `text-anchor`
