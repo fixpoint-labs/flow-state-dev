@@ -408,10 +408,13 @@ figures:  brief ─ draw ─ render light + dark ─ figure lint ─ compare wit
    the fact sheet.
 4. **Machine checks.** The word budget, the banned words and the code titles
    (`node scripts/check-docs-page.mjs path/to/page.md`), a type-check of every example, balanced
-   fences, retired terms (`node scripts/check-retired-terms.mjs`) and the figure lint.
-5. **Fact check** by a separate agent that has the page and the code and nothing else
-   ([`code-reader`](../../.agents/subagents/code-reader.md): it reads files and runs nothing, as
-   pass 6 does). It returns each claim that is not true, with file and line.
+   fences, retired terms (`scripts/check-retired-terms.mjs`'s check, run on the page's own path)
+   and the figure lint. The retired-terms check reads only tracked files in the areas it scans, so
+   a page it did not read fails this pass rather than passing it.
+5. **Fact check** by a separate agent that has the page, the Reference rows pass 6 moved, and the
+   code, and nothing else ([`code-reader`](../../.agents/subagents/code-reader.md): it reads files
+   and runs nothing, as pass 6 does). It returns each claim that is not true, with file and line,
+   and a row it finds untrue is recorded corrected. It runs after pass 6.
 6. **Depth pass.** For each paragraph, ask: is this the model, or mechanism? Mechanism leaves the
    page and becomes a row on the topic's Reference page, and the page links to it.
 7. **[`docs-editor`](../../.agents/subagents/docs-editor.md)** checks the prose.

@@ -24,9 +24,17 @@
  * and need no shell run as `code-reader` (passes 5, 6) and `cold-reader` (pass 9), which have no
  * Bash; only pass 4, the file scout and the record agent run commands.
  *
+ * The retired-terms check reads a page only in an area it scans (`check-retired-terms.mjs` →
+ * `areaOf`; `specs/` is history, and kept out). Pass 4 runs it on the page's own path and fails when
+ * the page is outside what it scans, so a pass that could not have failed is never recorded as one;
+ * the file scout asks the same of the target first, and a target outside stops the run before any
+ * agent writes.
+ *
  * The order the script holds, which is the point of a script over a checklist:
  *   - pass 2's questions come from an agent that has seen no draft, and go to pass 9 unchanged;
  *   - pass 3 is skipped only for an entry the sitemap lists as kept, piloted or drafted;
+ *   - pass 5 runs after pass 6, and checks the Reference rows pass 6 moved as well as the page: a
+ *     row keeps no claim the fact check found untrue;
  *   - every revision is followed by pass 4 again, and pass 9 reads the page pass 4 last read.
  *
  * REVISE. Passes 4 (a failing check), 5 (an untrue claim), 6 (mechanism on the page), 7
@@ -85,6 +93,12 @@ const DIR = typeof A.dir === 'string' && A.dir.trim() ? A.dir.trim().replace(/\/
 const WRITER = A.writer.trim()
 
 const STANDARD = 'Read docs/contributing/user-docs.md first; it is the standard every pass applies (page types and budgets, the concept outline, the moves, code examples, what a fact sheet may cite, the ten passes).'
+
+// The retired-terms check on one path, as pass 4 and the file scout run it: the check's own area
+// table and census, unchanged, on that path alone. A path in no area, or in one the check keeps out
+// of scope, prints `NOT SCANNED` and exits 1, so the check cannot pass a page it did not read.
+const RETIRED_AREA = `node --input-type=module -e 'import { areaOf } from "./scripts/check-retired-terms.mjs"; for (const p of process.argv.slice(1)) { const a = areaOf(p); console.log(p + ": " + (a && a.scope ? "in scope" : "NOT SCANNED")); }'`
+const RETIRED_PAGE = `node --input-type=module -e 'import { readFileSync } from "node:fs"; import { areaOf, census } from "./scripts/check-retired-terms.mjs"; const p = process.argv[1]; const a = areaOf(p); if (!a || !a.scope) { console.log("NOT SCANNED: " + p + " is in " + (a ? "the " + a.id + " area, which the check keeps out of scope" : "no area the check knows")); process.exit(1); } const r = census({ files: new Map([[p, readFileSync(p, "utf8")]]), paths: [p] }); for (const h of r.hits) console.log(h.path + ":" + h.line + " [" + h.term + "] " + h.text); console.log(r.hits.length + " counted line(s) on " + p); process.exit(r.hits.length ? 1 : 0);'`
 
 /** One line of a finding, safe inside a record section: no line of it can open a new section. */
 const one = (s) => String(s ?? '').replace(/\s+/g, ' ').trim()
@@ -161,8 +175,9 @@ const FILES_SCHEMA = {
           recordSitemap: { type: 'string', description: 'The id on the `Sitemap:` line of the page’s .record.md, or "" when it has no record' },
           title: { type: 'string', description: 'The `title` in its frontmatter, or ""' },
           type: { type: 'string', description: 'The `type` in its frontmatter, or ""' },
+          scanned: { type: 'boolean', description: 'Whether the retired-terms check scans this path: the area command printed `in scope` for it' },
         },
-        required: ['path', 'exists', 'recordSitemap', 'title', 'type'],
+        required: ['path', 'exists', 'recordSitemap', 'title', 'type', 'scanned'],
       },
     },
   },
@@ -171,8 +186,8 @@ const FILES_SCHEMA = {
 
 const FACTS_SCHEMA = {
   type: 'object',
-  properties: { facts: { type: 'integer', minimum: 0 }, summary: { type: 'string' } },
-  required: ['facts', 'summary'],
+  properties: { facts: { type: 'integer', minimum: 0 } },
+  required: ['facts'],
 }
 
 const QUESTIONS_SCHEMA = {
@@ -227,8 +242,14 @@ const FACT_CHECK_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { claim: { type: 'string' }, truth: { type: 'string' }, where: { type: 'string', description: 'file:line' } },
-        required: ['claim', 'truth', 'where'],
+        properties: {
+          claim: { type: 'string' },
+          truth: { type: 'string' },
+          where: { type: 'string', description: 'file:line' },
+          row: { type: 'integer', minimum: 0, description: 'The Reference row the claim is in, by its number; 0 for the page' },
+          corrected: { type: 'string', description: 'For a Reference row, the whole row rewritten to be true; "" for the page' },
+        },
+        required: ['claim', 'truth', 'where', 'row', 'corrected'],
       },
     },
   },
@@ -333,7 +354,7 @@ async function machineChecks(after, n) {
     `You are pass 4 of the ten passes: the machine checks on ${PATH}. Run each and report it: its result line (the word count, for check-docs-page), and the failing lines when it fails:
 - \`node scripts/check-docs-page.mjs ${PATH}\` (budget, banned words, code titles, fences)
 - a type-check of every TypeScript example on the page, against the workspace packages
-- \`node scripts/check-retired-terms.mjs\`, for any line of this page it names
+- the retired-terms check on this page alone, from the repository root: \`${RETIRED_PAGE} ${PATH}\`. It is ok only on exit 0; \`NOT SCANNED\` means the check did not read the page, and is a failure
 - \`node apps/docs/scripts/lint-brand.mjs <each figure the page shows>\`, when it shows any
 Then return the page file's full text verbatim. Edit nothing.`,
     { label: `pass-4:${n}`, phase: n === 0 ? 'Check' : 'Revise', schema: CHECKS_SCHEMA },
@@ -417,7 +438,7 @@ const NAMESPACED = `${DIR}/${SLUG}.md`
 const FLAT = `${DIR}/${slug.at(-1)}.md`
 
 const seen = await agent(
-  `For each path below, say whether the file exists; if it does, give the id on the \`Sitemap:\` line of the .record.md beside it ("" when there is none) and the \`title\` and \`type\` in its frontmatter ("" when absent). Return one entry per path, the path exactly as given. Read only; edit nothing.
+  `For each path below, say whether the file exists; if it does, give the id on the \`Sitemap:\` line of the .record.md beside it ("" when there is none) and the \`title\` and \`type\` in its frontmatter ("" when absent). Then run, from the repository root, \`${RETIRED_AREA} ${NAMESPACED} ${FLAT}\` and give, for each path, whether it printed \`in scope\`. Return one entry per path, the path exactly as given. Read only; edit nothing.
 
 FILES:
 - ${NAMESPACED}
@@ -435,6 +456,10 @@ const PATH = target.path
 if (target.exists && !mine(target)) {
   const owner = target.recordSitemap || `a ${target.type || 'page'} titled "${one(target.title)}"`
   return { status: 'blocked', page: A.page, path: PATH, reason: `${PATH} is ${owner}'s page, not ${A.page}'s; nothing was written` }
+}
+// Pass 4's retired-terms check reads only a page in an area it scans; outside one, every pass 4 would fail.
+if (target.scanned !== true) {
+  return { status: 'blocked', page: A.page, path: PATH, reason: `the retired-terms check does not scan ${PATH}, so pass 4 could never pass it; put the page in a folder the check reads (not under specs/)` }
 }
 const FACTS = PATH.replace(/\.md$/, '.facts.md')
 const RECORD = PATH.replace(/\.md$/, '.record.md')
@@ -492,12 +517,7 @@ let checks = await machineChecks(SKIP ? 'the page as it was kept' : 'the draft',
 if (!checks) return failed('pass 4')
 const checkRuns = [checks]
 
-const [factCheck, depth, firstEdit] = await parallel([
-  () =>
-    agent(
-      `You are pass 5 of the ten passes: the fact check. You have the page ${PATH} and the code, and nothing else: do not read its fact sheet, the sitemap or any spec. Return each claim the page makes that is not true, with what is true and its file and line. Read only.`,
-      { label: 'pass-5', phase: 'Check', schema: FACT_CHECK_SCHEMA, agentType: 'code-reader' },
-    ),
+const [depth, firstEdit] = await parallel([
   () =>
     agent(
       `You are pass 6 of the ten passes: the depth pass. ${STANDARD} For each paragraph of ${PATH}, ask: is this the model, or mechanism? Return each paragraph that is mechanism as the Reference row it becomes and the R-page (sitemap id, see ${SITEMAP}/reference.md) it belongs on. Read only.`,
@@ -505,16 +525,35 @@ const [factCheck, depth, firstEdit] = await parallel([
     ),
   () => editor(1),
 ])
-if (!factCheck) return failed('pass 5')
 if (!depth) return failed('pass 6')
 if (!firstEdit) return failed('pass 7')
 const edits = [firstEdit]
+
+// Pass 5 after pass 6: a row leaves the page for a Reference page, so it is checked as the page is.
+const factCheck = await agent(
+  `You are pass 5 of the ten passes: the fact check. You have the page ${PATH}, the Reference rows below, and the code, and nothing else: do not read its fact sheet, the sitemap or any spec. Return each claim the page or a row makes that is not true, with what is true and its file and line. For a claim in a row, give the row's number and the whole row rewritten to be true; for one on the page, row 0 and "". Read only.
+
+REFERENCE ROWS (moved off the page by the depth pass):
+${depth.rows.length ? depth.rows.map((r, i) => `${i + 1}. ${one(r.row)} (for ${one(r.referencePage)})`).join('\n') : 'None.'}`,
+  { label: 'pass-5', phase: 'Check', schema: FACT_CHECK_SCHEMA, agentType: 'code-reader' },
+)
+if (!factCheck) return failed('pass 5')
+const pageUntrue = factCheck.untrue.filter((u) => u.row === 0)
+const rowUntrue = factCheck.untrue.filter((u) => u.row !== 0)
+// A row found untrue is recorded corrected, or the run stops: a Reference row never keeps an untrue claim.
+if (rowUntrue.some((u) => u.row > depth.rows.length || !one(u.corrected))) {
+  return failed('pass 5', { reason: 'pass 5 found a Reference row untrue, and named no row it has or gave no corrected row' })
+}
+const ROWS = depth.rows.map((r, i) => {
+  const fixed = rowUntrue.filter((u) => u.row === i + 1).at(-1)
+  return fixed ? { ...r, row: fixed.corrected, corrected: true } : r
+})
 
 // --- Revise rounds and the cold read -------------------------------------------------------------
 
 let pending = [
   ...openFindings(),
-  ...factCheck.untrue.map((u) => ({ from: 'pass 5', text: `${u.claim} Untrue: ${u.truth} (${u.where})` })),
+  ...pageUntrue.map((u) => ({ from: 'pass 5', text: `${u.claim} Untrue: ${u.truth} (${u.where})` })),
   ...depth.rows.map((r) => ({ from: 'pass 6', text: `Move to ${r.referencePage} as "${r.row}" and link it: the paragraph starting "${r.paragraph}"` })),
 ]
 const rounds = []
@@ -571,7 +610,7 @@ const list = (items, empty) => (items.length ? items.map((s) => `- ${one(s)}`).j
 const sections = []
 const section = (n, name, body) => sections.push(`## ${n} · ${name}\n\n${body}`)
 
-section(1, 'Fact sheet', `Written by \`docs-writer\` (${WRITER}): \`${FACTS.split('/').pop()}\`, ${facts.facts} facts. ${one(facts.summary)}`)
+section(1, 'Fact sheet', `Written by \`docs-writer\` (${WRITER}): ${facts.facts} facts, \`${FACTS}\`.`)
 section(
   2,
   'Cold-read questions',
@@ -587,12 +626,20 @@ section(
 section(
   4,
   'Machine checks',
-  checkRuns.map((c) => `- After ${c.after}, page sha256 ${c.sha}: ${c.ok ? 'pass' : 'FAIL'}. ${c.checks.map((x) => `${one(x.check)} ${x.ok ? 'ok' : 'failed'} (${one(x.detail)})`).join('; ')}`).join('\n'),
+  // One line a run: the revision it read and its exit code. The first red run also says what failed, once.
+  checkRuns
+    .map((c) => {
+      const red = c.checks.filter((x) => !x.ok)
+      const first = c === checkRuns.find((r) => !r.ok)
+      const detail = first ? ` Failed: ${red.map((x) => `${one(x.check)}: ${one(x.detail)}`).join(' · ')}.` : red.length ? ` Failed: ${red.map((x) => one(x.check)).join(', ')}.` : ''
+      return `- After ${c.after}, page sha256 ${c.sha}: exit ${c.ok ? 0 : 1}.${detail}`
+    })
+    .join('\n'),
 )
 section(
   5,
   'Fact check',
-  `Checked against the code: the page as pass 4 read it after ${checkRuns[0].after}, sha256 ${checkRuns[0].sha}.\n\n${list(factCheck.untrue.map((u) => `${u.claim} Untrue: ${u.truth} (${u.where})`), 'No untrue claim found.')}`,
+  `Checked against the code: the page as pass 4 read it after ${checkRuns[0].after}, sha256 ${checkRuns[0].sha}, and the ${depth.rows.length} Reference row(s) pass 6 moved.\n\n${list(factCheck.untrue.map((u) => `${u.row ? `Reference row ${u.row}: ` : ''}${u.claim} Untrue: ${u.truth} (${u.where})${u.row ? ' The row is recorded corrected.' : ''}`), 'No untrue claim found.')}`,
 )
 section(6, 'Depth pass', depth.rows.length ? `${depth.rows.length} paragraph(s) of mechanism, moved in revise round 1; see Reference rows.` : 'Every paragraph is the model; none moved.')
 section(
@@ -617,7 +664,7 @@ section(
     .join('\n'),
 )
 if (!escalated) section(10, 'Owner read', 'Not sampled. The owner replaces this with `Read`, the date and what they found, when they read the page.')
-sections.push(`## Reference rows\n\n${list(depth.rows.map((r) => `${r.row} → ${r.referencePage}`), 'None.')}`)
+sections.push(`## Reference rows\n\n${list(ROWS.map((r) => `${r.row} → ${r.referencePage}${r.corrected ? ' (corrected by pass 5)' : ''}`), 'None.')}`)
 
 const head = [`# ${TITLE} · record`, '', `Sitemap: ${A.page}`]
 if (escalated) {
