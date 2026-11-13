@@ -4,15 +4,16 @@ type: concept
 description: A block is one named piece of work with a typed input and output. Flows are built by putting blocks inside blocks.
 ---
 
+import Figure from "@site/src/components/Figure";
+import Blocks from "./figures/blocks.svg";
+
 # Blocks
 
 A customer writes in: "Where is my refund?" Before a reply goes back, a few things happen. The message is cleaned up. A model writes the answer, and may need to look up an order first. Each step is a different kind of work, and you want to change one without touching the others.
 
 A block is one of those steps: a named piece of work with a typed input and a typed output. You build a flow, the backend your app calls, by putting blocks together. Blocks can hold other blocks, so a whole pipeline is a block too.
 
-![A sequencer containing a handler and a generator, with a tool inside the generator](./figures/blocks.svg)
-
-*A flow's blocks, nested. Description for the site's `Figure`: One large box, a sequencer named handleTicket, contains two steps joined by an arrow. The first step is a handler named cleanMessage. The second is a generator named draftReply. Inside draftReply, highlighted, is a handler named lookUpOrder that the model can call as a tool. This page builds the flow one piece at a time.*
+<Figure svg={Blocks} caption="A flow's blocks, nested" description={"One large box, a sequencer named handleTicket, contains two steps joined by an arrow that means each step's output becomes the next step's input. The first step is a handler named cleanMessage, which trims long messages. The second is a generator named draftReply, which asks a model to write the reply. Inside draftReply, highlighted, is a handler named lookUpOrder that the model can call as a tool: a tool is a block too. Every box is a block, with typed input in and typed output out."} />
 
 ## The smallest flow
 
@@ -67,7 +68,7 @@ Look at the two kinds first. The handler is plain code with a schema for what go
 
 Then the connector. `cleanMessage` returns an object, and `draftReply` wants a string, so the second step begins with a small function that reshapes one into the other.
 
-`itemVisibility` controls what the user sees. An item is one thing a flow streams to the client, such as a message or a tool call. Without `itemVisibility`, a generator streams nothing. This one streams its reply and keeps it in the conversation. A handler is quiet in the same way until it emits through `ctx.emit`.
+`itemVisibility` sets what happens to the reply. An item is one thing a flow streams to the client, such as a message or a tool call. Here `client: true` streams the reply to the user and `history: true` keeps it in the conversation. The [items reference](../reference/items.md) lists the defaults for each kind of block.
 
 A flow exposes a block as an action, a call a client can make. `defineFlow({ kind: "support", actions: { reply: { block: handleTicket } } })` makes this one callable as `reply`, because a sequencer is a block like any other.
 
@@ -111,23 +112,20 @@ export const lookUpOrder = handler({
 
 Add `tools: [lookUpOrder]` to `draftReply`, importing `lookUpOrder` from `../tools/look-up-order`. The model decides when to call it from its name and description. The framework runs the block and gives the result back to the model.
 
-## What a block needs
-
-If `lookUpOrder` read a stored list of orders, it would declare that list as a resource, stored data a flow keeps. Including the block in a flow installs the list, so the block moves between flows on its own. [Resources](./resources.md) covers them.
+If `lookUpOrder` read a stored list of orders, it would declare that list as a resource, stored data a flow keeps. Any flow that includes the block gets the resource, with no extra setup. [Resources](./resources.md) covers them.
 
 ## What a block gets you
 
-You could write this whole reply as one function. Putting each step in its own block is what lets the framework do the rest.
+Each step in its own block gets you these:
 
-- **A finished block is a checkpoint.** Its output is recorded. On a store that persists, such as SQLite or Postgres, a run that dies after `cleanMessage` picks up at `draftReply`. The message is not cleaned twice.
-- **A block can wait.** A block can pause the run for a user, such as a manager approving a refund, and carry on when the answer arrives. The wait survives a restart.
+- **A finished block is a checkpoint.** Its output is recorded. On a store that persists, such as SQLite or Postgres, a run that dies after `cleanMessage` picks up at `draftReply` when you continue it. The message is not cleaned twice. The [blocks reference](../reference/blocks.md) covers how to continue a run.
+- **A block can wait.** A block can pause the run for a user, such as a manager approving a refund, and carry on when the answer arrives. The wait survives a restart on a store that persists.
 - **Every block is traced.** Each time a block runs, the run is recorded, and the DevTool shows it. You can see which step was slow or wrong without adding any logging.
 - **A block moves.** It knows only its own input and output. `lookUpOrder` can be a step in this flow, a tool in another, and a piece of something a teammate builds later.
 
-## What a block won't do
+## How it fits with the others
 
-- Be called as a function from your code. A block has no call method; the framework runs it, as an action, a step, a route or a tool.
-- Call other blocks from inside a handler. A handler that needs another block's output goes after that block in a sequencer.
+A block is not a function you call from your code. The framework runs it, as an action, a step, a route or a tool, and the [blocks reference](../reference/blocks.md) lists the limits that follow. A flow is the layer above: the set of blocks a client can reach.
 
 ## Next
 
