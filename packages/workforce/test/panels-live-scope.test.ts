@@ -16,8 +16,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { topic, type SubscribeOptions, type WireNotice, type WireTopic } from "@flow-state-dev/client";
-import { Roster } from "../src/react/panels/Roster";
-import { BoardColumns } from "../src/react/panels/BoardColumns";
+import { Roster } from "../src/react/components/Roster";
+import { BoardColumns } from "../src/react/components/BoardColumns";
 
 const SESSION = "s1";
 

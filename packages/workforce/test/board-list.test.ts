@@ -40,7 +40,7 @@ function hostClient<T extends { listCollectionResources: unknown }>(resources: T
   };
 }
 
-import { BoardList, boardListPropNames } from "../src/react/panels/BoardList";
+import { BoardList, boardListPropNames } from "../src/react/components/BoardList";
 import { FlowProvider } from "@flow-state-dev/react";
 
 const BOARD = "eng.feature.triage";

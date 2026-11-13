@@ -14,8 +14,8 @@
 import { describe, expect, it, afterEach, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
-import { WorkerDetail } from "../src/react/panels/WorkerDetail";
-import type { PanelItemSource } from "../src/react/panels/reads";
+import { WorkerDetail } from "../src/react/components/WorkerDetail";
+import type { PanelItemSource } from "../src/react/components/reads";
 
 afterEach(cleanup);
 

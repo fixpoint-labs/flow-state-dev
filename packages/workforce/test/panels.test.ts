@@ -23,8 +23,8 @@ import {
   boardColumnsPropNames,
   groupIntoColumns,
   BOARD_STATUS_COLUMNS
-} from "../src/react/panels/BoardColumns";
-import { Roster, rosterPropNames } from "../src/react/panels/Roster";
+} from "../src/react/components/BoardColumns";
+import { Roster, rosterPropNames } from "../src/react/components/Roster";
 
 afterEach(cleanup);
 

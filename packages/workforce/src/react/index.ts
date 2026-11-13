@@ -30,4 +30,4 @@ export {
   type PanelRowSource,
   type PanelItemSource,
   type PanelLiveSource,
-} from "./panels";
+} from "./components";

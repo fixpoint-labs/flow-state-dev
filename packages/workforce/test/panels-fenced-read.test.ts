@@ -15,8 +15,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, renderHook, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import type { FlowListEntry, SessionSummary } from "@flow-state-dev/client";
-import { usePanelItem, usePanelRows } from "../src/react/panels/reads";
-import { Roster } from "../src/react/panels/Roster";
+import { usePanelItem, usePanelRows } from "../src/react/components/reads";
+import { Roster } from "../src/react/components/Roster";
 import { FlowProvider } from "@flow-state-dev/react";
 
 afterEach(() => {
@@ -76,7 +76,7 @@ function sessionSource() {
   const { calls, fn } = heldMethod<SessionSummary[]>();
   return { calls, listSessions: fn, sessions: { list: fn } };
 }
-function rowSource() {
+function entrySource() {
   const { calls, fn } = heldMethod<ReturnType<typeof page>>();
   return { calls, listCollectionResources: fn, resources: { listCollectionResources: fn } };
 }
@@ -86,7 +86,7 @@ function itemSource() {
 }
 
 const kinds = (flows: readonly FlowListEntry[]) => flows.map((f) => f.kind);
-const topics = (rows: readonly { topic: string }[]) => rows.map((r) => r.topic);
+const topics = (entries: readonly { topic: string }[]) => entries.map((r) => r.topic);
 
 // ---------------------------------------------------------------------------
 // The flow list
@@ -99,7 +99,7 @@ const topics = (rows: readonly { topic: string }[]) => rows.map((r) => r.topic);
 
 describe("usePanelRows · late and racing responses", () => {
   it("BR-1 · discards a response that lands after the session changed", async () => {
-    const source = rowSource();
+    const source = entrySource();
     const { result, rerender } = renderHook(
       ({ sessionId }) => usePanelRows(source as never, sessionId, "roster", undefined, "Panel failed"),
       { initialProps: { sessionId: "s1" } }
@@ -115,7 +115,7 @@ describe("usePanelRows · late and racing responses", () => {
   });
 
   it("BR-2 · an older read resolving last never overwrites a newer one", async () => {
-    const source = rowSource();
+    const source = entrySource();
     const { result } = renderHook(() =>
       usePanelRows(source as never, "s1", "roster", undefined, "Panel failed")
     );
@@ -131,7 +131,7 @@ describe("usePanelRows · late and racing responses", () => {
   });
 
   it("BR-3 · a failure after a newer read started is discarded", async () => {
-    const source = rowSource();
+    const source = entrySource();
     const { result } = renderHook(() =>
       usePanelRows(source as never, "s1", "roster", undefined, "Panel failed")
     );
@@ -146,7 +146,7 @@ describe("usePanelRows · late and racing responses", () => {
   });
 
   it("BR-4 · never returns the previous session's rows, not even for one render", async () => {
-    const source = rowSource();
+    const source = entrySource();
     const seen: Array<{ sessionId: string; rows: string[] }> = [];
     const { result, rerender } = renderHook(
       ({ sessionId }) => {
@@ -171,7 +171,7 @@ describe("usePanelRows · late and racing responses", () => {
 
 describe("usePanelRows · what it shows and when it asks", () => {
   it("BR-7 · a failure that is not an Error shows the panel's own text", async () => {
-    const source = rowSource();
+    const source = entrySource();
     const { result } = renderHook(() =>
       usePanelRows(source as never, "s1", "roster", undefined, "Failed to load the roster")
     );
@@ -181,7 +181,7 @@ describe("usePanelRows · what it shows and when it asks", () => {
   });
 
   it("BR-10 · a host re-render with the same identity sends no new request", async () => {
-    const source = rowSource();
+    const source = entrySource();
     const { rerender } = renderHook(
       // A new render each time, with the same values: nothing in the identity moved.
       (_: { tick: number }) => usePanelRows(source as never, "s1", "roster", 25, "Panel failed"),
@@ -272,7 +272,7 @@ describe("a panel with no client of its own", () => {
           })
       )
     );
-    const workerRow = (workerId: string) => ({
+    const workerEntry = (workerId: string) => ({
       topic: workerId,
       clientData: { workerId, flow: "agent", instructions: null }
     });
@@ -288,8 +288,8 @@ describe("a panel with no client of its own", () => {
     await waitFor(() => expect(pending).toHaveLength(2));
     expect(pending.map((p) => p.origin)).toEqual(["https://a.example", "https://b.example"]);
 
-    await act(async () => pending[1]!.release({ items: [workerRow("from-b")] }));
-    await act(async () => pending[0]!.release({ items: [workerRow("from-a")] }));
+    await act(async () => pending[1]!.release({ items: [workerEntry("from-b")] }));
+    await act(async () => pending[0]!.release({ items: [workerEntry("from-a")] }));
     await settle();
 
     const workers = [...document.querySelectorAll("[data-worker-id]")].map((el) =>
