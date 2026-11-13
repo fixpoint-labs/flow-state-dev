@@ -240,7 +240,7 @@ the clean ones trip any.
 3. Every `class` is one `page.css` defines under `.drawing`.
 4. No `stroke-width`, `stroke-dasharray` or `font-family` attribute. Classes set them.
 5. No `<image>`, `<foreignObject>`, `<a>`, `<script>`, `<tspan>`, gradient, filter, `opacity`,
-   `transform` on text, or `textLength`.
+   `transform` on text or on a group around it, `textLength`, `<!DOCTYPE>` or `<!ENTITY>`.
 6. `<defs>` holds exactly the `hatch` pattern and the `ah` marker, as printed above.
 
 **Canvas and text**

@@ -15,7 +15,7 @@
  *   `<Figure>` own those), and uses only the drawing classes page.css defines.
  * - fill, attr, element: a diagram's only `fill` attribute is the hatch, it sets no
  *   stroke-width, dash or font by attribute, and it has no image, link, script, tspan,
- *   gradient, filter, opacity, transformed text or `textLength`.
+ *   gradient, filter, opacity, text under a transform, `textLength`, DOCTYPE or ENTITY.
  *
  * A figure under `docs/contributing/docs-revamp/`, in any folder, and the figure fixtures, are
  * also held to the rest of the figure standard, `docs/contributing/user-docs-figures.md` →
@@ -160,7 +160,12 @@ function parseSvg(text) {
 
 const descendants = (node) => node.children.flatMap((c) => [c, ...descendants(c)]);
 const classesOf = (node) => (node.attrs.class ?? "").split(/\s+/).filter(Boolean);
-const num = (node, attr) => Number(node.attrs[attr] ?? 0);
+/** A coordinate or length: a plain number or one in px; NaN for anything else, which `lintFigure` reports. */
+const num = (node, attr) => {
+  const value = (node.attrs[attr] ?? "0").trim();
+  return /^[-+]?(?:\d+\.?\d*|\.\d+)(?:px)?$/.test(value) ? parseFloat(value) : NaN;
+};
+const GEOMETRY = ["x", "y", "width", "height", "x1", "y1", "x2", "y2"];
 /** A text element's characters as they render: entities decoded by `parseSvg`, CDATA as written. */
 const content = (node) => node.text.trim();
 function within(node, test) {
@@ -173,6 +178,10 @@ const holds = (box, x, y) =>
 /** Rules 2, 4 and 5 of the figure standard, which every diagram keeps: fills, attributes, elements. */
 function lintSvgAttributes(file, text, tree, out) {
   const BANNED = /^(?:image|foreignObject|a|script|tspan|linearGradient|radialGradient|filter)$/;
+  // An entity can hide any markup (a <script> included) from this lint's parser, and SVGO expands it on the site.
+  for (const m of text.matchAll(/<!(DOCTYPE|ENTITY)\b/gi)) {
+    out.push(finding(file, text, m.index, "element", `<!${m[1]}> has no place in a drawing: its entities can carry markup the lint never sees`));
+  }
   for (const node of descendants(tree)) {
     const at = (rule, detail) => out.push(finding(file, text, node.index, rule, detail));
     if (node.attrs.fill !== undefined && node.attrs.fill !== "url(#hatch)") {
@@ -185,7 +194,9 @@ function lintSvgAttributes(file, text, tree, out) {
     for (const attr of ["opacity", "fill-opacity", "stroke-opacity", "filter", "textLength"]) {
       if (node.attrs[attr] !== undefined) at("element", `a ${attr} attribute has no place in a drawing`);
     }
-    if (node.name === "text" && node.attrs.transform !== undefined) at("element", "a transform on text: text never rotates");
+    if (node.name === "text" && (node.attrs.transform !== undefined || within(node, (p) => p.attrs.transform !== undefined))) {
+      at("element", "a transform on text or a group around it: text never rotates");
+    }
   }
 }
 
@@ -247,6 +258,12 @@ function lintFigure(file, text, tree, out) {
     at(svg, "canvas", `viewBox "${svg.attrs.viewBox ?? ""}" is not 0 0 920 H with a whole-number H`);
   }
   for (const attr of ["width", "height"]) if (svg.attrs[attr] !== undefined) at(svg, "canvas", `the root has a ${attr}; the page sizes it`);
+  // Every geometry check reads these; one it cannot read is reported, never skipped.
+  for (const node of all) {
+    for (const attr of GEOMETRY.filter((a) => node.attrs[a] !== undefined && Number.isNaN(num(node, a)))) {
+      at(node, "canvas", `${attr}="${node.attrs[attr]}" is not a number in canvas units (unitless or px)`);
+    }
+  }
 
   for (const node of all.filter((n) => n.name === "text")) {
     // 8. One text class, plus on-hl or x; lb and plate in capitals.
@@ -263,6 +280,10 @@ function lintFigure(file, text, tree, out) {
     // 9. It fits: the line ends by x=892, and 12 inside the smallest box that holds its start.
     const width = [...words].length * UNITS[kind];
     const x = num(node, "x");
+    const anchor = node.attrs["text-anchor"];
+    if (anchor !== undefined && !["start", "middle", "end"].includes(anchor)) {
+      at(node, "text-fit", `text-anchor="${anchor}" is not start, middle or end, so the line's extent cannot be checked`);
+    }
     const end = x - ({ middle: width / 2, end: width }[node.attrs["text-anchor"]] ?? 0) + width;
     if (end > 892) at(node, "text-fit", `"${words}" ends at x=${end.toFixed(1)}, past 892`);
     const box = all
@@ -364,9 +385,13 @@ function lintFigureEmbeds(file, text, out) {
   for (const m of text.matchAll(/Description for the site's/g)) {
     out.push(finding(file, text, m.index, "embed", "a note about how the figure will be embedded: the description goes in <Figure>"));
   }
+  // Where each <Figure>'s `svg={…}` value opens: the one place an imported SVG may be used.
+  const svgProps = new Set();
   // The opening tag, self-closed or not; a `>` inside a quoted prop does not end it.
   for (const m of text.matchAll(/<Figure\b(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^>"'])*>/g)) {
     const at = (detail) => out.push(finding(file, text, m.index, "embed", detail));
+    const svgProp = /\bsvg\s*=\s*(?=\{)/.exec(m[0]);
+    if (svgProp) svgProps.add(m.index + svgProp.index + svgProp[0].length);
     // A string prop in any JSX form: `name="…"`, `name='…'` or `name={"…"}` / `name={'…'}`, spaces around `=` free.
     const prop = (name) => {
       const s = new RegExp(`\\b${name}\\s*=\\s*\\{?\\s*(?:"((?:[^"\\\\]|\\\\.)*)"|'((?:[^'\\\\]|\\\\.)*)')`).exec(m[0]);
@@ -378,6 +403,15 @@ function lintFigureEmbeds(file, text, out) {
     if (caption === null) at("<Figure> has no caption");
     else if (caption.length > 60 || caption.endsWith(".")) at(`caption "${caption}" is over 60 characters or ends in a full stop`);
     if (words < 30) at(`the description is ${words} words: it says what the whole figure shows in 30 or more`);
+  }
+  // An imported SVG goes on the page only as a <Figure>'s svg: not as its own component, nor in any other expression.
+  for (const imp of text.matchAll(/^import\s+([A-Za-z_$][\w$]*)\s+from\s+["'][^"']*\.svg["']/gm)) {
+    const name = imp[1];
+    for (const m of text.matchAll(new RegExp(`<${name}\\b|\\{\\s*${name}\\s*\\}`, "g"))) {
+      if (!svgProps.has(m.index)) {
+        out.push(finding(file, text, m.index, "embed", `${name} is used outside a <Figure>'s svg: use <Figure svg={${name}} caption description />`));
+      }
+    }
   }
 }
 

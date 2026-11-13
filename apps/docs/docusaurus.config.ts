@@ -97,6 +97,8 @@ const config: Config = {
                   },
                 },
                 { name: "prefixIds", params: { prefixClassNames: false } },
+                // Defence in depth behind the brand lint's ban: no script reaches the page.
+                { name: "removeScriptElement" },
               ],
             },
           },
