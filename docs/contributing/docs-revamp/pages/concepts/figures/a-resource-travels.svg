@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 432">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="84" width="220" height="172"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="106">A BLOCK</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="128">draftReply</text>
+<rect class="hl" fill="#e8f551" x="42" y="144" width="192" height="56"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="144" width="192" height="56"/>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="56" y="167">resources: {</text>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="56" y="187">  refundPolicy }</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="224">the declaration goes</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="240">wherever the block goes</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="312" y="24" width="300" height="130"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="326" y="46">A FLOW</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="326" y="68">support</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="326" y="84" width="130" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="338" y="110">draftReply</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="468" y="84" width="130" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="480" y="110">refundPolicy</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="312" y="178" width="300" height="130"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="326" y="200">A FLOW</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="326" y="222">billing</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="326" y="238" width="130" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="338" y="264">draftReply</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="468" y="238" width="130" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="480" y="264">refundPolicy</text>
+<rect fill="url(#hatch)" x="676" y="84" width="216" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="676" y1="94.5" x2="892" y2="94.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="676" y="84" width="216" height="172"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="690" y="116">STORED ONCE</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="690" y="140">org/refundPolicy</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="690" y="164">both flows read it</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="248" y1="100" x2="311" y2="100" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="612" y1="100" x2="675" y2="100" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="248" y1="240" x2="311" y2="240" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="612" y1="240" x2="675" y2="240" marker-end="url(#ah)"/>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="332" x2="920" y2="332"/>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="358">01</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="358">A block's resources come with it. Neither flow lists refundPolicy in its own definition.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="383">02</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="383">At org scope the stored document is shared: both flows read the same one.</text>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="410" x2="54" y2="410" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="414">INSTALLS · READS</text>
+<rect fill="url(#hatch)" x="214" y="404" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="214" y="404" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="248" y="414">OUTLIVES THE REQUEST</text>
+<rect class="hl" fill="#e8f551" x="430" y="404" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="464" y="414">THE DECLARATION</text>
+</g>
+</svg>
