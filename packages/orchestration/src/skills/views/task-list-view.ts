@@ -9,7 +9,7 @@
  */
 import { defineView, handler } from "@flow-state-dev/core";
 import {
-  answerTaskList,
+  taskListEntriesFor,
   LIST_TASKS_DESCRIPTION,
   listTasksInputSchema,
   taskListOutputSchema,
@@ -31,7 +31,7 @@ function taskListView(collectionId: string, resolve: TaskCollectionResolver) {
     description: LIST_TASKS_DESCRIPTION,
     inputSchema: listTasksInputSchema,
     outputSchema: taskListOutputSchema,
-    execute: async (input, ctx) => answerTaskList(collectionId, await resolve(ctx), input, ctx.view)
+    execute: async (input, ctx) => taskListEntriesFor(collectionId, await resolve(ctx), input, ctx.view)
   });
   return defineView({ scope: "session", block, key: (task) => task.id, description: block.description });
 }

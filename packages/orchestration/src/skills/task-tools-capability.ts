@@ -1065,7 +1065,7 @@ export const taskListOutputSchema = z.array(listedTaskSchema);
  * tasks touch (`view.partial`); anything else answers whole. The view's block
  * lives with the view, off the task surface: it is never a model's tool.
  */
-export function answerTaskList(
+export function taskListEntriesFor(
   collectionId: string,
   collection: TaskCollectionRef | undefined,
   input: z.infer<typeof listTasksInputSchema>,
