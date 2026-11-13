@@ -268,7 +268,11 @@ clean one trips any.
 5. No `<image>`, `<foreignObject>`, `<a>`, `<script>`, `<tspan>`, gradient, filter, `opacity`,
    `textLength`, `<!DOCTYPE>` or `<!ENTITY>`. A figure is drawn in canvas coordinates and takes no
    transforms: no `transform` on any element, no `<svg>` inside the root, and text is placed by one `x` and one `y`, with no
-   `dx`, `dy` or `rotate`. The site's published diagrams, until they are redrawn, are held only to
+   `dx`, `dy` or `rotate`. A figure is drawn with `<svg>` (the root only), `<defs>`, `<pattern>`
+   and `<marker>` (inside the `<defs>` only), `<g>`, `<rect>`, `<line>`, `<path>` and `<text>`, and
+   no other element: no `<use>`, `<symbol>`, `<switch>`, `<clipPath>` or `<mask>`. No element has an
+   `href` or `xlink:href`, and only the root and the `ah` marker have a `viewBox` or
+   `preserveAspectRatio`. The site's published diagrams, until they are redrawn, are held only to
    no `transform` on text or on a group around it.
 6. `<defs>` holds exactly the `hatch` pattern and the `ah` marker, as printed above.
 

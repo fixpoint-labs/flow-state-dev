@@ -52,6 +52,8 @@ export default [
   svg("element.nested-svg", "element", NAME, `<svg x="500">${NAME}</svg>`),
   svg("element.transform-ancestor", "element", NAME, `<g transform="rotate(90 452 56)">${NAME}</g>`),
   svg("element.transform-shape", "element", DASH_BOX, `<g transform="translate(0 0)">${DASH_BOX}</g>`),
+  svg("element.use", "element", NAME, `${NAME.replace('<text class="c"', '<text id="drain" class="c"')}\n<use href="#drain" x="500"/>`),
+  svg("element.switch", "element", NAME, `<switch>${NAME}</switch>`),
   // 6. Defs.
   svg("defs", "defs", "</defs>", '<pattern id="dots" width="4" height="4"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="4"/></pattern>\n</defs>'),
   svg("defs.commented", "defs", ["<defs>", "</defs>"], ["<!-- <defs>", "</defs> -->"]),

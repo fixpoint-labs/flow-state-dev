@@ -29,7 +29,9 @@
  *
  * - defs (6), canvas (7), text-class (8), text-fit (9), arrow (10), key (11),
  *   key-marks (12), hatch (13), highlight (14), numbering (15).
- * - element (5, in full): no transform anywhere, and no dx, dy or rotate on text.
+ * - element (5, in full): no transform anywhere, and no dx, dy or rotate on text; only the
+ *   elements a figure is drawn with (`FIGURE_ELEMENTS`), no href, and a viewBox only on the
+ *   root and the defs' marker.
  * - embed (16): the revamp's pages (`pages/` and `pilot/`) put each figure on the page
  *   as a `<Figure svg caption description />` with a short caption and a full description. Pages
  *   are read with the MDX parser the site uses; one that does not parse fails.
@@ -296,6 +298,9 @@ const shape = (node) =>
 const DEFS = shape(parseSvg(DEFS_TEXT).children[0]);
 // Each text class, and its width in units per character.
 const UNITS = { lb: 7.5, nm: 9, sub: 6.3, c: 7.5, t: 7.2, n: 6.6, plate: 7.3 };
+// The elements a held figure is drawn with, as the standard's figures use them (svg only as the root).
+const FIGURE_ELEMENTS = new Set(["svg", "defs", "pattern", "marker", "g", "rect", "line", "path", "text"]);
+const DEFS_ONLY = new Set(["pattern", "marker"]);
 const BOXES = new Set(["solid", "thin", "dash"]);
 
 /** The mark a shape draws, as the key names it: hatch, dash, hl, ln, ln-dash or x (red); null for none. */
@@ -370,6 +375,18 @@ function lintFigure(file, text, tree, out) {
   for (const node of all) {
     // One canvas: a nested <svg> is a new viewport, so the coordinates inside it are not the canvas's.
     if (node.name === "svg") at(node, "element", "a nested <svg>: a figure is one canvas, drawn in its coordinates");
+    // Only the elements a figure is drawn with; anything else (use, symbol, switch, clipPath, mask…) can draw or
+    // move what the checks cannot see. The pattern and marker live only in the defs, which rule 6 fixes exactly.
+    else if (!FIGURE_ELEMENTS.has(node.name)) at(node, "element", `<${node.name}> is not one of the elements a figure is drawn with: ${[...FIGURE_ELEMENTS].join(", ")}`);
+    else if (DEFS_ONLY.has(node.name) && !within(node, (p) => p.name === "defs")) at(node, "element", `a <${node.name}> outside the <defs>`);
+    // References and viewports place content away from its own x and y: no href, and a viewBox only on the root
+    // and the defs' marker.
+    for (const attr of ["href", "xlink:href"].filter((a) => node.attrs[a] !== undefined)) {
+      at(node, "element", `an ${attr} on <${node.name}>: a figure draws everything where it stands`);
+    }
+    for (const attr of ["viewBox", "preserveAspectRatio"].filter((a) => node.attrs[a] !== undefined)) {
+      if (!(node.name === "marker" && within(node, (p) => p.name === "defs"))) at(node, "element", `a ${attr} on <${node.name}>: only the root sets the viewport`);
+    }
     // A figure is drawn in canvas coordinates: a transform would move a shape away from the coordinates every check reads.
     if (node.attrs.transform !== undefined || /(?:^|;)\s*transform\s*:/.test(node.attrs.style ?? "")) {
       at(node, "element", `a transform on <${node.name}>: a figure is drawn in canvas coordinates and takes no transforms`);
