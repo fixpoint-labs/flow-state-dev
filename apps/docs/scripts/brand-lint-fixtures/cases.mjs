@@ -127,7 +127,9 @@ export default [
 
   // 14. Highlighter.
   svg("highlight", "highlight", "2 highlighted shapes: a figure has one", NAME, `<rect class="hl" fill="#e8f551" x="446" y="40" width="100" height="24"/>\n${NAME.replace('class="c"', 'class="c on-hl"')}`),
-  svg("highlight.on-hl", "highlight", 'on-hl text "board.drain" is not over the highlighter', NAME, NAME.replace('class="c"', 'class="c on-hl"')),
+  svg("highlight.on-hl", "highlight", 'on-hl text "board.drain" runs from', NAME, NAME.replace('class="c"', 'class="c on-hl"')),
+  // Starts on the highlighter and runs past its right edge (Codex's case: only the anchor was checked).
+  svg("highlight.on-hl-overflow", "highlight", 'on-hl text "compare" runs from x=150.0', 'x="42" y="84">compare', 'x="150" y="84">compare'),
 
   // 15. Numbering.
   svg("numbering", "numbering", 'note "02" where 01 comes next', NOTE, NOTE.replace(">01<", ">02<")),

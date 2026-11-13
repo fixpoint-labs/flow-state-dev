@@ -478,6 +478,8 @@ function lintFigure(file, text, tree, out) {
     }
   }
 
+  // Each text's rendered span from rule 9, which rule 14 checks against the highlighter.
+  const spans = new Map();
   for (const node of all.filter((n) => n.name === "text")) {
     // 8. One text class, plus on-hl or x; lb and plate in capitals.
     const cls = classesOf(node);
@@ -501,6 +503,7 @@ function lintFigure(file, text, tree, out) {
     }
     const start = x - ({ middle: width / 2, end: width }[chain[0]] ?? 0);
     const end = start + width;
+    spans.set(node, [start, end]);
     if (start < 28) at(node, "text-fit", `"${words}" starts at x=${start.toFixed(1)}, inside the 28 left margin`);
     if (end > 892) at(node, "text-fit", `"${words}" ends at x=${end.toFixed(1)}, past 892`);
     // Its box: the smallest that holds where the line starts, or else the smallest its rendered span overlaps.
@@ -575,7 +578,12 @@ function lintFigure(file, text, tree, out) {
   const hl = drawing.filter((n) => classesOf(n).includes("hl"));
   for (const node of hl.slice(1)) at(node, "highlight", `${hl.length} highlighted shapes: a figure has one`);
   for (const node of all.filter((n) => n.name === "text" && classesOf(n).includes("on-hl"))) {
-    if (!hl.some((r) => holds(r, num(node, "x"), num(node, "y")))) at(node, "highlight", `on-hl text "${content(node)}" is not over the highlighter`);
+    // The whole rendered span, not only the anchor: ink past the highlighter's edge is dark on Night's dark page.
+    const [start, end] = spans.get(node) ?? [num(node, "x"), num(node, "x")];
+    const y = num(node, "y");
+    if (!hl.some((r) => holds(r, start, y) && holds(r, end, y))) {
+      at(node, "highlight", `on-hl text "${content(node)}" runs from x=${start.toFixed(1)} to x=${end.toFixed(1)}, not all over the highlighter`);
+    }
   }
 
   // 15. One numbering: notes count up from 01, each numbered plate has its note, and no layer numbers beside notes.

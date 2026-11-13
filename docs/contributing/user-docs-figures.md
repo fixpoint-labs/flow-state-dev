@@ -319,7 +319,7 @@ if a rule is tripped by no fixture, or if a clean one (a case with `rule` and `e
 
 13. Hatching is a band and nothing else: a rect 10 tall that shares its `x`, `y` and `width`
     with a `solid` or `thin` rect. Never a whole-shape fill, and never on a `dash` rect.
-14. At most one `hl` shape outside the key. `on-hl` appears only on text inside it.
+14. At most one `hl` shape outside the key. `on-hl` appears only on text inside it: the whole line, measured as in rule 9, not only its anchor.
 15. One numbering. Plates numbered `01`, `02` on arrows each have a note with the same `n`, and
     notes count up from `01` without a gap. Numbers are not used for anything else, except the
     `01 ·` prefix on layer labels, which a figure with numbered notes does not use.
