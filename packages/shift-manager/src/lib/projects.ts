@@ -120,15 +120,15 @@ const scopeOf = (visibility: ProjectVisibility) => (visibility === "private" ? "
  */
 export async function readProject(client: Client, address: ProjectAddress, now = Date.now()): Promise<ProjectRead | null> {
   const scope = scopeOf(address.visibility);
-  const [row, entries] = await Promise.all([
+  const [stored, entries] = await Promise.all([
     client.resource({ scope, pattern: PROJECTS_PATTERN }).entry(`projects/${address.id}`).read(),
     // The project's one prefix, through the snapshot's pager: its page ceiling and repeated-cursor check.
-    readEveryScopeEntry(client, scope, WORKSTREAMS_PATTERN, `workstreams/${address.id}/`).then((rows) =>
-      rows.map((row) => toEntry((row as { storageKey?: string }).storageKey ?? `workstreams/${row.topic}`, row.clientData)).filter((entry): entry is Omit<WorkstreamEntry, "stale"> => entry !== undefined),
+    readEveryScopeEntry(client, scope, WORKSTREAMS_PATTERN, `workstreams/${address.id}/`).then((scopeEntries) =>
+      scopeEntries.map((scopeEntry) => toEntry((scopeEntry as { storageKey?: string }).storageKey ?? `workstreams/${scopeEntry.topic}`, scopeEntry.clientData)).filter((entry): entry is Omit<WorkstreamEntry, "stale"> => entry !== undefined),
     ),
   ]);
-  if (row.value === null) return null;
-  const project = toProject(row.value, address.visibility);
+  if (stored.value === null) return null;
+  const project = toProject(stored.value, address.visibility);
   if (project === undefined) return null;
   return withProgress(project, entries, now);
 }
