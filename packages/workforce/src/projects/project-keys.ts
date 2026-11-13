@@ -11,7 +11,7 @@ export const PROJECTS_PATTERN = "projects/*" as const;
  * The flow a host registers its project writes on (`defineProjectBlocks().actions`),
  * and the projects collections' `runBy`: a client's `createProject` or
  * `setBrief` runs here. **Pinned**: a host that serves projects to a client
- * registers its projects flow at this kind.
+ * registers its projects flow under this name.
  */
 export const PROJECTS_FLOW = "projects" as const;
 

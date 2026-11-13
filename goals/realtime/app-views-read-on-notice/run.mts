@@ -63,7 +63,7 @@ import { createLabAdapter, type ConversationView, type LabTalk } from "../../../
 import { buildKitchenSinkWorkforce } from "../../../apps/kitchen-sink/workforce/hire.ts";
 import { followSessionItems, type SessionItems } from "../../../packages/shift-manager/src/lib/run.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
-import { projectReaderOf, useProjectRead } from "../../../packages/shift-manager/src/lib/projects.ts";
+import { useProjectRead } from "../../../packages/shift-manager/src/lib/projects.ts";
 import { conversationBoardRef } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { TaskProvider, useTask } from "../../../packages/shift-manager/src/lib/task.tsx";
 
@@ -327,7 +327,7 @@ function mountViews(on: Host, sessionId: string) {
     const { snapshot, refresh } = useLab();
     labRead = refresh;
     const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot : undefined;
-    const { read } = useProjectRead({ visibility: "shared", id: PROJECT }, loaded === undefined ? null : projectReaderOf(loaded.sessions), loaded?.readAt ?? 0);
+    const { read } = useProjectRead({ visibility: "shared", id: PROJECT }, loaded !== undefined, loaded?.readAt ?? 0);
     const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries.map((e) => e.id) : undefined;
     const key = entries === undefined ? null : entries.join(",");
     useEffect(() => {
@@ -368,7 +368,7 @@ function mountViews(on: Host, sessionId: string) {
   };
 }
 
-/** Before the views mount: alice's roster session (Shift Manager's project reader) and the shared project. */
+/** Before the views mount: alice's roster and the shared project. */
 async function opened(writer: Client, sessionId: string): Promise<void> {
   await createWorkforceClient(writer).roster();
   await (await writer.flow("desk").send("openProject", {}, { sessionId })).wait();
