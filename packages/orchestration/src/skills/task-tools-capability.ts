@@ -52,7 +52,7 @@
  */
 
 import { defineCapability, FlowError, handler, SuspensionTimeoutError, type DefinedCapability } from "@flow-state-dev/core";
-import type { ActionConfig, BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockContext, BlockDefinition, ViewRunContext } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { discardAttachmentsForUser, keepAttachmentsForUser } from "@flow-state-dev/core/internal";
@@ -984,14 +984,14 @@ interface BuildTaskToolsOptions {
  */
 // FIX-2625: `listTasks` and the board's task-list view list rows through one
 // code path, so a view's partial answer equals its whole one row for row.
-const LIST_TASKS_DESCRIPTION =
+export const LIST_TASKS_DESCRIPTION =
   "List tasks on your delegation board, optionally filtered by status, assignee, or the task " +
   "whose request filed them (filedByTask). Each listed task carries its status note, never its output: " +
   "read one task's output with getTask. Don't list to wait for a task you filed to end: end " +
   "your turn, and its ending wakes you.";
 
 /** What `listTasks` and the board's task-list view take: optional filters. */
-const listTasksInputSchema = z.object({
+export const listTasksInputSchema = z.object({
   status: z
     .enum(["pending", "in_progress", "held", "completed", "errored", "cancelled"])
     .optional(),
@@ -1055,35 +1055,34 @@ function tasksShowing(board: readonly Task[], ids: readonly string[]): Task[] | 
   return board.filter((t) => chains.has(t.followUpOf ?? t.id));
 }
 
+/** What the board's task-list view (`views/task-list-view.ts`) answers: the rows `listTasks_<suffix>` lists. */
+export const taskListOutputSchema = z.array(listedTaskSchema);
+
 /**
- * One board's rows as its task-list view answers them (`views/task-list-view.ts`):
- * the rows `listTasks_<suffix>` lists, from the same code, keyed by task id.
- * A board notice for this board, on an unfiltered list, answers just the rows
- * its tasks touch (`ctx.view.partial`); anything else answers whole.
+ * One board's rows as its task-list view answers them: the rows
+ * `listTasks_<suffix>` lists, from the same code, keyed by task id. A board
+ * notice for this board, on an unfiltered list, answers just the rows its
+ * tasks touch (`view.partial`); anything else answers whole. The view's block
+ * lives with the view, off the task surface: it is never a model's tool.
  */
-export function taskListBlockFor(collectionId: string, resolve: TaskCollectionResolver) {
-  const listedTasks = z.array(listedTaskSchema);
-  return handler({
-    name: `listTasks_${taskToolSuffix(collectionId)}`,
-    description: LIST_TASKS_DESCRIPTION,
-    inputSchema: listTasksInputSchema,
-    outputSchema: listedTasks,
-    execute: async (input, ctx) => {
-      const collection = await resolve(ctx);
-      // The list's refusal (no board this session can file on) is the view's, by its own name.
-      if (!collection) {
-        throw new FlowError(`The task list can't be read here: ${noBoardError.error}`, { code: noBoardError.error, retryable: false });
-      }
-      const board = collection.list();
-      const filter = taskListFilter(input);
-      const changed = ctx.view?.changed;
-      if (changed?.kind === "board" && changed.topic.resource === collectionId && filter === undefined) {
-        const touched = tasksShowing(board, changed.ids);
-        if (touched !== undefined) return ctx.view!.partial(listedTaskEntries(touched, board, true));
-      }
-      return listedTaskEntries(collection.list(filter), board, true);
-    },
-  });
+export function answerTaskList(
+  collectionId: string,
+  collection: TaskCollectionRef | undefined,
+  input: z.infer<typeof listTasksInputSchema>,
+  view: ViewRunContext | undefined
+): z.infer<typeof taskListOutputSchema> {
+  // The list's refusal (no board this session can file on) is the view's, by its own name.
+  if (!collection) {
+    throw new FlowError(`The task list can't be read here: ${noBoardError.error}`, { code: noBoardError.error, retryable: false });
+  }
+  const board = collection.list();
+  const filter = taskListFilter(input);
+  const changed = view?.changed;
+  if (changed?.kind === "board" && changed.topic.resource === collectionId && filter === undefined) {
+    const touched = tasksShowing(board, changed.ids);
+    if (touched !== undefined) return view!.partial(listedTaskEntries(touched, board, true));
+  }
+  return listedTaskEntries(collection.list(filter), board, true);
 }
 
 function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskToolsOptions = {}) {

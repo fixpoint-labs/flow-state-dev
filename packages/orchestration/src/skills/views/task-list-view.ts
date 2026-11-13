@@ -7,8 +7,16 @@
  * never a tool a turn is offered, and the task surface's checks read the
  * tools' files for what a turn may be offered.
  */
-import { defineView } from "@flow-state-dev/core";
-import { taskListBlockFor, type TaskCollectionResolver } from "../task-tools-capability";
+import { defineView, handler } from "@flow-state-dev/core";
+import {
+  answerTaskList,
+  LIST_TASKS_DESCRIPTION,
+  listTasksInputSchema,
+  taskListOutputSchema,
+  type TaskCollectionResolver
+} from "../task-tools-capability";
+import { taskToolSuffix } from "../task-tool-suffix";
+import { taskActionName } from "../../inbox/client";
 
 // FIX-2625.
 /**
@@ -17,7 +25,14 @@ import { taskListBlockFor, type TaskCollectionResolver } from "../task-tools-cap
  * the same list code as the action. See {@link taskToolViews}.
  */
 function taskListView(collectionId: string, resolve: TaskCollectionResolver) {
-  const block = taskListBlockFor(collectionId, resolve);
+  // Named as a view, never as the task surface's `listTasks_<suffix>` tool: no model is offered it.
+  const block = handler({
+    name: `task-list-view-${taskToolSuffix(collectionId)}`,
+    description: LIST_TASKS_DESCRIPTION,
+    inputSchema: listTasksInputSchema,
+    outputSchema: taskListOutputSchema,
+    execute: async (input, ctx) => answerTaskList(collectionId, await resolve(ctx), input, ctx.view)
+  });
   return defineView({ scope: "session", block, key: (task) => task.id, description: block.description });
 }
 
@@ -38,6 +53,6 @@ export type TaskListView = ReturnType<typeof taskListView>;
  * is the action's, not this one's.
  */
 export function taskToolViews(collectionId: string, resolve: TaskCollectionResolver): Record<string, TaskListView> {
-  const view = taskListView(collectionId, resolve);
-  return { [view.block.name]: view };
+  // Addressed as the action is (`taskListViewRef`): `listTasks_<suffix>`.
+  return { [taskActionName("listTasks", collectionId)]: taskListView(collectionId, resolve) };
 }
