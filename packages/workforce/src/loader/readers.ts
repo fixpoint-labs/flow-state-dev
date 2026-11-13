@@ -4,24 +4,14 @@
  * `readWorkforceFolder` alone.
  */
 
-
-export {
-  readDeclaredRoster,
-  type DeclaredProblem,
-  type DeclaredProblemLayer,
-  type DeclaredRoster,
-} from "./read-declared-roster";
-
 export {
   readWorkforce,
-  type ReadWorkforceResult,
 } from "./read-workforce";
 
 export {
   readWorkforceDirectory,
   type ReadWorkforceDirectoryResult,
   type WorkerManifestError,
-  type WorkerManifestErrorKind,
 } from "./read-workforce-directory";
 
 export {
@@ -33,7 +23,6 @@ export {
 } from "./read-worker-skills";
 
 export {
-  readTeamsDirectory,
   type ReadTeamsDirectoryResult,
   type TeamManifestError,
   type TeamManifestErrorKind,
@@ -57,18 +46,22 @@ export {
 
 // The walk primitives under `walkTeams` (`classify`, `openRoot`,
 // `IGNORED_ENTRIES`, ...) are the engine's: `@flow-state-dev/engine/folder`.
-export { walkTeams, type WalkedTeam } from "./structural-directory";
+export {
+  walkTeams,
+  type WalkedTeam,
+} from "./structural-directory";
 
-export { validateSegment, type SegmentLabel } from "./segments";
+export {
+  validateSegment,
+  type SegmentLabel,
+} from "./segments";
 
 export {
   DOCUMENT_EXTENSION,
-  DOCUMENT_SLOTS,
   REFERENCES_SLOT,
   RESOURCES_SLOT,
   WORKERS_LEVEL,
   type DocumentSlot,
-  mintResourceRef,
   siblingSlotPath,
 } from "./resource-convention";
 
