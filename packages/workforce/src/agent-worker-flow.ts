@@ -1369,6 +1369,15 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // installation's visibility rule reads the worker this turn loaded. Typed
   // as the optional fields they fill, so the flow's type is one shape either
   // way.
+  // A field the app declares lives on the installation's session; with none it would be dropped,
+  // and a create could seed a field the app thinks only the server writes.
+  const fieldNames = Object.keys(options.sessionFields ?? {});
+  if (fieldNames.length > 0 && installation === undefined) {
+    throw new Error(
+      `defineAgentWorkerFlow: \`sessionFields\` (${fieldNames.map((name) => `"${name}"`).join(", ")}) needs \`installation\`: ` +
+        `the fields are declared on the installation's session, and this flow has none.`
+    );
+  }
   const bound: AgentTurnBinding =
     installation !== undefined
       ? {
