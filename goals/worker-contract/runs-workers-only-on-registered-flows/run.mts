@@ -3,8 +3,8 @@
  * worker flow, and the built-in `agent` keeps a worker's own state off org
  * scope while a shared note names who wrote it.
  *
- * Real path, no model: the roster is read from files, registered through
- * `hireWorkforce`, booted with `createFlowState`, and run with `runAction`
+ * Real path, no model: the roster is read from files and registered by the
+ * workforce kit, booted with `createFlowState`, and run with `runAction`
  * for two users of one org, each in a session created naming its worker. A
  * user's own worker on a flow kept for declared workers is refused when a
  * session names it. Graded on what boot refuses and what the store holds
