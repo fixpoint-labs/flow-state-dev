@@ -25,7 +25,8 @@
  *   key-marks (12), hatch (13), highlight (14), numbering (15).
  * - element (5, in full): no transform anywhere, and no dx, dy or rotate on text.
  * - embed (16): the revamp's pages (`pages/` and `pilot/`) put each figure on the page
- *   as a `<Figure svg caption description />` with a short caption and a full description.
+ *   as a `<Figure svg caption description />` with a short caption and a full description. Pages
+ *   are read with the MDX parser the site uses; one that does not parse fails.
  *
  * Before linting the real files it lints `scripts/brand-lint-fixtures/`, which break
  * every rule on purpose, and fails unless each rule fires there: a rule that can no
@@ -38,6 +39,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
+import { createProcessor } from "@mdx-js/mdx";
 import { fileURLToPath } from "node:url";
 
 const DOCS = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -288,7 +290,7 @@ function lintFigure(file, text, tree, out) {
     const words = content(node);
     if ((kind === "lb" || kind === "plate") && words !== words.toUpperCase()) at(node, "text-class", `${kind} text "${words}" is not in capitals`);
 
-    // 9. It fits: the line ends by x=892, and 12 inside the smallest box that holds its start.
+    // 9. It fits: the line runs from x=28 to x=892, and 12 inside both edges of its box.
     const width = [...words].length * UNITS[kind];
     const x = num(node, "x");
     // The anchor inherits as SVG's does: the nearest one on the text or a group around it, start by default.
@@ -299,11 +301,18 @@ function lintFigure(file, text, tree, out) {
     }
     const start = x - ({ middle: width / 2, end: width }[chain[0]] ?? 0);
     const end = start + width;
-    if (start < 0) at(node, "text-fit", `"${words}" starts at x=${start.toFixed(1)}, before the canvas's left edge`);
+    if (start < 28) at(node, "text-fit", `"${words}" starts at x=${start.toFixed(1)}, inside the 28 left margin`);
     if (end > 892) at(node, "text-fit", `"${words}" ends at x=${end.toFixed(1)}, past 892`);
-    const box = all
-      .filter((r) => r.name === "rect" && classesOf(r).some((c) => BOXES.has(c)) && holds(r, x, num(node, "y")))
-      .sort((a, b) => num(a, "width") * num(a, "height") - num(b, "width") * num(b, "height"))[0];
+    // Its box: the smallest that holds where the line starts, or else the smallest its rendered span overlaps.
+    const y = num(node, "y");
+    const boxes = all
+      .filter((r) => r.name === "rect" && classesOf(r).some((c) => BOXES.has(c)) && y >= num(r, "y") && y <= num(r, "y") + num(r, "height"))
+      .sort((a, b) => num(a, "width") * num(a, "height") - num(b, "width") * num(b, "height"));
+    const box =
+      boxes.find((r) => holds(r, start, y)) ?? boxes.find((r) => start < num(r, "x") + num(r, "width") && end > num(r, "x"));
+    if (box && start < num(box, "x") + 12) {
+      at(node, "text-fit", `"${words}" starts at x=${start.toFixed(1)}, less than 12 inside its box's left edge at ${num(box, "x")}`);
+    }
     if (box && end > num(box, "x") + num(box, "width") - 12) {
       at(node, "text-fit", `"${words}" ends at x=${end.toFixed(1)}, less than 12 inside its box's right edge at ${num(box, "x") + num(box, "width")}`);
     }
@@ -385,98 +394,103 @@ function lintFigure(file, text, tree, out) {
   }
 }
 
-/** Rule 16: a page puts each figure on through `<Figure svg caption description />`, and nothing else. */
-function lintFigureEmbeds(file, text, out) {
-  const image = (index) => out.push(finding(file, text, index, "embed", "a figure set as an image: use <Figure svg caption description />"));
-  for (const m of text.matchAll(/!\[[^\]]*\]\(\s*<?[^)\s>]*\.svg\b|<img\b[^>]*\.svg\b/g)) image(m.index);
-  // Reference-style images (`![alt][ref]`, `![ref][]`, `![ref]`), through their `[ref]: url` definitions.
-  const label = (s) => s.trim().replace(/\s+/g, " ").toLowerCase();
-  const refs = new Map(
-    [...text.matchAll(/^ {0,3}\[([^\]]+)\]:\s*<?([^\s>]+)/gm)].map((d) => [label(d[1]), d[2]]),
-  );
-  for (const m of text.matchAll(/!\[([^\]]*)\](?:\[([^\]]*)\])?(?![[(])/g)) {
-    if (/\.svg\b/.test(refs.get(label(m[2] || m[1])) ?? "")) image(m.index);
-  }
-  for (const m of text.matchAll(/Description for the site's/g)) {
-    out.push(finding(file, text, m.index, "embed", "a note about how the figure will be embedded: the description goes in <Figure>"));
-  }
-  // Where each <Figure>'s `svg={…}` value opens: the one place an imported SVG may be used.
-  const svgProps = new Set();
-  // The opening tag, self-closed or not; a `>` inside a quoted prop does not end it.
-  for (const m of text.matchAll(/<Figure\b(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^>"'])*>/g)) {
-    const at = (detail) => out.push(finding(file, text, m.index, "embed", detail));
-    const svgProp = /\bsvg\s*=\s*(?=\{)/.exec(m[0]);
-    if (svgProp) svgProps.add(m.index + svgProp.index + svgProp[0].length);
-    // A string prop in any JSX form: `name="…"`, `name='…'` or `name={"…"}` / `name={'…'}`, spaces around `=` free.
-    const prop = (name) => {
-      const s = new RegExp(`\\b${name}\\s*=\\s*\\{?\\s*(?:"((?:[^"\\\\]|\\\\.)*)"|'((?:[^'\\\\]|\\\\.)*)')`).exec(m[0]);
-      return s ? (s[1] ?? s[2]).replace(/\\(.)/g, "$1") : null;
-    };
-    const caption = prop("caption");
-    const words = prop("description")?.trim().split(/\s+/).filter(Boolean).length ?? 0;
-    if (!/\bsvg\s*=\s*\{/.test(m[0])) at("<Figure> has no svg");
-    if (caption === null) at("<Figure> has no caption");
-    else if (caption.length > 60 || caption.endsWith(".")) at(`caption "${caption}" is over 60 characters or ends in a full stop`);
-    if (words < 30) at(`the description is ${words} words: it says what the whole figure shows in 30 or more`);
-  }
-  // An imported SVG goes on the page only as a <Figure>'s svg: not as its own component, nor named in any other
-  // expression (`{X}`, `{cond && X}`, `{c ? X : {a: 1}}`). A word inside a string literal is text, not the binding.
-  const strings = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
-  const expressions = topLevelExpressions(text);
-  for (const imp of text.matchAll(/^import\s+([A-Za-z_$][\w$]*)\s+from\s+["'][^"']*\.svg["']/gm)) {
-    const name = imp[1];
-    const word = new RegExp(`(?<![\\w$])${name}(?![\\w$])`);
-    const outside = (index) =>
-      out.push(finding(file, text, index, "embed", `${name} is used outside a <Figure>'s svg: use <Figure svg={${name}} caption description />`));
-    for (const m of text.matchAll(new RegExp(`<${name}\\b`, "g"))) outside(m.index);
-    for (const { index, body } of expressions) {
-      if (!svgProps.has(index) && word.test(body.replace(strings, ""))) outside(index);
+/** Every node of an mdast or estree tree, depth first; position data is not walked. */
+function* walk(node) {
+  if (!node || typeof node.type !== "string") return;
+  yield node;
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "position" || key === "loc" || key === "range") continue;
+    for (const child of Array.isArray(value) ? value : [value]) {
+      if (child && typeof child === "object") yield* walk(key === "data" ? child.estree : child);
     }
   }
 }
+
+// The parser Docusaurus runs on a page (`markdown.format` is mdx by default).
+const MDX = createProcessor({ format: "mdx" });
 
 /**
- * Each balanced top-level `{…}` of a page, matched by depth: `{ index, body }`. Braces inside a string
- * literal in the expression do not count; an unclosed one runs to the end of the page.
+ * Rule 16: a page puts each figure on through `<Figure svg caption description />`, and nothing else. The page is
+ * read as the site reads it, as MDX, so code blocks and inline code are not markup and a page that does not parse
+ * is a finding.
  */
-function topLevelExpressions(text) {
-  const found = [];
-  let depth = 0;
-  let open = 0;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (depth > 0 && (ch === '"' || ch === "'" || ch === "`")) {
-      // Skip the string literal, escapes included.
-      for (i++; i < text.length && text[i] !== ch; i++) if (text[i] === "\\") i++;
-    } else if (ch === "{") {
-      if (depth++ === 0) open = i;
-    } else if (ch === "}" && depth > 0 && --depth === 0) {
-      found.push({ index: open, body: text.slice(open, i + 1) });
+function lintFigureEmbeds(file, text, out) {
+  const at = (line, detail) => out.push({ file, line, rule: "embed", detail });
+  // Docusaurus takes the frontmatter off before MDX sees the page; blanking it keeps the lines.
+  const body = text.replace(/^---\n[\s\S]*?\n---(?=\n|$)/, (fm) => fm.replace(/[^\n]/g, " "));
+  let tree;
+  try {
+    tree = MDX.parse(body);
+  } catch (err) {
+    at(err.line ?? err.place?.line ?? 1, `the page does not parse as MDX: ${err.reason ?? err.message}`);
+    return;
+  }
+  const nodes = [...walk(tree)];
+  const lineOf = (node, fallback) => node.loc?.start.line ?? node.position?.start.line ?? fallback;
+
+  // The SVGs the page imports, by the name it binds each to.
+  const svgs = new Set();
+  for (const node of nodes.filter((n) => n.type === "ImportDeclaration" && /\.svg$/.test(n.source.value))) {
+    for (const specifier of node.specifiers) svgs.add(specifier.local.name);
+  }
+
+  const image = (line) => at(line, "a figure set as an image: use <Figure svg caption description />");
+  const definitions = new Map(nodes.filter((n) => n.type === "definition").map((n) => [n.identifier, n.url]));
+  for (const node of nodes) {
+    const line = lineOf(node, 1);
+    if (node.type === "image" && /\.svg\b/.test(node.url)) image(line);
+    if (node.type === "imageReference" && /\.svg\b/.test(definitions.get(node.identifier) ?? "")) image(line);
+    if (node.type === "text" && node.value.includes("Description for the site's")) {
+      at(line, "a note about how the figure will be embedded: the description goes in <Figure>");
     }
   }
-  if (depth > 0) found.push({ index: open, body: text.slice(open) });
-  return found;
-}
 
-/** A page with its fenced blocks and inline code spans blanked to spaces, lines and columns kept: code shows markup, it does not use it. */
-function blankCode(text) {
-  const blank = (s) => s.replace(/[^\n]/g, " ");
-  let fence = null;
-  const lines = text.split("\n").map((line) => {
-    const open = /^\s*(`{3,}|~{3,})/.exec(line);
-    if (fence) {
-      // A closing fence: the same character, at least as long, and nothing after it.
-      const close = /^\s*(`{3,}|~{3,})\s*$/.exec(line);
-      if (close && close[1][0] === fence[0] && close[1].length >= fence.length) fence = null;
-      return blank(line);
+  // Every element, in Markdown (mdxJsx*Element) or inside an expression (JSXElement), as a name and its
+  // attributes: `{ name, value }`, with value a string, an estree expression, or null for a bare attribute.
+  const elements = [];
+  for (const node of nodes) {
+    if (node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") {
+      const attrs = node.attributes
+        .filter((a) => a.type === "mdxJsxAttribute")
+        .map((a) => ({ name: a.name, value: typeof a.value === "string" ? a.value : (a.value?.data?.estree.body[0]?.expression ?? null) }));
+      elements.push({ name: node.name, attrs, line: lineOf(node, 1) });
+    } else if (node.type === "JSXElement") {
+      const open = node.openingElement;
+      const attrs = open.attributes
+        .filter((a) => a.type === "JSXAttribute")
+        .map((a) => ({ name: a.name.name, value: a.value?.type === "Literal" ? a.value.value : (a.value?.expression ?? null) }));
+      elements.push({ name: open.name.name, attrs, line: lineOf(node, 1) });
     }
-    if (open) {
-      fence = open[1];
-      return blank(line);
+  }
+
+  const stringOf = (value) =>
+    typeof value === "string" ? value
+    : value?.type === "Literal" && typeof value.value === "string" ? value.value
+    : value?.type === "TemplateLiteral" && !value.expressions.length ? value.quasis[0].value.cooked
+    : null;
+  // The one allowed use of an imported SVG: the whole svg value of a <Figure>.
+  const allowed = new Set();
+  for (const { name, attrs, line } of elements) {
+    if (svgs.has(name)) at(line, `${name} is used outside a <Figure>'s svg: use <Figure svg={${name}} caption description />`);
+    if (name === "img" && /\.svg\b/.test(stringOf(attrs.find((a) => a.name === "src")?.value) ?? "")) image(line);
+    if (name !== "Figure") continue;
+    const prop = (key) => attrs.find((a) => a.name === key)?.value;
+    const svg = prop("svg");
+    if (svg?.type === "Identifier") allowed.add(svg);
+    const caption = stringOf(prop("caption"));
+    const words = stringOf(prop("description"))?.trim().split(/\s+/).filter(Boolean).length ?? 0;
+    if (!svg || typeof svg === "string") at(line, "<Figure> has no svg");
+    if (caption === null) at(line, "<Figure> has no caption");
+    else if (caption.length > 60 || caption.endsWith(".")) at(line, `caption "${caption}" is over 60 characters or ends in a full stop`);
+    if (words < 30) at(line, `the description is ${words} words: it says what the whole figure shows in 30 or more`);
+  }
+  // Any other reference to an imported SVG, in any expression, attribute or export. An import's own names declare, not use.
+  const declared = new Set(nodes.filter((n) => n.type === "ImportDeclaration").flatMap((n) => [...walk(n)]));
+  for (const node of nodes) {
+    if (node.type === "Identifier" && svgs.has(node.name) && !allowed.has(node) && !declared.has(node)) {
+      at(lineOf(node, 1), `${node.name} is used outside a <Figure>'s svg: use <Figure svg={${node.name}} caption description />`);
     }
-    return line;
-  });
-  return lines.join("\n").replace(/(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\1(?!`)/g, blank);
+  }
 }
 
 function lintStrokes(file, text, out) {
@@ -512,7 +526,7 @@ function lintFile(file, allowed) {
   const text = readFileSync(file, "utf8");
   const out = [];
   if (/\.mdx?$/.test(file)) {
-    lintFigureEmbeds(file, blankCode(text), out);
+    lintFigureEmbeds(file, text, out);
   } else if (file.endsWith(".svg")) {
     const tree = parseSvg(text);
     lintSvgShape(file, text, DRAWING_CLASSES, out);

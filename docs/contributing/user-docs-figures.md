@@ -116,7 +116,8 @@ A figure has up to three bands, top to bottom:
 | `n` | A note's number | 11 | 6.6 |
 | `plate` | A number or word set on an arrow, over a `ground` rect | 10.5 | 7.3 |
 
-A line of text ends at least 12 units inside its box, and no later than x=892.
+A line of text starts and ends at least 12 units inside its box, and runs no further than the
+margins, from x=28 to x=892.
 
 **Lines.** `solid` outlines a thing. `thin` outlines a part, and closes a hatched band. `hi` is a
 rule between rows. `ln` is an arrow. Arrows run horizontally or vertically, start and end on a box
@@ -251,8 +252,10 @@ the clean ones trip any.
 7. The root is `viewBox="0 0 920 H"` with whole-number `H`, and has no `width` or `height`.
 8. Every `<text>` has exactly one of `lb`, `nm`, `sub`, `c`, `t`, `n`, `plate`, with `on-hl` or
    `x` as the only additions. `lb` and `plate` text is capitals.
-9. Text fits. Width is characters times the class's units per character. The line ends at or
-   before x=892, and 12 or more inside the smallest box that holds its start point.
+9. Text fits. Width is characters times the class's units per character, and its `text-anchor`
+   (its own or a group's, `start` by default) places it. The line starts at or after x=28, ends at
+   or before x=892, and keeps 12 or more inside both edges of its box: the smallest box that holds
+   where it starts, or else the smallest its span overlaps.
 10. An `ln` or `ln-dash` runs only horizontally or vertically: a `<line>` with one coordinate
     fixed, or a `<path>` of `M`, `H` and `V`.
 
