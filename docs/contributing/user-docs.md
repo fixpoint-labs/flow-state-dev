@@ -408,14 +408,16 @@ figures:  brief ─ draw ─ render light + dark ─ figure lint ─ compare wit
 4. **Machine checks.** The word budget, the banned words and the code titles
    (`node scripts/check-docs-page.mjs path/to/page.md`), a type-check of every example, balanced
    fences, retired terms (`node scripts/check-retired-terms.mjs`) and the figure lint.
-5. **Fact check** by a separate agent that has the page and the code and nothing else. It returns
-   each claim that is not true, with file and line.
+5. **Fact check** by a separate agent that has the page and the code and nothing else
+   ([`code-reader`](../../.agents/subagents/code-reader.md): it reads files and runs nothing, as
+   pass 6 does). It returns each claim that is not true, with file and line.
 6. **Depth pass.** For each paragraph, ask: is this the model, or mechanism? Mechanism leaves the
    page and becomes a row on the topic's Reference page, and the page links to it.
 7. **[`docs-editor`](../../.agents/subagents/docs-editor.md)** checks the prose.
 8. **Revise**, one round from passes 5 to 7, then run pass 4 again. Take every factual correction and
    every depth finding. Take a prose finding unless it would undo something this standard asks for.
-9. **Cold read** by two or more fresh agents with no tools, given only the page and the questions
+9. **Cold read** by two or more fresh agents with no tools
+   ([`cold-reader`](../../.agents/subagents/cold-reader.md)), given only the page and the questions
    from pass 2, as [`concept-doc`](../../.agents/skills/concept-doc/SKILL.md) → "Checking it
    before you call it done" does. Grade their answers against the key. A question most readers
    miss is a gap in the page, even when the fact check and the editor passed it.

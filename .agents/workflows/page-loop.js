@@ -11,7 +11,17 @@
  *
  * Args: `{ page, writer, dir? }`. `page` is a sitemap id (`C-07`); `writer` is the model for the
  * passes that write (1, 3 and 8); `dir` puts the page somewhere other than the revamp's pages
- * folder, for a run kept as evidence. The page file is the last segment of the entry's slug.
+ * folder, for a run kept as evidence. The page file is the entry's slug under that folder
+ * (`concepts/blocks` → `<dir>/concepts/blocks.md`), so R-01 `reference/blocks` and C-02
+ * `concepts/blocks` never share a file. One page predates the section folders: a page at
+ * `<dir>/<last segment>.md` that is this entry's (its record names the id, or, with no record, its
+ * title and type are the entry's) is used where it is. A target that exists and is another entry's
+ * stops the run before any agent writes.
+ *
+ * Every path and model name reaches a shell command or a fenced record, so each is allow-listed
+ * before the first agent runs (`SEGMENT`, `MODEL`). The agents that read text a contributor wrote
+ * and need no shell run as `code-reader` (passes 5, 6) and `cold-reader` (pass 9), which have no
+ * Bash; only pass 4, the file scout and the record agent run commands.
  *
  * The order the script holds, which is the point of a script over a checklist:
  *   - pass 2's questions come from an agent that has seen no draft, and go to pass 9 unchanged;
@@ -52,6 +62,15 @@ export const meta = {
 const A = typeof args === 'string' ? JSON.parse(args) : args || {}
 if (typeof A.page !== 'string' || !/^[SCKBR]-\d{1,2}$/.test(A.page)) throw new Error('page-loop: args.page must be a sitemap id, like "C-07"')
 if (typeof A.writer !== 'string' || !A.writer.trim()) throw new Error('page-loop: args.writer must name the writer model')
+// A path segment or a model name as a shell command and a record may carry them: no quote, `$`,
+// backtick, space or newline, and no `.` or `..` segment, so a path stays under its folder.
+const SEGMENT = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/
+const MODEL = /^[A-Za-z0-9._:-]+$/
+const safePath = (p) => p.split('/').every((seg) => SEGMENT.test(seg) && !seg.includes('..'))
+if (!MODEL.test(A.writer.trim())) throw new Error('page-loop: args.writer must be a model name: letters, digits, `.`, `_`, `:` and `-` only')
+if (A.dir != null && (typeof A.dir !== 'string' || !safePath(A.dir.trim().replace(/\/+$/, '')))) {
+  throw new Error('page-loop: args.dir must be a relative folder whose segments are letters, digits, `.`, `_` and `-`, with no `..`')
+}
 
 // Revise rounds per page: `user-docs.md` → "Who writes them" sends findings back three times, then a human decides.
 const MAX_ROUNDS = 3
@@ -59,7 +78,9 @@ const MAX_ROUNDS = 3
 const READERS = 3
 const PAGES = 'docs/contributing/docs-revamp/pages'
 const SITEMAP = 'specs/epics/FIX-2696/SITEMAP'
-const DIR = typeof A.dir === 'string' && A.dir.trim() ? A.dir.replace(/\/+$/, '') : PAGES
+// The sitemap's sections, each a folder under the pages folder (the section specs place them there).
+const SECTIONS = ['start', 'concepts', 'catalog', 'build', 'reference']
+const DIR = typeof A.dir === 'string' && A.dir.trim() ? A.dir.trim().replace(/\/+$/, '') : PAGES
 const WRITER = A.writer.trim()
 
 const STANDARD = 'Read docs/contributing/user-docs.md first; it is the standard every pass applies (page types and budgets, the concept outline, the moves, code examples, what a fact sheet may cite, the ten passes).'
@@ -121,10 +142,30 @@ const PLAN_SCHEMA = {
     title: { type: 'string', description: 'The entry’s title, exactly as the sitemap gives it' },
     type: { type: 'string', enum: ['start', 'concept', 'catalog', 'tutorial', 'recipe', 'reference'] },
     status: { type: 'string', enum: ['new', 'kept', 'piloted', 'drafted'] },
-    pageExists: { type: 'boolean', description: 'Whether the page file is already on disk at the path you were given' },
     entry: { type: 'string', description: 'The sitemap entry, verbatim' },
   },
-  required: ['found', 'slug', 'title', 'type', 'status', 'pageExists', 'entry'],
+  required: ['found', 'slug', 'title', 'type', 'status', 'entry'],
+}
+
+const FILES_SCHEMA = {
+  type: 'object',
+  properties: {
+    files: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'The path, exactly as given' },
+          exists: { type: 'boolean' },
+          recordSitemap: { type: 'string', description: 'The id on the `Sitemap:` line of the page’s .record.md, or "" when it has no record' },
+          title: { type: 'string', description: 'The `title` in its frontmatter, or ""' },
+          type: { type: 'string', description: 'The `type` in its frontmatter, or ""' },
+        },
+        required: ['path', 'exists', 'recordSitemap', 'title', 'type'],
+      },
+    },
+  },
+  required: ['files'],
 }
 
 const FACTS_SCHEMA = {
@@ -330,7 +371,7 @@ ${page}
 
 QUESTIONS:
 ${numbered}`,
-        { label: `pass-9:${n}:reader-${r + 1}`, phase: 'Cold read', schema: READER_SCHEMA },
+        { label: `pass-9:${n}:reader-${r + 1}`, phase: 'Cold read', schema: READER_SCHEMA, agentType: 'cold-reader' },
       ),
     ),
   )
@@ -344,7 +385,7 @@ ${QUESTIONS.map((q, i) => `${i + 1}. ${q.question}\n   Answer: ${q.answer}`).joi
 
 ANSWERS:
 ${readers.map((r) => `Reader ${r.reader}:\n${r.answers.map((a, i) => `  ${i + 1}. ${one(a)}`).join('\n')}`).join('\n')}`,
-    { label: `pass-9:${n}:grade`, phase: 'Cold read', schema: GRADE_SCHEMA },
+    { label: `pass-9:${n}:grade`, phase: 'Cold read', schema: GRADE_SCHEMA, agentType: 'cold-reader' },
   )
   if (!graded) return null
   const missed = QUESTIONS.map((q, i) => readers.filter((r) => !graded.grades.some((g) => g.reader === r.reader && g.question === i + 1 && g.correct)).length)
@@ -356,17 +397,46 @@ ${readers.map((r) => `Reader ${r.reader}:\n${r.answers.map((a, i) => `  ${i + 1}
 
 phase('Plan')
 const plan = await agent(
-  `Find sitemap entry ${A.page} in ${SITEMAP}/ (README.md says how to read an entry). Run \`node scripts/check-docs-page.mjs --sitemap\` and report the entry's status from it: kept, piloted or drafted, or new when it is in none of those lists. The page file is ${DIR}/<last segment of the slug>.md; say whether it exists. Return the entry verbatim. Read only; edit nothing.`,
+  `Find sitemap entry ${A.page} in ${SITEMAP}/ (README.md says how to read an entry). Run \`node scripts/check-docs-page.mjs --sitemap\` and report the entry's status from it: kept, piloted or drafted, or new when it is in none of those lists. Return the entry verbatim. Read only; edit nothing.`,
   { label: 'plan', phase: 'Plan', schema: PLAN_SCHEMA, agentType: 'scout' },
 )
 if (!plan) return failed('plan')
 if (!plan.found) return { status: 'blocked', page: A.page, reason: `the sitemap has no entry ${A.page}` }
 
-const PATH = `${DIR}/${plan.slug.split('/').pop()}.md`
+// The slug comes from an agent that read contributor text: it becomes a path only in a known section,
+// with every segment allow-listed.
+const slug = plan.slug.split('/')
+if (slug.length < 2 || !SECTIONS.includes(slug[0]) || !safePath(plan.slug)) {
+  return { status: 'blocked', page: A.page, reason: `the sitemap gives ${A.page} the slug ${JSON.stringify(plan.slug)}, which is not <section>/<name> in one of ${SECTIONS.join(', ')} with plain segments` }
+}
+const TITLE = one(plan.title)
+const NAMESPACED = `${DIR}/${plan.slug}.md`
+const FLAT = `${DIR}/${slug.at(-1)}.md`
+
+const seen = await agent(
+  `For each path below, say whether the file exists; if it does, give the id on the \`Sitemap:\` line of the .record.md beside it ("" when there is none) and the \`title\` and \`type\` in its frontmatter ("" when absent). Return one entry per path, the path exactly as given. Read only; edit nothing.
+
+FILES:
+- ${NAMESPACED}
+- ${FLAT}`,
+  { label: 'inspect', phase: 'Plan', schema: FILES_SCHEMA, agentType: 'scout' },
+)
+if (!seen) return failed('inspect')
+const file = (path) => seen.files.find((f) => f.path === path)
+if (!file(NAMESPACED) || !file(FLAT)) return failed('inspect', { reason: 'the file scout left out a path it was given' })
+// This entry's page: its record names the id, or, with no record yet, its title and type are the entry's.
+const mine = (f) => (f.recordSitemap ? f.recordSitemap === A.page : one(f.title).toLowerCase() === TITLE.toLowerCase() && f.type === plan.type)
+// The one flat page from before the section folders is used where it is; every other page is namespaced.
+const target = FLAT !== NAMESPACED && file(FLAT).exists && mine(file(FLAT)) ? file(FLAT) : file(NAMESPACED)
+const PATH = target.path
+if (target.exists && !mine(target)) {
+  const owner = target.recordSitemap || `a ${target.type || 'page'} titled "${one(target.title)}"`
+  return { status: 'blocked', page: A.page, path: PATH, reason: `${PATH} is ${owner}'s page, not ${A.page}'s; nothing was written` }
+}
 const FACTS = PATH.replace(/\.md$/, '.facts.md')
 const RECORD = PATH.replace(/\.md$/, '.record.md')
 const SKIP = plan.status !== 'new'
-if (SKIP && !plan.pageExists) {
+if (SKIP && !target.exists) {
   return { status: 'blocked', page: A.page, path: PATH, reason: `${A.page} is ${plan.status} in the sitemap, so the draft is skipped, and there is no page at ${PATH} yet. Put the existing page there first.` }
 }
 const ENTRY = `SITEMAP ENTRY ${A.page} (the page plan):\n${plan.entry}`
@@ -377,7 +447,7 @@ phase('Write')
 const facts = await agent(
   `You are pass 1 of the ten passes: the fact sheet. ${STANDARD}
 
-Write ${FACTS}: every fact the page "${plan.title}" (${plan.type}) will state, each with file and line, citing only what a fact sheet may cite. If the page is about something that stores data, answer the four questions for each stored part. Do not write the page.
+Write ${FACTS}: every fact the page "${TITLE}" (${plan.type}) will state, each with file and line, citing only what a fact sheet may cite. If the page is about something that stores data, answer the four questions for each stored part. Do not write the page.
 
 ${ENTRY}`,
   { label: 'pass-1', phase: 'Write', schema: FACTS_SCHEMA, agentType: 'docs-writer', model: WRITER },
@@ -387,7 +457,7 @@ if (!facts) return failed('pass 1')
 const asked = await agent(
   `You are pass 2 of the ten passes: the cold-read questions. ${STANDARD}
 
-Write five or six scenario questions a reader should be able to answer after reading the page "${plan.title}", at least two of them edge cases (a failure, a second user, an edit), each with its answer from the fact sheet ${FACTS}. Start from the entry's "After reading" questions and use the page's cast. You have seen no draft and must not: do not open ${PATH}${SKIP ? ' (it exists; leave it closed)' : ''}, nor any other draft of this page. Read only; edit nothing.
+Write five or six scenario questions a reader should be able to answer after reading the page "${TITLE}", at least two of them edge cases (a failure, a second user, an edit), each with its answer from the fact sheet ${FACTS}. Start from the entry's "After reading" questions and use the page's cast. You have seen no draft and must not: do not open ${PATH}${SKIP ? ' (it exists; leave it closed)' : ''}, nor any other draft of this page. Read only; edit nothing.
 
 ${ENTRY}`,
   { label: 'pass-2', phase: 'Write', schema: QUESTIONS_SCHEMA },
@@ -405,7 +475,7 @@ if (!SKIP) {
   draft = await agent(
     `You are pass 3 of the ten passes: the draft. ${STANDARD} Read docs/contributing/user-docs-figures.md before drawing.
 
-Write ${PATH}, a ${plan.type} page titled "${plan.title}" with \`type: ${plan.type}\` and that title in its frontmatter. Choose one concrete scenario with names in it; write the opening and the outline first, and start again if the opening needs a framework term to make sense. Aim well under the budget (about 700 words of prose for a concept page) and state nothing that is not on the fact sheet ${FACTS}. Draw the figures the entry briefs.
+Write ${PATH}, a ${plan.type} page titled "${TITLE}" with \`type: ${plan.type}\` and that title in its frontmatter. Choose one concrete scenario with names in it; write the opening and the outline first, and start again if the opening needs a framework term to make sense. Aim well under the budget (about 700 words of prose for a concept page) and state nothing that is not on the fact sheet ${FACTS}. Draw the figures the entry briefs.
 
 ${ENTRY}`,
     { label: 'pass-3', phase: 'Write', schema: DRAFT_SCHEMA, agentType: 'docs-writer', model: WRITER },
@@ -423,12 +493,12 @@ const [factCheck, depth, firstEdit] = await parallel([
   () =>
     agent(
       `You are pass 5 of the ten passes: the fact check. You have the page ${PATH} and the code, and nothing else: do not read its fact sheet, the sitemap or any spec. Return each claim the page makes that is not true, with what is true and its file and line. Read only.`,
-      { label: 'pass-5', phase: 'Check', schema: FACT_CHECK_SCHEMA },
+      { label: 'pass-5', phase: 'Check', schema: FACT_CHECK_SCHEMA, agentType: 'code-reader' },
     ),
   () =>
     agent(
       `You are pass 6 of the ten passes: the depth pass. ${STANDARD} For each paragraph of ${PATH}, ask: is this the model, or mechanism? Return each paragraph that is mechanism as the Reference row it becomes and the R-page (sitemap id, see ${SITEMAP}/reference.md) it belongs on. Read only.`,
-      { label: 'pass-6', phase: 'Check', schema: DEPTH_SCHEMA },
+      { label: 'pass-6', phase: 'Check', schema: DEPTH_SCHEMA, agentType: 'code-reader' },
     ),
   () => editor(1),
 ])
@@ -546,13 +616,19 @@ section(
 if (!escalated) section(10, 'Owner read', 'Not sampled. The owner replaces this with `Read`, the date and what they found, when they read the page.')
 sections.push(`## Reference rows\n\n${list(depth.rows.map((r) => `${r.row} → ${r.referencePage}`), 'None.')}`)
 
-const head = [`# ${plan.title} · record`, '', `Sitemap: ${A.page}`]
+const head = [`# ${TITLE} · record`, '', `Sitemap: ${A.page}`]
 if (escalated) {
   head.push('', `Loop: escalated after ${rounds.length} revise round(s) with ${escalated.length} finding(s) open. Pass 10 is the owner's: they read the page and record it.`, '', list(escalated.map((f) => `[${f.from}] ${f.text}`), ''))
 }
 const RECORD_TEXT = `${[...head, '', ...sections].join('\n\n').replace(/\n{3,}/g, '\n\n')}\n`
 
 phase('Record')
+// The record agent copies the text between the markers; text that carried a marker would end the
+// copy early and hand the agent whatever follows as instructions.
+if (/<<<RECORD|RECORD>>>/.test(RECORD_TEXT)) {
+  log('the record text contains a record marker; not handing it to the record agent')
+  return { status: 'failed', at: 'record', page: A.page, path: PATH, record: RECORD, reason: 'the record text contains <<<RECORD or RECORD>>>', recordText: RECORD_TEXT }
+}
 const written = await agent(
   `Write ${RECORD} with exactly the text between the markers, byte for byte, replacing any file there. Then run \`node scripts/check-docs-page.mjs ${PATH} --record\` and return its exit code and output. Edit nothing else.
 
