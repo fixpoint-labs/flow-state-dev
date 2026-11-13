@@ -54,18 +54,19 @@ import { reconcileInbox, taskTruthOf, suspensionTruthOf, type InboxTruth } from 
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../packages/workforce/src/conversation-board/steer.ts";
 import {
-  createWorkerInstallation,
   defineSessionBoard,
   defineWorkerInventoryCollection,
+  filingConversationBoard,
   inventoryWorkers,
   inventoryWriterActions,
   openInventory,
-  filingConversationBoard,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
 import {
   REPO_ROOT,
@@ -78,7 +79,8 @@ import {
   runGoal,
   silentLogger,
   untilIdle,
-  type ModulePatch
+  type ModulePatch,
+  workforceTree
 } from "../../lib/index.mts";
 
 const USER = "u_holds_questions";
@@ -264,8 +266,10 @@ const proofsOf = (taskId: string, kind?: Proof["kind"]) => readProofs().filter((
 
 // ---- the host -----------------------------------------------------------------
 
-const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
+const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared: { description: `The ${id} worker.`, ...declared }, body: "", skills: [] });
 const WORKERS: WorkerManifest[] = [worker("lead", { flow: "desk", delegates: ["eng.doer"] }), worker("eng.doer", { flow: "doer" })];
+/** The workers as the app's `workforce/` folder, which the kit reads. */
+const TREE = workforceTree(WORKERS);
 
 /**
  * Latches leg d sets: the asking turn waits on `__goalAfterAsk` before its late
@@ -275,91 +279,102 @@ const WORKERS: WorkerManifest[] = [worker("lead", { flow: "desk", delegates: ["e
 const latch = globalThis as { __goalAfterAsk?: () => Promise<void>; __goalBeforeNext?: () => Promise<void> };
 
 function buildHost(filename: string, settings: { userDeadlineMs?: number } = {}) {
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => workerFlows as never });
-  const doorInput = z.object({ message: z.string() });
-  const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
-  const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
-  const deskTurn = handler({ name: "questions-desk-turn", inputSchema: doorInput, outputSchema: z.unknown(), execute: (input) => `noted: ${input.message}` });
+  // The kit hands each worker flow's builder the installation it hired; the flows are built once on it.
+  let built: Record<string, unknown> | undefined;
+  let builtOn: WorkerInstallation | undefined;
+  const flowsOn = (installation: WorkerInstallation): Record<string, unknown> => {
+    if (built !== undefined && builtOn === installation) return built;
+    builtOn = installation;
+    const doorInput = z.object({ message: z.string() });
+    const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
+    const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
+    const deskTurn = handler({ name: "questions-desk-turn", inputSchema: doorInput, outputSchema: z.unknown(), execute: (input) => `noted: ${input.message}` });
 
-  /**
-   * The doer's scripted turn. Marks in the task's goal: `[ask:N]` asks N
-   * questions midway, the first turn only (a turn handed an answer works);
-   * `[late]` then waits on the run's latch and reports a checkpoint late;
-   * `[approve]` waits for the user's approval (a task run's stop);
-   * `[ask-then-approve]` asks, then waits for an approval in the same turn.
-   */
-  const doerTurn = handler({
-    name: "questions-doer-turn",
-    inputSchema: doorInput,
-    outputSchema: z.unknown(),
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const message = input.message;
-      const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY] as string | undefined;
-      const base = { requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, ...(taskId !== undefined ? { taskId } : {}) };
-      if (message.startsWith('Task "') || message.startsWith("Message ")) return "noted";
-      const board = await filingConversationBoard(ctx);
-      const row = taskId === undefined ? undefined : (board?.tasks.get(taskId) as Task | undefined);
-      prove({ kind: "turn", ...base, attempt: row?.attempts, turn: row?.turn, message });
-      const answered = /answering "/.test(message);
-      if (answered && message.includes("[late]")) await latch.__goalBeforeNext?.();
-      const asks = /\[ask:(\d)\]/.exec(message);
-      if (asks !== null && !answered && board !== undefined) {
-        const questions = Array.from({ length: Number(asks[1]) }, (_, i) => ({ prompt: i === 0 ? COLUMN : `Question ${i + 1} for ${taskId}?` }));
-        prove({ kind: "asked", ...base, outcome: await askMidway(ctx, board.tasks, questions) });
-        if (message.includes("[late]")) {
-          await latch.__goalAfterAsk?.();
-          const claim = currentWorkerClaim(ctx);
-          const outcome = claim === undefined || taskId === undefined ? "no-claim" : await board.tasks.reportProgress!(taskId, { statusNote: "a late write from the asking turn" }, { claim });
-          prove({ kind: "late", ...base, outcome });
+    /**
+     * The doer's scripted turn. Marks in the task's goal: `[ask:N]` asks N
+     * questions midway, the first turn only (a turn handed an answer works);
+     * `[late]` then waits on the run's latch and reports a checkpoint late;
+     * `[approve]` waits for the user's approval (a task run's stop);
+     * `[ask-then-approve]` asks, then waits for an approval in the same turn.
+     */
+    const doerTurn = handler({
+      name: "questions-doer-turn",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
+      execute: async (input, rawCtx) => {
+        const ctx = rawCtx as unknown as BlockContext;
+        const message = input.message;
+        const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY] as string | undefined;
+        const base = { requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, ...(taskId !== undefined ? { taskId } : {}) };
+        if (message.startsWith('Task "') || message.startsWith("Message ")) return "noted";
+        const board = await filingConversationBoard(ctx);
+        const row = taskId === undefined ? undefined : (board?.tasks.get(taskId) as Task | undefined);
+        prove({ kind: "turn", ...base, attempt: row?.attempts, turn: row?.turn, message });
+        const answered = /answering "/.test(message);
+        if (answered && message.includes("[late]")) await latch.__goalBeforeNext?.();
+        const asks = /\[ask:(\d)\]/.exec(message);
+        if (asks !== null && !answered && board !== undefined) {
+          const questions = Array.from({ length: Number(asks[1]) }, (_, i) => ({ prompt: i === 0 ? COLUMN : `Question ${i + 1} for ${taskId}?` }));
+          prove({ kind: "asked", ...base, outcome: await askMidway(ctx, board.tasks, questions) });
+          if (message.includes("[late]")) {
+            await latch.__goalAfterAsk?.();
+            const claim = currentWorkerClaim(ctx);
+            const outcome = claim === undefined || taskId === undefined ? "no-claim" : await board.tasks.reportProgress!(taskId, { statusNote: "a late write from the asking turn" }, { claim });
+            prove({ kind: "late", ...base, outcome });
+          }
+          return "asked";
         }
-        return "asked";
+        if (message.includes("[ask-then-approve]") && !answered && board !== undefined) {
+          prove({ kind: "asked", ...base, outcome: await askMidway(ctx, board.tasks, [{ prompt: COLUMN }]) });
+          const outcome = await ctx.suspendForUser({ kind: "approval", prompt: "Ship it now?" } as never);
+          prove({ kind: "resumed", ...base, outcome });
+          return "went on";
+        }
+        if (message.includes("[approve]")) {
+          const outcome = await ctx.suspendForUser({ kind: "approval", prompt: "Ship the release?" } as never);
+          prove({ kind: "resumed", ...base, outcome });
+          return `approved: ${JSON.stringify(outcome)}`;
+        }
+        return `done ${taskId}`;
       }
-      if (message.includes("[ask-then-approve]") && !answered && board !== undefined) {
-        prove({ kind: "asked", ...base, outcome: await askMidway(ctx, board.tasks, [{ prompt: COLUMN }]) });
-        const outcome = await ctx.suspendForUser({ kind: "approval", prompt: "Ship it now?" } as never);
-        prove({ kind: "resumed", ...base, outcome });
-        return "went on";
-      }
-      if (message.includes("[approve]")) {
-        const outcome = await ctx.suspendForUser({ kind: "approval", prompt: "Ship the release?" } as never);
-        prove({ kind: "resumed", ...base, outcome });
-        return `approved: ${JSON.stringify(outcome)}`;
-      }
-      return `done ${taskId}`;
-    }
-  });
-  const doerWork = sequencer({ name: "questions-doer-work", inputSchema: doorInput }).step(doerTurn);
+    });
+    const doerWork = sequencer({ name: "questions-doer-work", inputSchema: doorInput }).step(doerTurn);
 
-  const deskFlow = defineFlow({
-    kind: "desk",
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
-    // The org's worker inventory, for Shift Manager's read to find (as a Lab's worker flows declare it).
-    resources: { ...installation.resources, ...deskBoard.resources, inventoryWorkers: defineWorkerInventoryCollection() },
-    actions: { respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (i: { message: string }) => i.message }, ...deskBoard.actions },
-    internal: { actions: deskBoard.entries(deskTurn, () => "fixed") },
-    task: { actions: { work: workerTaskEntry({ name: "questions-desk-task", turn: deskTurn }) } }
-  } as never);
-  const doerFlow = defineFlow({
-    kind: "doer",
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(doerBoard.sessionStateShape), serverOwned: [...doerBoard.serverOwned] },
-    resources: { ...installation.resources, ...doerBoard.resources },
-    // A line typed in a task's session steers it, through the one home for what a line answers.
-    actions: { respond: { inputSchema: doorInput.strict(), block: steerOrTalk(doerWork), userMessage: (i: { message: string }) => i.message }, ...doerBoard.actions },
-    internal: { actions: doerBoard.entries(doerWork, () => "judgment") },
-    task: { actions: { work: { ...workerTaskEntry({ name: "questions-doer-task", turn: doerWork }), durable: true } } }
-  } as never);
-  workerFlows = { desk: { flow: deskFlow, roles: ["contributor", "manager"] }, doer: { flow: doerFlow, roles: ["contributor", "manager"] } };
+    const deskFlow = defineFlow({
+      kind: "desk",
+      configSchema: workerConfigSchema(),
+      session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
+      // The org's worker inventory, for Shift Manager's read to find (as a Lab's worker flows declare it).
+      resources: { ...installation.resources, ...deskBoard.resources, inventoryWorkers: defineWorkerInventoryCollection() },
+      actions: { respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (i: { message: string }) => i.message }, ...deskBoard.actions },
+      internal: { actions: deskBoard.entries(deskTurn, () => "fixed") },
+      task: { actions: { work: workerTaskEntry({ name: "questions-desk-task", turn: deskTurn }) } }
+    } as never);
+    const doerFlow = defineFlow({
+      kind: "doer",
+      configSchema: workerConfigSchema(),
+      session: { ...installation.session(doerBoard.sessionStateShape), serverOwned: [...doerBoard.serverOwned] },
+      resources: { ...installation.resources, ...doerBoard.resources },
+      // A line typed in a task's session steers it, through the one home for what a line answers.
+      actions: { respond: { inputSchema: doorInput.strict(), block: steerOrTalk(doerWork), userMessage: (i: { message: string }) => i.message }, ...doerBoard.actions },
+      internal: { actions: doerBoard.entries(doerWork, () => "judgment") },
+      task: { actions: { work: { ...workerTaskEntry({ name: "questions-doer-task", turn: doerWork }), durable: true } } }
+    } as never);
+    return (built = { desk: deskFlow, doer: doerFlow });
+  };
 
   const flows: Record<string, any> = {
-    ...Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
     // The worker write takes caller-supplied rows, so it is internal only.
     [INVENTORY_WRITER_FLOW]: defineFlow({ kind: INVENTORY_WRITER_FLOW, internal: { actions: { ...inventoryWriterActions() } } } as never)()
   };
   const state = createFlowState({
+    kits: [workforce({ directory: TREE })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        desk: workerFlow((installation) => flowsOn(installation).desk, { roles: ["contributor", "manager"] }),
+        doer: workerFlow((installation) => flowsOn(installation).doer, { roles: ["contributor", "manager"] })
+      }
+    },
     flows: Object.values(flows),
     stores: { default: { primary: sqliteStores({ filename }) } },
     logger: silentLogger,
@@ -374,12 +389,15 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
 
   const connect = async () => {
     const runtime = await state.getRuntime();
+    // The installation the kit hired, as its worker flows' builders received it.
+    const installation = builtOn;
+    if (installation === undefined) throw new Error("the workforce kit built no worker flow");
     // The inventory, written once as a Lab's boot does, so Shift Manager's read finds the workers.
     const binding = await openInventory(
       { workers: inventoryWorkers(installation) },
       {
         run: async (request) => {
-          const result = (await runAction({ flow: flows[request.flowKind], actionName: request.action, input: request.input, userId: request.userId, orgId: request.orgId, sessionId: request.sessionId, source: request.source, stores: runtime.stores, runtimeConfig: runtime.runtimeConfig } as never)) as { error?: unknown };
+          const result = (await runAction({ flow: runtime.registry.get(request.flowKind), actionName: request.action, input: request.input, userId: request.userId, orgId: request.orgId, sessionId: request.sessionId, source: request.source, stores: runtime.stores, runtimeConfig: runtime.runtimeConfig } as never)) as { error?: unknown };
           if (result?.error !== undefined) throw new Error(String((result.error as Error).message ?? result.error));
           return result;
         },
