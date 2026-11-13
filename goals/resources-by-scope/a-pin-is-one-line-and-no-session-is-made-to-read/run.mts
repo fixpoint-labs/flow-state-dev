@@ -35,7 +35,7 @@ import { createClient, type Client } from "@flow-state-dev/client";
 import { createFlowState } from "@flow-state-dev/engine";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, untilIdle } from "../../lib/index.mts";
 import { resolveResourceScopeId } from "../../../packages/engine/src/stores/scope-keys.ts";
 import { isWriteSessionId } from "../../../packages/engine/src/resources/default-write-flow.ts";
 import { PATCHES } from "./controls/patches.mts";
@@ -344,10 +344,24 @@ await runGoal(async (failures, tell) => {
       tell.over("b:both-changes-stored · versions the two clients first read", [alice.readVersions[0], bob.readVersions[0]].filter((v) => v !== undefined));
       if (alice.readVersions[0] !== bob.readVersions[0]) failures.push(`b:both-changes-stored: the clients read versions ${alice.readVersions[0]} and ${bob.readVersions[0]}, so nothing raced`);
       if (a.status === "rejected" || b.status === "rejected") failures.push(`b:both-changes-stored: an update was refused: ${String(a.status === "rejected" ? a.reason : (b as PromiseRejectedResult).reason)}`);
+      // The race happened and the version caught it: Bob's first write ended
+      // refused as stale (read from its request record), and he wrote again.
+      const bobEndings = await Promise.all(
+        requestIdsOf(bob).map(async (id) => {
+          const record = await stores.request.get(id);
+          return { status: record?.status, code: (record?.result as { error?: { code?: string } } | undefined)?.error?.code };
+        })
+      );
+      const staleRefused = bobEndings.filter((e) => e.code === "stale_version");
+      if (bob.sent.length < 2 || staleRefused.length === 0) {
+        failures.push(`b:both-changes-stored: bob's client sent ${bob.sent.length} write(s), ended ${JSON.stringify(bobEndings)}: no stale write was refused`);
+      }
       if (project?.name !== renamed || project?.lead !== "bob") {
         failures.push(`b:both-changes-stored: org A's project is ${JSON.stringify(project)}; expected name "${renamed}" and lead "bob"`);
-      } else {
-        evidence.push(`b: two updates from version ${alice.readVersions[0]} both stored (name and lead); bob's client sent ${bob.sent.length} writes (a stale one refused, then re-applied)`);
+      } else if (bob.sent.length >= 2 && staleRefused.length > 0) {
+        evidence.push(
+          `b: two updates from version ${alice.readVersions[0]} both stored (name and lead); bob's ${bob.sent.length} writes ended ${bobEndings.map((e) => e.code ?? e.status).join(", ")}`
+        );
       }
 
       // b:request-names-writer — every write above recorded a request naming the
@@ -403,20 +417,26 @@ await runGoal(async (failures, tell) => {
         () => undefined,
         (error: unknown) => String(error)
       );
+      // The client can give up before the write it sent has run (a 404 on the
+      // request read, under the control): grade the stores once every request
+      // has ended, so a write that landed late is seen.
+      await untilIdle(stores);
       const aliceAfter = await storedPins("alice");
       const bobAfter = await storedPins("bob");
       const forgedRequests = await Promise.all(requestIdsOf(forger).map((id) => stores.request.get(id)));
       tell.over("b:forged-user-ignored · the forged client's write requests", forgedRequests);
-      const forgedOk =
-        forged === undefined &&
-        aliceAfter.includes(forgedPin) &&
-        JSON.stringify(bobAfter) === JSON.stringify(bobBefore) &&
-        forgedRequests.every((r) => r?.userId === "alice");
-      if (!forgedOk) {
-        failures.push(
-          `b:forged-user-ignored: a client signed in as alice claiming bob: ${forged ?? "write resolved"}; alice's pins ${JSON.stringify(aliceAfter)}, ` +
-            `bob's ${JSON.stringify(bobBefore)} → ${JSON.stringify(bobAfter)}, requests name ${JSON.stringify(forgedRequests.map((r) => r?.userId))}`
-        );
+      // What must hold, each named: the write lands in Alice's pins, Bob's are
+      // unchanged, and every request it recorded (at least one) names alice.
+      const problems = [
+        ...(forged === undefined ? [] : [`the write was refused (${forged})`]),
+        ...(aliceAfter.includes(forgedPin) ? [] : [`alice's pins ${JSON.stringify(aliceAfter)} lack it`]),
+        ...(JSON.stringify(bobAfter) === JSON.stringify(bobBefore) ? [] : [`bob's pins changed: ${JSON.stringify(bobBefore)} → ${JSON.stringify(bobAfter)}`]),
+        ...(forgedRequests.length > 0 && forgedRequests.every((r) => r?.userId === "alice")
+          ? []
+          : [`its requests name ${JSON.stringify(forgedRequests.map((r) => r?.userId))}, not alice`])
+      ];
+      if (problems.length > 0) {
+        failures.push(`b:forged-user-ignored: a client signed in as alice claiming bob: ${problems.join("; ")}`);
       } else {
         evidence.push("b: a userId of bob in the body and query of alice's client wrote alice's pins; bob's unchanged; the request names alice");
       }
