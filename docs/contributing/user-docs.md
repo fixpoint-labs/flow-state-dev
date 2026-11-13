@@ -137,7 +137,7 @@ Pages already the right shape, as models for each type:
 | `concept` opening | `apps/docs/guides/building-agents.md` | "There isn't one." |
 
 The three pilots set the voice. On depth and figures this standard wins over them: the pilots
-and `docs-revamp/pages/blocks.md` predate [the concept/reference contract](#concepts-and-reference)
+predate [the concept/reference contract](#concepts-and-reference)
 and carry mechanism and a "What it won't do" section that later pages do not.
 
 ## Concepts and Reference

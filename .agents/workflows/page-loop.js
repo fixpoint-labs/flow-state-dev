@@ -212,7 +212,7 @@ const QUESTIONS_SCHEMA = {
 const DRAFT_SCHEMA = {
   type: 'object',
   properties: {
-    scenario: { type: 'string', description: 'The one concrete scenario the page carries, with its names' },
+    scenario: { type: 'string', description: 'The one example the page carries, or "none" where the page needs none' },
     words: { type: 'integer', minimum: 0 },
     figures: { type: 'array', items: { type: 'string' }, description: 'Each figure file drawn' },
   },
@@ -503,7 +503,7 @@ if (!SKIP) {
   draft = await agent(
     `You are pass 3 of the ten passes: the draft. ${STANDARD} Read docs/contributing/user-docs-figures.md before drawing.
 
-Write ${PATH}, a ${plan.type} page titled "${TITLE}" with \`type: ${plan.type}\` and that title in its frontmatter. Choose one concrete scenario with names in it; write the opening and the outline first, and start again if the opening needs a framework term to make sense. Aim well under the budget (about 700 words of prose for a concept page) and state nothing that is not on the fact sheet ${FACTS}. Draw the figures the entry briefs.
+Write ${PATH}, a ${plan.type} page titled "${TITLE}" with \`type: ${plan.type}\` and that title in its frontmatter. Open by saying what the thing is and what it is for; open on a situation only when the page's idea answers a problem the reader has had, and never invent a person or a story to introduce a structure, a list of parts or a definition. Where the page teaches with examples, carry one example through it. Write the opening and the outline first, and start again if the opening needs a framework term to make sense. Aim well under the budget (about 700 words of prose for a concept page) and state nothing that is not on the fact sheet ${FACTS}. Draw the figures the entry briefs.
 
 ${ENTRY}`,
     { label: 'pass-3', phase: 'Write', schema: DRAFT_SCHEMA, agentType: 'docs-writer', model: WRITER },
