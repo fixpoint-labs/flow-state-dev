@@ -247,7 +247,6 @@ function recordingFetch(token: string) {
     lastAt = Date.now();
     try {
       const response = await fetch(input, { ...init, headers: { ...(init?.headers as Record<string, string>), authorization: `Bearer ${token}` } });
-      if (process.env.GOAL_DEBUG && url.includes("/views/")) console.error("DEBUG view call", url, String(init?.body).slice(0, 300));
       if (url.includes("/views/") || url.includes("/resources/org/")) {
         answers.push({ at: Date.now(), url, body: await response.clone().json().catch(() => undefined) });
       }
@@ -365,8 +364,6 @@ async function singleEdits(on: Host, writer: Client, screen: ReturnType<typeof m
   // From another session, as another client's edit is: the watched session's own request notices stay quiet.
   await send(writer, "hold", { ids: [taskId(42)] }, "writer-0");
   await quiet(screen.recorded);
-  if (process.env.GOAL_DEBUG) console.error("DEBUG topics", JSON.stringify(screen.recorded.answers.filter((a) => a.url.includes("/views/")).slice(-2).map((a) => [a.url.split("/views/")[1], a.body?.topics])));
-  if (process.env.GOAL_DEBUG) console.error("DEBUG frames", JSON.stringify(frames.filter((f) => f.at >= Date.now() - 3000).map((f) => f.frame)));
   const boardAnswers = screen.recorded.answers.slice(before).filter((a) => a.url.includes(`/views/${BOARD_REF.view}`));
   const entryBefore = screen.recorded.answers.length;
   await writer.resource(projects).entry(entryKey(42)).set({ name: "renamed 42" });
