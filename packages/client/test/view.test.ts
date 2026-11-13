@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createClient, viewRef, type SubscribeOptions, type ViewCallOptions, type ViewResult, type WireNotice, type WireTopic } from "../src";
 import { placePartial, watchView, type ViewWatchClient } from "../src/view/view";
-import type { ViewHearing } from "@flow-state-dev/core/internal";
+import type { ViewHearing } from "@flow-state-dev/core/types";
 
 const flush = async () => {
   for (let i = 0; i < 8; i++) await Promise.resolve();

@@ -29,11 +29,11 @@ import type {
   FlowInstance,
   ViewChange,
   ViewDefinition,
+  ViewHearing,
   ViewRunContext,
   ViewScope,
   WireTopic
 } from "@flow-state-dev/core";
-import type { ViewHearing } from "@flow-state-dev/core/internal";
 import type { ZodTypeAny } from "zod";
 import { createExecutionContext } from "../context/createExecutionContext";
 import { NoSessionError } from "../context/no-session";

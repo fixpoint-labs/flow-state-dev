@@ -19,8 +19,7 @@
  *   on a notice that may change what its run read.
  */
 import { wireTopicKey, type WireNotice, type WireTopic } from "@flow-state-dev/contracts";
-import type { ViewDefinition, ViewInput, ViewOutput } from "@flow-state-dev/core/types";
-import type { ViewHearing } from "@flow-state-dev/core/internal";
+import type { ViewDefinition, ViewHearing, ViewInput, ViewOutput } from "@flow-state-dev/core/types";
 import { covers, type SubscribeOptions, type Subscription } from "../subscribe/push-hub";
 import { liveRead, type LiveRead } from "../live/live-read";
 import { mayHold } from "../live/paths";

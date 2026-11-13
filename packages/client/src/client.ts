@@ -10,8 +10,7 @@
  */
 import type { ResumeAction, WireTopic } from "@flow-state-dev/contracts";
 import type { FileContent } from "@flow-state-dev/contracts/items";
-import type { ActionConfig, FlowActionInput, RequestStatusSnapshot } from "@flow-state-dev/core/types";
-import type { ViewHearing } from "@flow-state-dev/core/internal";
+import type { ActionConfig, FlowActionInput, RequestStatusSnapshot, ViewHearing } from "@flow-state-dev/core/types";
 import { clientError, createTransport, requireValue, seg, topicPath, type Transport } from "./internal/http";
 import { pause } from "./internal/pause";
 import {

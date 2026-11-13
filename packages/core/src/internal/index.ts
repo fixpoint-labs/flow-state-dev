@@ -124,10 +124,6 @@ export type { RequestResume } from "../types/request-resume";
 
 /** The board-notice seam: a task board's change reaches the change bus. */
 export { BOARD_NOTICE_SEAM, BOARD_READ_SEAM, publishBoardChange, recordBoardRead } from "../types/board-notice";
-
-// FIX-2625.
-/** What a view's answer hears under each of its topics: the engine writes it, the client's view watch reads it. */
-export type { ViewHearing } from "../types/view";
 export type { BoardChange, BoardNoticeSeam, BoardRead, BoardReadSeam } from "../types/board-notice";
 
 /** The request's side-chain pool: detached work a request drains before it ends. */
