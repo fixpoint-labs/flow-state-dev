@@ -9,8 +9,9 @@
  * |-----------------|---------------------------------------------------------------------------|
  * | `watchSessions` | the workforce client's `listWorkerSessions`, for each built mode's worker, |
  * |                 | and each row again on its session's notices, through `client.subscribe`  |
- * | `listProjects`  | the project blocks' `listProjects`: only projects the user may work in    |
- * | `createProject` | the project blocks' `createProject`, a private project on a repository   |
+ * | `listProjects`  | the projects collections read by scope: only projects the user may work in |
+ * | `createProject` | the project blocks' `createProject`, a private project on a repository,  |
+ * |                 | sent to the projects collection and run by the projects flow (`runBy`)   |
  * | `openSession`   | a new session on the mode's main worker, then `setWorkProject`            |
  * | `send`          | the worker's door, `respond`, in that session, with the line's files       |
  * | `upload`        | the client's `upload`: a file the composer attached, stored, as its reference |
@@ -44,7 +45,7 @@
  *
  * Every watch reads on a change, through the client's live read (`client.live`).
  */
-import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, type Client, type ClientFetch, type SessionConnectionStatus, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
+import { bindStoreToCallbacks, createClient, createRequestStreamStore, readEveryCollectionPage, sessionFeed, topic, type Client, type ClientFetch, type SessionConnectionStatus, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createInboxClient,
@@ -76,9 +77,12 @@ import {
   parseProjectRef,
   taskBriefOf,
   projectRef,
+  checkRepositoryView,
+  PROJECTS_PATTERN,
   WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
+import type { CreateProjectOutput } from "@flow-state-dev/workforce";
 import { isSuspensionWait, type FileContent } from "@flow-state-dev/core/items";
 import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
@@ -265,7 +269,7 @@ export interface WorkingNow {
 /** One coding harness's readiness, as harness-manager's readiness view answers it. */
 export type LabHarness = HarnessReadinessChipRow;
 
-/** Whether a run could check a repository out on this machine: the projects flow's `checkRepository`. */
+/** Whether a run could check a repository out on this machine: the projects flow's `checkRepository` view. */
 export type RepositoryCheck = { usable: true; how: "worktree" | "clone" } | { usable: false; problem: string };
 
 /** Everything the screen reads and writes. */
@@ -321,6 +325,7 @@ export interface LabAdapter {
 // FIX-2624.
 /** The lab flow's harness-manager readiness view (`host.mts`), read by scope with no session. */
 const READINESS_VIEW = harnessReadinessViewRef("harness-readiness");
+
 
 /** How often an open view reads again, in ms. */
 const READ_EVERY_MS = 1500;
@@ -780,6 +785,21 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
     return output;
   };
 
+  // FIX-2624.
+  /** Every project of yours at `scope`, by scope with no session, through the client's one cursor loop. */
+  const everyProject = async (scope: "org" | "user") => {
+    const collection = fsd.resource({ scope, pattern: PROJECTS_PATTERN });
+    const pages = {
+      listCollectionResources: async (_sessionId: string, _ref: string, options: { limit?: number; cursor?: string } = {}) => {
+        const page = await collection.list(options);
+        return { items: page.items.map((entry) => ({ topic: entry.topic, clientData: entry.value })), ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }) };
+      },
+    };
+    return (await readEveryCollectionPage(pages, scope, PROJECTS_PATTERN)).map(
+      (row) => row.clientData as { id: string; title: string; members: string[] },
+    );
+  };
+
   /**
    * Keep `pending` under `key` in `cache` while it may succeed: a lookup that failed is dropped, so
    * the next read (a retry after a failure) asks again instead of failing on the kept rejection.
@@ -792,19 +812,6 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
     return pending;
   };
 
-  /** The user's one session on a lab flow (`projects`), found or made once. */
-  const ownSessions = new Map<string, Promise<string>>();
-  const ownSession = (flow: string) =>
-    ownSessions.get(flow) ??
-    keptUnlessFailed(
-      ownSessions,
-      flow,
-      (async () => {
-        const [latest] = (await fsd.sessions.list({ flowKind: flow, userId: fsd.userId })).sort((a, b) => b.updatedAt - a.updatedAt);
-        return latest?.id ?? (await fsd.flow(flow).createSession()).id;
-      })(),
-    );
-  const projects = () => ownSession("projects");
 
   /** Whether a session is threads mode's: its main worker is that mode's. Kept, since a session's worker never changes. */
   const threadsSessions = new Map<string, Promise<boolean>>();
@@ -1097,19 +1104,19 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
     const { tasks: listed, topics } = await listedWithWaitingOn(sessionId);
     const rows = await Promise.all(
       listed.map(async (task): Promise<LabTask> => {
-        const { runSessionId: _session, run: link, holds: _holds, leaseUntil, ...row } = task;
+        const { runSessionId: _session, run: link, holds: _holds, leaseUntil, ...taskEntry } = task;
         const run = { ...(typeof link?.startedAt === "number" ? { startedAt: link.startedAt } : {}), ...(leaseUntil === undefined ? {} : { leaseUntil }) };
         // The harness its run reported; until one reports, the assignee's `harness` setting.
         const harness = task.spend?.harness ?? (await harnessOf(task));
         const pullRequests = await pullRequestsOf(task);
         // A coding task's output says how its review ended and where its work landed. Landing happens on an accept,
         // so the output is read once the run is done, or while it waits on a pull request it opened.
-        const output = harness !== undefined && (row.status === "completed" || pullRequests !== undefined) ? await outputOf(sessionId, task) : undefined;
-        const review = harness !== undefined && row.status === "completed" ? ((output?.review as LabTask["review"]) ?? null) : undefined;
+        const output = harness !== undefined && (taskEntry.status === "completed" || pullRequests !== undefined) ? await outputOf(sessionId, task) : undefined;
+        const review = harness !== undefined && taskEntry.status === "completed" ? ((output?.review as LabTask["review"]) ?? null) : undefined;
         const landed = landedOf(output?.landed);
-        const error = row.status === "errored" ? await errorOf(sessionId, task) : undefined;
+        const error = taskEntry.status === "errored" ? await errorOf(sessionId, task) : undefined;
         return {
-          ...row,
+          ...taskEntry,
           ...(Object.keys(run).length === 0 ? {} : { run }),
           ...(harness === undefined ? {} : { harness }),
           ...(pullRequests === undefined ? {} : { pullRequests }),
@@ -1271,19 +1278,24 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
         subscription?.close();
       };
     },
+    // FIX-2624: the projects are read by scope, with no session.
     listProjects: async () => {
-      const listed = await run("projects", await projects(), "listProjects", {});
-      return (listed.projects as { visibility: "shared" | "private"; id: string; title: string }[]).map((project) => ({
-        id: projectRef(project),
-        name: project.title,
-      }));
+      const [shared, own] = await Promise.all([everyProject("org"), everyProject("user")]);
+      return [
+        // A shared project is listed to its members only, as the project blocks' listProjects does.
+        ...shared.filter((project) => project.members.includes(fsd.userId)).map((project) => ({ ...project, visibility: "shared" as const })),
+        ...own.map((project) => ({ ...project, visibility: "private" as const })),
+      ].map((project) => ({ id: projectRef(project), name: project.title }));
     },
+    // FIX-2624: a send to the collection, run by the projects flow in your own write session.
     createProject: async (name, repository) => {
-      const created = await run("projects", await projects(), "createProject", { id: projectIdOf(name), title: name, visibility: "private", repository });
+      const created = await fsd
+        .resource({ scope: "user", pattern: PROJECTS_PATTERN })
+        .send<CreateProjectOutput>("createProject", { id: projectIdOf(name), title: name, visibility: "private", repository });
       refuseExisting(created, name);
       return { id: projectRef({ visibility: created.visibility, id: created.project.id }), name: created.project.title };
     },
-    checkRepository: async (repository) => await run("projects", await projects(), "checkRepository", { repository }),
+    checkRepository: async (repository) => (await fsd.view(checkRepositoryView, { repository })).value,
     readHarnesses: async (refresh = false) => (await fsd.view(READINESS_VIEW, { refresh })).value,
     openSession: async (mode, projectId) => {
       const { worker } = modeById(mode);

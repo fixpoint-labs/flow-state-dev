@@ -9,16 +9,18 @@
  * `setWorkProject` checks the same rule on the server.
  */
 import { defineFlow } from "@flow-state-dev/core";
-import { defineProjectBlocks, type RepositoryCheck } from "@flow-state-dev/workforce";
+import { defineProjectBlocks, PROJECTS_FLOW, type RepositoryCheck } from "@flow-state-dev/workforce";
 import { labDismissals, labPins } from "./user-marks.mts";
 
-/** The flow kind the screen reads projects through. */
-export const PROJECTS_FLOW = "projects";
+// FIX-2624: workforce's projects flow kind, which the projects collections' `runBy` names.
+/** The flow kind the screen writes projects through. */
+export { PROJECTS_FLOW };
 
 /**
- * Build the flow: the project blocks' actions and nothing else. Given the
- * host's `checkRepository`, a project on a repository no run could use is
- * refused when it is made, and `checkRepository` answers the picker first.
+ * Build the flow: the project blocks' actions and views and nothing else.
+ * Given the host's `checkRepository`, a project on a repository no run could
+ * use is refused when it is made, and the `checkRepository` view answers the
+ * picker first, with no session.
  */
 export function defineProjectsFlow(options: { checkRepository?: RepositoryCheck } = {}) {
   const projects = defineProjectBlocks(options.checkRepository === undefined ? {} : { checkRepository: options.checkRepository });
@@ -30,7 +32,7 @@ export function defineProjectsFlow(options: { checkRepository?: RepositoryCheck 
     actions: {
       listProjects: projects.actions.listProjects,
       createProject: projects.actions.createProject,
-      ...(projects.actions.checkRepository === undefined ? {} : { checkRepository: projects.actions.checkRepository }),
     },
+    views: { ...projects.views },
   } as never);
 }

@@ -1,8 +1,9 @@
+// FIX-2145; FIX-2624.
 /**
- * Per-worker token usage (FIX-2145): every request a worker's session runs
+ * Per-worker token usage: every request a worker's session runs
  * adds what it spent, model calls and harness runs alike, to the user's
  * `worker-usage/**` record for that worker and UTC day, and the roster flow's
- * `workerUsage` view reads it back over a period, with no session (FIX-2624).
+ * `workerUsage` view reads it back over a period, with no session.
  *
  * Why it matters: a user sees which worker used how much of their
  * subscriptions and keys. A total that misses model calls, shows someone

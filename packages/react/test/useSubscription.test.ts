@@ -257,7 +257,8 @@ describe("useSubscription", () => {
     expect(gate.read).toHaveBeenCalledTimes(1);
   });
 
-  it("tries a read that threw again on its own, 1 s later, with no notice: push runs no timer to recover on (D2)", async () => {
+  // FIX-2551 D2.
+  it("tries a read that threw again on its own, 1 s later, with no notice: push runs no timer to recover on", async () => {
     vi.useFakeTimers();
     try {
       let reads = 0;

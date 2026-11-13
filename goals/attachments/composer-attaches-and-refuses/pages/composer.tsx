@@ -5,8 +5,9 @@
  * installed them with `fsdev ui add`, as `goal/composer.tsx`.
  *
  * Send is enabled when there is text or a file, as an adopter wires it. The
- * message goes to the host's `send` action with its files' references in the
- * input; the goal reads that request on the wire.
+ * message goes to the host's `send` action in one session, its files'
+ * references riding beside the input as the send's `attachments`; the goal
+ * reads that request on the wire.
  *
  * Under `GOAL_CONTROL=main-registry` the host holds `prompt-input` and
  * `message` as on `main`, which have no `client` prop, no strip and no +
@@ -30,6 +31,8 @@ const signedIn: typeof fetch = (input, init) => {
   return fetch(input, { ...init, headers });
 };
 const flow = createClient({ baseUrl: location.origin, userId: "goal-user", fetcher: signedIn }).flow("chat");
+/** Files belong to a conversation, so every send names this one. */
+const session = flow.createSession();
 
 /** `main`'s way to open the picker, when the registry has no + button. */
 function MainAttachButton() {
@@ -57,8 +60,8 @@ function Page() {
       <PromptInput
         {...({ client: flow } as object)}
         onSubmit={async (message) => {
-          const files = message.files.map((f) => ({ type: "file" as const, mediaType: f.mediaType, filename: f.filename, data: f.url }));
-          await flow.send("send", { message: message.text, files });
+          const { id } = await session;
+          await flow.send("send", { message: message.text }, { sessionId: id, attachments: message.attachments });
           setText("");
           setSent((n) => n + 1);
         }}

@@ -24,7 +24,8 @@ const named = (reads: readonly RecordedRead[]) =>
   reads.map((read) => `${read.scope}:${read.what === "state" ? "state" : read.what.resource}`).sort();
 
 describe("the board's list, run as a session view", () => {
-  it("records every dependency FIX-2621 found, through the board's resolver", async () => {
+  // FIX-2621's probe.
+  it("records every dependency the probe found, through the board's resolver", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");

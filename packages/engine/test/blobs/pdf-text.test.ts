@@ -1,5 +1,6 @@
+// FIX-2520 D1.
 /**
- * A PDF's text, extracted once on the server (spec FIX-2520 D1): the pages in
+ * A PDF's text, extracted once on the server: the pages in
  * order, a scanned page said to be one rather than read as empty, the page
  * cap counted from the page tree before any text is read, and bytes that are
  * no PDF refused by name.

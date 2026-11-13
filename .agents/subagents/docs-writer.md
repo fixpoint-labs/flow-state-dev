@@ -69,8 +69,9 @@ The caller gives you a surface brief. It should carry only:
   destination's create/update/remove, and for an epic, which child publishes the shared story.
 - **Draft** — only from an older spec set's `DOCS.md`: its applicable prose/examples. Keep only
   reader-facing content, not design rationale.
-An explicitly labelled migration section may describe the actions a reader must take
-from an old public contract to the new one; it is not permission to retell design history.
+The actions a reader must take from an old public contract to the new one go in a row on the
+release's Upgrading page (`docs/contributing/release-docs.md` → "The Upgrading page"), never in a
+section of the page you are writing; a row is not permission to retell design history.
 
 A brief carrying rationale, before/after framing, or a defect description is a contaminated brief.
 Use the surface facts in it and drop the rest. Never quote a brief; verify against the code.
@@ -107,7 +108,8 @@ code, which outranks every prose finding in the list.
 5. **Keep the neighbours honest.** A correction to a contract often leaves a contradiction on
    another page or in a README that stated the old behavior. Search for the claim you just changed
    and fix every copy of it. A page that contradicts the one you fixed is worse than one that's
-   merely dated.
+   merely dated. Until the docs cutover, every `packages/<dir>/README.md` has a cut copy at
+   `docs/contributing/docs-revamp/readmes/<dir>.md`; an edit to one lands in both.
 
 ## Verify (BP-003)
 

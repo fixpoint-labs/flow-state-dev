@@ -25,7 +25,7 @@ type SharedWatch = { read: RosterRead; views: Set<(read: RosterRead) => void>; s
  * The roster watch for each Lab connection. Roster, the sidebar's TEAMS, a
  * project's lead picker, worker settings and DELEGATES all draw the roster;
  * sharing one watch keeps them on the same roster, and keeps them from
- * racing two first reads, which could each open the user's roster session.
+ * racing two first reads.
  * The last view to go stops it.
  */
 const watches = new WeakMap<object, SharedWatch>();

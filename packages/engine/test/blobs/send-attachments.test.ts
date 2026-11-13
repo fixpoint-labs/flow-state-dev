@@ -1,6 +1,7 @@
+// FIX-2517.
 /**
- * A sent message's files, from the action request to the model call (spec
- * FIX-2517). The request names its files in `attachments` beside the input;
+ * A sent message's files, from the action request to the model call.
+ * The request names its files in `attachments` beside the input;
  * the parse step checks them against the one limits set and that the action
  * has a user line to put them on; the user line holds a `file` part per file,
  * in reference form; the block reads them from its context; and a generator

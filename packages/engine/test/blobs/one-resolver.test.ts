@@ -1,5 +1,6 @@
+// epic FIX-2516 ER-1.
 /**
- * ER-1 (epic FIX-2516): one resolver turns a reference into bytes, and nothing
+ * One resolver turns a reference into bytes, and nothing
  * else reads `fsd-blob:` by hand. The resolver serves a reference only to the
  * conversation that owns the file, so a reference copied into another
  * conversation reads nothing there.

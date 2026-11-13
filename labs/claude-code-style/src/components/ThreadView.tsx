@@ -1,15 +1,14 @@
-import { isSendKey, useJumpToLatest, useSubmit } from "@flow-state-dev/react";
+import { isSendKey, useDraftSend, useJumpToLatest, useSubmit } from "@flow-state-dev/react";
 import { useMemo, type FormEvent, type KeyboardEvent } from "react";
 import type { LabAdapter, LabTask } from "../adapter";
 import { useWatch } from "../lib/use-watch";
-import { useDraftSend } from "../lib/use-draft-send";
 import { Entry } from "./Entry";
 import { LoadEarlier } from "./LoadEarlier";
 import { ReviewCard } from "./ReviewCard";
 import { AcceptButtons, useReviewAccept } from "./ReviewAccept";
 import { LandedOutcome } from "./flow-state/review-hold";
 import { SessionOverlay } from "./flow-state/session-overlay";
-import { WorkingLine } from "./WorkingLine";
+import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
 import { TaskActions } from "./flow-state/task-actions";
@@ -221,7 +220,7 @@ export function ThreadView({
       {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
       {task.status === "in_progress" && task.openHold === undefined && !waitsOnPullRequest(task) ? (
-        <WorkingLine message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
+        <StreamingIndicator message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
     </SessionOverlay>
   );

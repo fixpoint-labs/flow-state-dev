@@ -25,6 +25,8 @@ afterEach(() => {
 });
 
 const STALE = "opacity-60";
+// The lab's first draw is render work with no fixture timer: ~150 ms alone, past findBy's 1 s default under CI load.
+const FIRST_DRAW = { timeout: 3_000 };
 const headerStatus = () => document.querySelector<HTMLElement>("[data-header-status]")!;
 const rowStatus = (name: string) => document.querySelector<HTMLElement>(`[data-worker="${name}"] [data-status]`)!;
 
@@ -32,7 +34,7 @@ describe("the server going away", () => {
   it("shows the bar and greys status only once a retry has failed, and clears both when the feed is live again", async () => {
     const lab = createFixtureLab({ speed: 0.05 });
     render(<App adapter={lab} />);
-    await screen.findByLabelText("Message Lead");
+    await screen.findByLabelText("Message Lead", undefined, FIRST_DRAW);
 
     act(() => lab.setConnection("reconnecting"));
     expect(screen.queryByTestId("connection-banner")).toBeNull();
@@ -53,7 +55,7 @@ describe("the server going away", () => {
     const tasks = [{ filer: "teammates.chief-of-staff", id: "t-1", to: "teammates.researcher", title: "Check the beta numbers", goal: "Check the beta numbers", status: "running" as const, boardStatus: "in_progress" }];
     const lab = createFixtureLab({ speed: 0.05, tasks });
     render(<App adapter={lab} />);
-    const panel = await screen.findByRole("complementary", { name: "Lead's panel" });
+    const panel = await screen.findByRole("complementary", { name: "Lead's panel" }, FIRST_DRAW);
     const row = () => panel.querySelector<HTMLElement>("[data-task=running]")!;
     expect(row().className).not.toContain(STALE);
 
@@ -70,7 +72,7 @@ describe("the server going away", () => {
   it("says a stopped feed has ended and offers Retry", async () => {
     const lab = createFixtureLab({ speed: 0.05 });
     render(<App adapter={lab} />);
-    await screen.findByLabelText("Message Lead");
+    await screen.findByLabelText("Message Lead", undefined, FIRST_DRAW);
     act(() => lab.setConnection("stopped"));
     expect(screen.getByTestId("connection-banner").textContent).toContain("The server stopped this feed");
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
@@ -81,7 +83,7 @@ describe("the server going away", () => {
     expect((await screen.findByTestId("unreachable-message")).textContent).toBe("fetch failed");
     expect(screen.queryByRole("navigation", { name: "Workers" })).toBeNull();
     await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
-    expect(await screen.findByLabelText("Message Lead")).toBeTruthy();
+    expect(await screen.findByLabelText("Message Lead", undefined, FIRST_DRAW)).toBeTruthy();
     expect(screen.queryByTestId("unreachable")).toBeNull();
   });
 
@@ -122,7 +124,7 @@ describe("the server going away", () => {
     await screen.findByTestId("unreachable-message");
     await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
     await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
-    expect(await screen.findByLabelText("Message Lead")).toBeTruthy();
+    expect(await screen.findByLabelText("Message Lead", undefined, FIRST_DRAW)).toBeTruthy();
     await act(async () => rejectSlow(new Error("fetch failed")));
     expect(screen.queryByTestId("unreachable")).toBeNull();
     expect(screen.getByLabelText("Message Lead")).toBeTruthy();

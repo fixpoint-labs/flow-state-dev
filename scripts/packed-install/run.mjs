@@ -51,7 +51,10 @@
  *
  * The closure row's upgrade journey (`closure.j5:moved-name-named`) installs
  * those same pinned tarballs beside the project and walks every name a package
- * root dropped since. Under `--control=adopter-goal` it walks none, which is a
+ * root dropped since. Each package that lost one must carry the changelog line
+ * counting the removed exports; the count must be the real one only on the
+ * Version Packages PR (`isReleaseGrade`), and elsewhere a stale count is a
+ * note. Under `--control=adopter-goal` it walks none, which is a
  * fail. `--control=moved-name` is its planted control: this checkout's
  * tarballs, with the changelog line that counts the removed exports taken out.
  * It exits 0 only when the journey then fails for every package that lost a name.
@@ -93,6 +96,7 @@ import {
   changelogLines,
   formatVerdict,
   gradeMovedNames,
+  isReleaseGrade,
   judge,
   judgeControl,
   outcomeOf,
@@ -600,7 +604,10 @@ export const GOAL_CHECKS = [
     name: "an app importing every name a root dropped since the pinned published tarballs compiles there, fails on these name by name, and each such package's changelog says how many exports the roots lost",
     run(project) {
       const { names, lines } = movedNameJourney(project);
-      return gradeMovedNames(names, lines);
+      const notes = [];
+      const failures = gradeMovedNames(names, lines, { release: isReleaseGrade(), notes });
+      if (notes.length > 0) report([`note: the summary line's count is checked at release; on this run it differs:`, ...notes.map((n) => `  ${n}`)]);
+      return failures;
     },
   },
 ];
@@ -1148,12 +1155,12 @@ function runMovedNameControl(work, dir) {
   const project = goalProject({ dir, packages: packed, tree: ROOT, manifest, tarballs });
   try {
     const { names, lines } = movedNameJourney(project);
-    const before = gradeMovedNames(names, lines);
+    const before = gradeMovedNames(names, lines, { release: isReleaseGrade() });
     if (before.length > 0) {
       report(["✗ control: the journey does not pass on this checkout, so removing its line shows nothing", ...before.slice(0, 20)]);
       return 1;
     }
-    const failures = gradeMovedNames(names, plantSummaryRemoval(lines));
+    const failures = gradeMovedNames(names, plantSummaryRemoval(lines), { release: isReleaseGrade() });
     const unflagged = [...new Set(names.map((n) => n.pkg))].filter(
       (pkg) => !failures.includes(`${pkg}: no changelog line says the ${names.length} exports removed from the package roots`),
     );

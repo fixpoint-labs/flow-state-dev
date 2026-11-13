@@ -1,5 +1,6 @@
+// FIX-2519.
 /**
- * A harness session's turn hands the person's files to the harness (FIX-2519):
+ * A harness session's turn hands the person's files to the harness:
  * the request's attachments go on the run input, in reference form, after the
  * prompt. A harness that declares what it takes refuses the rest itself, by
  * name; one that declares nothing is never handed a file, and the turn fails

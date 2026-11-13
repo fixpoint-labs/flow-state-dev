@@ -1,5 +1,6 @@
+// FIX-2519.
 /**
- * A turn's files, read for a harness (FIX-2519). A harness adapter gets the
+ * A turn's files, read for a harness. A harness adapter gets the
  * files in reference form on its run input and reads their bytes through
  * core's `readHarnessAttachments`, which the engine answers with its one
  * resolver, bound to the request's conversation and person. A reference

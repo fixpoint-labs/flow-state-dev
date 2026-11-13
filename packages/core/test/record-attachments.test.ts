@@ -1,5 +1,6 @@
+// FIX-2634.
 /**
- * The attachments block's own contract (spec FIX-2634): it declares the
+ * The attachments block's own contract: it declares the
  * session's `attachments` list itself, so including it is the only wiring; the
  * list is the app's to read and nobody's to rewrite; and it writes one entry
  * per referenced file, references and metadata only.

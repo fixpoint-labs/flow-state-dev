@@ -19,6 +19,10 @@ export const WORKSTREAMS_RESOURCE = "workstreams";
 /** The resource-map ref of a private project's workstream entries, at the owner's user scope. */
 export const PRIVATE_WORKSTREAMS_RESOURCE = "privateWorkstreams";
 
+// FIX-1792 and FIX-1794.
+/** The entries' key pattern. **Pinned**: persisted, and read by other packages. */
+export const WORKSTREAMS_PATTERN = "workstreams/[project]/[owner]/[workstream]";
+
 /** The accessor a project's entries are declared under at `visibility`. */
 export function workstreamsAccessor(visibility: "shared" | "private"): string {
   return visibility === "private" ? PRIVATE_WORKSTREAMS_RESOURCE : WORKSTREAMS_RESOURCE;

@@ -23,31 +23,21 @@ const CLASSES = {
 
 // [file prefix, line regex, class(es)]
 const RULES = [
-  // claude-code-style: ownSession
-  ["labs/claude-code-style/src/adapter.ts", /const ownSessions = |const ownSession = |ownSessions\.get|^\s*ownSessions,$/, ["helper"]],
-  ["labs/claude-code-style/src/adapter.ts", /const projects = \(\) => ownSession/, ["helper"]],
-  ["labs/claude-code-style/src/adapter.ts", /projects\(\), "listProjects"/, ["direct-read"]],
-  ["labs/claude-code-style/src/adapter.ts", /projects\(\), "createProject"/, ["runby-write"]],
-  ["labs/claude-code-style/src/adapter.ts", /projects\(\), "checkRepository"/, ["view"]],
-  // workforce client: the roster session
+  // claude-code-style: ownSession. Gone in 3c: listProjects (a direct read by scope) and createProject
+  // (a send to the projects collection, run by its runBy flow, PROJECTS_FLOW).
+  // Gone in 3c: the repository check (the projects flow's `checkRepository` view).
+  // workforce client: the public roster read. Gone in 3c: the roster session (a workstream's entry is a direct read).
   ["packages/workforce/src/workers/client.ts", /^\s*roster\(\): Promise/, ["unrelated"]],
-  ["packages/workforce/src/workers/client.ts", /rosterSession/, ["helper"]],
-  // The roster session now only reads a workstream's entry (namedLeadSession); the org beside it is the identity read.
-  ["packages/workforce/src/workers/client.ts", /const \[\{ id \}, orgId\] = await Promise\.all\(\[roster\(\), orgOf\(\)\]\)/, ["direct-read"]],
   ["packages/workforce/src/workers/register.ts", /copies\.push\(roster\(\)/, ["unrelated"]],
   ["packages/workforce/src/agent-worker-flow.ts", /`roster\(\)` row/, ["unrelated"]],
   ["packages/workforce/src/hire.ts", /`roster\(\)` row/, ["unrelated"]],
   // Shift Manager: readerSessionId. Gone in 3b: the project setup (a view), the message log (a direct
-  // read), the organization (the identity read) and the worker inventory (a direct read). What stays
-  // waits: the project reads are 3c's. Gone in 3d: usage (the usage flow's view, and Re-check through its
-  // runBy) and routines (the roster flow's routines view, and pause and delete through the collections' runBy).
-  ["packages/shift-manager/src/lib/reads.ts", /export function readerSessionId|const openingReaders|withReaderSessions|openingReaders\.|openReaderSession|createSession\(\{ sessionId: readerSessionId|\{@link readerSessionId\}/, ["helper"]],
+  // read), the organization (the identity read) and the worker inventory (a direct read). Gone in 3d: usage
+  // (the usage flow's view, and Re-check through its runBy) and routines (the roster flow's routines view,
+  // and pause and delete through the collections' runBy). Gone in 3c: the projects and a project's entries
+  // (direct reads), an entry's report (the roster flow's `workstreamReport` view), the reader sessions'
+  // open, and the snapshot's filter for them.
   ["packages/shift-manager/src/lib/reads.ts", /through Workforce's `roster\(\)`/, ["unrelated"]],
-  ["packages/shift-manager/src/lib/projects.ts", /getCollectionResourceState\(readerSessionId|listCollectionResources\(readerSessionId|getCollectionResourceContent\(readerSessionId/, ["direct-read"]],
-  ["packages/shift-manager/src/lib/projects.ts", /readerSessionId: string|readerSessionId === null|readProject\(client, readerSessionId|\[client, readerSessionId|`readerSessionId` is `null`/, ["carrier"]],
-  ["packages/shift-manager/src/lib/snapshot-subscribe.ts", /readerSessionId/, ["helper"]],
-  ["packages/shift-manager/src/surfaces/Project.tsx", /readEntryReport\(client, readerSessionId/, ["direct-read"]],
-  ["packages/shift-manager/src/surfaces/Project.tsx", /readerSessionId/, ["carrier"]],
   // Same word, another meaning: a run's own session in the engine and orchestration.
   ["packages/engine/src/", /ownSession/, ["unrelated"]],
   ["packages/orchestration/src/", /ownSession/, ["unrelated"]],

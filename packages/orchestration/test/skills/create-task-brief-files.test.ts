@@ -1,6 +1,7 @@
+// FIX-2522; epic FIX-2516 ER-7.
 /**
- * A task filed during a turn carries that turn's files in its brief (FIX-2522;
- * epic FIX-2516 ER-7). `createTask` keeps a copy of every one of the turn's
+ * A task filed during a turn carries that turn's files in its brief.
+ * `createTask` keeps a copy of every one of the turn's
  * files through the engine's keeper (`keepAttachmentsForUser`) and files the
  * copies on the row, so the row's files are not the turn's: deleting the
  * conversation can't take the brief's images. Every run of the task is handed
@@ -180,7 +181,8 @@ describe("a task filed during a turn", () => {
   });
 });
 
-describe("the brief's files are fixed when the task starts (D1)", () => {
+// FIX-2522 D1.
+describe("the brief's files are fixed when the task starts", () => {
   it("take context's rule, and no edit sets them", () => {
     expect(TASK_FIELD_RULES.attachments).toBe(TASK_FIELD_RULES.context);
     const base = { id: "t", goal: "g", createdAt: 1, updatedAt: 1 } as const;

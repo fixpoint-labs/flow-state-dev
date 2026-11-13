@@ -1,5 +1,6 @@
+// FIX-2517 D1.
 /**
- * The files a person sent, as a model call sees them (spec FIX-2517 D1).
+ * The files a person sent, as a model call sees them.
  *
  * A user line's `file` parts reach the model as image and file parts with the
  * bytes inline, read through the one resolver. Counting back from the newest

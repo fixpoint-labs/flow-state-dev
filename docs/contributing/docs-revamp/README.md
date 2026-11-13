@@ -16,6 +16,7 @@ process.
 | [`specs/epics/FIX-2696/SITEMAP/`](../../../specs/epics/FIX-2696/SITEMAP/README.md) | The page plan: every page of the new site, with its contents, questions, figures, examples and sources |
 | [`pages/`](./pages) | Pages written through the ten passes, in the page plan's reading order, with their figures in `pages/figures/`. First: [`blocks.md`](./pages/blocks.md) |
 | `pages/*.facts.md` | A page's fact sheet: every fact the page states, with file and line, collected before drafting (step 1 of the loop). The page states nothing that is not on it. Never published |
+| [`readmes/`](./readmes) | Each published package's cut README: an install line, one example, a link to its API reference section. They replace `packages/*/README.md` at cutover; until then an edit to a long README lands in its cut copy too (`scripts/check-cut-readmes.mjs`) |
 | `pages/*.record.md` | A page's record: the sitemap id, one section per pass of the loop and what it found, and the rows pass 6 moved to Reference. CI fails a page whose record misses a pass, and a page edited without a new pass 4 and pass 5 entry. The format is in the checker's header. Never published |
 | [`scripts/check-docs-page.mjs`](../../../scripts/check-docs-page.mjs) | Word budget, banned words, em-dashes, table length, code titles, and the record. With no arguments it checks every page in `pages/` and its record; given a page, the page rules only, as pass 4 runs it. CI checks the pages a PR touches, and every page on `main` |
 

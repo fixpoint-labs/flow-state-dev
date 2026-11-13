@@ -47,9 +47,9 @@ import {
   type WorkstreamObjective,
   type WorkstreamStatus
 } from "./workstream-entry";
-import { PRIVATE_WORKSTREAMS_RESOURCE, WORKSTREAMS_RESOURCE, workstreamsAccessor } from "./workstream-ref";
+import { PRIVATE_WORKSTREAMS_RESOURCE, WORKSTREAMS_PATTERN, WORKSTREAMS_RESOURCE, workstreamsAccessor } from "./workstream-ref";
 
-export { PRIVATE_WORKSTREAMS_RESOURCE, WORKSTREAMS_RESOURCE, workstreamsAccessor };
+export { PRIVATE_WORKSTREAMS_RESOURCE, WORKSTREAMS_PATTERN, WORKSTREAMS_RESOURCE, workstreamsAccessor };
 export {
   parseWorkstreamEntry,
   workstreamDueSchema,
@@ -63,10 +63,6 @@ export {
   type WorkstreamObjective,
   type WorkstreamStatus
 };
-
-// FIX-1792 and FIX-1794.
-/** The entries' key pattern. **Pinned**: persisted, and read by other packages. */
-export const WORKSTREAMS_PATTERN = "workstreams/[project]/[owner]/[workstream]";
 
 // BP-015.
 /** Every field a browser reads, named. The session id grants nothing to anyone but the owner. */

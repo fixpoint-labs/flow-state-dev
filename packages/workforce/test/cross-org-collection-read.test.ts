@@ -291,7 +291,8 @@ async function listAll(
 }
 
 describe("FIX-1502 · the worker inventory's client read", () => {
-  it("V1 · each organization's session lists only its own worker entries (BR-1, BR-2, BR-4)", async () => {
+  // V1; BR-1, BR-2, BR-4.
+  it("each organization's session lists only its own worker entries", async () => {
     const h = await buildInventoryHarness();
 
     // The positive record first: both organizations' rows are in storage.

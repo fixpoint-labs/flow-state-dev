@@ -4,8 +4,9 @@
  * project setup.
  *
  * **What a project view reads**: the project's entry and its workstream
- * entries by one prefix, through the user's own session on the roster flow,
- * which declares both. Never a Lab read. Progress is worked out from the
+ * entries by one prefix, by scope with no session (the roster flow declares
+ * both), and an entry's report through the roster flow's `workstreamReport`
+ * view, since a report is content. Never a Lab read. Progress is worked out from the
  * entries here, by Workforce's own `projectProgress`, so the view and the
  * project coordinator count the same way; nothing is stored.
  *
@@ -19,19 +20,20 @@
  * their roster.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { topic, type LiveRead, type SessionSummary } from "@flow-state-dev/client";
+import { topic, viewRef, type Client, type LiveRead } from "@flow-state-dev/client";
 import {
   DONE_STATUS,
   parseWorkstreamEntry,
   projectProgress,
+  PROJECTS_PATTERN,
   STALE_AFTER_MS,
-  workstreamsAccessor,
+  WORKSTREAMS_PATTERN,
+  workstreamReportView,
   type ParsedWorkstreamEntry,
   type ProjectProgress,
 } from "@flow-state-dev/workforce/browser";
-import { viewRef, type Client } from "@flow-state-dev/client";
 import { useLab } from "./lab-data";
-import { describeFailure, PROJECT_READER_FLOW, toProject, type Failure, type Project, type ProjectVisibility } from "./reads";
+import { describeFailure, readEveryScopeEntry, toProject, type Failure, type Project, type ProjectVisibility } from "./reads";
 
 /** A project's address: where it lives, and its id. */
 export type ProjectAddress = { visibility: ProjectVisibility; id: string };
@@ -42,7 +44,7 @@ export type WorkstreamObjective = { text: string; met: boolean };
 // BR-12.
 /** One workstream of a project: its entry, as everyone who reads the project reads it. */
 export type WorkstreamEntry = {
-  /** Its storage key in the project's workstreams: where its report is read. */
+  /** Its storage key in the project's workstreams. */
   key: string;
   owner: string;
   id: string;
@@ -78,14 +80,6 @@ export type ProjectSetup = {
 /** The view the Lab's projects flow names its setup on. */
 export const PROJECT_SETUP_VIEW = "projectSetup";
 
-/** Rows per page: the collection route's maximum. */
-const PAGE_SIZE = 200;
-const MAX_PAGES = 50;
-
-/** The user's own session on the roster flow, which reads projects and entries, or `null` while they hold none. */
-export function projectReaderOf(sessions: readonly SessionSummary[]): string | null {
-  return sessions.find((session) => session.parentSessionId == null && session.flowKind === PROJECT_READER_FLOW)?.id ?? null;
-}
 
 /**
  * An entry, from what the entries' browser read publishes, parsed by
@@ -114,40 +108,26 @@ function toEntry(storageKey: string, data: unknown): Omit<WorkstreamEntry, "stal
   };
 }
 
-/** The accessor a project's entry is declared under on the roster flow, at its visibility. */
-const projectsAccessor = (visibility: ProjectVisibility) => (visibility === "private" ? "privateProjects" : "projects");
+/** Where a project at `visibility` lives: a shared one in the organization, a private one in the user's own scope. */
+const scopeOf = (visibility: ProjectVisibility) => (visibility === "private" ? "user" : "org");
 
+// FIX-2624.
 /**
  * Read a project as its view opens: its row, and its entries by the
- * project's one prefix, through the user's reader session. `null` when the
- * user can't read a row at that address: none there, or another user's
- * private project.
+ * project's one prefix, by scope with no session. `null` when the user can't
+ * read a row at that address: none there, or another user's private project.
  */
-export async function readProject(client: Client, readerSessionId: string, address: ProjectAddress, now = Date.now()): Promise<ProjectRead | null> {
-  const [row, entries] = await Promise.all([
-    client.resources.getCollectionResourceState(readerSessionId, projectsAccessor(address.visibility), address.id),
-    (async () => {
-      const found: Omit<WorkstreamEntry, "stale">[] = [];
-      let cursor: string | undefined;
-      for (let page = 0; page < MAX_PAGES; page += 1) {
-        const listed = await client.resources.listCollectionResources(readerSessionId, workstreamsAccessor(address.visibility), {
-          limit: PAGE_SIZE,
-          topicPrefix: `workstreams/${address.id}/`,
-          ...(cursor === undefined ? {} : { cursor }),
-        });
-        for (const item of listed.items) {
-          const key = (item as { storageKey?: string }).storageKey ?? `workstreams/${item.topic}`;
-          const entry = toEntry(key, item.clientData);
-          if (entry !== undefined) found.push(entry);
-        }
-        if (listed.nextCursor === undefined || listed.nextCursor === cursor) break;
-        cursor = listed.nextCursor;
-      }
-      return found;
-    })(),
+export async function readProject(client: Client, address: ProjectAddress, now = Date.now()): Promise<ProjectRead | null> {
+  const scope = scopeOf(address.visibility);
+  const [stored, entries] = await Promise.all([
+    client.resource({ scope, pattern: PROJECTS_PATTERN }).entry(`projects/${address.id}`).read(),
+    // The project's one prefix, through the snapshot's pager: its page ceiling and repeated-cursor check.
+    readEveryScopeEntry(client, scope, WORKSTREAMS_PATTERN, `workstreams/${address.id}/`).then((scopeEntries) =>
+      scopeEntries.map((scopeEntry) => toEntry((scopeEntry as { storageKey?: string }).storageKey ?? `workstreams/${scopeEntry.topic}`, scopeEntry.clientData)).filter((entry): entry is Omit<WorkstreamEntry, "stale"> => entry !== undefined),
+    ),
   ]);
-  if (row === null) return null;
-  const project = toProject(row.clientData, address.visibility);
+  if (stored.value === null) return null;
+  const project = toProject(stored.value, address.visibility);
   if (project === undefined) return null;
   return withProgress(project, entries, now);
 }
@@ -184,18 +164,18 @@ function nextQuietAt(read: ProjectRead): number | undefined {
   return next;
 }
 
+// FIX-2624.
 /**
- * An entry's latest report, read when its view opens: `null` when its owner
- * has written none.
+ * An entry's latest report, read when its view opens through the roster
+ * flow's `workstreamReport` view, with no session: `null` when its owner has
+ * written none.
  */
 export async function readEntryReport(
   client: Client,
-  readerSessionId: string,
   project: ProjectAddress,
-  entry: Pick<WorkstreamEntry, "key">,
+  entry: Pick<WorkstreamEntry, "owner" | "id">,
 ): Promise<string | null> {
-  const read = await client.resources.getCollectionResourceContent(readerSessionId, workstreamsAccessor(project.visibility), entry.key);
-  return typeof read.content === "string" && read.content.length > 0 ? read.content : null;
+  return (await client.view(workstreamReportView, { project, owner: entry.owner, id: entry.id })).value.report;
 }
 
 /** Project setups read, per connection: one read per page load. */
@@ -246,18 +226,17 @@ const PROJECT_POLL_MS = 5_000;
  * instead (`client.live`). `reread` reads it now, as after an open. A read
  * again keeps the last one on screen until it lands, and keeps it if it
  * fails; the live read tries a failed one again on its own.
- * No read while `readerSessionId` is `null`: the user holds no reader session
- * yet, or nothing on screen draws the entries.
+ * No read while `enabled` is false: nothing on screen draws the entries.
  */
-export function useProjectRead(address: ProjectAddress, readerSessionId: string | null, readAt: number) {
+export function useProjectRead(address: ProjectAddress, enabled: boolean, readAt: number) {
   const { client } = useLab();
   const [read, setRead] = useState<ProjectReadState>(undefined);
   const live = useRef<LiveRead | null>(null);
   useEffect(() => {
-    if (readerSessionId === null) return;
+    if (!enabled) return;
     const where = { visibility: address.visibility, id: address.id };
     const watching = client.live([where.visibility === "private" ? topic.user() : topic.org()], {
-      read: () => readProject(client, readerSessionId, where),
+      read: () => readProject(client, where),
       onValue: (value) => setRead({ value }),
       // A failed read again keeps the last good one on screen: one dropped
       // read shouldn't blank the list. Only a failed first read shows.
@@ -273,7 +252,7 @@ export function useProjectRead(address: ProjectAddress, readerSessionId: string 
     };
     // The address is the view's key; its parts are what the read depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, readerSessionId, address.visibility, address.id]);
+  }, [client, enabled, address.visibility, address.id]);
   // A Lab read reads it again too; the live read's own first read covers the one it opened on.
   const readAtSeen = useRef(readAt);
   useEffect(() => {

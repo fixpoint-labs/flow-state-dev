@@ -1,6 +1,7 @@
+// FIX-2522; FIX-2519 hands them on.
 /**
- * A task's brief files reach every run of the task (FIX-2522; FIX-2519
- * hands them on). The manager reads them off the input the board packed from
+ * A task's brief files reach every run of the task.
+ * The manager reads them off the input the board packed from
  * the row, and puts them on the harness's run input beside the prompt, on
  * the first attempt and on the re-run after it failed, so a re-run sees the
  * screenshot the first run saw. A harness that declares no file types is

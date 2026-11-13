@@ -176,6 +176,11 @@ const config: Config = {
     // cutover adds both. FSD_API_REFERENCE_SKIP_TYPES=1 skips the packages' types build when
     // the caller has just run it.
     ...apiReference,
+    // The docs as text for a coding agent: every docs page's Markdown at its URL plus `.md`,
+    // and `/llms.txt` listing them by sidebar section. `full` names the sections
+    // `/llms-full.txt` holds; it stays empty, and the file unwritten, until the cutover
+    // publishes Start, Concepts and the hand-written Reference.
+    ["./scripts/agent-docs/plugin.mjs", { full: [] }],
   ],
 
   themeConfig: {

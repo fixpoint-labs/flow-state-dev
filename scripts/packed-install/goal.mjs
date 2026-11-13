@@ -378,19 +378,37 @@ function summaryCount(line) {
   return m ? Number(m[1].replaceAll(",", "")) : null;
 }
 
+/** The head branch of the Version Packages PR, which release.yml's changesets action opens. */
+const RELEASE_HEAD_REF = "changeset-release/main";
+
+/**
+ * Whether this run grades a release: it runs on the Version Packages PR, the
+ * signal release-docs-gate.yml also keys on. GitHub sets `GITHUB_HEAD_REF` on
+ * pull-request runs only, so a push to main or a dispatch is never a release.
+ */
+export function isReleaseGrade(env = process.env) {
+  return env.GITHUB_HEAD_REF === RELEASE_HEAD_REF;
+}
+
 /**
  * Grade the names a package root dropped between the version an adopter is
  * on and the tarballs under test. Each must fail to compile from the root,
  * and every package that dropped one must carry the summary line (see
- * {@link summaryCount}) stating the real total: a stale count tells an
- * upgrader less broke than did. No dropped name at all is a fail: a journey
- * that walked nothing proves nothing.
+ * {@link summaryCount}) with a count. No dropped name at all is a fail: a
+ * journey that walked nothing proves nothing.
+ *
+ * The count must equal the real total only when grading a release (see
+ * {@link isReleaseGrade}): that is what an upgrader reads, and a stale count
+ * tells them less broke than did. On any other run, other PRs that drop root
+ * names after the count was set would turn main red for drift nobody there
+ * caused, so a stale count is pushed to `notes` with both numbers instead.
  *
  * @param {{ pkg: string, name: string, failsOnNew: boolean }[]} names
  * @param {Map<string, string[]>} linesByPackage — from {@link changelogLines}
+ * @param {{ release?: boolean, notes?: string[] }} [opts]
  * @returns {string[]} failures
  */
-export function gradeMovedNames(names, linesByPackage) {
+export function gradeMovedNames(names, linesByPackage, { release = false, notes = [] } = {}) {
   if (names.length === 0) return ["no package root dropped a name between the version upgraded from and these tarballs: the journey walked no name"];
   const failures = [];
   for (const { pkg, name, failsOnNew } of names)
@@ -399,7 +417,9 @@ export function gradeMovedNames(names, linesByPackage) {
     const counts = (linesByPackage.get(pkg) ?? []).map(summaryCount).filter((c) => c != null);
     if (counts.length === 0) failures.push(`${pkg}: no changelog line says the ${names.length} exports removed from the package roots`);
     else if (!counts.includes(names.length))
-      failures.push(`${pkg}: its changelog says ${counts.join(", ")} exports removed from the package roots; ${names.length} were`);
+      (release ? failures : notes).push(
+        `${pkg}: its changelog says ${counts.join(", ")} exports removed from the package roots; ${names.length} were`,
+      );
   }
   return failures;
 }

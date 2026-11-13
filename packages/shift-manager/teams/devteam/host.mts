@@ -123,6 +123,7 @@ import {
   type ProjectBlocks,
   type WorkstreamBlocks,
   backfillBoardWakes,
+  PROJECTS_FLOW,
 } from "@flow-state-dev/workforce";
 import {
   readDeclaredRoster,
@@ -162,8 +163,9 @@ import {
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
+// FIX-2624: workforce's projects flow kind, which the projects collections' `runBy` names.
 /** The flow the lab creates projects through at open. */
-export const PROJECTS_FLOW = "projects";
+export { PROJECTS_FLOW };
 
 /** The session the lab's own project writes run in, as the owner. */
 export const PROJECTS_SESSION = "devforce-projects";

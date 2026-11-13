@@ -482,8 +482,9 @@ describe("delete collection item route — conflict before ContentStore is touch
 // Create route — the seeded row must clear the same bar as every other write
 // ---------------------------------------------------------------------------
 
+// FIX-1260, second path (BP-035).
 /**
- * FIX-1260, second path (BP-035). `handleCreateCollectionResource` is the only
+ * The create route's second path. `handleCreateCollectionResource` is the only
  * route in the engine that writes resource state, and it seeded its row from a
  * bare `safeParse` beside the guard the registry's write verbs go through. So a
  * schema the registry refuses could still be seeded over HTTP, and the row it

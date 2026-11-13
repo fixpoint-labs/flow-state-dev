@@ -16,9 +16,8 @@
  *       within 1 s of the run's request reading `suspended`.
  *   a2  the same, the task filed by a run on the server with no client (as a
  *       scheduled fire files one).
- *   b   10 s idle, with a Schedules-style list and a Usage query run on Shift
- *       Manager's own reading and usage sessions after each snapshot read, as
- *       those screens do: 0 snapshot reads.
+ *   b   10 s idle, with the Routines view and Usage's Re-check and view run
+ *       after each snapshot read, as those screens do: 0 snapshot reads.
  *   c   a 200-item reply, then a 2-item reply of the same length, in a listed
  *       conversation: the long one makes at most one read more (a read per item is ~200).
  *   d   a second host whose bus doesn't cross: the ask shows within 30 s + 1 s.
@@ -26,7 +25,6 @@
  * Controls (each runs this file again with a scratch patch applied as it loads):
  *   GOAL_CONTROL=no-subscribe   the provider subscribes nothing: a must FAIL.
  *   GOAL_CONTROL=every-kind     the provider reads on every notice of a session, items too: c must FAIL.
- *   GOAL_CONTROL=own-sessions   the provider hears its own reading, roster and usage sessions: b must FAIL.
  *   GOAL_CONTROL=no-poll        the provider keeps no fallback timer: d must FAIL.
  */
 import { spawnSync } from "node:child_process";
@@ -43,7 +41,7 @@ import { createFlowState, runAction as runOnServer, type FlowState, type StoreAd
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { TaskInit } from "@flow-state-dev/orchestration/tasks";
-import { LIST_ROUTINES_ACTION } from "@flow-state-dev/workforce/browser";
+import { routinesView } from "@flow-state-dev/workforce/browser";
 import {
   createWorkerInstallation,
   defineSessionBoard,
@@ -59,9 +57,7 @@ import {
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, sleep, type ModulePatch } from "../../lib/index.mts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
-import { runAction } from "../../../packages/shift-manager/src/lib/action.ts";
 import { readHarnessUsageView } from "../../../packages/shift-manager/src/lib/usage.ts";
-import { readerSessionId } from "../../../packages/shift-manager/src/lib/reads.ts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("its-summary-changes-on-its-own");
@@ -72,8 +68,6 @@ const BOUND_MS = 1_000;
 const IDLE_MS = 10_000;
 /** The provider's fallback pace where push can miss a change. */
 const POLL_MS = 30_000;
-/** A flow with the two actions Schedules and Usage run on Shift Manager's own sessions on every snapshot read. */
-const PROBE_FLOW = "usage-probe";
 const ASK = "[ask]";
 const INVENTORY_WRITER_FLOW = "inventory-writer";
 /** How many more snapshot reads leg c lets the long reply make than the short one: one coalescing more or less. */
@@ -99,12 +93,6 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string; mustFail:
     patches: [{ module: LAB_DATA, from: String.raw`pollIntervalMs: SNAPSHOT_POLL_MS,`, to: "pollIntervalMs: null," }],
     legs: "d",
     mustFail: "d:ask-within-poll",
-  },
-  // Shift Manager's own reading, roster and usage sessions are heard like any other.
-  "own-sessions": {
-    patches: [{ module: SUBSCRIBE, from: String.raw`session\.id === readerSessionId\(userId, session\.flowKind\) \|\|[\s\S]*?\$\{USAGE_SESSION_PREFIX\}-\`\)`, to: "false" }],
-    legs: "b",
-    mustFail: "b:idle-0-reads",
   },
 };
 
@@ -225,20 +213,8 @@ function buildHost(stores: StoreAdapter): { state: FlowState; flows: Record<stri
     doer: { flow: flowOf("doer", doerBoard, doerTurn), roles: ["contributor", "manager"] },
   };
 
-  // What Routines runs on every snapshot read: an action on the user's reading session. Usage's
-  // Re-check and view need no session of Shift Manager's (FIX-2624), and this host serves no usage.
-  const answer = (name: string, output: unknown) =>
-    handler({ name, inputSchema: z.object({}).passthrough(), outputSchema: z.unknown(), execute: async () => output });
-  const probe = defineFlow({
-    kind: PROBE_FLOW,
-    actions: {
-      [LIST_ROUTINES_ACTION]: { inputSchema: z.object({}).passthrough(), block: answer("probe-routines", { routines: [] }) },
-    },
-  } as never);
-
   const flows: Record<string, unknown> = {
     ...Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
-    [PROBE_FLOW]: probe(),
     [INVENTORY_WRITER_FLOW]: defineFlow({ kind: INVENTORY_WRITER_FLOW, internal: { actions: { ...inventoryWriterActions() } } } as never)(),
   };
   // The inventory, written once as a Lab's boot does, so Shift Manager's read finds the workers.
@@ -309,8 +285,9 @@ type Shown = { at: number; readAt: number; needsYou: number | undefined; session
 
 /**
  * The provider with a probe under it that records each snapshot it holds and,
- * as Schedules and Usage do on each snapshot read, runs their action on the
- * user's own reading session.
+ * as Routines and Usage do on each snapshot read, reads the routines view and
+ * runs Usage's Re-check and view. None of them names a session (FIX-2624);
+ * this host serves no usage, so the Re-check answers that it serves none.
  */
 function mountProvider(on: Host) {
   const shown: Shown[] = [];
@@ -320,7 +297,7 @@ function mountProvider(on: Host) {
     useEffect(() => {
       if (loaded === undefined) return;
       shown.push({ at: Date.now(), readAt: loaded.readAt, needsYou: loaded.inbox.ok ? loaded.inbox.value.length : undefined, sessions: loaded.sessions.map((s) => s.id) });
-      void runAction(client, PROBE_FLOW, readerSessionId(client.userId, PROBE_FLOW), LIST_ROUTINES_ACTION, {}).catch(() => {});
+      void client.view(routinesView, {}).catch(() => {});
       void readHarnessUsageView(client).catch(() => {});
     }, [loaded, client]);
     return null;
@@ -461,9 +438,9 @@ await runGoal(async (failures, tell) => {
         await quiet(provider);
       }
 
-      // b · idle: Schedules' and Usage's actions run on Shift Manager's own sessions after each read.
+      // b · idle: the Routines view and Usage's Re-check and view run after each read.
       if (legs.has("b")) {
-        // Let the reads the probe's own sessions bring settle (their first opens, and their listing).
+        // Let the reads the setup brought settle.
         await sleep(3_000);
         await quiet(provider, 2_000);
         const from = provider.reads().length;
@@ -472,7 +449,7 @@ await runGoal(async (failures, tell) => {
         const idle = provider.reads().length - from;
         tell.over("b:idle-0-reads · snapshots held before the window", provider.shown.slice(0, shownFrom));
         if (idle > 0) failures.push(`b:idle-0-reads: ${idle} snapshot reads over ${IDLE_MS / 1000} s idle`);
-        else evidence.push(`b: 0 snapshot reads over ${IDLE_MS / 1000} s idle, Schedules' and Usage's actions run after each of ${shownFrom} reads`);
+        else evidence.push(`b: 0 snapshot reads over ${IDLE_MS / 1000} s idle, the Routines view and Usage's Re-check and view run after each of ${shownFrom} reads`);
       }
 
       // c · a 200-item reply, then a 2-item reply that lasts as long.

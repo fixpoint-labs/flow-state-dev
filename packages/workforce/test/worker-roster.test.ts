@@ -30,7 +30,8 @@ describe("hiring a worker", () => {
     expect((await second.turn("alice", session.id)).output).toMatchObject({ worker: "scribe", tone: "terse" });
   });
 
-  it("BR-3 · refuses a hire, fork or fire onto a standard worker, naming it and suggesting a fork", async () => {
+  // BR-3.
+  it("refuses a hire, fork or fire onto a standard worker, naming it and suggesting a fork", async () => {
     const h = host();
     for (const [verb, input] of [
       ["hire", { id: "researcher", flow: FIXTURE }],
@@ -276,7 +277,8 @@ describe("naming a worker, and editing a standard one", () => {
     expect((await rowOf(h, "alice", "tester")).map((entry) => entry.name)).toEqual([null]);
   });
 
-  it("a row stored before names existed reads as having none (BP-030)", async () => {
+  // BP-030.
+  it("a worker stored before names existed reads as having none", async () => {
     const { parseWorkerResourceState } = await import("../src/workers/worker-row");
     expect(parseWorkerResourceState({ flow: FIXTURE })).toMatchObject({ worker: { name: null } });
   });

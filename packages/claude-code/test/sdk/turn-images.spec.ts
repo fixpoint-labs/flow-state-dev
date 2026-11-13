@@ -1,6 +1,7 @@
+// FIX-2519.
 /**
  * A turn's images reach Claude Code as image blocks on the one user message
- * of its streaming input, after the prompt's text (FIX-2519); nothing is
+ * of its streaming input, after the prompt's text; nothing is
  * written to disk. A type it can't take refuses the turn before the query.
  *
  * The query is scripted, as in `agent.spec.ts`: that the real agent reads the

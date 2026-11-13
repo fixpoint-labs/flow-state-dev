@@ -188,7 +188,7 @@ The `stateId`s and team id the lifecycles use are inlined in `issue-lifecycle` �
 
 Development task skills live in `.agents/skills/` — the harness-neutral home, since Claude is our main harness but not our only one. `.claude/skills` is a symlink to it so Claude Code's skill discovery keeps working; don't put files under `.claude/skills` directly. Use these when performing common development tasks:
 
-> **Workflow scripts** live in `.agents/workflows/` (`.claude/workflows` is symlinked the same way): `epic-wake` and `issue-multi-pr`, the pure-mechanism half of the lifecycles, and `app-review`, the fan-out of the `app-review` skill. **Run `node .agents/workflows/verify.mjs` after editing any of them.** Their contract is [`orchestration.md`](docs/contributing/orchestration.md) → "The pieces at a glance".
+> **Workflow scripts** live in `.agents/workflows/` (`.claude/workflows` is symlinked the same way): `epic-wake` and `issue-multi-pr`, the pure-mechanism half of the lifecycles, `app-review`, the fan-out of the `app-review` skill, and `page-loop`, one docs page through the ten writing passes in `docs/contributing/user-docs.md`. **Run `node .agents/workflows/verify.mjs` after editing any of them.** Their contract is [`orchestration.md`](docs/contributing/orchestration.md) → "The pieces at a glance".
 
 ### Workflow skills
 

@@ -203,6 +203,28 @@ decision above; none reverses one.
   `routines` view lists the declared routines joined to what is stored, so they show before
   they are seeded.
 
+- **A workstream entry's report is read through the roster flow's `workstreamReport` view.** A
+  report is the entry's content, and a direct read serves state only; the content routes at user
+  and org stay FIX-2633's. The roster flow already declares the entries, so the view adds no
+  declaration, and it reaches what the entries' browser read did: any owner's report in a shared
+  project, only the reader's own in a private one.
+- **The repository check is a view of the project blocks (`views.checkRepository`), and its action
+  goes with no alias.** It computes and stores nothing, so it is one of D1's views; one way to ask
+  it, as D2 keeps one hook.
+- **A client's project write runs on the projects flow the host registers, `PROJECTS_FLOW`
+  (`"projects"`)**, which both project collections name as their `runBy` (decided by the coordinator
+  on the projects slice). It follows `HARNESS_USAGE_FLOW`: a kind the package owns and the host
+  registers, with the package's blocks on it. Not the roster flow: it has no project writes, and
+  putting them there would need a new `hireWorkforce` option for the host's repository check and MCP
+  servers, and would give `createProject` a second home beside the projects flow that every app,
+  goal and docs example already registers. The kind is now a contract. No project field is
+  `secret`: every field is one a member of the project already reads.
+- **`its-summary-changes-on-its-own` keeps no failing control for its idle leg.** The control
+  made the snapshot hear the reading sessions Routines and Usage ran actions on, and those sessions
+  are gone. A view writes nothing and a Re-check writes at most once a minute under a path the
+  snapshot doesn't hear, so no defect in Shift Manager now turns the screens' reads into a
+  snapshot read. The leg stays as the check that it doesn't.
+
 ## Considered and dropped
 
 | Alternative | Why not |
@@ -272,5 +294,9 @@ mechanism list, `main` since the watermark and FIX-2623's draft.
 - **Amended 2026-11-12, from the implementation PR [#5153](https://github.com/fixpoint-labs/flow-state-dev/pull/5153)**:
   the seed point for an app's declared routines is the user's first request to any of the
   installation's flows, by the owner's decision on #5153 ([above](#decided-during-implementation)).
+- **Amended 2026-11-12, from the projects slice** — four calls recorded
+  [above](#decided-during-implementation): a report through the roster flow's view, the repository
+  check as a view with its action removed, the projects writer, and the summary goal's idle leg
+  without a control.
 
 **Open: none.** [The org write rule](#d3) was decided by the owner on 2026-11-11: refuse to start.

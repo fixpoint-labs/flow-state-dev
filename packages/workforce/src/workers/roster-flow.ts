@@ -3,11 +3,13 @@
  * The roster flow: a flow that runs no worker, which answers a user's roster
  * and changes it. Its `roster` view joins the user's own workers and the
  * standard ones at user scope, with no session (`roster-view.ts`), and its
- * `workerUsage` view reads what each of them spent (`worker-usage.ts`); its roster
+ * `workerUsage` view reads what each of them spent (`worker-usage.ts`), and its
+ * `workstreamReport` view a workstream entry's report; its roster
  * actions (hire, fork, edit, fire, reset) run in a session of it, and it adds
  * no endpoint. It declares the projects at both scopes and
- * the workstream entries too, so the same session reads the projects its user
- * may, private ones included, and a project's entries by its prefix. It
+ * the workstream entries too, so a client reads the projects its user may,
+ * private ones included, and a project's entries by its prefix, by scope with
+ * no session. It
  * declares the organization's worker inventory (`inventory/workers/*`), so the
  * same session reads who the organization's workers are without a coordinator
  * session to read it through. It declares the user's worker message log
@@ -30,7 +32,8 @@ import { defineWorkerInventoryCollection } from "../inventory/collections";
 import { workerMessagesResources } from "../messages/message-log";
 import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
-import { ROSTER_FLOW, ROSTER_VIEW, WORKER_USAGE_VIEW } from "./keys";
+import { defineWorkstreamReportView } from "../projects/workstream-report-view";
+import { ROSTER_FLOW, ROSTER_VIEW, WORKER_USAGE_VIEW, WORKSTREAM_REPORT_VIEW } from "./keys";
 import { defineRosterView } from "./roster-view";
 import { defineWorkerUsageView } from "./worker-usage";
 
@@ -66,6 +69,8 @@ export function defineWorkerRosterFlow(
     views: {
       [ROSTER_VIEW]: defineRosterView(installation),
       [WORKER_USAGE_VIEW]: defineWorkerUsageView(installation),
+      // FIX-2624: a workstream entry's report, which a direct read doesn't serve (it is content).
+      [WORKSTREAM_REPORT_VIEW]: defineWorkstreamReportView(),
       // FIX-2624: the user's routines, the app's declared ones joined in.
       ...(routines?.view === undefined ? {} : { [ROUTINES_VIEW]: routines.view })
     }

@@ -1,8 +1,9 @@
+// FIX-2624.
 /**
  * Structural: every route-layer place that resolves a stored record's owner
  * either asks the one write-record rule first (`writeRecordGovernor` or
  * `isWriteRecord`, `default-write-flow.ts`), or serves only records the route
- * guard already admitted through it (FIX-2624). A write record never falls
+ * guard already admitted through it. A write record never falls
  * through to the host's resolver.
  *
  * A new file under `src/routes/` that calls `resolveRecordOwner` fails here

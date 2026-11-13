@@ -7,7 +7,8 @@ import { createInMemoryStores, createLocalBlobStore } from "@flow-state-dev/engi
 import { createVercelHandler, createVercelBareHandler } from "../src/handler";
 import type { FlowApiRouter } from "../src/types";
 
-describe("attachments on Vercel (FIX-824)", () => {
+// FIX-824.
+describe("attachments on Vercel", () => {
   const upload = () =>
     new Request("http://localhost/api/flows/blobs?userId=u1", {
       method: "POST",

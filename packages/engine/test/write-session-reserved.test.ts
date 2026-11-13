@@ -1,5 +1,6 @@
+// FIX-2624.
 /**
- * Write sessions and the default write flow are the server's (FIX-2624).
+ * Write sessions and the default write flow are the server's.
  *
  * A write session's id is computed from public values, so anyone who knows a
  * user and their org can compute it. If a client could name one, an org-mate

@@ -1,5 +1,6 @@
+// FIX-2536.
 /**
- * Polling (FIX-2536): with no webhook, a subscribed session hears each event on
+ * Polling: with no webhook, a subscribed session hears each event on
  * its thread once, within one poll period, through the same screens and
  * delivery as push.
  *

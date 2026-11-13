@@ -9,8 +9,8 @@
  * A hire, fork, edit, reset or fire is a send addressed to the user's workers
  * collection, which the roster flow writes (`runBy`), and the organization a
  * worker's conversation is derived under is the roster flow's identity read. A
- * session of the roster flow (one per user) is still made for the reads that
- * go through it. A worker's sessions are listed by their readonly `workerId`
+ * workstream's entry is read by scope with no session. No roster session is
+ * found or made. A worker's sessions are listed by their readonly `workerId`
  * and created with it as initial state, which the worker flow's create check
  * confirms.
  *
@@ -29,7 +29,7 @@ import {
   type WorkerSessionCriteria
 } from "./derive-session-id";
 import { ownerSegment } from "@flow-state-dev/core/types";
-import { workstreamsAccessor, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
+import { WORKSTREAMS_PATTERN, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
 import {
   FILING_SESSION_STATE_KEY,
   ROSTER_FLOW,
@@ -48,7 +48,7 @@ import type { SetWorkProjectOutput } from "../projects/work-project";
  * Its user is the one whose roster and sessions are read: with
  * authentication, the signed-in user.
  */
-export type WorkforceClientSource = Pick<Client, "userId" | "flow" | "sessions" | "resources" | "resource" | "view" | "subscribe">;
+export type WorkforceClientSource = Pick<Client, "userId" | "flow" | "sessions" | "resource" | "view" | "subscribe">;
 
 /** One worker on a user's roster. */
 export type RosterEntry = {
@@ -275,24 +275,7 @@ const ACTION_TIMEOUT_MS = 30_000;
  * @param fsd The app's client (`createClient`): its user, transport and credential.
  */
 export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClient {
-  const { sessions, resources, userId } = fsd;
-
-  /**
-   * The user's roster session, which a workstream's entry is read through.
-   * Found by listing, and created without an id when there is none. Two first
-   * calls at once may create two; either reads the same entries.
-   */
-  let rosterSession: Promise<{ id: string }> | undefined;
-  const roster = (): Promise<{ id: string }> =>
-    (rosterSession ??= (async () => {
-      const listed = mostRecent(await sessions.list({ flowKind: ROSTER_FLOW, userId }));
-      const detail =
-        listed !== undefined ? await sessions.get(listed.id) : await fsd.flow(ROSTER_FLOW).createSession();
-      return { id: detail.id };
-    })().catch((error: unknown) => {
-      rosterSession = undefined;
-      throw error;
-    }));
+  const { sessions, userId } = fsd;
 
   // FIX-2624.
   /**
@@ -337,18 +320,18 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
     return found.flow;
   };
 
+  // FIX-2624.
   /**
    * The session the user's own entry for `workstream` names, or `null` when it
-   * names none or there is no entry. Read through the roster session, whose
-   * flow declares the entries with a browser read.
+   * names none or there is no entry. Read by scope with no session: a shared
+   * project's entries are the organization's, a private one's the user's.
    */
-  const namedLeadSession = async (rosterId: string, workstream: WorkstreamAddress): Promise<string | null> => {
-    const item = await resources.getCollectionResourceState(
-      rosterId,
-      workstreamsAccessor(workstream.project.visibility),
-      workstreamStorageKey(workstream, ownerSegment(userId))
-    );
-    const sessionId = (item?.clientData as { sessionId?: unknown } | undefined)?.sessionId;
+  const namedLeadSession = async (workstream: WorkstreamAddress): Promise<string | null> => {
+    const { value } = await fsd
+      .resource({ scope: workstream.project.visibility === "private" ? "user" : "org", pattern: WORKSTREAMS_PATTERN })
+      .entry(workstreamStorageKey(workstream, ownerSegment(userId)))
+      .read();
+    const sessionId = (value as { sessionId?: unknown } | null)?.sessionId;
     return typeof sessionId === "string" ? sessionId : null;
   };
 
@@ -375,7 +358,6 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
   const find = async (
     criteria: WorkerSessionCriteria,
     flow: string,
-    rosterId: string,
     orgId: string
   ): Promise<SessionSummary | undefined> => {
     // A conversation opened at another id (a random one, from before the
@@ -403,7 +385,7 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
     // A workstream's entry names its lead's session, and is the one source of
     // it: an open that stalled can leave another session linked to the same
     // workstream, which is never handed out.
-    const leadSession = await namedLeadSession(rosterId, criteria.workstreamId);
+    const leadSession = await namedLeadSession(criteria.workstreamId);
     return leadSession === null ? undefined : matching.find((row) => row.id === leadSession);
   };
 
@@ -428,14 +410,13 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
         ...(watchOptions?.onError !== undefined ? { onError: watchOptions.onError } : {})
       }),
     findWorkerSession: async (criteria) => {
-      const [{ id }, orgId] = await Promise.all([roster(), orgOf()]);
-      return find(criteria, flowOf(await readRoster(), criteria.worker), id, orgId);
+      return find(criteria, flowOf(await readRoster(), criteria.worker), await orgOf());
     },
     ensureWorkerSession: async (criteria) => {
       // One roster read per call; the organization is the sign-in's.
-      const [{ id }, orgId] = await Promise.all([roster(), orgOf()]);
+      const orgId = await orgOf();
       const flow = flowOf(await readRoster(), criteria.worker);
-      const existing = await find(criteria, flow, id, orgId);
+      const existing = await find(criteria, flow, orgId);
       if (existing !== undefined) return existing;
       if (criteria.taskId !== undefined) {
         // Only the hand-over opens a task's session: it is a child of the

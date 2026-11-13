@@ -32,10 +32,11 @@
  * `projectChecks()`.
  */
 
-import { handler } from "@flow-state-dev/core";
-import type { ActionConfig, BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
+import { defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
+import type { ActionConfig, BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { retryOnConflict } from "./cas-retry";
+import { CHECK_REPOSITORY_VIEW } from "./project-keys";
 import {
   PROJECTS_RESOURCE,
   projectAddressSchema,
@@ -152,8 +153,8 @@ export interface ProjectBlocksOptions {
    * Whether a run on a repository would get a checkout on this machine (a
    * workspace host's `checkRepository`). Given: `createProject` and
    * `setRepository` refuse an unusable one `repository-unusable` with the
-   * host's words, and a read-only `checkRepository` action asks first. Absent:
-   * no refusal and no action.
+   * host's words, and a `checkRepository` view asks first, with no session.
+   * Absent: no refusal and no view.
    */
   checkRepository?: RepositoryCheck;
 }
@@ -181,7 +182,16 @@ export type SetBriefInput = z.infer<typeof setBriefInputSchema>;
 /** What setting a project's brief returns: the row as written. */
 export const setBriefOutputSchema = z.object({ project: projectResourceStateSchema });
 
-/** The project writes, the project read and the project files read, and the same blocks as an `actions` map. */
+/** The repository check as a view, as {@link defineProjectBlocks} builds it from the host's check. */
+export type CheckRepositoryView = ViewDefinition<
+  BlockDefinition<typeof checkRepositoryInputSchema, typeof repositoryCheckAnswerSchema>,
+  "user"
+>;
+
+/**
+ * The project writes, the project read and the project files read, the same
+ * blocks as an `actions` map, and the repository check as a `views` map.
+ */
 export type ProjectBlocks = {
   createProject: ReturnType<typeof defineWriteProject>;
   setRepository: ReturnType<typeof defineSetRepository>;
@@ -200,8 +210,11 @@ export type ProjectBlocks = {
     readProject: ActionConfig;
     listProjects: ActionConfig;
     readProjectFiles: ActionConfig;
+  };
+  // FIX-2624.
+  views: {
     /** Present only when the host gave `checkRepository`. */
-    checkRepository?: ActionConfig;
+    checkRepository?: CheckRepositoryView;
   };
 };
 
@@ -378,22 +391,31 @@ function defineSetRepository(check: RepositoryCheck | undefined) {
   });
 }
 
+const checkRepositoryInputSchema = z.object({ repository: z.string() }).strict();
+
+// FIX-2624.
 /**
  * `checkRepository`: the same question `createProject` and `setRepository`
- * ask, as a read a page asks before either, so its answer and the write's
- * refusal are one answer. A value no row may record answers its problem too.
+ * ask, as a view a page reads before either, with no session, so its answer
+ * and the write's refusal are one answer. A value no row may record answers
+ * its problem too.
  */
-function defineCheckRepository(check: RepositoryCheck) {
-  return handler({
-    name: "project-check-repository",
-    inputSchema: z.object({ repository: z.string() }).strict(),
-    outputSchema: repositoryCheckAnswerSchema,
-    execute: async (input): Promise<RepositoryCheckAnswer> => {
-      const problem = repositoryProblem(input.repository);
-      if (problem !== undefined) return { usable: false, problem: `${problem}.` };
-      return await check(input.repository);
-    }
-  });
+function defineCheckRepositoryView(check: RepositoryCheck): CheckRepositoryView {
+  return defineView({
+    scope: "user",
+    description:
+      "Whether a coding run on this repository would get a checkout on this machine, and why not. The same check createProject and setRepository refuse with.",
+    block: handler({
+      name: "project-check-repository",
+      inputSchema: checkRepositoryInputSchema,
+      outputSchema: repositoryCheckAnswerSchema,
+      execute: async (input): Promise<RepositoryCheckAnswer> => {
+        const problem = repositoryProblem(input.repository);
+        if (problem !== undefined) return { usable: false, problem: `${problem}.` };
+        return await check(input.repository);
+      }
+    })
+  }) as CheckRepositoryView;
 }
 
 /**
@@ -459,7 +481,9 @@ async function projectRowToChange(ctx: BlockContext, named: ProjectAddress | und
 
 /**
  * Build the project writes, the project read, the caller's project list and
- * the project files read.
+ * the project files read. Register them on a flow at `PROJECTS_FLOW`:
+ * the projects collections' `runBy` names that flow, so a client's project
+ * write runs there.
  *
  * @param options `mcpServers`: the MCP server names this host offers its
  *   projects. Absent: none, and a project can name no server.
@@ -467,7 +491,7 @@ async function projectRowToChange(ctx: BlockContext, named: ProjectAddress | und
  *   `ProjectBlocksOptions.checkRepository`).
  * @example
  *   const projects = defineProjectBlocks({ mcpServers: ["linear"] });
- *   defineFlow({ kind: "lab", actions: { ...projects.actions } });
+ *   defineFlow({ kind: PROJECTS_FLOW, actions: { ...projects.actions }, views: { ...projects.views } });
  */
 export function defineProjectBlocks(options: ProjectBlocksOptions = {}): ProjectBlocks {
   const offered = [...(options.mcpServers ?? [])];
@@ -520,16 +544,8 @@ export function defineProjectBlocks(options: ProjectBlocksOptions = {}): Project
       readProjectFiles: {
         block: readProjectFiles,
         description: "Read the files a project keeps: each file's path under the project and its size in bytes. Members only."
-      },
-      ...(options.checkRepository === undefined
-        ? {}
-        : {
-            checkRepository: {
-              block: defineCheckRepository(options.checkRepository),
-              description:
-                "Whether a coding run on this repository would get a checkout on this machine, and why not. The same check createProject and setRepository refuse with."
-            }
-          })
-    }
+      }
+    },
+    views: options.checkRepository === undefined ? {} : { [CHECK_REPOSITORY_VIEW]: defineCheckRepositoryView(options.checkRepository) }
   };
 }

@@ -19,7 +19,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { createClient } from "@flow-state-dev/client";
-import { createWorkforceClient, projectProgress } from "@flow-state-dev/workforce/browser";
+import { createWorkforceClient, projectProgress, PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { routedDeliveries, type RoutedDelivery } from "../../lib/routed-tasks.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 import { ENTRY_WRITER_KIND } from "./controls/patches.mts";
@@ -48,7 +48,6 @@ type WorkstreamInput = { id: string; title: string; objectives: string[]; due: s
 /** The engine's refusal of a write by anyone but the row's owner. */
 const OWNER_RULE = "A resource in an owner-writes collection is written only by the user it belongs to.";
 
-const PROJECTS_FLOW = "projects";
 const ROSTER_KIND = "workforce-roster";
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);
@@ -125,7 +124,7 @@ const LEAD_INSTRUCTIONS =
   "for eng.coder with createTask. When its status changes, or there is something to report, call updateWorkstream " +
   "with a short status in your own words and your latest report. Mark it done only when the owner says it is finished.";
 
-/** The person's own session on a flow, at the id Shift Manager reads under (`readerSessionId`). */
+/** The person's own session on a flow, at one id per person and flow. */
 const ownSession = (who: Connected, kind: string, suffix = "") => `${kind}-own-${who.person.userId}${suffix}`;
 
 /** Make sure `who` holds a session at `id` on `kind`; a 409 is one they made before. */

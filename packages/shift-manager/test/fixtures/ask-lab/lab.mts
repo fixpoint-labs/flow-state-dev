@@ -39,6 +39,7 @@ import {
   openInventory,
   type CreateProjectInput,
   type InventoryActionRequest,
+  PROJECTS_FLOW,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
@@ -144,9 +145,6 @@ export type AskLabOptions = {
    */
   projects?: Array<CreateProjectInput & { owner?: string }>;
 };
-
-/** The flow the ask-lab creates projects through. */
-const PROJECTS_FLOW = "projects";
 
 /** Build, open and hand back the Lab. */
 export async function openAskLab(options: AskLabOptions = {}) {

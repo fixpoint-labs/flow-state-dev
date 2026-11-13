@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
+// FIX-2522.
 /**
- * A task's brief shows its files (FIX-2522): on the brief line a run opens
+ * A task's brief shows its files: on the brief line a run opens
  * with, under the folded text, and on the task screen's Brief, from the task.
  * Every run of the task gets these files, so a user sees what the worker
  * was handed. Each is read through the Lab's read route, never inlined.

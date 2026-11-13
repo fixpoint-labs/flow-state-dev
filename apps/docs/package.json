@@ -21,12 +21,19 @@
     "@docusaurus/plugin-client-redirects": "3.10.2",
     "@docusaurus/plugin-content-docs": "^3.10.2",
     "@docusaurus/preset-classic": "^3.10.2",
+    "@docusaurus/utils": "3.10.2",
     "@flow-state-dev/design-system": "workspace:*",
     "@mdx-js/react": "^3.0.0",
     "clsx": "^2.1.0",
     "prism-react-renderer": "^2.3.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "remark-directive": "3.0.1",
+    "remark-frontmatter": "5.0.0",
+    "remark-gfm": "4.0.1",
+    "remark-mdx": "3.1.1",
+    "remark-parse": "11.0.0",
+    "unified": "11.0.5"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "^3.10.2",

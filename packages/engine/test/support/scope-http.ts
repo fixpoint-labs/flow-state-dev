@@ -1,5 +1,6 @@
+// FIX-2624.
 /**
- * HTTP helpers for the tests of user and org resources by scope (FIX-2624):
+ * HTTP helpers for the tests of user and org resources by scope:
  * callers signed in from two headers, requests through a real router, and a
  * settle loop over the request store.
  */

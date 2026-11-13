@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, where the date and the skills line go in a worker's prompt, and whether an app may add its own line. Chosen: after the worker's own text, as tagged context, and an app may add a free-text date line through a capability it already composes. Instead of: the epic's D4 and ER-1 as written, the sections in the prompt's single default entry at the front, and no app-supplied text. It comes down to the first row: at the front, the date changes the start of every worker's prompt each day, while after the worker's text the start stays the same. The price is the second row: the default layer is in two places, the prompt and the context, where D4 keeps it in one. Third row: an app can show a fact such as the user's time zone, as unchecked free text that amends ER-1, where under ER-1 as written that fact cannot be shown. Locks in: a public date context key that carries app text. Flips if: a run shows a worker ignores a date at the end but uses one at the front."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where do the date and the skills line go, and how does an app add a fact?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">After the worker's text, as context</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">D4 and ER-1: at the front, no app lines</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">THE PROMPT'S</text>
+    <text class="t-lbl" x="32" y="169">START, DAY TO DAY</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Stays the same</text>
+    <text class="t-s" x="248" y="179">only the tail changes when the date does</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Changes every day</text>
+    <text class="t-s" x="612" y="179">for every worker, before the team's text</text>
+  </g>
+
+  <g id="row-price">
+    <text class="t-lbl" x="32" y="222">THE DEFAULT LAYER</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">In two places</text>
+    <text class="t-s" x="248" y="241">the prompt for identity, context for these</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">In one place</text>
+    <text class="t-s" x="612" y="241">the epic's D4 as written</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-app">
+    <text class="t-lbl" x="32" y="280">AN APP'S FACT</text>
+    <text class="mark plus" x="228" y="282">+</text>
+    <text class="t-b" x="248" y="281">A capability it already composes</text>
+    <text class="t-s" x="248" y="299">free text, unchecked; amends ER-1</text>
+    <text class="mark minus" x="592" y="282">−</text>
+    <text class="t-b" x="612" y="281">No app line; the user's zone goes unshown</text>
+    <text class="t-s" x="612" y="299">ER-1 kept: no app-supplied text</text>
+    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">A public date key with app text</text>
+    <text class="t-s" x="32" y="389">renaming it later breaks every app line under it</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">A worker ignores a date at the end</text>
+    <text class="t-s" x="494" y="389">and uses one at the front; then it moves up</text>
+  </g>
+</svg>
