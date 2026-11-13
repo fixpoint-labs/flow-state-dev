@@ -58,8 +58,9 @@ import { harnessDrainBudgetMs, harnessManager, resolveOwnership, type Completion
 import { harnessSessionDoor, harnessTalkTurn } from "../session-door";
 import { taskIssueSegment } from "../workspace";
 
-/** The flow every coding worker's `WORKER.md` names in its `flow:` line. */
-export const CODER_FLOW = "coder";
+import { CODER_FLOW } from "../coder-flow-name";
+
+export { CODER_FLOW };
 
 /** One run's wall-clock budget when the kit names none. */
 export const DEFAULT_RUN_TIMEOUT_MS = 20 * 60_000;
@@ -117,7 +118,7 @@ const PHASE: PhaseSpec = {
   buildPrompt: (run) =>
     [
       workerConfigOf(run.ctx).instructions,
-      run.task.title === undefined ? undefined : run.task.title,
+      run.task.title === undefined ? undefined : `Task: ${run.task.title}`,
       run.task.goal,
       run.task.context,
       ...run.answers.map((answered) => `You asked: ${answered.question}\nThe answer: ${answered.answer}`),

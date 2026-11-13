@@ -56,7 +56,7 @@ import {
 } from "@flow-state-dev/workforce";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
-import { labPins } from "../../../labs/claude-code-style/workforce/flows/user-marks.mts";
+import { labPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 import { PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { createWiredLab, type ThreadView } from "../../../labs/claude-code-style/src/adapter.ts";
 import { createLabAdapter, type ConversationView, type LabTalk } from "../../../labs/teammates/src/adapter.ts";

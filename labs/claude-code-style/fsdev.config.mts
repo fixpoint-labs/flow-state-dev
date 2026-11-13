@@ -45,7 +45,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { delimiter, resolve } from "node:path";
-import { formatHarnessReadiness } from "@flow-state-dev/harness-manager";
 import { checkoutCommandProblem, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { openLab, operatorGitHubToken } from "./host.mts";
 
@@ -68,7 +67,7 @@ const setup = ((value: string | undefined): WorkspaceSetup | undefined => {
   return { command: splitCheckoutCommand(value.trim()) as [string, ...string[]] };
 })(process.env.CLAUDE_CODE_STYLE_SETUP);
 
-const { flowState, readiness } = await openLab({
+const { flowState } = await openLab({
   data,
   userId: process.env.CLAUDE_CODE_STYLE_USER ?? "u_lab",
   model: process.env.CLAUDE_CODE_STYLE_MODEL ?? "openai/gpt-5.4",
@@ -85,7 +84,5 @@ const { flowState, readiness } = await openLab({
   ...(process.env.GOAL_FLOWS ? { goalFlows: process.env.GOAL_FLOWS } : {}),
   githubToken: operatorGitHubToken(),
 });
-// At start, never awaited: a missing sign-in never stops the server.
-void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
 
 export default flowState;

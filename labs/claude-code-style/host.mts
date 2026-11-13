@@ -14,15 +14,17 @@
  * - The `agent` flow carries `projectSourceCapability` over the same host the
  *   coding runs use, so a worker whose file names its `read` preset reads the
  *   session's project itself, from the host's clone at the default branch.
- * - `desk.coder` and `desk.thread-coder` are on the lab's one coding flow,
- *   `harness-thread`; only `desk.thread-coder` waits for your review.
- * - `projects` lists and creates the projects a session works in, and declares
- *   your pins and dismissals, user resources the screen reads and writes with
- *   no session (`user-marks.mts`). A project's repository is checked when it is
+ * - `desk.coder` and `desk.thread-coder` are on the harness kit's coding worker
+ *   flow, `coder`, which works in the session's project; only
+ *   `desk.thread-coder` waits for your review.
+ * - `projects` (`flows/projects.mts`, the lab's own) lists and creates the
+ *   projects a session works in, and declares your pins and dismissals, user
+ *   resources the screen reads and writes with no session (`flows/user-marks.mts`).
+ *   A project's repository is checked when it is
  *   made, by the workspace host's `checkRepository`: one no coding run could
  *   use here (no such folder, not a git repository, `.fsdev/` not ignored) is
  *   refused, and the picker asks the same check before Create.
- * - `harness-readiness` serves which coding harnesses can run on this machine.
+ * - The harness kit's `harnesses` flow serves which coding harnesses can run on this machine.
  * - **Routines**: every worker on `agent`, and `desk.lead`'s turn on
  *   `coordinator`, holds the routine tools, so a session can follow a GitHub
  *   pull request or run something on a clock, and list, pause or delete what
@@ -34,34 +36,22 @@ import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code";
-import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
-import { defineFlow, utility } from "@flow-state-dev/core";
-import { harnessEnv } from "@flow-state-dev/core/harness";
+import { claudeCode } from "@flow-state-dev/claude-code";
+import { codexHarness } from "@flow-state-dev/codex";
+import { utility } from "@flow-state-dev/core";
 import type { BlockContext, ModelResolver } from "@flow-state-dev/core/types";
-import { checkCursorReadiness, CURSOR_PASS } from "@flow-state-dev/cursor";
+import { cursorHarness } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
-import { ASK_MARKER_IGNORED, harnessReadiness, harnessReadinessView, type HarnessReadinessRead } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_IGNORED, scriptedHarness, type Harness } from "@flow-state-dev/harness-manager";
+import { codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/kit";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { createSQLiteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
-import {
-  consultSessionsCapability,
-  createRoutinesCapability,
-  createWorkerInstallation,
-  defineAgentWorkerFlow,
-  defineCoordinatorFlow,
-  githubServiceFlow,
-  githubSubscriptionProvider,
-  hireWorkforce,
-  projectSourceCapability,
-  projectWorkspace,
-} from "@flow-state-dev/workforce";
+import { githubSubscriptionProvider, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import Database from "better-sqlite3";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { localWorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
-import { defineHarnessThreadFlow, HARNESS_THREAD_DRAIN_MS, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
-import { defineProjectsFlow, PROJECTS_FLOW } from "./workforce/flows/projects.mts";
+import { defineProjectsFlow, PROJECTS_FLOW } from "./flows/projects.mts";
 
 /** What {@link openLab} builds the host from. */
 export interface LabOptions {
@@ -140,12 +130,9 @@ function scheduleIndexAt(filename: string) {
   return createSQLiteScheduleIndex(db);
 }
 
-/** The lab's host, and its readiness reader so the caller can log it at start. */
-export async function openLab(options: LabOptions): Promise<{ flowState: ReturnType<typeof createFlowState>; readiness: HarnessReadinessRead }> {
+/** The lab's host. */
+export async function openLab(options: LabOptions): Promise<{ flowState: ReturnType<typeof createFlowState> }> {
   const { data, model } = options;
-  const answerAgain = options.answerAgain === false ? {} : { answerAgain: true as const };
-  const scripted = options.scriptedStepMs === undefined ? {} : { scriptedStepMs: options.scriptedStepMs };
-  const stale = options.scriptedStepMs !== undefined && options.staleThresholdMs !== undefined ? { staleSweepThresholdMs: options.staleThresholdMs } : {};
   /** A project's repository as one of `repositories`, when it is one: a `file://` remote or a path. */
   const listed = (repository: string) => {
     const path = repository.startsWith("file://") ? fileURLToPath(repository) : repository;
@@ -165,81 +152,70 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
     ...(options.setup === undefined ? {} : { setup: options.setup }),
   });
 
-  const tree = await readWorkforce(fileURLToPath(new URL("./workforce", import.meta.url)));
-  if (tree.errors.length > 0) throw new Error(`workforce/ did not load: ${tree.errors.map((e) => e.error.message).join("; ")}`);
-
   /** Core's session title generator, one per flow that runs it. */
   const titler = () => utility.sessionTitleGenerator({ name: "auto-title", model: options.utilityModel });
-
-  let flows = {};
-  const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
-  flows = {
-    // Titles each session after its turn (core's sessionTitleGenerator, a background step): the sessions list reads the title it writes.
-    agent: defineAgentWorkerFlow({
-      installation,
-      model,
-      ...answerAgain,
-      afterAnswer: titler(),
-      // The routine tools, offered to a worker whose file picks `routines: [tools]` (each one here).
-      uses: [projectSourceCapability({ workspace }), consultSessionsCapability(installation), createRoutinesCapability(installation)],
-    }),
-    // Threads mode's main session is titled the same way, so its row names what the session is about.
-    coordinator: defineCoordinatorFlow({ installation, routeModel: model, agent: { model, afterAnswer: titler(), uses: [createRoutinesCapability(installation)] } }),
-    // Its runs work in the session's project: a task filed with none is refused at filing (FIX-2333).
-    [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace, ...scripted }), roles: ["contributor"], needsProject: true },
-  };
-  // Clock routines and GitHub's polls tick from two files beside the store (`fsdev dev` ticks both).
-  const clockDb = join(data, "clock.db");
-  const pollDb = join(data, "poll.db");
   const github = operatorGitHub(options.userId, options.githubToken, options.githubApiUrl);
-  const workers = hireWorkforce(installation, {
-    routines: {
-      index: scheduleIndexAt(clockDb),
-      providers: [github],
-      poll: { index: scheduleIndexAt(pollDb) },
-    },
-  }) as { id: string }[];
-  const service = githubServiceFlow({ provider: github, installation, poll: true }) as unknown as { id: string };
-  // A project is checked when it's made, by the same rule a run's checkout passes:
-  // a repository no run could use here is refused before its first task (FIX-2403).
-  // It is asked about the repository a run will get: a listed one by its real path, as
-  // `source` hands it over, so the picker says worktree where the run makes one.
   const checkRepository =
     options.checkRepository === false
       ? undefined
       : (repository: string) => workspace.checkRepository!(listed(repository) ?? repository, { ignored: ASK_MARKER_IGNORED });
   const projects = defineProjectsFlow({ checkRepository })({ id: PROJECTS_FLOW }) as { id: string };
-
-  /** Which harnesses a coding thread can run on here, over the environment each run gets. */
-  const readiness = harnessReadiness({
-    "claude-code": { label: "Claude Code", check: (o) => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }), signal: o?.signal }) },
-    codex: { label: "Codex", check: (o) => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000, signal: o?.signal }) },
-    cursor: { label: "Cursor", check: () => checkCursorReadiness(harnessEnv({ pass: CURSOR_PASS })) },
-  });
-  const readinessFlow = defineFlow({ kind: "harness-readiness", views: { readiness: harnessReadinessView(readiness) } } as never)({
-    id: "harness-readiness",
-  } as never) as { id: string };
-
-  // A goal check's own flows beside the lab's, as a stand-in for a service the lab doesn't run.
   const goalFlows = options.goalFlows === undefined ? [] : ((await import(pathToFileURL(options.goalFlows).href)).default as { id: string }[]);
 
+  // Set, every harness a worker names is harness-manager's scripted coder under its own id: a step
+  // every this many ms, always ready, no model. For a goal check of what the lab does around a run.
+  const scripted = options.scriptedStepMs;
+  const stub = (id: string, label: string): Harness => ({
+    id,
+    label,
+    agent: scriptedHarness({ stepEveryMs: scripted! }).slot,
+    readiness: async () => ({ ready: true }),
+    pass: [],
+  });
+  const claude = claudeCode({ plan: true });
+
   const flowState = createFlowState({
-    flows: [...workers, service, projects, readinessFlow, ...goalFlows],
+    kits: [
+      workforce({
+        directory: fileURLToPath(new URL("./workforce", import.meta.url)),
+        agent: {
+          model,
+          ...(options.answerAgain === false ? {} : { answerAgain: true as const }),
+          afterAnswer: titler(),
+          // A worker whose file names its `read` preset reads the session's project itself, on the coding runs' host.
+          uses: [projectSourceCapability({ workspace })],
+        },
+        coordinator: { routeModel: model, agent: { model, afterAnswer: titler() } },
+        routines: {
+          index: scheduleIndexAt(join(data, "clock.db")),
+          providers: [github],
+          poll: { index: scheduleIndexAt(join(data, "poll.db")) },
+        },
+        github: { provider: github, poll: true },
+      }),
+      // A task works in its session's project: it needs one, runs in its checkout, and the project's checks pass first.
+      harnesses({ workspace, project: true, logReadiness: true }),
+      scripted === undefined
+        ? claude
+        : claude.without(harnesses.slots.harnesses, "claude-code").without(harnesses.slots.harnesses, "claude-code-plan"),
+    ],
+    fill: {
+      [harnesses.slots.harnesses]:
+        scripted === undefined
+          ? [codexHarness(), cursorHarness()]
+          : [stub("claude-code", "Claude Code"), stub("claude-code-plan", "Claude Code (plan)"), stub("codex", "Codex"), stub("cursor", "Cursor")],
+    },
+    flows: [projects, ...goalFlows],
     stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
-    // The route `serve()`'s tick dispatches each due clock routine and poll to.
     adapters: [createScheduledTransportAdapter()],
-    // A coding run's review and a thread's question wait on you across a restart.
     durable: true,
-    // A shutdown waits for a coding run still going, its checks and judge too (FIX-2484).
-    dispatchDrainTimeoutMs: HARNESS_THREAD_DRAIN_MS,
-    ...stale,
-    // Every request is the lab's own user, in the lab's own org, never a user the request names: the operator-only GitHub token is gated on it, and serve()'s tick, which names no user, is admitted as it. A configured resolver can't claim the development org, so the lab names its own.
+    // A shutdown waits for a coding run still going, its checks and judge included, rather than the engine's 30 s default.
+    dispatchDrainTimeoutMs: codingDrainBudgetMs({ project: true }),
+    ...(scripted !== undefined && options.staleThresholdMs !== undefined ? { staleSweepThresholdMs: options.staleThresholdMs } : {}),
     resolvePrincipal: () => ({ userId: options.userId, orgId: "claude-code-style-lab" }),
     devtool: { userId: options.userId },
-    // A consult of another conversation reads on `intent/utility`, a smaller model.
     models: { default: model, intents: { utility: [options.utilityModel] } },
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
   } as never);
-  return { flowState, readiness };
+  return { flowState };
 }
-

@@ -1,7 +1,7 @@
 ---
 name: Cursor
 description: Runs coding tasks on Cursor in the background, in the team's working folder.
-flow: teammates-coder
+flow: coder
 harness: cursor
 ---
 

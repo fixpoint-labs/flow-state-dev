@@ -48,7 +48,7 @@ import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab
 import { createLabAdapter, type LabWorker } from "../../../labs/teammates/src/adapter.ts";
 import { createWiredLab } from "../../../labs/claude-code-style/src/adapter.ts";
 import { defineFlow } from "@flow-state-dev/core";
-import { labPins } from "../../../labs/claude-code-style/workforce/flows/user-marks.mts";
+import { labPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("live-read-one-loop");

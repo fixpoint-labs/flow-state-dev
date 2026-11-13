@@ -1,19 +1,27 @@
 /**
- * A coding run is done only when its project's checks pass: the lab's phase
- * runs them in the run's worktree after the harness says it finished, and a
- * red one sends the run back with the command's output in the next brief.
+ * The coding worker flow's checks run only on a run that changed files: a
+ * run that changed nothing (a question) skips them, so a question asked on a
+ * red branch still ends. Changed means files left uncommitted, or a tree that
+ * differs from the commit its branch was cut at, so a run that moved its
+ * branch back is checked too.
  *
- * The flow hands the phase `projectChecks()`, the project entry's `checks`;
- * here the phase is graded with fixed commands on a real worktree, as the
- * manager calls it. A run that changed nothing (a question) skips them.
+ * Graded with fixed commands on a real worktree, cut the way the workspace
+ * host cuts one, as the manager calls the phase.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import type { CompletionRunContext, PhaseDoneVerdict, PromptRunContext } from "@flow-state-dev/harness-manager";
-import { codePhase } from "../workforce/flows/harness-thread.mts";
+import { describe, expect, it, vi } from "vitest";
+import type { CompletionRunContext, PhaseDoneVerdict, PromptRunContext } from "../src";
+import { codingPhase } from "../src/kit/coder-flow";
+
+vi.mock("@flow-state-dev/workforce", async (original) => ({
+  ...(await original<typeof import("@flow-state-dev/workforce")>()),
+  workerConfigOf: () => ({}),
+}));
+
+const codePhase = (commands: string[]) => codingPhase({ checks: { commands } });
 
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "pipe" });
 
@@ -50,7 +58,7 @@ const BRANCH = "fsd/run-1";
 
 const verdictOf = (answer: boolean | PhaseDoneVerdict) => (typeof answer === "boolean" ? { done: answer } : answer);
 
-describe("the lab's coding phase", () => {
+describe("the coding phase's checks on a changed run", () => {
   const phase = codePhase(["node check.mjs"]);
 
   it("is not done while a check is red, and says which command and why", async () => {

@@ -15,7 +15,7 @@
  *
  * It serves one flow of its own, `harnesses`, whose `readiness` view has one
  * row per harness filled, read with no session; `{ refresh: true }` checks
- * them again.
+ * them again. With `logReadiness`, it checks them at start and logs a table.
  *
  * Only this subpath imports workforce: the package root never does.
  */
@@ -25,14 +25,23 @@ import { workforce } from "@flow-state-dev/workforce/kit";
 import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { harnessSchema, type Harness } from "../harness";
-import { harnessReadiness, harnessReadinessCapability, harnessReadinessView, type HarnessReadinessRead } from "../readiness";
+import {
+  formatHarnessReadiness,
+  harnessReadiness,
+  harnessReadinessCapability,
+  harnessReadinessView,
+  type HarnessReadinessRead,
+} from "../readiness";
 import { CODER_FLOW, coderWorkerFlow, type CoderFlowOptions } from "./coder-flow";
 
 /** The flow the kit serves its views on. */
 export const HARNESSES_FLOW = "harnesses";
 
 /** The harness kit's config: where runs work, and the coding worker flow's policy. */
-export type HarnessesConfig = CoderFlowOptions;
+export type HarnessesConfig = CoderFlowOptions & {
+  /** Check every harness at start and log the rows as a table, never awaited: a missing sign-in never stops the app. Default false. */
+  logReadiness?: boolean;
+};
 
 const configSchema: z.ZodType<HarnessesConfig, z.ZodTypeDef, HarnessesConfig> = z
   .object({
@@ -48,6 +57,7 @@ const configSchema: z.ZodType<HarnessesConfig, z.ZodTypeDef, HarnessesConfig> = 
       .optional(),
     project: z.boolean().optional(),
     runTimeoutMs: z.number().int().positive().optional(),
+    logReadiness: z.boolean().optional(),
   })
   .strict();
 
@@ -96,8 +106,9 @@ export const harnesses = defineKit({
       [workforce.slots.uses]: [harnessReadinessCapability(readiness)],
     };
   },
-  install: ({ slots }) => {
+  install: ({ config, slots }) => {
     const readiness = readinessOf(slots.harnesses);
+    if (config.logReadiness === true) void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
     const flow = defineFlow({
       kind: HARNESSES_FLOW,
       views: { readiness: harnessReadinessView(readiness) },
