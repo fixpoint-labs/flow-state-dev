@@ -126,4 +126,4 @@ A flow is one self-contained system. A [capability](./capabilities.md) is a bund
 
 - [Views](./views.md): what a kit's screens read, and how they refresh.
 - [Write a kit](../build/write-a-kit.md): package your own feature, open a slot and publish it.
-- [Kits reference](../reference/kits.md): every `defineKit` option, the slot kinds and each start-up error.
+- [Kits reference](../reference/kits.md): every `defineKit` option, the slot types and each start-up error.
