@@ -29,7 +29,7 @@ import {
   createWorkforceCapability,
   defineAgentWorkerFlow,
   defineWorkerInventoryCollection,
-  createWorkerInstallation, hireWorkforce,
+  workerFlow,
   type WorkerManifest,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
@@ -37,10 +37,12 @@ import {
   DEFAULT_MODEL,
   goalAttempts,
   goalSessionId,
+  installWorkers,
   loadFixture,
   runGoal,
   silentLogger,
   stripIntentOverrides,
+  workforceTree,
 } from "../../lib/index.mts";
 
 type Seat = { id: string; kind: string; purpose: string };
@@ -66,8 +68,8 @@ const inventoryMount = defineCapability({
 });
 
 /**
- * The seat records as the tree declares them — what `readDeclaredRoster` would
- * hand back. Built from the fixture so swapping it still grades correctly.
+ * The seat records as the tree declares them — what the workforce kit reads
+ * from their files. Built from the fixture so swapping it still grades correctly.
  *
  * `blankPurposes` is the control: the SAME records with `description` emptied.
  * Nothing else differs between the two runs, so a difference in where the task
@@ -129,28 +131,29 @@ async function route(blankPurposes: boolean): Promise<{
 
   // The coordinator is a worker from a record like any other. Its file names
   // its tool and its instructions; it names NO seat and no roster.
-  const coordinatorRecord: WorkerManifest = {
+  const coordinatorRecord: Pick<WorkerManifest, "id" | "declared" | "body"> = {
     id: fx.orchestrator.id,
     declared: { tools: ["assign"] },
     body: fx.orchestrator.instructions,
   };
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: [coordinatorRecord], workerFlows: () => flows as never });
-  const kind = defineAgentWorkerFlow({
-    installation,
-    model: DEFAULT_MODEL,
-    catalog: { assign },
-    uses: [
-      inventoryMount,
-      createWorkforceCapability({
-        roster: { workers: roster },
-        inventory: { workers: SEAT_INVENTORY_KEY },
+  // Installed through the workforce kit, from the coordinator's file, with the goal's own `agent`.
+  const { copies } = await installWorkers(workforceTree([coordinatorRecord]), {
+    agent: workerFlow((installation) =>
+      defineAgentWorkerFlow({
+        installation,
+        model: DEFAULT_MODEL,
+        catalog: { assign },
+        uses: [
+          inventoryMount,
+          createWorkforceCapability({
+            roster: { workers: roster },
+            inventory: { workers: SEAT_INVENTORY_KEY },
+          }),
+        ],
       }),
-    ],
+    ),
   });
-
-  flows = { agent: kind };
-  const coordinator = hireWorkforce(installation).find((copy) => copy.id === "agent");
+  const coordinator = copies.find((copy) => copy.id === "agent");
   if (!coordinator) return { assigned, prompt: "", error: "no agent copy was registered" };
 
   const stores = createInMemoryStores();

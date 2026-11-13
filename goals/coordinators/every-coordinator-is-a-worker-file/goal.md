@@ -13,7 +13,7 @@
 
 - **a** (the converted desk): the person opens a conversation with the coordinator the way a page does (a session on `coordinator` naming it) and posts once through its public `run` action. Read back through the host's own router, as a page reads it:
   - `a:no-mailbox-file`: the tree under test holds no `MAILBOX.md` anywhere. The claim is about a converted desk.
-  - `a:loads`: the tree loads without errors, and the coordinator names two or more delegates, each an agent worker in the tree.
+  - `a:loads`: the app starts on the tree (the workforce kit refuses a file it can't load or doesn't read), and the coordinator names two or more delegates, each an agent worker in the tree.
   - `a:answers`: the person's conversation shows the post once, and after it exactly one answer line per delegate, under that delegate's name, and none by anyone else.
 - **b** (nothing of the mailbox is left):
   - `b:after`: `node specs/issues/FIX-1792/poc/inventory/check.mjs --after`, run from the repo root, exits 0.
@@ -28,7 +28,7 @@
 
 **Controls:** on the same command.
 
-- `GOAL_CONTROL=mailbox-left`: before the legs run, the check writes the desk's old file back into the tree under test (`fixtures/workforce/teams/<team>/mailboxes/<coordinator>/MAILBOX.md`, with `members:` the delegates and the coordinator's body) and one source file, `packages/workforce/src/__mailbox_left_control__.ts`, re-exporting a removed name from the removed module. Both are removed afterwards, on a crash and on SIGINT/SIGTERM too. Must FAIL at **a:no-mailbox-file** and **b:after**, and at nothing else; `b:after` must name both plants among its problems.
+- `GOAL_CONTROL=mailbox-left`: before the legs run, the check writes the desk's old file back into the tree under test (`fixtures/workforce/teams/<team>/mailboxes/<coordinator>/MAILBOX.md`, with `members:` the delegates and the coordinator's body) and one source file, `packages/workforce/src/__mailbox_left_control__.ts`, re-exporting a removed name from the removed module. Both are removed afterwards, on a crash and on SIGINT/SIGTERM too. Must FAIL at **a:no-mailbox-file**, **a:loads** (the workforce kit refuses the `mailboxes/` folder at start) and **b:after**, and at nothing else; `b:after` must name both plants among its problems.
 
 Leg a's `a:answers` has no named control; the by-hand run below routes the desk `round-robin` instead.
 

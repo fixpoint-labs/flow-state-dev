@@ -12,21 +12,22 @@ import { createMockModelResolver, mockEvaluationModel, mockGenerator } from "@fl
 import {
   COORDINATOR_ROUTE,
   WORKER_MESSAGES_PATTERN,
-  createWorkerInstallation,
   defineCoordinatorFlow,
   defineSubscriptionServiceFlow,
-  hireWorkforce,
   messageReceivedEntry,
   subscriptionResources,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
   workerTaskEntry,
   type SubscriptionProvider,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { workerRoutineVerbs } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
-import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, runGoal, workforceTree } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 
 const ORG = "acme";
@@ -120,23 +121,18 @@ const github: SubscriptionProvider = {
   self: (ctx) => `${(ctx.session.identity as { userId: string }).userId}-gh`
 };
 
-const desk = (mode: "observe" | "auto" | "off"): WorkerManifest => ({
+const desk = (mode: "observe" | "auto" | "off"): Pick<WorkerManifest, "id" | "declared" | "body"> => ({
   id: `desk.${mode}`,
   declared: { flow: "coordinator", delegates: ["eng.doer"], inferredWork: mode, description: `The ${mode} desk.` },
-  body: `[desk:${mode}] Triage what reaches you.`,
-  skills: []
+  body: `[desk:${mode}] Triage what reaches you.`
 });
-let flows: Record<string, unknown> = {};
-const installation = createWorkerInstallation({
-  standardWorkers: [
-    desk("observe"),
-    desk("auto"),
-    desk("off"),
-    { id: "eng.doer", declared: { flow: "doer", description: "Does the work." }, body: "", skills: [] },
-    { id: "eng.follower", declared: { flow: "follower", description: "Follows a PR." }, body: "", skills: [] }
-  ],
-  workerFlows: () => flows as never
-});
+const directory = workforceTree([
+  desk("observe"),
+  desk("auto"),
+  desk("off"),
+  { id: "eng.doer", declared: { flow: "doer", description: "Does the work." }, body: "" },
+  { id: "eng.follower", declared: { flow: "follower", description: "Follows a PR." }, body: "" }
+]);
 
 /** Every attempt the delegate ran, by task id. */
 const attempts: string[] = [];
@@ -149,30 +145,39 @@ const doer = handler({
     return `did: ${input.message}`;
   }
 });
-const doerFlow = defineFlow({
-  kind: "doer",
-  configSchema: workerConfigSchema(),
-  session: installation.session(),
-  resources: { ...installation.resources, ...workerMessagesResources },
-  actions: { respond: { inputSchema: doorInput, block: doer, userMessage: (i: { message: string }) => i.message } },
-  internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "doer", hears: "task-sessions" }) } },
-  task: { actions: { work: workerTaskEntry({ name: "doer-task", turn: doer }) } }
-});
-const tools = workerRoutineVerbs(installation);
-const followerFlow = defineFlow({
-  kind: "follower",
-  configSchema: workerConfigSchema(),
-  session: installation.session(),
-  resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
-  actions: {
-    respond: { inputSchema: doorInput, block: doer, userMessage: (i: { message: string }) => i.message },
-    saveRoutine: { inputSchema: tools.saveRoutine.inputSchema, block: tools.saveRoutine }
+const doerFlow = workerFlow(
+  (installation) =>
+    defineFlow({
+      kind: "doer",
+      configSchema: workerConfigSchema(),
+      session: installation.session(),
+      resources: { ...installation.resources, ...workerMessagesResources },
+      actions: { respond: { inputSchema: doorInput, block: doer, userMessage: (i: { message: string }) => i.message } },
+      internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "doer", hears: "task-sessions" }) } },
+      task: { actions: { work: workerTaskEntry({ name: "doer-task", turn: doer }) } }
+    }),
+  { roles: ["contributor"] }
+);
+const followerFlow = workerFlow(
+  (installation) => {
+    const tools = workerRoutineVerbs(installation);
+    return defineFlow({
+      kind: "follower",
+      configSchema: workerConfigSchema(),
+      session: installation.session(),
+      resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
+      actions: {
+        respond: { inputSchema: doorInput, block: doer, userMessage: (i: { message: string }) => i.message },
+        saveRoutine: { inputSchema: tools.saveRoutine.inputSchema, block: tools.saveRoutine }
+      },
+      internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
+      task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: doer }) } }
+    });
   },
-  internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
-  task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: doer }) } }
-});
-const coordinator = defineCoordinatorFlow({ installation, routeModel: "scripted/fit", routines: true });
-flows = { doer: { flow: doerFlow, roles: ["contributor"] }, follower: { flow: followerFlow, roles: ["contributor"] }, coordinator };
+  { roles: ["contributor"] }
+);
+// The goal's own coordinator, in place of the kit's: routes on the scripted fit check, with routines.
+const coordinator = workerFlow((installation) => defineCoordinatorFlow({ installation, routeModel: "scripted/fit", routines: true }));
 
 /**
  * The judgment turn: on the latest forwarded event it reads, it files one
@@ -218,11 +223,17 @@ const models = createMockModelResolver({
   generators: { "coordinator-judgment": judgment }
 });
 
-const service = defineSubscriptionServiceFlow({ kind: "github-service", provider: github, installation, forwards: { kinds: ["issue", "comment"] } });
-const instances = Object.fromEntries(hireWorkforce(installation, { routines: { providers: [github] } }).map((copy) => [copy.id, copy]));
+/** The service flow, built on the installation the kit hires. */
+const service = (installation: WorkerInstallation) => [
+  defineSubscriptionServiceFlow({ kind: "github-service", provider: github, installation, forwards: { kinds: ["issue", "comment"] } })
+];
 const stores = inMemoryStores();
 const state = createFlowState({
-  flows: [...Object.values(instances), service],
+  kits: [workforce({ directory, routines: { providers: [github] } })],
+  fill: {
+    [workforce.slots.workerFlows]: { doer: doerFlow, follower: followerFlow, coordinator },
+    [workforce.slots.flows]: { service }
+  },
   stores: { default: { primary: stores } },
   modelResolver: models,
   resolvePrincipal: (context: any) => {
@@ -236,7 +247,7 @@ let inbound: unknown;
 
 const act = async (userId: string, sessionId: string, flow: string, actionName: string, input: unknown) => {
   const runtime = await state.getRuntime();
-  return (await runAction({ flow: instances[flow]! as never, actionName, input, userId, orgId: ORG, sessionId, stores: runtime.stores, runtimeConfig: { ...runtime.runtimeConfig } })) as { output?: any };
+  return (await runAction({ flow: runtime.registry.get(flow)! as never, actionName, input, userId, orgId: ORG, sessionId, stores: runtime.stores, runtimeConfig: { ...runtime.runtimeConfig } })) as { output?: any };
 };
 const create = async (userId: string, flow: string, workerId: string): Promise<string> => {
   const router = await state.getRouter();
