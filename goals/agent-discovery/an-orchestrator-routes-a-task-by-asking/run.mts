@@ -130,10 +130,11 @@ async function route(blankPurposes: boolean): Promise<{
   const roster = rosterFrom(fx.seats, blankPurposes);
 
   // The coordinator is a worker from a record like any other. Its file names
-  // its tool and its instructions; it names NO seat and no roster.
+  // its tool, a description every worker file carries, and its instructions;
+  // it names NO seat and no roster.
   const coordinatorRecord: Pick<WorkerManifest, "id" | "declared" | "body"> = {
     id: fx.orchestrator.id,
-    declared: { tools: ["assign"] },
+    declared: { description: "Routes incoming work.", tools: ["assign"] },
     body: fx.orchestrator.instructions,
   };
   // Installed through the workforce kit, from the coordinator's file, with the goal's own `agent`.
