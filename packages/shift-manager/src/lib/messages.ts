@@ -3,14 +3,16 @@
  * The user's message log: Workforce's `workforce/messages/*`, read by user
  * scope with no session. Another user's messages are not in it.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { topic, type LiveRead } from "@flow-state-dev/client";
+import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { WORKER_MESSAGES_PATTERN, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
 import { describeFailure, readEveryScopeEntry, type Failure } from "./reads";
 
 export type { WorkerMessageResourceState };
 
-/** How often the view reads the log again while it is open. */
+/** The pace the view reads the log at while it is open, wherever push can miss a change. */
 const MESSAGES_POLL_MS = 5_000;
 
 /** One exchange: a first message and every answer to it, newest first. */
@@ -53,9 +55,11 @@ export function firstLine(text: string): string {
 }
 
 /**
- * The log, read when the view opens, again on each Lab read (`readAt`), and
- * every {@link MESSAGES_POLL_MS}. A later read keeps the last rows until it
- * lands, and a failed later read keeps them; only a failed first read shows.
+ * The log, read when the view opens, again on each Lab read (`readAt`), and on
+ * each notice of a message under the user's scope; wherever push can miss a
+ * change, every {@link MESSAGES_POLL_MS} instead (`client.live`). A later read
+ * keeps the last rows until it lands, and a failed later read keeps them; only
+ * a failed first read shows. The live read tries a failed one again on its own.
  * `rows` is `null` when no flow of the Lab declares the log (a 404): it keeps
  * no roster for the user.
  */
@@ -65,35 +69,42 @@ export function useMessages(
   const { client } = useLab();
   const [rows, setRows] = useState<WorkerMessageResourceState[] | null | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
-  const [reads, setReads] = useState(0);
+  const live = useRef<LiveRead | null>(null);
   useEffect(() => {
-    let closed = false;
-    let next: ReturnType<typeof setTimeout> | undefined;
-    readEveryScopeEntry(client, "user", WORKER_MESSAGES_PATTERN)
-      .then(toMessages)
-      .then(
-        (value): WorkerMessageResourceState[] | null => value,
-        (error: unknown) => {
-          if (describeFailure(error).httpStatus === 404) return null;
-          throw error;
-        },
-      )
-      .then((value) => {
-        if (closed) return;
+    // The log is the user's: a message sent from any session writes its row under the user's scope.
+    const watching = client.live([topic.user()], {
+      read: () =>
+        readEveryScopeEntry(client, "user", WORKER_MESSAGES_PATTERN)
+          .then(toMessages)
+          .then(
+            (value): WorkerMessageResourceState[] | null => value,
+            (error: unknown) => {
+              if (describeFailure(error).httpStatus === 404) return null;
+              throw error;
+            },
+          ),
+      onValue: (value) => {
         setRows(value);
         setFailure(undefined);
-      })
-      .catch((error: unknown) => {
-        if (!closed) setFailure(describeFailure(error));
-      })
-      .finally(() => {
-        if (!closed) next = setTimeout(() => setReads((n) => n + 1), MESSAGES_POLL_MS);
-      });
+      },
+      onError: (error) => setFailure(describeFailure(error)),
+      hear: (notice) => notice.kind === "resource",
+      paths: [getPatternPrefix(WORKER_MESSAGES_PATTERN)],
+      pollIntervalMs: MESSAGES_POLL_MS,
+    });
+    live.current = watching;
     return () => {
-      closed = true;
-      if (next !== undefined) clearTimeout(next);
+      watching.close();
+      if (live.current === watching) live.current = null;
     };
-  }, [client, readAt, reads]);
-  const reread = useCallback(() => setReads((n) => n + 1), []);
+  }, [client]);
+  // A Lab read reads it again too; the live read's own first read covers the one it opened on.
+  const readAtSeen = useRef(readAt);
+  useEffect(() => {
+    if (readAtSeen.current === readAt) return;
+    readAtSeen.current = readAt;
+    live.current?.refresh();
+  }, [readAt]);
+  const reread = useCallback(() => live.current?.refresh(), []);
   return { rows, failure: rows === undefined ? failure : undefined, reread };
 }

@@ -1,4 +1,4 @@
-import type { Config } from "@docusaurus/types";
+import type { Config, PluginConfig } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 import { inkTheme } from "./src/prismThemes";
 
@@ -15,6 +15,17 @@ const algolia: Preset.ThemeConfig["algolia"] =
         indexName: "flow-state-dev",
       }
     : undefined;
+
+// Named by path, so Docusaurus loads the generator only when this build asks for it.
+const apiReference: PluginConfig[] =
+  process.env.FSD_API_REFERENCE === "1"
+    ? [
+        [
+          "./scripts/api-reference/plugin.mjs",
+          { id: "api", path: ".api-reference", routeBasePath: "docs/reference/api" },
+        ],
+      ]
+    : [];
 
 const config: Config = {
   title: "flow-state.dev",
@@ -155,6 +166,14 @@ const config: Config = {
         ],
       },
     ],
+    // The generated API reference: one section per published package, built from
+    // the doc comments in the `.d.ts` files each package publishes, at
+    // `/docs/reference/api/<slug>`. Generated into `.api-reference/` at each build and never
+    // committed. Until the cutover it is built only when FSD_API_REFERENCE=1, which CI sets for
+    // a build into a scratch folder that is never deployed, and it has no sidebar entry; the
+    // cutover adds both. FSD_API_REFERENCE_SKIP_TYPES=1 skips the packages' types build when
+    // the caller has just run it.
+    ...apiReference,
   ],
 
   themeConfig: {

@@ -8,15 +8,15 @@
  * claude-code-style lab's thread (its running turn) and pins, the Teammates
  * lab's conversation (whether it is answering), its divider and its Talk
  * panel (`watchTalk`, the user's message log), and Shift Manager's worker
- * conversation (`followSessionItems`, the hook's follow) and a project's
- * entries (`useProjectRead`) and a task screen waiting on its run's link
- * (`TaskProvider`), each under the real `LabProvider`, rendered by react-dom
- * over happy-dom. Each view has its own client, whose fetcher counts the
- * reads it makes.
+ * conversation (`followSessionItems`, the hook's follow), its message log
+ * (`useMessages`), a project's entries (`useProjectRead`) and a task screen
+ * waiting on its run's link (`TaskProvider`), the last three under the real
+ * `LabProvider`, rendered by react-dom over happy-dom. Each view has its own
+ * client, whose fetcher counts the reads it makes.
  *
  *   a  — another session writes: a slow turn in the watched session, a pin,
  *        a message in the log, a project's entry. Each view shows it within
- *        1 s of the write; a Lab read reads the project's entries again. Then
+ *        1 s of the write; a Lab read reads the log and the entries again. Then
  *        a 10 s idle window: every view makes 0 reads. A task screen waits on
  *        a task the board hasn't dispatched: 0 board reads over 10 s, then it
  *        shows the run the board links within 1 s of the link's write.
@@ -63,7 +63,8 @@ import { createLabAdapter, type ConversationView, type LabTalk } from "../../../
 import { buildKitchenSinkWorkforce } from "../../../apps/kitchen-sink/workforce/hire.ts";
 import { followSessionItems, type SessionItems } from "../../../packages/shift-manager/src/lib/run.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
-import { useProjectRead } from "../../../packages/shift-manager/src/lib/projects.ts";
+import { projectReaderOf, useProjectRead } from "../../../packages/shift-manager/src/lib/projects.ts";
+import { useMessages } from "../../../packages/shift-manager/src/lib/messages.ts";
 import { conversationBoardRef } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { TaskProvider, useTask } from "../../../packages/shift-manager/src/lib/task.tsx";
 
@@ -73,8 +74,8 @@ const BOUND_MS = 1_000;
 const IDLE_MS = 10_000;
 const ORG = "acme";
 // The views that read on a notice are the client's live read (`client.live`):
-// the labs' watches and Shift Manager's project entries and task run link (and its
-// snapshot, whose Lab reads read the entries again). Shift Manager's conversation follows the
+// the labs' watches and Shift Manager's message log, project entries and task run
+// link (and its snapshot, whose Lab reads read the log and the entries again). Shift Manager's conversation follows the
 // session stream instead. A patch to the live read reaches every one of them.
 const LIVE_READ = "packages/client/src/live/live-read.ts";
 /** The Talk panel's worker, and the shared project whose entries the Shift Manager view reads. */
@@ -269,7 +270,7 @@ globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
 };
 let mounts = 0;
 
-/** What the Shift Manager project view drew, and how to ask it for a Lab read. */
+/** What the Shift Manager project view drew. */
 type ProjectShown = { entries: string[] };
 
 async function firstAt<T>(seen: Array<{ at: number; value: T }>, match: (value: T) => boolean, from: number, withinMs: number): Promise<number | undefined> {
@@ -322,6 +323,7 @@ function mountViews(on: Host, sessionId: string) {
   const smReads: Read[] = [];
   pageReads.set(smToken, smReads);
   const smProject = record<ProjectShown>();
+  const smMessages = record<string[]>();
   let labRead: () => Promise<void> = async () => {};
   function ProjectProbe() {
     const { snapshot, refresh } = useLab();
@@ -332,6 +334,17 @@ function mountViews(on: Host, sessionId: string) {
     const key = entries === undefined ? null : entries.join(",");
     useEffect(() => {
       if (entries !== undefined) smProject.push({ at: Date.now(), value: { entries } });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key]);
+    // The Messages view reads the log once the snapshot has landed, on its `readAt`.
+    return loaded === undefined ? null : createElement(MessagesProbe, { readAt: loaded.readAt });
+  }
+  function MessagesProbe({ readAt }: { readAt: number }) {
+    const { rows } = useMessages(readAt);
+    const ids = rows == null ? undefined : rows.map((m) => m.id);
+    const key = ids === undefined ? null : ids.join(",");
+    useEffect(() => {
+      if (ids !== undefined) smMessages.push({ at: Date.now(), value: ids });
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key]);
     return null;
@@ -350,10 +363,11 @@ function mountViews(on: Host, sessionId: string) {
   const requestReads = (reads: Read[]) => reads.filter((r) => r.url.includes("/requests"));
   // One project read lists its entries by the project's one prefix.
   const entryReads = () => smReads.filter((r) => r.url.includes(`topicPrefix=workstreams/${PROJECT}/`));
+  // One log read lists the user's `workforce/messages/*`.
+  const logReads = () => smReads.filter((r) => r.url.includes("workforce/messages"));
   return {
-    shown: { ccThread, ccPins, tmConversation, smItems, tmTalk, smProject },
+    shown: { ccThread, ccPins, tmConversation, smItems, tmTalk, smProject, smMessages },
     labRead: () => labRead(),
-    entryReads,
     reads: {
       "claude-code-style thread (running turn)": () => requestReads(cc.reads),
       "claude-code-style pins": () => pinsClient.reads,
@@ -362,6 +376,7 @@ function mountViews(on: Host, sessionId: string) {
       "Shift Manager conversation": () => sm.reads,
       "Teammates Talk": () => talk.reads.filter((r) => r.url.includes(WORKER_MESSAGES_RESOURCE)),
       "Shift Manager project entries": entryReads,
+      "Shift Manager message log": logReads,
     } as Record<string, () => Read[]>,
     all: [cc.reads, pinsClient.reads, tm.reads, tmWindowReads.reads, sm.reads, talk.reads, smReads],
     close: () => stops.forEach((stop) => stop()),
@@ -377,8 +392,8 @@ async function opened(writer: Client, sessionId: string): Promise<void> {
 /** Until every view has shown its first read (15 s at most). */
 async function mounted(views: ReturnType<typeof mountViews>): Promise<void> {
   const deadline = Date.now() + 15_000;
-  const { ccThread, ccPins, tmConversation, smItems, tmTalk, smProject } = views.shown;
-  while (![ccThread, ccPins, tmConversation, smItems, tmTalk, smProject].every((seen) => seen.length > 0)) {
+  const { ccThread, ccPins, tmConversation, smItems, tmTalk, smProject, smMessages } = views.shown;
+  while (![ccThread, ccPins, tmConversation, smItems, tmTalk, smProject, smMessages].every((seen) => seen.length > 0)) {
     if (Date.now() > deadline) throw new Error(`setup: not every view read on open (${Object.entries(views.shown).map(([name, seen]) => `${name}:${seen.length}`).join(" ")})`);
     await delay(20);
   }
@@ -497,7 +512,9 @@ await runGoal(async (failures, tell) => {
       await writer.resource(labPins).update((s) => ({ pinned: [...s.pinned, "t1"] }));
       const pinnedAt = Date.now();
       const pin = await firstAt(views.shown.ccPins, (v) => v.includes("t1"), pinnedAt - 200, 3_000);
-      const message = await written(writer, sessionId, "logMessage", { id: "msg_a" }, views.shown.tmTalk, (v) => v.some((m) => m.id === "msg_a"));
+      const loggedAt = await writeIn(writer, sessionId, "logMessage", { id: "msg_a" });
+      const message = await shownAfter(views.shown.tmTalk, (v) => v.some((m) => m.id === "msg_a"), loggedAt);
+      const logged = await shownAfter(views.shown.smMessages, (v) => v.includes("msg_a"), loggedAt);
       const entry = await written(writer, sessionId, "openEntry", { id: "research" }, views.shown.smProject, (v) => v.entries.includes("research"));
       const lat: Record<string, number | undefined> = {
         "claude-code-style running turn": thread === undefined ? undefined : thread - startedAt,
@@ -505,6 +522,7 @@ await runGoal(async (failures, tell) => {
         "Shift Manager reply": reply === undefined ? undefined : reply - doneAt,
         "claude-code-style pin": pin === undefined ? undefined : pin - pinnedAt,
         "Teammates Talk message": message,
+        "Shift Manager message log": logged,
         "Shift Manager project entry": entry,
       };
       const graded = tell.over("a:within-1s · each view showing the other session's change", Object.values(lat).filter((v): v is number => v !== undefined));
@@ -534,19 +552,27 @@ await runGoal(async (failures, tell) => {
       else if (waitReads === 0) evidence.push(`a: task screen read its board 0 times over ${IDLE_MS / 1000} s waiting, and showed the run link ${linkShown} ms after its write`);
       task.close();
 
-      // A Lab read (the snapshot read again, here as the user's Refresh) reads the entries again, as it did before.
+      // A Lab read (the snapshot read again, here as the user's Refresh) reads the log and the entries again, as it did before.
       await quiet(views.all);
-      const entryReadsBefore = views.entryReads().length;
+      const onLabRead = ["Shift Manager message log", "Shift Manager project entries"];
+      const readsBefore = new Map(onLabRead.map((name) => [name, views.reads[name]!().length]));
       const refreshedAt = Date.now();
       await views.labRead();
-      let reread: number | undefined;
-      for (const giveUpAt = Date.now() + 3_000; reread === undefined && Date.now() < giveUpAt; await delay(10)) {
-        reread = views.entryReads().find((r) => r.at >= refreshedAt)?.at;
+      const reread = new Map<string, number | undefined>();
+      for (const name of onLabRead) {
+        let at: number | undefined;
+        for (const giveUpAt = Date.now() + 3_000; at === undefined && Date.now() < giveUpAt; await delay(10)) {
+          at = views.reads[name]!().find((r) => r.at >= refreshedAt)?.at;
+        }
+        reread.set(name, at === undefined ? undefined : at - refreshedAt);
       }
-      if (reread === undefined || reread - refreshedAt >= BOUND_MS) {
-        failures.push(`a:lab-read: Shift Manager's project entries read ${reread === undefined ? "never" : `${reread - refreshedAt} ms`} after a Lab read (bound ${BOUND_MS})`);
-      } else evidence.push(`a: project entries read again ${reread - refreshedAt} ms after a Lab read`);
-      tell.over("a:lab-read · project entry reads after a Lab read", views.entryReads().slice(entryReadsBefore));
+      for (const [name, ms] of reread) {
+        if (ms === undefined || ms >= BOUND_MS) failures.push(`a:lab-read: ${name} read ${ms === undefined ? "never" : `${ms} ms`} after a Lab read (bound ${BOUND_MS})`);
+      }
+      if ([...reread.values()].every((ms) => ms !== undefined && ms < BOUND_MS)) {
+        evidence.push(`a: read again after a Lab read: ${[...reread].map(([name, ms]) => `${name} ${ms} ms`).join(", ")}`);
+      }
+      tell.over("a:lab-read · reads after a Lab read", onLabRead.flatMap((name) => views.reads[name]!().slice(readsBefore.get(name)!)));
 
       await quiet(views.all);
       const idleFrom = new Map(Object.entries(views.reads).map(([name, reads]) => [name, reads().length]));
@@ -605,7 +631,9 @@ await runGoal(async (failures, tell) => {
       const startedAt = Date.now();
       const answering = await firstAt(fallback.shown.tmConversation, (v) => v.running, startedAt - 50, 1_500 + BOUND_MS + 500);
       await requestDone(plain, sent.id);
-      const message = await written(w, s, "logMessage", { id: "msg_c" }, fallback.shown.tmTalk, (v) => v.some((m) => m.id === "msg_c"), 1_500 + BOUND_MS + 500);
+      const loggedAt = await writeIn(w, s, "logMessage", { id: "msg_c" });
+      const message = await shownAfter(fallback.shown.tmTalk, (v) => v.some((m) => m.id === "msg_c"), loggedAt, 1_500 + BOUND_MS + 500);
+      const logged = await shownAfter(fallback.shown.smMessages, (v) => v.includes("msg_c"), loggedAt, 5_000 + BOUND_MS + 500);
       const entry = await written(w, s, "openEntry", { id: "fallback" }, fallback.shown.smProject, (v) => v.entries.includes("fallback"), 5_000 + BOUND_MS + 500);
       // The task screen: on its old pace while it waits, and the link within that pace + 1 s.
       const task = await taskScreen(plain, w);
@@ -621,6 +649,7 @@ await runGoal(async (failures, tell) => {
         ["pins", pin === undefined ? undefined : pin - pinnedAt, 3_000],
         ["Teammates answering", answering === undefined ? undefined : answering - startedAt, 1_500],
         ["Teammates Talk", message, 1_500],
+        ["Shift Manager message log", logged, 5_000],
         ["Shift Manager project entries", entry, 5_000],
         ["Shift Manager task run link", linkShown, RUN_LINK_POLL_MS],
       ];
@@ -631,7 +660,7 @@ await runGoal(async (failures, tell) => {
       if (paced.every(([, ms]) => ms !== undefined)) evidence.push(`c: with no crossing bus, ${paced.map(([what, ms]) => `${what} ${ms} ms`).join(", ")}`);
       // The in-process double still delivers what it hears, so a fast show alone doesn't prove the old
       // pace runs: with nothing written, each moved view still reads on its fallback timer.
-      const kept = ["Teammates Talk", "Shift Manager project entries"];
+      const kept = ["Teammates Talk", "Shift Manager message log", "Shift Manager project entries"];
       await quiet(fallback.all, 300);
       const from = new Map(kept.map((name) => [name, fallback.reads[name]!().length]));
       await delay(6_000);

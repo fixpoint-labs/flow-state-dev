@@ -1,0 +1,32 @@
+{
+  "unreadable": { "slug": "mcp", "name": "@flow-state-dev/mcp", "remove": "packages/mcp/dist/index.d.ts" },
+  "exports": [
+    { "slug": "core", "file": "packages/core/src/types/flow.ts", "name": "ActionMcpConfig", "kind": "interface" },
+    { "slug": "engine", "file": "packages/engine/src/execution/request-continuation.ts", "name": "continueRequest", "kind": "function" },
+    { "slug": "client", "file": "packages/client/src/stream-client/bind-store-to-callbacks.ts", "name": "bindStoreToCallbacks", "kind": "function" },
+    { "slug": "react", "file": "packages/react/src/components/ApprovalRenderer.ts", "name": "ApprovalRenderer", "kind": "function" },
+    { "slug": "testing", "file": "packages/testing/src/eval/analyzerScorer.ts", "name": "analyzerScorer", "kind": "function" },
+    { "slug": "fsdev", "file": "packages/fsdev/src/next-steps.ts", "name": "assertCanonicalNextSteps", "kind": "function" },
+    { "slug": "devtool", "file": "packages/devtool/src/index.ts", "name": "getDevToolAssetPath", "kind": "function" },
+    { "slug": "node", "file": "packages/node/src/bind-guard.ts", "name": "assertNetworkBindIsAuthenticated", "kind": "function" },
+    { "slug": "next", "file": "packages/next/src/createNextHandler.ts", "name": "createNextHandler", "kind": "function" },
+    { "slug": "vercel", "file": "packages/vercel/src/handler.ts", "name": "createVercelBareHandler", "kind": "function" },
+    { "slug": "bullmq", "file": "packages/bullmq/src/flowstate-adapter.ts", "name": "bullmqWorker", "kind": "function" },
+    { "slug": "mcp", "file": "packages/mcp/src/tool-conversion.ts", "name": "actionToMcpTool", "kind": "function" },
+    { "slug": "scheduled", "file": "packages/scheduled/src/createBadCronWarner.ts", "name": "createBadCronWarner", "kind": "function" },
+    { "slug": "store-sqlite", "file": "packages/store-sqlite/src/schedule-index.ts", "name": "createSQLiteScheduleIndex", "kind": "function" },
+    { "slug": "store-postgres", "file": "packages/store-postgres/src/schedule-index.ts", "name": "createPostgresScheduleIndex", "kind": "function" },
+    { "slug": "orchestration", "file": "packages/orchestration/src/skills/task-tools-capability.ts", "name": "createHoldTaskForUser", "kind": "function" },
+    { "slug": "patterns", "file": "packages/patterns/src/supervisor/blocks/reviewer-check.ts", "name": "buildReviewedWorker", "kind": "function" },
+    { "slug": "tools", "file": "packages/tools/src/bash/create-bash-tool.ts", "name": "createBashTool", "kind": "function" },
+    { "slug": "workspace", "file": "packages/workspace/src/lock.ts", "name": "acquireLock", "kind": "function" },
+    { "slug": "memory", "file": "packages/memory/src/digest-blocks.ts", "name": "buildDigestContext", "kind": "function" },
+    { "slug": "workforce", "file": "packages/workforce/src/conversation-board/delegate-answer.ts", "name": "answerTextOf", "kind": "function" },
+    { "slug": "harness-manager", "file": "packages/harness-manager/src/ask.ts", "name": "askMarkerPath", "kind": "function" },
+    { "slug": "claude-code", "file": "packages/claude-code/src/sdk/account-probe.ts", "name": "checkClaudeCodeReadiness", "kind": "function" },
+    { "slug": "codex", "file": "packages/codex/src/account-probe.ts", "name": "checkCodexReadiness", "kind": "function" },
+    { "slug": "cursor", "file": "packages/cursor/src/sign-in.ts", "name": "checkCursorReadiness", "kind": "function" },
+    { "slug": "shift-manager", "file": "packages/shift-manager/cli/index.ts", "name": "getAssetPath", "kind": "function" },
+    { "slug": "voice-openai", "file": "packages/voice-openai/src/openai-voice-provider.ts", "name": "OpenAIVoiceProviderOptions", "kind": "interface" }
+  ]
+}
