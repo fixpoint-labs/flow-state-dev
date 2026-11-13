@@ -115,7 +115,7 @@ consumed; a *uses* cell is a place a child must not re-decide.
 
 | Seam | Between | Rule |
 |---|---|---|
-| `agent-worker-flow.ts` prompt array, `worker-identity.ts`, `workerConfigSchema` | FIX-2491, 2493, 2498, 2500, and FIX-2073 | The bugs land first: FIX-2491's step default, and FIX-2493 so every later section reaches the EM. FIX-2498 makes `workerDefaultLayer` own the array's default entry and the tagged context after the worker's text ([its D1](../../issues/FIX-2498/DECISIONS.md#d1)), and replaces the seam's "do not grow" comment; FIX-2500 turns the summary fold on by default and adds no section text. Where FIX-2073's line goes is [open](#on-fix-2498s-amendment) |
+| `agent-worker-flow.ts` prompt array, `worker-identity.ts`, `workerConfigSchema` | FIX-2491, 2493, 2498, 2500, and FIX-2073 | The bugs land first: FIX-2491's step default, and FIX-2493 so every later section reaches the EM. FIX-2498 makes `workerDefaultLayer` own the array's default entry and the tagged context after the worker's text ([its D1](../../issues/FIX-2498/DECISIONS.md#d1)), and replaces the seam's "do not grow" comment; FIX-2500 adds the summary as a section of that module, in the context half after the worker's text, not to the array. Where FIX-2073's line goes is [open](#on-fix-2498s-amendment) |
 | `labs/teammates/src/flows/coder.ts` | FIX-2495, FIX-2502, and FIX-2369's merge order on that file | FIX-2495's local fix first; FIX-2502 replaces the builder. FIX-2369's [build order](../FIX-2369/DECISIONS.md#coordination-seams) row for this file governs the merge order |
 | `packages/shift-manager/teams/devteam/harness.mts` | FIX-2494, FIX-2502 | FIX-2494 switches to the preset with appended text; FIX-2502 swaps that text for the brief |
 | harness-manager's `buildPrompt` | FIX-2502, FIX-2388 | The brief composes `heldPromptSection`, `PromptRunContext.task` and FIX-2388's issue section, and reads `commandCheck`'s `commands` |
@@ -229,9 +229,12 @@ layers' content (ER-6). The epic follows the child:
   the cut run without it. The sizing ask stays and the wrap still checks it, with no layer
   behind it. Apps' length lines stay (ER-3: nothing replaces them), so length left the
   closure's sweep ([FIX-2541](../../issues/FIX-2541/DECISIONS.md)).
-- **FIX-2500's structured summary is cut; its flip stays** (owner, Nov 12). The fold ask passed
-  3 of 3 on Teammates, where its cut is read. ER-6 keeps the default flip, since the wrap sets
-  no switch: FIX-2500 turns core's fold on for workers and adds no section text.
+- **FIX-2500's fixed-shape summary is cut; the summary and its flip stay** (owner, Nov 12). The
+  fold ask passed 3 of 3 on Teammates, where its cut is read. ER-6 keeps the default flip, since
+  the wrap sets no switch. FIX-2500 turns the fold on for every worker with Teammates'
+  summarizer moved into workforce as it is, the only summary the cut run measured: a section of
+  `workerDefaultLayer`, in the context half after the worker's text. Teammates deletes its own
+  wiring in the same change (ER-3).
 - **Open: where FIX-2073's line goes, or whether it is dropped.** The seams placed it in the
   behaviour section, which no longer exists. Ways it could go: into the identity section, its
   placement before this epic (FIX-2334); a section of its own in `workerDefaultLayer`, under
@@ -255,7 +258,7 @@ layers' content (ER-6). The epic follows the child:
   `0df5c85`. A third amendment PR.
 - **FIX-2498 amends D4 and ER-1 (Nov 13)** — the owner merged its spec (#5163): the new sections
   go after the worker's text, an app may add `date` lines, and the section is renamed `date`.
-  The owner's Nov 12 cut folded too: behaviour and the summary's content go, the summary flip
-  stays. A fourth amendment PR.
+  The owner's Nov 12 cut folded too: behaviour and the summary's fixed shape go, the summary
+  and its flip stay. A fourth amendment PR.
 
 **Open:** [where FIX-2073's line goes, or whether it is dropped](#on-fix-2498s-amendment).

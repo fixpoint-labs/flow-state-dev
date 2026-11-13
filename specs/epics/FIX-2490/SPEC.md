@@ -36,7 +36,7 @@ flowchart LR
   A --> L2["leg b · a coding task and a several-lookup knowledge ask"]
   A --> C1["leg c1 · a one-line question · sizing<br/>its layer cut on Nov 12<br/>still checked at wrap"]
   A --> C2["leg c2 · a fitting skill<br/>reaches FIX-2498's skills index"]
-  A --> C3["leg c3 · a decision across a summary fold<br/>reaches FIX-2500's default flip<br/>content cut on Teammates<br/>runs in both labs at wrap"]
+  A --> C3["leg c3 · a decision across a summary fold<br/>reaches FIX-2500's summary<br/>cut decided on Teammates<br/>runs in both labs at wrap"]
   L1 --> T["what the worker answers"]
   L2 --> T
   C1 --> T
@@ -69,7 +69,7 @@ of tool guidance.
 
 ## What's in the box
 
-![In the box: workforce's default worker layer as named sections, each on by default with its own opt-out in one worker-config shape: identity, which exists, plus date and skills index from FIX-2498, and the summary fold turned on by FIX-2500; core's optional guidance field on a tool, in the same tools list; harness-manager's one coding brief with the checks commandCheck runs. Composed in by each app: the persona in WORKER.md, its own date lines, guidance on its own tools, the checks its repo runs. Replaced in one line: any section turned off, or all of them with defaults: false. Below a fence, not built: the Not doing list](figures/end-state.svg)
+![In the box: workforce's default worker layer as named sections, each on by default with its own opt-out in one worker-config shape: identity, which exists, plus date and skills index from FIX-2498, and the summary from FIX-2500, Teammates' summarizer moved into workforce; core's optional guidance field on a tool, in the same tools list; harness-manager's one coding brief with the checks commandCheck runs. Composed in by each app: the persona in WORKER.md, its own date lines, guidance on its own tools, the checks its repo runs. Replaced in one line: any section turned off, or all of them with defaults: false. Below a fence, not built: the Not doing list](figures/end-state.svg)
 
 The top band is written once and every workforce worker gets it with no code. An app composes
 only what is its own, and turns a section, or all of them, off in one line. Below the fence is
@@ -98,7 +98,7 @@ this one merges.
 | **Framework layers · spec route, after the cut run** | | | |
 | FIX-2498 | One module, `workerDefaultLayer`: named sections, an opt-out each and `defaults: false` for all, a token ceiling with a failing test. Two sections: `date` (today, its weekday and the server's time zone, after the worker's text, where an app may add lines; exported, and composed by Kitchen Sink's standalone assistant) and the skills index ([FIX-2498 D1](../../issues/FIX-2498/DECISIONS.md#d1)). Behaviour was cut on Nov 12: sizing passed without it ([why](DECISIONS.md#on-fix-2498s-amendment)). Reaches workers built without an installation. FIX-2497 and FIX-2501 folded in | The dated ask and the skill ask in every app | Ready to Spec |
 | FIX-2499 | An optional guidance field on a tool, in the same tools list | Search and fetch learn to cite; owner kept it ([D3](DECISIONS.md#d3)) | Ready to Spec |
-| FIX-2500 | Core's existing summary fold, on by default. Its structured content was cut on Nov 12: the fold ask passed on Teammates; ER-6 keeps the flip ([why](DECISIONS.md#on-fix-2498s-amendment)) | The labs' long-conversation ask: a decision is still used after a summary fold ([Q1](DECISIONS.md#q1)) | Ready to Spec |
+| FIX-2500 | The summary fold on by default for every worker, using Teammates' summarizer moved into workforce as it is: a section of `workerDefaultLayer`, after the worker's text. The fixed-shape summary was cut on Nov 12; the flip stays (ER-6, [why](DECISIONS.md#on-fix-2498s-amendment)) | The labs' long-conversation ask: a decision is still used after a summary fold ([Q1](DECISIONS.md#q1)) | Ready to Spec |
 | FIX-2502 | One coding brief in harness-manager, used by three apps | The coder ask in every app; replaces three hand-built prompts | Ready to Spec |
 | FIX-2541 · closure · **required** | Four app scripts, seven asks (the fold in the labs only, the Claude Code-style lab's at wrap only), 3 runs each; run as the control, the cut run and at wrap | The only child that proves the outcome | Ready to Spec · blocked by every other child |
 
@@ -111,7 +111,7 @@ blocks each layer in Linear, so no layer is built before the cut run.
 flowchart LR
   B["FIX-2491 to 2496 · six wiring bugs"] -->|"main with the wiring fixed"| CUT["cut run · FIX-2541's scripts"]
   CUT -->|"which asks still fail"| S["FIX-2498 · named sections · date, skills index"]
-  S -->|"the opt-out key"| K["FIX-2500 · summary fold on by default"]
+  S -->|"the section shape and its opt-out key"| K["FIX-2500 · summary · Teammates' summarizer, on by default"]
   CUT --> T["FIX-2499 · tool guidance"]
   CUT --> H["FIX-2502 · coding brief"]
   X["commandCheck · on main"] -.->|"its commands option"| H
@@ -131,7 +131,7 @@ An edge is what one issue hands the next; a dashed input is a piece already on `
 | The prompt seam in `agent-worker-flow.ts`: four entries, identity on an installation only, "re-decide rather than widen" | **Re-decided** by [D4](DECISIONS.md#d4): one `workerDefaultLayer` that reaches every worker, still no registry. Its new sections go after the worker's text, as tagged context ([FIX-2498 D1](../../issues/FIX-2498/DECISIONS.md#d1)) |
 | `defineAgentWorkerFlow`'s `maxSteps`, defaulting to core's 8 | **Fixed** by FIX-2491; an app's own `maxSteps` still wins |
 | The skills switches in `workerConfigSchema`, off by default; `createSkillsLibrary` | **Amended** by [D1](DECISIONS.md#d1): the index is on. The opt-outs join this bag as one `defaults` key |
-| Core's `historySummary` fold and `summarizer`, opt-in, used by Teammates only | **Turned on** by default for workers by FIX-2500; the structured shape was cut. No core change |
+| Core's `historySummary` fold and `summarizer`, opt-in, used by Teammates only | **Reused** by FIX-2500, on by default for every worker in workforce, with Teammates' summarizer moved as it is. Not core (ER-2) |
 | Core's `<tools>` list (`buildToolDescriptionContext`), already only the held tools | **Extended** by FIX-2499: an optional guidance field in the same list |
 | harness-manager's `buildPrompt`, `heldPromptSection`, `PromptRunContext.task`, FIX-2388's issue section | **Composed** by FIX-2502's brief |
 | `commandCheck` (`packages/harness-manager/src/command-check.ts`, on `main`) | **Consumed.** The brief takes its checks from its `commands` option ([D5](DECISIONS.md#d5)) |
@@ -143,13 +143,13 @@ An edge is what one issue hands the next; a dashed input is a piece already on `
 | The `date` block (FIX-2498) | `capability` context keys; Kitchen Sink's `todaysDate` | Composed: a function under the `date` key, current each turn. Exported for a generator that is not a worker |
 | The skills index on (FIX-2498) | `createSkillsLibrary` | Reuse: a default flip |
 | A guidance field on a tool (FIX-2499) | `buildToolDescriptionContext`; skill `whenToUse`; the bash capability's `guidance` | Extend: a field travels with the tool into a list of held tools only. A preset prints even when a fence removed the tool |
-| The summary fold on by default (FIX-2500) | `historySummary` and `summarizer` | Reuse: a default flip. The structured content was cut |
+| The summary on by default (FIX-2500) | `historySummary` and `summarizer`; Teammates' summarizer | Reuse: Teammates' proven summarizer, moved into workforce as a section of `workerDefaultLayer`. No new summary content; the fixed shape was cut |
 | One coding brief (FIX-2502) | Three apps' builders; `buildPrompt`; `heldPromptSection`; `commandCheck` | A helper each `buildPrompt` calls, appended to the harness preset |
 
 | The debt | |
 |---|---|
-| **Removes** | Three hand-built coding prompts, and Kitchen Sink's `todaysDate` once its assistant composes the exported `date` block |
-| **Adds** | Two sections and the summary fold's default flip, their opt-outs and a master switch, one optional tool field, one harness-manager helper, a step budget of about 50. The fixed sections cost tokens every turn, held under a published ceiling; each summary fold costs one extra model call |
+| **Removes** | Three hand-built coding prompts, Teammates' own summary wiring (ER-3), and Kitchen Sink's `todaysDate` once its assistant composes the exported `date` block |
+| **Adds** | Three sections (date, skills index, the summary), their opt-outs and a master switch, one optional tool field, one harness-manager helper, a step budget of about 50. The fixed sections cost tokens every turn, held under a published ceiling; each summary fold costs one extra model call |
 | **Leaves** | The per-app content pass, apps' length lines (no layer replaces them since the cut) and FIX-2174's compaction mechanics. Unchanged: the identity layer's words (FIX-2334), WORKER.md bodies, and harness-manager's verdict |
 
 **Net: down in app code, up in per-turn tokens and model calls.** Each section has to earn them

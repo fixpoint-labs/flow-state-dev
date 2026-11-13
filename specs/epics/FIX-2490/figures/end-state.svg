@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 440" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What is in the box. Built once, in three packages: workforce's default worker layer as named sections in a fixed order, identity which exists, then date and skills index after the worker's own text, and core's summary fold of earlier turns, each on by default with its own opt-out in one worker-config shape; core's optional guidance field on a tool, rendered in the same tools list, which shows only the tools a worker holds; harness-manager's one coding brief, which carries the worker's instructions, the task, the conventions and the checks commandCheck runs, appended to the harness's own preset. Composed in by each of four apps: the persona in WORKER.md, its own date lines, guidance on its own tools, and the checks its repo runs. Replaced in one line: any section, turned off. Not built here, below a fence: the per-app content pass, Teammates self-learning, an eval apparatus, compaction mechanics, harness routing, and a generator-level opt-out of tool guidance.">
+     aria-label="What is in the box. Built once, in three packages: workforce's default worker layer as named sections in a fixed order, identity which exists, then date and skills index after the worker's own text, and the summary of earlier turns, Teammates' summarizer moved into workforce, each on by default with its own opt-out in one worker-config shape; core's optional guidance field on a tool, rendered in the same tools list, which shows only the tools a worker holds; harness-manager's one coding brief, which carries the worker's instructions, the task, the conventions and the checks commandCheck runs, appended to the harness's own preset. Composed in by each of four apps: the persona in WORKER.md, its own date lines, guidance on its own tools, and the checks its repo runs. Replaced in one line: any section, turned off. Not built here, below a fence: the per-app content pass, Teammates self-learning, an eval apparatus, compaction mechanics, harness routing, and a generator-level opt-out of tool guidance.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -36,9 +36,9 @@
     <text class="t-m" x="370" y="118">FIX-2498</text>
     <text class="t-b" x="44" y="144">3  the skills it holds, loaded on demand</text>
     <text class="t-m" x="370" y="144">FIX-2498</text>
-    <text class="t-b" x="44" y="170">4  core's summary fold, now on by default</text>
+    <text class="t-b" x="44" y="170">4  a summary of earlier turns, Teammates'</text>
     <text class="t-m" x="370" y="170">FIX-2500</text>
-    <text class="t-s" x="44" y="203">on by default · one opt-out shape · 2 and 3 after the worker's text</text>
+    <text class="t-s" x="44" y="203">on by default · one opt-out shape · 2 to 4 after the worker's text</text>
     <rect class="pkg" x="484" y="52" width="204" height="162" rx="5"/>
     <text class="t-lbl" x="496" y="70">CORE</text>
     <text class="t-b" x="496" y="92">A guidance field</text>
