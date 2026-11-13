@@ -12,6 +12,7 @@
  * The block must declare an output schema: {@link ViewOutput} is that
  * schema's type, so a screen never holds an untyped answer.
  */
+import type { ChangeKind, WireTopic } from "@flow-state-dev/contracts";
 import type { BlockDefinition, BlockInput, BlockOutput } from "./block";
 
 /** Where a view runs: on a session, or at the caller's user or org scope with no session. */
@@ -61,3 +62,39 @@ export type ViewOutput<TView extends { block: BlockDefinition }> = BlockOutput<T
 
 /** The input a view takes: its block's input type. */
 export type ViewInput<TView extends { block: BlockDefinition }> = BlockInput<TView["block"]>;
+
+// FIX-2625 D1.
+/**
+ * The change a view's run is asked to answer for: the notice that woke its
+ * watcher, with the ids it named. Ids are the publisher's (a task on a
+ * `board` notice, an entry's storage key on a `resource` notice), never row
+ * keys: only the view knows which of its rows an id touches.
+ */
+export type ViewChange = {
+  readonly topic: WireTopic;
+  readonly kind: ChangeKind;
+  readonly ids: readonly string[];
+};
+
+/**
+ * What a view's block sees of its run, as `ctx.view`: set on every block of a
+ * view's run, child blocks included, and absent anywhere else.
+ */
+export interface ViewRunContext {
+  /**
+   * The change this run may answer for, or `undefined` on a whole run (a
+   * first read, a connect, a notice with no ids, a view with no `key`).
+   */
+  readonly changed?: ViewChange;
+  /**
+   * Answer for just some rows: `entries` are placed by key over the rows the
+   * screen holds (a key it holds is replaced in place, a new one goes last),
+   * and `removed` keys are dropped. Return what this returns. Opt-in: a view
+   * that never calls it answers whole. Answer whole whenever a change could
+   * move a row or put a new one anywhere but last: a partial answer never
+   * reorders rows.
+   *
+   * @throws When the run has no `changed`, or the view declares no `key`.
+   */
+  partial<TEntries extends readonly unknown[]>(entries: TEntries, options?: { removed?: readonly string[] }): TEntries;
+}

@@ -633,8 +633,8 @@ export const ENTRIES = [
   // build them ship (FIX-2623 views, FIX-2626 kits and slots).
   {
     term: "View",
-    means: "The one hook that computes an answer for a screen (`defineView`, a flow's `views`): it has a scope (no session at user or org) and, for a list, keyed rows. It stores nothing, refuses writes and model calls, and each run records what it read, so its answer names the change topics a watcher listens to. Nothing about its dependencies is declared.",
-    decision: "Owner, 2026-11-10 (epic FIX-2618 O2, ER-1); FIX-2619; FIX-2623 D1 (dependencies recorded, not declared) and D2 (no model call)",
+    means: "The one hook that computes an answer for a screen (`defineView`, a flow's `views`): it has a scope (no session at user or org) and, for a list, keyed rows. It stores nothing, refuses writes and model calls, and each run records what it read, so its answer names the change topics a watcher listens to. Nothing about its dependencies is declared. A keyed view may answer for just the rows a change touches (a partial answer, `ctx.view.partial`), given the notice that woke its watcher (`ctx.view.changed`); one that says nothing answers whole.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O2, ER-1); FIX-2619; FIX-2623 D1 (dependencies recorded, not declared) and D2 (no model call); FIX-2625 D1 (partial answers, opt-in)",
     // "Read" retires as the hook's name, with FIX-2623's removal of `reads` (epic ER-9). "View"
     // is not retired in any other sense: `readTaskView` and "derived views" in prose stay.
     retires: [

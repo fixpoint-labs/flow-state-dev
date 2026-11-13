@@ -7,7 +7,9 @@
  *
  * Each runs the view for its caller and answers `200 { output, topics }`:
  * the answer, and the change topics what it read falls under, deduped and
- * sorted. Nothing is stored (`execution/runView.ts`).
+ * sorted. Nothing is stored (`execution/runView.ts`). A keyed view adds its
+ * rows' `keys`; a body that names a `changed` notice with ids may get a
+ * partial answer, flagged `partial: { removed }`.
  *
  * A caller outside the flow instance's owner pin gets the 404 an unregistered
  * address gets, before anything about the flow's views is answered.
@@ -20,6 +22,8 @@
  * a session the caller may not run in answers as an id with no session
  * behind it, and a view can't make one.
  */
+import { NOTICE_MAX_IDS } from "@flow-state-dev/core/internal";
+import type { ViewChange } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost } from "../transports/types";
@@ -37,6 +41,7 @@ import { NoSessionError } from "../context/no-session";
 import { UnrecordedReadError, ViewModelCallError } from "../context/view-reads";
 import { FlowError } from "../errors/flow-error";
 import { runView, UnknownViewError } from "../execution/runView";
+import { isWireTopic } from "../push/socket-session";
 import { asObject, extractTenantId, jsonResponse, loadTenantSession, parseJsonBody, unknownSessionResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -115,10 +120,12 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
       if (session === undefined) return unknownSessionResponse(route.sessionId);
       assertSessionAdmitted(flow, session, { sessionId: route.sessionId, userId: principal.userId, tenantId });
     }
+    const changed = changeOf(body.changed);
     const answer = await runView({
       flow,
       viewName: route.viewName,
       input: body.input,
+      ...(changed !== undefined ? { changed } : {}),
       userId: principal.userId,
       orgId: principal.orgId,
       ...(route.sessionId !== undefined ? { sessionId: route.sessionId } : {}),
@@ -130,12 +137,30 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
     return jsonResponse(200, {
       output: answer.output ?? null,
       topics: answer.topics,
-      ...(answer.keys !== undefined ? { keys: answer.keys } : {})
+      ...(answer.keys !== undefined ? { keys: answer.keys } : {}),
+      ...(answer.partial !== undefined ? { partial: answer.partial } : {})
     });
   } catch (error) {
     return viewFailureResponse(error, route);
   }
 }
+
+// FIX-2625 D1.
+/**
+ * The change a call asks the view to answer for, from `body.changed`: a wire
+ * topic, a kind, and 1 to {@link NOTICE_MAX_IDS} string ids. Anything else is
+ * no change, and the view runs whole. It decides only which rows the view
+ * reads again, through the view's own checks, never who may read them.
+ */
+function changeOf(value: unknown): ViewChange | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const { topic, kind, ids } = value as Record<string, unknown>;
+  if (!isWireTopic(topic) || typeof kind !== "string" || !CHANGE_KINDS.has(kind)) return undefined;
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > NOTICE_MAX_IDS || !ids.every((id) => typeof id === "string")) return undefined;
+  return { topic, kind: kind as ViewChange["kind"], ids: [...ids] as string[] };
+}
+
+const CHANGE_KINDS = new Set(["items", "request", "run", "state", "resource", "board", "resync"]);
 
 /** What a failed view answers: the action route's answer for a binding refusal, a named code for the rest. */
 function viewFailureResponse(error: unknown, route: ViewRoute): Response {

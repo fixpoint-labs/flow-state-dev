@@ -9,6 +9,7 @@
  * is the one-read-per-host rule lost by export rather than by bug.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { WireNotice } from "@flow-state-dev/client";
 import { useReadFence } from "../hooks/useReadFence";
 
 /** A read's error text: an `Error`'s own message when it has one, else the read's fallback. */
@@ -32,7 +33,7 @@ type FencedRead<T> = {
  * the reads. A re-read under rows already drawn shows no loading note: every
  * panel draws that only while it has no rows.
  */
-export type ReadDriver = (read: () => Promise<void>) => () => void;
+export type ReadDriver = (read: (notice?: WireNotice | null) => Promise<void>) => () => void;
 
 /** How a fenced read runs, beyond reading once on mount. */
 type FencedReadOptions = {
@@ -58,7 +59,7 @@ export function useFencedRead<T>(
   identity: readonly unknown[],
   empty: T,
   failureMessage: string,
-  load: (stillCurrent: () => boolean) => Promise<T>,
+  load: (stillCurrent: () => boolean, notice: WireNotice | null) => Promise<T>,
   options: FencedReadOptions = {}
 ): FencedRead<T> {
   const { driver, enabled = true } = options;
@@ -77,7 +78,7 @@ export function useFencedRead<T>(
   });
   const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
 
-  const read = useCallback(async () => {
+  const read = useCallback(async (notice: WireNotice | null = null) => {
     // Before `begin()`, never after: taking a sequence number supersedes a
     // read in flight, and a read that may not ask must cancel nothing.
     if (!enabled) return;
@@ -87,7 +88,7 @@ export function useFencedRead<T>(
     setError(null);
     setHeldIdentity(fence.identity);
     try {
-      const next = await loadRef.current(stillCurrent);
+      const next = await loadRef.current(stillCurrent, notice);
       if (!stillCurrent()) return;
       setData(next);
     } catch (err) {

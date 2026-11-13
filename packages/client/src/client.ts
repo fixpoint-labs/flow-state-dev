@@ -794,12 +794,25 @@ export function createClient(options: CreateClientOptions): Client {
         viewOptions?.sessionId !== undefined
           ? `/api/flows/${seg(flow)}/${seg(requireValue(viewOptions.sessionId, "sessionId"))}/views/${seg(name)}`
           : `/api/flows/${seg(flow)}/views/${seg(name)}`;
-      const answer = await t.json<{ output: ViewValueOf<TRef>; topics: WireTopic[]; keys?: string[] }>(path, {
+      // The change it may answer for (FIX-2625 D1): a notice with ids, as a hint; never one with none.
+      const changed = viewOptions?.changed;
+      const answer = await t.json<{ output: ViewValueOf<TRef>; topics: WireTopic[]; keys?: string[]; partial?: { removed: string[] } }>(path, {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ input: viewInputOnWire(input), userId })
+        body: JSON.stringify({
+          input: viewInputOnWire(input),
+          userId,
+          ...(changed?.ids !== undefined && changed.ids.length > 0
+            ? { changed: { topic: changed.topic, kind: changed.kind, ids: changed.ids } }
+            : {})
+        })
       });
-      return { value: answer.output, topics: answer.topics ?? [], ...(answer.keys !== undefined ? { keys: answer.keys } : {}) };
+      return {
+        value: answer.output,
+        topics: answer.topics ?? [],
+        ...(answer.keys !== undefined ? { keys: answer.keys } : {}),
+        ...(answer.partial !== undefined ? { partial: { removed: answer.partial.removed ?? [] } } : {})
+      };
     },
     transcribe: (request) => {
       const mediaType = request.mediaType ?? "audio/webm";
