@@ -104,7 +104,7 @@ mechanisms:
     builtOn: [flow, kit-folder]
     overlaps:
       - { id: capability, relation: distinct-jobs, note: "A capability installs into one block; a kit installs flows into an app and can declare slots." }
-      - { id: workforce, relation: distinct-jobs, note: "hireWorkforce wires one feature by hand; workforce becomes a kit (FIX-2627), and hireWorkforce an internal." }
+      - { id: workforce, relation: distinct-jobs, note: "Workforce is installed as a kit (`workforce`, FIX-2627); hireWorkforce is what its install runs, so an app installs it through this row, not that one." }
     status: canonical
     doc: docs/architecture/kits.md
 
@@ -641,11 +641,11 @@ mechanisms:
 
   # ── Workforce ─────────────────────────────────────────────────────────────
   - id: workforce
-    job: Register worker flows from an installation (hireWorkforce). The define* factories beside it are the records and flows a workforce app composes, not separate frameworks.
+    job: Register worker flows from an installation (hireWorkforce). An app installs it as a kit, `workforce` from `@flow-state-dev/workforce/kit`, whose install builds the installation and hires it (FIX-2627); its slots take worker flows, capabilities for the flows it builds, and flows built on the installation. The define* factories beside it are the records and flows a workforce app composes, not separate frameworks.
     package: "@flow-state-dev/workforce"
     anchor: hireWorkforce
     file: packages/workforce/src/workers/register.ts
-    builtOn: [flow, task-board]
+    builtOn: [flow, task-board, kit]
     overlaps: []
     status: canonical
     doc: docs/architecture/workforce-default-worker-flow.md
@@ -779,7 +779,7 @@ mechanisms:
 
   # ── Coding harnesses ──────────────────────────────────────────────────────
   - id: coding-harness
-    job: Drive a coding agent as a block. Core owns the neutral handle and what a harness declares about its abort (`stopsOnAbort`, read by harness-manager); Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper.
+    job: Drive a coding agent as a block. Core owns the neutral handle and what a harness declares about its abort (`stopsOnAbort`, read by harness-manager); Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper. Each also ships itself as one value for the harness kit's slot (harness-manager's `Harness`), `codexHarness()` and `cursorHarness()`; `claudeCode()` is a small kit that fills the slot (FIX-2627).
     package: "@flow-state-dev/core"
     anchor: harnessRunHandleSchema
     file: packages/core/src/types/harness.ts
@@ -790,7 +790,7 @@ mechanisms:
     doc: packages/core/README.md
 
   - id: harness-readiness
-    job: Say which coding harnesses can run on this machine and what to do about one that can't. Core owns the neutral check; Claude Code, Codex and Cursor each ship one; harness-manager keeps the rows and serves them as a read action, a coordinator context entry and a pre-start refusal.
+    job: Say which coding harnesses can run on this machine and what to do about one that can't. Core owns the neutral check; Claude Code, Codex and Cursor each ship one; harness-manager keeps the rows and serves them as a view, a coordinator context entry and a pre-start refusal. The harness kit builds them from its `harnesses` slot, so no host builds a readiness map (FIX-2627).
     package: "@flow-state-dev/harness-manager"
     anchor: harnessReadiness
     file: packages/harness-manager/src/readiness.ts
@@ -812,11 +812,11 @@ mechanisms:
     doc: packages/core/README.md
 
   - id: harness-manager
-    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot). Also runs a harness as one long-lived session a user talks to (harnessSessionFlow), and ships the scripted harness model-free checks put in the slot (harnessStub), with the paced preset hosts serve as their scripted coder (scriptedHarness).
+    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot). Also runs a harness as one long-lived session a user talks to (harnessSessionFlow), and ships the scripted harness model-free checks put in the slot (harnessStub), with the paced preset hosts serve as their scripted coder (scriptedHarness). Installed as a kit, `harnesses` from `@flow-state-dev/harness-manager/kit` (FIX-2627), which contributes `coder`, the one coding worker flow, to workforce, its policy as config.
     package: "@flow-state-dev/harness-manager"
     anchor: harnessManager
     file: packages/harness-manager/src/manager.ts
-    builtOn: [task-board, coding-harness, harness-steering, workspace]
+    builtOn: [task-board, coding-harness, harness-steering, workspace, kit]
     overlaps:
       - { id: workspace, relation: distinct-jobs, note: "The checkout subpath runs git through the workspace host and re-exports run. It is not a second workspace implementation." }
     status: canonical
