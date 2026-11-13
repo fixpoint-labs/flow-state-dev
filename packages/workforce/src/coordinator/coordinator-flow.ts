@@ -225,7 +225,7 @@ export interface CoordinatorFlowOptions {
    * flow's user-scoped storage by its copy, as it does the agent flow's.
    * Omitted, the agent's defaults.
    */
-  agent?: Omit<AgentWorkerFlowOptions, "installation" | "taskLists" | "answerAgain">;
+  agent?: Omit<AgentWorkerFlowOptions, "installation" | "taskLists" | "answerAgain" | "sessionFields">;
   /**
    * How long a round waits for its answers, in whole milliseconds, before it
    * closes without the ones still out and its answers go back out. Only a
@@ -397,6 +397,11 @@ function verifiedCoordinatorId(ctx: BlockContext): string | undefined {
  */
 export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const { installation } = options;
+  // The coordinator's session is its own, so its fields are declared once, on its own option; a
+  // nested `agent.sessionFields` would be dropped, leaving a field open to a seeded create.
+  if (Object.hasOwn(options.agent ?? {}, "sessionFields")) {
+    throw new Error("defineCoordinatorFlow: `agent.sessionFields` is not read; declare the coordinator session's fields on `sessionFields`.");
+  }
   const deadlineMs = options.roundDeadlineMs ?? ROUND_DEADLINE_MS;
   if (!Number.isSafeInteger(deadlineMs) || deadlineMs <= 0) {
     throw new Error(
