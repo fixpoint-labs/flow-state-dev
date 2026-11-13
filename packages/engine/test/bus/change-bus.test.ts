@@ -308,7 +308,7 @@ describe("withChangeBus · every request and session write publishes its session
   // FIX-2625: a notice names what changed, from the ids the wrapper already
   // holds, so a reader of one row reads that row; items and own-session run
   // notices name nothing.
-  it("names the request on its session's request notice, and the session on its owner's and parent's run notices", async () => {
+  it("names the request on its session's request notice and the session on its parent's run notice, and nothing on its owner's", async () => {
     const { stores, bus } = wired();
     await stores.session.set("run_a", session("run_a", { parentSessionId: "s1" }), "any");
     await stores.request.set("seed", request("seed", "run_a"), "any");
@@ -323,7 +323,8 @@ describe("withChangeBus · every request and session write publishes its session
     await tick();
     expect(own.map((n) => [n.kind, n.ids])).toEqual([["request", ["r1"]]]);
     expect(parent.map((n) => [n.kind, n.ids])).toEqual([["run", ["run_a"]]]);
-    expect(owner.map((n) => [n.kind, n.ids])).toEqual([["run", ["run_a"]]]);
+    // The user topic spans the user's orgs: a session id there would reach their screens in another org.
+    expect(owner.map((n) => [n.kind, n.ids])).toEqual([["run", undefined]]);
 
     own.length = 0;
     parent.length = 0;
@@ -333,7 +334,7 @@ describe("withChangeBus · every request and session write publishes its session
     // The session's own topic is that one session: nothing to name.
     expect(own.map((n) => [n.kind, n.ids])).toEqual([["run", undefined]]);
     expect(parent.map((n) => [n.kind, n.ids])).toEqual([["run", ["run_a"]]]);
-    expect(owner.map((n) => [n.kind, n.ids])).toEqual([["run", ["run_a"]]]);
+    expect(owner.map((n) => [n.kind, n.ids])).toEqual([["run", undefined]]);
 
     own.length = 0;
     stores.request.persistItems("r1", [message("r1", "m1")]);

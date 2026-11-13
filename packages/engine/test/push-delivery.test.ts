@@ -23,6 +23,7 @@ import {
 import {
   createInMemoryBus,
   enablePushDelivery,
+  withChangeBus,
   type ChangeBus,
   type FlowApiRouter,
   type PushDelivery
@@ -59,6 +60,19 @@ function app(options: { bus?: ChangeBus; push?: boolean; noticeIds?: { session?:
   });
   const delivery = options.push === false ? undefined : enablePushDelivery(router, { secret: SECRET });
   return { router, stores, delivery };
+}
+
+function sessionRecord(id: string, owner: { userId: string; orgId: string }) {
+  const now = Date.now();
+  return { id, flowKind: "demo", flowId: "demo", userId: owner.userId, orgId: owner.orgId, state: {}, version: 0, createdAt: now, updatedAt: now, journal: [] } as never;
+}
+
+function requestRecord(id: string, sessionId: string, owner: { userId: string; orgId: string }) {
+  const now = Date.now();
+  return {
+    id, sessionId, flowKind: "demo", actionName: "run", userId: owner.userId, orgId: owner.orgId, source: "http",
+    status: "in_progress", startedAtMs: now, state: {}, version: 0, createdAt: now, updatedAt: now
+  } as never;
 }
 
 async function seedSession(
@@ -559,10 +573,13 @@ describe("the socket session · ids on notices, per scope", () => {
     await publishEveryNamedNotice(bus);
     const org = ws.notices().filter((n) => n.type === "notice" && n.topic.scope === "org");
     // Every org notice still arrives, so every org watcher still reads.
+    // A resource notice reaches a scope-wide socket bare, a single resource's included: the edge can't
+    // tell an entry's path from a resource's name without the notice's ids, which a notice from an
+    // older publisher doesn't carry.
     expect(org).toEqual([
       { type: "notice", topic: topic.org(), kind: "resource" },
       { type: "notice", topic: topic.org(), kind: "run" },
-      { type: "notice", topic: topic.org({ resource: "policy" }), kind: "resource" }
+      { type: "notice", topic: topic.org(), kind: "resource" }
     ]);
     expect(JSON.stringify(org)).not.toContain("ada");
     expect(JSON.stringify(org)).not.toContain("s-other");
@@ -574,6 +591,21 @@ describe("the socket session · ids on notices, per scope", () => {
       ["notes/n9"],
       ["s1"]
     ]);
+  });
+
+  // BP-030: a publisher from before ids (a process mid-deploy on a shared Postgres bus) sends an
+  // entry's notice with its path and no ids. The switch must cut that path too.
+  it("with org ids off, sends a scope-wide socket no entry path from a notice with no ids, as an older publisher sends it", async () => {
+    const bus = createInMemoryBus();
+    const { router, delivery } = app({ bus, noticeIds: { org: false } });
+    const wide = socket(delivery!);
+    wide.send({ type: "subscribe", ticket: await ticketFor(router, [topic.org()]) });
+    const narrowed = socket(delivery!);
+    narrowed.send({ type: "subscribe", ticket: await ticketFor(router, [topic.org({ resource: "licenses/ada" })]) });
+    await bus.publish({ topic: { scope: "org", id: "acme", tenantId: "", resource: "licenses/ada" }, kind: "resource" });
+    await flush();
+    expect(wide.notices()).toEqual([{ type: "notice", topic: topic.org(), kind: "resource" }]);
+    expect(narrowed.notices()).toEqual([{ type: "notice", topic: topic.org({ resource: "licenses/ada" }), kind: "resource" }]);
   });
 
   it("with org ids off, keeps the path for a socket narrowed to that very entry, and still sends it no ids", async () => {
@@ -617,6 +649,28 @@ describe("the socket session · ids on notices, per scope", () => {
       ["s-other"],
       undefined
     ]);
+  });
+
+  // The user topic is the user's in every org, and the mint grants it by user and tenant alone. A
+  // session's id on it would tell Alice's screen in Globex which Acme sessions moved (an
+  // `fsd-write.` id names a storage key too). Its wakes name nothing, ids on or off.
+  it("wakes a socket signed in to another org on the user topic with no session id, for a session write and a request write", async () => {
+    const bus = createInMemoryBus();
+    const { router, stores, delivery } = app({ bus });
+    const wrapped = withChangeBus({ ...stores, bus });
+    const ws = socket(delivery!);
+    ws.send({ type: "subscribe", ticket: await ticketFor(router, [topic.user()], { "x-user": "alice", "x-org": "globex" }) });
+    for (const id of ["acme-s1", "fsd-write.user~alice~pins"]) {
+      await wrapped.session.set(id, sessionRecord(id, { userId: "alice", orgId: "acme" }), "any");
+    }
+    await wrapped.request.set("acme-r1", requestRecord("acme-r1", "acme-s1", { userId: "alice", orgId: "acme" }), "any");
+    await flush();
+    await flush();
+    const wakes = ws.notices();
+    expect(wakes.length).toBe(3);
+    expect(wakes).toEqual(wakes.map(() => ({ type: "notice", topic: topic.user(), kind: "run" })));
+    expect(JSON.stringify(wakes)).not.toContain("acme");
+    expect(JSON.stringify(wakes)).not.toContain("fsd-write");
   });
 
   it("reads the setting `createFlowState` declares, once for the app", async () => {

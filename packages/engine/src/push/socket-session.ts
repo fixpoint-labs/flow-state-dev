@@ -111,15 +111,19 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
   };
   // FIX-2625 D2: the one place a notice's ids reach a browser, so the
   // per-scope switch lives here. With ids off for the notice's scope it goes
-  // out with none, and a collection entry's notice (one that names its entry)
-  // goes to a scope-wide subscription on the bare scope topic, as an
-  // owner-private row's already does: the entry's path is an id too. A
-  // subscription narrowed to that entry keeps the path its client named.
+  // out with none, and every `resource` notice goes to a scope-wide
+  // subscription on the bare scope topic, as an owner-private row's already
+  // does: a collection entry's path is an id too. Every one, not just those
+  // whose ids mark an entry: a publisher from before ids (a process mid-deploy
+  // on a shared bus) sends an entry's path with no ids, and the socket can't
+  // tell an entry's path from a single resource's name (BP-030). A single
+  // resource's watchers read once more for it. A subscription narrowed to the
+  // resource keeps the path its client named.
   const idsOff = (scope: BusTopic["scope"]): boolean => options.noticeIds?.[scope] === false;
   const hear = (notice: ChangeNotice, subscribed: BusTopic): void => {
     const off = idsOff(notice.topic.scope);
-    const entry = notice.kind === "resource" && notice.ids !== undefined;
-    const topic = off && entry && subscribed.resource === undefined ? { ...notice.topic, resource: undefined } : notice.topic;
+    const bare = off && notice.kind === "resource" && subscribed.resource === undefined;
+    const topic = bare ? { ...notice.topic, resource: undefined } : notice.topic;
     send({
       type: "notice",
       topic: toWire(topic),

@@ -57,6 +57,15 @@ export type PushMintAnswer =
 export const NOTICE_MAX_IDS = 100;
 
 /**
+ * A notice's ids as they arrived off a wire (a socket frame, a bus payload):
+ * the list when it is one of strings, else `undefined`. Ids that aren't are
+ * dropped, never the notice: no ids reads everything.
+ */
+export function noticeIdsOf(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((id) => typeof id === "string") ? (value as string[]) : undefined;
+}
+
+/**
  * The ids two notices of one topic and kind carry together: their union, in
  * the order first named, or `undefined` (read everything) when either carries
  * none or the union passes {@link NOTICE_MAX_IDS}. No ids beats ids. The one

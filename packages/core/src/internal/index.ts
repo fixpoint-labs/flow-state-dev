@@ -201,5 +201,5 @@ export { isTraceObservabilityEnabled } from "../helpers/trace-observability";
  */
 export { PUSH_CLOSE_CODES, PUSH_MINT_MAX_TOPICS, isManifestDomain, wireTopicKey } from "@flow-state-dev/contracts";
 // FIX-2625: the one cap and union rule for a notice's ids, shared by the engine's fold and the client's merge.
-export { NOTICE_MAX_IDS, unionNoticeIds } from "@flow-state-dev/contracts/types/push-delivery";
+export { NOTICE_MAX_IDS, noticeIdsOf, unionNoticeIds } from "@flow-state-dev/contracts/types/push-delivery";
 export type { ChangeKind, PushCapability, PushMintAnswer, PushServerFrame, TopicScope } from "@flow-state-dev/contracts";

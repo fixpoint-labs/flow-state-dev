@@ -318,14 +318,14 @@ class Identities {
    */
   sessionNotices(identity: SessionIdentity, kind: ChangeKind, toOwner = true): ChangeNotice[] {
     // The session's own topic is that one session: it names nothing. Its
-    // parent's and owner's topics name it (FIX-2625).
+    // parent's names it (FIX-2625). Its owner's user topic names nothing: that
+    // topic is the user's in every org, so an id there would reach their
+    // screens in another org.
     const notices = [notice(sessionTopic(identity.id, identity.tenantId), kind)];
     if (identity.parentSessionId !== undefined) {
       notices.push(notice(sessionTopic(identity.parentSessionId, identity.tenantId), "run", identity.id));
     }
-    if (toOwner && identity.userId !== undefined) {
-      notices.push(notice(userTopic(identity.userId, identity.tenantId), "run", identity.id));
-    }
+    if (toOwner && identity.userId !== undefined) notices.push(notice(userTopic(identity.userId, identity.tenantId), "run"));
     return notices;
   }
 
@@ -345,11 +345,10 @@ class Identities {
     if (identity?.sessionId === undefined) return [];
     // `items` name nothing: the session stream reads from its sequence number.
     if (kind === "items") return [notice(sessionTopic(identity.sessionId, identity.tenantId), kind)];
-    // The request on its session's notice, the session on its owner's and parent's (FIX-2625).
+    // The request on its session's notice, the session on its parent's
+    // (FIX-2625); nothing on its owner's user topic, which spans their orgs.
     const notices = [notice(sessionTopic(identity.sessionId, identity.tenantId), kind, identity.requestId)];
-    if (toOwner && identity.userId !== undefined) {
-      notices.push(notice(userTopic(identity.userId, identity.tenantId), "run", identity.sessionId));
-    }
+    if (toOwner && identity.userId !== undefined) notices.push(notice(userTopic(identity.userId, identity.tenantId), "run"));
     const session = await this.session(resolveSessionStorageKey(identity.sessionId, identity.tenantId));
     if (session?.parentSessionId !== undefined) {
       notices.push(notice(sessionTopic(session.parentSessionId, identity.tenantId), "run", identity.sessionId));

@@ -378,10 +378,13 @@ the `ids` of what changed (FIX-2625). Never a row. Publishers add the ids they
 already hold: a task on a `board` notice, a collection entry's storage key on
 its `resource` notice (beside the path that names it, and only when the path
 may be named, so an owner-private row and a user-scope entry name neither), a
-session on the `run` notice its owner's user topic and its parent hear, and a
-request on its session's `request` notice. `items`, `state` and `resync` name
-nothing. Ids are hints: a reader that can't use them reads everything, and a
-client from before them ignores the field.
+child session on the `run` notice its parent session hears, and a request on
+its session's `request` notice. The `run` notice on a user's own topic names
+nothing: that topic is the user's in every org, and the mint grants it by user
+and tenant alone, so a session id there would reach their screens in another
+org. `items`, `state` and `resync` name nothing. Ids are hints: a reader that
+can't use them reads everything, and a client from before them ignores the
+field.
 
 Three points every notice passes, so each rule lives once:
 
@@ -390,20 +393,23 @@ Three points every notice passes, so each rule lives once:
   one merge (`live/coalesce.ts`) does the same for notices waiting on a read.
   Both call `unionNoticeIds`: no ids beats ids, and past `NOTICE_MAX_IDS`
   (100) a notice names none and means read everything. Notices of different
-  topics or kinds still merge to `null`.
+  topics or kinds still merge to `null`. Ids read off a wire (a socket frame,
+  a Postgres payload) go through `noticeIdsOf`: anything but a list of strings
+  is dropped, never the notice.
 - **The bus.** The in-memory bus hands the notice over whole. The Postgres
   bus carries ids in its `NOTIFY` payload and, past 8000 bytes, drops them
-  before it widens the topic; a collection entry's notice widens with them,
-  since its path names the entry too.
+  before it widens the topic. It decides nothing about what a browser sees.
 - **The push edge** (`push/socket-session.ts` `hear`). `noticeIds` on
   `createFlowState` or `createFlowApiRouter` turns ids off per topic scope
   (`{ org: false }`); every push edge of the app reads it. With ids off, the
-  scope's notices go out with no `ids`, and a collection entry's notice
-  reaches a scope-wide subscription on the bare scope topic, so no entry key
-  reaches a browser there. A subscription narrowed to that exact entry keeps
-  its path, since its client named it. Every full read stays: connect,
-  reconnect, `resync`, a poll tick and a bus that doesn't cross processes all
-  reach a reader as `null`.
+  scope's notices go out with no `ids`, and every `resource` notice reaches a
+  scope-wide subscription on the bare scope topic, so no entry key reaches a
+  browser there. Every one, not only those whose ids mark an entry: a process
+  from before ids, mid-deploy on a shared bus, sends an entry's path with no
+  ids, and the edge can't tell that path from a single resource's name. A
+  subscription narrowed to the resource keeps its path, since its client named
+  it. Every full read stays: connect, reconnect, `resync`, a poll tick and a
+  bus that doesn't cross processes all reach a reader as `null`.
 
 ## React Setup
 

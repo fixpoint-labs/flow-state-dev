@@ -16,6 +16,10 @@ import type { PGlite } from "@electric-sql/pglite";
 import { postgresStores } from "../src";
 import { createPostgresStores, type QueryExecutor } from "../src/host";
 import { freshPglite } from "./shared-pglite";
+import { z } from "zod";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores, enablePushDelivery } from "@flow-state-dev/engine/host";
 
 const TIMINGS = { pingIntervalMs: 20, staleAfterMs: 50, reconnectMinMs: 5, reconnectMaxMs: 20 };
 
@@ -269,19 +273,35 @@ describe("the Postgres bus · a notice's ids", () => {
     expect(other).toEqual([]);
   });
 
-  it("widens a collection entry's notice when it drops its ids, so no path is left naming the entry", async () => {
+  // BP-030: a process from before ids sends an entry's notice with its path and no ids. A host with
+  // org ids off must still send a scope-wide socket no entry path.
+  it("delivers a pre-ids process's entry notice to a scope-wide socket with no path, where org ids are off", async () => {
     const network = new FakeNotifyNetwork();
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    const here = busOn(network);
-    const there = busOn(network);
-    const scopeWide = hear(there, s1);
-    hear(here, s1);
-    await until(() => there.crossesProcesses && here.crossesProcesses);
-    // The path fits alone; with the id beside it, it doesn't.
-    const resource = `notes/${"n".repeat(4_500)}`;
-    await here.publish({ topic: { ...s1, resource }, kind: "resource", ids: [resource] });
-    await until(() => scopeWide.length === 1);
-    expect(scopeWide[0]).toEqual({ topic: s1, kind: "resource" });
+    const bus = busOn(network);
+    const registry = createFlowRegistry();
+    registry.register(defineFlow({ kind: "demo", actions: { run: handler({ name: "run", inputSchema: z.object({}), outputSchema: z.object({}), execute: () => ({}) }) } })());
+    const router = createFlowApiRouter({
+      registry,
+      stores: { ...createInMemoryStores(), bus },
+      noticeIds: { org: false },
+      resolvePrincipal: () => ({ userId: "alice", orgId: "acme" })
+    });
+    const delivery = enablePushDelivery(router, { secret: "s" });
+    const minted = await router.POST(
+      new Request("http://localhost/api/flows/users/alice/stream", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ topics: [{ scope: "org" }] }) }),
+      { params: { path: ["users", "alice", "stream"] } }
+    );
+    const { ticket } = (await minted.json()) as { ticket: string };
+    const frames: unknown[] = [];
+    const socket = delivery.openSocket("alice", { send: (frame) => frames.push(frame), close: () => {} });
+    socket.receive(JSON.stringify({ type: "subscribe", ticket }));
+    await until(() => bus.crossesProcesses);
+    // The payload a process from before ids sends: topic and kind, the entry's path, no ids.
+    network.notify(BUS_CHANNEL, JSON.stringify({ p: "an-older-process", topic: { scope: "org", id: "acme", tenantId: "", resource: "licenses/ada" }, kind: "resource" }));
+    const resources = () => frames.filter((frame) => (frame as { kind?: string }).kind === "resource");
+    await until(() => resources().length > 0);
+    expect(resources()).toEqual([{ type: "notice", topic: { scope: "org" }, kind: "resource" }]);
+    socket.closed();
   });
 });
 

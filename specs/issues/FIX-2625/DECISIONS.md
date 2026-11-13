@@ -119,14 +119,21 @@ Settled on the implementation PRs. Each narrows a decision above; none reverses 
   typo can't leave ids on.
 - **An entry's id is its storage key**, the same string as the path it already names: the
   direct read places entries by storage key, and the entry route reads by it.
-- **The push edge tells an entry's notice by its ids.** A `resource` notice that carries ids is a
-  collection entry's (a single resource's names none); with ids off its path is cut for a
-  scope-wide subscription. A single resource's notice keeps its resource name: a name the flow
-  declares, not an id.
-- **The Postgres bus widens an entry's notice when it drops its ids**, so a notice that lost the
-  mark the push edge reads never keeps the path. Any other notice drops its ids and stays narrowed.
-- **A session's own `run` notice names nothing**: the topic is that one session. Its parent's and
-  owner's name it.
+- **With ids off, the push edge cuts every `resource` path for a scope-wide subscription**, not
+  only those whose ids mark an entry. A process from before ids (mid-deploy, on a shared Postgres
+  bus) sends an entry's path with no ids, and the socket can't tell that path from a single
+  resource's name (BP-030; Codex on #5212). A single resource's watchers in that scope read once
+  more. A subscription narrowed to the resource keeps the path its client named. The rule lives
+  only at the edge: the Postgres bus drops ids, then widens, for size alone.
+- **A session's own `run` notice names nothing**: the topic is that one session. Its parent's
+  names it.
+- **The `run` notice on the owner's user topic names nothing**, narrowing *Which notices carry
+  ids*' run row. The user topic is the user's in every org, and the mint grants it by user and
+  tenant alone, so a session id there would tell their screen in one org which sessions moved in
+  another (an `fsd-write.` id names a storage key too), the same reason `noticePathFor` keeps
+  user-scope keys off it (Cursor's security review on #5212). A list of the user's sessions reads
+  whole on it, as before this issue. Ids there would need the org on the grant and the topic: a
+  follow-up, if a user-topic screen proves worth narrowing.
 - **The board's read hides no row from a reader of its session.** `listTasks` lists every row the
   resolved board holds, with no per-reader filter, and the session's stream already carries each
   row's task id (`task-change` items), so a board notice names its task.
