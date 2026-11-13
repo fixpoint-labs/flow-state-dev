@@ -341,14 +341,13 @@ try {
     for (const w of who) failNext.add(w);
     const failedAt = Date.now();
     await write();
-    const recovered = await waitFor(() => who.every(shows), RECOVER_MS);
-    const failed = who.filter((w) => failNext.has(w));
-    check(`b:failed-once ${who.join(",")}`, failed.length === 0, failed.length === 0 ? "each watcher's read failed once" : `${failed.join(", ")} never read after the write`);
-    check(
-      `b:recovers ${who.join(",")}`,
-      recovered,
-      recovered ? `each showed the change ${Date.now() - failedAt} ms after the write, with no other notice` : `not within ${RECOVER_MS} ms: ${who.map((w) => `${w}:${shows(w)}`).join(" ")}`,
-    );
+    await waitFor(() => who.every(shows), RECOVER_MS);
+    // Graded per watcher, so a control that leaves one watcher green shows which.
+    for (const w of who) {
+      check(`b:failed-once ${w}`, !failNext.has(w), failNext.has(w) ? "never read after the write" : "its read failed once");
+      const ok = shows(w);
+      check(`b:recovers ${w}`, ok, ok ? `showed the change within ${RECOVER_MS} ms of the write (${Date.now() - failedAt} ms for the group)` : `not within ${RECOVER_MS} ms`);
+    }
   };
   const smBefore = snapshotReadAt;
   await recover(ROSTER_WATCHERS, () => hire("after-failure"), (w) =>
