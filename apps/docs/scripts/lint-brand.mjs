@@ -291,11 +291,15 @@ function lintFigure(file, text, tree, out) {
     // 9. It fits: the line ends by x=892, and 12 inside the smallest box that holds its start.
     const width = [...words].length * UNITS[kind];
     const x = num(node, "x");
-    const anchor = node.attrs["text-anchor"];
-    if (anchor !== undefined && !["start", "middle", "end"].includes(anchor)) {
-      at(node, "text-fit", `text-anchor="${anchor}" is not start, middle or end, so the line's extent cannot be checked`);
+    // The anchor inherits as SVG's does: the nearest one on the text or a group around it, start by default.
+    const chain = [];
+    for (let p = node; p; p = p.parent) if (p.attrs["text-anchor"] !== undefined) chain.push(p.attrs["text-anchor"]);
+    for (const value of chain.filter((v) => !["start", "middle", "end"].includes(v))) {
+      at(node, "text-fit", `text-anchor="${value}" is not start, middle or end, so the line's extent cannot be checked`);
     }
-    const end = x - ({ middle: width / 2, end: width }[node.attrs["text-anchor"]] ?? 0) + width;
+    const start = x - ({ middle: width / 2, end: width }[chain[0]] ?? 0);
+    const end = start + width;
+    if (start < 0) at(node, "text-fit", `"${words}" starts at x=${start.toFixed(1)}, before the canvas's left edge`);
     if (end > 892) at(node, "text-fit", `"${words}" ends at x=${end.toFixed(1)}, past 892`);
     const box = all
       .filter((r) => r.name === "rect" && classesOf(r).some((c) => BOXES.has(c)) && holds(r, x, num(node, "y")))
@@ -416,18 +420,42 @@ function lintFigureEmbeds(file, text, out) {
     if (words < 30) at(`the description is ${words} words: it says what the whole figure shows in 30 or more`);
   }
   // An imported SVG goes on the page only as a <Figure>'s svg: not as its own component, nor named in any other
-  // expression (`{X}`, `{cond && X}`). A word inside a string literal is text, not the binding.
+  // expression (`{X}`, `{cond && X}`, `{c ? X : {a: 1}}`). A word inside a string literal is text, not the binding.
   const strings = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
+  const expressions = topLevelExpressions(text);
   for (const imp of text.matchAll(/^import\s+([A-Za-z_$][\w$]*)\s+from\s+["'][^"']*\.svg["']/gm)) {
     const name = imp[1];
     const word = new RegExp(`(?<![\\w$])${name}(?![\\w$])`);
     const outside = (index) =>
       out.push(finding(file, text, index, "embed", `${name} is used outside a <Figure>'s svg: use <Figure svg={${name}} caption description />`));
     for (const m of text.matchAll(new RegExp(`<${name}\\b`, "g"))) outside(m.index);
-    for (const m of text.matchAll(/\{[^{}]*\}/g)) {
-      if (!svgProps.has(m.index) && word.test(m[0].replace(strings, ""))) outside(m.index);
+    for (const { index, body } of expressions) {
+      if (!svgProps.has(index) && word.test(body.replace(strings, ""))) outside(index);
     }
   }
+}
+
+/**
+ * Each balanced top-level `{…}` of a page, matched by depth: `{ index, body }`. Braces inside a string
+ * literal in the expression do not count; an unclosed one runs to the end of the page.
+ */
+function topLevelExpressions(text) {
+  const found = [];
+  let depth = 0;
+  let open = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (depth > 0 && (ch === '"' || ch === "'" || ch === "`")) {
+      // Skip the string literal, escapes included.
+      for (i++; i < text.length && text[i] !== ch; i++) if (text[i] === "\\") i++;
+    } else if (ch === "{") {
+      if (depth++ === 0) open = i;
+    } else if (ch === "}" && depth > 0 && --depth === 0) {
+      found.push({ index: open, body: text.slice(open, i + 1) });
+    }
+  }
+  if (depth > 0) found.push({ index: open, body: text.slice(open) });
+  return found;
 }
 
 /** A page with its fenced blocks and inline code spans blanked to spaces, lines and columns kept: code shows markup, it does not use it. */
