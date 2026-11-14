@@ -154,9 +154,11 @@ function keepUnchangedEntries(shared: Pick<Shared, "byKey">, result: ViewResult)
 // FIX-2625 D1.
 /**
  * A partial answer placed over the rows held: a held key is replaced in place,
- * a removed one dropped, a new one appended; the topics are the held ones and
- * the answer's, so a partial run that read less never narrows what the screen
- * hears.
+ * a removed one dropped; the topics are the held ones and the answer's, so a
+ * partial run that read less never narrows what the screen hears. An answer
+ * that brings a key the rows held don't have can't be placed (only a whole run
+ * says where a new row goes): `watchView` reads whole instead
+ * ({@link bringsNewEntry}), and this never sees one.
  */
 export function placePartial(held: NonNullable<Shared["held"]>, result: ViewResult): ViewResult {
   const removed = new Set(result.partial?.removed ?? []);
@@ -170,13 +172,16 @@ export function placePartial(held: NonNullable<Shared["held"]>, result: ViewResu
     keys.push(key);
     answered.delete(key);
   });
-  for (const [key, entry] of answered) {
-    if (removed.has(key)) continue;
-    entries.push(entry);
-    keys.push(key);
-  }
   const hears = held.hears === undefined || result.hears === undefined ? undefined : unionHears(held.hears, result.hears);
   return { value: entries, topics: unionTopics(held.topics, result.topics), keys, ...(hears !== undefined ? { hears } : {}) };
+}
+
+// FIX-2625.
+/** Whether a partial answer brings a row the rows held don't have: a row only a whole run can place. */
+function bringsNewEntry(held: NonNullable<Shared["held"]>, result: ViewResult): boolean {
+  const holds = new Set(held.keys);
+  const removed = new Set(result.partial?.removed ?? []);
+  return result.keys!.some((key) => !holds.has(key) && !removed.has(key));
 }
 
 // FIX-2625.
@@ -280,6 +285,10 @@ export function watchView<TValue = unknown>(
           try {
             const changed = changeFor(notice, entry.held);
             let result = await client.view(ref, input, changed !== undefined ? { ...callOptions, changed } : callOptions);
+            // A row the screen doesn't hold has a place only a whole run knows: read whole.
+            if (result.partial !== undefined && entry.held !== undefined && result.keys !== undefined && bringsNewEntry(entry.held, result)) {
+              result = await client.view(ref, input, callOptions);
+            }
             if (result.partial !== undefined && entry.held !== undefined && result.keys !== undefined && Array.isArray(result.value)) {
               result = placePartial(entry.held, result);
               if (checksPartials()) {

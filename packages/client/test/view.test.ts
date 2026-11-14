@@ -308,7 +308,7 @@ describe("watchView", () => {
     }
     const change = (...ids: string[]): WireNotice => ({ topic: { scope: "user" }, kind: "resource", ids });
 
-    it("asks for the named entries, places them by key, drops removed ones, appends new ones, and equals a whole read", async () => {
+    it("asks for the named entries, places them by key, drops removed ones, reads whole for a new one, and equals a whole read", async () => {
       const stored: Entry[] = [
         { id: "a", n: 1 },
         { id: "b", n: 2 },
@@ -371,6 +371,38 @@ describe("watchView", () => {
         await flush();
 
         expect(seen[seen.length - 1]).toEqual(stored);
+      } finally {
+        env.NODE_ENV = nodeEnv;
+      }
+    });
+
+    // Codex on #5232: a partial answer can't say where a row it adds belongs.
+    it("reads whole when a partial answer brings a row it doesn't hold, so the row lands where a whole run puts it", async () => {
+      // What production shows: the development check would show a whole run and hide it.
+      const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process!.env;
+      const nodeEnv = env.NODE_ENV;
+      env.NODE_ENV = "production";
+      try {
+        // The whole answer is sorted, as a store that lists by key is; one row's change reads the same topics.
+        const stored: Entry[] = [{ id: "z", n: 1 }];
+        const fake = fakeViewClient((options) => {
+          const ids = options?.changed?.ids;
+          if (ids === undefined) return { value: stored.map((e) => ({ ...e })), topics: [{ scope: "user" }], keys: stored.map((e) => e.id) };
+          const named = stored.filter((e) => ids.includes(e.id)).map((e) => ({ ...e }));
+          return { value: named, topics: [{ scope: "user" }], keys: named.map((e) => e.id), partial: { removed: [] } };
+        });
+        const seen: Entry[][] = [];
+        watchView<Entry[]>(fake.client, ROSTER, {}, { onValue: (v) => seen.push(v) }, { pollIntervalMs: null });
+        await flush();
+        expect(seen[seen.length - 1]).toEqual([{ id: "z", n: 1 }]);
+
+        stored.unshift({ id: "a", n: 2 });
+        fake.notify(change("a"));
+        await flush();
+
+        expect(seen[seen.length - 1]).toEqual(stored);
+        // The partial answer was asked for, and a whole run followed it.
+        expect(fake.calls.slice(-2).map((c) => c?.changed?.ids)).toEqual([["a"], undefined]);
       } finally {
         env.NODE_ENV = nodeEnv;
       }

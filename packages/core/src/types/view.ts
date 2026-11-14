@@ -111,11 +111,11 @@ export interface ViewRunContext {
   readonly changed?: ViewChange;
   /**
    * Answer for just some rows: `entries` are placed by key over the rows the
-   * screen holds (a key it holds is replaced in place, a new one goes last),
-   * and `removed` keys are dropped. Return what this returns. Opt-in: a view
-   * that never calls it answers whole. Answer whole whenever a change could
-   * move a row or put a new one anywhere but last: a partial answer never
-   * reorders rows.
+   * screen holds (a key it holds is replaced in place), and `removed` keys
+   * are dropped. A key the screen doesn't hold makes it read the view whole:
+   * only a whole run says where a new row goes. Return what this returns.
+   * Opt-in: a view that never calls it answers whole. Answer whole whenever a
+   * change could move a row: a partial answer never reorders rows.
    *
    * @throws When the run has no `changed`, or the view declares no `key`.
    */
