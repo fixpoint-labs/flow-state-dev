@@ -24,7 +24,7 @@ The difference is who runs it. Flow State runs the agent as a step with a typed 
 
 Take a task called `fix-cart-test`. It sits on a board, filed for the worker `engineering.coder`, with the goal "make `cart.test.ts` pass". The run happens in a checkout, a directory and git branch made for that task. When the agent stops, a verdict is read. Only then does the task complete.
 
-<Figure svg={SupervisedRun} caption="A supervised run: checkout, agent, verdict" description={"Three boxes from left to right. The task fix-cart-test, with its goal, worker engineering.coder and harness claude-code, is on the board and has a hatched top because it outlives the request. An arrow leads to the run, claude-code working in its own git branch and its own directory, with a note that your working tree is not edited. An arrow leads to the verdict: status completed, outcome finished, pnpm test passes. The last row, then the task completes, is highlighted. A dashed arrow runs from the verdict back to the task and is labelled not done."} />
+<Figure svg={SupervisedRun} caption="A supervised run: checkout, agent, verdict" description={"Three boxes from left to right. The task fix-cart-test, with its goal, worker engineering.coder and harness claude-code, is on the board and has a hatched top because it outlives the request. An arrow leads to the run, claude-code working in its own git branch and its own directory, with a note that it is set up apart from your working tree. An arrow leads to the verdict: status completed, outcome finished, pnpm test passes. The last row, then the task completes, is highlighted. A dashed arrow runs from the verdict back to the task and is labelled not done."} />
 
 ## A coding agent as a block
 
@@ -82,13 +82,13 @@ Fix what the task describes. Keep the change small.
 
 ## Its own checkout
 
-Each task gets its own git branch and its own directory, and a retry picks up the work already in it. Two users working the same issue get separate checkouts. Runs never touch your working tree or index. They do share the repository's refs: a run can create or move branches and tags in a repo you list in `localRepositories`.
+Each task gets its own git branch and its own directory, and a retry picks up the work already in it. Two users working the same issue get separate checkouts. Setting up a run never touches your working tree or index. They do share the repository's refs: a run can create or move branches and tags in a repo you list in `localRepositories`.
 
-The checkout is where the agent is pointed, not a jail. The sandbox on its harness sets what it may run. [Harness runs](../reference/harness-runs.md) has the workspace options and each agent's sandbox.
+The checkout is where the agent is pointed, not a jail. The sandbox on its harness sets what it may run, and `claudeCode()` as installed above has none: it can run shell commands as the server's user, so a task, or a file the agent reads, can reach the rest of the machine. [Harness runs](../reference/harness-runs.md) has the workspace options and how to turn on each agent's sandbox.
 
 ## A verdict before it counts
 
-The agent finishing and the task being done are separate facts. A task completes when the run ended normally and, if it changed files, your `checks` pass in the checkout. For a task with a goal, the judge, on by default, must also not say the goal is unmet. The judge is a model that reads the goal against the agent's answer and its commits. A run that opened a pull request waits for it instead: the task completes when the pull request merges, even if the judge said the goal is unmet, and the judge's reason shows as a note on the task. A run that spends its turns or budget stops cleanly and is not done.
+The agent finishing and the task being done are separate facts. A task completes when the run ended normally and, if it changed files, your `checks` pass in the checkout. For a task with a goal, the judge, on by default, reads the goal against the agent's answer and its commits. A confident "not done" fails the attempt; a doubtful one, or a judge that errors, leaves the decision to the checks. A run that opened a pull request waits for it instead: the task completes when the pull request merges, even if the judge said not done, and the judge's reason shows as a note on the task. A run that spends its turns or budget stops cleanly and is not done.
 
 Anything short of done fails the attempt, and the next attempt is told why. A green check is evidence, not proof: the checkout's scripts are ones the agent could edit. Set `review: true` on the kit to have a user read the commits before the task completes. The order of the conditions and the run's statuses are in [Harness runs](../reference/harness-runs.md).
 
@@ -126,7 +126,7 @@ The flow does not change, and what differs between agents, such as the sandbox, 
 
 ## What it gets you
 
-- **Your tree is safe.** A failed attempt leaves its mess in a branch, not in your checkout.
+- **Failures stay in a branch.** A failed attempt leaves its changes on its own branch, not in your checkout.
 - **Done means checked.** `fix-cart-test` is not closed because the agent went quiet.
 - **Questions wait for you.** Your answer continues the same session, without using a retry.
 - **Agents are interchangeable.** Switching from Claude Code to Codex changes the worker's `harness:` line and the slot's value. The flow stays the same.

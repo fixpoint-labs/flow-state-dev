@@ -25,7 +25,7 @@
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="340" y1="168" x2="580" y2="168"/>
 <text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="354" y="192">edits, runs, stops</text>
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="340" y1="206" x2="580" y2="206"/>
-<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="354" y="236">your working tree is not edited</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="354" y="236">set up apart from your tree</text>
 <rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="652" y="24" width="240" height="230"/>
 <text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="666" y="56">THE VERDICT</text>
 <text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="666" y="78">Is it done?</text>
@@ -44,7 +44,7 @@
 <rect class="ground" fill="#f0ece1" x="425" y="282.5" width="70" height="15"/><text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" x="460" y="294" text-anchor="middle">NOT DONE</text>
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="316" x2="920" y2="316"/>
 <text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="342">01</text>
-<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="342">The run happens in a directory and on a branch made for this task. Your own checkout is not edited.</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="342">The run starts in a directory and on a branch made for this task, not in your own checkout.</text>
 <text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="367">02</text>
 <text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="367">The agent stopping is not the verdict. The task completes only when the checks on the right agree.</text>
 <text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="392">03</text>

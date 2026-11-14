@@ -55,6 +55,8 @@ Written by `docs-writer` (sonnet), 856 words. Scenario: engineering.coder fixing
 
 - After the loop (review): a judge's `not-done` doesn't fail a run that opened a pull request; the page and fact 47 now say the task waits on the pull request and completes when it merges (`manager.ts:625-627`).
 
+- After the loop (security review): the checkout claims ("never touch your working tree", "Your tree is safe", the figure's note) now say only setup leaves your tree alone, and the page says `claudeCode()` as installed runs shell commands with no sandbox (`claude-code/src/sdk/kit.ts:54`, `agent.ts:370`). The judge sentence now says only a confident "not done" fails the attempt; a reading under the 0.7 floor or a judge that errors leaves it to the checks (`goal-judge.ts:35`).
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 be5017eee047, and the 10 Reference row(s) pass 6 moved.
