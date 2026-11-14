@@ -222,6 +222,10 @@ none reverses one.
   session's browser, as `workProjectId` is: never put a secret in one. No per-field expose option
   is built; nothing needs one yet. `workProjectId` stays as it is
   until FIX-2628 moves projects to the app.
+  The kit's `sessionFields` is the one place they are declared: a nested `agent.sessionFields`
+  or `coordinator.sessionFields` refuses start, as `agent.sessionFields` does on the coordinator
+  and the error reporter, because each would be overwritten or dropped and its field left open
+  to a seeded create.
 - **The starter files are one registry item, `workforce-starter`.** `fsdev ui add
   workforce-starter` copies `workforce/teams/team/TEAM.md` and
   `workforce/teams/team/workers/assistant/WORKER.md` into the app (the copy-in FIX-2626 names),

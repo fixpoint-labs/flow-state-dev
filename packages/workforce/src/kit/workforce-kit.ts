@@ -48,13 +48,13 @@ import { hireWorkforce } from "../workers/register";
 import { workerFlow } from "../workers/worker-flow";
 
 /** The built-in agent flow's options, as the kit's config takes them. */
-export type WorkforceAgentOptions = Omit<AgentWorkerFlowOptions, "installation"> & {
+export type WorkforceAgentOptions = Omit<AgentWorkerFlowOptions, "installation" | "sessionFields"> & {
   /** The settings a user sees on a worker's roster row (`icon`, `color`). */
   showSettings?: readonly string[];
 };
 
 /** The coordinator flow's options, as the kit's config takes them. */
-export type WorkforceCoordinatorOptions = Omit<CoordinatorFlowOptions, "installation">;
+export type WorkforceCoordinatorOptions = Omit<CoordinatorFlowOptions, "installation" | "sessionFields">;
 
 /** What `fsdev gen` renders into `workforce/workforce.gen.ts`: the app imports it and hands it over whole. */
 export interface GeneratedWorkforce {
@@ -195,6 +195,13 @@ function installWorkforce(
   const filled: Record<string, WorkerFlowEntry> = { ...generated.workerFlows, ...slots.workerFlows };
   if (config.agent !== undefined && Object.hasOwn(filled, AGENT_FLOW)) {
     throw new Error(`workforce: \`agent\` is configured, and the app's worker flows hold an "${AGENT_FLOW}" flow too. Keep one.`);
+  }
+  // The kit's `sessionFields` is the one place the app declares session fields: it would overwrite
+  // a nested one, leaving that field open to a seeded create.
+  for (const key of ["agent", "coordinator"] as const) {
+    if (Object.hasOwn(config[key] ?? {}, "sessionFields")) {
+      throw new Error(`workforce: \`${key}.sessionFields\` is not read; declare session fields on the kit's \`sessionFields\`.`);
+    }
   }
   if (config.coordinator !== undefined && Object.hasOwn(filled, COORDINATOR_FLOW)) {
     throw new Error(`workforce: \`coordinator\` is configured, and the app's worker flows hold a "${COORDINATOR_FLOW}" flow too. Keep one.`);
