@@ -211,29 +211,53 @@ function historySummarySection(
   };
 }
 
+// The engine's turn order (`compareTurnsOldestFirst`, engine `context/history.ts`), which a
+// summary's mark is a position in. Not exported by the engine; keep the two in step.
+/** Oldest first by start time, ties by id. */
+function turnOrder(aStartedAtMs: number, aId: string, bStartedAtMs: number, bId: string): number {
+  if (aStartedAtMs !== bStartedAtMs) return aStartedAtMs - bStartedAtMs;
+  return aId < bId ? -1 : aId > bId ? 1 : 0;
+}
+
 /**
- * The turns this session's history summary already stands for, by request id:
- * every turn up to its mark, less the ones it holds pending. Empty when
- * nothing has been folded. A flow that matches its history's messages back to
- * the session's items (the coordinator's) leaves these out, since the history
- * no longer holds their messages: matched by text, a folded turn's item would
- * take the place of a later one with the same words.
+ * The loaded turns this session's history summary already stands for, by
+ * request id: the turns a history read narrowed to after its mark leaves out.
+ * That is every turn up to the mark by start time then id, its pending ones
+ * included; every loaded turn when the mark is newer than all of them; none
+ * when it is older, cannot be read, or nothing has been folded. A flow that
+ * matches its history's messages back to the session's items (the
+ * coordinator's) leaves these out, since the history no longer holds their
+ * messages: matched by text, a folded turn's item would take the place of a
+ * later one with the same words.
  *
  * Reads the session's `historySummary` resource, the default section's or an
  * app's own of that name, and the session's turns when there is a mark.
+ *
+ * @param options.keepPending Leave the pending turns in view, for the fold
+ *   that still folds them.
  */
-export async function foldedRequestIds(ctx: BlockContext): Promise<ReadonlySet<string>> {
+export async function foldedRequestIds(
+  ctx: BlockContext,
+  options: { keepPending?: boolean } = {}
+): Promise<ReadonlySet<string>> {
   const state = (ctx.resources as Record<string, { state?: unknown } | undefined>).historySummary?.state as
     | { throughRequestId?: string | null; pending?: string[] }
     | undefined;
   const through = state?.throughRequestId ?? null;
   if (through === null) return new Set();
   const turns = await ctx.session.items.turns();
-  const at = turns.findIndex((turn) => turn.requestId === through);
-  // A mark the window no longer holds is older than every turn it does.
-  if (at === -1) return new Set();
-  const pending = new Set(state?.pending ?? []);
-  return new Set(turns.slice(0, at + 1).map((turn) => turn.requestId).filter((id) => !pending.has(id)));
+  // The mark is read by id when the window no longer holds it, as the history read does.
+  const markStartedAtMs =
+    turns.find((turn) => turn.requestId === through)?.startedAtMs ??
+    (await ctx.session.items.turns({ requestIds: [through] }))[0]?.startedAtMs;
+  if (markStartedAtMs === undefined) return new Set();
+  const pending = new Set(options.keepPending === true ? (state?.pending ?? []) : []);
+  return new Set(
+    turns
+      .filter((turn) => turnOrder(turn.startedAtMs, turn.requestId, markStartedAtMs, through) <= 0)
+      .map((turn) => turn.requestId)
+      .filter((id) => !pending.has(id))
+  );
 }
 
 /**

@@ -891,10 +891,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   /**
    * `history` as the coordinator's turn reads it: each delegate's answer by its
    * writer, each routed post as handled. Matched against the items of the turns
-   * the summary does not yet stand for, as `history` holds only those.
+   * the summary does not yet stand for, as `history` holds only those; a fold
+   * also keeps the pending turns it still folds.
    */
-  const readAsCoordinator = async (history: LLMMessage[], ctx: BlockContext) => {
-    const folded = await foldedRequestIds(ctx);
+  const readAsCoordinator = async (history: LLMMessage[], ctx: BlockContext, keepPending = false) => {
+    const folded = await foldedRequestIds(ctx, { keepPending });
     const items = [
       ...ctx.session.items.all({ itemTypes: ["message"], itemVisibility: { client: true, history: true } }),
       ...ctx.session.items.all({ itemTypes: ["component"] })
@@ -918,7 +919,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // A fold reads the turns it summarizes the same way, or the summary would
       // keep a delegate's answer as the coordinator's own and a routed post as
       // waiting, with the originals gone from the turn's history.
-      readFoldedTurns: (turns, ctx) => readAsCoordinator(turns, ctx)
+      readFoldedTurns: (turns, ctx) => readAsCoordinator(turns, ctx, true)
     }
   );
 
