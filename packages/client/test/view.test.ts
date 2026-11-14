@@ -254,6 +254,27 @@ describe("watchView", () => {
       expect(fake.views()).toBe(settled + 1);
     });
 
+    // Codex on #5232: on the user topic a write through a broader collection
+    // names that collection's root, an ancestor of the root this view read.
+    it("reads on a resource notice at an ancestor of a root it read", async () => {
+      const fake = fakeViewClient(() => ({
+        value: "v",
+        topics: [{ scope: "user" }],
+        hears: [{ topic: { scope: "user" }, kinds: ["resource"], paths: ["notes/shared"] }]
+      }));
+      watchView(fake.client, ROSTER, {}, {}, { pollIntervalMs: null });
+      await flush();
+      const settled = fake.views();
+      fake.notify({ topic: { scope: "user", resource: "notes" }, kind: "resource" } as WireNotice);
+      await flush();
+      expect(fake.views()).toBe(settled + 1);
+      // A sibling of the root, or its prefix as a string only, is still another resource.
+      fake.notify({ topic: { scope: "user", resource: "notes/private" }, kind: "resource" } as WireNotice);
+      fake.notify({ topic: { scope: "user", resource: "not" }, kind: "resource" } as WireNotice);
+      await flush();
+      expect(fake.views()).toBe(settled + 1);
+    });
+
     it("hears every notice under its topics from a server that names no hearing", async () => {
       const fake = fakeViewClient(() => ({ value: "v", topics: [{ scope: "user" }] }));
       watchView(fake.client, ROSTER, {}, {}, { pollIntervalMs: null });

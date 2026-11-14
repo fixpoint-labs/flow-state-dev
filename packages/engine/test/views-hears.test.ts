@@ -14,7 +14,8 @@ import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, defineResource, defineResourceCollection, defineView, handler } from "@flow-state-dev/core";
 import { recordBoardRead } from "@flow-state-dev/core/internal";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createInMemoryStores } from "../src/host";
+import { createInMemoryBus, createInMemoryStores, type ChangeNotice } from "../src/host";
+import { runAction } from "../src";
 import { runView } from "../src/execution/runView";
 
 const workers = defineResourceCollection({ scope: "user", pattern: "workers/*", stateSchema: z.object({ name: z.string().default("") }) });
@@ -98,5 +99,65 @@ describe("a view's answer says which notices change what it read", () => {
   it("a board read that names no session keeps its ledger's resource notices", async () => {
     const answer = await run("boardNoSession");
     expect(answer.hears).toEqual([{ topic: { scope: "user" }, kinds: ["resource"], paths: ["desk"] }]);
+  });
+
+  // Codex on #5232: two user collections overlap; a write through the broader
+  // one, from a flow that doesn't declare the narrower (another flow, the
+  // default write flow), names its own root on the user topic: an ancestor of
+  // the narrower root a view hears.
+  it("an overlapping broader collection's write names its root, an ancestor of the narrower root a view hears", async () => {
+    const allNotes = defineResourceCollection({ scope: "user", pattern: "notes/**", stateSchema: z.object({ v: z.string().default("") }) });
+    const sharedNotes = defineResourceCollection({ scope: "user", pattern: "notes/shared/*", stateSchema: z.object({ v: z.string().default("") }) });
+    const writer = defineFlow({
+      kind: "notes-writer",
+      resources: { allNotes },
+      actions: {
+        write: {
+          block: handler({
+            name: "write",
+            inputSchema: z.object({}),
+            outputSchema: z.object({}),
+            resources: { allNotes },
+            execute: async (_input, ctx) => (await ctx.resources.allNotes.create("shared/a", { v: "x" }), {})
+          })
+        }
+      }
+    })() as unknown as FlowInstance;
+    const overlap = defineFlow({
+      kind: "overlap",
+      resources: { sharedNotes },
+      actions: {},
+      views: {
+        shared: defineView({
+          scope: "user",
+          block: handler({
+            name: "shared",
+            inputSchema: z.object({}),
+            outputSchema: out,
+            resources: { sharedNotes },
+            execute: async (_input, ctx) => ({ n: (await ctx.resources.sharedNotes.list()).length })
+          })
+        })
+      }
+    })() as unknown as FlowInstance;
+    const bus = createInMemoryBus();
+    const stores = { ...createInMemoryStores(), bus };
+    const answer = await runView({ flow: overlap, viewName: "shared", input: {}, userId: "alice", orgId: DEFAULT_ORG_ID, stores });
+    expect(answer.hears).toEqual([{ topic: { scope: "user" }, kinds: ["resource"], paths: ["notes/shared"] }]);
+    const heard: ChangeNotice[] = [];
+    bus.subscribe({ scope: "user", id: "alice", tenantId: "" }, (notice) => heard.push(notice));
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow: writer,
+      actionName: "write" as never,
+      input: {} as never,
+      userId: "alice",
+      sessionId: "w1",
+      stores,
+      runtimeConfig: { requestHost: { hostHasViews: () => true } }
+    });
+    expect(result.error).toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(heard.filter((n) => n.kind === "resource").map((n) => n.topic.resource)).toEqual(["notes"]);
   });
 });

@@ -239,6 +239,10 @@ describe("liveRead: the path rule", () => {
     expect(mayHold("workforce/other/a", ["roster", "workforce/workers"])).toBe(false);
     expect(mayHold("anything", undefined)).toBe(true);
     expect(mayHold("anything", ["roster", ""])).toBe(true);
+    // A change at an ancestor of a root may touch anything beneath it.
+    expect(mayHold("notes", ["notes/shared"])).toBe(true);
+    expect(mayHold("notes/private", ["notes/shared"])).toBe(false);
+    expect(mayHold("note", ["notes/shared"])).toBe(false);
   });
 
   it("storageRootsOf: a key and its pattern's static prefix, or nothing ruled out while the manifest is unknown", () => {
