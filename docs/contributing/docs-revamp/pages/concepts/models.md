@@ -32,7 +32,7 @@ export const classify = generator({
 });
 ```
 
-Look at `model`. The part before the slash picks the provider, and the rest goes to it as written. With a key for that provider in the environment, such as `OPENAI_API_KEY`, the generator runs. A model string written out in full needs no `models` setting on `createFlowState`, only the key. [Environment](../reference/environment.md) lists every key.
+Look at `model`. The part before the slash picks the provider, and the rest goes to it as written. With a key for that provider in the environment, such as `OPENAI_API_KEY`, the generator runs. A model string written out in full needs no `models` setting on `createFlowState`, only the key and the provider's package, such as `@ai-sdk/openai`. [Environment](../reference/environment.md) lists every key.
 
 ## Naming the job, not the model
 
@@ -89,7 +89,7 @@ The choice lives in user state, so it lasts across that user's sessions. An acti
 ## What it gets you
 
 - **One edit, every block.** Change `utility`, and `classify` and every other block that names `intent/utility` use the new model.
-- **A key is all a new machine needs.** With only `ANTHROPIC_API_KEY` set, `utility` runs the Anthropic model. With only `OPENAI_API_KEY`, the OpenAI one.
+- **A key and a package are all a new machine needs.** With only `ANTHROPIC_API_KEY` set, `utility` runs the Anthropic model. With only `OPENAI_API_KEY`, the OpenAI one. Each provider's package has to be installed.
 - **A failed call does not fail the request.** The next model in the list answers.
 - **You can see which model answered.** Each item a generator produces records the model that ran, and the intent that chose it, if one did.
 
