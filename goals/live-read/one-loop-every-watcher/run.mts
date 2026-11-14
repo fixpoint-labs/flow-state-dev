@@ -49,12 +49,12 @@ import { Roster } from "@flow-state-dev/react/workforce";
 import { createWorkforceClient, PROJECTS_FLOW, ROSTER_FLOW, rosterView, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, type ModulePatch } from "../../lib/index.mts";
-import { buildKitchenSinkWorkforce } from "../../../apps/kitchen-sink/workforce/hire.ts";
+import { buildKitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-hire.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { createLabAdapter, type LabWorker } from "../../../labs/teammates/src/adapter.ts";
 import { createWiredLab } from "../../../labs/claude-code-style/src/adapter.ts";
 import { defineFlow } from "@flow-state-dev/core";
-import { labPins } from "../../../labs/claude-code-style/workforce/flows/user-marks.mts";
+import { labPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("live-read-one-loop");

@@ -35,7 +35,7 @@ import { createKitchenSinkTestModelResolver } from "@/lib/test-model-resolver";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
-import { buildKitchenSinkWorkforce } from "@/workforce/hire";
+import { buildKitchenSinkWorkforce } from "@/lib/workforce-hire";
 import { availableHarnessFlows } from "@/lib/harness-gate";
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { codexSessionFlow } from "@/lib/codex-mode";

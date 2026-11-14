@@ -325,6 +325,8 @@ export {
 } from "./harness-usage";
 
 // ── Which harnesses can run on this machine ─────────────────────────────────
+// FIX-2627: one harness as a value, for the harness kit's `harnesses` slot (`./kit`).
+export type { Harness } from "./harness";
 export {
   harnessReadiness,
   harnessReadinessCapability,

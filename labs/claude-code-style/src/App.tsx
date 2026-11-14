@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { HarnessLabels, harnessLabels } from "./lib/harness-labels";
 import type { LabHarness, LabAdapter, LabProject, LabSession, LabTask } from "./adapter";
 import { PaneHeader } from "./components/PaneHeader";
 import { PaneResizer } from "./components/PaneResizer";
@@ -105,6 +106,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     };
   }, [adapter]);
   const recheck = async () => setHarnesses(await adapter.readHarnesses(true));
+  // Each harness's name, as the readiness view labels it: what a card's harness tag shows.
+  const labels = useMemo(() => harnessLabels(harnesses), [harnesses]);
 
   // Open what the address names, once the sessions are read. A session that is gone leaves the default.
   const rows = useRef(listed);
@@ -210,6 +213,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     pane: () => (selected && pane ? slideThen(panels.togglePane)() : undefined),
   });
   return (
+    <HarnessLabels.Provider value={labels}>
     <SessionOverlayProvider>
       <div
         className={cn("grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden", sliding && "transition-[grid-template-columns] duration-[180ms] ease-out motion-reduce:transition-none")}
@@ -321,5 +325,6 @@ export function App({ adapter }: { adapter: LabAdapter }) {
       />
       <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} keys={KEYS} />
     </SessionOverlayProvider>
+    </HarnessLabels.Provider>
   );
 }

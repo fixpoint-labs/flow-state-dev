@@ -32,7 +32,7 @@ import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce";
 import { REPO_ROOT, intentFreeEnv, refuseIfAnswering, stopProcessGroup } from "../lib/index.mts";
 import { allTaskRows, requests as storedRequests, type StoredTask } from "../coordinators/files-tasks-down-the-owners-chain/store.mts";
 import { LAB_DB_PATH, LAB_USER_ID, type LabTree } from "../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
-import type { PieceInput } from "../../packages/shift-manager/test/fixtures/multi-worker-collab/workforce/flows/piece.mts";
+import type { PieceInput } from "../../packages/shift-manager/test/fixtures/multi-worker-collab/piece.mts";
 import { workLineSchema, type WorkLine } from "../../packages/shift-manager/test/fixtures/multi-worker-collab/workforce/flows/workers/worker.mts";
 
 /** The config `fsdev dev` is pointed at. */

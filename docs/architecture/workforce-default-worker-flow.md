@@ -245,7 +245,7 @@ Stated because the drift audit found this inverted in the reference app — whic
 
 ## C2 — Admission has exactly one gate
 
-`hireWorkforce` is it (tenet 5: fix at the owning layer). A second check anywhere downstream is
+`hireWorkforce` is it (tenet 5: fix at the owning layer), run by the workforce kit's install (`@flow-state-dev/workforce/kit`). A second check anywhere downstream is
 how "absent means default" and "wrong means error" drift apart.
 
 Before any record, the gate checks the flows themselves (FIX-1789): every entry of `workerFlows`,

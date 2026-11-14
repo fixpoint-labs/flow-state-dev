@@ -22,7 +22,7 @@ with a second user in its members.
   - *value named*: the first reply contains the value.
   - *0 tasks*: `listTasks` shows no task on the session's board, nor on any other `agent` session
     of the user.
-  - *no harness*: no `harness-thread` session exists.
+  - *no harness*: no `coder` session exists.
   - *one clone, no place*: `<data>/runs/.clones/` holds one clone, and `<data>/runs/` holds no
     place directory.
 - **Leg 2**, a `desk.main` session with no project, asking the question:

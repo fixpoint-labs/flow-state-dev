@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 import { z, type ZodTypeAny } from "zod";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 
-import { buildKitchenSinkWorkforce } from "../workforce/hire";
+import { buildKitchenSinkWorkforce } from "../lib/workforce-hire";
 import {
   COORDINATOR_ASK,
   COORDINATOR_FLOWS,

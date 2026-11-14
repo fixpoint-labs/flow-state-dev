@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { LabAdapter, LabTask, TaskStatus } from "../adapter";
 import { FINISHED, TASK_STATUS } from "../lib/task-status";
 import { useMissing, useNow, useWatch } from "../lib/use-watch";
@@ -16,6 +16,7 @@ import { taskCounts } from "./flow-state/task-signals";
 import { TaskActions } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
 import { harnessLabelOf, PULL_REQUEST_HINT, PullRequestOpen, waitsOnPullRequest } from "./ThreadStatus";
+import { HarnessLabels } from "../lib/harness-labels";
 import { TaskCard, TaskDoneRow } from "./TaskCard";
 
 /**
@@ -123,6 +124,7 @@ export function TasksPane({
  * shows as an error.
  */
 function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter; sessionId: string; task: LabTask; onClose: () => void }) {
+  const labels = useContext(HarnessLabels);
   const actions = useMemo(() => adapter.taskActions(sessionId), [adapter, sessionId]);
   const work = useWatch(
     (emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit),
@@ -145,7 +147,7 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
       }
       meta={
         <>
-          <Spend spend={task.spend} split harnessLabel={harnessLabelOf(task)} />
+          <Spend spend={task.spend} split harnessLabel={harnessLabelOf(task, labels)} />
           {/* The goal, held to a few lines and opened with *Show more*. */}
           {task.goal ? <Clamp className="mt-1 text-sm text-muted-foreground">{task.goal}</Clamp> : null}
         </>

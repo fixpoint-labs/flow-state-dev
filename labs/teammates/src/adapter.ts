@@ -101,10 +101,9 @@ import {
   type RefiledTask,
   type TaskView,
 } from "@flow-state-dev/orchestration/inbox";
-import { harnessReadinessViewRef, pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitInput, type RecordedRun, type RecordedWork, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { CODER_FLOW, harnessReadinessViewRef, pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitInput, type RecordedRun, type RecordedWork, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import type { LabContextView } from "../host.mts";
 import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
-import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
 import {
   composeToolGroupLabel,
@@ -463,8 +462,10 @@ export interface WindowMark {
 export type LabHarness = HarnessReadinessChipRow;
 
 // FIX-2624.
-/** The host's readiness view (`host.mts`), read by scope with no session. */
-const READINESS_VIEW = harnessReadinessViewRef("harness-readiness");
+/** The flow the harness kit serves its readiness view on. */
+const HARNESSES_FLOW = "harnesses";
+/** The harness kit's readiness view, read by scope with no session. */
+const READINESS_VIEW = harnessReadinessViewRef(HARNESSES_FLOW);
 /** The host's lab-context view (`host.mts`), read by scope with no session. */
 const LAB_CONTEXT_VIEW = viewRef<LabContextView>("lab-context", "context");
 

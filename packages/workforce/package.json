@@ -38,6 +38,10 @@
       "types": "./dist/loader/index.d.ts",
       "default": "./src/loader/index.ts"
     },
+    "./kit": {
+      "types": "./dist/kit/index.d.ts",
+      "default": "./src/kit/index.ts"
+    },
     "./codegen": {
       "types": "./dist/codegen/index.d.ts",
       "default": "./src/codegen/index.ts"
@@ -73,6 +77,10 @@
         "types": "./dist/loader/index.d.ts",
         "default": "./dist/loader/index.js"
       },
+      "./kit": {
+        "types": "./dist/kit/index.d.ts",
+        "default": "./dist/kit/index.js"
+      },
       "./codegen": {
         "types": "./dist/codegen/index.d.ts",
         "default": "./dist/codegen/index.js"
@@ -103,7 +111,6 @@
   },
   "devDependencies": {
     "@flow-state-dev/memory": "workspace:*",
-    "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "cron-parser": "^5.5.0",

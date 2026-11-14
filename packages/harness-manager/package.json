@@ -39,6 +39,10 @@
       "types": "./dist/browser.d.ts",
       "default": "./src/browser.ts"
     },
+    "./kit": {
+      "types": "./dist/kit/index.d.ts",
+      "default": "./src/kit/index.ts"
+    },
     "./work-place": {
       "types": "./dist/work-place.d.ts",
       "default": "./src/work-place.ts"
@@ -66,6 +70,10 @@
         "types": "./dist/browser.d.ts",
         "default": "./dist/browser.js"
       },
+      "./kit": {
+        "types": "./dist/kit/index.d.ts",
+        "default": "./dist/kit/index.js"
+      },
       "./work-place": {
         "types": "./dist/work-place.d.ts",
         "default": "./dist/work-place.js"
@@ -80,6 +88,7 @@
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
+    "@flow-state-dev/workforce": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
     "zod": "^3.25.76"
   },

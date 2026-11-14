@@ -15,16 +15,15 @@
  *   reading the working folder's source; each worker's `tools:` line picks its
  *   own from them.
  * - **Claude Code, Codex and Cursor** are the coding workers, one per
- *   harness, on the lab's coding flow (`src/flows/coder.ts`): it takes the
+ *   harness, on the harness kit's coding worker flow (`coder`): it takes the
  *   tasks a teammate files and runs each through its worker's harness, in a
  *   worktree of the working folder. Before a task starts, the harness's
  *   readiness is checked; one this machine isn't set up for fails the task
  *   with a sentence that names it and says what to run.
- * - **Readiness** (harness-manager's `harnessReadiness`, one check per
- *   harness from its integration): read once at start and logged as a table,
- *   put in the workers' context so Lead files coding work only on a
- *   ready harness, and served as the `harness-readiness` flow's `readiness`
- *   view, read with no session, which `{ refresh: true }` reads again.
+ * - **Readiness** is the harness kit's: put in the workers' context so Lead
+ *   files coding work only on a ready harness, and served as the `harnesses`
+ *   flow's `readiness` view, read with no session, which `{ refresh: true }`
+ *   reads again.
  * - **The working folder** is one git checkout the operator names. It is the
  *   host's constant run source, so every coding run and every read of the
  *   workers' source tools works in it. There are no projects: no worker has a
@@ -39,7 +38,7 @@
  *   problem a coding run's checkout would be refused with (checked at start,
  *   never fatal). The page draws its context strip and first-run lines from it.
  * - **Teammates** you hire from the page are rows of your own roster, written
- *   through the roster flow `hireWorkforce` registers; nothing restarts.
+ *   through the workforce kit's roster flow; nothing restarts.
  * - **Routines**: Lead, researcher and writer hold the routine tools, so you
  *   can ask one to follow a GitHub pull request or to do something on a clock,
  *   and to list, pause or delete what it follows. A pull request's events are
@@ -54,25 +53,13 @@ import { execFileSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkCodexReadiness, CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
+import { claudeCode } from "@flow-state-dev/claude-code";
+import { codexHarness } from "@flow-state-dev/codex";
 import { defineFlow, defineView, handler } from "@flow-state-dev/core";
-import { harnessEnv } from "@flow-state-dev/core/harness";
-import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import type { BlockContext, ModelResolver } from "@flow-state-dev/core/types";
-import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code";
-import { checkCursorReadiness, CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
-import {
-  ASK_MARKER_IGNORED,
-  assertPositiveInt,
-  formatHarnessReadiness,
-  harnessDrainBudgetMs,
-  harnessReadiness,
-  harnessReadinessCapability,
-  harnessReadinessView,
-  scriptedHarness,
-  resolveOwnership,
-  type HarnessReadinessRead,
-} from "@flow-state-dev/harness-manager";
+import { cursorHarness } from "@flow-state-dev/cursor";
+import { ASK_MARKER_IGNORED, assertPositiveInt, scriptedHarness, type Harness } from "@flow-state-dev/harness-manager";
+import { codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/kit";
 import { createFlowState } from "@flow-state-dev/engine";
 import { system } from "@flow-state-dev/memory";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
@@ -81,21 +68,11 @@ import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
 import Database from "better-sqlite3";
 import { utility } from "@flow-state-dev/core";
 import { fetch, search } from "@flow-state-dev/tools";
-import {
-  AGENT_FLOW,
-  consultSessionsCapability,
-  createRoutinesCapability,
-  createWorkerInstallation,
-  defineAgentWorkerFlow,
-  githubServiceFlow,
-  githubSubscriptionProvider,
-  hireWorkforce,
-  projectSourceTools,
-} from "@flow-state-dev/workforce";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { githubSubscriptionProvider, projectSourceTools } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
 import { checkoutCommandProblem, localWorkspaceHost, parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
-import { CODER_FLOW, coderFlow, codingPhase, type Harness } from "./src/flows/coder.ts";
 
 /** The workers, beside this file. */
 const TEAMMATES_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
@@ -160,49 +137,9 @@ export interface TeammatesOptions {
 /** How long a coding run's checks may take together. */
 const CHECKS_TIMEOUT_MS = 10 * 60_000;
 
-/** The harnesses a coding worker may name in `harness:`. Each run gets only the environment its harness needs. */
-const HARNESSES: Record<string, Harness> = {
-  "claude-code": (feeds) =>
-    claudeCodeAgent({
-      ...feeds,
-      env: harnessEnv({ pass: CLAUDE_CODE_PASS }),
-      detached: true,
-      recordWork: true,
-      allowedTools: ["Read", "Write", "Edit", "Bash"],
-      permissionMode: "acceptEdits",
-      // The working folder's own Claude Code settings, CLAUDE.md and skills, never this machine's
-      // user settings: an output style there (Explanatory's "★ Insight" boxes) would show in the
-      // run's steps. Every hook is off: a turn can write one into `.claude/settings.json`, and it
-      // would run by itself on the next turn, in no transcript.
-      settingSources: ["project"],
-      settings: { disableAllHooks: true },
-    } as never) as unknown as HarnessBlock,
-  codex: ({ cwd, resume, onSession, onActivity }) =>
-    codexAgent({
-      cwd,
-      resume,
-      onSession,
-      onActivity,
-      client: { env: harnessEnv({ pass: CODEX_PASS }) },
-      thread: { sandboxMode: "workspace-write" },
-    } as never) as unknown as HarnessBlock,
-  cursor: ({ cwd, resume, onSession, onSteerable, onActivity }) =>
-    cursorAgent({
-      cwd,
-      resume,
-      onSession,
-      onSteerable,
-      onActivity,
-      env: harnessEnv({ pass: CURSOR_PASS }),
-      // A local Cursor run must name its model; Kitchen Sink's default.
-      model: "composer-2.5",
-      // Its sandbox is off, as Kitchen Sink runs it: the run works in its own worktree.
-      agent: { mode: "agent", local: { sandboxOptions: { enabled: false } } },
-    } as never) as unknown as HarnessBlock,
-};
+/** The model a Cursor run uses: a local Cursor run must name one. */
+const CURSOR_MODEL = "composer-2.5";
 
-/** The flow whose `readiness` view answers the harnesses' readiness rows. */
-const READINESS_FLOW = "harness-readiness";
 /** The flow whose `context` view answers what the lab works on and with (`labContextSchema`). */
 const LAB_CONTEXT_FLOW = "lab-context";
 
@@ -243,21 +180,6 @@ export function labContextView(read: () => Promise<z.infer<typeof labContextSche
 
 /** The lab-context view, for the page's `viewRef` (a type import: the page holds no block). */
 export type LabContextView = ReturnType<typeof labContextView>;
-
-/** Each harness's readiness check, over the environment its runs get. */
-function teammatesReadiness(): HarnessReadinessRead {
-  return harnessReadiness({
-    "claude-code": {
-      label: "Claude Code",
-      check: (o) => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }), signal: o?.signal }),
-    },
-    codex: {
-      label: "Codex",
-      check: (o) => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000, signal: o?.signal }),
-    },
-    cursor: { label: "Cursor", check: () => checkCursorReadiness(harnessEnv({ pass: CURSOR_PASS })) },
-  });
-}
 
 /**
  * The working folder, checked: an existing git checkout, as an absolute path.
@@ -370,10 +292,15 @@ function scheduleIndexAt(filename: string) {
  */
 export async function openTeammates(options: TeammatesOptions) {
   const workdir = workingFolder(options.workdir);
-  const roster = await readDeclaredRoster(options.tree ?? TEAMMATES_TREE);
-  if (roster.problems.length > 0) {
-    throw new Error(`teammates: the workers did not load: ${roster.problems.map((p) => `${p.layer} ${p.path}`).join(", ")}`);
-  }
+  const tree = options.tree ?? TEAMMATES_TREE;
+  // Who each worker hands work to, for the first run's lines: read off the tree the workforce kit installs.
+  // The kit's own read is the one that claims the folder; this one only reads.
+  const delegates = Object.fromEntries(
+    (await readWorkforceFolder({ path: tree, claim: () => undefined })).workers.flatMap((w) => {
+      const declared = w.declared.delegates;
+      return declared === "all" || Array.isArray(declared) ? [[w.id, declared as "all" | string[]]] : [];
+    }),
+  );
 
   const mem = system({ model: options.model, working: { capacity: 7 }, episodic: true, semantic: true });
   const earlier = utility.historySummary({
@@ -399,93 +326,25 @@ export async function openTeammates(options: TeammatesOptions) {
   });
   const runTimeoutMs = options.runTimeoutMs ?? 20 * 60_000;
   const checks = { commands: options.checks ?? [], timeoutMs: CHECKS_TIMEOUT_MS };
-  // A shutdown waits for a coding run still going, its checks and judge included,
-  // rather than the engine's 30 s default, which would cancel it.
-  const { doneTimeoutMs } = codingPhase(checks);
-  const dispatchDrainTimeoutMs = harnessDrainBudgetMs({
-    runTimeoutMs,
-    ownershipWaitMs: resolveOwnership({ runTimeoutMs, doneTimeoutMs }).ownership.waitMs,
-    // Every coding run is read by the goal judge after its completion check.
-    judge: true,
-    doneTimeoutMs,
-  });
-  // A goal's scripted harness (harness-manager's, the one DevTeam serves) stands in for every harness a worker names, and is always ready.
-  const scripted =
-    options.scriptedHarnessStepMs === undefined ? undefined : scriptedHarness({ stepEveryMs: options.scriptedHarnessStepMs }).slot;
-  const harnesses = scripted === undefined ? HARNESSES : Object.fromEntries(Object.keys(HARNESSES).map((name) => [name, scripted as Harness]));
   const defaultHarness = options.harness ?? "cursor";
-  const readiness = teammatesReadiness();
   // The folder's ignore rule, read once at start with the check a run's checkout gets; never fatal.
   const folderProblem = workspace.checkRepository!(workdir, { ignored: ASK_MARKER_IGNORED }).then(
     (answer) => (answer.usable ? null : answer.problem),
     (error: unknown) => `couldn't check the folder: ${error instanceof Error ? error.message : String(error)}`,
   );
   void folderProblem.then((problem) => problem !== null && console.warn(`teammates: ${problem}`));
-  const delegates = Object.fromEntries(
-    roster.workers.flatMap((w) => {
-      const declared = w.declared.delegates;
-      return declared === "all" || Array.isArray(declared) ? [[w.id, declared as "all" | string[]]] : [];
-    }),
-  );
-  // At start, never awaited: a missing sign-in never stops the server.
-  void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: roster.workers, workerFlows: () => flows as never });
-  flows = {
-    // Each teammate's `icon:` and `color:` lines ride on its roster row, so the page draws them.
-    [AGENT_FLOW]: {
-      flow: defineAgentWorkerFlow({
-        installation,
-        settings: { icon: z.string().optional(), color: z.string().optional() },
-        model: options.model,
-        catalog: {
-          ...projectSourceTools(workspace),
-          search: search(),
-          fetch: fetch(),
-        },
-        uses: [
-          mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }),
-          earlier.capability,
-          // Offered to a worker whose file picks `consultSessions: [consult]` (Lead).
-          consultSessionsCapability(installation),
-          // Which harnesses can run here, so a coding task is filed only on a ready one.
-          harnessReadinessCapability(readiness),
-          // List, save, pause and delete routines: offered to a worker whose file picks `routines: [tools]` (each one here).
-          createRoutinesCapability(installation),
-        ],
-        beforeAnswer: earlier.fold,
-        afterAnswer: mem.captureFromItems,
-        // researcher reads a whole repository a file at a time: room to dig before it answers.
-        maxSteps: 100,
-      }),
-      showSettings: ["icon", "color"],
-    },
-    [CODER_FLOW]: coderFlow({
-      harnesses,
-      defaultHarness,
-      ...(scripted === undefined ? { ready: readiness.refusal } : {}),
-      workspace,
-      runTimeoutMs,
-      checks,
-    }),
-  };
+  // A goal's scripted harness (harness-manager's) stands in for every harness under its own id, and is always ready.
+  const scripted = options.scriptedHarnessStepMs;
+  const stub = (id: string, label: string): Harness => ({
+    id,
+    label,
+    agent: scriptedHarness({ stepEveryMs: scripted! }).slot,
+    readiness: async () => ({ ready: true }),
+    pass: [],
+  });
   // Clock routines and GitHub's polls tick from two files beside the store (`fsdev dev` ticks both).
   const beside = (index: string) => options.store.replace(/(\.[^./\\]+)?$/, `-${index}$1`);
-  const clockDb = beside("clock");
-  const pollDb = beside("poll");
   const github = operatorGitHub(options.userId, options.githubToken, options.githubApiUrl);
-  const copies = hireWorkforce(installation, {
-    routines: {
-      index: scheduleIndexAt(clockDb),
-      providers: [github],
-      poll: { index: scheduleIndexAt(pollDb) },
-    },
-  }) as Array<{ id: string }>;
-  const service = githubServiceFlow({ provider: github, installation, poll: true }) as unknown as { id: string };
-  const readinessFlow = defineFlow({
-    kind: READINESS_FLOW,
-    views: { readiness: harnessReadinessView(readiness) },
-  } as never)({ id: READINESS_FLOW } as never) as { id: string };
 
   const contextFlow = defineFlow({
     kind: LAB_CONTEXT_FLOW,
@@ -501,12 +360,49 @@ export async function openTeammates(options: TeammatesOptions) {
   } as never)({ id: LAB_CONTEXT_FLOW } as never) as { id: string };
 
   const state = createFlowState({
-    flows: [...copies, service, readinessFlow, contextFlow],
+    kits: [
+      workforce({
+        directory: tree,
+        agent: {
+          // Each teammate's `icon:` and `color:` lines ride on its roster row, so the page draws them.
+          settings: { icon: z.string().optional(), color: z.string().optional() },
+          showSettings: ["icon", "color"],
+          model: options.model,
+          catalog: {
+            ...projectSourceTools(workspace),
+            search: search(),
+            fetch: fetch(),
+          },
+          uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }), earlier.capability],
+          beforeAnswer: earlier.fold,
+          afterAnswer: mem.captureFromItems,
+          // researcher reads a whole repository a file at a time: room to dig before it answers.
+          maxSteps: 100,
+        },
+        routines: {
+          index: scheduleIndexAt(beside("clock")),
+          providers: [github],
+          poll: { index: scheduleIndexAt(beside("poll")) },
+        },
+        github: { provider: github, poll: true },
+      }),
+      // A run that committed waits for your review, and the working folder's checks pass first.
+      harnesses({ workspace, defaultHarness, review: true, checks, runTimeoutMs, logReadiness: true }),
+      scripted === undefined ? claudeCode() : claudeCode().without(harnesses.slots.harnesses, "claude-code"),
+    ],
+    fill: {
+      [harnesses.slots.harnesses]:
+        scripted === undefined
+          ? [codexHarness(), cursorHarness({ model: CURSOR_MODEL } as never)]
+          : [stub("claude-code", "Claude Code"), stub("codex", "Codex"), stub("cursor", "Cursor")],
+    },
+    flows: [contextFlow],
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     // The route `serve()`'s tick dispatches each due clock routine and poll to.
     adapters: [createScheduledTransportAdapter()],
     durable: true,
-    dispatchDrainTimeoutMs,
+    // A shutdown waits for a coding run still going, its checks and judge included, rather than the engine's 30 s default.
+    dispatchDrainTimeoutMs: codingDrainBudgetMs({ runTimeoutMs, checks }),
     ...(options.staleThresholdMs === undefined ? {} : { staleSweepThresholdMs: options.staleThresholdMs }),
     // Every request is the lab's own user, in the lab's own org, never a user the request names: the operator-only GitHub token is gated on it, and serve()'s tick, which names no user, is admitted as it. A configured resolver can't claim the development org, so the lab names its own.
     resolvePrincipal: () => ({ userId: options.userId, orgId: "teammates-lab" }),

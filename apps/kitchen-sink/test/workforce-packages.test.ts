@@ -34,7 +34,7 @@ vi.mock("@flow-state-dev/workforce", async (importOriginal) => {
   };
 });
 
-const { buildKitchenSinkWorkforce } = await import("../workforce/hire");
+const { buildKitchenSinkWorkforce } = await import("../lib/workforce-hire");
 const { packageBlocks } = await import("../workforce/workforce.gen");
 
 afterEach(() => {

@@ -105,10 +105,9 @@ only 404s.
 `harness: cursor`, need that harness signed in too (Cursor reads `CURSOR_API_KEY`).
 A coding run starts with only the variables its harness
 needs (`CLAUDE_CODE_PASS`, `CODEX_PASS` or `CURSOR_PASS` from its package), never the rest of the
-host's environment. That filters what a run starts with; it isn't a security boundary. At start
-the lab logs which harnesses this machine can run, with what to run for one that can't
-(`✗ Codex: … Run \`codex login\`, or set CODEX_API_KEY.`), and the `harness-readiness` flow's
-`readiness` view returns the same rows, with no session; `{ refresh: true }` checks again. The host is durable: a thread's question and review wait on you across a
+host's environment. That filters what a run starts with; it isn't a security boundary. The
+harness kit's `harnesses` flow serves a `readiness` view of which harnesses this machine can
+run, with what to run for one that can't, with no session; `{ refresh: true }` checks again. The host is durable: a thread's question and review wait on you across a
 restart, and a coding run's review needs durable execution. Its settings
 are read from the environment, all optional:
 
@@ -184,8 +183,8 @@ a package call:
 |---|---|
 | The sessions list | `listWorkerSessions("desk.main")` from `@flow-state-dev/workforce/browser` |
 | *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject` |
-| The project picker and *New project* | `listProjects`, `createProject` and `checkRepository`, from `defineProjectBlocks` with the workspace host's check (`workforce/flows/projects.mts`) |
-| The picker's harness chips | the `harness-readiness` flow's `readiness` view, read with no session |
+| The project picker and *New project* | `listProjects`, `createProject` and `checkRepository`, from `defineProjectBlocks` with the workspace host's check (`flows/projects.mts`) |
+| The picker's harness chips | the harness kit's `harnesses` flow's `readiness` view, read with no session |
 | Sending and the thread | the `respond` action, and the session's message and tool items |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
@@ -209,12 +208,12 @@ user state. A session you open in another tab joins the list at the next reload.
 push can miss a change, such as the SQLite store the lab runs on, each also reads at its old pace:
 the list and pins every 3 seconds, the running turn every 1.5.
 | *Resolve*, *Open a PR*, *Merge locally* and *Request changes* | the Inbox client's `answerOne` on its review: `{ verdict: "accepted" }`, naming the `land` an accept takes, or `{ verdict: "revise", words }` |
-| *Pin* and *Unpin* | your `lab-pins` user resource (`workforce/flows/user-marks.mts`), read by scope and written through the default write flow |
+| *Pin* and *Unpin* | your `lab-pins` user resource (`flows/user-marks.mts`), read by scope and written through the default write flow |
 | *Dismiss* | your `lab-dismissals` user resource, the same way, kept per task attempt |
 
-`desk.coder` and `desk.thread-coder`, and their plan, Codex and Cursor siblings, are on the lab's one coding flow,
-`workforce/flows/harness-thread.mts`: a `harnessManager` per harness, picked by the worker's
-`harness:` line, working in the session's project through `projectWorkspace()`. A worker with
+`desk.coder` and `desk.thread-coder`, and their plan, Codex and Cursor siblings, are on the harness kit's
+coding worker flow, `coder`: a `harnessManager` per harness, picked by the worker's
+`harness:` line, working in the session's project (the kit's `project: true`). A worker with
 `review: true`, as threads mode's `desk.thread-coder` is, runs on the manager built with
 `reviewChanges: true`: a run that committed waits for your review before its task completes.
 Session mode's coders have no review line, since that mode has no review to answer.
@@ -222,16 +221,14 @@ Session mode's coders have no review line, since that mode has no review to answ
 | Worker (session mode · threads mode) | Its `WORKER.md` | The chip |
 |---|---|---|
 | `desk.coder` · `desk.thread-coder` | `harness: claude-code` | *Auto* |
-| `desk.coder-plan` · `desk.thread-coder-plan` | `harness: claude-code`, `permissionMode: plan`, no review (it commits nothing) | *Plan first* |
+| `desk.coder-plan` · `desk.thread-coder-plan` | `harness: claude-code-plan` (Claude Code in plan mode, `claudeCode({ plan: true })`), no review (it commits nothing) | *Plan first* |
 | `desk.coder-codex` · `desk.thread-coder-codex` | `harness: codex` | *Codex* |
 | `desk.coder-cursor` · `desk.thread-coder-cursor` | `harness: cursor` | *Cursor* |
 
 The threads-mode coders but the plan one carry `review: true`. `desk.main` and `desk.lead` name
 them all as delegates, and their files say which one a `Coder:` line or your words pick.
 
-The flow builds Claude Code, Codex and Cursor, so a coding worker on any of them is one more
-`WORKER.md` with that `harness:` line. A Claude Code worker can also name a `permissionMode:`:
-`acceptEdits` (the default) or `plan`. The flow builds a manager for each. `default` isn't offered:
-the manager turns no tool approval into a wait on you, so a run in it would only be refused its
-tools. Nor is `bypassPermissions`, which a worker's own line shouldn't be able to turn on. A worker on another harness that names a `permissionMode:` is
-refused when its task runs.
+The flow builds a manager for each harness the host fills: Claude Code (`acceptEdits`), Claude
+Code in plan mode (`claude-code-plan`), Codex and Cursor, so a coding worker on any of them is one
+more `WORKER.md` with that `harness:` line. A worker naming a harness the host didn't fill is
+refused at start.
