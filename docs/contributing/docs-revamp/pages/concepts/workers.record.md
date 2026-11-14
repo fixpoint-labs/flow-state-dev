@@ -53,6 +53,8 @@ Skipped: C-22 is piloted in the sitemap, and the page was already at `workers.md
 
 - After the loop (review): the custom-flow paragraph now says to pass the generated `workforce.gen.ts` module to the kit as `generated`; without it the kit has no worker flows from the folder (`workforce-kit.ts:178-186`).
 
+- After the loop (security review): the board paragraph no longer says a task's input, output and metadata never reach the browser. The collection read leaves them out, but the `task-change` item on the session's stream carries them (`orchestration/src/tasks/collection/change-event.ts:140-166`).
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the page as it was kept, sha256 c55e20956f1a, and the 4 Reference row(s) pass 6 moved.
