@@ -47,6 +47,8 @@ Skipped: C-22 is piloted in the sitemap, and the page was already at `workers.md
 - After the loop: "Install the workers" says a file Workforce doesn't read, or a `WORKER.md` that doesn't load, stops the app starting and the error names the file (`packages/workforce/src/loader/read-workforce-folder.ts:1-12,84-91`).
 - Closed after the loop: all four open findings (the pass-4 import and the three pass-9 misses).
 
+- After the loop (review): the opening says every user has each worker, not a copy of it, since a copy exists only after an edit (`standard-workers.ts:1-12`); the figure description matches. The "same worker" sentence no longer promises every flow takes tasks: a flow takes them when it declares the `contributor` role (`worker-roles.ts:326`), as the built-in agent flow does (`agent-worker-flow.ts:1519`).
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the page as it was kept, sha256 c55e20956f1a, and the 4 Reference row(s) pass 6 moved.

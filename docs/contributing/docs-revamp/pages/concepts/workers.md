@@ -11,13 +11,13 @@ import Worker from "./figures/worker.svg";
 
 A worker is an agent with a name and a job. You brief it in a Markdown file, the way you would brief a new colleague: what it's for, what it can use, who it can ask for help.
 
-You can talk to a worker, or hand it a task and come back later. Everyone who uses the app gets their own copy of each worker, and what a copy learns about its user stays with that user.
+You can talk to a worker, or hand it a task and come back later. Everyone who uses the app has each worker, and what it learns about one user stays with that user.
 
 ## If you know agents
 
 In most frameworks an agent is one thing: a model, a prompt, some tools, and a loop the framework runs for you. A worker can be exactly that, and the ones that come with Workforce, the kit that provides workers, are.
 
-The difference is underneath. A worker runs on a flow, a self-contained piece of your app's backend with the actions it exposes, and you decide what the flow is. It can be one model call. It can be several, with a plan, a draft and a review. It can be mostly plain code that asks a model one question at the end. From the outside it is the same worker either way: it has a name, you can talk to it, and you can hand it work and expect the work back.
+The difference is underneath. A worker runs on a flow, a self-contained piece of your app's backend with the actions it exposes, and you decide what the flow is. It can be one model call. It can be several, with a plan, a draft and a review. It can be mostly plain code that asks a model one question at the end. From the outside it is the same worker either way: it has a name, and you talk to it the same way. It takes tasks when its flow declares the `contributor` role, as the built-in agent flow does.
 
 So "worker" names the job, and the flow decides how the job gets done. [What runs a worker](#what-runs-a-worker) shows how to change it.
 
@@ -38,7 +38,7 @@ came back.
 
 That file gives you a worker with the id `engineering.lead`, made from its team and worker folders. `name` is what people see, `delegates` names other workers by id, and everything below the second `---` is its instructions. The [WORKER.md reference](../reference/worker-md.md) has every setting, which one a file must have, and how the id is formed.
 
-<Figure svg={Worker} caption="One file, a worker on each user's list of workers" description={"On the left, a WORKER.md file in your repo, at workforce/teams/engineering/workers/lead. In the middle, two lists of workers, Alice's and Bob's, each holding its own engineering.lead made from that one file; Alice's is highlighted as one user's own worker. On the right, Alice's sessions, where her worker works: a conversation, where she talks and it answers, and a task, which it runs and reports back on. Each is a session of its own. The lists and the sessions are hatched: they outlive the request."} />
+<Figure svg={Worker} caption="One file, a worker on each user's list of workers" description={"On the left, a WORKER.md file in your repo, at workforce/teams/engineering/workers/lead. In the middle, two lists of workers, Alice's and Bob's, each listing engineering.lead from that one file; Alice's is highlighted as one user's own worker. On the right, Alice's sessions, where her worker works: a conversation, where she talks and it answers, and a task, which it runs and reports back on. Each is a session of its own. The lists and the sessions are hatched: they outlive the request."} />
 
 ## Install the workers
 
