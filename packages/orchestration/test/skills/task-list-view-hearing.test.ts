@@ -20,7 +20,7 @@ import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
 import { runAction } from "@flow-state-dev/engine";
 import { createInMemoryBus, createInMemoryStores, type ChangeNotice } from "@flow-state-dev/engine/host";
 import { runView } from "@flow-state-dev/engine/internal";
-import { hearsNotice } from "@flow-state-dev/client/internal";
+import { hearsNotice } from "@flow-state-dev/contracts/types/view-hearing";
 import { z } from "zod";
 import { defineTaskCollection, getOrCreateTaskCollection, resolveResourceCollection } from "../../src/tasks";
 import { taskToolViews } from "../../src/skills/views/task-list-view";

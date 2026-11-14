@@ -117,7 +117,7 @@
     }
   },
   "devDependencies": {
-    "@flow-state-dev/client": "workspace:*",
+    "@flow-state-dev/contracts": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "ai": "^7.0.133",

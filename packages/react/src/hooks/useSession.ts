@@ -32,7 +32,8 @@ import type {
   StateChangeItem,
   SuspensionItem
 } from "@flow-state-dev/core/items";
-import { followSession, mayReplaceItem, readSessionHistory, liveRead, mayHold, storageRootsOf } from "@flow-state-dev/client/internal";
+import { followSession, mayReplaceItem, readSessionHistory, liveRead, storageRootsOf } from "@flow-state-dev/client/internal";
+import { mayHold } from "@flow-state-dev/contracts/types/view-hearing";
 import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
 // Canonical helper from the zero-dependency contracts layer (value-import).
 // Previously hand-mirrored here because react may only type-import core.

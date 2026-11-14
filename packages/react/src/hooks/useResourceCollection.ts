@@ -23,7 +23,8 @@ import {
 import type { SessionView } from "./useSession";
 import { useReadFence, type ReadFence } from "./useReadFence";
 import { useClient } from "../internal/useClient";
-import { mayHold, storageRootsOf } from "@flow-state-dev/client/internal";
+import { storageRootsOf } from "@flow-state-dev/client/internal";
+import { mayHold } from "@flow-state-dev/contracts/types/view-hearing";
 import { useResourceManifest } from "./useResourceManifest";
 
 /**
