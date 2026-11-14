@@ -13,7 +13,7 @@ Some work is a list. Research three competitors, then write the comparison. The 
 
 A board is that list, stored, plus the loop that works through it, called the drain. You add tasks and say which ones depend on which. The drain takes whatever is ready and runs it. It stops when every task is done or nothing left can run.
 
-<Figure svg={Board} caption="A board is a list and a loop" description={"On the left, the list of tasks, stored here on a resource, so it is hatched: it outlives the request. acme is completed, globex and initech are in progress, and compare is pending because it waits on the other three; that row is highlighted as the one that cannot start yet. On the right, the drain, board.drain, drawn with a dashed outline because it lasts one action run. It claims a ready task, runs its block, records the result, and does that again until nothing is ready. Two arrows run from the drain to the list, one for the claim and one for the recorded result. When the drain ends the list stays, and a task added later waits for the next drain. Stored on the request instead, which is the default, the list ends when that request does."} />
+<Figure svg={Board} caption="A board is a list and a loop. Here the list is stored on a resource." description={"On the left, the list of tasks, drawn as the resource-stored variant from \"How long the list lasts\", so it is hatched: it outlives the request. The smallest board below keeps the default instead, which lives on the request. acme is completed, globex and initech are in progress, and compare is pending because it waits on the other three; that row is highlighted as the one that cannot start yet. On the right, the drain, board.drain, drawn with a dashed outline because it lasts one action run. It claims a ready task, runs its block, records the result, and does that again until nothing is ready. Two arrows run from the drain to the list, one for the claim and one for the recorded result. When the drain ends the list stays, and a task added later waits for the next drain. Stored on the request instead, which is the default, the list ends when that request does."} />
 
 ## The smallest board
 
@@ -59,47 +59,55 @@ When `compare` runs, its block receives what the three research tasks produced o
 | `goal` | What to do, in words |
 | `assignee` | Which block does it |
 | `deps` | The tasks that must be `completed` first |
-| `status` | `pending`, then `in_progress`, then `completed` or `errored`. `cancelled` when a task it depends on failed |
+| `status` | `pending`, then `in_progress`, then `completed` or `errored`; `cancelled` for a task that will not run. [Every status and what moves a task between them](../reference/task-board.md) is in the reference |
 
 A task is ready when every task in its `deps` is `completed`. The drain runs up to four ready tasks at a time unless you set another limit, and a task never runs in two places at once.
 
 ## When a task fails
 
-A failed task is marked `errored` and the board carries on with whatever else is ready. Tasks that depended on it are cancelled, so they never run.
+A failed task is marked `errored` and the board carries on with whatever else is ready. Tasks that depended on it are cancelled, and so are the tasks that depend on those, so none of them runs. A failed task is not retried unless you allow it; [Retries](../reference/task-board.md) covers how.
 
-When nothing else is ready, the drain stops and says why. It ends by emitting an item, the unit a flow streams to its caller, that carries a `terminationReason`: `all-completed` when every task finished, `blocked-by-failures` when some could not. Your flow reads that and decides what to tell the user. There are a few other reasons, such as a task waiting on a user, and the reference lists them.
+When nothing else is ready, the drain stops and says why. It ends by emitting an item, the unit a flow streams to its caller, that carries a `terminationReason`: `all-completed` when every task finished, `blocked-by-failures` when some could not. Your flow reads that and decides what to tell the user. The [other stop reasons](../reference/task-board.md) are in the reference.
 
 ## How long the list lasts
 
-The tasks are stored data, and you choose where. That choice is the board's lifetime. A resource is stored data a flow declares, kept for one conversation (a session), one user, or one organization.
+The tasks are stored data, and you choose where. That choice is the board's lifetime. A resource is stored data, kept for one session (the record a flow keeps across many requests), one user, or one organization.
 
 | Stored on | Lasts for | Use it when |
 | --- | --- | --- |
 | The request (the default) | One request | The work starts and finishes in one go |
 | A resource in session, user or org scope | Across requests | People add tasks over time, or come back for results |
 
-The drain has no lifetime of its own. It runs while a request is running `board.drain`, and then it is gone. Tasks added afterwards wait where they are until a drain runs again. So a board on its own is not a background queue.
+The drain has no lifetime of its own. It runs while a request is running `board.drain`, and then it is gone. Nothing runs it on its own, and nothing wakes it when a task is added. Tasks added afterwards wait where they are until a request runs a drain again. So a board on its own is not a background queue.
 
 ## Who does the work
 
-In the example, two blocks in the same flow do everything. A task can also go to one of your named [workers](./workers.md), or run in a session of its own. The list and the dependency rules stay the same.
+In the example, two blocks in the same flow do everything. A task can also go to one of your named [workers](./workers.md), or run in a session of its own, a separate session the board starts for that one task. The list and the dependency rules stay the same.
 
-By default the drain waits for that session to finish. A board in delegation mode returns as soon as its tasks are handed out, and each session settles its task later. That is how work outlives the request that asked for it, and [Background work](./background-work.md) covers it.
+By default the drain waits for the task to finish there. A board can also hand tasks out and return at once, so the work outlives the request; [Background work](./background-work.md) covers it, and the [reference](../reference/task-board.md) has the details.
 
 ## Start with a pattern
 
-Three common shapes ship as patterns, ready-made compositions that build the board for you:
+Patterns are ready-made compositions that build the board for you:
 
 - [Parallel Tasks](../catalog/patterns/parallel-tasks.md) splits a job into tasks once and runs them side by side.
 - [Supervisor](../catalog/patterns/supervisor.md) adds a review of each result before it is accepted.
-- [Plan and Execute](../catalog/patterns/plan-and-execute.md) plans again between rounds, using what came back.
+- [Plan and Execute](../catalog/patterns/plan-and-execute.md) can plan again between rounds, using what came back.
 
 Use `taskBoard` directly when tasks arrive from outside while the board is working, or when you are building a pattern of your own.
 
-## What a board won't do
+## What it gets you
 
-- Run on its own. Something has to run the drain.
-- Retry a failed task, unless the task sets `maxAttempts`.
+Plain code could run the three researchers with `Promise.all` and then call the writer. A board adds what that leaves out:
+
+- **The comparison never starts on partial research.** `compare` waits until `acme`, `globex` and `initech` are all `completed`, and the three run together.
+- **A failed competitor stops the writer.** If `initech` fails, `compare` is cancelled and its block never runs. `acme` and `globex` finish, and the flow is told why the drain stopped.
+- **Results arrive handed over.** `compare` reads the three outputs on `input.deps`, with no query to write.
+- **A stored board can be picked up later.** On a resource, a later request runs the drain over the same list, and a task added in between is worked then.
+
+## How it fits with the others
+
+A board is a list and a loop, not a scheduler. A job that has to start at night needs a schedule or a queue to start it: a scheduled action can run a block, and `board.drain` is a block. [Background work](./background-work.md) covers what runs outside a request.
 
 ## Next
 

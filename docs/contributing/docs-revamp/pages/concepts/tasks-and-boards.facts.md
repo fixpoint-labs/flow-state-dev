@@ -183,3 +183,14 @@ A board is a stored list and a loop that runs only while a request executes it; 
 - Holds, questions, steers, run spend, the Inbox, task tools, flow policy and tool caching: other pages (Workers, Human in the loop) or [ref].
 - The Migrating section of `tb:1390-1405` (the page plan cuts it).
 - Partitioned ledgers, `taskLedgers`, `boardId` and dispatch sessions (`tb:779-1380`): [ref] and C-16 Background work.
+
+## Reference rows moved from the page (revise round 1)
+
+Row for R-23 (`reference/task-board`); the page links to them.
+
+- **Task statuses and what moves a task between them.** `pending`, `in_progress`, `held`, `completed`, `errored`, `cancelled` (`ts:16-19`). A pending task can be held and released back to `pending`. A task goes from `in_progress` to `completed` or `errored`, or back to `pending` when a retry is granted under `maxAttempts`. A task is cancelled (labelled `skipped`) when a task it depends on fails for good or is itself cancelled, and the cancel carries down the chain (`ts:78-80`, `cd:57-60`). The page keeps the one-line guarantee in "When a task fails".
+- **Stop reasons.** The `terminationReason` values (`all-completed`, `blocked-by-failures`, `retry-budget-exhausted`, `dispatched`, `waiting-on-a-user`, `waiting-on-an-event`), what each means, and the item the drain emits when it ends (items 2, 45). The page names `all-completed` and `blocked-by-failures` only.
+- **Assignees that dispatch.** The default wait-for-the-session behaviour against delegation mode, when the drain returns, when each session settles its task (items 66-69). The page keeps the idea that work can outlive the request and links to Background work.
+- **Retries.** A failed task is not retried unless `maxAttempts` is set; what it changes about status and the drain (item 36). The page says only that a failed task is not retried unless allowed.
+
+Page-level notes: the figure shows the resource-stored list and its caption says so; the smallest board keeps the request default (items 48-50). "A resource" is defined as stored data kept for one session, user or organization, with no claim about where it is declared (item 53: the board registers the collection). The example's `analyst` and `writer` blocks are not shown; the example type-checks with them stubbed under the packages' `strict: false` config. Under `strict: true`, a worker block with a typed `outputSchema` is refused by `workers` (a framework typing limit, not something the page can change).
