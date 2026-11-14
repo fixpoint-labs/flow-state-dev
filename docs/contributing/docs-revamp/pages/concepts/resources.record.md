@@ -36,6 +36,8 @@ Written by `docs-writer` (sonnet), 939 words. Scenario: A support desk: refundPo
 
 - Owner review edit (PR comment on line 13): the opening now says a resource is like a file, holding content and typed state of its own, that each state write is atomic, and that a flow can declare one any block may reach. Re-ran check-docs-page.mjs: ok.
 
+- Post-review edit (Codex on #5226): opening: atomic writes plus `incState`/`updateState` apply a change to what is stored. Re-ran check-docs-page.mjs: ok.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 1263fc8a2487, and the 8 Reference row(s) pass 6 moved.
@@ -43,6 +45,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 126
 - At user and org scope a resource is shared by every flow on the server unless it sets `flowIsolation: true`. Untrue: The default is sharing across every flow the same userId or orgId touches, not every flow on the server. `flowIsolation: true` on the resource is not the only way to isolate it. The flow-level `isolateUserState` / `isolateOrgState` options set the default `flowIsolation` for user- and org-scoped resources that don't declare their own, and a resource's own `flowIsolation` wins over them in both directions. An owner-pinned instance also stores a user-scoped resource in a per-(org, user) cell, so it is shared only with that user's other owner-pinned instances in the same org. (/home/user/flow-state-dev/packages/core/src/types/flow.ts:681-696 and /home/user/flow-state-dev/packages/core/src/types/resource.ts:206-221)
 
 - Owner review edit: atomicity checked against `docs/architecture/resources-and-client-data.md:179-181` (all five state writers are one version-checked mutation, `runResourceCAS`); the flow-level `resources` field, `packages/core/src/types/flow.ts:355`.
+
+- Post-review edit (Codex on #5226), checked against the code: opening: atomic writes plus `incState`/`updateState` apply a change to what is stored (a plain `setState` from a stale read can overwrite, `engine/src/context/resource-registry.ts:2213-2228`); `llmReadable`/`llmWritable` need `readResourceContentTool()`/`writeResourceContentTool()` (`core/src/tools/resource-content-tools.ts:25,56`).
 
 ## 6 · Depth pass
 

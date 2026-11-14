@@ -10,7 +10,7 @@ import AResourceTravels from "./figures/a-resource-travels.svg";
 
 # Resources
 
-A resource is named, stored data, a bit like a file. It can hold a body of content, and it can also carry typed state of its own. Each write to that state is atomic, so two requests changing it at once both land. It is for things that have a name of their own, like a refund policy every reply should follow, or the notes piling up on a support ticket. A collection is a set of them.
+A resource is named, stored data, a bit like a file. It can hold a body of content, and it can also carry typed state of its own. Each write to that state is atomic, and `incState` and `updateState` apply a change to whatever is stored, so two requests adding to it at once both land. It is for things that have a name of their own, like a refund policy every reply should follow, or the notes piling up on a support ticket. A collection is a set of them.
 
 A block is one piece of work in a flow, one of the steps your app calls through its actions. Declare a resource on the block that needs it, and the framework stores it and hands the block a handle to it, kept apart from session state and from other resources. When any block in the flow should reach it, rather than one block in particular, declare it on the flow instead. The examples are a support desk. `refundPolicy` is a document, `draftReply` is the block that drafts each reply, and `ticketNotes` is a collection.
 
@@ -104,7 +104,7 @@ If the set is small and fixed, say three attachments per ticket, one resource wi
 
 Your code reads a resource through `ctx.resources`, in any block that declares it.
 
-The model reads nothing by default. `draftReply` passed the policy into its prompt itself. Set `llmReadable` or `llmWritable` on a resource and a generator's model can read or write it. Set them on a collection and they apply to every note in it. The [reference](../reference/resources.md) has the options.
+The model reads nothing by default. `draftReply` passed the policy into its prompt itself. Set `llmReadable` or `llmWritable` on a resource, and give the generator the resource tools, `readResourceContentTool()` and `writeResourceContentTool()`, and its model can read or write it. Set them on a collection and they apply to every note in it. The [reference](../reference/resources.md) has the options.
 
 The browser reads nothing by default either. A `client` config on the resource opens the body, and `expose` picks which state fields the page sees. The [reference](../reference/resources.md) lists the options.
 

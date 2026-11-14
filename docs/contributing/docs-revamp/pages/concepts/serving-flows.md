@@ -77,9 +77,9 @@ export default defineFlow({
   webhooks: {
     stripe: {
       on: {
-        "invoice.paid": defineWebhookBinding<{ id: string }>({
+        "invoice.paid": defineWebhookBinding<{ data: { object: { id: string; customer: string } } }>({
           block: recordPayment,
-          input: (e) => ({ invoiceId: e.payload.id }),
+          input: (e) => ({ invoiceId: e.payload.data.object.id }),
         }),
       },
     },
@@ -93,7 +93,7 @@ The flow holds routing and no secret. The app declares how to verify a delivery,
 
 A delivery with a bad signature is refused with `401` and nothing runs. A verified one is answered `202` at once and the block runs after the response, so a `202` does not mean `recordPayment` has finished. An event type with no binding is also answered `202` and ignored.
 
-With no `sessionId` on the binding, each event runs in its own fresh session. Derive one from the payload, as in ``sessionId: (e) => `customer-${e.payload.customer}` ``, and one customer's invoices share a session while another customer gets a separate one. No end user is involved, so the run uses the principal the flow's `authentication` names: here `defaultUserId: "system"` with `requireUser: false`. See [Webhooks](../reference/webhooks.md) and the [Stripe recipe](../build/webhooks/stripe.md).
+With no `sessionId` on the binding, each event runs in its own fresh session. Derive one from the payload, as in ``sessionId: (e) => `customer-${e.payload.data.object.customer}` ``, and one customer's invoices share a session while another customer gets a separate one. No end user is involved, so the run uses the principal the flow's `authentication` names: here `defaultUserId: "system"` with `requireUser: false`. See [Webhooks](../reference/webhooks.md) and the [Stripe recipe](../build/webhooks/stripe.md).
 
 **A schedule.** A schedule is a name and a cron string on the flow, with the block to run. Flow State does not own the clock. Your scheduler, such as Vercel Cron or EventBridge, calls a URL the schedule adapter serves for that schedule when the time comes, and the adapter runs the block. It is not an action call either. See [Schedules](../reference/schedules.md).
 

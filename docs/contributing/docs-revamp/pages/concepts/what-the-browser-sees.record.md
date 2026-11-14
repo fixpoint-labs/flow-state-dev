@@ -43,6 +43,8 @@ Written by `docs-writer` (sonnet), 774 words. Scenario: The support desk: flow `
 
 - Post-review edit (Gitar): the 'What it gets you' stream bullet now says who resumes: the caller reopens a request stream with `startingAfter`; `useSession` and a session stream reconnect by themselves. Re-ran check-docs-page.mjs: ok.
 
+- Post-review edit (Codex on #5226): a request sent through `useAction` is not followed by a default `useSession`. Re-ran check-docs-page.mjs: ok.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 d5d188aec271, and the 11 Reference row(s) pass 6 moved.
@@ -54,6 +56,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 d5d
 - Post-loop edit: checked `live` at `packages/react/src/hooks/useSession.ts:297`, `:619`; `startingAfter` on the request stream at `packages/client/src/client.ts:1025-1035`; reconnect behaviour per facts items 12, 13, 16.
 
 - Post-review edit: same facts as items 12, 13 and the C-06 reconnect sentence (`useSession` resumes on its own); no new claim.
+
+- Post-review edit (Codex on #5226), checked against the code: a request sent through `useAction` is not followed by a default `useSession` (`react/src/hooks/useSession.ts:1918-1919`); `client.expose` narrowed to client data, since `state_change` deltas carry raw unexposed keys (`react/src/internal/mergeStateChangeIntoSnapshot.ts:8-14`).
 
 ## 6 · Depth pass
 

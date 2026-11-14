@@ -33,11 +33,15 @@ Written by `docs-writer` (sonnet), 802 words. Scenario: The support desk: `suppo
 - After revise round 1, page sha256 f8738c0c1917: exit 0.
 - After revise round 2, page sha256 c496db595140: exit 0.
 
+- Post-review edit (Codex on #5226): Stripe example reads the invoice from `e.payload.data.object`. Re-ran check-docs-page.mjs: ok.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 f5ce608c1959, and the 9 Reference row(s) pass 6 moved.
 
 - Reference row 2: Page: "It answers `202 Accepted` with a request id, runs the action, and streams the result back as server-sent events." (same claim in Row 2: response 202 with request id, result streamed as SSE) Untrue: The POST answers one of two ways. With `Accept: text/event-stream` the POST response is itself the SSE stream (no 202). Otherwise it returns `202` with a JSON body (`status: in_progress`, `request.id`, `x-request-id`), and the caller follows the request through a separate GET stream. The 202 does not carry the result stream. (/home/user/flow-state-dev/packages/engine/src/routes/action-routes.ts:327-345 (inline SSE when Accept includes text/event-stream) and :347-366 (202 JSON accepted body; live stream closed because 'the caller follows the request through its GET stream')) The row is recorded corrected.
+
+- Post-review edit (Codex on #5226), checked against the code: Stripe example reads the invoice from `e.payload.data.object` (the payload is the whole Stripe event, `engine/src/transports/webhook/routes.ts:74-78`; matches `apps/docs/docs/server/webhooks.md:94-95`).
 
 ## 6 · Depth pass
 

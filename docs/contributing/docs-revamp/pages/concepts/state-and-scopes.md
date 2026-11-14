@@ -81,7 +81,7 @@ Two users in one organization share the org record and nothing else. When Alice 
 
 ## What the browser may see
 
-The browser never gets raw state. Only the fields you name in a scope's `client.expose` cross to it, so an internal score stays private by being left out. Request state cannot be exposed at all.
+The browser's client data never holds raw state. Only the fields you name in a scope's `client.expose` appear in it, so an internal score stays out by being left out. A change to an unexposed field can pass through the stream while a request runs, so `expose` is not a way to keep secrets. Request state cannot be exposed at all.
 
 Exposure is set on the flow. `handleTicket`, the flow's action, is a sequencer that runs `countTicket` and `upgradePlan`, each in its own file beside the flow. The flow exposes `plan`:
 
@@ -121,7 +121,7 @@ Blocks on the server can read and write `score`. A value computed from state is 
 - **A lifetime picked by where the field goes.** `tries` lasts one run, `ticketCount` one conversation, `plan` one customer and `licenses` one organization.
 - **No filtering code.** A customer in two organizations has two user records, so no block writes `where orgId = ...`.
 - **New fields need no migration.** A field added with a default reads that default on every record saved before it existed.
-- **Nothing leaks by accident.** Adding a field to a schema does not send it to the browser. Only `expose` does.
+- **Client data holds only what you name.** Adding a field to a schema does not put it in `useClientData`. Only `expose` does.
 
 ## How it fits with the others
 

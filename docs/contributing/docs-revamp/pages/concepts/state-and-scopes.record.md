@@ -46,6 +46,8 @@ Written by `docs-writer` (sonnet), 856 words. Scenario: A support desk: flow `su
 
 - Post-loop edit (escalation): fixed the open pass-7 findings in plain words: handleTicket named as a sequencer of the two blocks shown; the alt text keys; 'you don't declare them again on the flow'; dropped the counted 'two ways'; cut the block/sequencer-state sentence; 'backend' replaced by 'your app' / 'a self-contained system inside your app' (owner's flow wording). Re-ran check-docs-page.mjs: ok, 811 words.
 
+- Post-review edit (Codex on #5226): `client.expose` narrowed to client data, since `state_change` deltas carry raw unexposed keys. Re-ran check-docs-page.mjs: ok.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 44948789313d, and the 5 Reference row(s) pass 6 moved.
@@ -53,6 +55,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 449
 No untrue claim found.
 
 - Post-loop edit (escalation): no new claims; the edit removes one (block and sequencer state) rather than settle it.
+
+- Post-review edit (Codex on #5226), checked against the code: `client.expose` narrowed to client data, since `state_change` deltas carry raw unexposed keys (`react/src/internal/mergeStateChangeIntoSnapshot.ts:8-14`); same correction as C-10.
 
 ## 6 · Depth pass
 

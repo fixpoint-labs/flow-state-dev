@@ -67,7 +67,7 @@ export function Conversation({ sessionId }: { sessionId: string }) {
 }
 ```
 
-`useSession` returns the session's items: messages, tool calls, status cards. While a request streams, the text of a message grows token by token. By default the hook follows only the requests this page sent. To see replies sent from somewhere else, such as another agent's tab, pass `useSession(sessionId, { live: true })`: each finished item from those requests joins `items` whole, a moment after it is saved.
+`useSession` returns the session's items: messages, tool calls, status cards. While a request streams, the text of a message grows token by token. By default the hook follows only the requests it sent itself, with `session.sendAction("reply", { text })`. A request sent through `useAction`, as `ReplyBox` does, is not one of them. Send it with `sendAction` to watch it stream, or pass `useSession(sessionId, { live: true })`: the hook then follows every request in the session, another agent's tab included, and each finished item joins `items` whole, a moment after it is saved.
 
 [Sessions, items and streaming](./sessions-items-and-streaming.md) covers items and the stream.
 
@@ -128,7 +128,7 @@ In `SupportPage`, add `renderers={{ component: { "order-card": OrderCard } }}` t
 
 ## What the browser never gets
 
-A field in session state that is not in `client.expose` is never readable on the page, mid-stream or after. Items the flow marks as not for the client, such as block traces and router decisions, are removed from the stream. The `userId` the page sends is caller input, not proof. When the server checks who is calling (see the [Client reference](../reference/client.md)), it ignores this `userId` and uses the request's credentials.
+A field in session state that is not in `client.expose` never appears in `useClientData` or the session snapshot. It is not a secret, though: while a request runs, a change to it can travel in the stream's state-change events, so keep secrets out of session state. Items the flow marks as not for the client, such as block traces and router decisions, are removed from the stream. The `userId` the page sends is caller input, not proof. When the server checks who is calling (see the [Client reference](../reference/client.md)), it ignores this `userId` and uses the request's credentials.
 
 ## Without React
 
@@ -157,7 +157,7 @@ export async function askSupport(userId: string, text: string) {
 ## What it gets you
 
 - **Types follow the flow.** `reply` with the wrong input fails to compile.
-- **A new field is private.** Add `refundLimit` to session state and it stays on the server until you name it in `expose`.
+- **A new field stays out of client data.** Add `refundLimit` to session state and `useClientData` returns nothing for it until you name it in `expose`.
 - **A dropped stream loses nothing.** Reopen a request's stream with `startingAfter` and the server sends what you missed; `useSession` and a session stream reconnect by themselves.
 - **Credentials live in one place.** Pass a `fetcher` that adds an `Authorization` header to `FlowProvider` (or `createClient`), and every call and stream carries it.
 
