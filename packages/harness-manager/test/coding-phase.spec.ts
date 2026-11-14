@@ -59,8 +59,18 @@ describe("a coding run with the kit's checks", () => {
   it("puts why the last attempt stopped in the next brief", async () => {
     loaded = {};
     const run = { ctx: { session: {} }, task: { goal: "Fix the build." }, answers: [], workspacePath: "/w", feedback: "`node check.mjs` exited 3." } as unknown as PromptRunContext;
-    expect(await phase.buildPrompt(run)).toContain("Why the last attempt stopped:\n\n`node check.mjs` exited 3.");
+    expect(await phase.buildPrompt(run)).toContain("# Why the last attempt stopped\n\n`node check.mjs` exited 3.");
     expect(await phase.buildPrompt({ ...run, feedback: undefined } as PromptRunContext)).not.toContain("Why the last attempt stopped");
+  });
+
+  it("names the checks in the brief, before the run has changed anything", async () => {
+    // The brief is built before the run, so the changed-files filter that skips the checks for a question must not hide them here.
+    loaded = {};
+    const run = { ctx: { session: {} }, task: { goal: "Fix the build." }, answers: [], workspacePath: "/w" } as unknown as PromptRunContext;
+    const prompt = await phase.buildPrompt(run);
+    expect(prompt).toContain("- `node check.mjs`");
+    expect(prompt).toMatch(/decide whether the task is done/);
+    expect(await codingPhase({}).buildPrompt(run)).not.toContain("# The checks");
   });
 });
 
@@ -68,21 +78,22 @@ describe("a coding run's brief", () => {
   const BODY = "You run coding tasks. Leave a haiku in the commit message.";
   const run = {
     ctx: { session: {} },
-    task: { title: "Add a line to the README", goal: "Add a line that says hi to README.md, and commit it." },
+    task: { title: "Add a line to the README", goal: "Add a line that says hi to README.md, and commit it.", context: "The README is in the root." },
     answers: [],
     workspacePath: "/w",
   } as unknown as PromptRunContext;
 
-  it("opens with the worker's instructions, before the task's goal", async () => {
+  it("carries the task and its context, then the worker's instructions", async () => {
     loaded = { instructions: BODY };
     const prompt = await codingPhase({}).buildPrompt(run);
-    expect(prompt).toContain(BODY);
-    expect(prompt.indexOf(BODY)).toBeLessThan(prompt.indexOf("Add a line that says hi to README.md"));
+    expect(prompt).toContain("The README is in the root.");
+    expect(prompt.indexOf("Add a line that says hi to README.md")).toBeLessThan(prompt.indexOf(BODY));
   });
 
-  it("is the task alone for a worker with no instructions", async () => {
+  it("asks a question to be answered and a change to be committed, then a report", async () => {
     loaded = {};
     const prompt = await codingPhase({}).buildPrompt(run);
-    expect(prompt.startsWith("Task: Add a line to the README")).toBe(true);
+    expect(prompt).toMatch(/If the task asks a question, read what you need, answer it in full, and change nothing/);
+    expect(prompt).toMatch(/# Your report/);
   });
 });

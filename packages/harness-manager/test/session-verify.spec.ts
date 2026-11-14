@@ -87,6 +87,44 @@ describe("a session's checks at the end of a turn", () => {
     expect(Date.now() - started).toBeLessThan(10_000);
   }, 30_000);
 
+  it("names its commands in the turn's prompt with `inBrief`, so the agent can run them first", async () => {
+    const prompts: string[] = [];
+    const capturing = () =>
+      handler({
+        name: "stub-harness",
+        inputSchema: z.object({ prompt: z.string() }),
+        execute: async (input: { prompt: string }) => {
+          prompts.push(input.prompt);
+          return { source: "stub/test", status: "completed", sessionId: null, url: null, dispatchedAt: 0, outcome: "failed", finalMessage: null };
+        },
+      }) as unknown as HarnessBlock;
+    const turn = async (sessionId: string, inBrief: boolean) => {
+      const stores = createInMemoryStores();
+      const now = Date.now();
+      await stores.session.set(
+        sessionId,
+        { id: sessionId, flowKind: "verify-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model" }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+        "any" as never,
+      );
+      await runAction({
+        flow: harnessSessionFlow({ kind: "verify-session", workspace, agent: capturing, verify: { commands: ["node green.mjs", "node red.mjs"], timeoutMs: 20_000, inBrief } }),
+        actionName: "turn",
+        input: { prompt: "change it" },
+        userId: "u",
+        orgId: DEFAULT_ORG_ID,
+        sessionId,
+        stores,
+        runtimeConfig: {},
+      } as never);
+      return prompts.at(-1);
+    };
+    const named = await turn("s-brief", true);
+    expect(named?.startsWith("change it")).toBe(true);
+    expect(named).toContain("- `node green.mjs`\n- `node red.mjs`");
+    expect(named).toMatch(/name each by its command, with its result/);
+    expect(await turn("s-no-brief", false)).toBe("change it");
+  });
+
   it("refuses a verify with no time budget when the flow is built", () => {
     expect(() =>
       harnessSessionFlow({ kind: "k", workspace, agent: agentEnding("finished"), verify: { commands: [], timeoutMs: 0 } }),

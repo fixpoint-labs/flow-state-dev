@@ -51,6 +51,7 @@ import {
 } from "@flow-state-dev/workforce";
 import { GIT_TIMEOUT_MS, run as exec, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
+import { codingBrief } from "../coding-brief";
 import { commandCheck, type CommandCheckCommands } from "../command-check";
 import { goalJudge } from "../goal-judge";
 import type { Harness } from "../harness";
@@ -112,28 +113,25 @@ async function runChangedFiles(run: CompletionRunContext): Promise<boolean> {
   }
 }
 
-/** A run's brief: the worker's instructions, the task, what was answered, and why the last attempt stopped. */
+/** A run's brief: harness-manager's coding brief with the worker's own instructions, and a question answered or a change committed. */
 const PHASE: PhaseSpec = {
   phase: "code",
   buildPrompt: (run) =>
-    [
-      workerConfigOf(run.ctx).instructions,
-      run.task.title === undefined ? undefined : `Task: ${run.task.title}`,
-      run.task.goal,
-      run.task.context,
-      ...run.answers.map((answered) => `You asked: ${answered.question}\nThe answer: ${answered.answer}`),
-      "Work in this directory only. If the task asks a question, read what you need, answer it in full, and change nothing. " +
-        "If it asks for a change, commit what you change with git, then say in one line what you did.",
-      run.feedback === undefined ? undefined : `Why the last attempt stopped:\n\n${run.feedback}`,
-    ]
-      .filter((line): line is string => typeof line === "string" && line !== "")
-      .join("\n\n"),
+    codingBrief(run, {
+      instructions: workerConfigOf(run.ctx).instructions as string | undefined,
+      terms: [
+        "Work in this directory only. If the task asks a question, read what you need, answer it in full, and change nothing. " +
+          "If it asks for a change, commit what you change with git.",
+      ],
+    }),
   isDone: (run) => run.stopReport === "finished",
 } as PhaseSpec;
 
 /**
  * The phase a coding run runs: done when the harness says it finished and, on
- * a run that changed files, the checks pass.
+ * a run that changed files, the checks pass. The brief names the checks too,
+ * from the same list: before the run there is no base to compare, so a
+ * question's brief names them as a change's does.
  *
  * @throws When `checks.timeoutMs` isn't a positive whole number.
  */
@@ -143,7 +141,7 @@ export function codingPhase(options: Pick<CoderFlowOptions, "checks" | "project"
   if (commands === undefined) return PHASE;
   const onChange: CommandCheckCommands<CompletionRunContext> = async (run) =>
     !(await runChangedFiles(run)) ? [] : typeof commands === "function" ? commands(run) : commands;
-  return commandCheck(PHASE, { commands: onChange, timeoutMs: options.checks?.timeoutMs ?? CHECKS_TIMEOUT_MS });
+  return commandCheck(PHASE, { commands: onChange, timeoutMs: options.checks?.timeoutMs ?? CHECKS_TIMEOUT_MS, inBrief: true });
 }
 
 /**

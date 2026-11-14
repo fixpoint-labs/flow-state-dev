@@ -29,7 +29,7 @@ import {
 } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { NETWORK_CALL_TIMEOUT_MS } from "./timeouts";
-import type { CompletionRunContext, PhaseDoneVerdict, PhaseSpec } from "./manager";
+import type { CompletionRunContext, PhaseDoneVerdict, PhaseSpec, PromptRunContext } from "./manager";
 
 /** One check's result, as it is recorded: the command, how it ended, and the end of its output. */
 export const commandCheckResultSchema = z.object({
@@ -58,6 +58,37 @@ export interface CommandCheckOptions<TContext = CompletionRunContext> {
   timeoutMs: number;
   /** Extra environment for the commands, laid over the host process's own. */
   env?: Record<string, string>;
+  /**
+   * Name the commands in the brief too: `commandCheck` adds a section to the
+   * phase's prompt, and `harnessSessionFlow` to each turn's, saying these run
+   * after the agent and asking it to run them first and report each with its
+   * result. Read from the same `commands`, so the brief names exactly what
+   * runs. A resolver is then also handed the prompt's context, before the run:
+   * for `commandCheck`, the run's context with no report, answer or base yet.
+   * Off by default: the prompt is the phase's own.
+   */
+  inBrief?: boolean;
+}
+
+/**
+ * The brief's section naming `commands`, or `undefined` for none. `decides`
+ * says a red one keeps the task from being done (`commandCheck`); without it
+ * the results are recorded for a person (`harnessSessionFlow`'s `verify`).
+ * @internal
+ */
+export function commandChecksBriefSection(commands: readonly string[], decides: boolean): string | undefined {
+  if (commands.length === 0) return undefined;
+  return [
+    "# The checks",
+    "",
+    decides
+      ? "When you finish, these commands run where you work, and they decide whether the task is done:"
+      : "When you finish, these commands run where you work, and their results are recorded as the check of your work:",
+    "",
+    ...commands.map((command) => `- \`${command}\``),
+    "",
+    "If you change code, run each of them first and fix what they show. In your report, name each by its command, with its result.",
+  ].join("\n");
 }
 
 /** Whether every check passed. An empty list passes. */
@@ -141,6 +172,18 @@ export function commandCheck(phase: PhaseSpec, options: CommandCheckOptions): Ph
   return {
     ...phase,
     doneTimeoutMs: own + options.timeoutMs,
+    ...(options.inBrief === true
+      ? {
+          buildPrompt: async (run: PromptRunContext): Promise<string> => {
+            const prompt = await phase.buildPrompt(run);
+            // Before the run: no report, answer or base yet, so a resolver that reads them names its whole list.
+            const context: CompletionRunContext = { ...run, stopReport: null, answer: null, baseCommit: null };
+            const commands = typeof options.commands === "function" ? await options.commands(context) : options.commands;
+            const section = commandChecksBriefSection(commands, true);
+            return section === undefined ? prompt : `${prompt}\n\n${section}`;
+          },
+        }
+      : {}),
     isDone: async (run: CompletionRunContext): Promise<PhaseDoneVerdict> => {
       const before = readVerdict(await phase.isDone(run));
       if (!before.done) return before;

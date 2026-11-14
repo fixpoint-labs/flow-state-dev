@@ -502,3 +502,36 @@ describe("the time a check gets", () => {
     expect(() => commandCheck({ phase: "p", buildPrompt: () => "", isDone: () => true }, { commands: [], timeoutMs: -1 })).toThrow(/timeoutMs/);
   });
 });
+
+describe("the checks in the run's brief", () => {
+  const phase = { phase: "p", buildPrompt: () => "Fix the build.", isDone: () => true } satisfies PhaseSpec;
+  const run = { ctx: { tag: "the run's ctx" }, task: { goal: "Fix the build." }, answers: [] } as never;
+
+  it("names every command that will decide done, in the prompt the run starts from", async () => {
+    const prompt = await commandCheck(phase, { commands: ["pnpm typecheck", "node check.mjs"], timeoutMs: 20_000, inBrief: true }).buildPrompt(run);
+    expect(prompt.startsWith("Fix the build.")).toBe(true);
+    const section = prompt.slice(prompt.indexOf("# The checks"));
+    expect(section).toContain("- `pnpm typecheck`\n- `node check.mjs`");
+    expect(section).toMatch(/decide whether the task is done/);
+    expect(section).toMatch(/name each by its command, with its result/);
+  });
+
+  it("reads the list from the same resolver the check runs, handed the run's context", async () => {
+    const seen: unknown[] = [];
+    const prompt = await commandCheck(phase, {
+      commands: (context) => {
+        seen.push((context as { ctx: unknown }).ctx);
+        return ["pnpm lint"];
+      },
+      timeoutMs: 20_000,
+      inBrief: true,
+    }).buildPrompt(run);
+    expect(prompt).toContain("- `pnpm lint`");
+    expect(seen).toEqual([{ tag: "the run's ctx" }]);
+  });
+
+  it("leaves the prompt as the phase built it when the option is off, or no command will run", async () => {
+    expect(await commandCheck(phase, { commands: ["pnpm lint"], timeoutMs: 20_000 }).buildPrompt(run)).toBe("Fix the build.");
+    expect(await commandCheck(phase, { commands: [], timeoutMs: 20_000, inBrief: true }).buildPrompt(run)).toBe("Fix the build.");
+  });
+});

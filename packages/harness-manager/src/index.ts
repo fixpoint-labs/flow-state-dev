@@ -126,6 +126,9 @@ export {
   type WaitedPullRequest,
 } from "./pull-request-wait";
 
+// ── A coding run's brief: the task, the app's parts, the report it owes ─────
+export { codingBrief, type CodingBriefParts } from "./coding-brief";
+
 // ── Checks: the project's commands, before a run is done ────────────────────
 export {
   commandCheck,
