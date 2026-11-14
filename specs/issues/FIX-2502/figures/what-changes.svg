@@ -1,0 +1,102 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. A grid of four apps by six parts of a coder's brief. Today, on the left: the Claude Code-style lab sends only the task's goal, with no instructions, context, conventions or checks; Teammates sends instructions, goal and context but no conventions or checks; Shift Manager sends everything but the checks, and its report rule reaches Claude Code only; Kitchen Sink sends the person's words and never names the checks it runs. After, on the right: every app has every part, from one harness-manager brief, with the check section fed by the same list the app runs; each app passes in only its own instructions, standing brief and conventions."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .has   { fill:var(--code-soft); stroke:var(--code); stroke-width:1; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .miss  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-c   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .c-ok  { fill:var(--code); }
+    .c-no  { fill:var(--gone); }
+    .c-app { fill:var(--accent); }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="headers">
+    <text class="t-h" x="200" y="30">TODAY · each app builds its own</text>
+    <text class="t-h" x="580" y="30">AFTER · one brief, app parts passed in</text>
+    <text class="t-lbl" x="200" y="56">CC-STYLE</text>
+    <text class="t-lbl" x="268" y="56">TEAMMATES</text>
+    <text class="t-lbl" x="336" y="56">SHIFT MGR</text>
+    <text class="t-lbl" x="404" y="56">K. SINK</text>
+    <text class="t-lbl" x="580" y="56">CC-STYLE</text>
+    <text class="t-lbl" x="648" y="56">TEAMMATES</text>
+    <text class="t-lbl" x="716" y="56">SHIFT MGR</text>
+    <text class="t-lbl" x="784" y="56">K. SINK</text>
+  </g>
+
+  <g id="row-labels">
+    <text class="t-row" x="16" y="86">Task goal and context</text>
+    <text class="t-row" x="16" y="126">Worker's instructions</text>
+    <text class="t-row" x="16" y="166">Conventions</text>
+    <text class="t-row" x="16" y="206">Where and how to work</text>
+    <text class="t-row" x="16" y="246">Report shape</text>
+    <text class="t-row" x="16" y="286">The checks, by command</text>
+  </g>
+
+  <g id="today">
+    <!-- goal and context -->
+    <rect class="miss" x="196" y="70" width="62" height="26" rx="3"/><text class="t-c c-no" x="204" y="87">goal only</text>
+    <rect class="has" x="264" y="70" width="62" height="26" rx="3"/><text class="t-c c-ok" x="272" y="87">yes</text>
+    <rect class="has" x="332" y="70" width="62" height="26" rx="3"/><text class="t-c c-ok" x="340" y="87">yes</text>
+    <rect class="has" x="400" y="70" width="62" height="26" rx="3"/><text class="t-c c-ok" x="408" y="87">the words</text>
+    <!-- instructions -->
+    <rect class="miss" x="196" y="110" width="62" height="26" rx="3"/><text class="t-c c-no" x="204" y="127">dropped</text>
+    <rect class="has" x="264" y="110" width="62" height="26" rx="3"/><text class="t-c c-ok" x="272" y="127">yes</text>
+    <rect class="has" x="332" y="110" width="62" height="26" rx="3"/><text class="t-c c-ok" x="340" y="127">yes</text>
+    <text class="t-c c-app" x="408" y="127">n/a</text>
+    <!-- conventions -->
+    <rect class="miss" x="196" y="150" width="62" height="26" rx="3"/><text class="t-c c-no" x="204" y="167">none</text>
+    <rect class="miss" x="264" y="150" width="62" height="26" rx="3"/><text class="t-c c-no" x="272" y="167">none</text>
+    <rect class="has" x="332" y="150" width="62" height="26" rx="3"/><text class="t-c c-ok" x="340" y="167">skills</text>
+    <text class="t-c c-app" x="408" y="167">n/a</text>
+    <!-- where -->
+    <rect class="has" x="196" y="190" width="62" height="26" rx="3"/><text class="t-c c-ok" x="204" y="207">yes</text>
+    <rect class="has" x="264" y="190" width="62" height="26" rx="3"/><text class="t-c c-ok" x="272" y="207">yes</text>
+    <rect class="has" x="332" y="190" width="62" height="26" rx="3"/><text class="t-c c-ok" x="340" y="207">yes</text>
+    <text class="t-c c-app" x="408" y="207">n/a</text>
+    <!-- report -->
+    <rect class="miss" x="196" y="230" width="62" height="26" rx="3"/><text class="t-c c-no" x="204" y="247">one line</text>
+    <rect class="miss" x="264" y="230" width="62" height="26" rx="3"/><text class="t-c c-no" x="272" y="247">one line</text>
+    <rect class="miss" x="332" y="230" width="62" height="26" rx="3"/><text class="t-c c-no" x="340" y="247">CC only</text>
+    <rect class="miss" x="400" y="230" width="62" height="26" rx="3"/><text class="t-c c-no" x="408" y="247">none</text>
+    <!-- checks -->
+    <rect class="miss" x="196" y="270" width="62" height="26" rx="3"/><text class="t-c c-no" x="204" y="287">never</text>
+    <rect class="miss" x="264" y="270" width="62" height="26" rx="3"/><text class="t-c c-no" x="272" y="287">never</text>
+    <rect class="miss" x="332" y="270" width="62" height="26" rx="3"/><text class="t-c c-no" x="340" y="287">never</text>
+    <rect class="miss" x="400" y="270" width="62" height="26" rx="3"/><text class="t-c c-no" x="408" y="287">never</text>
+  </g>
+
+  <g id="after">
+    <rect class="has" x="576" y="70" width="266" height="26" rx="3"/><text class="t-c c-ok" x="586" y="87">brief · the task (K. Sink: the words)</text>
+    <rect class="app" x="576" y="110" width="198" height="26" rx="3"/><text class="t-c c-app" x="586" y="127">app's part · WORKER.md body</text>
+    <text class="t-c c-app" x="788" y="127">n/a</text>
+    <rect class="app" x="576" y="150" width="198" height="26" rx="3"/><text class="t-c c-app" x="586" y="167">app's part, or a default</text>
+    <text class="t-c c-app" x="788" y="167">n/a</text>
+    <rect class="has" x="576" y="190" width="198" height="26" rx="3"/><text class="t-c c-ok" x="586" y="207">the brief</text>
+    <text class="t-c c-app" x="788" y="207">n/a</text>
+    <rect class="has" x="576" y="230" width="198" height="26" rx="3"/><text class="t-c c-ok" x="586" y="247">brief · what changed</text>
+    <rect class="has" x="780" y="230" width="62" height="26" rx="3"/><text class="t-c c-ok" x="786" y="247">checks part</text>
+    <rect class="has" x="576" y="270" width="266" height="26" rx="3"/><text class="t-c c-ok" x="586" y="287">check section · the list run after</text>
+  </g>
+
+  <g id="foot">
+    <line x1="16" y1="318" x2="924" y2="318" stroke="var(--rule)" stroke-width="1"/>
+    <rect class="has" x="16" y="334" width="14" height="12" rx="2"/><text class="t-s" x="38" y="344">from harness-manager</text>
+    <rect class="app" x="196" y="334" width="14" height="12" rx="2"/><text class="t-s" x="218" y="344">passed in by the app</text>
+    <rect class="miss" x="376" y="334" width="14" height="12" rx="2"/><text class="t-s" x="398" y="344">missing or partial today</text>
+    <text class="t-s" x="16" y="374">Kitchen Sink has no task or worker: a person types to the agent, so it gets the check section only.</text>
+  </g>
+</svg>
