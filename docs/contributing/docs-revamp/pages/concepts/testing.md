@@ -85,7 +85,7 @@ it("sends the cleaned message to the model", async () => {
 });
 ```
 
-A generator with no mock fails the run with an error naming it, so a test cannot reach a provider by accident. A mock keeps its place in the script for as long as it exists, so build a new one in each test or call `reset()`. Attaching a mock by model id is in the [reference](../reference/api/testing.md).
+A generator that names its model by id and has no mock fails the run with an error naming it, so a test cannot reach a provider by accident. A generator handed a model object directly skips the mocks and calls that model, so name models by id in code you test. A mock keeps its place in the script for as long as it exists, so build a new one in each test or call `reset()`. Attaching a mock by model id is in the [reference](../reference/api/testing.md).
 
 ## Testing one block
 

@@ -49,6 +49,8 @@ Skipped: C-22 is piloted in the sitemap, and the page was already at `workers.md
 
 - After the loop (review): the opening says every user has each worker, not a copy of it, since a copy exists only after an edit (`standard-workers.ts:1-12`); the figure description matches. The "same worker" sentence no longer promises every flow takes tasks: a flow takes them when it declares the `contributor` role (`worker-roles.ts:326`), as the built-in agent flow does (`agent-worker-flow.ts:1519`).
 
+- After the loop (review): the page says each delegate needs its own `WORKER.md`, since a standard worker's delegates must be standard workers (`installation.ts:402-408`).
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the page as it was kept, sha256 c55e20956f1a, and the 4 Reference row(s) pass 6 moved.
