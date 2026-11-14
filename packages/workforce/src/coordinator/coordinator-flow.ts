@@ -102,6 +102,7 @@ import {
   type BestFitPlacement
 } from "../best-fit";
 import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-flow";
+import { foldedRequestIds } from "../worker-default-layer";
 import { markUserTurn, userTurnStateSchema } from "../standing-rules/user-turn";
 import { STANDING_RULES_ACTION, standingRulesAction } from "../standing-rules/rules-action";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
@@ -887,16 +888,23 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * adds a second set; they are on a turn while one of its delegates takes a
    * task.
    */
-  /** `history` as the coordinator's turn reads it: each delegate's answer by its writer, each routed post as handled. */
-  const readAsCoordinator = (history: LLMMessage[], ctx: BlockContext) =>
-    coordinatorHistory(
+  /**
+   * `history` as the coordinator's turn reads it: each delegate's answer by its
+   * writer, each routed post as handled. Matched against the items of the turns
+   * the summary does not yet stand for, as `history` holds only those.
+   */
+  const readAsCoordinator = async (history: LLMMessage[], ctx: BlockContext) => {
+    const folded = await foldedRequestIds(ctx);
+    const items = [
+      ...ctx.session.items.all({ itemTypes: ["message"], itemVisibility: { client: true, history: true } }),
+      ...ctx.session.items.all({ itemTypes: ["component"] })
+    ];
+    return coordinatorHistory(
       history,
-      [
-        ...ctx.session.items.all({ itemTypes: ["message"], itemVisibility: { client: true, history: true } }),
-        ...ctx.session.items.all({ itemTypes: ["component"] })
-      ],
+      folded.size === 0 ? items : items.filter((item) => !folded.has(item.requestId)),
       turn.answerNames
     );
+  };
   const turn = agentWorkerTurn(
     { ...(options.agent ?? {}), installation },
     {

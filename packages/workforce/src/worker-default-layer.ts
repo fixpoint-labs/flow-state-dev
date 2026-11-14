@@ -212,6 +212,31 @@ function historySummarySection(
 }
 
 /**
+ * The turns this session's history summary already stands for, by request id:
+ * every turn up to its mark, less the ones it holds pending. Empty when
+ * nothing has been folded. A flow that matches its history's messages back to
+ * the session's items (the coordinator's) leaves these out, since the history
+ * no longer holds their messages: matched by text, a folded turn's item would
+ * take the place of a later one with the same words.
+ *
+ * Reads the session's `historySummary` resource, the default section's or an
+ * app's own of that name, and the session's turns when there is a mark.
+ */
+export async function foldedRequestIds(ctx: BlockContext): Promise<ReadonlySet<string>> {
+  const state = (ctx.resources as Record<string, { state?: unknown } | undefined>).historySummary?.state as
+    | { throughRequestId?: string | null; pending?: string[] }
+    | undefined;
+  const through = state?.throughRequestId ?? null;
+  if (through === null) return new Set();
+  const turns = await ctx.session.items.turns();
+  const at = turns.findIndex((turn) => turn.requestId === through);
+  // A mark the window no longer holds is older than every turn it does.
+  if (at === -1) return new Set();
+  const pending = new Set(state?.pending ?? []);
+  return new Set(turns.slice(0, at + 1).map((turn) => turn.requestId).filter((id) => !pending.has(id)));
+}
+
+/**
  * Whether the app brought its own history summary: a capability in the worker
  * flow's catalogue (its top-level static `uses`) that declares a resource on
  * core's `historySummaryStateSchema`. Matched on the schema, by reference, not

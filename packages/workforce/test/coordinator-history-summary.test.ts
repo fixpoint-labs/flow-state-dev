@@ -54,4 +54,44 @@ describe("a coordinator's history summary", () => {
     expect(last.some((m) => m.role === "user" && m.content === "file the cart badge [route:eng.em]")).toBe(false);
     expect(text(last)).toContain("Earlier: the cart badge was filed.");
   });
+
+  it("keeps a delegate's answer its own when the coordinator said the same words in a turn already folded", async () => {
+    // The EM's answer to the routed post, word for word; the desk says it first.
+    const same = "eng.em heard: alice, through desk: file it [route:eng.em]";
+    const judgment = mockGenerator({
+      script: [
+        { when: (input: unknown) => text((input as Sent[]).filter((m) => m.role === "user").at(-1)).includes("say it first"), then: { text: same } },
+        { when: () => true, then: { text: "That one is mine." } }
+      ]
+    });
+    const summary = mockGenerator({
+      name: "earlier-turns",
+      script: [{ when: () => true, then: { structuredOutput: { summary: "Earlier: small talk." } } }]
+    });
+    // A window of 40 folds 10 turns at a time, so a folded turn stays in the window for 9 more.
+    const host = bootHost({ judgment, summary, historyWindow: 40 });
+    const id = await host.conversation("alice", "desk");
+    const post = async (message: string) => {
+      const result = await host.act("alice", id, "respond", { message });
+      expect(result.error, messageOf(result.error)).toBeUndefined();
+      await quiet(host);
+    };
+    const folded = () => text(summary.calls.map((call) => call.input)).includes("say it first");
+
+    await post("say it first [route:desk] [conf:1]");
+    // Until the desk's reply is folded: its turn is behind the summary's mark, still in the window.
+    for (let n = 1; n <= 60 && !folded(); n++) await post(`who works here, ${n}? [route:desk] [conf:1]`);
+    expect(folded(), "the desk's reply was not folded").toBe(true);
+    await post("file it [route:eng.em]");
+    expect((await host.items(id)).messages.filter((m) => m.text === same).map((m) => m.agentName)).toEqual([
+      "coordinator-judgment",
+      "eng.em"
+    ]);
+    await post("who works here, last? [route:desk] [conf:1]");
+
+    // The turn reads the EM's answer as the EM's, not as a reply of its own.
+    const last = judgment.calls.at(-1)!.input as Sent[];
+    expect(last.some((m) => m.role === "assistant" && m.content === `eng.em, a delegate in this conversation, answered:\n${same}`)).toBe(true);
+    expect(last.some((m) => m.role === "assistant" && m.content === same)).toBe(false);
+  }, 30_000);
 });
