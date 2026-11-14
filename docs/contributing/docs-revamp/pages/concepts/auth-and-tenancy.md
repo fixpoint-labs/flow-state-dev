@@ -27,7 +27,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import { getSession } from "../../lib/session";
 import { reply } from "./blocks/reply";
 
-export const support = defineFlow({
+export const supportFlow = defineFlow({
   kind: "support",
   authentication: {
     requireUser: true,
@@ -40,6 +40,8 @@ export const support = defineFlow({
   },
   actions: { reply: { block: reply, description: "Answer a customer message." } },
 });
+
+export default supportFlow();
 ```
 
 `getSession` is your own helper in `src/lib/session.ts`. It reads your cookie and returns the signed-in user, or `null`. `reply` is a block, the unit of work the action runs, in `src/flows/support/blocks/reply.ts`. `request` exists only when the caller came over HTTP, so this resolver accepts HTTP callers only. [Serving flows](./serving-flows.md) covers the other ways in. When the resolver returns `null`, the framework answers 401.
