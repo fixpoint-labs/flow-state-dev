@@ -45,6 +45,8 @@ Skipped: C-21 is piloted in the sitemap, and the page was already at `tasks-and-
 - After the loop: the pass-4 type-check result is a framework typing bug, not a page error. Under `strict` (strictFunctionTypes), a handler with an `outputSchema` does not go into `workers`: `config.onCompleted` takes the typed output, and `TaskAssignee<unknown, unknown>` expects `unknown` there. Reproduced outside the repo; with `--strictFunctionTypes false` it compiles. The page's own blocks return `unknown`, so its examples avoid it. Reported for an issue; the page is left as is.
 - Closed after the loop: the three pass-9 misses (making the list survive; `initialTasks` on a second drain; user versus session scope).
 
+- After the loop: the figure caption is "A board is a list and a loop, the list on a resource", within the brand lint's 60 characters.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the page as it was kept, sha256 f245f9f429cd, and the 4 Reference row(s) pass 6 moved.
