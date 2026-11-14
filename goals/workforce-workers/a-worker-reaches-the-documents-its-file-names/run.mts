@@ -19,10 +19,9 @@
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { createWorkerInstallation, hireWorkforce, resourcesFromDocs } from "@flow-state-dev/workforce";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { workerFlow } from "@flow-state-dev/workforce";
 import { join } from "node:path";
-import { fixtureDir, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { fixtureDir, installWorkers, loadFixture, readTree, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { DESK_FLOW, buildDesk } from "./fixtures/flows";
 
 type SeatFixture = { id: string; reaches: string[]; writes: string[] };
@@ -51,34 +50,27 @@ const same = (a: readonly string[], b: readonly string[]): boolean => JSON.strin
 const documentsIn = (uris: readonly string[]): string[] =>
   sorted(uris.filter((u) => fixture.documents.some((ref) => uri(ref) === u)).map((u) => u.slice("org/".length)));
 
-/** Build the installation and its copies over `root`, as an app does at boot. */
+/** What the kit reads of `root`, and the copies it serves over it, as an app's start does. */
 async function boot(root: string) {
-  const declared = await readDeclaredRoster(root);
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({
-    standardWorkers: declared.workers,
-    workerFlows: () => flows as never,
-    documents: resourcesFromDocs(declared.documents),
+  const declared = await readTree(root);
+  const { copies } = await installWorkers(root, {
+    [DESK_FLOW]: workerFlow((installation) => buildDesk(installation, { withoutRule: CONTROL === "no-visibility-rule" })),
   });
-  flows = { [DESK_FLOW]: buildDesk(installation, { withoutRule: CONTROL === "no-visibility-rule" }) };
-  return { declared, installation, copies: () => hireWorkforce(installation) };
+  return { declared, copies };
 }
 
 await runGoal(async (failures) => {
   const evidence: string[] = [];
 
-  // ---- (a) the real loader reads the tree; one copy of the flow runs every worker
-  const { declared, copies: register } = await boot(tree("workforce"));
-  if (declared.problems.length > 0) {
-    failures.push(`the loader reported ${declared.problems.length} problem(s): ${JSON.stringify(declared.problems.map((p) => `${p.layer} ${p.path}: ${p.error.message}`))}`);
-  }
+  // ---- (a) the workforce kit reads the tree; one copy of the flow runs every worker
+  // A file the kit can't read refuses here, as it stops an app's start.
+  const { declared, copies } = await boot(tree("workforce"));
   if (!same(declared.workers.map((w) => w.id), workers.map((w) => w.id))) {
     failures.push(`the tree produced workers ${JSON.stringify(declared.workers.map((w) => w.id))}, wanted ${JSON.stringify(workers.map((w) => w.id))}`);
   }
   if (!same(declared.documents.map((d) => d.ref), fixture.documents)) {
     failures.push(`the tree produced documents ${JSON.stringify(declared.documents.map((d) => d.ref))}, wanted ${JSON.stringify(fixture.documents)}`);
   }
-  const copies = register();
   const desks = copies.filter((copy) => copy.kind === DESK_FLOW);
   if (desks.length !== 1 || desks[0]!.id !== DESK_FLOW) {
     failures.push(`${desks.length} copies of "${DESK_FLOW}" registered (${desks.map((c) => c.id).join(", ")}), wanted one, at its kind`);
@@ -212,11 +204,10 @@ await runGoal(async (failures) => {
   }
 
   // ---- (f) a file granting a ref no document matches registers nothing ----
-  const typo = await boot(tree(fixture.control.dir));
   let refusal = "";
   let registered = -1;
   try {
-    registered = typo.copies().length;
+    registered = (await boot(tree(fixture.control.dir))).copies.length;
   } catch (error) {
     refusal = error instanceof Error ? error.message : String(error);
   }
