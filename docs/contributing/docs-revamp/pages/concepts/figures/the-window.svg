@@ -54,7 +54,7 @@
 <rect fill="url(#hatch)" x="266" y="438" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="266" y="438" width="26" height="11"/>
 <text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="300" y="448">OUTLIVES THE REQUEST</text>
 <rect class="hl" fill="#e8f551" x="482" y="438" width="26" height="11"/>
-<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="516" y="448">STAYS ON THE SERVER</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="516" y="448">NOT IN CLIENT DATA</text>
 <line class="ln x" fill="none" stroke="#a83e28" stroke-width="1.3" x1="690" y1="444" x2="716" y2="444"/>
 <text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="724" y="448">NOT EXPOSED</text>
 </g>

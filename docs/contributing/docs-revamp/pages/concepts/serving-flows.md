@@ -41,7 +41,7 @@ Keep this file apart from your route handler. The route imports it, and the `fsd
 
 Every flow gets HTTP routes under `/api/flows`, with the flow's id next: `/api/flows/support/...`. Calling `reply` is a `POST` to `/api/flows/support/actions/reply`. [HTTP API](../reference/http-api.md) has the responses and the rest of the routes.
 
-Who may call them is set by `authentication` on the flow. A flow with none is for development only. [Authentication](../reference/authentication.md) covers what to set before you expose a flow.
+Who may call them is decided by a principal resolver, `authentication.resolvePrincipal` on the flow or `resolvePrincipal` on the app, which turns a request's credentials into the caller. With no resolver, a call takes its `userId` from the request body, which is for local development only. [Authentication](../reference/authentication.md) covers what to set before you expose a flow.
 
 ## Where it runs
 
@@ -54,7 +54,7 @@ import flowstate from "../fsdev.config";
 await serve(flowstate);
 ```
 
-`serve` starts a long-lived server for the app. `fsdev serve` does the same from the terminal, using `fsdev.config.ts`. [Runtime options](../reference/runtime.md) has the port, health check and shutdown behaviour.
+`serve` starts a long-lived server for the app. It binds every network interface and does not check that your flows have a resolver. `fsdev serve` does the same from the terminal, using `fsdev.config.ts`, and refuses to bind a network address while a flow has none; with `serve`, pass `host: "127.0.0.1"` until one is set. [Runtime options](../reference/runtime.md) has the port, health check and shutdown behaviour.
 
 ## Other ways in
 
@@ -93,7 +93,7 @@ The flow holds routing and no secret. The app declares how to verify a delivery,
 
 A delivery with a bad signature is refused with `401` and nothing runs. A verified one is answered `202` at once and the block runs after the response, so a `202` does not mean `recordPayment` has finished. An event type with no binding is also answered `202` and ignored.
 
-With no `sessionId` on the binding, each event runs in its own fresh session. Derive one from the payload, as in ``sessionId: (e) => `customer-${e.payload.data.object.customer}` ``, and one customer's invoices share a session while another customer gets a separate one. No end user is involved, so the run uses the principal the flow's `authentication` names: here `defaultUserId: "system"` with `requireUser: false`. See [Webhooks](../reference/webhooks.md) and the [Stripe recipe](../build/webhooks/stripe.md).
+With no `sessionId` on the binding, each event runs in its own fresh session. Derive one from the payload, as in ``sessionId: (e) => `customer-${e.payload.data.object.customer}` ``, and one customer's invoices share a session while another customer gets a separate one. No end user is involved, so the run uses `defaultUserId: "system"`, with `requireUser: false`. Those two fields name the user the run acts as; they do not authenticate anyone. `verify` guards the webhook route; the app's other routes need a resolver. See [Webhooks](../reference/webhooks.md) and the [Stripe recipe](../build/webhooks/stripe.md).
 
 **A schedule.** A schedule is a name and a cron string on the flow, with the block to run. Flow State does not own the clock. Your scheduler, such as Vercel Cron or EventBridge, calls a URL the schedule adapter serves for that schedule when the time comes, and the adapter runs the block. It is not an action call either. See [Schedules](../reference/schedules.md).
 

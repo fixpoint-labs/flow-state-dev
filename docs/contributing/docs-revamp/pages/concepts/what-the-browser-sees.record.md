@@ -45,6 +45,8 @@ Written by `docs-writer` (sonnet), 774 words. Scenario: The support desk: flow `
 
 - Post-review edit (Codex on #5226): a request sent through `useAction` is not followed by a default `useSession`. Re-ran check-docs-page.mjs: ok.
 
+- Post-review edit (Cursor security review on #5226): line 76, the figure description and the figure's key label (`STAYS ON THE SERVER` → `NOT IN CLIENT DATA`) now describe client data, not the stream. Re-ran check-docs-page.mjs and lint-brand: ok.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 d5d188aec271, and the 11 Reference row(s) pass 6 moved.

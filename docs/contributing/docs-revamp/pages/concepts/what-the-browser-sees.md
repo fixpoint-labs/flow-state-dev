@@ -15,7 +15,7 @@ A flow is a self-contained system on the server, with actions you call and state
 
 The example on this page is a support desk: a flow called `support` with an action called `reply`.
 
-<Figure svg={TheWindow} caption="The page sees the support session through three openings" description={"Two columns with a wall between them. On the left, the page, with four boxes: useAction for reply, useSession for items as they arrive, useClientData asking for ticketStatus, and useClientData asking for internalNotes. On the right, the server's session for support, drawn hatched because it outlives the request, with four boxes: the reply action, the items, ticketStatus named in client.expose, and internalNotes, which is highlighted because it stays on the server. The wall is labelled the client and has three openings. Three arrows from the page cross them, labelled calls, follows and reads, and reach reply, items and ticketStatus. A fourth, red arrow from the page toward internalNotes is labelled not exposed and ends in a bar at the wall, so it never arrives."} />
+<Figure svg={TheWindow} caption="The page sees the support session through three openings" description={"Two columns with a wall between them. On the left, the page, with four boxes: useAction for reply, useSession for items as they arrive, useClientData asking for ticketStatus, and useClientData asking for internalNotes. On the right, the server's session for support, drawn hatched because it outlives the request, with four boxes: the reply action, the items, ticketStatus named in client.expose, and internalNotes, which is highlighted because client data never holds it. The wall is labelled the client and has three openings. Three arrows from the page cross them, labelled calls, follows and reads, and reach reply, items and ticketStatus. A fourth, red arrow from the page toward internalNotes is labelled not exposed and ends in a bar at the wall, so useClientData never returns it."} />
 
 ## Wrapping the app
 
@@ -73,7 +73,7 @@ export function Conversation({ sessionId }: { sessionId: string }) {
 
 ## Reading what the flow exposes
 
-Session state stays on the server unless the flow names a field in `client.expose`.
+Session state reaches client data only when the flow names a field in `client.expose`.
 
 ```ts title="src/flows/support/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";

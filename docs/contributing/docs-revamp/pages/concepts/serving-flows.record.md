@@ -35,6 +35,8 @@ Written by `docs-writer` (sonnet), 802 words. Scenario: The support desk: `suppo
 
 - Post-review edit (Codex on #5226): Stripe example reads the invoice from `e.payload.data.object`. Re-ran check-docs-page.mjs: ok.
 
+- Post-review edit (Cursor security review on #5226): authentication now names the principal resolver and the body-`userId` fallback; `serve` is said to bind all interfaces with no resolver check (`fsdev serve` refuses; `host: "127.0.0.1"` keeps it local); `defaultUserId`/`requireUser` are said to name the run's user, not authenticate. This is the fact sheet's own [flag] at line 217. Re-ran check-docs-page.mjs: ok.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 f5ce608c1959, and the 9 Reference row(s) pass 6 moved.
@@ -42,6 +44,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 f5c
 - Reference row 2: Page: "It answers `202 Accepted` with a request id, runs the action, and streams the result back as server-sent events." (same claim in Row 2: response 202 with request id, result streamed as SSE) Untrue: The POST answers one of two ways. With `Accept: text/event-stream` the POST response is itself the SSE stream (no 202). Otherwise it returns `202` with a JSON body (`status: in_progress`, `request.id`, `x-request-id`), and the caller follows the request through a separate GET stream. The 202 does not carry the result stream. (/home/user/flow-state-dev/packages/engine/src/routes/action-routes.ts:327-345 (inline SSE when Accept includes text/event-stream) and :347-366 (202 JSON accepted body; live stream closed because 'the caller follows the request through its GET stream')) The row is recorded corrected.
 
 - Post-review edit (Codex on #5226), checked against the code: Stripe example reads the invoice from `e.payload.data.object` (the payload is the whole Stripe event, `engine/src/transports/webhook/routes.ts:74-78`; matches `apps/docs/docs/server/webhooks.md:94-95`).
+
+- Post-review edit, checked: `flowAuthenticates` needs a non-default `resolvePrincipal` (`engine/src/routes/instance-caller.ts:91-95`); `serve` defaults to host `0.0.0.0` (`node/src/serve.ts:54-55`); the bind guard runs only in `fsdev serve`/`fsdev dev` (`fsdev/src/commands/serve.ts:109`, `dev.ts:371`).
 
 ## 6 · Depth pass
 
