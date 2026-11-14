@@ -1,5 +1,21 @@
 # @flow-state-dev/node
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [819c2a5]
+- Updated dependencies [4394069]
+- Updated dependencies [1600ca1]
+- Updated dependencies [c049036]
+- Updated dependencies [74a7b9d]
+- Updated dependencies [3ef3979]
+- Updated dependencies [c82adfa]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [95f3cce]
+- Updated dependencies [0454257]
+  - @flow-state-dev/engine@0.6.0
+
 ## 0.3.0
 
 ### Minor Changes

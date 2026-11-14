@@ -1,5 +1,51 @@
 # @flow-state-dev/patterns
 
+## 0.3.0
+
+### Minor Changes
+
+- 7a2bb7e: **Breaking:** the benchmark adapters move to a new subpath, `@flow-state-dev/patterns/benchmark`: `defaultBenchmarkRegistry`, `sharedDefaultWorker`, `supervisorBenchmarkAdapter`, `planAndExecuteBenchmarkAdapter`, `parallelTasksBenchmarkAdapter`, `roundRobinBenchmarkAdapter`, `debateBenchmarkAdapter` and `routedSpecialistsBenchmarkAdapter` are no longer on the root, with no alias; change the import to `from "@flow-state-dev/patterns/benchmark"`. Its types come from `@flow-state-dev/testing/benchmark`, so patterns lists `@flow-state-dev/testing` as an optional peer dependency: install it when you import `patterns/benchmark` (FIX-2460).
+
+  Docs: packages/patterns/README.md (the benchmark section imports from `@flow-state-dev/patterns/benchmark` and names the optional `@flow-state-dev/testing` peer), apps/docs/docs/testing/benchmarks.md (its two `import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns"` blocks become `from "@flow-state-dev/patterns/benchmark"`), apps/docs/guides/choosing-patterns-with-benchmarks.md (the same, in its one import block), apps/docs/docs/api/benchmarks.md (the registry's home is `@flow-state-dev/patterns/benchmark`), apps/docs/docs/api/package-roots.md (add `patterns/benchmark` to the subpaths in patterns' row)
+
+- 670c07a: **Breaking:** two subpaths are renamed to kebab-case, matching the others: import from `@flow-state-dev/patterns/routed-specialists` (was `/routedSpecialists`) and `@flow-state-dev/patterns/event-actors` (was `/eventActors`). The root also stops re-exporting the names no app or docs page imported from it; each keeps its home on its pattern's subpath. From `@flow-state-dev/patterns/response-auditor`: `responseAuditor` and all its schemas, types and helpers. From `/plan-and-execute`: `evaluatorVerdictSchema` and `EvaluatorVerdict`. From `/routed-specialists`: `createDispatchSpecialist`, `createCheckLoop`, `routedSpecialistsControlSchema`, `RoutedSpecialistsControlState`, `ControllerOutput`. From `/event-actors`: `createEventActorsWorkspaceResource`, `eventActorsWorkspaceStateSchema`, `EventActorsWorkspaceState`. From `/round-robin`: `roundRobinContributionsStateSchema` and the `RoundRobinState`, `RoundRobinContributionEntry`, `RoundRobinContributionsState`, `RoundRobinRefereeOutput`, `RoundRobinRefereeCritique`, `RoundRobinFinalShape` types. From `/debate`, under their subpath names: `createJudge`, `createSynthesize`, `createInitTranscript`, `createRecordArgument`, `formatTranscriptForJudge` (were the root's `createDebateJudge`, `createDebateSynthesize`, `createDebateInitTranscript`, `createDebateRecordArgument`, `formatDebateTranscriptForJudge`) and the `DebateState`, `DebateContributionEntry`, `DebateVerdict`, `DebateTranscriptState`, `DebateRawOutput` types. There are no deprecated aliases: an old import fails to compile (FIX-2459).
+
+  Docs: packages/patterns/README.md, apps/docs/docs/patterns/event-actors.md, apps/docs/docs/patterns/routed-specialists.md (import from `/event-actors` and `/routed-specialists`; in the patterns README, replace the Task Board section's copy of the `taskBoard` docs with a link to the task-board docs page)
+
+### Patch Changes
+
+- Updated dependencies [2cb6326]
+- Updated dependencies [9dde49f]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [78daf33]
+- Updated dependencies [4394069]
+- Updated dependencies [1600ca1]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [80175df]
+- Updated dependencies [b9bb900]
+- Updated dependencies [fabd6a7]
+- Updated dependencies [6407fbf]
+- Updated dependencies [c82adfa]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [3e7d5f3]
+- Updated dependencies [5ce9228]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [298aae0]
+- Updated dependencies [13e3970]
+- Updated dependencies [bb95ce1]
+  - @flow-state-dev/orchestration@0.7.0
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/testing@0.4.0
+
 ## 0.2.2
 
 ### Patch Changes

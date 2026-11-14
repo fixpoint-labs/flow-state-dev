@@ -1,5 +1,36 @@
 # @flow-state-dev/vercel
 
+## 0.3.0
+
+### Minor Changes
+
+- 0454257: **Breaking:** `vercelPostgresStores()` no longer lists `scheduler` in its `capabilities`, which are now `["primary", "bus"]` (FIX-2452). The `scheduler` profile slot is gone from engine; the adapter's `scheduleIndex` is unchanged and is still how scheduled flows reach the index. A profile that wired this adapter into `scheduler:` fails to compile: delete that line.
+
+  Docs: FIX-2452. packages/vercel/README.md: drop `scheduler` from the adapter's capabilities and any `scheduler:` profile line; show `stores: vercelPostgresStores()` as the bare form.
+
+### Patch Changes
+
+- 3ef3979: **Breaking:** package scaffolding leaves the roots, and names another package declares are re-exported, not copied (FIX-2449). No deprecated aliases.
+
+  - **react:** `reactPackageMarker`, `coreItemImportProof`, `CoreItemImportProof` and `CoreTypeImportProof` are removed. `RosterWorker` is no longer exported from `@flow-state-dev/react/workforce`; workforce's type of that name is unchanged. `FlowCardinality` is now core's type, re-exported, with the same two values.
+  - **testing:** `testingPackageMarker` is removed.
+  - **vercel:** `FlowApiRouter` is now engine's type, re-exported; its shape is unchanged.
+
+- Updated dependencies [819c2a5]
+- Updated dependencies [4394069]
+- Updated dependencies [1600ca1]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [74a7b9d]
+- Updated dependencies [3ef3979]
+- Updated dependencies [c82adfa]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [95f3cce]
+- Updated dependencies [0454257]
+  - @flow-state-dev/engine@0.6.0
+  - @flow-state-dev/scheduled@0.4.0
+  - @flow-state-dev/store-postgres@0.5.0
+
 ## 0.2.2
 
 ### Patch Changes
