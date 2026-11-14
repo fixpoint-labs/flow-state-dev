@@ -179,18 +179,58 @@ function mixedRosterDrift(): string[] {
  * Read statically off the harness source, because a runtime report could only
  * say what the harness chose to say. A kit handed a worker flow would prove
  * nothing about the built-in, which is the whole subject.
+ *
+ * The install sits behind the harness's `installWorkers` wrapper, so the scan
+ * reads inside it too: the kit's own call and every slot the harness fills.
+ * Checking only the wrapper's call sites would miss a replacement `agent`
+ * added inside it.
  */
-function installationNamesNoFlows(): string[] {
-  const source = readFileSync(new URL("./harness.mts", import.meta.url), "utf8");
+function installationNamesNoFlows(source: string): string[] {
+  const failures: string[] = [];
   const installs = callArguments(source, "installWorkers");
   if (installs.length === 0) {
     return ["the harness never installs the workforce kit — the check is not driving the subject"];
   }
   // The folder is the install's one argument: a second (worker flows) or a third (config) can carry a flow.
   const withArgs = installs.filter((args) => hasSecondArgument(args));
-  return withArgs.length === 0
-    ? []
-    : [`the harness hands the workforce kit more than its folder (${withArgs.join(" | ")}) — anything beyond the folder can carry a worker flow`];
+  if (withArgs.length > 0) {
+    failures.push(`the harness hands the workforce kit more than its folder (${withArgs.join(" | ")}) — anything beyond the folder can carry a worker flow`);
+  }
+  // Inside the wrapper: the kit's config is the folder alone — `generated` can carry worker flows.
+  const kits = callArguments(source, "workforce");
+  if (kits.length === 0) {
+    failures.push("the harness never calls the workforce kit — the check is not reading the install");
+  }
+  const configured = kits.filter((args) => args !== "{ directory }");
+  if (configured.length > 0) {
+    failures.push(`the workforce kit is configured beyond its folder (${configured.join(" | ")}) — its config can carry a worker flow`);
+  }
+  // And the only slot filled is `flows`, which reads the installation back: `workerFlows` replaces a kind.
+  const slots = [...source.matchAll(/\bslots\.(\w+)/g)].map((m) => m[1]!).filter((name) => name !== "flows");
+  if (slots.length > 0) {
+    failures.push(`the harness fills the workforce kit's ${[...new Set(slots)].join(", ")} slot — a worker flow there replaces the built-in`);
+  }
+  return failures;
+}
+
+/**
+ * The leg 0 scan, run against harness sources that hand the kit a replacement
+ * `agent` by each route past the wrapper's call sites. Each must be refused;
+ * one that passes means the scan stopped covering what it claims.
+ */
+function scanMissesReplacementAgents(source: string): string[] {
+  const fill = "fill: { [workforce.slots.flows]";
+  const kit = "workforce({ directory })";
+  const routes: Array<[string, string]> = [
+    ["a workerFlows fill inside the wrapper", source.replace(fill, "fill: { [workforce.slots.workerFlows]: { agent: replacement }, [workforce.slots.flows]")],
+    ["a generated workerFlows config on the kit", source.replace(kit, "workforce({ directory, generated: { workerFlows: { agent: replacement } } })")],
+  ];
+  const failures: string[] = [];
+  for (const [route, mutated] of routes) {
+    if (mutated === source) failures.push(`leg 0 self-test: the harness no longer has the install shape to plant ${route} in — update the self-test`);
+    else if (installationNamesNoFlows(mutated).length === 0) failures.push(`leg 0 self-test: the scan passed a harness with ${route}`);
+  }
+  return failures;
 }
 
 /** The source inside each `name(...)` call, up to its matching parenthesis, whitespace collapsed. */
@@ -230,7 +270,13 @@ await runGoal((failures) => {
   const evidence: string[] = [];
 
   // ---- leg 0 -------------------------------------------------------------
-  failures.push(...fixtureDrift(), ...mixedRosterDrift(), ...installationNamesNoFlows());
+  const harnessSource = readFileSync(new URL("./harness.mts", import.meta.url), "utf8");
+  failures.push(
+    ...fixtureDrift(),
+    ...mixedRosterDrift(),
+    ...installationNamesNoFlows(harnessSource),
+    ...scanMissesReplacementAgents(harnessSource),
+  );
   if (failures.length > 0) {
     return { failures, evidence: "stopped at leg 0 — no model call was spent" };
   }
