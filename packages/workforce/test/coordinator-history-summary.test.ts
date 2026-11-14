@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { mockGenerator } from "@flow-state-dev/testing";
-import { bootHost, messageOf, quiet } from "./coordinator-harness";
+import { bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
 
 type Sent = { role: string; content: unknown };
 const text = (messages: unknown) => JSON.stringify(messages);
@@ -93,5 +93,39 @@ describe("a coordinator's history summary", () => {
     const last = judgment.calls.at(-1)!.input as Sent[];
     expect(last.some((m) => m.role === "assistant" && m.content === `eng.em, a delegate in this conversation, answered:\n${same}`)).toBe(true);
     expect(last.some((m) => m.role === "assistant" && m.content === same)).toBe(false);
+  }, 30_000);
+
+  it("reads the whole window as written again once the coordinator turns its summary off after a fold", async () => {
+    const judgment = mockGenerator({ script: [{ when: () => true, then: { text: "That one is mine." } }] });
+    const summary = mockGenerator({
+      name: "earlier-turns",
+      script: [{ when: () => true, then: { structuredOutput: { summary: "Earlier: the cart badge was filed." } } }]
+    });
+    const standard = standardWorkers();
+    const desk = standard.find((worker) => worker.id === "desk")!;
+    // A window of 40 folds 10 turns at a time, so a folded turn stays in the window for 9 more.
+    const host = bootHost({ standard, judgment, summary, historyWindow: 40 });
+    const id = await host.conversation("alice", "desk");
+    const post = async (message: string) => {
+      const result = await host.act("alice", id, "respond", { message });
+      expect(result.error, messageOf(result.error)).toBeUndefined();
+      await quiet(host);
+    };
+    const folded = () => text(summary.calls.map((call) => call.input)).includes("file the cart badge");
+
+    await post("file the cart badge [route:eng.em]");
+    const answer = (await host.items(id)).messages.find((m) => m.agentName === "eng.em")?.text ?? "";
+    for (let n = 1; n <= 60 && !folded(); n++) await post(`who works here, ${n}? [route:desk] [conf:1]`);
+    expect(folded(), "the routed post was not folded").toBe(true);
+
+    // The desk's file turns the summary off: the whole window is read again, the folded turns in it included.
+    desk.declared = { ...desk.declared, defaults: { historySummary: false } };
+    await post("who works here, last? [route:desk] [conf:1]");
+
+    const last = judgment.calls.at(-1)!.input as Sent[];
+    expect(text(last)).not.toContain("Earlier: the cart badge was filed.");
+    expect(last.some((m) => m.role === "user" && m.content === "file the cart badge [route:eng.em]")).toBe(true);
+    expect(last.some((m) => m.role === "assistant" && m.content === `eng.em, a delegate in this conversation, answered:\n${answer}`)).toBe(true);
+    expect(last.some((m) => m.role === "assistant" && String(m.content).startsWith("Handed this message to eng.em"))).toBe(true);
   }, 30_000);
 });

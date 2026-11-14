@@ -891,11 +891,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   /**
    * `history` as the coordinator's turn reads it: each delegate's answer by its
    * writer, each routed post as handled. Matched against the items of the turns
-   * the summary does not yet stand for, as `history` holds only those; a fold
-   * also keeps the pending turns it still folds.
+   * the summary does not yet stand for, as `history` holds only those while
+   * the summary is on (the turn's own reader); a fold also keeps the pending
+   * turns it still folds.
    */
   const readAsCoordinator = async (history: LLMMessage[], ctx: BlockContext, keepPending = false) => {
-    const folded = await foldedRequestIds(ctx, { keepPending });
+    const folded = turn.historySummarized(ctx) ? await foldedRequestIds(ctx, { keepPending }) : new Set<string>();
     const items = [
       ...ctx.session.items.all({ itemTypes: ["message"], itemVisibility: { client: true, history: true } }),
       ...ctx.session.items.all({ itemTypes: ["component"] })

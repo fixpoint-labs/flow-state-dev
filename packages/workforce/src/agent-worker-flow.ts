@@ -1102,15 +1102,24 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // The default layer's sections after the worker's text (FIX-2498): the
   // skills line, printed only beside the library's own listing, and the date;
   // and the history summary (FIX-2500), unless the app brought its own.
+  const appSummary = bringsHistorySummary(workerCapabilityCatalog);
   const defaultLayer = workerDefaultLayer({
     configOf: (ctx) => turnConfig(ctx),
     loaderOn: activateToolOn,
     skillsListing: buildLoadCatalogContext({ collectionKey: SKILLS_COLLECTION, initialSkills: workerCatalog }),
     modelOf: (ctx) => turnConfig(ctx).model,
     ...(share.readFoldedTurns !== undefined ? { readFoldedTurns: share.readFoldedTurns } : {}),
-    hasAppHistorySummary: bringsHistorySummary(workerCapabilityCatalog)
+    hasAppHistorySummary: appSummary
   });
   const summary = defaultLayer.historySummary;
+  /**
+   * Whether this turn's history starts after a summary's mark: the default
+   * summary's own reader, or always, for a summary the app brought (its
+   * capability is static). A flow that matches its history back to the
+   * session's items reads this, so it leaves folded turns out only when the
+   * history did.
+   */
+  const historySummarized = (ctx: BlockContext): boolean => (summary !== undefined ? summary.on(ctx) : appSummary);
   // What the answer declares: the catalog's resources, and the summary's.
   const answerResources =
     summary === undefined ? catalogResources : { ...(catalogResources ?? {}), ...summary.resources };
@@ -1450,7 +1459,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     return problems.length > 0 ? problems.join(" ") : undefined;
   };
 
-  return { options, settings, inputSchema, run, bound, mintProblems, answerNames, board };
+  return { options, settings, inputSchema, run, bound, mintProblems, answerNames, board, historySummarized };
 }
 
 /** What a flow on an installation declares to run the agent's turn. */
