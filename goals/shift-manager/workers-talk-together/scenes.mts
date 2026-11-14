@@ -245,7 +245,8 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
   // Helper A's file tells it to answer a worker's question by message; a task's question is answered by
   // updateTask, so Alice gives it a standing rule first, through its own rules tool.
   const rule = await talkThrough(world, "e", HELPER_A, helperA, `Save this as a standing rule with rules_add, word for word: "When a task I filed asks me a question, I answer it only with updateTask (the task's id, the question's id as answers, the answer as message), never with sendMessage."`);
-  const saved = (await alice.routes.items(helperA.id, "tool_output")).some((i) => i.requestId === rule.requestId && /^rules[_/]add$/.test(String(i.toolCall?.name)));
+  // Saved only when the write's line shows: a refused rules/add is still a call.
+  const saved = (await linesIn(alice, helperA.id)).some((l) => l.requestId === rule.requestId && l.agentName === "standing-rules" && l.text.startsWith("✎ Rule added"));
   if (!saved) r.notes.push(`e: Helper A saved no standing rule (${rule.status}): ${rule.reply.slice(0, 200)}`);
 
   const boardBefore = new Set((await boardOf(alice, helperA.flowKind, helperA.id)).map((t) => t.id));
