@@ -37,6 +37,8 @@ Written by `docs-writer` (sonnet), 802 words. Scenario: The support desk: `suppo
 
 - Post-review edit (Cursor security review on #5226): authentication now names the principal resolver and the body-`userId` fallback; `serve` is said to bind all interfaces with no resolver check (`fsdev serve` refuses; `host: "127.0.0.1"` keeps it local); `defaultUserId`/`requireUser` are said to name the run's user, not authenticate. This is the fact sheet's own [flag] at line 217. Re-ran check-docs-page.mjs: ok.
 
+- After the loop: the SQLite example's filename is `support.db`, in the working directory. better-sqlite3 does not create parent directories (`store-sqlite/src/registry.ts:60` passes the filename straight to it), so a path under a missing folder stopped the server from starting.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 f5ce608c1959, and the 9 Reference row(s) pass 6 moved.

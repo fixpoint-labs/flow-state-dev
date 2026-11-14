@@ -37,7 +37,7 @@ import support from "./src/flows/support/flow";
 
 export default createFlowState({
   flows: [support],
-  stores: sqliteStores({ filename: "./data/support.db" }),
+  stores: sqliteStores({ filename: "support.db" }),
 });
 ```
 

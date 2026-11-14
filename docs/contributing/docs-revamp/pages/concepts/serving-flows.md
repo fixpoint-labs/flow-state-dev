@@ -27,7 +27,7 @@ import digest from "./src/flows/digest/flow";
 export default createFlowState({
   flows: [support, billing, digest],
   models: { default: "openai/gpt-6-luna" },
-  stores: sqliteStores({ filename: ".fsdev/data/support.db" }),
+  stores: sqliteStores({ filename: "support.db" }),
 });
 ```
 

@@ -33,6 +33,8 @@ Written by `docs-writer` (sonnet), 703 words. Scenario: A support desk: flow `su
 - After revise round 1, page sha256 91b6a5423a03: exit 0.
 - After revise round 2, page sha256 1d10b8c9466d: exit 0.
 
+- After the loop: the SQLite example's filename is `support.db`, in the working directory. better-sqlite3 does not create parent directories (`store-sqlite/src/registry.ts:60` passes the filename straight to it), so a path under a missing folder stopped the server from starting.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 e86e4139fdf7, and the 9 Reference row(s) pass 6 moved.
