@@ -38,7 +38,7 @@ built; FIX-2705 reconciles them (ER-8).
 
 **Sources.** `docs/intro` (rewrite) · `fundamentals/overview` (merge) · `guides/anatomy-of-a-flow` (merge, with C-01).
 
-**To fix at FIX-2702.** The pilot explains slot stacking, which the model pilot flagged as too deep for a first page; cut it to one sentence and link C-12. Its link to `./how-it-fits-together.md` becomes `../concepts/how-it-fits-together`.
+**To fix at FIX-2702.** Add a short "The ideas" section: the framework-wide ideas the Concepts pages build on (a flow as a self-contained system inside the app; everything is a block; state declared where it is used), which concept openings do not restate (owner decision, 2026-11-13). The pilot explains slot stacking, which the model pilot flagged as too deep for a first page; cut it to one sentence and link C-12. Its link to `./how-it-fits-together.md` becomes `../concepts/how-it-fits-together`.
 
 ---
 

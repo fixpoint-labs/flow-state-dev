@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 336">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="240" height="180"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">OPENS A SLOT</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="70">workforce</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="340" y="24" width="240" height="180"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="354" y="46">FILLS ONE, OPENS ANOTHER</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="354" y="70">harnesses</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="652" y="24" width="240" height="180"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="666" y="46">FILLS A SLOT</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="666" y="70">claudeCode</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="96" width="212" height="36"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="148" y="119" text-anchor="middle">workerFlows</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="354" y="96" width="212" height="36"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="460" y="119" text-anchor="middle">coder</text>
+<rect class="hl" fill="#e8f551" x="354" y="148" width="212" height="36"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="354" y="148" width="212" height="36"/>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="460" y="171" text-anchor="middle">harnesses</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="666" y="148" width="212" height="36"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="772" y="171" text-anchor="middle">Claude Code</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="352" y1="114" x2="256" y2="114" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="664" y1="166" x2="568" y2="166" marker-end="url(#ah)"/>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="28" y="228">It has never heard of</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="28" y="245">harnesses or claudeCode.</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="340" y="228">It adds a coder flow to</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="340" y="245">workforce, and opens a</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="340" y="262">slot of its own.</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="652" y="228">It fills the slot</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="652" y="245">harnesses opened.</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="288" x2="920" y2="288"/>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="312" x2="54" y2="312" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="316">FILLS A SLOT</text>
+<rect class="hl" fill="#e8f551" x="184" y="306" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="218" y="316">THE KIT'S OWN SLOT</text>
+</g>
+</svg>
