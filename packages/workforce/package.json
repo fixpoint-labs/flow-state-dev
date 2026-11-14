@@ -34,6 +34,10 @@
       "types": "./dist/browser.d.ts",
       "default": "./src/browser.ts"
     },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./src/react/index.ts"
+    },
     "./loader": {
       "types": "./dist/loader/index.d.ts",
       "default": "./src/loader/index.ts"
@@ -73,6 +77,10 @@
         "types": "./dist/browser.d.ts",
         "default": "./dist/browser.js"
       },
+      "./react": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      },
       "./loader": {
         "types": "./dist/loader/index.d.ts",
         "default": "./dist/loader/index.js"
@@ -109,11 +117,29 @@
     "@flow-state-dev/workspace": "workspace:*",
     "zod": "^3.24.1"
   },
+  "peerDependencies": {
+    "@flow-state-dev/react": "workspace:*",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@flow-state-dev/react": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@flow-state-dev/memory": "workspace:*",
+    "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
     "cron-parser": "^5.5.0",
+    "happy-dom": "^20.8.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "vitest": "^3.2.4"
   },
   "scripts": {

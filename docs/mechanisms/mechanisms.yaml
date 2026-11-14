@@ -713,6 +713,27 @@ mechanisms:
     status: unconfirmed
     doc: packages/workforce/README.md
 
+  - id: source-read
+    job: "Three reads of a workspace host's source (glob, read, grep) as a capability, naming no project and installing no resources. projectSourceCapability is this body plus the project resources."
+    package: "@flow-state-dev/workforce"
+    anchor: sourceReadCapability
+    file: packages/workforce/src/source-read.ts
+    builtOn: [capability, workspace]
+    overlaps:
+      - { id: projects, relation: distinct-jobs, note: "projectSourceCapability, under projects, is the same reads over a project's checkout, with the project resources; this row is the reads alone." }
+    status: canonical
+    doc: docs/architecture/workforce-default-worker-flow.md
+
+  - id: workforce-panels
+    job: "React components for a workforce screen: the roster, one worker's detail, and a board as columns or a list. They read workforce's views through the react package's hooks; React is an optional peer, and only the /react entry imports it."
+    package: "@flow-state-dev/workforce"
+    anchor: Roster
+    file: packages/workforce/src/react/components/Roster.ts
+    builtOn: [react, workforce, view]
+    overlaps: []
+    status: canonical
+    doc: packages/workforce/README.md
+
   - id: error-reporter
     job: A worker that turns a failure that stayed failed, or a problem a user describes, into one reproducible bug report filed through the project's tracker.
     package: "@flow-state-dev/workforce"

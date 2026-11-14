@@ -57,5 +57,13 @@ graft/
 # Playwright writes its last-run state here on every run.
 test-results/
 
+# TypeScript output emitted beside a package's sources: a `tsc` run against a
+# config with no outDir (tsconfig.base.json is one) writes here. Builds emit to dist.
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
+!packages/tools/src/bash/adapters/vendor.d.ts
+
 # Page-loop pass 4 type-check scratch folders
 apps/kitchen-sink/.docs-tc-*/

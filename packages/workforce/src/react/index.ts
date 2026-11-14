@@ -1,10 +1,12 @@
 /**
- * `@flow-state-dev/react/workforce`: the components that draw workforce
+ * `@flow-state-dev/workforce/react`: the components that draw workforce's
  * records, for a workforce screen.
  *
- * `Roster` lists an organization's workers, `BoardColumns` and `BoardList`
- * draw one task board's rows, and `WorkerDetail` shows one worker. A chat app
- * needs none of them, so they live here rather than on the package root.
+ * `Roster` lists a user's workers, reading the roster flow's `roster` view by
+ * default; `BoardColumns` and `BoardList` draw one task board's tasks, and
+ * `WorkerDetail` shows one worker. React is an optional peer: only this entry
+ * imports it, so a server-only app that imports the package root doesn't pull
+ * it in.
  */
 export {
   Roster,
@@ -27,5 +29,5 @@ export {
   type BoardListSlots,
   type PanelRowSource,
   type PanelItemSource,
-  type PanelLiveSource
-} from "../components/panels";
+  type PanelLiveSource,
+} from "./components";

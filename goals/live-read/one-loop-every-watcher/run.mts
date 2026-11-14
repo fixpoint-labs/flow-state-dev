@@ -45,7 +45,7 @@ import { createClient, type Client } from "@flow-state-dev/client";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
-import { Roster } from "@flow-state-dev/react/workforce";
+import { Roster } from "@flow-state-dev/workforce/react";
 import { createWorkforceClient, PROJECTS_FLOW, ROSTER_FLOW, rosterView, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, type ModulePatch } from "../../lib/index.mts";

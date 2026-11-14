@@ -1218,6 +1218,13 @@ const EXEMPTIONS = [
     why: "a field named kind: the engine's flow kind or a type discriminant (BR-10)",
   },
   {
+    id: "worker-detail-kind-prop",
+    terms: ["kind"],
+    where: (path) => /(?:^|\/)(?:WorkerDetail\.ts|worker-detail\.(?:test\.ts|stories\.tsx))$/.test(path),
+    strip: /\bkind\b/gi,
+    why: "`WorkerDetail`'s published `kind` prop, the flow a navigator row names (FIX-1500 S5), moved unchanged to workforce's /react entry (FIX-2627)",
+  },
+  {
     id: "kind-type-names",
     terms: ["kind"],
     strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:suspendForUserKindOf|SuspendForUserKind)\b|`Kind`/g,

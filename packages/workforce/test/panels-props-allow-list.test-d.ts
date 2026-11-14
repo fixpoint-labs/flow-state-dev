@@ -16,15 +16,15 @@
  *
  * Typecheck is the run: `pnpm --filter @flow-state-dev/react typecheck`.
  */
-import { rosterPropNames, type RosterProps } from "../src/components/panels/Roster";
-import { boardColumnsPropNames, type BoardColumnsProps } from "../src/components/panels/BoardColumns";
-import { boardListPropNames, type BoardListProps } from "../src/components/panels/BoardList";
+import { rosterPropNames, type RosterProps } from "../src/react/components/Roster";
+import { boardColumnsPropNames, type BoardColumnsProps } from "../src/react/components/BoardColumns";
+import { boardListPropNames, type BoardListProps } from "../src/react/components/BoardList";
 
 type PublishedRoster = (typeof rosterPropNames)[number];
 type PublishedBoard = (typeof boardColumnsPropNames)[number];
 type PublishedList = (typeof boardListPropNames)[number];
 
-/** Every key of every member, since `BoardListProps` is a union over its transport. */
+/** Every key of every variant, since `BoardListProps` is a union over its transport. */
 type KeysOf<T> = T extends unknown ? keyof T : never;
 
 /** Compiles only for `never`; the error names the offending key. */

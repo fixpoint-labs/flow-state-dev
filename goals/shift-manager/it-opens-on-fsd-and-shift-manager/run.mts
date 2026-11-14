@@ -333,8 +333,12 @@ await runGoal(async (failures) => {
         const log = started.log();
         const coderLine = log.split("\n").find((l) => l.startsWith("Coder:")) ?? "";
         if (!coderLine.includes("Claude Code")) note(`c:coder-stays-claude-code (${form})`, `start line: ${coderLine || "none"}`);
-        const row = log.split("\n").find((l) => l.includes("✗ Claude Code")) ?? "";
-        if (!row.includes("ANTHROPIC_API_KEY")) note(`c:logs-what-to-set (${form})`, `no not-ready Claude Code row naming ANTHROPIC_API_KEY: ${JSON.stringify(row || log.slice(-600))}`);
+        // The harness kit logs the readiness table once its check answers, which can be after the Lab listens:
+        // read the log until the row is there, for as long as one check may take and a little more.
+        const rowOf = () => started.log().split("\n").find((l) => l.includes("✗ Claude Code"));
+        for (const until = Date.now() + 45_000; rowOf() === undefined && Date.now() < until; ) await new Promise((resolve) => setTimeout(resolve, 250));
+        const row = rowOf() ?? "";
+        if (!row.includes("ANTHROPIC_API_KEY")) note(`c:logs-what-to-set (${form})`, `no not-ready Claude Code row naming ANTHROPIC_API_KEY: ${JSON.stringify(row || started.log().slice(-600))}`);
         const user = await pageUser(started.origin);
         const person = { userId: user.userId, bearer: user.bearerToken ?? "" };
         // The harness kit's readiness view, read with no session.

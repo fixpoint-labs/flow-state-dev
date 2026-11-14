@@ -23,8 +23,8 @@ import {
   boardColumnsPropNames,
   groupIntoColumns,
   BOARD_STATUS_COLUMNS
-} from "../src/components/panels/BoardColumns";
-import { Roster, rosterPropNames } from "../src/components/panels/Roster";
+} from "../src/react/components/BoardColumns";
+import { Roster, rosterPropNames } from "../src/react/components/Roster";
 
 afterEach(cleanup);
 
@@ -125,7 +125,7 @@ describe("Roster", () => {
         sessionId: "s1",
         client: { resources: source },
         problems: [
-          'organization "acme", row "workforce/roster/old.zed" — no kind named "retired"'
+          'organization "acme", row "workforce/roster/old.zed" — no flow named "retired"'
         ]
       })
     );
@@ -135,7 +135,7 @@ describe("Roster", () => {
     // alone would let a roster of one worker and ninety skips look healthy.
     const block = document.querySelector("[data-roster-problems]");
     expect(block?.getAttribute("data-roster-problems")).toBe("1");
-    expect(screen.getByText(/no kind named "retired"/)).toBeTruthy();
+    expect(screen.getByText(/no flow named "retired"/)).toBeTruthy();
     expect(document.querySelector("[data-roster-workers]")?.getAttribute("data-roster-workers")).toBe(
       "1"
     );
