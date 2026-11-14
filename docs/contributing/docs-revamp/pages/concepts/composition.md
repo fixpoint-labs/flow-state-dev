@@ -10,7 +10,9 @@ import Passes from "./figures/composition-passes.svg";
 
 # Composition
 
-A flow is built from blocks, the named units of work that each declare what goes in and what comes out. Composition is how they join. Blocks join one after another, as one of several, several at once, or alongside the reply without holding it up.
+Flow State has five kinds of block and no special feature for each shape you might build from them. A pipeline, a branch, lookups that run side by side and logging that runs in the background are all blocks joined together, and the join is a block too. Most of what an app needs is a composition of what already exists, which keeps the framework small and every part of it working the same way.
+
+A block is a named unit of work that declares what goes in and what comes out. Blocks join one after another, as one of several, several at once, or alongside the reply without holding it up.
 
 The result of a join is a block. A router is one, and a sequencer is one however it mixes `.step()`, `.parallel()` and `.sideChain()`. A pipeline you build from five blocks can be a step in a bigger one.
 

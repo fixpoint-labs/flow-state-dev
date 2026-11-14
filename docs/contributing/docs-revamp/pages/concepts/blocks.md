@@ -9,7 +9,9 @@ import Blocks from "./figures/blocks.svg";
 
 # Blocks
 
-A block is a typed unit of work that the framework runs: a name, a schema for what goes in, a schema for what comes out, and the work in between, which is your code or a model. You build a flow, the backend your app calls, by putting blocks together. Blocks can hold other blocks, so a whole pipeline is a block too.
+Every piece of work in an AI app needs the same handling around it: check what goes in, check what comes out, record what happened, and pick up where it left off after a crash. A block is how Flow State gives every piece of work that handling once, so you write only the work.
+
+A block is a name, a schema for what goes in, a schema for what comes out, and the work in between, which is your code or a model. Flows are built from blocks, and blocks can hold other blocks, so a whole pipeline is a block too.
 
 The example on this page is a support desk's reply pipeline: clean up a customer's message, have a model draft the answer, and let the model look up an order.
 

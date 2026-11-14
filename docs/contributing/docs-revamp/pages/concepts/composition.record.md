@@ -39,12 +39,14 @@ Written by `docs-writer` (sonnet), 846 words. Scenario: The support desk's handl
 - After revise round 1, page sha256 a84261155560: exit 0.
 - After revise round 2, page sha256 e34e84c1a396: exit 0.
 - After revise round 3, page sha256 ce3eb60abdb9: exit 0.
+- After the purpose-first opening, page sha256 b7d94982108e: exit 0.
 
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 22d097c5b54e, and the 7 Reference row(s) pass 6 moved.
 
 - Reference row 6: Row 6: a side chain's failure "is visible only in the DevTool trace" (and, by implication, nowhere else) Untrue: A side-chain failure is also written to the server log with console.error, and it is handed to the request-end hooks as `backgroundFailures`, so it is not visible only in the DevTool trace. It still does not fail the chain and does not reach the user's stream. `.waitForSideChain({ failOnError: true })` re-throws it into a later step. (/home/user/flow-state-dev/packages/engine/src/execution/runAction.ts:189-195 and 216-226; /home/user/flow-state-dev/packages/engine/src/execution/request-side-chain-pool.ts:99-103; /home/user/flow-state-dev/packages/core/src/types/request-end.ts:72) The row is recorded corrected.
+- After the purpose-first opening, page sha256 b7d94982108e: Owner direction 2026-11-13 (purpose first): the opening now says why composition is the model, a few block kinds joined into every shape, with the join a block itself. Grounded in `docs/philosophy.md` tenet 2; the facts it states (five kinds; a router and a sequencer are blocks) are on the fact sheet.
 
 ## 6 · Depth pass
 

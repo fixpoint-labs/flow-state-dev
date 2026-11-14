@@ -47,6 +47,8 @@ Written by `docs-writer` (sonnet), 1014 words. Scenario: A support desk: a custo
 - After revise round 3, page sha256 8db45476aeb3: exit 0.
 - After the owner's review edits, page sha256 a706f07764d9: exit 0.
 
+- Post-review edit (Codex): line 23 now says the user message is recorded only when the action sets `userMessage`. Re-ran `node scripts/check-docs-page.mjs` on the page: passes.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 c601fc808c45, and the 13 Reference row(s) pass 6 moved.
@@ -56,6 +58,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 c60
 - `ctx.emit.status(text)` sets a line of live text, shown as `statusMessage` on the session. A status is not stored. Untrue: A status is live-only by default, but `ctx.emit.status(message, { transient: false })` persists a status item. (/home/user/flow-state-dev/packages/core/src/types/block.ts:519-521)
 - Reference row 8: Row 8: status (live text shown as statusMessage, not stored). Untrue: Status defaults to transient (live-only). Passing `{ transient: false }` stores it as a status item. (/home/user/flow-state-dev/packages/core/src/types/block.ts:519-521) The row is recorded corrected.
 - After the owner's review edits, page sha256 a706f07764d9: Owner review, 2026-11-13: the session is where a flow keeps many requests as one record, a conversation for a chat and a log for a workflow. Codex review: a reconnect does not replay the missed text pieces, and the reply can lack those words until the message arrives whole; a reload reads the saved items. Checked: `replayRequestEvents` skips `content.delta` and loads no snapshot (`engine/src/streaming/resume.ts:130-160`).
+
+- Post-review edit (Codex): checked `userMessage` against `packages/engine/src/execution/runAction.ts:1825-1846`; the user-role message item is emitted only when `action.userMessage` is defined. Matches facts line 34.
 
 ## 6 · Depth pass
 
