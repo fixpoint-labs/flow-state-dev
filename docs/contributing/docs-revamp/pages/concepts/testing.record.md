@@ -45,6 +45,14 @@ Written by `docs-writer` (sonnet), 771 words. Scenario: The support desk's handl
 - After revise round 2, page sha256 e3fc8f0b3b33: exit 1. Failed: type-check of every TypeScript example (7 files at their titled paths) in apps/kitchen-sink/.docs-tc-C-20, tsc --noEmit extending the kitchen-sink tsconfig.
 - After revise round 3, page sha256 9593b64ad20d: exit 0.
 
+- After the loop: the opening's second paragraph is split into two sentences, and the closing tagline is cut (pass 7, findings 1 and 2).
+- After the loop: the state bullet glosses the scopes as state kept per session, per user or per org (pass 7, finding 4).
+- After the loop: the benchmark sentence drops the appositive and its inline link; Benchmarks stays in Next (pass 7, finding 3).
+- After the loop: the pass-9 miss is answered on the page. The mock paragraph says a mock keeps its place in the script, so build one per test or call `reset()` (`mockGenerator.ts:97-98,473`). The state section says that passing the same `stores` to two `testFlow` calls lets the second see the first, with one script step per turn (`testFlow.ts:6,75-122`).
+- After the loop: both suspected inaccuracies checked and true as written. Evals score a flow too: `evalFlow` is exported beside `evalBlock` (`testing/src/index.ts:51-52`). "Milliseconds" matches the fact sheet's run (four `testFlow` calls in 36 ms).
+
+Closed after the loop: all eight open findings (pass 7, findings 1 to 4; the two suspected inaccuracies; the pass-9 miss).
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 1295540771e1, and the 8 Reference row(s) pass 6 moved.

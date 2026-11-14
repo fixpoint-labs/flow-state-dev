@@ -40,6 +40,11 @@ Skipped: C-21 is piloted in the sitemap, and the page was already at `tasks-and-
 - After revise round 2, page sha256 3ed77e7b2cbd: exit 1. Failed: Type-check of the TypeScript examples (3 files: src/flows/research/flow.ts, src/flows/research/blocks/analyst.ts, src/flows/research/blocks/writer.ts), each written at its titled path in apps/kitchen-sink/.docs-tc-C-21, tsconfig extending apps/kitchen-sink/tsconfig.json, against the workspace packages; folder deleted afterwards.
 - After revise round 3, page sha256 51d306edeff8: exit 0.
 
+- After the loop: "How long the list lasts" gains a short example, `defineTaskCollection({ id, scope })` from `@flow-state-dev/orchestration/tasks` passed to `taskBoard` as `collection`, with `initialTasks` and `board.drain` unchanged (`orchestration/src/tasks/collection/define-task-collection.ts:1-24`, `task-board/index.ts:350-362`).
+- After the loop: one paragraph under it says a session list is one per conversation, a user list is shared by every session of that user and an org list by the organization, and that each drain re-applies `initialTasks` but skips ids already in the list, while a task with no id is added again (`task-board/index.ts:795`, `goal-seek-loop.ts:353,589`).
+- After the loop: the pass-4 type-check result is a framework typing bug, not a page error. Under `strict` (strictFunctionTypes), a handler with an `outputSchema` does not go into `workers`: `config.onCompleted` takes the typed output, and `TaskAssignee<unknown, unknown>` expects `unknown` there. Reproduced outside the repo; with `--strictFunctionTypes false` it compiles. The page's own blocks return `unknown`, so its examples avoid it. Reported for an issue; the page is left as is.
+- Closed after the loop: the three pass-9 misses (making the list survive; `initialTasks` on a second drain; user versus session scope).
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the page as it was kept, sha256 f245f9f429cd, and the 4 Reference row(s) pass 6 moved.
