@@ -57,6 +57,8 @@ Written by `docs-writer` (sonnet), 1091 words. Scenario: The support desk: handl
 
 Closed after the loop: pass 7 findings 1 to 3, both suspected inaccuracies, and both pass 9 misses.
 
+- After the loop (review): an `internal.actions` entry is reachable from a `dispatcher()` in another registered flow through `flowKind` (`core/src/types/dispatch.ts:215`, `engine/test/context/dispatch-cross-flow.test.ts:192-234`); the sentence no longer says same flow only.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 8d57109d324c, and the 11 Reference row(s) pass 6 moved.

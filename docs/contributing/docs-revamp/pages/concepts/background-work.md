@@ -70,7 +70,7 @@ A ten-minute report is the case for it. The user closes the tab and the job carr
 
 A session is where a flow keeps many requests together as one record. A dispatch sends one unit of work to a session of its own, with its own state and history, apart from the conversation that started it.
 
-The work is an entry the flow declares under `internal.actions`, beside `actions`. No client can call it, and only a `dispatcher()` block in the same flow reaches it ([flows reference](../reference/flows.md)).
+The work is an entry the flow declares under `internal.actions`, beside `actions`. No client can call it. A `dispatcher()` block reaches it, from the same flow or, naming this flow with `flowKind`, from another registered flow ([flows reference](../reference/flows.md)).
 
 ```ts title="src/flows/support/flow.ts"
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
