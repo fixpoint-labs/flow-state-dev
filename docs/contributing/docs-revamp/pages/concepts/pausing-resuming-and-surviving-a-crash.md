@@ -35,7 +35,8 @@ export const issueRefund = handler({
         message: `Refund $${input.amount} on ${input.orderId}?`,
       });
     }
-    // Your payments call goes here. It runs once, after the answer.
+    // Your payments call goes here, after the answer. Give it a stable
+    // idempotency key: a crash before this tool's output is saved runs it again.
     return { refunded: true };
   },
 });

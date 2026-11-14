@@ -40,6 +40,8 @@ Written by `docs-writer` (sonnet), 930 words. Scenario: The support desk's reply
 
 - After the loop: the one open finding is pass 4's, `fsdev.config.ts` importing `./src/flows/support/flow`, which the page does not show and points to Flows and actions for. Earlier Concepts pages name files they don't show the same way; left as is.
 
+- After the loop (review): the tool's comment no longer promises the refund runs once. A crash after the payment call but before the tool's output is saved runs the tool again, so the comment asks for a stable idempotency key.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 699c94242703, and the 8 Reference row(s) pass 6 moved.
