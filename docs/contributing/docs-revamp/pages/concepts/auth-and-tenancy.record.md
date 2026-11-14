@@ -45,6 +45,8 @@ Written by `docs-writer` (sonnet), 853 words. Scenario: A support desk: a `suppo
 
 Closed after the loop: both open findings. The question 4 miss is answered on the page, and the type-check note needs no change because the prose names both local files.
 
+- After the loop: the `flow.ts` example names the definition `supportFlow` and ends `export default supportFlow();`, matching Flows and actions and Background work.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 1d6f85244362, and the 10 Reference row(s) pass 6 moved.
