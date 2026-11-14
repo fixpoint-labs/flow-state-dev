@@ -83,7 +83,7 @@ export interface ErrorReporterFlowOptions {
   /** The Lab's project MCP servers (`projectMcpTools`), through which a report files. */
   mcpTools?: ProjectMcpToolsResolver;
   /** The conversation turn's options: its model and catalog. */
-  agent?: Omit<AgentWorkerFlowOptions, "installation">;
+  agent?: Omit<AgentWorkerFlowOptions, "installation" | "sessionFields">;
 }
 
 /** A report run takes nothing from its caller: its row and dossier are read on the server. */
@@ -221,6 +221,11 @@ const DOSSIER_LIMIT = 16_000;
  * @param options The reporter, the installation, the harness slot and where it reads the code.
  */
 export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
+  // The reporter's session is its own: a nested `agent.sessionFields` would be dropped, leaving a
+  // field open to a seeded create.
+  if (Object.hasOwn(options.agent ?? {}, "sessionFields")) {
+    throw new Error("defineErrorReporterFlow: `agent.sessionFields` is not read on the error reporter's session.");
+  }
   const { reporter, installation } = options;
   const flowKind = reporter.flowKind;
   const secretsOf = (ctx: BlockContext) => secretsFor(ctx, reporter);

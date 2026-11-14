@@ -12,7 +12,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineCapability, defineFlow, defineKit, defineResource, handler } from "@flow-state-dev/core";
-import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
+import { createFlowState, createInProcessFetch, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
+import { createClient } from "@flow-state-dev/client";
 import { z } from "zod";
 import { messageReceivedEntry, workerMessagesResources } from "../src/messages";
 import { workerConfigSchema } from "../src/worker-config";
@@ -194,5 +195,58 @@ describe("workforce as a kit", () => {
     // `workerFlow` for `workerFlows`: a misspelled map would otherwise be dropped in silence.
     expect(() => workforce({ directory, generated: { workerFlow: {} } as never })).toThrow(/generated/);
     expect(() => workforce({ directory, generated: { blocks: "nope" } as never })).toThrow(/generated/);
+  });
+  it("declares the app's session fields on the agent and coordinator sessions: written on the server, read by the client, never seeded", async () => {
+    const directory = tree({
+      "teams/core/workers/lead/WORKER.md": LEAD,
+      "teams/core/workers/desk/WORKER.md": "---\nname: Desk\ndescription: Routes.\nflow: coordinator\ndelegates: [core.lead]\n---\nYou route.",
+    });
+    const state = track(
+      createFlowState({
+        kits: [workforce({ directory, coordinator: { routeModel: "openai/gpt-6-luna" }, sessionFields: { repositoryId: z.string().min(1).optional() } })],
+        stores,
+        resolvePrincipal: (context: any) => {
+          const user = context.request?.headers.get("x-user");
+          return typeof user === "string" ? { userId: user, orgId: "org" } : null;
+        },
+      } as never),
+    );
+    await state.ready();
+    const inProcess = createInProcessFetch(state);
+    const alice = createClient({
+      userId: "alice",
+      fetcher: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set("x-user", "alice");
+        return inProcess(input, { ...init, headers });
+      },
+    });
+    for (const [flow, workerId] of [["agent", "core.lead"], ["coordinator", "core.desk"]] as const) {
+      // A caller can't name the field: the create is refused, naming it (BP-031).
+      const seeded = await alice.flow(flow).createSession({ state: { workerId, repositoryId: "forged" } }).then(
+        () => "created",
+        (error: { status: number; body: unknown }) => ({ status: error.status, body: JSON.stringify(error.body) }),
+      );
+      expect(seeded).toMatchObject({ status: 400, body: expect.stringContaining("repositoryId") });
+      // The server writes it, and the client reads it in the session's client data.
+      const session = await alice.flow(flow).createSession({ state: { workerId } });
+      const store = (await state.getRuntime()).stores.session;
+      const stored = (await store.get(session.id))!;
+      await store.set(session.id, { ...stored, version: stored.version + 1, state: { ...stored.state, repositoryId: "repo-1" } }, stored.version);
+      expect((await alice.sessions.state(session.id)).clientData).toMatchObject({ session: { repositoryId: "repo-1" } });
+    }
+  });
+  it("refuses a session field named like one workforce keeps on the session, naming it", async () => {
+    const directory = tree({ "teams/core/workers/lead/WORKER.md": LEAD });
+    const state = track(createFlowState({ kits: [workforce({ directory, sessionFields: { workProjectId: z.string().optional() } })], stores }));
+    await expect(state.ready()).rejects.toThrow(/session field "workProjectId" is one workforce keeps/);
+  });
+  it("refuses session fields declared on `agent` or `coordinator`: the kit's `sessionFields` is the one place, and would overwrite them", async () => {
+    const directory = tree({ "teams/core/workers/lead/WORKER.md": LEAD });
+    const nested = { sessionFields: { repositoryId: z.string().optional() } } as never;
+    for (const config of [{ agent: nested }, { coordinator: { routeModel: "openai/gpt-6-luna", ...(nested as object) } as never }]) {
+      const state = track(createFlowState({ kits: [workforce({ directory, ...config, sessionFields: { region: z.string().optional() } })], stores }));
+      await expect(state.ready()).rejects.toThrow(/`(agent|coordinator)\.sessionFields` is not read.*`sessionFields`/);
+    }
   });
 });
