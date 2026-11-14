@@ -1,7 +1,7 @@
 /**
  * Static shape check for the workforce goals' STRUCTURAL CONTROL PAIRS.
  *
- * A structural control is the fixture that proves `hireWorkforce` refuses a
+ * A structural control is the fixture that proves the workforce hire refuses a
  * kind whose `configSchema` cannot accept the bag hiring imposes. It is worth
  * nothing unless its refusal has exactly one available cause. Twice now it had
  * two, and both times the goal was green:
@@ -58,7 +58,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-/** The keys `hireWorkforce` imposes on every seat it hires. */
+/** The keys the workforce hire imposes on every seat it hires. */
 const CONTRACT_KEYS = ["instructions", "teamInstructions", "workerSkills"] as const;
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -80,14 +80,19 @@ const PAIRS = [
 
 type Consts = Map<string, ts.Expression>;
 
-/** Every top-level `const name = <expr>` in a source file, by name. */
+/**
+ * Every top-level `const name = <expr>` in a source file, by name. A flow
+ * built on its installation, `const name = (installation) => defineFlow({...})`,
+ * is read as the `defineFlow` call its arrow returns.
+ */
 function topLevelConsts(source: ts.SourceFile): Consts {
   const consts: Consts = new Map();
   for (const statement of source.statements) {
     if (!ts.isVariableStatement(statement)) continue;
     for (const decl of statement.declarationList.declarations) {
       if (ts.isIdentifier(decl.name) && decl.initializer !== undefined) {
-        consts.set(decl.name.text, decl.initializer);
+        const init = decl.initializer;
+        consts.set(decl.name.text, ts.isArrowFunction(init) && !ts.isBlock(init.body) ? init.body : init);
       }
     }
   }
