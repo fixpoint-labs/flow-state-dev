@@ -27,7 +27,7 @@
  * the session, never the prompt.
  *
  * Read from the environment: `GOAL_STORE` (the store file), `GOAL_CHAIN_LIMIT`
- * (the app's chain cap, `hireWorkforce`'s `taskChainLimit`; unset, the
+ * (the app's chain cap, the workforce kit's `taskChainLimit`; unset, the
  * default) and `GOAL_REAL_MODEL` (the model `real.lead`'s `goal/real` names).
  *
  * Nothing here writes a row, a session or a notice: every change is an action
@@ -41,7 +41,7 @@ import * as core from "@flow-state-dev/core";
 import * as engine from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import * as workforce from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { workforce as workforceKit } from "@flow-state-dev/workforce/kit";
 import { z } from "zod";
 import { ORG, PEOPLE } from "./people.mts";
 
@@ -52,13 +52,13 @@ const CHAIN_LIMIT = process.env.GOAL_CHAIN_LIMIT === undefined || process.env.GO
 const REAL_MODEL = process.env.GOAL_REAL_MODEL ?? "";
 
 const wf = workforce as unknown as Record<string, any>;
-const missing = ["createWorkerInstallation", "defineAgentWorkerFlow", "defineCoordinatorFlow", "hireWorkforce", "workerConfigSchema"].filter(
+const missing = ["workerFlow", "workerConfigSchema"].filter(
   (name) => typeof wf[name] !== "function",
 );
 if (missing.length > 0) throw new Error(`this commit's @flow-state-dev/workforce exports no ${missing.join(", ")}`);
 
-const tree = await readWorkforce(join(HERE, "..", "fixtures", "workforce"));
-if (tree.errors.length > 0) throw new Error(`the goal-local tree did not load: ${JSON.stringify(tree.errors).slice(0, 600)}`);
+/** The goal-local tree: the workforce kit reads it, and refuses on a file it can't load. */
+const TREE = join(HERE, "..", "fixtures", "workforce");
 
 // ---- the scripted model -------------------------------------------------------
 
@@ -208,35 +208,21 @@ function foremanFlow(installation: any) {
   } as never);
 }
 
-/** The four flows over one installation of `workers`, and the copies to register. */
-function hire(workers: unknown[]): Array<{ id: string }> {
-  let flows: Record<string, unknown> = {};
-  const installation = wf.createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows });
-  const agent = wf.defineAgentWorkerFlow({ installation });
-  const poster = posterFlow(installation);
-  const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: "scripted/route" });
-  // The foreman files its delegates' tasks.
-  flows = { agent, coordinator, poster, foreman: { flow: foremanFlow(installation), roles: ["manager"] } };
-  return wf.hireWorkforce(installation, CHAIN_LIMIT === undefined ? {} : { taskChainLimit: CHAIN_LIMIT }) as Array<{ id: string }>;
-}
-
-let copies: Array<{ id: string }>;
-try {
-  copies = hire(tree.workers);
-} catch (error) {
-  // An older commit, where only a coordinator declares `delegates:`, refuses
-  // every other worker that lists them. Served without them there, so its
-  // legs fail on what its workers do rather than on the load.
-  if (!/"delegates" is not a declared setting/.test(String(error))) throw error;
-  console.error("[goal lab] this commit refuses `delegates:` off the coordinator; serving those workers without them");
-  copies = hire(
-    tree.workers.map((worker: any) =>
-      worker.declared?.flow === "coordinator" || worker.declared?.delegates === undefined
-        ? worker
-        : { ...worker, declared: Object.fromEntries(Object.entries(worker.declared).filter(([key]) => key !== "delegates")) },
-    ),
-  );
-}
+/**
+ * The workforce kit over the tree: its built-in `agent` and coordinator, and
+ * the two goal-local flows, each built on the installation the kit hires.
+ * The foreman files its delegates' tasks.
+ */
+const kit = workforceKit({
+  directory: TREE,
+  agent: {},
+  coordinator: { routeModel: "scripted/route" },
+  ...(CHAIN_LIMIT === undefined ? {} : { taskChainLimit: CHAIN_LIMIT }),
+});
+const workerFlows = {
+  poster: wf.workerFlow(posterFlow),
+  foreman: wf.workerFlow(foremanFlow, { roles: ["manager"] }),
+};
 
 const bearers = Object.values(PEOPLE).map((person) =>
   engine.createBearerSecretPrincipalResolver({ secret: person.bearer, principal: { userId: person.userId, orgId: ORG } }),
@@ -256,7 +242,8 @@ const resolvePrincipal = async (context: unknown) => {
 };
 
 export default engine.createFlowState({
-  flows: copies,
+  kits: [kit],
+  fill: { [workforceKit.slots.workerFlows]: workerFlows },
   stores: { default: { primary: sqliteStores({ filename: STORE }) } },
   modelResolver,
   resolvePrincipal,
