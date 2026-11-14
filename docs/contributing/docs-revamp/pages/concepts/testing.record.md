@@ -53,6 +53,8 @@ Written by `docs-writer` (sonnet), 771 words. Scenario: The support desk's handl
 
 Closed after the loop: all eight open findings (pass 7, findings 1 to 4; the two suspected inaccuracies; the pass-9 miss).
 
+- After the loop (review): the no-provider promise holds for generators that name a model id; a model object bypasses the mock resolver (`testFlow.ts:205`, `generator.ts:733`).
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 1295540771e1, and the 8 Reference row(s) pass 6 moved.

@@ -36,7 +36,7 @@ request into tasks, hand them to the coder and the reviewer, and report what
 came back.
 ```
 
-That file gives you a worker with the id `engineering.lead`, made from its team and worker folders. `name` is what people see, `delegates` names other workers by id, and everything below the second `---` is its instructions. The [WORKER.md reference](../reference/worker-md.md) has every setting, which one a file must have, and how the id is formed.
+That file gives you a worker with the id `engineering.lead`, made from its team and worker folders. `name` is what people see, `delegates` names other workers by id, and each one needs a file of its own: a standard worker's delegates must be standard workers, or the app refuses to start. Everything below the second `---` is its instructions. The [WORKER.md reference](../reference/worker-md.md) has every setting, which one a file must have, and how the id is formed.
 
 <Figure svg={Worker} caption="One file, a worker on each user's list of workers" description={"On the left, a WORKER.md file in your repo, at workforce/teams/engineering/workers/lead. In the middle, two lists of workers, Alice's and Bob's, each listing engineering.lead from that one file; Alice's is highlighted as one user's own worker. On the right, Alice's sessions, where her worker works: a conversation, where she talks and it answers, and a task, which it runs and reports back on. Each is a session of its own. The lists and the sessions are hatched: they outlive the request."} />
 
