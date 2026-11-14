@@ -3,7 +3,10 @@
  * `useSession` and task-board panels, which join their own sources; and the
  * client's abortable `pause`, for the framework's own poll loops. Not a
  * public API: an app follows a session with `sessionFeed`, the one public way,
- * and waits on a request with its handle's `wait()` or `result()`.
+ * and waits on a request with its handle's `wait()` or `result()`. Also
+ * `hearsNotice`, the client's rule for which change notices a view's answer
+ * hears, so other packages' tests check an answer against the rule itself
+ * rather than a restated copy.
  *
  * @internal
  */
@@ -11,5 +14,5 @@ export { pause } from "./internal/pause";
 export { followSession, type FollowSessionOptions } from "./session-client/follow-session";
 export { mayReplaceItem, readSessionHistory, type ReadSessionHistoryOptions } from "./session-client/session-history";
 export { liveRead } from "./live/live-read";
-export { canonicalViewInput, viewWatchIdentity, watchView, type ViewWatchClient, type ViewWatcher, type WatchViewOptions } from "./view/view";
+export { canonicalViewInput, hearsNotice, viewWatchIdentity, watchView, type ViewWatchClient, type ViewWatcher, type WatchViewOptions } from "./view/view";
 export { mayHold, storageRootsOf } from "./live/paths";

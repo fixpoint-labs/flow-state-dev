@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, defineResource, defineResourceCollection, defineView, handler } from "@flow-state-dev/core";
 import { requestHostOf } from "@flow-state-dev/core/internal";
+import { hearsNotice } from "@flow-state-dev/client/internal";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowRegistry, runAction } from "../src";
 import { handleCreateCollectionResource } from "../src/routes/resource-routes";
@@ -194,24 +195,11 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // FIX-2625.
 /**
- * The notices of `heard` a watcher of `answer` reads on: its hearing's topic
- * covers the notice, lists its kind, and a resource path falls at or under one
- * of its roots. The client's rule (`watchView`, `paths.ts`), restated here
- * because the engine doesn't depend on the client.
+ * The notices of `heard` a watcher of `answer` reads on, by the client's own
+ * rule (`hearsNotice`).
  */
 function admitted(answer: ViewAnswer, heard: readonly ChangeNotice[]): ChangeNotice[] {
-  return heard.filter((notice) =>
-    answer.hears.some((hearing) => {
-      const topic = hearing.topic;
-      if (topic.scope !== notice.topic.scope) return false;
-      if (topic.scope === "session" && topic.id !== notice.topic.id) return false;
-      if (topic.resource !== undefined && topic.resource !== notice.topic.resource) return false;
-      if (!hearing.kinds.includes(notice.kind)) return false;
-      const path = notice.topic.resource;
-      if (notice.kind !== "resource" || path === undefined || hearing.paths === undefined) return true;
-      return hearing.paths.some((root) => root === "" || path === root || path.startsWith(`${root}/`));
-    })
-  );
+  return heard.filter((notice) => hearsNotice(answer.hears, notice));
 }
 
 async function cell(viewName: string, actionName: string, writer: string, writeFirst = true) {

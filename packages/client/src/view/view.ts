@@ -191,7 +191,7 @@ function bringsNewEntry(held: NonNullable<Shared["held"]>, result: ViewResult): 
  * hearing's roots (`mayHold`, the client's one path rule). Every notice, for
  * an answer that names no hearing.
  */
-function hearsNotice(hears: readonly ViewHearing[] | undefined, notice: WireNotice): boolean {
+export function hearsNotice(hears: readonly ViewHearing[] | undefined, notice: WireNotice): boolean {
   if (hears === undefined) return true;
   return hears.some(
     (hearing) =>
