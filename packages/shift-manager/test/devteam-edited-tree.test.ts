@@ -40,3 +40,27 @@ it("removes the copy of the tree it wrote when the Lab is disposed", async () =>
   expect(copies()).toEqual([]);
   rmSync(workspace, { recursive: true, force: true });
 }, 60_000);
+
+it("opens with a worker's only own skill taken away, its emptied skills folder gone with it", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "edited-tree-runs-"));
+  scratch = mkdtempSync(join(tmpdir(), "edited-tree-tmp-"));
+  process.env.TMPDIR = scratch;
+  // The coder's own folder holds one skill: taking it away empties `skills/`, which the kit would refuse.
+  const lab = await openLab({
+    stores: inMemoryStores(),
+    harness: harnessStub({}).slot,
+    workspace: { root: workspace, remotes: { allow: ["file"] } },
+    coderWorkerId: "eng.coder",
+    mutateSkills: (workerId: string, skills: readonly { name: string }[]) =>
+      workerId === "eng.coder" ? skills.filter((skill) => skill.name !== "branch-naming") : skills,
+  } as never);
+  try {
+    const copy = readdirSync(scratch).find((entry) => entry.startsWith("devforce-lab-tree-"));
+    expect(copy).toBeDefined();
+    const own = join(scratch, copy!, "workforce", "teams", "eng", "workers", "coder");
+    expect(readdirSync(own)).not.toContain("skills");
+  } finally {
+    await lab.dispose();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+}, 60_000);

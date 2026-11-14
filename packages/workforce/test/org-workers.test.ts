@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import { mintWorkers } from "../src/hire";
-import { readWorkforce, readWorkforceDirectory } from "../src/loader";
+import { readWorkforce, readWorkforceDirectory } from "../src/loader/readers";
 import { WORKER_PACKAGES_KEY, type PackageManifest } from "../src/manifest";
 import { resolveHeldPackages } from "../src/worker-packages";
 import {

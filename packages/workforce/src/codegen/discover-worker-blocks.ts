@@ -43,7 +43,7 @@ import {
   WORKERS_LEVEL,
   validateSegment,
   walkTeams,
-} from "../loader";
+} from "../loader/readers";
 import { typescriptExtension } from "./typescript-module";
 
 /** The folder a block file sits in, at every level it may sit at. */

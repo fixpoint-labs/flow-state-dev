@@ -20,11 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { discoverResourceModules } from "../src/codegen/discover-resource-modules";
-import {
-  readReferencesDirectory,
-  readResourcesDirectory,
-  type ReadResourcesDirectoryResult,
-} from "../src/loader";
+import { readReferencesDirectory, readResourcesDirectory, type ReadResourcesDirectoryResult } from "../src/loader/readers";
 
 const roots: string[] = [];
 

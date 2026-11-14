@@ -1,125 +1,20 @@
 /**
- * `@flow-state-dev/workforce/loader` — read a workforce from files.
+ * `@flow-state-dev/workforce/loader` — the workforce folder, as the workforce
+ * kit reads it.
  *
- * The Node-only half of the package. `readDeclaredRoster` is the widest entry
- * point: one call over the readers below, returning the whole declared tree —
- * workers, teams, documents, references — plus one flattened list of what failed
- * to load, each entry tagged with the layer that reported it. It walks nothing
- * itself, and it collects rather than throws, so the caller keeps its own boot
- * policy. Under it, `readWorkforce` is the entry point an app wanting workers
- * alone still reaches for: it reads the tree and hands back records that already carry their
- * own skills, ready for `hireWorkforce`. Underneath it, `readWorkforceDirectory`
- * scans `org/workers/<name>/` and `teams/<id>/workers/<name>/` and returns one
- * neutral `WorkerManifest` per worker, and `readWorkerSkills` reads the skills one worker can see across the
- * levels it draws from (org, team and own for a team worker; org and own for an
- * org worker, which has no team); both stay exported for a caller that wants one
- * half on its own. Alongside them, `readTeamsDirectory` reads each team's own
- * optional `TEAM.md` — what a team is, and the instructions every worker on it
- * carries — `readResourcesDirectory` scans `org/resources/` and
- * `teams/<id>/resources/` and returns one `ResourceDoc` per document, and
- * `readPackagesDirectory` reads every `packages/<name>/PACKAGE.md` at the
- * org, team and worker levels into one `PackageManifest` each. They all stop
- * there — nothing here builds a flow, an agent, a resource or a registry, and
- * neither does the composer over them.
+ * Node-only. `readWorkforceFolder` reads a workforce folder through a kit's
+ * folder (`KitFolder`): its workers, teams, documents and references, every
+ * path it reads claimed, and every reader problem a refusal, named. The
+ * workforce kit is its caller; an app reads the records it asserts on here.
  *
- * Under all of them sit the walk primitives the readers share, published for
- * the next convention to build on rather than copy: `openRoot` opens the
- * configured root, `walkTeams` enumerates `teams/`, `openStructuralDirectory`
- * and `classify` answer for one path, `refusedSymlink` and `unreadable` are the
- * one wording for each refusal, `IGNORED_ENTRIES` is the one list of names
- * that never denote anything, and `validateSegment` is the one rule for what a
- * name in this tree may be. What a reader does inside a team is its own.
- * One walk continues past the team, unexported: `resource-walk` is the descent
- * to every place a `resources/` folder may sit, shared by the Markdown reader
- * here and the module walk in `../codegen`, with the list of those places
- * beside it.
- *
- * **One rule binds every reader here, and the next one added beside them.**
+ * The readers under it (one per convention: workers, skills, teams,
+ * resources, references, packages) and the walk over `teams/` are internal.
+ * **One rule binds every reader, and the next one added beside them.**
  * Anything the published convention tells an author they may write is either
- * consumed or refused loudly, naming it — never passed over in silence, because
- * an author who followed the docs and got no worker and no error has no way left
- * to find out. `test/published-tree-surface.test.ts` enforces it and carries the
- * reasoning, the exclusions, and whatever is still silent.
- *
- * Kept behind a subpath so importing the package root does not pull a consumer
- * onto `node:fs`.
+ * consumed or refused loudly, naming it — never passed over in silence.
  */
 
 export {
   readWorkforceFolder,
   type WorkforceFolder,
 } from "./read-workforce-folder";
-
-export {
-  readDeclaredRoster,
-  type DeclaredProblem,
-  type DeclaredProblemLayer,
-  type DeclaredRoster,
-} from "./read-declared-roster";
-
-export {
-  readWorkforce,
-  type ReadWorkforceResult,
-} from "./read-workforce";
-
-export {
-  readWorkforceDirectory,
-  type ReadWorkforceDirectoryResult,
-  type WorkerManifestError,
-  type WorkerManifestErrorKind,
-} from "./read-workforce-directory";
-
-export {
-  readWorkerSkills,
-  type ReadWorkerSkillsOptions,
-  type ReadWorkerSkillsResult,
-  type WorkerSkillError,
-  type WorkerSkillErrorKind,
-} from "./read-worker-skills";
-
-export {
-  readTeamsDirectory,
-  type ReadTeamsDirectoryResult,
-  type TeamManifestError,
-  type TeamManifestErrorKind,
-} from "./read-teams-directory";
-
-export {
-  readReferencesDirectory,
-  readResourcesDirectory,
-  type ReadResourcesDirectoryResult,
-  type ResourceDocError,
-  type ResourceDocErrorKind,
-} from "./read-resources-directory";
-
-export {
-  PACKAGES_SLOT,
-  readPackagesDirectory,
-  type PackageError,
-  type PackageErrorKind,
-  type ReadPackagesDirectoryResult,
-} from "./read-packages-directory";
-
-// The walk primitives under `walkTeams` (`classify`, `openRoot`,
-// `IGNORED_ENTRIES`, ...) are the engine's: `@flow-state-dev/engine/folder`.
-export { walkTeams, type WalkedTeam } from "./structural-directory";
-
-export { validateSegment, type SegmentLabel } from "./segments";
-
-export {
-  DOCUMENT_EXTENSION,
-  DOCUMENT_SLOTS,
-  REFERENCES_SLOT,
-  RESOURCES_SLOT,
-  WORKERS_LEVEL,
-  type DocumentSlot,
-  mintResourceRef,
-  siblingSlotPath,
-} from "./resource-convention";
-
-export type {
-  WorkerManifest,
-  TeamManifest,
-  ResourceDoc,
-  PackageManifest,
-} from "../manifest";

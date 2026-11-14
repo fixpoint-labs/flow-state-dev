@@ -641,20 +641,20 @@ mechanisms:
 
   # ── Workforce ─────────────────────────────────────────────────────────────
   - id: workforce
-    job: Register worker flows from an installation (hireWorkforce). An app installs it as a kit, `workforce` from `@flow-state-dev/workforce/kit`, whose install builds the installation and hires it (FIX-2627); its slots take worker flows, capabilities for the flows it builds, and flows built on the installation. The define* factories beside it are the records and flows a workforce app composes, not separate frameworks.
+    job: "Workers from an app's files, each running on one registered copy of the flow it names. An app installs it as a kit, `workforce` from `@flow-state-dev/workforce/kit`, whose install builds the installation and hires it (FIX-2627); its slots take worker flows, capabilities for the flows it builds, and flows built on the installation. The define* factories beside it are the records and flows a workforce app composes, not separate frameworks."
     package: "@flow-state-dev/workforce"
-    anchor: hireWorkforce
-    file: packages/workforce/src/workers/register.ts
+    anchor: workforce
+    file: packages/workforce/src/kit/workforce-kit.ts
     builtOn: [flow, task-board, kit]
     overlaps: []
     status: canonical
     doc: docs/architecture/workforce-default-worker-flow.md
 
   - id: worker-loader
-    job: Read a workforce from files (WORKER.md, teams, references, resources) into records hireWorkforce takes. Node-only.
+    job: Read a workforce folder (WORKER.md, teams, references, resources) through a kit's folder, every path it reads claimed and every reader problem a refusal, into the records the workforce kit hires. Node-only.
     package: "@flow-state-dev/workforce"
-    anchor: readWorkforce
-    file: packages/workforce/src/loader/read-workforce.ts
+    anchor: readWorkforceFolder
+    file: packages/workforce/src/loader/read-workforce-folder.ts
     builtOn: [workforce, kit-folder]
     overlaps: []
     status: canonical
