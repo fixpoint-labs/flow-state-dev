@@ -14,3 +14,4 @@
 |------|--------|-------|---------|-------|
 | 2026-11-07 | `e52ea2175` + FIX-2463 branch | n/a | PASS | 5 twins hired; 10 misnamed pieces refused, each naming its entry: `wrk`/`Work`, `onTaskSteerd`/`onTaskSteer`, `onMessageRecieved`/`onMesageReceived`, `onWorkstreamOpend`/`onWorkStreamOpened`, `onTaskSetled`/`onTaskSettle`. |
 | 2026-11-07 | `e52ea2175` + FIX-2463 branch, entry-piece loop skipped, then restored | n/a | FAIL (expected) | `[onTaskSteered]` both typos hired; `[onWorkstreamOpened]` both typos hired. The other three legs stayed green, refused by the checks that already existed. |
+| 2026-11-13 | claude/fix-2627-impl-e-b1 | n/a | PASS | On the workforce kit: each leg's flow is hired by `installWorkers` over an empty folder, its piece in the kit's `workerFlows` slot. 10 misnamed pieces refused naming their entry; every twin hired. |
