@@ -22,14 +22,14 @@
  * session or a notice: every change is an action a person sends, or what the
  * system does with it. Against another commit, `run.mts` copies this folder
  * and `fixtures/` into that checkout's `goals/`, so every import resolves to
- * that commit's packages.
+ * that commit's packages. The app installs Workforce as its kit, so that
+ * commit must have `@flow-state-dev/workforce/kit`.
  */
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as engine from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import * as workforce from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { ORG, PEOPLE } from "./people.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -37,15 +37,6 @@ const STORE = process.env.GOAL_STORE ?? "";
 if (STORE === "") throw new Error("GOAL_STORE names no store file");
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-const wf = workforce as unknown as Record<string, any>;
-const missing = ["createWorkerInstallation", "defineAgentWorkerFlow", "defineCoordinatorFlow", "hireWorkforce"].filter(
-  (name) => typeof wf[name] !== "function",
-);
-if (missing.length > 0) throw new Error(`this commit's @flow-state-dev/workforce exports no ${missing.join(", ")}`);
-
-const tree = await readWorkforce(join(HERE, "..", "fixtures", "workforce"));
-if (tree.errors.length > 0) throw new Error(`the goal-local tree did not load: ${JSON.stringify(tree.errors).slice(0, 600)}`);
 
 // ---- the scripted models ----------------------------------------------------
 
@@ -121,12 +112,8 @@ const modelResolver = Object.assign(
 
 // ---- the app ----------------------------------------------------------------
 
-let flows: Record<string, unknown> = {};
-const installation = wf.createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
-const agent = wf.defineAgentWorkerFlow({ installation });
-const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: "scripted/route" });
-flows = { agent, coordinator };
-const copies = wf.hireWorkforce(installation) as Array<{ id: string }>;
+// The kit reads the goal-local tree at start, refusing a file it can't load, and serves `agent` and the coordinator.
+const kit = workforce({ directory: join(HERE, "..", "fixtures", "workforce"), coordinator: { routeModel: "scripted/route" } });
 
 const bearers = Object.values(PEOPLE).map((person) =>
   engine.createBearerSecretPrincipalResolver({ secret: person.bearer, principal: { userId: person.userId, orgId: ORG } }),
@@ -146,7 +133,7 @@ const resolvePrincipal = async (context: unknown) => {
 };
 
 export default engine.createFlowState({
-  flows: copies,
+  kits: [kit],
   stores: { default: { primary: sqliteStores({ filename: STORE }) } },
   modelResolver,
   resolvePrincipal,

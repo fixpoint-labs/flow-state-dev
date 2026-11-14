@@ -51,16 +51,15 @@ import { createClient, type Client } from "@flow-state-dev/client";
 import { createFlowApiRouter, createFlowRegistry, createInProcessFetch, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
-import { COORDINATOR_FLOW, createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 import { createWorkforceClient, ROSTER_FLOW, rosterView, type RosterEntry, type WorkforceClient } from "@flow-state-dev/workforce/browser";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, installWorkers, kitFlows, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
 import { kitchenSinkWorkforce, workforceRoot } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { TeamPanel } from "../../../apps/kitchen-sink/components/team-panel.tsx";
 import { railSessions } from "../../../apps/kitchen-sink/lib/rail-sessions.ts";
 import { ROUTE_MODEL } from "../../../apps/kitchen-sink/lib/models.ts";
-import { packageBlocks, workerBlocks } from "../../../apps/kitchen-sink/workforce/workforce.gen.ts";
+import * as generated from "../../../apps/kitchen-sink/workforce/workforce.gen.ts";
 import { LabProvider } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useRoster } from "../../../packages/shift-manager/src/lib/roster.ts";
 import { createLabAdapter, type LabWorker } from "../../../labs/teammates/src/adapter.ts";
@@ -356,7 +355,10 @@ async function act(on: Host, tab: Tab, write: (workforce: WorkforceClient) => Pr
   return doneAt;
 }
 
-/** The tree with a second coordinator `WORKER.md`, built as Kitchen Sink builds its own: the installation, `agent` and `coordinator`. */
+/**
+ * The tree with a second coordinator `WORKER.md`, installed through the workforce kit as Kitchen Sink
+ * installs its own: its generated module, and `agent` and `coordinator` on its tool catalog.
+ */
 async function twoCoordinatorTree(): Promise<FlowInstance[]> {
   const root = join(SCRATCH, `two-coordinators-${RUN_STAMP}`);
   rmSync(root, { recursive: true, force: true });
@@ -366,15 +368,12 @@ async function twoCoordinatorTree(): Promise<FlowInstance[]> {
     join(root, "teams/support/workers/desk/WORKER.md"),
     "---\ndescription: The front desk.\nflow: coordinator\ndelegates: [support.general]\nrouting: best-fit\nfallback: support.general\n---\n\nAsk here.\n",
   );
-  const read = await readWorkforce(root);
-  if (read.errors.length > 0) throw new Error(`setup: ${read.errors.map((e) => e.path).join(", ")}`);
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: read.workers, workerFlows: () => flows as never, workerBlocks, packageBlocks });
-  flows = {
-    agent: defineAgentWorkerFlow({ installation }),
-    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
-  };
-  return hireWorkforce(installation);
+  const { copies } = await installWorkers(root, {}, {
+    generated: { ...generated },
+    agent: { catalog: generated.blocks },
+    coordinator: { routeModel: ROUTE_MODEL, agent: { catalog: generated.blocks } },
+  });
+  return copies;
 }
 
 await runGoal(async (failures, tell) => {
