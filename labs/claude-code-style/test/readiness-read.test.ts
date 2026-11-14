@@ -36,8 +36,8 @@ describe("the readiness chips", () => {
     const client = createClient({ userId: "u_lab", baseUrl: "", fetcher });
     const lab = createWiredLab(client, { fetcher });
 
-    expect((await lab.readHarnesses()).map((harness) => harness.harness)).toEqual(["claude-code", "codex", "cursor"]);
-    expect((await lab.readHarnesses(true)).map((harness) => harness.harness)).toEqual(["claude-code", "codex", "cursor"]);
+    expect((await lab.readHarnesses()).map((harness) => harness.harness)).toEqual(["claude-code", "claude-code-plan", "codex", "cursor"]);
+    expect((await lab.readHarnesses(true)).map((harness) => harness.harness)).toEqual(["claude-code", "claude-code-plan", "codex", "cursor"]);
     expect(await client.sessions.list({ userId: "u_lab" })).toEqual([]);
   });
 });

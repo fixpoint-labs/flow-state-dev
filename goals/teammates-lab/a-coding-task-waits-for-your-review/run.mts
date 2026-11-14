@@ -47,7 +47,7 @@ const UPDATE_TASK = "updateTask_tasks";
 const CONTROLS: Record<string, ModulePatch[]> = {
   "": [],
   // The coding flow as it was before: a run that committed completes its task unreviewed.
-  "no-review": [{ module: "labs/teammates/src/flows/coder.ts", from: String.raw`reviewChanges: true,`, to: "reviewChanges: false," }],
+  "no-review": [{ module: "labs/teammates/host.mts", from: String.raw`review: true,`, to: "review: false," }],
 };
 if (!(CONTROL in CONTROLS)) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"`);
 const PATCHES = CONTROLS[CONTROL]!;

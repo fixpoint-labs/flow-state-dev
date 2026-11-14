@@ -52,7 +52,7 @@ export type {
 export { DEFAULT_ORG_ID, isValidOrgId } from "./types/auth";
 export { defineResource } from "./types/resource";
 export { defineView } from "./flow/defineView";
-export type { ViewConfig, ViewDefinition, ViewInput, ViewOutput, ViewElement, ViewScope } from "./types/view";
+export type { ViewChange, ViewConfig, ViewDefinition, ViewHearing, ViewInput, ViewOutput, ViewElement, ViewRunContext, ViewScope } from "./types/view";
 export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-tool-call";
 export {
   bindToolCacheStore,

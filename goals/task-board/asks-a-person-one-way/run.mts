@@ -62,18 +62,19 @@ import { reconcileInbox, taskTruthOf, suspensionTruthOf, type InboxTruth } from 
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../packages/workforce/src/conversation-board/steer.ts";
 import {
-  createWorkerInstallation,
   defineSessionBoard,
   defineWorkerInventoryCollection,
+  filingConversationBoard,
   inventoryWorkers,
   inventoryWriterActions,
   openInventory,
-  filingConversationBoard,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { sendTurn } from "../../../packages/shift-manager/src/lib/send.ts";
 import {
@@ -87,7 +88,8 @@ import {
   runGoal,
   silentLogger,
   untilIdle,
-  type ModulePatch
+  type ModulePatch,
+  workforceTree
 } from "../../lib/index.mts";
 
 const USER = "u_asks_one_way";
@@ -236,115 +238,122 @@ const forModel = (message: string) => /\[(askq|both|input-on-task)\]/.test(messa
 
 // ---- the host -----------------------------------------------------------------
 
-const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
+const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared: { description: `The ${id} worker.`, ...declared }, body: "", skills: [] });
 const WORKERS: WorkerManifest[] = [worker("lead", { flow: "desk", delegates: ["eng.doer"] }), worker("eng.doer", { flow: "doer" })];
+/** The workers as the app's `workforce/` folder, which the kit reads. */
+const TREE = workforceTree(WORKERS);
 
 function buildHost(filename: string, settings: { userDeadlineMs?: number } = {}) {
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => workerFlows as never });
-  const doorInput = z.object({ message: z.string() });
-  const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
-  const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
+  // The kit hands each worker flow's builder the installation it hired; the flows are built once on it.
+  let built: Record<string, unknown> | undefined;
+  let builtOn: WorkerInstallation | undefined;
+  const flowsOn = (installation: WorkerInstallation): Record<string, unknown> => {
+    if (built !== undefined && builtOn === installation) return built;
+    builtOn = installation;
+    const doorInput = z.object({ message: z.string() });
+    const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
+    const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
 
-  // The desk's turn: the filer's model (its task tools, and `suspendForUser` off a task row), or a note.
-  const deskModel = generator({
-    name: "asks-desk-model",
-    model: scripted as never,
-    inputSchema: doorInput,
-    uses: [deskBoard.tools, deskBoard.questions],
-    prompt: "Do what the line says with your tools, then stop.",
-    user: (input: { message: string }) => input.message
-  });
-  const deskNote = handler({ name: "asks-desk-note", inputSchema: doorInput, outputSchema: z.unknown(), execute: (input) => `noted: ${input.message}` });
-  const deskTurn = sequencer({ name: "asks-desk-turn", inputSchema: doorInput }).branch({
-    model: [(input: { message: string }) => input, (input: { message: string }) => /\[(filer|input)\]/.test(input.message), deskModel],
-    note: [(input: { message: string }) => input, (input: { message: string }) => !/\[(filer|input)\]/.test(input.message), deskNote]
-  });
-
-  /** Every doer turn proves itself first: the row's attempt and turn as it read them, and its message. */
-  const proveTurn = handler({
-    name: "asks-doer-prove",
-    inputSchema: doorInput,
-    outputSchema: z.unknown(),
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY] as string | undefined;
-      const board = await filingConversationBoard(ctx);
-      const row = taskId === undefined ? undefined : (board?.tasks.get(taskId) as Task | undefined);
-      prove({ kind: "turn", requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, ...(taskId !== undefined ? { taskId } : {}), attempt: row?.attempts, turn: row?.turn, message: input.message });
-      return null;
-    }
-  });
-  const doerModel = generator({
-    name: "asks-doer-model",
-    model: scripted as never,
-    inputSchema: doorInput,
-    uses: [doerBoard.questions],
-    prompt: "Ask what the task says to ask, then stop.",
-    user: (input: { message: string }) => input.message
-  });
-  /**
-   * The doer's code turn. `[review]` asks the user to review a draft (a
-   * block's stop); `[ask2]` asks two questions midway (`askMidway`);
-   * `[block-input]` asks for input with the block's own `ctx.suspendForUser`.
-   */
-  const doerCode = handler({
-    name: "asks-doer-code",
-    inputSchema: doorInput,
-    outputSchema: z.unknown(),
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const message = input.message;
-      const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY] as string | undefined;
-      const base = { requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, ...(taskId !== undefined ? { taskId } : {}) };
-      const answered = /answering "/.test(message);
-      if (message.includes("[review]") && !answered) {
-        const review = await ctx.suspendForUser({ kind: "review", prompt: REVIEW } as never);
-        const board = await filingConversationBoard(ctx);
-        const row = taskId === undefined ? undefined : (board?.tasks.get(taskId) as Task | undefined);
-        prove({ kind: "resumed", ...base, attempt: row?.attempts, outcome: review });
-        return { reviewed: review };
-      }
-      if (message.includes("[block-input]") && !answered) {
-        const asked = await ctx.suspendForUser({ kind: "input", prompt: INPUT } as never);
-        prove({ kind: "resumed", ...base, outcome: asked });
-        return { asked };
-      }
-      if (message.includes("[ask2]") && !answered) {
-        const board = await filingConversationBoard(ctx);
-        if (board !== undefined) await askMidway(ctx, board.tasks, [{ prompt: "Which export?" }, { prompt: "Which date column?" }]);
-        return "asked";
-      }
-      return `done ${taskId ?? "no task"}`;
-    }
-  });
-  const doerWork = sequencer({ name: "asks-doer-work", inputSchema: doorInput })
-    .tap(proveTurn)
-    .branch({
-      model: [(input: { message: string }) => input, (input: { message: string }) => forModel(input.message), doerModel],
-      code: [(input: { message: string }) => input, (input: { message: string }) => !forModel(input.message), doerCode]
+    // The desk's turn: the filer's model (its task tools, and `suspendForUser` off a task row), or a note.
+    const deskModel = generator({
+      name: "asks-desk-model",
+      model: scripted as never,
+      inputSchema: doorInput,
+      uses: [deskBoard.tools, deskBoard.questions],
+      prompt: "Do what the line says with your tools, then stop.",
+      user: (input: { message: string }) => input.message
+    });
+    const deskNote = handler({ name: "asks-desk-note", inputSchema: doorInput, outputSchema: z.unknown(), execute: (input) => `noted: ${input.message}` });
+    const deskTurn = sequencer({ name: "asks-desk-turn", inputSchema: doorInput }).branch({
+      model: [(input: { message: string }) => input, (input: { message: string }) => /\[(filer|input)\]/.test(input.message), deskModel],
+      note: [(input: { message: string }) => input, (input: { message: string }) => !/\[(filer|input)\]/.test(input.message), deskNote]
     });
 
-  const deskFlow = defineFlow({
-    kind: "desk",
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
-    resources: { ...installation.resources, ...deskBoard.resources, inventoryWorkers: defineWorkerInventoryCollection() },
-    actions: { respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (i: { message: string }) => i.message }, ...deskBoard.actions },
-    internal: { actions: deskBoard.entries(deskNote, () => "fixed") },
-    task: { actions: { work: workerTaskEntry({ name: "asks-desk-task", turn: deskNote }) } }
-  } as never);
-  const doerFlow = defineFlow({
-    kind: "doer",
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(doerBoard.sessionStateShape), serverOwned: [...doerBoard.serverOwned] },
-    resources: { ...installation.resources, ...doerBoard.resources },
-    // A line typed in a task's session steers it, through the one home for what a line answers.
-    actions: { respond: { inputSchema: doorInput.strict(), block: steerOrTalk(doerWork), userMessage: (i: { message: string }) => i.message }, ...doerBoard.actions },
-    internal: { actions: doerBoard.entries(doerWork, () => "judgment") },
-    task: { actions: { work: { ...workerTaskEntry({ name: "asks-doer-task", turn: doerWork }), durable: true } } }
-  } as never);
-  workerFlows = { desk: { flow: deskFlow, roles: ["contributor", "manager"] }, doer: { flow: doerFlow, roles: ["contributor", "manager"] } };
+    /** Every doer turn proves itself first: the row's attempt and turn as it read them, and its message. */
+    const proveTurn = handler({
+      name: "asks-doer-prove",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
+      execute: async (input, rawCtx) => {
+        const ctx = rawCtx as unknown as BlockContext;
+        const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY] as string | undefined;
+        const board = await filingConversationBoard(ctx);
+        const row = taskId === undefined ? undefined : (board?.tasks.get(taskId) as Task | undefined);
+        prove({ kind: "turn", requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, ...(taskId !== undefined ? { taskId } : {}), attempt: row?.attempts, turn: row?.turn, message: input.message });
+        return null;
+      }
+    });
+    const doerModel = generator({
+      name: "asks-doer-model",
+      model: scripted as never,
+      inputSchema: doorInput,
+      uses: [doerBoard.questions],
+      prompt: "Ask what the task says to ask, then stop.",
+      user: (input: { message: string }) => input.message
+    });
+    /**
+     * The doer's code turn. `[review]` asks the user to review a draft (a
+     * block's stop); `[ask2]` asks two questions midway (`askMidway`);
+     * `[block-input]` asks for input with the block's own `ctx.suspendForUser`.
+     */
+    const doerCode = handler({
+      name: "asks-doer-code",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
+      execute: async (input, rawCtx) => {
+        const ctx = rawCtx as unknown as BlockContext;
+        const message = input.message;
+        const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY] as string | undefined;
+        const base = { requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, ...(taskId !== undefined ? { taskId } : {}) };
+        const answered = /answering "/.test(message);
+        if (message.includes("[review]") && !answered) {
+          const review = await ctx.suspendForUser({ kind: "review", prompt: REVIEW } as never);
+          const board = await filingConversationBoard(ctx);
+          const row = taskId === undefined ? undefined : (board?.tasks.get(taskId) as Task | undefined);
+          prove({ kind: "resumed", ...base, attempt: row?.attempts, outcome: review });
+          return { reviewed: review };
+        }
+        if (message.includes("[block-input]") && !answered) {
+          const asked = await ctx.suspendForUser({ kind: "input", prompt: INPUT } as never);
+          prove({ kind: "resumed", ...base, outcome: asked });
+          return { asked };
+        }
+        if (message.includes("[ask2]") && !answered) {
+          const board = await filingConversationBoard(ctx);
+          if (board !== undefined) await askMidway(ctx, board.tasks, [{ prompt: "Which export?" }, { prompt: "Which date column?" }]);
+          return "asked";
+        }
+        return `done ${taskId ?? "no task"}`;
+      }
+    });
+    const doerWork = sequencer({ name: "asks-doer-work", inputSchema: doorInput })
+      .tap(proveTurn)
+      .branch({
+        model: [(input: { message: string }) => input, (input: { message: string }) => forModel(input.message), doerModel],
+        code: [(input: { message: string }) => input, (input: { message: string }) => !forModel(input.message), doerCode]
+      });
+
+    const deskFlow = defineFlow({
+      kind: "desk",
+      configSchema: workerConfigSchema(),
+      session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
+      resources: { ...installation.resources, ...deskBoard.resources, inventoryWorkers: defineWorkerInventoryCollection() },
+      actions: { respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (i: { message: string }) => i.message }, ...deskBoard.actions },
+      internal: { actions: deskBoard.entries(deskNote, () => "fixed") },
+      task: { actions: { work: workerTaskEntry({ name: "asks-desk-task", turn: deskNote }) } }
+    } as never);
+    const doerFlow = defineFlow({
+      kind: "doer",
+      configSchema: workerConfigSchema(),
+      session: { ...installation.session(doerBoard.sessionStateShape), serverOwned: [...doerBoard.serverOwned] },
+      resources: { ...installation.resources, ...doerBoard.resources },
+      // A line typed in a task's session steers it, through the one home for what a line answers.
+      actions: { respond: { inputSchema: doorInput.strict(), block: steerOrTalk(doerWork), userMessage: (i: { message: string }) => i.message }, ...doerBoard.actions },
+      internal: { actions: doerBoard.entries(doerWork, () => "judgment") },
+      task: { actions: { work: { ...workerTaskEntry({ name: "asks-doer-task", turn: doerWork }), durable: true } } }
+    } as never);
+    return (built = { desk: deskFlow, doer: doerFlow });
+  };
 
   // Leg h's plan board: one inline worker that asks midway, on a board kept on the drain's request.
   const PLAN = "plan-h";
@@ -382,11 +391,17 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
   } as never);
 
   const flows: Record<string, any> = {
-    ...Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
     plan: planFlow(),
     [INVENTORY_WRITER_FLOW]: defineFlow({ kind: INVENTORY_WRITER_FLOW, internal: { actions: { ...inventoryWriterActions() } } } as never)()
   };
   const state = createFlowState({
+    kits: [workforce({ directory: TREE })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        desk: workerFlow((installation) => flowsOn(installation).desk, { roles: ["contributor", "manager"] }),
+        doer: workerFlow((installation) => flowsOn(installation).doer, { roles: ["contributor", "manager"] })
+      }
+    },
     flows: Object.values(flows),
     stores: { default: { primary: sqliteStores({ filename }) } },
     logger: silentLogger,
@@ -400,12 +415,15 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
 
   const connect = async () => {
     const runtime = await state.getRuntime();
+    // The installation the kit hired, as its worker flows' builders received it.
+    const installation = builtOn;
+    if (installation === undefined) throw new Error("the workforce kit built no worker flow");
     // The inventory, written once as a Lab's boot does, so Shift Manager's read finds the workers.
     const binding = await openInventory(
       { workers: inventoryWorkers(installation) },
       {
         run: async (request) => {
-          const result = (await runAction({ flow: flows[request.flowKind], actionName: request.action, input: request.input, userId: request.userId, orgId: request.orgId, sessionId: request.sessionId, source: request.source, stores: runtime.stores, runtimeConfig: runtime.runtimeConfig } as never)) as { error?: unknown };
+          const result = (await runAction({ flow: runtime.registry.get(request.flowKind), actionName: request.action, input: request.input, userId: request.userId, orgId: request.orgId, sessionId: request.sessionId, source: request.source, stores: runtime.stores, runtimeConfig: runtime.runtimeConfig } as never)) as { error?: unknown };
           if (result?.error !== undefined) throw new Error(String((result.error as Error).message ?? result.error));
           return result;
         },

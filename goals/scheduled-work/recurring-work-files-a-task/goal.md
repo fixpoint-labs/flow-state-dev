@@ -36,3 +36,5 @@
 | 2026-10-22 | `34c32d4d9` | n/a | FAIL | On main after FIX-2081: `a2` refused, `cancelTask_tasks` is no longer an action |
 | 2026-10-22 | `34c32d4d9` + fix | n/a | PASS | Cancel through `updateTask_tasks` with `status: "cancelled"`: every leg green, as on 2026-10-21 |
 | 2026-10-22 | `34c32d4d9` + fix | n/a | FAIL (expected) | `GOAL_CONTROL=memory-dedupe`: `b:exactly-one-task` (4 tasks; 202 ×4) and `b:early-files-nothing` |
+| 2026-11-13 | claude/fix-2627-impl-e-b3 on 0a98c8621 | n/a | PASS | Kit install (`workforce({ directory })`). "PASS — a: one task, researcher, completed, heard once (completed); a: the next week's task, cancelled while pending, ended cancelled; b: one time from two hosts, a restart and 20 s late filed one task (answers 200, 202, 200, 200); b: an untimed POST a minute …" |
+| 2026-11-13 | claude/fix-2627-impl-e-b3 on 0a98c8621 | n/a | FAIL (control `memory-dedupe`, expected) | Kit install. "b:exactly-one-task — one scheduled time filed 3 tasks (fires answered 202, 202, 202, 202)" |

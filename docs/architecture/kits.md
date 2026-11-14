@@ -84,7 +84,17 @@ Only the app (`fill`) or a kit that requires the owner can fill a slot.
 
 `IGNORED_ENTRIES` (`.DS_Store`, `Thumbs.db`) is the only pass. A claim outside the folder (`..`, absolute) throws.
 
-The primitives under it (`classify`, `openStructuralDirectory`, `openRoot`, the refusal wordings) moved here from workforce's loader with no alias; `openRoot` takes a label so its messages name the folder being opened. Workforce's six directory readers and `fsdev gen`'s walk import them from `@flow-state-dev/engine/folder`; routing those readers through the claim pass is FIX-2627's.
+The primitives under it (`classify`, `openStructuralDirectory`, `openRoot`, the refusal wordings) moved here from workforce's loader with no alias; `openRoot` takes a label so its messages name the folder being opened. Workforce's six directory readers and `fsdev gen`'s walk import them from `@flow-state-dev/engine/folder`. Workforce's kit reads its folder with `readWorkforceFolder` (`@flow-state-dev/workforce/loader`): the readers run over the whole tree, and it claims each file the published convention names (`TEAM.md`, each `WORKER.md`, the documents, references, skills and packages at each level, the code `fsdev gen` registers, and `workforce.gen.ts`). A reader's problem stops the app too, every one named.
+
+## The kits that ship
+
+| Kit | From | Slots | Contributes | Serves |
+|---|---|---|---|---|
+| `workforce` | `@flow-state-dev/workforce/kit` | `workerFlows` (keyed: `workerFlow(…)` entries, built on the installation), `uses` (list: capabilities for the agent and coordinator flows it builds) | nothing | one copy per worker flow, the roster flow, GitHub's service flow when configured |
+| `harnesses` | `@flow-state-dev/harness-manager/kit` (the only entry of that package that imports workforce) | `harnesses` (keyed: `Harness` values) | `coder`, the one coding worker flow, to `workerFlows`; the readiness capability to `uses` | the `harnesses` flow, its `readiness` view |
+| `claude-code` | `@flow-state-dev/claude-code` (`claudeCode()`) | none | Claude Code (and, with `plan`, Claude Code in plan mode) to `harnesses` | the `claude-code` flow, declaring the collections a run records into |
+
+Codex and Cursor install nothing, so they are plain values (`codexHarness()`, `cursorHarness()`), filled by the app. The workforce kit adds two capabilities of its own to the flows it builds, over its installation: consulting another conversation and the routine tools, each offered only to a worker whose file picks it. `createWorkerInstallation` and `hireWorkforce` are what its install runs.
 
 ## Not here yet
 

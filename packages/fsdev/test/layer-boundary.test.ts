@@ -53,7 +53,7 @@ describe("app hook layer line", () => {
 
   it("flags a planted import and a planted word", () => {
     const source = readFileSync(resolve(packages, "fsdev/src/commands/dev.ts"), "utf8");
-    expect(layerViolations(`${source}\nimport { hireWorkforce } from "@flow-state-dev/workforce";\n`)).toHaveLength(1);
+    expect(layerViolations(`${source}\nimport { defineAgentWorkerFlow } from "@flow-state-dev/workforce";\n`)).toHaveLength(1);
     expect(layerViolations(`${source}\nconst x = await import("@flow-state-dev/shift-manager");\n`)).toHaveLength(1);
     expect(layerViolations(`${source}\n// pick the team's roster\n`)).toHaveLength(1);
   });

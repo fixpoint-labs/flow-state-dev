@@ -24,7 +24,7 @@ change missed, and a failed read recovered without another change.**
 |---|---|
 | **The real need** | "One shared way, in the client, to turn notices into coalesced reads of a collection, so a package or app that watches a collection does not re-implement it" (the issue); epic [ER-7](../../epics/FIX-2618/DECISIONS.md#who-owns-what): "`useView` and every package watch sit on it" |
 | **Smaller, and rejected** | "Move `coalescedReads` and `mayBelongTo` into the client and import them." The three callers still write the loop around them, the retry stays in three places, and `useView` would be a fourth loop |
-| **Bigger, and not this issue's** | Watching a view (FIX-2623), notices with keys (FIX-2625), live direct reads by scope (FIX-2624), and one read shared by several watchers of the same thing |
+| **Bigger, and not this issue's** | Watching a view (FIX-2623), notices with ids (FIX-2625), live direct reads by scope (FIX-2624), and one read shared by several watchers of the same thing |
 | **Not done if** | Any coalescer or path rule is left outside the client · the inventory passes but a live screen misses a change · the retry exists but no screen says it is stale · Shift Manager keeps its pre-merge filter |
 
 ```mermaid
@@ -98,7 +98,7 @@ flowchart LR
 ```
 
 The filter runs before the merge, so an unheard notice can never widen a waiting read. The
-merge is where FIX-2625's keys will union.
+merge is where FIX-2625's ids will union.
 
 ## What stays as it is
 
@@ -138,7 +138,7 @@ and every live screen recovering the same way. If wrong: we ship an import and k
 and `useView` is the sixth.
 
 **[The debt](#whats-already-here-and-the-debt), net down:** seven copies go, one public method
-comes. If wrong: a public contract that FIX-2625's keys have to bend.
+comes. If wrong: a public contract that FIX-2625's ids have to bend.
 
 1. **[D1](DECISIONS.md#d1) · The live read is public, `client.live`, not framework-only.** The
    one to weigh. If wrong: a public shape fixed before views and keys, changed later as a break.

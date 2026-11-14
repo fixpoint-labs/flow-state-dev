@@ -44,3 +44,9 @@ The spec names *no vendor call* as where `ignore-age` fails leg e. Ignoring age 
 | 2026-10-23 | same, `GOAL_CONTROL=throttle-ignores-failures` | n/a | FAIL (expected) | **g:one-child**: three looks started 2 Codex processes. |
 | 2026-10-23 | same, `GOAL_CONTROL=key-by-account` | n/a | FAIL (expected) | **h:no-earlier-percent**: two rows, `codex` (`api-key`) and `codex-<hash>` still holding the signed-in windows; a and d fail too, since the view's `codex` row is never written. |
 | 2026-10-23 | claude/project-thread-3x3z3h (FIX-2142, pre-PR) | n/a | PASS (goal met except leg f) | 90 s, rerun over the reworked writer (run windows, `accountAt`); controls re-pointed at its new lines. All five controls fail on their assertions as before. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | PASS | *"legs a, b, c, d, e, g, h PASS in 102 s (leg f owed by a person: goal met except leg f)"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `ignore-age`: *"control ignore-age: failed on d:rolled-over, e:age, as it must"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `key-by-account`: *"control key-by-account: failed on h:no-earlier-percent, as it must"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `last-write-wins`: *"control last-write-wins: failed on a:leaves-the-stored-one, as it must"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `throttle-ignores-failures`: *"control throttle-ignores-failures: failed on g:one-child, as it must"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `unavailable-as-zero`: *"control unavailable-as-zero: failed on b:no-percent, c:no-percent, as it must"* |

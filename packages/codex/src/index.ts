@@ -11,6 +11,7 @@
  */
 export { codexAgent, type CodexAgentOptions } from "./agent";
 export { CODEX_PASS } from "./env-pass";
+export { codexHarness, type CodexHarnessOptions } from "./harness";
 export { createCodexAgentCapability } from "./capability";
 export {
   createDefaultResolveCodexClient,

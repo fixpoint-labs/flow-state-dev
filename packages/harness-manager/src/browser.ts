@@ -21,6 +21,7 @@ export {
   type RecordedWork,
   type RecordedWorkClient,
 } from "./recorded-work";
+export { CODER_FLOW } from "./coder-flow-name";
 export { harnessReadinessViewRef } from "./readiness-view-ref";
 export { harnessUsageViewRef, recheckHarnessUsage } from "./usage-view-ref";
 export { reviewDetail, type ReviewCheck, type ReviewDetail, type ReviewLand } from "./review-detail";

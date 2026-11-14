@@ -16,7 +16,7 @@ import { createInProcessFetch } from "@flow-state-dev/engine";
 import { scriptedModels } from "../../test-support/contract";
 import { openLab } from "../host.mts";
 import { createWiredLab } from "../src/adapter";
-import { PROJECTS_FLOW } from "../workforce/flows/projects.mts";
+import { PROJECTS_FLOW } from "../flows/projects.mts";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 

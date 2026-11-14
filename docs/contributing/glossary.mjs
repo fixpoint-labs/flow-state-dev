@@ -382,7 +382,7 @@ export const ENTRIES = [
   },
   {
     term: "Message budget",
-    means: "`hireWorkforce`'s `messages.budget`: the one budget a user's line starts.",
+    means: "The workforce kit's `messages.budget`: the one budget a user's line starts.",
     decision: "FIX-2246",
     retires: [
       {
@@ -633,8 +633,8 @@ export const ENTRIES = [
   // build them ship (FIX-2623 views, FIX-2626 kits and slots).
   {
     term: "View",
-    means: "The one hook that computes an answer for a screen (`defineView`, a flow's `views`): it has a scope (no session at user or org) and, for a list, keyed rows. It stores nothing, refuses writes and model calls, and each run records what it read, so its answer names the change topics a watcher listens to. Nothing about its dependencies is declared.",
-    decision: "Owner, 2026-11-10 (epic FIX-2618 O2, ER-1); FIX-2619; FIX-2623 D1 (dependencies recorded, not declared) and D2 (no model call)",
+    means: "The one hook that computes an answer for a screen (`defineView`, a flow's `views`): it has a scope (no session at user or org) and, for a list, keyed rows. It stores nothing, refuses writes and model calls, and each run records what it read, so its answer names the change topics a watcher listens to. Nothing about its dependencies is declared. A keyed view may answer for just the rows a change touches (a partial answer, `ctx.view.partial`), given the notice that woke its watcher (`ctx.view.changed`); one that says nothing answers whole.",
+    decision: "Owner, 2026-11-10 (epic FIX-2618 O2, ER-1); FIX-2619; FIX-2623 D1 (dependencies recorded, not declared) and D2 (no model call); FIX-2625 D1 (partial answers, opt-in)",
     // "Read" retires as the hook's name, with FIX-2623's removal of `reads` (epic ER-9). "View"
     // is not retired in any other sense: `readTaskView` and "derived views" in prose stay.
     retires: [
@@ -667,6 +667,12 @@ export const ENTRIES = [
     term: "Slot",
     means: "A typed, named place in a kit that only its owning kit declares, with a schema and a merge policy, and other kits fill at install. The same idea as a block's slot (`ToolsSlot`, `UsesSlot`, the context slot), one level up.",
     decision: "Owner, 2026-11-10 (epic FIX-2618 O1, ER-5); FIX-2619",
+    retires: [],
+  },
+  {
+    term: "Harness",
+    means: "A coding agent a run drives as a block (Claude Code, Codex, Cursor): handed a prompt, it runs its own loop in a working folder and returns a run handle. As a value (`Harness`, from `@flow-state-dev/harness-manager`) it is what fills the harness kit's `harnesses` slot: `{ id, label?, agent, readiness, pass, usage?, models? }`. A worker's `harness:` line names one by `id`.",
+    decision: "Owner, 2026-11-11 (epic FIX-2618 O1, the harness shape); FIX-2627",
     retires: [],
   },
   {
@@ -1212,6 +1218,13 @@ const EXEMPTIONS = [
     why: "a field named kind: the engine's flow kind or a type discriminant (BR-10)",
   },
   {
+    id: "worker-detail-kind-prop",
+    terms: ["kind"],
+    where: (path) => /(?:^|\/)(?:WorkerDetail\.ts|worker-detail\.(?:test\.ts|stories\.tsx))$/.test(path),
+    strip: /\bkind\b/gi,
+    why: "`WorkerDetail`'s published `kind` prop, the flow a navigator row names (FIX-1500 S5), moved unchanged to workforce's /react entry (FIX-2627)",
+  },
+  {
     id: "kind-type-names",
     terms: ["kind"],
     strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:suspendForUserKindOf|SuspendForUserKind)\b|`Kind`/g,
@@ -1226,7 +1239,7 @@ const EXEMPTIONS = [
   {
     id: "english-kind",
     terms: ["kind"],
-    strip: /\b(?:a|an|any|one|the same|this|that|what|which|some|every|each|another|other|same|no|either|second|different)\s+kinds?\s+of\b|\bkinds\s+of\b|\bof (?:any|that|this|each|either|one|the same) kind\b|\b(?:the same|same) kind\b|\bkindly\b|\bkinder\b|\bBe kind\b/gi,
+    strip: /\b(?:a|an|any|one|the same|this|that|what|which|some|every|each|another|other|same|no|either|second|different)\s+kinds?\s+of\b|\bkinds\s+of\b|\bof (?:any|that|this|each|either|one|the same) kind\b|\b(?:the same|same) kind\b|\b(?:two|three|four|five|six|seven|eight|nine|ten|\d+) kinds\b|\bkindly\b|\bkinder\b|\bBe kind\b/gi,
     why: "the English word",
   },
   {

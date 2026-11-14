@@ -35,8 +35,8 @@ import {
   inventoryWriterActions,
   openInventory,
   type InventoryActionRequest,
+  workerFlow,
 } from "@flow-state-dev/workforce";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { installWorkers } from "../../../lib/workers.mts";
 import { ASKER_FLOW, defineAskerFlow } from "../../it-sends-a-turn-into-a-worker-session/lab/asker/asker.mts";
 
@@ -59,16 +59,10 @@ const INVENTORY_WRITER_FLOW = "inventory-writer";
  * @returns The flow state a config default-exports.
  */
 export async function openDesk(root: string) {
-  const tree = await readDeclaredRoster(root);
-  if (tree.problems.length > 0) throw new Error(`the desk tree did not load: ${tree.problems.map((p) => p.error.message).join("; ")}`);
-
-  const { installation, copies } = installWorkers(tree.workers, (installation) => {
-    const agent = defineAgentWorkerFlow({ installation });
-    return {
-      [ASKER_FLOW]: defineAskerFlow(installation),
-      [AGENT_FLOW]: agent,
-      [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
-    };
+  const { installation, copies } = await installWorkers(root, {
+    [ASKER_FLOW]: workerFlow((installation) => defineAskerFlow(installation)),
+    [AGENT_FLOW]: workerFlow((installation) => defineAgentWorkerFlow({ installation })),
+    [COORDINATOR_FLOW]: workerFlow((installation) => defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL })),
   });
   // The worker-row write takes caller-supplied rows, so it is internal only.
   const writer = defineFlow({

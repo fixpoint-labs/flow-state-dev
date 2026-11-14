@@ -367,12 +367,12 @@ describe("the resource entry reads the whole tree: a stored thing is a resource,
   it("keeps Row in a store adapter and a UI list module, by path alone", () => {
     expect(resourceHits("packages/store-sqlite/src/zz.ts", "type ResourceRow = { key: string };\n")).toEqual([]);
     expect(resourceHits("packages/engine/src/stores/zz.ts", "export type ResourceStateRow = VersionedRow<JsonObject>;\n")).toEqual([]);
-    expect(resourceHits("packages/react/src/components/panels/cards.ts", "export type BoardCardRow = { id: string };\n")).toEqual([]);
+    expect(resourceHits("packages/workforce/src/react/components/cards.ts", "export type BoardCardRow = { id: string };\n")).toEqual([]);
     expect(resourceHits("packages/shift-manager/src/surfaces/roster/list.tsx", "export function WorkerRow() {}\n")).toEqual([]);
     // The same names one folder over are a read model, not a rendered row.
     expect(resourceHits("packages/shift-manager/src/lib/zz.ts", "export type WorkerRow = { id: string };\n")).toEqual(["1:export type WorkerRow = { id: string };"]);
     // The path keeps Row only: a CollectionItem name and a lifecycle State still count there.
-    expect(resourceHits("packages/react/src/components/panels/zz.ts", "export type FooCollectionItem = { id: string };\n")).toHaveLength(1);
+    expect(resourceHits("packages/workforce/src/react/components/zz.ts", "export type FooCollectionItem = { id: string };\n")).toHaveLength(1);
     expect(resourceHits("packages/store-sqlite/src/zz.ts", 'export type FooState = "a" | "b";\n')).toHaveLength(1);
   });
 

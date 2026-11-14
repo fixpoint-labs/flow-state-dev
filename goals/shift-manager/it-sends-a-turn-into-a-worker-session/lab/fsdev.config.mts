@@ -26,7 +26,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { readTree } from "../../../lib/workers.mts";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import type { AskFeature } from "../../../../packages/shift-manager/teams/devteam/ask.mts";
 import { LAB_TREE, openLab } from "../../../../packages/shift-manager/teams/devteam/host.mts";
@@ -45,7 +45,7 @@ const ASK_FEATURE = (
   ) as { feature: AskFeature }
 ).feature;
 
-const roster = await readDeclaredRoster(LAB_TREE);
+const roster = await readTree(LAB_TREE);
 const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const ems = roster.workers.filter((w) => w.declared.flow === EM_FLOW);
 if (ems.length !== 1) throw new Error(`wanted one EM worker in the DevTeam tree, found ${ems.length}`);

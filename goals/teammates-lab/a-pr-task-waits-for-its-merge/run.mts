@@ -47,7 +47,7 @@ const FIRST_STEP = "Reading the worker's instructions, brief and conventions.";
 
 const CONTROLS: Record<string, ModulePatch[]> = {
   "": [],
-  "no-wait": [{ module: "labs/teammates/src/flows/coder.ts", from: "awaitPullRequests: true,", to: "awaitPullRequests: false," }],
+  "no-wait": [{ module: "packages/harness-manager/src/kit/coder-flow.ts", from: "awaitPullRequests: options.pullRequests !== false,", to: "awaitPullRequests: false," }],
 };
 if (!(CONTROL in CONTROLS)) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(CONTROLS).filter(Boolean).join(", ")}`);
 const PATCHES = CONTROLS[CONTROL]!;

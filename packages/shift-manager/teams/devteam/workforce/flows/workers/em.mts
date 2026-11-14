@@ -172,7 +172,7 @@ export interface EmWorkerFlowOptions {
  * Build the coordinating worker flow.
  *
  * @param options The installation, the coder worker, the documents and the tool catalog.
- * @returns The flow factory `hireWorkforce` registers one copy of, which every EM worker runs on.
+ * @returns The flow factory the workforce kit registers one copy of, which every EM worker runs on.
  */
 export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   const { installation } = options;

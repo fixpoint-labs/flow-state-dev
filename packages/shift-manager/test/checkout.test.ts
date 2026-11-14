@@ -61,17 +61,19 @@ function run(args: string[], s: ReturnType<typeof stores>, env: Record<string, s
   let output = "";
   child.stdout!.on("data", (d) => (output += String(d)));
   child.stderr!.on("data", (d) => (output += String(d)));
-  return new Promise<{ outcome: "listening" | "exited" | "neither"; code?: number | null; output: string }>((resolve) => {
-    const timer = setTimeout(() => resolve({ outcome: "neither", output }), timeoutMs);
+  /** Everything the script has written so far, read now: what it logs after it listens too. */
+  const now = () => output;
+  return new Promise<{ outcome: "listening" | "exited" | "neither"; code?: number | null; output: string; now: () => string }>((resolve) => {
+    const timer = setTimeout(() => resolve({ outcome: "neither", output, now }), timeoutMs);
     child.stderr!.on("data", () => {
       if (/App:\s+http/.test(output) && /Data:/.test(output)) {
         clearTimeout(timer);
-        resolve({ outcome: "listening", output });
+        resolve({ outcome: "listening", output, now });
       }
     });
     child.on("exit", (code) => {
       clearTimeout(timer);
-      resolve({ outcome: "exited", code, output });
+      resolve({ outcome: "exited", code, output, now });
     });
   });
 }
@@ -90,8 +92,10 @@ describe("the checkout's script", () => {
     const started = await run(["--assets", assets], s);
     expect(started.outcome, started.output).toBe("listening");
     expect(started.output).toContain("Coder: Claude Code; each run may take 20 minutes (DEVFORCE_LAB_RUN_MINUTES).");
-    const row = started.output.split("\n").find((line) => line.includes("✗ Claude Code"));
-    expect(row, started.output).toContain("ANTHROPIC_API_KEY");
+    // The harness kit logs the readiness table once its check answers, which can be after the Lab listens.
+    const rowOf = () => started.now().split("\n").find((line) => line.includes("✗ Claude Code"));
+    for (const until = Date.now() + 60_000; rowOf() === undefined && Date.now() < until; ) await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(rowOf(), started.now()).toContain("ANTHROPIC_API_KEY");
     expect(existsSync(s.fsd)).toBe(true);
   }, 120_000);
 

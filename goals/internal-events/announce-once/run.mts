@@ -4,26 +4,23 @@ import { readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import {
-  ROSTER_FLOW,
   WORKER_MESSAGES_PATTERN,
-  createWorkerInstallation,
-  hireWorkforce,
-  internalServiceFlow,
   messageReceivedEntry,
   subscriptionResources,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
   workerTaskEntry,
   type InternalTopics,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { internalEventsOf, workforce } from "@flow-state-dev/workforce/kit";
 import { workerRoutineVerbs } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
-import { REPO_ROOT, goalTmpDir, runGoal, silentLogger } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, runGoal, silentLogger, workforceTree } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -114,60 +111,56 @@ const topics: InternalTopics = Object.fromEntries(
 // ---- the host ---------------------------------------------------------------
 
 const modelCalls: string[] = [];
-const installationFlows: Record<string, unknown> = {};
-const installation = createWorkerInstallation({
-  standardWorkers: [
-    { id: "eng.follower", declared: { flow: "follower", description: "Follows topics." }, body: "", skills: [] } as WorkerManifest,
-    { id: "eng.watcher", declared: { flow: "follower", description: "Publishes what it learns." }, body: "", skills: [] } as WorkerManifest
-  ],
-  workerFlows: () => installationFlows as never
-});
-const internal = internalServiceFlow({ installation, topics });
+const TREE = workforceTree([
+  { id: "eng.follower", declared: { flow: "follower", description: "Follows topics." }, body: "" } as WorkerManifest,
+  { id: "eng.watcher", declared: { flow: "follower", description: "Publishes what it learns." }, body: "" } as WorkerManifest
+]);
 
 /** What a routine a message wakes passes on, by its session: the ring's and the fan's, with no model. */
 const passesOf = new Map<string, Publish>();
 /** Each pass a woken routine tried: its session, the hop its turn ran at, and what the publish answered. */
 const passes: Array<{ session: string; hop: number; outcome: Record<string, unknown> }> = [];
 
-const tools = workerRoutineVerbs(installation);
 const doorInput = z.object({ message: z.string() });
 const door = handler({ name: "follower-run", inputSchema: doorInput, execute: async () => "ok" });
-// A block in the flow that publishes: the app's own code, no model. Its input goes to publishEvent as given.
-const publish = handler({ name: "announce", inputSchema: z.unknown(), resources: internal.resources, execute: async (input, ctx) => internal.publishEvent(ctx, input) });
-// A routine's turn on what it heard: it passes it on, when its session passes one on.
-const relay = handler({
-  name: "follower-relay",
-  inputSchema: z.object({ text: z.string() }).passthrough(),
-  resources: internal.resources,
-  execute: async (_received, ctx) => {
-    const next = passesOf.get(ctx.session.identity.id);
-    if (next === undefined) return "";
-    const hop = Number((ctx.request.state as Record<string, unknown>).workforceTurnHop ?? -1);
-    const outcome = (await internal.publishEvent(ctx, next)) as unknown as Record<string, unknown>;
-    passes.push({ session: ctx.session.identity.id, hop, outcome });
-    return "";
-  }
-});
-installationFlows.follower = {
-  roles: ["contributor"],
-  flow: defineFlow({
-    kind: "follower",
-    configSchema: workerConfigSchema(),
-    session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources, ...internal.resources },
-    actions: {
-      respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
-      announce: { inputSchema: z.unknown(), block: publish },
-      ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
-    },
-    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower", turn: relay }) } },
-    task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: door }) } }
-  })
-};
-const instances: Record<string, FlowInstance> = Object.fromEntries(
-  hireWorkforce(installation, { routines: { providers: [internal.provider] }, messages: { budget: F.budget } }).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
+
+/** The follower flow, built on the installation the kit hired: the internal events it serves are that installation's. */
+const followerFlow = workerFlow(
+  (installation) => {
+    const internal = internalEventsOf(installation);
+    const tools = workerRoutineVerbs(installation);
+    // A block in the flow that publishes: the app's own code, no model. Its input goes to publishEvent as given.
+    const publish = handler({ name: "announce", inputSchema: z.unknown(), resources: internal.resources, execute: async (input, ctx) => internal.publishEvent(ctx, input) });
+    // A routine's turn on what it heard: it passes it on, when its session passes one on.
+    const relay = handler({
+      name: "follower-relay",
+      inputSchema: z.object({ text: z.string() }).passthrough(),
+      resources: internal.resources,
+      execute: async (_received, ctx) => {
+        const next = passesOf.get(ctx.session.identity.id);
+        if (next === undefined) return "";
+        const hop = Number((ctx.request.state as Record<string, unknown>).workforceTurnHop ?? -1);
+        const outcome = (await internal.publishEvent(ctx, next)) as unknown as Record<string, unknown>;
+        passes.push({ session: ctx.session.identity.id, hop, outcome });
+        return "";
+      }
+    });
+    return defineFlow({
+      kind: "follower",
+      configSchema: workerConfigSchema(),
+      session: installation.session(),
+      resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources, ...internal.resources },
+      actions: {
+        respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
+        announce: { inputSchema: z.unknown(), block: publish },
+        ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
+      },
+      internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower", turn: relay }) } },
+      task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: door }) } }
+    });
+  },
+  { roles: ["contributor"] }
 );
-instances["internal-service"] = internal.flow;
 
 const mocks = createMockModelResolver({});
 const modelResolver = Object.assign((modelId: string, blockName?: string) => {
@@ -176,8 +169,10 @@ const modelResolver = Object.assign((modelId: string, blockName?: string) => {
 }, mocks);
 
 const stores = inMemoryStores();
+// The kit serves the internal service flow (`internal-service`) and adds its provider to routines.
 const state = createFlowState({
-  flows: instances,
+  kits: [workforce({ directory: TREE, internalEvents: { topics }, messages: { budget: F.budget } })],
+  fill: { [workforce.slots.workerFlows]: { follower: followerFlow } },
   stores: { default: { primary: stores } },
   modelResolver,
   logger: silentLogger,
@@ -188,6 +183,10 @@ const state = createFlowState({
 } as never);
 const router = (await state.getRouter()) as any;
 const runtime = await state.getRuntime();
+/** The one copy of the follower flow the kit serves. */
+const follower = runtime.registry.get("follower") ?? (() => {
+  throw new Error("setup: the workforce kit serves no follower flow");
+})();
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -220,7 +219,7 @@ async function createFollower(user: string, worker = "eng.follower"): Promise<st
 
 async function act(user: string, sessionId: string, action: string, input: unknown) {
   const ran = (await runAction({
-    flow: instances.follower!,
+    flow: follower,
     actionName: action,
     input,
     userId: user,

@@ -104,12 +104,12 @@ mechanisms:
     builtOn: [flow, kit-folder]
     overlaps:
       - { id: capability, relation: distinct-jobs, note: "A capability installs into one block; a kit installs flows into an app and can declare slots." }
-      - { id: workforce, relation: distinct-jobs, note: "hireWorkforce wires one feature by hand; workforce becomes a kit (FIX-2627), and hireWorkforce an internal." }
+      - { id: workforce, relation: distinct-jobs, note: "Workforce is installed as a kit (`workforce`, FIX-2627); hireWorkforce is what its install runs, so an app installs it through this row, not that one." }
     status: canonical
     doc: docs/architecture/kits.md
 
   - id: view
-    job: Compute an answer a screen watches, at the scope its data lives in (no session at user or org), typed by its block's output schema and optionally keyed. It writes nothing and calls no model; each run records what it read, and the answer names the change topics a watcher listens to. It replaced flow reads and a scope's client.derived.
+    job: Compute an answer a screen watches, at the scope its data lives in (no session at user or org), typed by its block's output schema and optionally keyed. It writes nothing and calls no model; each run records what it read, and the answer names the change topics a watcher listens to and, under each, which notices may change it (`hears`); a task board read through its task collection is recorded there as its board's notices (`recordBoardRead`). It replaced flow reads and a scope's client.derived.
     package: "@flow-state-dev/core"
     anchor: defineView
     file: packages/core/src/flow/defineView.ts
@@ -340,7 +340,7 @@ mechanisms:
     doc: packages/engine/README.md
 
   - id: change-bus
-    job: Tell whoever watches a scope (session, user, org, optionally one resource) that something under it changed, never what. Request and session writes publish through one wrapper; the session stream wakes on it. The `bus` slot of a stores profile; in memory by default, Postgres as the first adapter that crosses processes.
+    job: Tell whoever watches a scope (session, user, org, optionally one resource) that something under it changed, never its rows, naming the ids of what changed when the publisher holds them (a task, an entry's key, a session, a request), folded per turn up to one cap. Request and session writes publish through one wrapper; the session stream wakes on it. The `bus` slot of a stores profile; in memory by default, Postgres as the first adapter that crosses processes.
     package: "@flow-state-dev/engine"
     anchor: createInMemoryBus
     file: packages/engine/src/bus/in-memory-bus.ts
@@ -353,7 +353,7 @@ mechanisms:
     doc: packages/engine/README.md
 
   - id: push-delivery
-    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change. `client.live`, the live read, is the one loop every screen runs on it, which filters the notices it hears (the path rule), merges them, keeps one read in flight and at most one waiting, reports on change, and retries a failed read on the client's backoff.
+    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change. The socket is where a notice's ids reach a browser, so the app's per-scope `noticeIds` switch is applied there. With it off, a scope's notices carry no ids and no collection entry's path to a scope-wide subscription. `client.live`, the live read, is the one loop every screen runs on it, which filters the notices it hears (the path rule), merges them (the ids of two notices of one change on one topic are unioned), keeps one read in flight and at most one waiting, reports on change, and retries a failed read on the client's backoff.
     package: "@flow-state-dev/engine"
     anchor: enablePushDelivery
     file: packages/engine/src/push/push-delivery.ts
@@ -641,20 +641,20 @@ mechanisms:
 
   # ── Workforce ─────────────────────────────────────────────────────────────
   - id: workforce
-    job: Register worker flows from an installation (hireWorkforce). The define* factories beside it are the records and flows a workforce app composes, not separate frameworks.
+    job: "Workers from an app's files, each running on one registered copy of the flow it names. An app installs it as a kit, `workforce` from `@flow-state-dev/workforce/kit`, whose install builds the installation and hires it (FIX-2627); its slots take worker flows, capabilities for the flows it builds, and flows built on the installation. The define* factories beside it are the records and flows a workforce app composes, not separate frameworks."
     package: "@flow-state-dev/workforce"
-    anchor: hireWorkforce
-    file: packages/workforce/src/workers/register.ts
-    builtOn: [flow, task-board]
+    anchor: workforce
+    file: packages/workforce/src/kit/workforce-kit.ts
+    builtOn: [flow, task-board, kit]
     overlaps: []
     status: canonical
     doc: docs/architecture/workforce-default-worker-flow.md
 
   - id: worker-loader
-    job: Read a workforce from files (WORKER.md, teams, references, resources) into records hireWorkforce takes. Node-only.
+    job: Read a workforce folder (WORKER.md, teams, references, resources) through a kit's folder, every path it reads claimed and every reader problem a refusal, into the records the workforce kit hires. Node-only.
     package: "@flow-state-dev/workforce"
-    anchor: readWorkforce
-    file: packages/workforce/src/loader/read-workforce.ts
+    anchor: readWorkforceFolder
+    file: packages/workforce/src/loader/read-workforce-folder.ts
     builtOn: [workforce, kit-folder]
     overlaps: []
     status: canonical
@@ -713,6 +713,27 @@ mechanisms:
     status: unconfirmed
     doc: packages/workforce/README.md
 
+  - id: source-read
+    job: "Three reads of a workspace host's source (glob, read, grep) as a capability, naming no project and installing no resources. projectSourceCapability is this body plus the project resources."
+    package: "@flow-state-dev/workforce"
+    anchor: sourceReadCapability
+    file: packages/workforce/src/source-read.ts
+    builtOn: [capability, workspace]
+    overlaps:
+      - { id: projects, relation: distinct-jobs, note: "projectSourceCapability, under projects, is the same reads over a project's checkout, with the project resources; this row is the reads alone." }
+    status: canonical
+    doc: docs/architecture/workforce-default-worker-flow.md
+
+  - id: workforce-panels
+    job: "React components for a workforce screen: the roster, one worker's detail, and a board as columns or a list. They read workforce's views through the react package's hooks; React is an optional peer, and only the /react entry imports it."
+    package: "@flow-state-dev/workforce"
+    anchor: Roster
+    file: packages/workforce/src/react/components/Roster.ts
+    builtOn: [react, workforce, view]
+    overlaps: []
+    status: canonical
+    doc: packages/workforce/README.md
+
   - id: error-reporter
     job: A worker that turns a failure that stayed failed, or a problem a user describes, into one reproducible bug report filed through the project's tracker.
     package: "@flow-state-dev/workforce"
@@ -755,7 +776,7 @@ mechanisms:
     doc: packages/workforce/README.md
 
   - id: subscriptions
-    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it (five config screens and the app's own custom functions); a subscription that lists `interest` is judged by one evaluator call per routing run, a yes or no per distinct sentence, only after code passed it, and a failed call refuses it unjudged, never as unheard. A provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. GitHub is the first provider (`githubServiceFlow`, on the webhook transport's service route), and a coding task follows the PR it opened from the moment its record is written (`followPullRequest`). Inside the app, a session publishes on a declared topic with `publishEvent` (a worker's tool, or a function a block calls), and the dispatch seam routes it through the internal service flow (`internalServiceFlow`) as `service:internal`, to the publisher's own routines on `internal:<topic>`, never its own session; the publish pays one place in its message chain, and each delivery lands in that chain one hop on, so the message budget bounds the whole exchange. `subscribe` and `unsubscribe` are the only writers of a subscription (an event routine's trigger); a PR's closing and a task's failure or cancel end one. A coordinator can follow one `unmatched`, hearing only events no other subscription heard, of the event types the app forwards (`forwards`), each marked addressed or inferred by the delivery, and its `inferredWork` (`off`, `observe`, `auto`) decides whether inferred work runs, waits on a confirm the board's write adds, or lands as a line with no turn.
+    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it (five config screens and the app's own custom functions); a subscription that lists `interest` is judged by one evaluator call per routing run, a yes or no per distinct sentence, only after code passed it, and a failed call refuses it unjudged, never as unheard. A provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. GitHub is the first provider (`githubServiceFlow`, on the webhook transport's service route), and a coding task follows the PR it opened from the moment its record is written (`followPullRequest`). Inside the app, a session publishes on a declared topic with `publishEvent` (a worker's tool, or a function a block calls), and the dispatch seam routes it through the internal service flow (`internalServiceFlow`) as `service:internal`, to the publisher's own routines on `internal:<topic>`, never its own session; the publish pays one place in its message chain, and each delivery lands in that chain one hop on, so the message budget bounds the whole exchange. `subscribe` and `unsubscribe` are the only writers of a subscription (an event routine's trigger); a PR's closing and a task's failure or cancel end one. A coordinator can follow one `unmatched`, hearing only events no other subscription heard, of the event types the app forwards (`forwards`), each marked addressed or inferred by the delivery, and its `inferredWork` (`off`, `observe`, `auto`) decides whether inferred work runs, waits on a confirm the board's write adds, or lands as a line with no turn. Internal events are one provider of it; the workforce kit serves them from its `internalEvents` config, and a worker flow reaches their publish with `internalEventsOf(installation)`.
     package: "@flow-state-dev/workforce"
     anchor: subscribe
     file: packages/workforce/src/subscriptions/subscribe.ts
@@ -779,7 +800,7 @@ mechanisms:
 
   # ── Coding harnesses ──────────────────────────────────────────────────────
   - id: coding-harness
-    job: Drive a coding agent as a block. Core owns the neutral handle and what a harness declares about its abort (`stopsOnAbort`, read by harness-manager); Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper.
+    job: Drive a coding agent as a block. Core owns the neutral handle and what a harness declares about its abort (`stopsOnAbort`, read by harness-manager); Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper. Each also ships itself as one value for the harness kit's slot (harness-manager's `Harness`), `codexHarness()` and `cursorHarness()`; `claudeCode()` is a small kit that fills the slot (FIX-2627).
     package: "@flow-state-dev/core"
     anchor: harnessRunHandleSchema
     file: packages/core/src/types/harness.ts
@@ -790,7 +811,7 @@ mechanisms:
     doc: packages/core/README.md
 
   - id: harness-readiness
-    job: Say which coding harnesses can run on this machine and what to do about one that can't. Core owns the neutral check; Claude Code, Codex and Cursor each ship one; harness-manager keeps the rows and serves them as a read action, a coordinator context entry and a pre-start refusal.
+    job: Say which coding harnesses can run on this machine and what to do about one that can't. Core owns the neutral check; Claude Code, Codex and Cursor each ship one; harness-manager keeps the rows and serves them as a view, a coordinator context entry and a pre-start refusal. The harness kit builds them from its `harnesses` slot, so no host builds a readiness map (FIX-2627).
     package: "@flow-state-dev/harness-manager"
     anchor: harnessReadiness
     file: packages/harness-manager/src/readiness.ts
@@ -812,11 +833,11 @@ mechanisms:
     doc: packages/core/README.md
 
   - id: harness-manager
-    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot). Also runs a harness as one long-lived session a user talks to (harnessSessionFlow), and ships the scripted harness model-free checks put in the slot (harnessStub), with the paced preset hosts serve as their scripted coder (scriptedHarness).
+    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot). Also runs a harness as one long-lived session a user talks to (harnessSessionFlow), and ships the scripted harness model-free checks put in the slot (harnessStub), with the paced preset hosts serve as their scripted coder (scriptedHarness). Installed as a kit, `harnesses` from `@flow-state-dev/harness-manager/kit` (FIX-2627), which contributes `coder`, the one coding worker flow, to workforce, its policy as config.
     package: "@flow-state-dev/harness-manager"
     anchor: harnessManager
     file: packages/harness-manager/src/manager.ts
-    builtOn: [task-board, coding-harness, harness-steering, workspace]
+    builtOn: [task-board, coding-harness, harness-steering, workspace, kit]
     overlaps:
       - { id: workspace, relation: distinct-jobs, note: "The checkout subpath runs git through the workspace host and re-exports run. It is not a second workspace implementation." }
     status: canonical

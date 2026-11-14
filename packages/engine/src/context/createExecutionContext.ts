@@ -51,6 +51,8 @@ import type { BlockValueInternal, RuntimeItem, ReplayLog } from "@flow-state-dev
 import {
   resolveAllowedActions,
   BOARD_NOTICE_SEAM,
+  BOARD_READ_SEAM,
+  type BoardReadSeam,
   DISPATCH_SEAM,
   ATTACHMENT_SEAM,
   type AttachmentSeam,
@@ -189,7 +191,7 @@ import type { BlobStore } from "../blobs/types";
 import type { AttachmentAccepts } from "@flow-state-dev/core/attachments";
 import { resolveHistoryFiles } from "./history-files";
 import { readAttachmentText } from "../blobs/attachment-text";
-import { noticePathFor, publishScopeChange, publishSessionResourceChange } from "../bus/scope-changes";
+import { entryNotice, publishScopeChange, publishSessionResourceChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
   normalizeScopeResources,
@@ -2767,13 +2769,17 @@ export async function createExecutionContext<
    * Publish that `scope` changed, naming this request. The topic's
    * id is the bare session id, the user id or the org id, under the tenant.
    */
-  function publishScopeNotice(scope: "session" | "user" | "org", kind: "state" | "resource", resource?: string): void {
+  function publishScopeNotice(
+    scope: "session" | "user" | "org",
+    kind: "state" | "resource",
+    narrowed: { resource?: string; ids?: string[] } = {}
+  ): void {
     publishScopeChange(stores.bus, {
       scope,
       id: scope === "session" ? sessionId : scope === "user" ? userId : orgRef.current?.orgId ?? resolvedOrgId,
       tenantId: options.tenantId,
       kind,
-      ...(resource !== undefined ? { resource } : {}),
+      ...narrowed,
       requestId: requestRef.current.id
     });
   }
@@ -2810,17 +2816,23 @@ export async function createExecutionContext<
      */
     const publishChange = (resourcePath: string): void => {
       // The session notice, or none, by the scope's published resources.
-      let notice: { resource?: string } | undefined;
+      let notice: { resource?: string; ids?: string[] } | undefined;
       if (publishedSingleKeys.has(resourcePath)) notice = { resource: resourcePath };
       else {
         const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
         if (holders.length > 0) {
-          const named = holders.some((cfg) => noticePathFor(cfg, resourcePath, scope) !== undefined);
-          notice = named ? { resource: resourcePath } : {};
+          // An entry names its key beside its path, when the path may be named (FIX-2625).
+          // On the user topic each holder names its root: the deepest is under
+          // every other, so a view of any holder hears it (the path rule).
+          const named = holders
+            .map((cfg) => entryNotice(cfg, resourcePath, scope))
+            .filter((n) => n.resource !== undefined)
+            .sort((a, b) => b.resource!.length - a.resource!.length)[0];
+          notice = named ?? {};
         }
       }
       if (scope !== "session") {
-        if (notice !== undefined) publishScopeNotice(scope, "resource", notice.resource);
+        if (notice !== undefined) publishScopeNotice(scope, "resource", notice);
         return;
       }
       // FIX-2623 D1: a session write goes through the one publish surface,
@@ -3470,6 +3482,19 @@ export async function createExecutionContext<
       return Object.values(flatResourcesHandles);
     }
   } as ResourceRegistry<Record<string, AnyResourceRef>>;
+  // FIX-2625: a board read through its task collection, in a view, is heard on
+  // its board's notices in place of its ledger's: the ledger is named by the
+  // accessor whose handle the collection read through.
+  const boardReadSeam: BoardReadSeam | undefined =
+    viewDependencies === undefined
+      ? undefined
+      : {
+          record(read) {
+            const covers = Object.keys(flatResourcesHandles).find((accessor) => flatResourcesHandles[accessor] === read.ledger);
+            if (covers === undefined || read.sessionIds.length === 0) return;
+            viewDependencies.board(read.board, read.sessionIds, covers);
+          }
+        };
   if (viewDependencies !== undefined || noSession) {
     for (const accessor of [...Object.keys(flatResourcesHandles), ...sessionAccessorsWithoutSession]) {
       Object.defineProperty(flatResourcesRegistry, accessor, {
@@ -4130,9 +4155,13 @@ export async function createExecutionContext<
       // A task board's change reaches this run's bus, under the
       // request's tenant. No bus (a registry no entry wrapped): no seam.
       ...(boardNoticeSeam !== undefined ? { [BOARD_NOTICE_SEAM]: boardNoticeSeam } : {}),
+      // A view's run records a board read through its task collection.
+      ...(boardReadSeam !== undefined ? { [BOARD_READ_SEAM]: boardReadSeam } : {}),
       ...(attachmentSeam !== undefined ? { [ATTACHMENT_SEAM]: attachmentSeam } : {}),
       ...(userAttachmentSeam !== undefined ? { [USER_ATTACHMENT_SEAM]: userAttachmentSeam } : {}),
       settings: options.settings ?? {},
+      // A view's run only (FIX-2625 D1): the change it may answer for.
+      ...(options.view !== undefined ? { view: options.view } : {}),
       request: requestHandle,
       session: sessionHandle,
       user: userHandle,

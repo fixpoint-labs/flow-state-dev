@@ -41,8 +41,8 @@ describe("a task's spend line", () => {
 
   it("names the harness first where no harness tag shows it, and leaves out what nobody named", () => {
     const named = task(spend(10_100, 2_300));
-    expect(spendLine(named.spend, { harnessLabel: harnessLabelOf(named) })).toBe("Claude Code · claude-sonnet-4-5 · 12.4k tokens");
+    expect(spendLine(named.spend, { harnessLabel: harnessLabelOf(named, { "claude-code": "Claude Code" }) })).toBe("Claude Code · claude-sonnet-4-5 · 12.4k tokens");
     const anonymous = task({ ...spend(10_100, 2_300), harness: null, model: null });
-    expect(spendLine(anonymous.spend, { harnessLabel: harnessLabelOf(anonymous) })).toBe("12.4k tokens");
+    expect(spendLine(anonymous.spend, { harnessLabel: harnessLabelOf(anonymous, {}) })).toBe("12.4k tokens");
   });
 });

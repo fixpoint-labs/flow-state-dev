@@ -553,18 +553,22 @@ describe("declared documents (BR-10)", () => {
     const { baseUrl } = await lab();
     const client = connect({ baseUrl, userId: ASK_LAB_USER_ID });
     const reader = createLabReader(client);
-    // No worker session yet: no listed flow serves the document, so none is found.
+    // No asker session yet: the document is listed through no asker's session.
+    // (The tree's documents are the workforce kit's, so a coordinator's session lists them too.)
+    const asker = "s_ops_asker";
     const before = loaded(await reader.read());
-    expect(before.resources).toEqual({ ok: true, value: [] });
+    if (!before.resources.ok) throw new Error("resources did not load");
+    expect(before.resources.value.filter((entry) => entry.sessionId === asker)).toEqual([]);
 
     await ask(client, "ops.asker", "ship it");
     const snapshot = await eventually(async () => {
       const s = loaded(await reader.read());
-      return s.resources.ok && s.resources.value.length > 0 ? s : undefined;
+      return s.resources.ok && s.resources.value.some((entry) => entry.sessionId === asker) ? s : undefined;
     }, "the runbook to be listed");
     if (!snapshot.resources.ok) throw new Error("resources did not load");
-    expect(snapshot.resources.value).toHaveLength(1);
-    const [runbook] = snapshot.resources.value;
+    const listed = snapshot.resources.value.filter((entry) => entry.sessionId === asker);
+    expect(listed).toHaveLength(1);
+    const [runbook] = listed;
     expect(runbook!.ref).toMatch(/runbook/);
     const read = await client.resources.getResourceContent(runbook!.sessionId, runbook!.ref);
     expect(String(read.content)).toContain("RUNBOOK-DOC-7F3A1");

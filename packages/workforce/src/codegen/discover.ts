@@ -33,7 +33,7 @@ import {
 import {
   validateSegment,
   type SegmentLabel,
-} from "../loader";
+} from "../loader/readers";
 import { RESOURCE_SLOT_PATTERNS } from "../loader/resource-walk";
 import {
   discoverResourceModules,

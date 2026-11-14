@@ -60,7 +60,10 @@ at read time, where caching it per input is acceptable.
   run read, deduped and sorted so an unchanged set compares equal and doesn't churn the
   subscription. No view topic is added
   ([FIX-2367 ER-2](../../epics/FIX-2367/DECISIONS.md#who-owns-what)); topics are minted as today,
-  under the mint's cap.
+  under the mint's cap. Amended by [FIX-2625](../FIX-2625/DECISIONS.md#decided-during-implementation):
+  the answer also says what it hears under each topic, by the kinds and resources the run read,
+  and a board read through its task collection is heard on its board's notices only
+  ([FIX-2625 D3](../FIX-2625/DECISIONS.md#d3)), not on its ledger's scope.
 - **The live read is FIX-2551's.** It takes the topics from the last answer, re-subscribes when
   they change, and reads once after re-subscribing. `useView` is built on it and adds no loop of
   its own ([ER-7](../../epics/FIX-2618/DECISIONS.md#who-owns-what)). `useView` returns

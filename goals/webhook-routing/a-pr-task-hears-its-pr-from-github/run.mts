@@ -18,25 +18,22 @@ import { routeServiceEvent } from "@flow-state-dev/engine/internal";
 import type { InboundTransportHost } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import {
-  ROSTER_FLOW,
   SUBSCRIPTIONS_PATTERN,
   WORKER_MESSAGES_PATTERN,
-  createWorkerInstallation,
   followPullRequest,
-  githubServiceFlow,
-  hireWorkforce,
   messageReceivedEntry,
   normalizeGitHubEvent,
   subscribe,
   subscriptionResources,
   workerConfigSchema,
   workerMessagesResources,
+  workerFlow,
   workerTaskEntry,
-  type GitHubSubscriptionProvider,
-  type WorkerManifest
+  type GitHubSubscriptionProvider
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { z } from "zod";
-import { REPO_ROOT, goalTmpDir, runGoal, silentLogger } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, runGoal, silentLogger, workforceTree } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -104,11 +101,7 @@ const github: GitHubSubscriptionProvider = {
   self: (ctx) => `${(ctx.session.identity as { userId: string }).userId}-gh`
 };
 
-const installationFlows: Record<string, unknown> = {};
-const installation = createWorkerInstallation({
-  standardWorkers: [{ id: "eng.coder", declared: { flow: "coder", description: "Opens pull requests." }, body: "", skills: [] } as WorkerManifest],
-  workerFlows: () => installationFlows as never
-});
+const directory = workforceTree([{ id: "eng.coder", declared: { flow: "coder", description: "Opens pull requests." }, body: "" }]);
 const follower = followPullRequest({ providers: [github] });
 
 // The coding turn, on the seam a coding task's harness step uses: the follower is
@@ -149,25 +142,23 @@ const follow = handler({
 });
 const doorInput = z.object({ message: z.string() });
 const door = handler({ name: "coder-door", inputSchema: doorInput, execute: async () => "ok" });
-installationFlows.coder = {
-  roles: ["contributor"],
-  flow: defineFlow({
-    kind: "coder",
-    configSchema: workerConfigSchema(),
-    session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources, [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection },
-    actions: {
-      respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
-      turn: { inputSchema: z.object({ command: z.string() }), block: codingTurn },
-      follow: { inputSchema: z.object({ thread: z.string() }), block: follow }
-    },
-    // No turn on a message: it lands as its items and nothing runs, so no model is asked.
-    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "coder" }) } },
-    task: { actions: { work: workerTaskEntry({ name: "coder-task", turn: door }) } }
-  })
-};
-const instances: Record<string, FlowInstance> = Object.fromEntries(
-  hireWorkforce(installation).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
+const coder = workerFlow(
+  (installation) =>
+    defineFlow({
+      kind: "coder",
+      configSchema: workerConfigSchema(),
+      session: installation.session(),
+      resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources, [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection },
+      actions: {
+        respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
+        turn: { inputSchema: z.object({ command: z.string() }), block: codingTurn },
+        follow: { inputSchema: z.object({ thread: z.string() }), block: follow }
+      },
+      // No turn on a message: it lands as its items and nothing runs, so no model is asked.
+      internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "coder" }) } },
+      task: { actions: { work: workerTaskEntry({ name: "coder-task", turn: door }) } }
+    }),
+  { roles: ["contributor"] }
 );
 
 // Today's binding, under `session-id`: each review lands in a session named for its pull request.
@@ -179,9 +170,10 @@ const bindingHandler = handler({
 });
 const toBinding = (e: { payload: any }) => ({ label: String(e.payload?.action ?? "") });
 const prNumber = (e: { payload: any }) => `pr-${e.payload?.pull_request?.number ?? e.payload?.issue?.number ?? e.payload?.check_run?.pull_requests?.[0]?.number}`;
-instances["github-service"] =
+// Otherwise GitHub's service flow is the workforce kit's own, configured below.
+const bindingFlows: FlowInstance[] =
   CONTROL === "session-id"
-    ? defineFlow({
+    ? [defineFlow({
         kind: "github-service",
         actions: {},
         webhooks: {
@@ -194,8 +186,8 @@ instances["github-service"] =
             )
           }
         }
-      })()
-    : githubServiceFlow({ provider: github, installation, trustedBots: TRUSTED_BOTS, capPerHour: 10_000 });
+      })()]
+    : [];
 
 const mocks = createMockModelResolver({});
 const modelResolver = Object.assign((modelId: string, blockName?: string) => {
@@ -218,7 +210,14 @@ const webhook = createWebhookTransportAdapter({
 });
 const stores = inMemoryStores();
 const state = createFlowState({
-  flows: Object.values(instances),
+  kits: [
+    workforce({
+      directory,
+      ...(CONTROL === "session-id" ? {} : { github: { provider: github, trustedBots: TRUSTED_BOTS, capPerHour: 10_000 } })
+    })
+  ],
+  fill: { [workforce.slots.workerFlows]: { coder } },
+  flows: bindingFlows,
   stores: { default: { primary: stores } },
   modelResolver,
   logger: silentLogger,
@@ -250,6 +249,8 @@ const state = createFlowState({
 } as never);
 const router = (await state.getRouter()) as any;
 const runtime = await state.getRuntime();
+const coderFlow = runtime.registry.get("coder");
+if (coderFlow === undefined) throw new Error("setup: the workforce kit serves no coder flow");
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function settled(): Promise<void> {
@@ -296,7 +297,7 @@ async function createCoder(user: string): Promise<string> {
 }
 const act = async (user: string, sessionId: string, action: string, input: unknown) =>
   (await runAction({
-    flow: instances.coder!,
+    flow: coderFlow,
     actionName: action,
     input,
     userId: user,

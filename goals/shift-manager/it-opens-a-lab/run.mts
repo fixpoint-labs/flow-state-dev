@@ -56,8 +56,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { REPO_ROOT, RUN_STAMP, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, goalTmpDir, loadFixture, readTree as readKitTree, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { labApi, startShiftManager, type LabApi, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { Scenario, type ServedLab } from "../../multi-worker-collab/run-scenario.mts";
@@ -159,7 +158,7 @@ async function buildShiftManager(control: string): Promise<string> {
   const swapped = new Set<string>();
   const staticSeats =
     control === "static-names"
-      ? (await readDeclaredRoster(LABS.devteam.tree)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }))
+      ? (await readKitTree(LABS.devteam.tree)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }))
       : [];
   await vite.build({
     root: SHIFT_MANAGER,
@@ -205,8 +204,8 @@ const startLab = (name: LabName, pages: string, env: Record<string, string>): Pr
 type Tree = { seats: string[] };
 
 async function readTree(root: string): Promise<Tree> {
-  const roster = await readDeclaredRoster(root);
-  if (roster.problems.length > 0) throw new Error(`the tree at ${root} did not load: ${roster.problems.map((p) => p.path).join(", ")}`);
+  // The kit's reader refuses the tree whole if anything did not load.
+  const roster = await readKitTree(root);
   return { seats: roster.workers.map((w) => w.id) };
 }
 
@@ -469,7 +468,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       // by the tree's EM, through the projects flow Shift Manager opens one
       // with; then files one feature on that workstream session's board through
       // the EM's own `file` door, where it runs at once; then a follow-up waiting on it, queued.
-      const roster = await readDeclaredRoster(LABS.devteam.tree);
+      const roster = await readKitTree(LABS.devteam.tree);
       const lead = roster.workers.find((w) => w.declared.flow === EM_FLOW)?.id;
       if (lead === undefined) throw new Error(`${name}: the tree declares no worker on the "${EM_FLOW}" flow to lead a workstream`);
       const project = (await readStore(api, userId)).projects[0]?.id;

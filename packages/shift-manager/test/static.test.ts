@@ -14,7 +14,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 
 const pkg = fileURLToPath(new URL("../", import.meta.url));
 const repo = join(pkg, "../..");
@@ -40,7 +40,7 @@ const sources = walk(src).filter((f) => /\.(tsx?|css)$/.test(f));
 async function treeNames(): Promise<Set<string>> {
   const names = new Set<string>();
   for (const tree of ["packages/shift-manager/teams/devteam/workforce", "packages/shift-manager/test/fixtures/multi-worker-collab/workforce"]) {
-    const roster = await readDeclaredRoster(join(repo, tree));
+    const roster = await readWorkforceFolder({ path: join(repo, tree), claim: () => undefined });
     for (const worker of roster.workers) {
       const [team, ...rest] = worker.id.split(".");
       names.add(worker.id).add(team!).add(rest.join("."));

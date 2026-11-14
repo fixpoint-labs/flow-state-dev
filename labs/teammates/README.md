@@ -147,17 +147,12 @@ your words, sends them to the same coding session for one more run, which you re
 that asks you something shows its question in the popup with a box for your answer, and goes on
 with it.
 
-When the lab starts, it checks which coding agents this machine can run and logs a table:
-
-```
-Coding harnesses on this machine:
-✓ Cursor
-✗ Codex: Codex has no credential: Not logged in. Run `codex login`, or set CODEX_API_KEY.
-? Claude Code: The check did not answer within 30 s.
-```
+The page's context strip shows which coding agents this machine can run, each with what to run
+for one that isn't ready ("Codex has no credential: Not logged in. Run `codex login`, or set
+CODEX_API_KEY.").
 
 Lead sees the same rows, so it starts coding tasks only on an agent marked ✓ and tells
-you what to run for one that isn't. The `harness-readiness` flow's `readiness` view returns the rows,
+you what to run for one that isn't. The harness kit's `harnesses` flow's `readiness` view returns the rows,
 and `{ refresh: true }` checks again. A task on an agent last read as not ready is checked once
 more before it starts, so signing in after the lab started works without a restart. If it still
 isn't ready, the task fails at once with a line that names the agent and what to run, such as

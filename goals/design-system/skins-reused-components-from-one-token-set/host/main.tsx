@@ -18,7 +18,7 @@
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { FlowProvider, FlowNavigator } from "@flow-state-dev/react";
-import { Roster, BoardColumns, BoardList, WorkerDetail } from "@flow-state-dev/react/workforce";
+import { Roster, BoardColumns, BoardList, WorkerDetail } from "@flow-state-dev/workforce/react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
 import { Message } from "@/components/flow-state/message";

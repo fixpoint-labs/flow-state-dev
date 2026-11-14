@@ -20,16 +20,15 @@ import { createModelResolver } from "@flow-state-dev/core";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {
-  createWorkerInstallation,
-  defineAgentWorkerFlow,
   defineSessionBoard,
-  hireWorkforce,
   messageReceivedEntry,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
-  workerTaskEntry
+  workerTaskEntry,
+  type WorkerInstallation
 } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -168,79 +167,77 @@ const seen = {
   takerMessages: [] as Array<{ from: string; text: string }>
 };
 
-const tree = await readWorkforce(TREE);
-if (tree.errors.length > 0) throw new Error(`the tree did not load: ${JSON.stringify(tree.errors).slice(0, 600)}`);
-
 /** Build the app over the SQLite file `db`: the same flows and store on every start. */
 function startHost(db: string) {
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows as never });
   const doorInput = z.object({ message: z.string() });
 
-  const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
-  const deskTurn = handler({
-    name: "split-to-roster-desk-turn",
-    inputSchema: doorInput,
-    execute: async (input, ctx) => {
-      seen.deskTurns.push({ sessionId: ctx.session.identity.id, message: input.message });
-      return "Noted.";
-    }
-  });
-  const desk = defineFlow({
-    kind: "desk",
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
-    resources: { ...installation.resources, ...deskBoard.resources },
-    actions: {
-      respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (input: { message: string }) => input.message },
-      ...deskBoard.actions
-    },
-    internal: { actions: deskBoard.entries(deskTurn) }
-  } as never);
-
-  const takerTurn = handler({
-    name: "split-to-roster-taker-turn",
-    inputSchema: doorInput,
-    resources: { ...installation.resources },
-    execute: async (_input, ctx) => {
-      const worker = (await installation.resolveWorker(ctx, "taker")).id;
-      const taskId = String((ctx.session.state as Record<string, unknown>).taskId);
-      seen.takerRuns.push({ worker, taskId, at: Date.now() });
-      if (worker === BROKEN) throw new Error(`${worker} can't reach its codename book`);
-      if (worker === B) {
-        await sleep(KEEPER_HOLD_MS);
-        return `The codename is ${seen.codename}.`;
+  /** The desk flow, on the installation the workforce kit hires. */
+  const deskFlow = (installation: WorkerInstallation) => {
+    const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
+    const deskTurn = handler({
+      name: "split-to-roster-desk-turn",
+      inputSchema: doorInput,
+      execute: async (input, ctx) => {
+        seen.deskTurns.push({ sessionId: ctx.session.identity.id, message: input.message });
+        return "Noted.";
       }
-      return "I don't hold any codename.";
-    }
-  });
-  // A taker looks things up only for a task filed for it, as a worker that
-  // keeps its book behind its task queue does: a message (a call included)
-  // gets that answer and never the codename. Since FIX-2239 a model can call a
-  // delegate and wait for the reply, so a taker that answered nothing read as
-  // "it has no codename" (FIX-2294).
-  const takerMessageTurn = handler({
-    name: "split-to-roster-taker-message",
-    inputSchema: z.object({ from: z.string(), text: z.string() }).passthrough(),
-    execute: async (input) => {
-      seen.takerMessages.push({ from: input.from, text: input.text });
-      return "I only look things up for a task filed for me.";
-    }
-  });
-  const taker = defineFlow({
-    kind: "taker",
-    configSchema: workerConfigSchema(),
-    session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources },
-    actions: { respond: { inputSchema: doorInput, block: takerTurn, userMessage: (input: { message: string }) => input.message } },
-    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "taker", turn: takerMessageTurn }) } },
-    task: { actions: { work: workerTaskEntry({ name: "split-to-roster-taker-task", turn: takerTurn }) } }
-  } as never);
+    });
+    const desk = defineFlow({
+      kind: "desk",
+      configSchema: workerConfigSchema(),
+      session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
+      resources: { ...installation.resources, ...deskBoard.resources },
+      actions: {
+        respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (input: { message: string }) => input.message },
+        ...deskBoard.actions
+      },
+      internal: { actions: deskBoard.entries(deskTurn) }
+    } as never);
+    return desk;
+  };
 
-  flows = {
-    agent: defineAgentWorkerFlow({ installation }),
-    desk: { flow: desk, roles: ["manager"] },
-    taker: { flow: taker, roles: ["contributor"] }
+  /** The taker flow, on the installation the workforce kit hires. */
+  const takerFlow = (installation: WorkerInstallation) => {
+
+    const takerTurn = handler({
+      name: "split-to-roster-taker-turn",
+      inputSchema: doorInput,
+      resources: { ...installation.resources },
+      execute: async (_input, ctx) => {
+        const worker = (await installation.resolveWorker(ctx, "taker")).id;
+        const taskId = String((ctx.session.state as Record<string, unknown>).taskId);
+        seen.takerRuns.push({ worker, taskId, at: Date.now() });
+        if (worker === BROKEN) throw new Error(`${worker} can't reach its codename book`);
+        if (worker === B) {
+          await sleep(KEEPER_HOLD_MS);
+          return `The codename is ${seen.codename}.`;
+        }
+        return "I don't hold any codename.";
+      }
+    });
+    // A taker looks things up only for a task filed for it, as a worker that
+    // keeps its book behind its task queue does: a message (a call included)
+    // gets that answer and never the codename. Since FIX-2239 a model can call a
+    // delegate and wait for the reply, so a taker that answered nothing read as
+    // "it has no codename" (FIX-2294).
+    const takerMessageTurn = handler({
+      name: "split-to-roster-taker-message",
+      inputSchema: z.object({ from: z.string(), text: z.string() }).passthrough(),
+      execute: async (input) => {
+        seen.takerMessages.push({ from: input.from, text: input.text });
+        return "I only look things up for a task filed for me.";
+      }
+    });
+    const taker = defineFlow({
+      kind: "taker",
+      configSchema: workerConfigSchema(),
+      session: installation.session(),
+      resources: { ...installation.resources, ...workerMessagesResources },
+      actions: { respond: { inputSchema: doorInput, block: takerTurn, userMessage: (input: { message: string }) => input.message } },
+      internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "taker", turn: takerMessageTurn }) } },
+      task: { actions: { work: workerTaskEntry({ name: "split-to-roster-taker-task", turn: takerTurn }) } }
+    } as never);
+    return taker;
   };
 
   const real = createModelResolver() as unknown as (id: string, block?: string) => unknown;
@@ -249,7 +246,14 @@ function startHost(db: string) {
   });
 
   return createFlowState({
-    flows: hireWorkforce(installation),
+    // The workforce kit over the tree: its built-in `agent`, and the desk and taker flows.
+    kits: [workforce({ directory: TREE, agent: {} })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        desk: workerFlow(deskFlow, { roles: ["manager"] }),
+        taker: workerFlow(takerFlow, { roles: ["contributor"] })
+      }
+    },
     stores: { default: { primary: sqliteStores({ filename: db }) } },
     logger: silentLogger,
     modelResolver,

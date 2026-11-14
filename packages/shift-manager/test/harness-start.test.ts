@@ -4,13 +4,14 @@
  *
  * Each profile names its default: DevTeam the scripted run, `fsd` Claude
  * Code. `DEVFORCE_LAB_HARNESS` overrides it. Whether Claude Code can run here
- * never stops a start: the Lab logs which harnesses can run, with what to run
- * for one that can't, through a check scripted here, and serves the same rows
- * on request. No answer from the check ever yields the scripted run.
+ * never stops a start: the start hands the Lab Claude Code as a harness value
+ * over a check scripted here, and the harness kit the Lab installs logs and
+ * serves its readiness (harness-manager's `harnesses-kit.spec.ts`,
+ * `devteam-readiness-view.test.ts`). No answer from the check ever yields the
+ * scripted run, and the start itself never checks.
  *
  * Red states produced before these were trusted:
  *   - throw on a not-ready Claude Code (the old refusal): the BR-7 and BR-8 cases fail.
- *   - keep the start's rows for a refresh: the re-check case fails.
  */
 import { describe, expect, it } from "vitest";
 import type { HarnessReadiness } from "@flow-state-dev/core/harness";
@@ -58,36 +59,26 @@ const SDK_MISSING: HarnessReadiness = {
 };
 
 describe("the fsd profile's coder (default claude-code)", () => {
-  it.each([undefined, "", "  "])("BR-6: %j is Claude Code, and the start says so with the readiness table", async (value) => {
+  it.each([undefined, "", "  "])("BR-6: %j is Claude Code, and the start says so", async (value) => {
     const started = await start("claude-code", value, [READY]);
     expect(started.harness?.name).toBe("claude-code");
-    expect(started.checked()).toBe(1);
     expect(started.lines[0]).toBe(`Coder: Claude Code; each run may take 20 minutes (${RUN_MINUTES_ENV}).`);
-    expect(started.lines[1]).toContain("✓ Claude Code");
   });
 
-  it("BR-7: with no credential it still starts, and logs what to run before the Lab listens", async () => {
+  it("BR-7: with no credential it still starts, and hands the Lab Claude Code with its check, which says what to run", async () => {
     const started = await start("claude-code", undefined, [NONE]);
     expect(started.refused).toBeUndefined();
     expect(started.harness?.name).toBe("claude-code");
-    const row = started.lines.find((line) => line.includes("✗ Claude Code"));
-    expect(row).toContain("found no API key and no sign-in");
-    expect(row).toContain("ANTHROPIC_API_KEY");
+    const [claudeCode] = started.harness!.harnessValues;
+    expect(claudeCode).toMatchObject({ id: "claude-code", label: "Claude Code" });
+    expect(started.checked()).toBe(0);
+    expect(await claudeCode!.readiness()).toEqual(NONE);
   });
 
-  it("BR-8: with the Agent SDK missing it starts the same way, saying the SDK is missing", async () => {
+  it("BR-8: with the Agent SDK missing it starts the same way, its check saying the SDK is missing", async () => {
     const started = await start("claude-code", undefined, [SDK_MISSING]);
     expect(started.harness?.name).toBe("claude-code");
-    expect(started.lines.find((line) => line.includes("✗ Claude Code"))).toContain("Install @anthropic-ai/claude-agent-sdk");
-  });
-
-  it("the read the Lab serves carries the reason and remedy, and checks again on refresh", async () => {
-    const started = await start("claude-code", undefined, [NONE, READY]);
-    expect(await started.harness!.readiness.read()).toEqual([
-      expect.objectContaining({ harness: "claude-code", ready: false, remedy: NONE.ready ? null : NONE.remedy }),
-    ]);
-    expect(started.checked()).toBe(1);
-    expect(await started.harness!.readiness.read({ refresh: true })).toEqual([expect.objectContaining({ harness: "claude-code", ready: true })]);
+    expect((await started.harness!.harnessValues[0]!.readiness()) as { remedy?: string }).toMatchObject({ remedy: "Install @anthropic-ai/claude-agent-sdk" });
   });
 
   it("BR-9: stub is the scripted run, and the start line names the script without waiting on the check", async () => {
@@ -99,7 +90,7 @@ describe("the fsd profile's coder (default claude-code)", () => {
   it("BR-10: claude-code is the same as unset: Claude Code, with the check", async () => {
     const started = await start("claude-code", "claude-code", [NONE]);
     expect(started.harness?.name).toBe("claude-code");
-    expect(started.checked()).toBe(1);
+    expect(started.harness!.harnessValues.map((harness) => harness.id)).toEqual(["claude-code"]);
   });
 
   it("BR-11: any other name is refused, naming the four choices", async () => {
@@ -121,11 +112,9 @@ describe("DevTeam's coder (default stub)", () => {
     expect(started.harness?.name).toBe("stub");
   });
 
-  it("logs Claude Code's row once its check answers, since the Error Reporter runs on it", async () => {
+  it("hands the Lab Claude Code's check too, since the Error Reporter runs on it", async () => {
     const started = await start("stub", undefined, [NONE]);
-    await started.harness!.readiness.read();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(started.lines.some((line) => line.includes("✗ Claude Code"))).toBe(true);
+    expect(started.harness!.harnessValues.map((harness) => harness.id)).toEqual(["claude-code"]);
   });
 });
 
@@ -138,9 +127,7 @@ describe("Codex and Cursor as the coder", () => {
     const started = await start("claude-code", value, [NONE]);
     expect(started.harness?.name).toBe(value);
     expect(started.lines[0]).toBe(`Coder: ${label}, not checked for a sign-in at start; each run may take 20 minutes (${RUN_MINUTES_ENV}).`);
-    expect(await started.harness!.readiness.read()).toEqual([
-      expect.objectContaining({ harness: "claude-code", ready: false }),
-    ]);
+    expect(started.harness!.harnessValues.map((harness) => harness.id)).toEqual(["claude-code"]);
   });
 });
 

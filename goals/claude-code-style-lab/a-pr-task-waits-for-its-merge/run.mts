@@ -46,7 +46,7 @@ const FIRST_STEP = "Reading the worker's instructions, brief and conventions.";
 const prUrl = (n: number) => `https://github.com/acme/app/pull/${n}`;
 
 const PATCHES: Record<string, ModulePatch[]> = {
-  "no-wait": [{ module: "labs/claude-code-style/workforce/flows/harness-thread.mts", from: "awaitPullRequests: true,", to: "awaitPullRequests: false," }],
+  "no-wait": [{ module: "packages/harness-manager/src/kit/coder-flow.ts", from: "awaitPullRequests: options.pullRequests !== false,", to: "awaitPullRequests: false," }],
   "ignore-pr-state": [
     {
       module: "packages/harness-manager/src/manager.ts",

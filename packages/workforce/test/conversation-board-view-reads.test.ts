@@ -21,7 +21,7 @@ import { bootBoardHost, messageOf, ORG } from "./conversation-board-harness";
 const LIST = "listTasks_tasks";
 
 const named = (reads: readonly RecordedRead[]) =>
-  reads.map((read) => `${read.scope}:${read.what === "state" ? "state" : read.what.resource}`).sort();
+  reads.map((read) => `${read.scope}:${read.what === "state" ? "state" : "board" in read.what ? `board:${read.what.board}` : read.what.resource}`).sort();
 
 describe("the board's list, run as a session view", () => {
   // FIX-2621's probe.
@@ -42,8 +42,22 @@ describe("the board's list, run as a session view", () => {
       // FIX-2621's four, and nothing the run didn't reach: the task ledger and
       // the plan ledger (user-scope cells, reached through the board's
       // resolver), the roster, and the session's own state.
-      expect(named(answer.reads)).toEqual(["session:state", "user:plan", "user:tasks", "user:workforceWorkers"]);
-      expect(answer.topics).toEqual([{ scope: "session", id: conv }, { scope: "user" }]);
+      // FIX-2625 D3: each ledger read through its task collection is also a
+      // board read, heard on the board's notices in place of the ledger's.
+      expect(named(answer.reads)).toEqual([
+        "session:board:plan",
+        "session:board:tasks",
+        "session:state",
+        "user:plan",
+        "user:tasks",
+        "user:workforceWorkers"
+      ]);
+      expect(answer.hears).toEqual([
+        { topic: { scope: "session", id: conv }, kinds: ["items", "request", "run", "state"] },
+        { topic: { scope: "session", id: conv, resource: "plan" }, kinds: ["board"] },
+        { topic: { scope: "session", id: conv, resource: "tasks" }, kinds: ["board"] },
+        { topic: { scope: "user" }, kinds: ["resource"], paths: ["workforce/workers"] }
+      ]);
     } finally {
       await host.dispose();
     }

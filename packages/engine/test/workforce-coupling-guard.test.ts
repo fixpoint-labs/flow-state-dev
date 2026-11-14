@@ -50,7 +50,7 @@ const RULES: Rule[] = [
   {
     name: "an import from @flow-state-dev/workforce",
     pattern: /["'`]@flow-state-dev\/workforce(?:\/[^"'`]*)?["'`]/,
-    sample: 'import { hireWorkforce } from "@flow-state-dev/workforce";',
+    sample: 'import { defineAgentWorkerFlow } from "@flow-state-dev/workforce";',
   },
   {
     name: "a roster symbol",

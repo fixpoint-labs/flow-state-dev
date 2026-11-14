@@ -291,7 +291,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     hostResolver
   };
 
-  const push = createPushState(stores.bus);
+  const push = createPushState(stores.bus, runtimeConfig.noticeIds);
   const hostDisk = createHostDiskState();
 
   const host: InboundTransportHost = createInboundTransportHost({

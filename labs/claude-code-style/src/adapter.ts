@@ -62,6 +62,7 @@ import {
 } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
+  CODER_FLOW,
   harnessReadinessViewRef,
   pullRequestWait,
   readSessionPullRequests,
@@ -90,7 +91,7 @@ import { projectIdOf, refuseExisting } from "./lib/new-project";
 import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
 import type { LandedWork, ReviewAnswer, ReviewLand } from "./components/flow-state/review-hold";
 import { dismissalKey, taskOfDismissal, waitingOnYou } from "./lib/columns";
-import { labDismissals, labPins } from "../workforce/flows/user-marks.mts";
+import { labDismissals, labPins } from "../flows/user-marks.mts";
 import { resultSummary } from "./lib/result-summary";
 import { firstLineOfText, NEW_SESSION_TITLE, sessionTitle } from "./lib/session-title";
 import { filedTaskOf, toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
@@ -324,7 +325,7 @@ export interface LabAdapter {
 
 // FIX-2624.
 /** The lab flow's harness-manager readiness view (`host.mts`), read by scope with no session. */
-const READINESS_VIEW = harnessReadinessViewRef("harness-readiness");
+const READINESS_VIEW = harnessReadinessViewRef("harnesses");
 
 
 /** How often an open view reads again, in ms. */
@@ -348,8 +349,8 @@ const TASKS_BOARD = "tasks";
 /** The action a row's hold is answered through, for the Inbox's reader: the board's `updateTask`. */
 const UPDATE_TASK_ACTION = taskActionName("updateTask", TASKS_BOARD);
 
-/** The flow a coding worker runs on: its run sessions answer which harness it is (`harness`). */
-const CODING_FLOW = "harness-thread";
+/** The flow a coding worker runs on, the harness kit's: its run sessions answer which harness it is (`harness`). */
+const CODING_FLOW = CODER_FLOW;
 
 /**
  * The request sources the engine retries for a caller (`PUBLIC_REENTRY_SOURCES`): a turn that came

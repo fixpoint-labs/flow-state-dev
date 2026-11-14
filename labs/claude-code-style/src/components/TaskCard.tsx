@@ -1,4 +1,6 @@
+import { useContext } from "react";
 import type { LabTask } from "../adapter";
+import { HarnessLabels } from "../lib/harness-labels";
 import { TASK_STATUS, taskSignalTone } from "../lib/task-status";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
@@ -18,6 +20,7 @@ import { harnessLabelOf, pullRequestOpenLine, waitsOnPullRequest } from "./Threa
 /** A running or waiting task, at full size. */
 export function TaskCard({ task, selected, onOpen, now, stale = false }: { task: LabTask; selected: boolean; onOpen: () => void; now: number; stale?: boolean }) {
   const status = TASK_STATUS[task.status];
+  const labels = useContext(HarnessLabels);
   return (
     <button
       type="button"
@@ -38,7 +41,7 @@ export function TaskCard({ task, selected, onOpen, now, stale = false }: { task:
         {/* Plain words: the card is a button, and the link is in the task's view. */}
         {waitsOnPullRequest(task) ? <span className="block truncate text-xs text-muted-foreground" data-testid="pull-request-wait">{pullRequestOpenLine(task)}</span> : null}
         {task.assignee ? <span className="block text-xs text-muted-foreground">{task.assignee}</span> : null}
-        <Spend spend={task.spend} harnessLabel={harnessLabelOf(task)} />
+        <Spend spend={task.spend} harnessLabel={harnessLabelOf(task, labels)} />
       </span>
     </button>
   );

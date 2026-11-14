@@ -6,11 +6,15 @@
  * one from being written anywhere else. Not public.
  */
 import { wireTopicKey, type WireNotice } from "@flow-state-dev/contracts";
+import { unionNoticeIds } from "@flow-state-dev/contracts/types/push-delivery";
 
+// FIX-2625.
 /**
- * What a waiting read is handed when a second notice joins it: the same
- * notice is kept, a different one widens it to `null` (read everything).
- * Notices with keys will union here, and only here.
+ * What a waiting read is handed when a second notice joins it: one of the same
+ * topic, kind and origin is kept, with the ids of both unioned up to the cap
+ * (`unionNoticeIds`: none when either names none, or past the cap); a
+ * different one widens it to `null` (read everything). Ids union here, and
+ * only here.
  */
 function mergeNotices(waiting: WireNotice | null, next: WireNotice | null): WireNotice | null {
   if (waiting === null || next === null) return null;
@@ -18,7 +22,10 @@ function mergeNotices(waiting: WireNotice | null, next: WireNotice | null): Wire
     waiting.kind === next.kind &&
     wireTopicKey(waiting.topic) === wireTopicKey(next.topic) &&
     waiting.origin?.requestId === next.origin?.requestId;
-  return same ? waiting : null;
+  if (!same) return null;
+  const ids = unionNoticeIds(waiting.ids, next.ids);
+  const { ids: _held, ...notice } = waiting;
+  return ids === undefined ? notice : { ...notice, ids };
 }
 
 /** A coalesced read: `request` a read for a notice, `close` to drop the waiting one. */

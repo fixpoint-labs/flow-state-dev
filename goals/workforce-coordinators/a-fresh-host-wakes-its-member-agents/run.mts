@@ -43,9 +43,7 @@ import { createInProcessFetch } from "@flow-state-dev/engine";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { WorkerManifest } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { KITCHEN_SINK, runGoal } from "../../lib/index.mts";
+import { KITCHEN_SINK, readTree, runGoal, workforceTree } from "../../lib/index.mts";
 import type { FreshHost, HostSeams } from "./host.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
@@ -71,16 +69,17 @@ function controlSeams(): HostSeams {
     case "no-wake":
       // The agent flow read as declaring no task entry (FIX-2083: a delegate is a worker whose flow takes tasks).
       return {
-        adaptAgentFlow: <T extends object>(agent: T): T =>
-          Object.assign((...args: unknown[]) => (agent as unknown as (...a: unknown[]) => unknown)(...args), agent, {
-            task: { actions: {} },
-          }) as unknown as T,
+        adaptAgentFlow: <T extends object>(agent: T): T => {
+          const wrapped = (...args: unknown[]) => (agent as unknown as (...a: unknown[]) => unknown)(...args);
+          // Every own property, then no task entry; registered as a manager only, so the hire takes it.
+          Object.defineProperties(wrapped, Object.getOwnPropertyDescriptors(agent));
+          return Object.assign(wrapped, { task: { actions: {} } }) as unknown as T;
+        },
+        agentRoles: ["manager"],
       };
     case "answers-go-on":
-      return {
-        adaptWorkers: (workers: WorkerManifest[]) =>
-          workers.map((w) => (w.declared.flow === "coordinator" ? { ...w, declared: { ...w.declared, rounds: 1 } } : w)),
-      };
+      // The coordinator read with `rounds: 1`: run.mts hands the host a copy of the tree saying so.
+      return {};
     case "no-org":
       return { omitPrincipal: true };
     default:
@@ -121,7 +120,7 @@ await runGoal(async (failures) => {
   evidence.push("defineCoordinatorFlow resolves from @flow-state-dev/workforce");
 
   // ---- the tree: the coordinator, and who should hear a post ------------------
-  const { workers } = await readWorkforce(TREE);
+  const { workers } = await readTree(TREE);
   const coordinators = workers.filter((w) => w.declared.flow === "coordinator");
   const coordinator = coordinators[0];
   if (coordinators.length !== 1 || coordinator === undefined) {
@@ -145,9 +144,10 @@ await runGoal(async (failures) => {
   if (coordinator.declared.routing !== "everyone") {
     fail("source", `${coordinator.id} routes by ${String(coordinator.declared.routing ?? "its default")} (want everyone)`);
   }
-  const hire = readFileSync(`${KITCHEN_SINK}/workforce/hire.ts`, "utf8");
-  if (builds.test(hire)) fail("source", `kitchen-sink's workforce/hire.ts builds its own ${builds.exec(hire)![1]}`);
-  if (!/defineCoordinatorFlow\s*\(/.test(hire)) fail("source", "kitchen-sink's workforce/hire.ts never registers defineCoordinatorFlow");
+  const hire = readFileSync(`${KITCHEN_SINK}/lib/workforce-kit.ts`, "utf8");
+  if (builds.test(hire)) fail("source", `kitchen-sink's lib/workforce-kit.ts builds its own ${builds.exec(hire)![1]}`);
+  // The workforce kit builds the coordinator flow from its `coordinator` config.
+  if (!/\bcoordinator\s*:\s*\{/.test(hire)) fail("source", "kitchen-sink's lib/workforce-kit.ts never configures the workforce kit's coordinator");
   const shell = readFileSync(`${KITCHEN_SINK}/lib/workforce-shell.ts`, "utf8");
   const asks = /export const WORKER_ASKS = \{([\s\S]*?)\} as const/.exec(shell)?.[1];
   if (asks === undefined) fail("source", "kitchen-sink's lib/workforce-shell.ts has no WORKER_ASKS to read");
@@ -155,12 +155,20 @@ await runGoal(async (failures) => {
   if (!failures.some((f) => f.startsWith("[source]"))) {
     evidence.push(
       `host.mts imports only ${[...new Set(imports)].join(", ")}, registers defineCoordinatorFlow and builds no dispatcher or router; ` +
-        `${coordinator.id} routes to everyone; kitchen-sink registers defineCoordinatorFlow and builds neither`,
+        `${coordinator.id} routes to everyone; kitchen-sink configures the workforce kit's coordinator and builds neither`,
     );
   }
 
   const { startFreshHost, OWNER, ORG, REPLY_MARKER } = await import("./host.mts");
-  const app = await startFreshHost(TREE, controlSeams());
+  const tree =
+    CONTROL === "answers-go-on"
+      ? workforceTree(
+          workers.map((w) => (w.declared.flow === "coordinator" ? { ...w, declared: { ...w.declared, rounds: 1 } } : w)),
+          {},
+          [TREE],
+        )
+      : TREE;
+  const app = await startFreshHost(tree, controlSeams());
   const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
     const res = await createInProcessFetch(app.router)(`http://fresh-host.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
         method,

@@ -1,4 +1,4 @@
-// FIX-2427.
+// FIX-2427; FIX-2625 (ids on the payload).
 /**
  * The Postgres change bus: notices cross processes on `LISTEN` /
  * `NOTIFY`, through the Postgres the stores already use.
@@ -26,13 +26,16 @@
  *   without `liveTailPool`, or `liveTailPool: null`) the bus never listens
  *   and never says it crosses.
  *
- * One channel, filtered in process: the payload is the notice's topic and
- * kind and the bus's id, nothing else. A payload over `NOTIFY`'s 8000 bytes
- * drops its `resource` narrowing and goes out as the bare scope: a wider
- * wake, never a lost one.
+ * One channel, filtered in process: the payload is the notice's topic, kind
+ * and ids and the bus's id, nothing else. A payload over
+ * `NOTIFY`'s 8000 bytes drops its ids first (read everything), then its
+ * `resource` narrowing, and goes out as the bare scope: a wider wake, never a
+ * lost one. Whether an id or a path may reach a browser is the push edge's
+ * call (`noticeIds`, `socket-session.ts`), not the bus's.
  */
 import { randomUUID } from "node:crypto";
 import { createInMemoryBus, type BusTopic, type ChangeBus, type ChangeListener, type ChangeNotice } from "@flow-state-dev/engine/host";
+import { noticeIdsOf } from "@flow-state-dev/core/internal";
 import type { Pool } from "pg";
 import type { QueryExecutor } from "./types";
 import { openListen, reconnectDelay, type ListenConnection } from "./listen";
@@ -362,14 +365,20 @@ class PgBus implements PostgresBus {
   }
 }
 
+// FIX-2625.
 /**
- * The `NOTIFY` payload for `notice`: its topic and kind, and the bus's id;
- * `w: true` when it was widened to its scope to fit.
+ * The `NOTIFY` payload for `notice`: its topic, kind and ids, and the bus's
+ * id. Too large for `NOTIFY`, it drops the ids first (read everything), then
+ * widens to its scope (`w: true`). It never decides what a browser may see:
+ * with ids off, the push edge cuts a resource path whatever the bus carried
+ * (`socket-session.ts` `hear`).
  */
 function payloadOf(id: string, notice: ChangeNotice): string {
-  const { topic, kind } = notice;
-  const payload = JSON.stringify({ p: id, topic, kind });
-  if (Buffer.byteLength(payload) <= MAX_PAYLOAD_BYTES || topic.resource === undefined) return payload;
+  const { topic, kind, ids } = notice;
+  const payload = JSON.stringify({ p: id, topic, kind, ...(ids !== undefined ? { ids } : {}) });
+  if (Buffer.byteLength(payload) <= MAX_PAYLOAD_BYTES) return payload;
+  const bare = JSON.stringify({ p: id, topic, kind });
+  if (Buffer.byteLength(bare) <= MAX_PAYLOAD_BYTES || topic.resource === undefined) return bare;
   if (!warnedOversized) {
     warnedOversized = true;
     console.warn(
@@ -382,14 +391,16 @@ function payloadOf(id: string, notice: ChangeNotice): string {
 
 /** A notice read off the wire, or `undefined` when it isn't one. */
 function noticeOf(message: object): ChangeNotice | undefined {
-  const { topic, kind } = message as { topic?: Partial<BusTopic>; kind?: unknown };
+  const { topic, kind, ids } = message as { topic?: Partial<BusTopic>; kind?: unknown; ids?: unknown };
   if (topic === undefined || typeof kind !== "string") return undefined;
   const { scope, id, tenantId, resource } = topic;
   if (typeof scope !== "string" || typeof id !== "string" || typeof tenantId !== "string") return undefined;
   if (resource !== undefined && typeof resource !== "string") return undefined;
+  const named = noticeIdsOf(ids);
   return {
     topic: { scope, id, tenantId, ...(resource !== undefined ? { resource } : {}) },
-    kind: kind as ChangeNotice["kind"]
+    kind: kind as ChangeNotice["kind"],
+    ...(named !== undefined ? { ids: named } : {})
   };
 }
 

@@ -208,7 +208,7 @@ describe("a hold answered in the run's session", () => {
       sessions: {
         state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: id === "dsx_run" ? [] : [held], pagination: { hasMore: false, nextOffset: 1 } }),
         stream: () => ({ close() {} }),
-        get: async (id: string) => (id === "dsx_run" ? { id, flowKind: "teammates-coder" } : { id, flowKind: "agent" }),
+        get: async (id: string) => (id === "dsx_run" ? { id, flowKind: "coder" } : { id, flowKind: "agent" }),
       },
       // `listTasks` lists a row's open holds, and leaves `holds` out once none is open.
       view: async () => boardAnswer([{ ...conversation.data.task, run, updatedAt: answered ? 3 : 2, ...(answered ? {} : { holds: [hold] }) }]),
@@ -347,7 +347,7 @@ describe("a coding task's hold, while it runs", () => {
       sessions: {
         state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: id === "dsx_run" ? [held] : [conversation], pagination: { hasMore: false, nextOffset: 1 } }),
         stream: () => ({ close() {} }),
-        get: async (id: string) => (id === "dsx_run" ? { id, flowKind: "teammates-coder" } : { id, flowKind: "agent" }),
+        get: async (id: string) => (id === "dsx_run" ? { id, flowKind: "coder" } : { id, flowKind: "agent" }),
       },
       view: async () => boardAnswer([{ ...held.data.task }]),
     } as unknown as Client;

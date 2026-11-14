@@ -332,14 +332,14 @@ the stage-2 specs.
 | ER-7 | One live read in the client: the coalescer and the path rule live in one place, and `useView` and every package watch sit on it | FIX-2551 builds · FIX-2623, FIX-2627 use | The stage-2 reuse review |
 | ER-8 | No lab adapter grows once the sibling amendments merge. A screen's new need is then a package read or view, never a new adapter verb or hand-written row type. Until FIX-2592, FIX-2616 and FIX-2369's amendments merge it is advisory, and FIX-2628 deletes what was added. It holds until that adapter is deleted ([D3](#d3)) | The coordinator (it asks for the amendments) · FIX-2628 uses | FIX-2592, FIX-2616 and FIX-2369's spec reviews, after the amendments |
 | ER-9 | Every public name the set fixes is in the glossary in the PR that coins it. The holds that fix the names are answered ([O1](#o1), [O2](#o2), [O5](#o5)), so "view", "kit" and "slot" land with FIX-2619, with the narrowed FIX-2246 retire and the objectives non-goal line. "Read" retires as the hook's name: FIX-2619's entry says so, and the check that refuses it lands in FIX-2623's PR, the one that removes `reads` | FIX-2619 builds · FIX-2623, FIX-2626 use | Each child's PR checks |
-| ER-10 | Ids on notices are hints. No ids means read everything; a full read runs on connect, reconnect, resync, a poll tick and wherever the bus doesn't cross processes; a notice that drops the resource name carries no ids | FIX-2625 builds · FIX-2623 uses (keys) | FIX-2625's spec review; the closure |
+| ER-10 | Ids on notices are hints. No ids means read everything; a full read runs on connect, reconnect, resync, a poll tick and wherever the bus doesn't cross processes; a notice that drops the resource name carries no ids | FIX-2625 builds · FIX-2623 uses (ids) | FIX-2625's spec review; the closure |
 
 ## Coordination seams
 
 | Seam | Between | Rule |
 |---|---|---|
 | `defineFlow`'s config (`reads` → `views`) and the export ratchet | FIX-2623, FIX-2626, FIX-2447 | FIX-2623 removes `reads` with no alias; `defineView`, `useView`, `fsd.resource` and `defineKit` enter FIX-2447's ratchet in the PR that adds them |
-| The client's live read and `client.subscribe` | FIX-2551, FIX-2623, FIX-2625, FIX-2367 | FIX-2551 lands the coalescer; FIX-2623 builds `useView` on it; FIX-2625 adds keys to it. None adds a topic or a poll (FIX-2367 ER-2, ER-3) |
+| The client's live read and `client.subscribe` | FIX-2551, FIX-2623, FIX-2625, FIX-2367 | FIX-2551 lands the coalescer; FIX-2623 builds `useView` on it; FIX-2625 adds ids to it. None adds a topic or a poll (FIX-2367 ER-2, ER-3) |
 | The engine's read routes and the endpoint table | FIX-2623, FIX-2624, FIX-2619 | The view route and the scope-addressed resource routes land in their children; FIX-2619's table is updated by whichever lands second |
 | The resource definition (`client` config, `runBy`) | FIX-2624, FIX-2627, FIX-2628 | FIX-2624 owns the fields and the default write flow; FIX-2627 (the workers collection) and the app kit only declare them. `defineKit` needs no resource field of its own |
 | The workforce roster watch | FIX-2412, FIX-2623, FIX-2627 | FIX-2623 moves it onto a view; FIX-2627 ships that view in the workforce kit |

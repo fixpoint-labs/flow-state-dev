@@ -56,8 +56,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, intentFreeEnv, readTree, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, servedAddresses, workerOf } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
@@ -275,12 +274,12 @@ await runGoal(async (failures) => {
       evidence: "",
     };
   }
-  const desk = await readDeclaredRoster(LABS.desk.tree);
+  const desk = await readTree(LABS.desk.tree);
   const shiftCoordinatorSeat = desk.workers.find((w) => w.id.split(".").at(-1) === SHIFT_COORDINATOR_NAME);
   const asker = desk.workers.find((w) => w.declared.flow === "asker");
   if (shiftCoordinatorSeat === undefined || asker === undefined) throw new Error("the desk tree declares no Shift Coordinator or asker");
   // The old-name desk must hold the retired id as a live worker, or its leg would pass on an empty desk.
-  const oldName = await readDeclaredRoster(LABS["old-name"].tree);
+  const oldName = await readTree(LABS["old-name"].tree);
   if (!oldName.workers.some((w) => w.id === "desk.chief-of-staff") || oldName.workers.some((w) => w.id.split(".").at(-1) === SHIFT_COORDINATOR_NAME)) {
     throw new Error("the old-name desk must declare desk.chief-of-staff and no shift-coordinator");
   }

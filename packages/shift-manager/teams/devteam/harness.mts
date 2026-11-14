@@ -34,8 +34,9 @@
  * Either way, a start that goes ahead prints one line naming the coder.
  *
  * Whether Claude Code can run here never stops a start: {@link startHarness}
- * logs its readiness and what to do when it can't, and the Lab serves the
- * same rows on the projects flow's `harnessReadiness` action. Claude Code is
+ * hands the Lab Claude Code as a harness value, and the harness kit the Lab
+ * installs logs its readiness, with what to do when it can't, and serves the
+ * same entries as its `readiness` view. Claude Code is
  * checked whichever coder runs, since the Error Reporter runs on it too.
  *
  * A `coder` worker that names a harness in its `harness` setting
@@ -54,13 +55,8 @@ import {
   type ProjectMcpToolsResolver,
 } from "@flow-state-dev/workforce";
 import type { HarnessBlock, HarnessReadinessCheck } from "@flow-state-dev/core/harness";
-import type { HarnessFeeds as ManagerHarnessFeeds } from "@flow-state-dev/harness-manager";
-import {
-  formatHarnessReadiness,
-  harnessReadiness,
-  scriptedHarness as sharedScriptedHarness,
-  type HarnessReadinessRead,
-} from "@flow-state-dev/harness-manager";
+import type { Harness, HarnessFeeds as ManagerHarnessFeeds } from "@flow-state-dev/harness-manager";
+import { scriptedHarness as sharedScriptedHarness } from "@flow-state-dev/harness-manager";
 
 /** What the scripted run does where it works; harness-manager's, re-exported for this tree's checks. */
 export { commitScriptedWork } from "@flow-state-dev/harness-manager";
@@ -321,26 +317,24 @@ export interface StartHarnessOptions {
   log?: (line: string) => void;
 }
 
-/** A served Lab's coder, and the read of which harnesses can run on this machine. */
+/** A served Lab's coder, and the harnesses whose readiness this machine reports. */
 export interface StartedHarness extends SelectedHarness {
-  /** Claude Code's readiness, read at start and again on request (`openLab({ readiness })`). */
-  readiness: HarnessReadinessRead;
+  /** Claude Code, as a harness value (`openLab({ harnessValues })`): the harness kit checks and logs it. */
+  harnessValues: readonly Harness[];
 }
 
 /**
  * Pick a served Lab's coder at start: {@link selectHarness} with the profile's
- * default, and the readiness read over the harnesses the Lab runs.
+ * default, and Claude Code as the harness value whose readiness the Lab reports.
  *
- * Whether Claude Code can run here never stops the start: the table of what
- * can run, with what to run for what can't, goes to the log. On the Claude
- * Code coder it is logged before the Lab listens; on the other coders it is
- * logged when the check answers, and the start doesn't wait for it. Nothing
- * ever falls back to the scripted run: a Claude Code task on a machine that
- * can't run it fails, saying why.
+ * Whether Claude Code can run here never stops the start: the harness kit
+ * logs the table of what can run, with what to run for what can't, when the
+ * check answers. Nothing ever falls back to the scripted run: a Claude Code
+ * task on a machine that can't run it fails, saying why.
  *
  * @param defaultChoice The profile's coder when {@link HARNESS_ENV} names none.
  * @param options Seams for checks; a served Lab passes none.
- * @returns The chosen harness and the readiness read.
+ * @returns The chosen harness and Claude Code as a harness value.
  * @throws When the choice or the budget is malformed.
  */
 export async function startHarness(defaultChoice: HarnessChoice, options: StartHarnessOptions = {}): Promise<StartedHarness> {
@@ -351,10 +345,7 @@ export async function startHarness(defaultChoice: HarnessChoice, options: StartH
   const harness = selectHarness(value, stepMs, defaultChoice, runMinutes);
   const check: HarnessReadinessCheck =
     options.check ?? ((o) => checkClaudeCodeReadiness({ env: claudeCodeEnv(), ...(o?.signal === undefined ? {} : { signal: o.signal }) }));
-  const readiness = harnessReadiness({ "claude-code": { label: "Claude Code", check } });
-  const table = readiness.read().then((rows) => log(formatHarnessReadiness(rows)));
-  // The other coders never run Claude Code, so their start doesn't wait on the check:
-  // the table can land in the log after the Lab's own start lines.
+  const claudeCode: Harness = { id: "claude-code", label: "Claude Code", agent: claudeCodeHarness as never, readiness: check, pass: CLAUDE_CODE_PASS };
   const budget = `each run may take ${harness.runTimeoutMs / 60_000} minutes (${RUN_MINUTES_ENV})`;
   if (harness.name === "stub") {
     log(`Coder: the scripted run, no model (${HARNESS_ENV}=stub).`);
@@ -362,9 +353,8 @@ export async function startHarness(defaultChoice: HarnessChoice, options: StartH
     log(`Coder: ${harness.name === "codex" ? "Codex" : "Cursor"}, not checked for a sign-in at start; ${budget}.`);
   } else {
     log(`Coder: Claude Code; ${budget}.`);
-    await table;
   }
-  return { ...harness, readiness };
+  return { ...harness, harnessValues: [claudeCode] };
 }
 
 /** The budget {@link RUN_MINUTES_ENV} asks for, in milliseconds, or none; refused rather than guessed when malformed. */

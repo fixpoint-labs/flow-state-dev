@@ -289,7 +289,7 @@ async function oneRun(n: number, failures: string[], notes: string[]): Promise<v
     const fileNamed = readLines.some((line) => line.tool === "readProjectSource" && namesFile(line.line, fixture.path));
     const filed = await tasksOf(me.fsd, mine);
     if (filed.length !== 0) fail(`leg 1 · 0 tasks: the session filed ${filed.length} (${filed.map((t) => t.assignee).join(", ")})`);
-    const harness = await me.fsd.sessions.list({ flowKind: "harness-thread", userId: USER });
+    const harness = await me.fsd.sessions.list({ flowKind: "coder", userId: USER });
     if (harness.length !== 0) fail(`leg 1 · no harness: ${harness.length} harness session(s) started`);
     const others = (await me.fsd.sessions.list({ flowKind: "agent", userId: USER })).filter((s) => s.id !== mine);
     for (const session of others) {

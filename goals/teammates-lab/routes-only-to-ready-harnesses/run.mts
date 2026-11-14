@@ -10,7 +10,7 @@
  * login).
  *
  * - *start log*: the server's log has the Codex row, naming `codex login`.
- * - *re-check*: the `harness-readiness` flow's readiness view returns Codex not ready
+ * - *re-check*: the harness kit's `harnesses` flow's readiness view returns Codex not ready
  *   with a remedy; after the SDK's own program logs in with a dummy key into
  *   that `CODEX_HOME`, `{ refresh: true }` returns it ready.
  * - *routes*: asked to have Codex change the README, Lead files no
@@ -48,7 +48,7 @@ const fixture = loadFixture<{ lead: string; codexWorker: string; asks: string[];
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const RUNS = Number(process.env.GOAL_RUNS ?? 3);
 const USER = "u_goal";
-const READINESS = "harness-readiness";
+const READINESS = "harnesses";
 /** A request in one of these has ended; any other is still owed. */
 const ENDED = new Set(["completed", "failed", "incomplete", "aborted", "interrupted", "cancelled"]);
 
@@ -56,7 +56,7 @@ const CONTROLS: Record<string, ModulePatch[]> = {
   "": [],
   // The workers' context loses the rows: the incident, where Codex is filed on regardless.
   "no-readiness-context": [
-    { module: "labs/teammates/host.mts", from: String.raw`harnessReadinessCapability\(readiness\),`, to: "" },
+    { module: "packages/harness-manager/src/kit/harnesses-kit.ts", from: String.raw`\[harnessReadinessCapability\(readiness\)\]`, to: "[]" },
   ],
   // A refresh answers from the kept rows: a sign-in made after start is never seen.
   "kept-answer": [

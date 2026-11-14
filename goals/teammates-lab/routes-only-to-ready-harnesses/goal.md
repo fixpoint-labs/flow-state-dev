@@ -9,7 +9,7 @@
 **Signal:** `fsdev dev --app @flow-state-dev/teammates` on a fresh store over an empty git checkout, driven over HTTP. Cursor is ready, from a `CURSOR_API_KEY` in the lab's environment. Codex is not: there's no `CODEX_API_KEY`, and `CODEX_HOME` is an empty folder, so the SDK's own `codex login status` finds no login. `PATH` doesn't pick the program; the SDK does.
 
 - *start log*: the server log has the Codex row, and it names `codex login`.
-- *re-check*: the `harness-readiness` flow's readiness view returns Codex as not ready, with a remedy. The goal then runs the SDK's own program with `login --with-api-key` and a dummy key into that `CODEX_HOME`. After that, `{ refresh: true }` returns Codex as ready.
+- *re-check*: the harness kit's `harnesses` flow's readiness view returns Codex as not ready, with a remedy. The goal then runs the SDK's own program with `login --with-api-key` and a dummy key into that `CODEX_HOME`. After that, `{ refresh: true }` returns Codex as ready.
 - *routes*: asked to have Codex change the README, Lead calls `createTask` on `teammates.codex` zero times, and its reply names `codex login`. It may offer Cursor, or use it.
 
 Each run passes all three. 3 runs of 3 (`GOAL_RUNS`, default 3).

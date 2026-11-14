@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
-import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { readWorkforceFolder, type WorkforceFolder } from "@flow-state-dev/workforce/loader";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
 import { collectionOfBoard, createLabReader, GENERAL_TEAM, type Ask, type BoardTaskView } from "../src/lib/reads";
@@ -24,7 +24,7 @@ import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 
-type Opened = { lab: ServedLab; roster: DeclaredRoster; snapshot: LoadedSnapshot; client: Client };
+type Opened = { lab: ServedLab; roster: WorkforceFolder; snapshot: LoadedSnapshot; client: Client };
 
 async function open(configPath: string, treePath: string): Promise<Opened> {
   // DevTeam and fsd keep a store across restarts; each open here gets its own.
@@ -50,11 +50,11 @@ async function open(configPath: string, treePath: string): Promise<Opened> {
   const snapshot = await createLabReader(client).read();
   if (snapshot.refused !== undefined) throw new Error(`refused: ${snapshot.refused.message}`);
   if (snapshot.unreachable !== undefined) throw new Error(`unreachable: ${snapshot.unreachable.message}`);
-  return { lab, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot, client };
+  return { lab, roster: await readWorkforceFolder({ path: `${repo}/${treePath}`, claim: () => undefined }), snapshot, client };
 }
 
 /** TEAMS, as the tree declares it: each team's worker ids, an org worker (no team in its id) under General. */
-function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
+function declaredTeams(roster: WorkforceFolder): Record<string, string[]> {
   const teams: Record<string, string[]> = {};
   for (const worker of roster.workers) {
     (teams[worker.id.includes(".") ? worker.id.split(".")[0]! : GENERAL_TEAM] ??= []).push(worker.id);

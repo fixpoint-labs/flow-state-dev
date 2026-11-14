@@ -26,7 +26,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | A framework-only piece on `@flow-state-dev/client/internal` (as `followSession` is), used by React, workforce and Shift Manager · or exporting only the coalescer and the path rule as helpers |
 | **Because** | The copies that drift are in apps too: both labs carry one, the teammates adapter outlives this epic, and the epic expects an app to keep its own pieces in a kit of its own, whose client half watches. Exporting only the helpers leaves each caller to write the loop around them (read, compare, report, retry, close), which is most of every copy |
-| **Locks in** | `client.live` and the term *live read* are public, with a glossary entry in the implementation PR (epic ER-9) and a `minor` changeset for `@flow-state-dev/client`. Its shape must take FIX-2625's keys and FIX-2623's views as additions, never as a break: what a read is handed is "the notice that woke it, or `null`", and keys extend that |
+| **Locks in** | `client.live` and the term *live read* are public, with a glossary entry in the implementation PR (epic ER-9) and a `minor` changeset for `@flow-state-dev/client`. Its shape must take FIX-2625's ids and FIX-2623's views as additions, never as a break: what a read is handed is "the notice that woke it, or `null`", and ids extend that |
 
 ![D1: who can use the one live read. Public client.live, chosen, beside framework-only on client/internal. Decides it: who stops copying, apps too. Price: a public contract before views and keys exist. Framework packages are a tie](figures/d1-public-live-read.svg)
 
@@ -74,7 +74,7 @@ retry slows or caps; it doesn't go away.
 - **The filter runs before the merge.** A notice no caller hears never turns a waiting read into
   a full one. That is what Shift Manager's wrapper did by hand.
 - **The merge is one function.** Same notice: kept. Different: `null`, read everything.
-  FIX-2625 changes only this function, to union keys with a cap: it extends the merge options
+  FIX-2625 changes only this function, to union ids with a cap: it extends the merge options
   and adds no second entry point for the same loop.
 - **The path rule is FIX-1506's, unchanged.** Bare path, unknown prefix, a pattern with no
   static prefix, `null` and `resync`: all read. Roots are passed in; how a caller learns them
@@ -96,7 +96,7 @@ retry slows or caps; it doesn't go away.
 - **Seams.** FIX-2623 builds `useView` on `client.live`, using topics from the last result, and adds no loop; if a view's notices
   need new topics, that goes through FIX-2367's ER-2, not around it. FIX-2624 makes its live
   direct reads call `client.live` and supplies roots for a user or org resource without a
-  session. FIX-2625 adds keys in the merge. FIX-2466 (in development) moves more lab polls behind
+  session. FIX-2625 adds ids in the merge. FIX-2466 (in development) moves more lab polls behind
   notices: whichever lands second puts them on `client.live`.
 
 ## Considered and dropped

@@ -23,9 +23,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry, createInProcessFetch } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
-import { AGENT_FLOW, type WorkerManifest } from "@flow-state-dev/workforce";
+import { AGENT_FLOW, workerFlow, type WorkerManifest } from "@flow-state-dev/workforce";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { installWorkers, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { installWorkers, loadFixture, runGoal, silentLogger, stripIntentOverrides, workforceTree } from "../../lib/index.mts";
 import { defineCallerAgent } from "./fixtures/flows";
 
 type Worker = {
@@ -46,8 +46,9 @@ if (CONTROL !== "" && CONTROL !== "builtin-agent") throw new Error(`unknown GOAL
 const fixture = loadFixture<Fixture>(import.meta.url);
 
 /**
- * The roster, hand-built. The loader path is the sibling goal's subject; what
- * this one grades is which flow each record ends up on.
+ * The roster, hand-built and written as a folder the workforce kit reads. The
+ * loader path is the sibling goal's subject; what this one grades is which
+ * flow each record ends up on.
  */
 function records(): WorkerManifest[] {
   return fixture.roster.map((worker) => ({
@@ -93,8 +94,9 @@ await runGoal(async (failures) => {
   const dir = mkdtempSync(join(tmpdir(), "fsd-caller-agent-"));
 
   // ---- (a) one copy of `agent`, and it is the caller's ----------------------
-  const { copies } = installWorkers(records(), (installation) =>
-    CONTROL === "builtin-agent" ? {} : { [AGENT_FLOW]: defineCallerAgent(installation) }
+  const { copies } = await installWorkers(
+    workforceTree(records()),
+    CONTROL === "builtin-agent" ? {} : { [AGENT_FLOW]: workerFlow(defineCallerAgent) }
   );
   const agents = copies.filter((copy) => copy.kind === AGENT_FLOW);
   if (agents.length !== 1 || agents[0]!.id !== AGENT_FLOW) {

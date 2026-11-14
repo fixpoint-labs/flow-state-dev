@@ -49,6 +49,8 @@
   "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/harness-manager": "workspace:*",
+    "@flow-state-dev/workforce": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
     "zod": "^3.24.1"
   },
@@ -61,6 +63,7 @@
     }
   },
   "devDependencies": {
+    "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "vitest": "^3.2.4"

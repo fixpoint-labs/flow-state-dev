@@ -69,20 +69,20 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
   COORDINATOR_FLOW,
-  createWorkerInstallation,
-  defineCoordinatorFlow,
   defineSessionBoard,
-  hireWorkforce,
   inventoryWorkers,
   inventoryWriterActions,
   openInventory,
   workerConfigSchema,
+  workerFlow,
   workerTaskEntry,
   type InventoryActionRequest,
+  type WorkerInstallation,
   messageReceivedEntry,
   workerMessagesResources,
 } from "@flow-state-dev/workforce";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -120,7 +120,7 @@ export const RUN_LAB_FAILURE = "The audit note's folder is read only.";
  * suspend on a user's approval of this, after the opening; `holdAsk`: only
  * once the Lab's `releaseAsk()` is called; `fail`: throw this, after the opening.
  */
-export type RunScript = { steps?: number; holdMs?: number; ask?: string; holdAsk?: boolean; fail?: string };
+type RunScript = { steps?: number; holdMs?: number; ask?: string; holdAsk?: boolean; fail?: string };
 
 /** The open Lab's ask gate: a `holdAsk` run asks once it resolves. One Lab is open at a time. */
 let askGate: { opened: Promise<void>; open(): void } = gate();
@@ -259,13 +259,9 @@ const scriptedRun = handler({
   },
 });
 
-/** Read the tree, refusing it whole if anything did not load. */
+/** Read the tree, refusing it whole if anything did not load. The workforce kit reads it again, and claims its files. */
 async function readTree() {
-  const roster = await readDeclaredRoster(RUN_LAB_TREE);
-  if (roster.problems.length > 0) {
-    throw new Error(`the run-lab tree did not load: ${roster.problems.map((p) => `${p.path}: ${p.error.message}`).join("; ")}`);
-  }
-  return roster;
+  return readWorkforceFolder({ path: RUN_LAB_TREE, claim: () => undefined });
 }
 
 /**
@@ -299,8 +295,12 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean;
   const ownWorker = workers.find((w) => workers.filter((o) => o.flow === w.flow).length === 1);
   const sharedFlow = flowsOfWorkers.find((flow) => workers.filter((w) => w.flow === flow).length > 1);
 
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => workerFlows as never });
+  // Every worker flow is built on the installation the workforce kit hires, once.
+  let installation!: WorkerInstallation;
+  let built: Record<string, unknown> | undefined;
+  const builtOn = (on: WorkerInstallation): Record<string, unknown> => {
+    if (built !== undefined && installation === on) return built;
+    installation = on;
 
   // The lead's flow carries the session board: its delegates give its
   // conversation the task tools and actions, and the board hands each task
@@ -337,27 +337,26 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean;
       internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: flow }) } },
       task: { actions: { work: workerTaskEntry({ name: `run-lab-${flow}-task`, turn: scriptedRun }) } },
     } as never);
-  const coordinator = defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL });
-
-  workerFlows = {
-    [leadFlow]: { flow: leadWorkerFlow, roles: ["manager"] },
-    [COORDINATOR_FLOW]: coordinator,
-    ...Object.fromEntries(
-      flowsOfWorkers.map((flow) => [flow, { flow: workerFlowName(flow, flow === ownWorker?.flow), roles: ["contributor"] }]),
-    ),
+  built = {
+    [leadFlow]: leadWorkerFlow,
+    ...Object.fromEntries(flowsOfWorkers.map((flow) => [flow, workerFlowName(flow, flow === ownWorker?.flow)])),
   };
-  const copies = hireWorkforce(installation);
+  return built;
+  };
   // The worker write takes caller-supplied rows, so it is internal only.
   const writer = defineFlow({
     kind: INVENTORY_WRITER_FLOW,
     internal: { actions: { ...inventoryWriterActions() } },
   } as never) as unknown as FlowInstance;
-  const flows: Record<string, FlowInstance> = {
-    ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
-    [INVENTORY_WRITER_FLOW]: writer,
-  };
   const flowState = createFlowState({
-    flows: Object.values(flows),
+    kits: [workforce({ directory: RUN_LAB_TREE, coordinator: { routeModel: ROUTE_MODEL } })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        [leadFlow]: workerFlow((on) => builtOn(on)[leadFlow], { roles: ["manager"] }),
+        ...Object.fromEntries(flowsOfWorkers.map((flow) => [flow, workerFlow((on) => builtOn(on)[flow], { roles: ["contributor"] })])),
+      },
+    },
+    flows: [writer],
     stores: { default: { primary: inMemoryStores() } },
     devtool: { userId: RUN_LAB_USER_ID },
     // An asking run suspends until a user answers, which needs durable execution.
@@ -379,6 +378,8 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean;
   };
 
   const runtime = await flowState.getRuntime();
+  // Every flow the Lab serves, the kit's copies among them, by id.
+  const flows: Record<string, FlowInstance> = Object.fromEntries(runtime.registry.list().map((flow) => [flow.id, flow]));
   const act = async (flow: FlowInstance, sessionId: string, actionName: string, input: unknown, source?: string) => {
     const result = (await runAction({
       flow,

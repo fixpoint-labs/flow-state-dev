@@ -268,10 +268,14 @@ describe("taskToolActions — refusals are values, and the caller can read them"
       // emits no change item — so the root trace is the one place a caller
       // like the DevTool can read the refusal from.
       const requests = (await h.runtime.stores.request.list({ sessionId: "s_ops", withItems: true })) as Array<{
+        id: string;
         actionName: string;
         items?: Array<{ type: string; blockInstanceId?: string; output?: unknown; component?: string }>;
       }>;
-      const [last] = requests.filter((r) => r.actionName === `updateTask_${h.id}`);
+      // The list is newest-updated first, and the two updates can tie, so
+      // pick the refused request by its id rather than by position.
+      const last = requests.find((r) => r.id === refused.requestId);
+      expect(last?.actionName).toBe(`updateTask_${h.id}`);
       const root = last?.items?.find((item) => item.type === "block_trace" && item.blockInstanceId?.endsWith(":root:0"));
       expect(root?.output).toEqual({ kind: "inline", value: refused.output });
       expect(last?.items?.some((item) => item.component === "task-change")).toBe(false);

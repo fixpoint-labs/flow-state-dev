@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 386">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="28" y="44">SPLIT BY ORGANIZATION</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="468" y="44">SPLIT BY TENANT</text>
+<rect fill="url(#hatch)" x="28" y="60" width="204" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="28" y1="70.5" x2="232" y2="70.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="60" width="204" height="190"/>
+<rect fill="url(#hatch)" x="248" y="60" width="204" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="248" y1="70.5" x2="452" y2="70.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="248" y="60" width="204" height="190"/>
+<rect fill="url(#hatch)" x="468" y="60" width="204" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="468" y1="70.5" x2="672" y2="70.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="468" y="60" width="204" height="190"/>
+<rect fill="url(#hatch)" x="688" y="60" width="204" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="688" y1="70.5" x2="892" y2="70.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="688" y="60" width="204" height="190"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="92">ORGANIZATION</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="114">acme</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="128" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="150">alice</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="166">her user records</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="188" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="210">org state</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="226">everyone in acme</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="262" y="92">ORGANIZATION</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="262" y="114">globex</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="262" y="128" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="274" y="150">alice</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="274" y="166">a second, separate copy</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="262" y="188" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="274" y="210">org state</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="274" y="226">everyone in globex</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="482" y="92">TENANT</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="482" y="114">northwind</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="482" y="128" width="176" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="494" y="150">chat-1</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="494" y="166">a session</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="482" y="206">user and org records</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="482" y="222">are not split here</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="702" y="92">TENANT</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="702" y="114">contoso</text>
+<rect class="hl" fill="#e8f551" x="702" y="128" width="176" height="48"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="702" y="128" width="176" height="48"/>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="714" y="150">chat-1</text>
+<text class="sub on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="714" y="166">same id, its own record</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="702" y="206">user and org records</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="702" y="222">are not split here</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="282" x2="920" y2="282"/>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="308">01</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="308">A user's records are kept per organization. alice in acme and alice in globex are two records.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="333">02</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="333">A tenant splits sessions only. User and org records are the same whichever tenant sent the request.</text>
+<g id="key">
+<rect fill="url(#hatch)" x="28" y="354" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="28" y="354" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="364">OUTLIVES THE REQUEST</text>
+<rect class="hl" fill="#e8f551" x="244" y="354" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="278" y="364">SAME ID, OWN RECORD</text>
+</g>
+</svg>

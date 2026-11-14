@@ -123,8 +123,8 @@ export { REQUEST_RESUME_SEAM, requestResumeOf } from "../types/request-resume";
 export type { RequestResume } from "../types/request-resume";
 
 /** The board-notice seam: a task board's change reaches the change bus. */
-export { BOARD_NOTICE_SEAM, publishBoardChange } from "../types/board-notice";
-export type { BoardChange, BoardNoticeSeam } from "../types/board-notice";
+export { BOARD_NOTICE_SEAM, BOARD_READ_SEAM, publishBoardChange, recordBoardRead } from "../types/board-notice";
+export type { BoardChange, BoardNoticeSeam, BoardRead, BoardReadSeam } from "../types/board-notice";
 
 /** The request's side-chain pool: detached work a request drains before it ends. */
 export { getRequestSideChainPool } from "../execution/request-side-chain-pool";
@@ -200,4 +200,6 @@ export { isTraceObservabilityEnabled } from "../helpers/trace-observability";
  * and the manifest-domain guard workforce reads, from `@flow-state-dev/contracts`.
  */
 export { PUSH_CLOSE_CODES, PUSH_MINT_MAX_TOPICS, isManifestDomain, wireTopicKey } from "@flow-state-dev/contracts";
+// FIX-2625: the one cap and union rule for a notice's ids, shared by the engine's fold and the client's merge.
+export { NOTICE_MAX_IDS, noticeIdsOf, unionNoticeIds } from "@flow-state-dev/contracts/types/push-delivery";
 export type { ChangeKind, PushCapability, PushMintAnswer, PushServerFrame, TopicScope } from "@flow-state-dev/contracts";

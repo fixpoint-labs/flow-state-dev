@@ -142,6 +142,102 @@ other way, a stretch where the goals don't cover the install every app uses.
   `readWorkforceFolder`, `Harness`, `sourceReadCapability`, `sessionFields`; each enters FIX-2447's export ratchet.
 - **Changesets:** `minor` for workforce, harness-manager, claude-code, codex, cursor and react.
 
+## Decided during implementation
+
+Settled on the implementation branch (`claude/fix-2627-impl`). Each narrows a decision above;
+none reverses one.
+
+- **The three views are deferred to FIX-2725 (owner decision, 2026-11-13).** The worker
+  sessions, session turns and coding board views aren't built here. A view's block context
+  has no session read: it can't list a user's sessions or read a session's requests, and the
+  engine records no such read to wake a watcher. And a session view runs only on its own
+  session's flow, while a kit can't add a view to flows another kit builds. So
+  `listWorkerSessions`/`findWorkerSession`, claude-code-style's turn assembly and its
+  `boardOf`/`harnessOf` stay exactly as they are, and no `views` slot is built.
+- **Where the kits are imported from.** `workforce` from `@flow-state-dev/workforce/kit`, beside
+  `harnesses` at `@flow-state-dev/harness-manager/kit`: both read the file system at start, so
+  neither sits on a package root a browser bundle reaches.
+- **The workforce kit's config carries what a host passed to the hire.** `agent`, `coordinator`,
+  `consult`, `routines`, `taskChainLimit`, `messages`, `projectCoordinator`, and `generated`, the
+  app's `workforce.gen.ts` imported whole. GitHub's service flow, which needs the installation, is
+  `github` in config: the kit builds it. The kit adds the routine tools to the flows it builds as it
+  adds consult, for the same reason (a capability over its own installation), and an entry keyed
+  `agent` or `coordinator` in `workerFlows` replaces its own, which is then refused in config.
+- **Internal events are `internalEvents` in config, as GitHub's flow is `github`.** The internal
+  service flow needs the installation and its provider must join routines before the hire, so the
+  kit builds it from `internalEvents` (`topics`, `screens`, `capPerHour`, `maxOwnerRuns`), serves
+  it, and adds its provider to `routines.providers`. A worker flow, or a `flows` entry, reaches its
+  `publishEvent`, resources and tool through `internalEventsOf(installation)` with the
+  installation its builder is handed; nothing is added to the installation's type.
+- **Every reader problem refuses the start.** `readWorkforceFolder` throws on any problem the
+  readers report, every one named, as an unclaimed file does: an app is never started short.
+- **The generated module is read whole, and checked.** Its maps are `workerFlows`, `blocks`,
+  `resourceModules`, `workerBlocks` and `packageBlocks`; any other key, or one that isn't a plain
+  record, is refused at construction. A worker flow is the generated module's or the slot's,
+  never both (refused, naming it); either one keyed `agent` or `coordinator` replaces the kit's
+  own, which is then refused in config. `resourceModules` splits as hosts split it by hand
+  (`splitResourceModules`): its capabilities go in the `uses` of the flows the kit builds, its
+  resources beside the folder's documents.
+- **The `Harness` type lives at harness-manager's root** (type only); Codex and Cursor take a
+  type dependency on it. Its `agent` is harness-manager's `HarnessSlot`, so no feeds type moves.
+- **Claude Code's plan mode is a second harness**, `claude-code-plan`, which `claudeCode({ plan: true })`
+  fills. The coding worker flow takes no per-harness worker settings, so claude-code-style's two
+  plan workers say `harness: claude-code-plan` instead of `permissionMode: plan`.
+- **The coding worker flow is claude-code-style's `harness-thread` with teammates' policy as
+  options.** Its door talks to the run's session; checks run only on a run that changed files;
+  readiness is checked before a task starts on any app; `review`, `pullRequests`, `judge`,
+  `checks`, `project` and `runTimeoutMs` are the kit's config, and a worker's `review:` line wins
+  over the kit's. `codingDrainBudgetMs(config)` gives a host the shutdown wait.
+- **The start-up readiness log is the kit's, opt-in** (`logReadiness`), since the hosts no longer
+  hold a readiness read; FIX-2391's goal grades it.
+- **Teammates reads its workers' delegates with `readWorkforceFolder`** for its context view: the
+  roster view (FIX-2623's, installed unchanged) carries no delegates.
+- **A third workforce slot, `flows`** (the coordinator's call, 2026-11-13, in place of a config
+  option): keyed builders handed the installation, whose flows the kit serves beside its worker
+  flows. An app's flow built on the installation (Shift Manager's projects and workstreams flow)
+  fills it, and a host that needs the installation afterwards keeps the one its builder was
+  handed. Workforce fills it with nothing: projects stays the app's (O1).
+- **A check that perturbs worker records edits a copy of the folder.** The kit reads files, never
+  records, so kitchen-sink's coordinator controls and the DevTeam Lab's record options
+  (`documentOverrides`, `skills`, `mutateSkills`, `coderHarness`, the tool filters, an unserved
+  Error Reporter) write a temporary copy of the tree the kit then reads. A skill shared from a
+  team or the org can't change for one worker (a skill name reaches a worker from one level
+  only), so that edit is refused.
+- **A worker flow keyed `agent` or `coordinator` in the generated module replaces the kit's
+  own**, as one filled in `workerFlows` does.
+- **A host reads its own tree with `readWorkforceFolder` and a claim that does nothing** where it
+  needs the declared records before start (the DevTeam Lab's EM and coder, Teammates' delegates).
+  The kit's own read is the one that claims the folder.
+- **The tree's documents are the installation's.** The kit passes the folder's documents and
+  references to the installation, so the agent and coordinator flows declare them as a host
+  that passed `documents` did; Shift Manager's ask-lab test now finds the asker's listing among
+  others rather than alone.
+- **The DevTeam Lab's readiness is the harness kit's.** The Lab installs `harnesses` with its
+  `coder` switched off (its own coder flow is its policy, D1) and fills the slot with Claude Code,
+  whose check `startHarness` supplies. The `readiness` view moves from the projects flow to the
+  kit's `harnesses` flow, and the start-up table is the kit's `logReadiness` log, written once the
+  check answers rather than awaited before the Lab listens.
+- **A control's copy of the tree goes with the app.** The DevTeam Lab removes its copy when it is
+  disposed; kitchen-sink's, which the app reads for as long as it runs, when the process exits.
+- **The planted stray is named by its folder.** With nothing else under `workforce/flows/`, the
+  claim pass names `flows`, the topmost entry no reader used; the goal check asserts that.
+- **`sessionFields` reaches the agent and coordinator flows as a factory option.** The kit hands
+  its `sessionFields` to the two flows it builds (`defineAgentWorkerFlow`, `defineCoordinatorFlow`);
+  each field joins that session's schema, its `serverOwned` list and its client data. A field
+  named like a key workforce keeps on the session refuses start. Every field is visible to the
+  session's browser, as `workProjectId` is: never put a secret in one. No per-field expose option
+  is built; nothing needs one yet. `workProjectId` stays as it is
+  until FIX-2628 moves projects to the app.
+  The kit's `sessionFields` is the one place they are declared: a nested `agent.sessionFields`
+  or `coordinator.sessionFields` refuses start, as `agent.sessionFields` does on the coordinator
+  and the error reporter, because each would be overwritten or dropped and its field left open
+  to a seeded create.
+- **The starter files are one registry item, `workforce-starter`.** `fsdev ui add
+  workforce-starter` copies `workforce/teams/team/TEAM.md` and
+  `workforce/teams/team/workers/assistant/WORKER.md` into the app (the copy-in FIX-2626 names),
+  so the registry gains its first `registry:file` item beside its components. No `init` command
+  exists to add it to; the item is the whole of `init` for workforce.
+
 ## Considered and dropped
 
 | Alternative | Why not |

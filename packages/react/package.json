@@ -31,10 +31,6 @@
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     },
-    "./workforce": {
-      "types": "./dist/workforce/index.d.ts",
-      "default": "./src/workforce/index.ts"
-    },
     "./voice": {
       "types": "./dist/voice/index.d.ts",
       "default": "./src/voice/index.ts"
@@ -57,10 +53,6 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      },
-      "./workforce": {
-        "types": "./dist/workforce/index.d.ts",
-        "default": "./dist/workforce/index.js"
       },
       "./voice": {
         "types": "./dist/voice/index.d.ts",

@@ -18,7 +18,7 @@
  * a change to a project's files is a coding run's job.
  */
 
-import { defineCapability, handler } from "@flow-state-dev/core";
+import { defineCapability, handler, type CapabilityRef } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   SOURCE_READ_LIMITS,
@@ -130,44 +130,63 @@ export async function readProjectSourceFor(
   }
 }
 
+/** How one set of the three read tools names itself and what it reads, to the model. */
+interface SourceReadWording {
+  /** The tools' names: glob, read and grep. */
+  readonly names: { readonly glob: string; readonly read: string; readonly grep: string };
+  /** What is read, as the descriptions say it: "the project this session works in". */
+  readonly what: string;
+  /** Where a path starts: "the project's root". */
+  readonly root: string;
+  /** Capabilities each tool uses: the collections its run source reads. */
+  readonly uses: readonly CapabilityRef[];
+}
+
+/** The project's wording: the tools `projectSourceCapability` offers. */
+const PROJECT_WORDING: SourceReadWording = {
+  names: { glob: "globProjectSource", read: "readProjectSource", grep: "grepProjectSource" },
+  what: "the project this session works in",
+  root: "the project's root",
+  // The run source reads these, as the tool's own.
+  uses: [projectWorkspaceCapability],
+};
+
 /**
- * The three read tools over `workspace`. An app installs them through the
- * capability, or, for workers that write a `tools:` line, puts them in its
- * worker flow's catalog and `uses` {@link projectWorkspaceCapability}, whose
- * collections they read.
+ * The three read tools over `workspace`, named and described by `wording`.
+ * Each asks the host's run source for what to read, then its read view.
  */
-export function projectSourceTools(workspace: WorkspaceHost) {
-  const globProjectSource = handler({
-    name: "globProjectSource",
+export function sourceReadTools(workspace: WorkspaceHost, wording: SourceReadWording) {
+  const { names, what, root } = wording;
+  const uses = [...wording.uses];
+  const glob = handler({
+    name: names.glob,
     description:
-      "List the files of the project this session works in whose path matches a glob pattern (e.g. 'src/**', '**/*.ts'). " +
-      "With no pattern, lists every file. A project with a repository is read at its default branch, and the result names the commit. " +
+      `List the files of ${what} whose path matches a glob pattern (e.g. 'src/**', '**/*.ts'). ` +
+      "With no pattern, lists every file. A repository is read at its default branch, and the result names the commit. " +
       `At most ${SOURCE_READ_LIMITS.paths} paths; the result says how many more there were.`,
     inputSchema: z.object({
-      pattern: z.string().nullable().default(null).describe("Glob matched against each path from the project's root. Null lists every file."),
+      pattern: z.string().nullable().default(null).describe(`Glob matched against each path from ${root}. Null lists every file.`),
       limit: z.number().int().positive().nullable().default(null).describe(`At most this many paths. Null: up to ${SOURCE_READ_LIMITS.paths}.`)
     }),
     outputSchema: globProjectSourceOutputSchema,
-    // The run source reads these, as the tool's own.
-    uses: [projectWorkspaceCapability],
+    ...(uses.length === 0 ? {} : { uses }),
     execute: async (input, ctx) =>
       (await readProjectSourceFor(workspace, ctx, { kind: "glob", pattern: input.pattern, limit: input.limit })) as never
   });
 
-  const readProjectSource = handler({
-    name: "readProjectSource",
+  const read = handler({
+    name: names.read,
     description:
-      "Read one file of the project this session works in, by its path from the project's root (e.g. 'src/index.ts'), or a range of its lines. " +
+      `Read one file of ${what}, by its path from ${root} (e.g. 'src/index.ts'), or a range of its lines. ` +
       `Returns at most ${SOURCE_READ_LIMITS.lines} lines or ${SOURCE_READ_LIMITS.bytes / 1024} KB, with the file's line count; the result says how many lines were left out, so read on with startLine. ` +
       "Binary files are refused.",
     inputSchema: z.object({
-      path: z.string().describe("The file's path from the project's root, '/'-separated, e.g. 'src/index.ts'."),
+      path: z.string().describe(`The file's path from ${root}, '/'-separated, e.g. 'src/index.ts'.`),
       startLine: z.number().int().positive().nullable().default(null).describe("First line to return, counting from 1. Null: 1."),
       endLine: z.number().int().positive().nullable().default(null).describe("Last line to return. Null: the end of the file.")
     }),
     outputSchema: readProjectSourceOutputSchema,
-    // The run source reads these, as the tool's own.
-    uses: [projectWorkspaceCapability],
+    ...(uses.length === 0 ? {} : { uses }),
     execute: async (input, ctx) =>
       (await readProjectSourceFor(workspace, ctx, {
         kind: "read",
@@ -177,11 +196,11 @@ export function projectSourceTools(workspace: WorkspaceHost) {
       })) as never
   });
 
-  const grepProjectSource = handler({
-    name: "grepProjectSource",
+  const grep = handler({
+    name: names.grep,
     description:
-      "Search the files of the project this session works in for a regular expression, or for the text as written when it isn't one. " +
-      "The result names the dialect it used: git's extended regular expressions for a repository, JavaScript's for a project with no repository. " +
+      `Search the files of ${what} for a regular expression, or for the text as written when it isn't one. ` +
+      "The result names the dialect it used: git's extended regular expressions for a repository, JavaScript's for files with no repository. " +
       `Returns each matching line's path, line number and text. Binary files are skipped. At most ${SOURCE_READ_LIMITS.matches} matches.`,
     inputSchema: z.object({
       pattern: z.string().describe("Regular expression or text to find in each line."),
@@ -189,8 +208,7 @@ export function projectSourceTools(workspace: WorkspaceHost) {
       maxResults: z.number().int().positive().nullable().default(null).describe(`At most this many matches. Null: up to ${SOURCE_READ_LIMITS.matches}.`)
     }),
     outputSchema: grepProjectSourceOutputSchema,
-    // The run source reads these, as the tool's own.
-    uses: [projectWorkspaceCapability],
+    ...(uses.length === 0 ? {} : { uses }),
     execute: async (input, ctx) =>
       (await readProjectSourceFor(workspace, ctx, {
         kind: "grep",
@@ -200,7 +218,18 @@ export function projectSourceTools(workspace: WorkspaceHost) {
       })) as never
   });
 
-  return { globProjectSource, readProjectSource, grepProjectSource };
+  return { glob, read, grep };
+}
+
+/**
+ * The three read tools over `workspace`, for the session's project. An app
+ * installs them through the capability, or, for workers that write a
+ * `tools:` line, puts them in its worker flow's catalog and `uses`
+ * {@link projectWorkspaceCapability}, whose collections they read.
+ */
+export function projectSourceTools(workspace: WorkspaceHost) {
+  const tools = sourceReadTools(workspace, PROJECT_WORDING);
+  return { globProjectSource: tools.glob, readProjectSource: tools.read, grepProjectSource: tools.grep };
 }
 
 /**

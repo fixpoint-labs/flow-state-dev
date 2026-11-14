@@ -25,7 +25,9 @@ import {
   AGENT_FLOW,
   workerConfigOf,
   workerConfigSchema,
+  workerFlow,
   workerTaskEntry,
+  type WorkerFlowBuilder,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
@@ -47,8 +49,14 @@ const heard = (brief: Brief) => `${brief.from}, through ${brief.coordinator}: ${
  * @param installation The installation the real flow runs its workers on:
  *   this one does too, loading the turn's worker before the answer reads it.
  */
-export function landingControl(catalog: Record<string, BlockDefinition<any, any>>, installation: WorkerInstallation) {
+export function landingControl(catalog: Record<string, BlockDefinition<any, any>>): WorkerFlowBuilder | undefined {
   if (goalControl() !== "no-landing") return undefined;
+  // The landing control's flow takes tasks and keeps no board of its own.
+  return workerFlow((installation) => quietAgent(catalog, installation), { roles: ["contributor"] });
+}
+
+/** The `agent` flow under the control: it takes a routed task and hands nothing back. */
+function quietAgent(catalog: Record<string, BlockDefinition<any, any>>, installation: WorkerInstallation) {
   const settings = workerConfigSchema().extend({ tools: z.array(z.string()).optional() });
   type Settings = z.infer<typeof settings>;
   const config = (ctx: { session: object }) => workerConfigOf(ctx) as Settings;

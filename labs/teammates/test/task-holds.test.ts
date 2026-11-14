@@ -37,7 +37,7 @@ const review = {
   ask: { kind: "review", prompt: "1 commit on b" },
 };
 
-const flowOf = (id: string) => ({ [CONVERSATION]: "agent", [RUN]: "teammates-coder" })[id];
+const flowOf = (id: string) => ({ [CONVERSATION]: "agent", [RUN]: "coder" })[id];
 
 describe("a task waits on you while its row holds a question or a review", () => {
   it("a question: answered on the conversation's board, through its updateTask", () => {
@@ -50,7 +50,7 @@ describe("a task waits on you while its row holds a question or a review", () =>
 
   it("a review: answered on the run's own flow, at its stop", () => {
     const holds = holdsOfTasks(CONVERSATION, [row([review])], flowOf).get("task_1")!;
-    expect(holds[0]!.source).toEqual({ kind: "suspension", flowId: "teammates-coder", sessionId: RUN, requestId: "req-run", suspensionId: "susp-1" });
+    expect(holds[0]!.source).toEqual({ kind: "suspension", flowId: "coder", sessionId: RUN, requestId: "req-run", suspensionId: "susp-1" });
     expect(toBoardTask(row([review]), undefined, holds).waiting).toMatchObject({ kind: "review", unanswerable: null });
   });
 

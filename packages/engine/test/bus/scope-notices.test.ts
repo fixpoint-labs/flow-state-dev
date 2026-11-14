@@ -188,7 +188,7 @@ describe("resource writes publish on their scope's topic, narrowed to the resour
     const heard = hear(bus, orgTopic);
     const requestId = await run(bus, "addLicense", "ada");
     expect(ofKind(heard, "resource")).toEqual([
-      { topic: { ...orgTopic, resource: "licenses/ada" }, kind: "resource", origin: { requestId } }
+      { topic: { ...orgTopic, resource: "licenses/ada" }, kind: "resource", origin: { requestId }, ids: ["licenses/ada"] }
     ]);
   });
 
@@ -274,7 +274,8 @@ describe("the client's resource routes publish the session's topic", () => {
     );
     await tick();
     expect([created.status, updated.status, deleted.status]).toEqual([201, 200, 200]);
-    const notice = { topic: { ...sessionTopic("sess_1"), resource: "notes/a" }, kind: "resource" };
+    // FIX-2625: the entry's storage key, beside the path that names it, so a reader reads one field.
+    const notice = { topic: { ...sessionTopic("sess_1"), resource: "notes/a" }, kind: "resource", ids: ["notes/a"] };
     expect(ofKind(heard, "resource")).toEqual([notice, notice, notice]);
   });
 });

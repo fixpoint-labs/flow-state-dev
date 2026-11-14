@@ -39,13 +39,7 @@ import {
   createInMemoryStores
 } from "@flow-state-dev/engine/host";
 import { runAction } from "@flow-state-dev/engine";
-import {
-  createWorkerHireBlocks,
-  createWorkerInstallation,
-  defineAgentWorkerFlow,
-  defineWorkerRosterFlow,
-  type WorkerManifest,
-} from "@flow-state-dev/workforce";
+import { createWorkerHireBlocks, defineAgentWorkerFlow, workerFlow, type WorkerManifest } from "@flow-state-dev/workforce";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { z } from "zod";
 import {
@@ -60,6 +54,8 @@ import {
   runGoal,
   silentLogger,
   stripIntentOverrides,
+  installWorkers,
+  workforceTree,
 } from "../../lib/index.mts";
 
 type Fixture = { note: string; user: string; org: string; worker: string; hire: string };
@@ -250,9 +246,8 @@ async function legA(resolver: ModelResolver, failures: string[], evidence: strin
 // Leg b: Workforce's hire block in the tool catalog, renamed to its key.
 // ---------------------------------------------------------------------------
 
-/** The app: the built-in worker flow with a one-entry catalog, and the roster flow. */
-function appFlows(): FlowInstance[] {
-  let flows: Record<string, unknown> = {};
+/** The app, from the workforce kit: the built-in worker flow with a one-entry catalog, and the kit's roster flow. */
+async function appFlows(): Promise<FlowInstance[]> {
   const worker: WorkerManifest = {
     id: fixture.worker,
     declared: { description: "Keeps the person's roster of workers.", tools: [NEW_HIRE_NAME] },
@@ -260,23 +255,20 @@ function appFlows(): FlowInstance[] {
       `You keep the person's roster of workers. When they ask you to hire a worker, call the ` +
       `${NEW_HIRE_NAME} tool once with the id they give, then confirm in one short sentence.`,
   };
-  const installation = createWorkerInstallation({ standardWorkers: [worker], workerFlows: () => flows as never });
-  const blocks = createWorkerHireBlocks(installation);
-  const entry = RENAME
-    ? blocks.hire.as({ name: NEW_HIRE_NAME, description: "Hire a new worker onto the person's roster, by id." })
-    : blocks.hire;
-  const agent = defineAgentWorkerFlow({ installation, catalog: { [NEW_HIRE_NAME]: entry } });
-  flows = { agent };
-  const roster = defineWorkerRosterFlow(installation, {
-    hire: { inputSchema: blocks.hire.inputSchema, block: blocks.hire },
+  const agent = workerFlow((installation) => {
+    const blocks = createWorkerHireBlocks(installation);
+    const entry = RENAME
+      ? blocks.hire.as({ name: NEW_HIRE_NAME, description: "Hire a new worker onto the person's roster, by id." })
+      : blocks.hire;
+    return defineAgentWorkerFlow({ installation, catalog: { [NEW_HIRE_NAME]: entry } });
   });
-  return [agent({ id: "agent" }), roster()] as unknown as FlowInstance[];
+  return (await installWorkers(workforceTree([worker]), { agent })).copies;
 }
 
 async function legB(resolver: ModelResolver, failures: string[], evidence: string[]): Promise<void> {
   let flows: FlowInstance[];
   try {
-    flows = appFlows();
+    flows = await appFlows();
   } catch (error) {
     failures.push(`b:flow-loads — the agent worker flow refused its catalog: ${(error as Error).message.split("\n")[0]}`);
     return;
@@ -316,7 +308,7 @@ async function legB(resolver: ModelResolver, failures: string[], evidence: strin
     const session = await workforce.ensureWorkerSession({ worker: fixture.worker });
     const actions = fsd.flow(session.flowKind);
     const started = await actions.send(
-      "run",
+      "respond",
       { message: `Please hire a new worker with the id "${fixture.hire}" onto my roster.` },
       { sessionId: session.id },
     );

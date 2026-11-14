@@ -27,16 +27,17 @@ import { createScheduledTransportAdapter, formatScheduleId } from "@flow-state-d
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {
   ROSTER_FLOW,
-  createWorkerInstallation,
   defineSessionBoard,
   deriveWorkerSessionId,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { actingAs, hearsMessages, silentLogger, untilIdle, writeGoalReport } from "../../lib/index.mts";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import { actingAs, hearsMessages, silentLogger, untilIdle, workforceTree, writeGoalReport } from "../../lib/index.mts";
 
 const env = (name: string): string => {
   const value = process.env[name];
@@ -60,22 +61,23 @@ const workers: WorkerManifest[] = [
   { id: FILER, declared: { flow: "launch", delegates: [ASSIGNEE], description: "Runs the launch." }, body: "", skills: [] },
   { id: ASSIGNEE, declared: { flow: "researcher", description: "Finds the numbers." }, body: "", skills: [] }
 ];
-let workerFlows: Record<string, unknown> = {};
-const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => workerFlows as never });
 
-const board = defineSessionBoard({ installation, flowKind: "launch" });
+// Each worker flow is built on the installation the kit hires from the folder.
 const launchTurn = handler({ name: "goal-launch-turn", inputSchema: doorInput, execute: async () => "Noted." });
-const launchFlow = defineFlow({
-  kind: "launch",
-  configSchema: workerConfigSchema(),
-  session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-  resources: { ...installation.resources, ...board.resources },
-  actions: {
-    respond: { inputSchema: doorInput.strict(), block: launchTurn, userMessage: (input: { message: string }) => input.message },
-    ...board.actions
-  },
-  internal: { actions: board.entries(launchTurn) }
-} as never);
+const launchFlow = (installation: WorkerInstallation) => {
+  const board = defineSessionBoard({ installation, flowKind: "launch" });
+  return defineFlow({
+    kind: "launch",
+    configSchema: workerConfigSchema(),
+    session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+    resources: { ...installation.resources, ...board.resources },
+    actions: {
+      respond: { inputSchema: doorInput.strict(), block: launchTurn, userMessage: (input: { message: string }) => input.message },
+      ...board.actions
+    },
+    internal: { actions: board.entries(launchTurn) }
+  } as never);
+};
 
 const researchTurn = handler({
   name: "goal-research-turn",
@@ -85,22 +87,27 @@ const researchTurn = handler({
     return `refreshed: ${input.message.slice(0, 80)}`;
   }
 });
-const researcherFlow = defineFlow({
-  kind: "researcher",
-  configSchema: workerConfigSchema(),
-  session: installation.session(),
-  resources: { ...installation.resources, ...workerMessagesResources },
-  actions: { respond: { inputSchema: doorInput, block: researchTurn, userMessage: (input: { message: string }) => input.message } },
-  internal: { actions: hearsMessages(installation, "researcher") },
-  task: { actions: { work: workerTaskEntry({ name: "goal-research-task", turn: researchTurn }) } }
-} as never);
-workerFlows = { launch: { flow: launchFlow, roles: ["manager"] }, researcher: { flow: researcherFlow, roles: ["contributor"] } };
+const researcherFlow = (installation: WorkerInstallation) =>
+  defineFlow({
+    kind: "researcher",
+    configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources, ...workerMessagesResources },
+    actions: { respond: { inputSchema: doorInput, block: researchTurn, userMessage: (input: { message: string }) => input.message } },
+    internal: { actions: hearsMessages(installation, "researcher") },
+    task: { actions: { work: workerTaskEntry({ name: "goal-research-task", turn: researchTurn }) } }
+  } as never);
 
-// No schedule index: the host's own cron POSTs per schedule.
-const flows = Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy]));
 const scheduler = createBearerSecretPrincipalResolver({ secret: SECRET, principal: { userId: "scheduler", orgId: ORG } });
+// No schedule index: the host's own cron POSTs per schedule.
 const state = createFlowState({
-  flows: Object.values(flows),
+  kits: [workforce({ directory: workforceTree(workers) })],
+  fill: {
+    [workforce.slots.workerFlows]: {
+      launch: workerFlow(launchFlow, { roles: ["manager"] }),
+      researcher: workerFlow(researcherFlow, { roles: ["contributor"] })
+    }
+  },
   stores: { default: { primary: sqliteStores({ filename: DB }) } },
   adapters: [createScheduledTransportAdapter()],
   logger: silentLogger,
