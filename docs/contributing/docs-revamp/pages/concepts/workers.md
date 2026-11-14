@@ -17,7 +17,7 @@ You can talk to a worker, or hand it a task and come back later. Everyone who us
 
 In most frameworks an agent is one thing: a model, a prompt, some tools, and a loop the framework runs for you. A worker can be exactly that, and the ones that come with Workforce are. Think of them as agents and you won't go wrong.
 
-The difference is underneath. A worker runs on a flow, and you decide what the flow is. It can be one model call. It can be several, with a plan, a draft and a review. It can be mostly plain code that asks a model one question at the end. From the outside it is the same worker either way: it has a name, you can talk to it, and you can hand it work and expect the work back.
+The difference is underneath. A worker runs on a flow, a self-contained piece of your app's backend with the actions it exposes, and you decide what the flow is. It can be one model call. It can be several, with a plan, a draft and a review. It can be mostly plain code that asks a model one question at the end. From the outside it is the same worker either way: it has a name, you can talk to it, and you can hand it work and expect the work back.
 
 So "worker" names the job, and the flow decides how the job gets done. [What runs a worker](#what-runs-a-worker) shows how to change it.
 
@@ -36,30 +36,30 @@ request into tasks, hand them to the coder and the reviewer, and report what
 came back.
 ```
 
-That file gives you a worker with the id `engineering.lead`. The team and worker folders give it the id, and `name` is what people see. The settings between the `---` lines say what it is and what it can reach, and `description` is the only one a file must have. `delegates` names other workers by id. Everything below the second `---` is its instructions.
+That file gives you a worker with the id `engineering.lead`, made from its team and worker folders. `name` is what people see, `delegates` names other workers by id, and everything below the second `---` is its instructions. The [WORKER.md reference](../reference/worker-md.md) has every setting, which one a file must have, and how the id is formed.
 
 Someone who doesn't write TypeScript can add a worker, or change what one has been told, by editing a document.
 
-<Figure svg={Worker} caption="One file, a worker on each user's roster" description={"On the left, a WORKER.md file in your repo, at workforce/teams/engineering/workers/lead. In the middle, two rosters, Alice's and Bob's, each holding its own engineering.lead made from that one file; Alice's is highlighted as one user's own worker. On the right, Alice's sessions, where her worker works: a conversation, where she talks and it answers, and a task, which it runs and reports back on. Each is a session of its own. The rosters and the sessions are hatched: they outlive the request."} />
+<Figure svg={Worker} caption="One file, a worker on each user's list of workers" description={"On the left, a WORKER.md file in your repo, at workforce/teams/engineering/workers/lead. In the middle, two lists of workers, Alice's and Bob's, each holding its own engineering.lead made from that one file; Alice's is highlighted as one user's own worker. On the right, Alice's sessions, where her worker works: a conversation, where she talks and it answers, and a task, which it runs and reports back on. Each is a session of its own. The lists and the sessions are hatched: they outlive the request."} />
 
-## Install the roster
+## Install the workers
 
-Workers come with the Workforce kit. Point it at the folder:
+Workers come with Workforce, a kit (a feature your app installs). Point it at the folder:
 
 ```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
-import { workforce } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 
 export default createFlowState({
   kits: [workforce({ directory: "./workforce" })],
 });
 ```
 
-The folder is read when the app starts. A file the kit can't use stops the app from starting, and the error names the file.
+The folder is read when the app starts, and a file the kit can't use stops the app from starting. The [WORKER.md reference](../reference/worker-md.md) lists what makes a file unusable.
 
 ## Talk to one
 
-A session is one conversation or one task, with its own history. To start a conversation, ask for the session with that worker:
+A session is where a flow keeps many requests together as one record. A conversation with a worker is one session, and each task it runs is another. To start a conversation, ask for the session with that worker:
 
 ```ts title="src/lib/ask-lead.ts"
 import { createClient } from "@flow-state-dev/client";
@@ -75,7 +75,7 @@ export async function askLead(userId: string, message: string) {
 }
 ```
 
-`ensureWorkerSession` returns this user's conversation with that worker and creates it the first time. The worker sees the recent turns of that conversation, and those turns stay in it.
+`ensureWorkerSession` returns this user's conversation with that worker and creates it the first time. Calling it again returns the same conversation, history included, and the worker reads its recent turns on each message.
 
 ## Hand one a task
 
@@ -83,7 +83,7 @@ A worker with `delegates` can hand work to the workers it names. The lead above 
 
 The tasks sit on a [board](./tasks-and-boards.md) that belongs to the conversation, so your page can show what is waiting, running and done.
 
-A worker can only hand work to its own delegates. A task filed for anyone else is refused, and the refusal names the worker.
+A worker can only hand work to its own delegates. The [refusals table](../reference/workforce.md) shows what a task for anyone else gets back.
 
 When you want one front door for a whole team, make it a [coordinator](../catalog/workforce/coordinators.md): a worker whose job is to pick the right delegate for each message.
 
@@ -95,7 +95,7 @@ A user can edit a standard worker from inside the app. The edit makes that user'
 
 ## What runs a worker
 
-Every worker runs on a flow, the piece of backend that handles each message. Leave `flow:` out of the file and it runs on the built-in agent: a model, the worker's instructions, its tools, and the conversation so far.
+Every worker runs on a flow. Leave `flow:` out of the file and it runs on the built-in agent: a model, the worker's instructions, its tools, and the conversation so far.
 
 When a worker needs to be more than a model with a brief, write a flow and name it:
 
@@ -108,12 +108,32 @@ flow: request-triage
 Answer directly when the request is about a feature that already shipped.
 ```
 
-The flow itself lives at `src/flows/request-triage/flow.ts`, and it can give the worker fixed steps, branching, or a review before anything is sent. The file remains a document anyone can edit.
+The flow lives in its own file, `workforce/flows/workers/request-triage.ts`, and `fsdev gen` registers it. It can give the worker fixed steps, branching, or a review before anything is sent:
 
-## What a worker won't do
+```ts title="workforce/flows/workers/request-triage.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import { workerFlow } from "@flow-state-dev/workforce";
 
-- Act for anyone but its owner.
-- Carry a message between two users. Workers message other workers on the same roster.
+export default workerFlow((installation) =>
+  defineFlow({
+    kind: "request-triage",
+    session: installation.session(),
+    resources: { ...installation.resources },
+    // actions, blocks and the rest of the flow
+  }),
+);
+```
+
+## What it gets you
+
+- Someone who doesn't write TypeScript can add `engineering.lead`, or change what it has been told, by editing a document.
+- Each user gets their own lead, so Alice's conversations and what her lead learns about her never reach Bob.
+- The lead can hand work to the coder and the reviewer, and each task is a session of its own on a board your page can read.
+- You can move the lead to a flow of your own without changing how an app talks to it.
+
+## How it fits with the others
+
+A worker is something you open a session with and hand tasks by name. A block that a [board](./tasks-and-boards.md) runs is not one, and a [coordinator](../catalog/workforce/coordinators.md) is a worker whose job is routing. What a worker won't do, and what it refuses, is in the [Workforce reference](../reference/workforce.md).
 
 ## Next
 
