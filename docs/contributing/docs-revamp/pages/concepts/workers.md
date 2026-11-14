@@ -102,7 +102,7 @@ export function LeadTasks({ userId, sessionId }: { userId: string; sessionId: st
 }
 ```
 
-The session has to be on a flow that keeps a board, and the built-in worker flow is one. The read returns the tasks of every session Alice has filed from, never another user's. A task's input, output and metadata are never sent to the browser. `BoardList` draws the same board as one list, and `Roster` draws a user's workers. [Workforce screens](../catalog/workforce/screens.md) covers their options.
+The session has to be on a flow that keeps a board, and the built-in worker flow is one. The read returns the tasks of every session Alice has filed from, never another user's. The read leaves out each task's input, output and metadata, but the session's stream carries them each time the task changes, so keep secrets out of them. `BoardList` draws the same board as one list, and `Roster` draws a user's workers. [Workforce screens](../catalog/workforce/screens.md) covers their options.
 
 ## Whose worker it is
 
