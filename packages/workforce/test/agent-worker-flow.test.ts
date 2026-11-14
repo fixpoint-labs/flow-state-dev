@@ -25,6 +25,16 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
   return { declared: {}, body: "", ...over };
 }
 
+/**
+ * The answer's mock under both arms' names: a worker holding a skill answers
+ * on the skill-loader arm by default (FIX-2498), and these tests are about
+ * what holds on either.
+ */
+function bothArms(generators: Record<string, ReturnType<typeof mockGenerator>>) {
+  const answer = generators["agent-answer"];
+  return answer === undefined ? generators : { "agent-answer-with-activate-tool": answer, ...generators };
+}
+
 function hire(manifests: WorkerManifest[], flows: HireOptions["workerFlows"] = {}): FlowInstance[] {
   return mintWorkers(manifests, { workerFlows: flows });
 }
@@ -153,7 +163,7 @@ describe("the built-in agent worker flow's tools — the runtime fence, not just
       sessionId: "test-session",
       sequencerName: worker.actions.respond!.block.name,
       declaredResources: worker.actions.respond!.block.declaredResources,
-      generators
+      generators: bothArms(generators)
     });
   }
 
@@ -271,7 +281,7 @@ describe("the built-in agent worker flow's tools — a skill's `allowed-tools` v
       sessionId: "test-session",
       sequencerName: worker.actions.respond!.block.name,
       declaredResources: worker.actions.respond!.block.declaredResources,
-      generators
+      generators: bothArms(generators)
     });
   }
 
@@ -504,7 +514,7 @@ describe("the built-in agent worker flow's skills switch — gates only the mode
       sessionId: "test-session",
       sequencerName: worker.actions.respond!.block.name,
       declaredResources: worker.actions.respond!.block.declaredResources,
-      generators
+      generators: bothArms(generators)
     });
   }
 

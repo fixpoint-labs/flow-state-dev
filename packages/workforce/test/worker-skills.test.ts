@@ -279,11 +279,14 @@ describe("a worker's skills at the mint", () => {
     expect(workers).toHaveLength(2);
   });
 
-  it("defaults both new switches off", () => {
+  // `activateTool` stays unset rather than defaulting, so the worker's
+  // `defaults` can decide it (FIX-2498); the classifier stays off.
+  it("leaves `activateTool` unset and the classifier off", () => {
     const [worker] = hire([record({ id: "qa.tester", body: "You test." })]);
     expect(worker!.config).toMatchObject({
-      skills: { active: [], activateTool: false, enableLlmClassifier: false },
+      skills: { active: [], enableLlmClassifier: false },
     });
+    expect((worker!.config as { skills: Record<string, unknown> }).skills).not.toHaveProperty("activateTool");
   });
 });
 
@@ -438,8 +441,18 @@ describe("what a zero-configuration worker pays for", () => {
     return Array.isArray(entries) ? entries.map((e: { name: string }) => e.name) : [];
   };
 
-  it("shows no catalog listing and cannot pull a skill mid-turn", async () => {
-    const [worker] = hire([record({ id: "qa.tester", body: "You test.", skills: [writeRegression] })]);
+  // The listing is on by default for a worker that holds a skill (FIX-2498;
+  // `worker-default-layer.test.ts`). A worker that turns the loader off is back
+  // to paying nothing for what it holds.
+  it("shows no catalog listing and cannot pull a skill mid-turn, with the loader turned off", async () => {
+    const [worker] = hire([
+      record({
+        id: "qa.tester",
+        declared: { skills: { activateTool: false } },
+        body: "You test.",
+        skills: [writeRegression],
+      }),
+    ]);
     const { generators, runtime } = await runTurn(worker!, "hello", loadThenAnswer());
     const ran = answered(generators);
 
