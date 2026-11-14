@@ -1,0 +1,2 @@
+# A goal run's scratch copies (a control's changed tree), removed when the run ends.
+.control-*/

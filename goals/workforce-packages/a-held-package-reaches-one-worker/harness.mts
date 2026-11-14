@@ -5,20 +5,20 @@
  * app's node_modules can. Nothing is added to kitchen-sink; it is the working
  * directory, not the subject.
  *
- * Drives what a team adopting packages would do: read the tree with the real
- * loader, import the module `fsdev gen` wrote from it, build the installation
- * over every seat with the generated `packageBlocks`, register the copies
- * `hireWorkforce` returns (every seat runs on the one built-in `agent` copy),
- * and ask each seat the same question over the real HTTP route, in a session
- * on that copy that names it.
+ * Drives what a team adopting packages would do: import the module `fsdev gen`
+ * wrote from the tree, install the workforce kit over the tree with the
+ * generated `packageBlocks` (every seat runs on the kit's one built-in
+ * `agent` copy), and ask each seat the same question over the real HTTP
+ * route, in a session on that copy that names it.
  *
  * OBSERVES ONLY. Every assertion lives in run.mts; this file reports what
  * happened on one `__GOAL__` line. The tool calls are observed as a real side
  * effect: the package's block bumps a process-wide counter, which is reset
  * before each seat's turn and read after it (turns run one at a time).
  *
- * Control `drop-tools-line` (set by run.mts) deletes every seat's `tools` key
- * before hiring: the shape of a kind that ignored a written `tools: []`.
+ * Control `drop-tools-line` (set by run.mts) deletes every seat's `tools` line
+ * from a copy of the tree before the kit reads it: the shape of a kind that
+ * ignored a written `tools: []`.
  *
  * The attempts repeat HERE, inside one execution, so the load, the codegen
  * import and the hire happen once and only the question repeats.
@@ -26,13 +26,12 @@
 import { createGateway } from "@ai-sdk/gateway";
 import { createModelResolver } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import {
-  WORKER_ID_STATE_KEY,
-  createWorkerInstallation,
-  hireWorkforce,
-  inventoryWorkers,
-} from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { WORKER_ID_STATE_KEY, inventoryWorkers, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { workforce, type WorkforceConfig } from "@flow-state-dev/workforce/kit";
+import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 
 const MODEL = process.env.GOAL_MODEL ?? "vercel:openai/gpt-5.4-mini";
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -88,15 +87,47 @@ function settled(turns: Record<string, { reply: string; calls: number }>): boole
   });
 }
 
+// The harness runs from the app's root and can't import `goals/lib`, so what
+// it needs of `goals/lib/workers.mts` is written out here.
+
+/** What the workforce kit reads of `directory`. */
+const readTree = (directory: string) => readWorkforceFolder({ path: directory, claim: () => undefined });
+
+/** A copy of the tree at `directory` with every `WORKER.md`'s `key:` line taken out. */
+function treeWithout(directory: string, key: string): string {
+  const copy = join(mkdtempSync(join(tmpdir(), "fsd-goal-packages-")), "workforce");
+  cpSync(directory, copy, { recursive: true });
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (name === "WORKER.md") writeFileSync(path, readFileSync(path, "utf8").replace(new RegExp(`^${key}:.*\\n`, "m"), ""));
+    }
+  };
+  walk(copy);
+  return copy;
+}
+
+/** The workforce kit over `directory`, installed as an app's start does, and what it hired and serves. */
+async function installWorkers(directory: string, config: Omit<WorkforceConfig, "directory"> = {}) {
+  let installation: WorkerInstallation | undefined;
+  const state = createFlowState({
+    kits: [workforce({ ...config, directory })],
+    fill: { [workforce.slots.flows]: { harness: (hired: WorkerInstallation) => ((installation = hired), []) } },
+    stores: { dev: { primary: inMemoryStores() } },
+  });
+  await state.ready();
+  const copies = (await state.getRuntime()).registry.list();
+  await state.dispose();
+  return { installation: installation!, copies };
+}
+
 async function main(): Promise<void> {
   const out: Record<string, unknown> = { ok: false, model: MODEL };
 
-  const loaded = await readWorkforce(WORKFORCE_DIR);
-  if (CONTROL === "drop-tools-line") {
-    for (const w of loaded.workers) delete (w.declared as Record<string, unknown>).tools;
-  }
-  out.loadErrors = loaded.errors ?? [];
-  out.packageErrors = loaded.packageErrors ?? [];
+  // The kit's reader: a file it can't load stops the harness, as it stops an app's start.
+  const directory = CONTROL === "drop-tools-line" ? treeWithout(WORKFORCE_DIR, "tools") : WORKFORCE_DIR;
+  const loaded = await readTree(directory);
   // HELD, not reach: `w.packages` is every package in the seat's reach, and an
   // org or team library there is held only when a `packages:` line names it.
   // This goal forbids that line, so a seat holds exactly its own folder's.
@@ -114,13 +145,9 @@ async function main(): Promise<void> {
     Object.entries(generated.packageBlocks).map(([address, blocks]) => [address, Object.keys(blocks)]),
   );
 
-  // No worker flow is given, so every seat runs on the built-in `agent`, bound
-  // to this installation.
-  const installation = createWorkerInstallation({
-    standardWorkers: loaded.workers,
-    packageBlocks: generated.packageBlocks,
-  });
-  const copies = hireWorkforce(installation);
+  // No worker flow is given, so every seat runs on the kit's built-in `agent`,
+  // bound to the installation it hired.
+  const { installation, copies } = await installWorkers(directory, { generated: { packageBlocks: generated.packageBlocks } });
   // Each seat, and the flow it runs on.
   const seats = inventoryWorkers(installation);
   out.workerIds = seats.map((s) => s.id);
