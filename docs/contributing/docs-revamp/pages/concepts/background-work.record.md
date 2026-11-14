@@ -46,6 +46,17 @@ Written by `docs-writer` (sonnet), 1091 words. Scenario: The support desk: handl
 - After revise round 2, page sha256 181afd529454: exit 1. Failed: type-check of the three TS examples (src/flows/support/blocks/handle-ticket.ts, fsdev.config.ts, src/flows/support/flow.ts) in apps/kitchen-sink/.docs-tc-C-16 against workspace packages.
 - After revise round 3, page sha256 58b36319d053: exit 1. Failed: type-check of the TypeScript examples (3 files, each written at its title path in apps/kitchen-sink/.docs-tc-C-16, tsconfig extending apps/kitchen-sink/tsconfig.json, TS 7.0.2; scratch folder deleted afterwards and confirmed gone).
 
+- After the loop: pass 7 finding 1. The dispatch paragraph says the audit's result does not come back to the conversation, so the audit writes its findings where the conversation can read them.
+- After the loop: pass 7 finding 2. "host" is glossed on first use as the server your app runs on.
+- After the loop: pass 7 finding 3. The opening question is folded into one sentence with a colon.
+- After the loop: pass 7 suspected inaccuracy, line 116. A side chain has no request id of its own; it runs inside the request that started it (`engine/src/execution/request-side-chain-pool.ts:1-9`, `runAction.ts:2763-2774`). The bullet says so, and gives the request id and status to the queued run and the dispatch.
+- After the loop: pass 7 suspected inaccuracy, line 106. Checked and true: BullMQ's repeating jobs POST to the schedule dispatch endpoint (`bullmq/src/schedules.ts:8,111,146`). No change.
+- After the loop: pass 9 miss on the failing side chain. The side-chain paragraph says a failure does not fail the request, is logged and shows in the DevTool, and that nothing reaches the user's stream (facts 4, 77; `runAction.ts:2763-2774`).
+- After the loop: pass 9 miss on dispatch keys. The `session.key` sentence says a key is per conversation, that a repeat from the same conversation reuses the session and reports `adopted: true`, and that another conversation gets its own (`engine/src/context/dispatch-run.ts:11-13,95-104`, `core/src/blocks/dispatcher.ts:131-132`).
+- After the loop: the pass 4 type-check note is left as it is. The page names `cleanMessage`, `draftReply`, `summarizeTicket` and `auditAccount` as blocks in their own files without showing them, as earlier Concepts pages do.
+
+Closed after the loop: pass 7 findings 1 to 3, both suspected inaccuracies, and both pass 9 misses.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 8d57109d324c, and the 11 Reference row(s) pass 6 moved.

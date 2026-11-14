@@ -69,7 +69,7 @@ With a resolver configured, identity comes from the principal and nowhere else. 
 
 Every route that names a session or a request checks that the principal owns it. Bob asking for Alice's session `s1` gets the same 404 as an id nobody has used. The [Authentication reference](../reference/authentication.md) lists the status each route answers.
 
-A session also keeps its user and organization for life. To move a conversation to someone else, create a new session.
+A session also keeps the user and organization it was created with. If Alice opens a session while acting for `acme`, then asks for it while acting for `globex`, she gets 403. To work under another organization, or to hand a conversation to someone else, create a new session.
 
 With no resolver, the framework takes `userId` from the request body, and any caller can read any session. Use that for development only.
 

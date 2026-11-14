@@ -11,7 +11,7 @@ import Outlives from "./figures/background-work-outlives.svg";
 
 Not everything an app does belongs in the reply. A support desk drafts an answer to a ticket, and then it wants the ticket summarised, a report built that takes ten minutes, an account audited, a digest sent every morning. None of that should hold up the customer.
 
-Where it goes depends on one question: what does the work need to be there when it finishes? The request that started it, a queue process, or a session of its own to keep its record in.
+Where it goes depends on what the work needs to be there when it finishes: the request that started it, a queue process, or a session of its own to keep its record in.
 
 <Figure svg={Outlives} caption="What each kind of background work outlives" description={"One question in a highlighted box at the top: what has to be alive when it finishes? Below it, a timeline with three vertical marks: the reply ends, the request ends, the process ends. Three rows, each a bar on that timeline. The side chain summarizeTicket runs alongside the reply and stops at the end of the request; it has a dashed outline because it lasts one action run. The queued run buildReport runs in another process and carries on past the end of the web process. The dispatch auditAccount runs in a session of its own; its bar has a hatched top because it outlives the request, and on a host with no queue it stops where the process stops. Three notes say the same in words: a crash drops a side chain's unfinished work, a queued run is the same request worked by another process, and a dispatch with no queue behind it still lives in the web process."} />
 
@@ -41,7 +41,7 @@ export const handleTicket = sequencer({
 
 `cleanMessage`, `draftReply` and `summarizeTicket` are blocks, each in its own file beside this one. `summarizeTicket` receives what `draftReply` produced, and the chain does not wait for it. The reply streams to the browser while the summary is written.
 
-A failure in the summary is logged, not shown in the user's stream, and a crash drops whatever had not finished. [Side chain lifetime and failure](../reference/background-work.md) has the rest.
+A failure in the summary does not fail the request. It is logged and shows in the DevTool, the local debugging UI, but nothing reaches the user's stream. A crash drops whatever had not finished. [Side chain lifetime and failure](../reference/background-work.md) has the rest.
 
 A side chain suits work that is cheap, best-effort and belongs to the turn that produced it: summaries, analytics, memory writes. When losing it to a crash matters, use one of the next two.
 
@@ -93,11 +93,11 @@ export const supportFlow = defineFlow({
 export default supportFlow();
 ```
 
-`auditAccount` is a block in its own file. Calling `startAudit` returns at once, without waiting for the audit ([what it returns](../reference/background-work.md)). `session.key` names the session the work runs in, one per customer.
+`auditAccount` is a block in its own file. Calling `startAudit` returns at once, without waiting for the audit ([what it returns](../reference/background-work.md)). `session.key` names the session the work runs in, one per customer for each conversation. Dispatching the same customer again from this conversation reuses that session, and the call reports `adopted: true`. Another conversation that dispatches the same customer gets a session of its own.
 
-The session does not see the conversation's state. The audit can read user-scoped data, and any session resource the conversation declares as shared ([Resources](./resources.md)). Everything else goes in as input. There is no return value, so have the audit write its findings where both can read, a user-scoped resource for instance.
+The session does not see the conversation's state. The audit can read user-scoped data, and any session resource the conversation declares as shared ([Resources](./resources.md)). Everything else goes in as input. The audit's result does not come back to the conversation, so have the audit write its findings somewhere the conversation can read them, such as a user-scoped resource.
 
-A session of its own is not a separate process. On a host with no queue, a dispatch stops when the web process stops. With a queue, it runs as a job ([how dispatch is delivered](../reference/background-work.md)).
+A session of its own is not a separate process. On a host (the server your app runs on) with no queue, a dispatch stops when the web process stops. With a queue, it runs as a job ([how dispatch is delivered](../reference/background-work.md)).
 
 ## Work that starts on its own
 
@@ -113,7 +113,7 @@ A schedule is a named entry on the flow with a cron string, say `daily-digest` a
 
 **A dispatch leaves a record.** `auditAccount` runs in the customer's audit session, so its history sits there, apart from the conversation's.
 
-**One way to watch all three.** Every run has an id, a status and a log of what it produced, so the same stream and the DevTool, the local debugging UI, read them all ([how each is watched](../reference/background-work.md)).
+**One way to watch all three.** A side chain shows up in the request that started it, and a queued run and a dispatch each have a request id and a status of their own, so the same stream and the DevTool read them all ([how each is watched](../reference/background-work.md)).
 
 ## How it fits with the others
 

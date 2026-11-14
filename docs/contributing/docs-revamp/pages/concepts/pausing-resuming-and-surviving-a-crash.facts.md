@@ -257,6 +257,6 @@ All code uses the support desk. Every example below was type-checked against the
 ## 16. Revise round 2
 
 - The opening now says the flow runs `cleanMessage` (tidies the customer's text), then `draftReply` (section 1 scenario; `handleTicket` runs `cleanMessage` then `draftReply`).
-- Figure legend and description: "lasts one call to the server" and "outlasts the HTTP call", so "request" always means the stored request on this page.
+- Figure legend and description: "lasts one action run" and "outlives the request" (the figure key labels), so "request" always means the stored request on this page.
 - "A wait holds no process or connection" replaces "costs nothing": the record still occupies the store, and resolved suspensions and checkpoints are kept unless `durabilityRetention` is set (`dx:347,355`; `sw:154-185`).
 - `fsdev.config.ts` imports `support` from `./src/flows/support/flow`; that file is shown in `flows-and-actions.md`, and the page now links it. Not repeated here.
