@@ -18,18 +18,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
-import { hireWorkforce } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { workerFlow } from "@flow-state-dev/workforce";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { fixtureDir, installWorkers, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { fixtureDir, installWorkers, loadFixture, readTree, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import {
   TRIAGE_KIND,
   NO_CONTRACT_KIND,
   HAND_ROLLED_KIND,
   HAND_ROLLED_WORKER,
-  controlInstallation,
+  controlFlows,
+  controlTree,
   defineTriageFlow,
-  twinInstallation
+  twinFlows,
+  twinTree
 } from "./fixtures/flows";
 
 type SeatFixture = {
@@ -119,13 +120,12 @@ await runGoal(async (failures) => {
   const dbFile = join(dir, "goal.db");
   const sessions: Record<string, string> = { [support.id]: "s_support", [billing.id]: "s_billing" };
 
-  // ---- (a) the real loader reads the tree, and the real factory hires it ---
-  const { workers, errors, skillErrors } = await readWorkforce(tree("workforce"));
-  if (errors.length > 0) failures.push(`the loader reported ${errors.length} error(s): ${JSON.stringify(errors)}`);
-  if (skillErrors.length > 0) failures.push(`the loader reported skill errors: ${JSON.stringify(skillErrors)}`);
+  // ---- (a) the workforce kit reads the tree and hires it, as an app's start does ---
+  // The kit's own reader: a file it can't load is refused here, as it stops an app's start.
+  const { workers } = await readTree(tree("workforce"));
   if (workers.length !== 2) failures.push(`the tree produced ${workers.length} record(s), wanted 2`);
 
-  const { copies: seats } = installWorkers(workers, (installation) => ({ [TRIAGE_KIND]: defineTriageFlow(installation) }));
+  const { copies: seats } = await installWorkers(tree("workforce"), { [TRIAGE_KIND]: workerFlow(defineTriageFlow) });
   const triageCopies = seats.filter((copy) => copy.kind === TRIAGE_KIND);
   if (triageCopies.length !== 1 || triageCopies[0]!.id !== TRIAGE_KIND) {
     failures.push(`${triageCopies.length} copies of "${TRIAGE_KIND}" registered, wanted one, at its kind`);
@@ -232,7 +232,7 @@ await runGoal(async (failures) => {
       let hired: FlowInstance[] | undefined;
       let refusal = "";
       try {
-        hired = hireWorkforce(controlInstallation);
+        hired = (await installWorkers(controlTree, controlFlows)).copies;
       } catch (error) {
         refusal = messageOf(error);
       }
@@ -258,7 +258,7 @@ await runGoal(async (failures) => {
       let hired: FlowInstance[] | undefined;
       let refusal = "";
       try {
-        hired = hireWorkforce(twinInstallation);
+        hired = (await installWorkers(twinTree, twinFlows)).copies;
       } catch (error) {
         refusal = messageOf(error);
       }

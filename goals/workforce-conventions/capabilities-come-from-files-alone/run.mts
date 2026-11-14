@@ -59,8 +59,6 @@ interface Observation {
   ok: boolean;
   control: string | null;
   model: string;
-  loadErrors: unknown[];
-  skillErrors: unknown[];
   rosterIds: string[];
   selections: Record<string, Record<string, string[]> | null>;
   discoveredRefs: string[];
@@ -211,11 +209,6 @@ await runGoal((failures) => {
 
   if (o.ok !== true) {
     return { failures: ["the harness did not complete"], evidence: "" };
-  }
-  if (o.loadErrors.length > 0 || o.skillErrors.length > 0) {
-    failures.push(
-      `the loader reported errors: ${JSON.stringify({ errors: o.loadErrors, skillErrors: o.skillErrors })}`,
-    );
   }
 
   const expected = fixture.seats.map((seat) => seat.id).sort();

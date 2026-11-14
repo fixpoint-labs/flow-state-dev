@@ -4,7 +4,7 @@
  * refused when the flow is defined or hired, naming the string.
  *
  * Real path, no model: for each entry factory, a worker flow an app could
- * write is built on an installation and hired with `hireWorkforce` (or, for
+ * write is built on the installation the workforce kit hires (or, for
  * a board's `onTaskSettled`, defined with `defineFlow`), once under the
  * documented name and once under each typo the fixture holds. Graded on what
  * the hire or the definition does: the twin under the right name is hired,
@@ -16,19 +16,19 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import {
-  createWorkerInstallation,
   defineSessionBoard,
-  hireWorkforce,
   messageReceivedEntry,
   steerTurnEntry,
   workerConfigSchema,
   workerMessagesResources,
   workerTaskEntry,
+  workerFlow,
   workstreamOpenedEntry,
   type WorkerInstallation,
+  type WorkerRole,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
-import { hearsMessages, loadFixture, runGoal, workerDoor } from "../../lib/index.mts";
+import { hearsMessages, installWorkers, loadFixture, runGoal, workerDoor, workforceTree } from "../../lib/index.mts";
 
 type Fixture = { typos: Record<string, string>[] };
 
@@ -44,7 +44,7 @@ type Leg = {
   readonly factory: string;
   /** The flow's definition, with the factory's piece under `key`. */
   readonly define: (installation: WorkerInstallation, kind: string, key: string) => unknown;
-  readonly roles?: readonly string[];
+  readonly roles?: readonly WorkerRole[];
 };
 
 const base = (installation: WorkerInstallation, kind: string) => ({
@@ -116,27 +116,24 @@ const LEGS: readonly Leg[] = [
   },
 ];
 
-/** Define and hire one leg's flow with its piece under `key`: the refusal's message, or `null` when it was hired. */
-function hireUnder(leg: Leg, key: string): string | null {
+/** Define and hire one leg's flow with its piece under `key`, through the workforce kit: the refusal's message, or `null` when it was hired. */
+async function hireUnder(leg: Leg, key: string): Promise<string | null> {
   const kind = `entry-${leg.entry.toLowerCase()}`;
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => flows as never });
+  const build = (installation: WorkerInstallation) => leg.define(installation, kind, key);
   try {
-    const flow = leg.define(installation, kind, key);
-    flows = { [kind]: leg.roles === undefined ? flow : { flow, roles: leg.roles } };
-    hireWorkforce(installation);
+    await installWorkers(workforceTree([]), { [kind]: workerFlow(build, leg.roles === undefined ? {} : { roles: leg.roles }) });
     return null;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
 }
 
-await runGoal((failures, tell) => {
+await runGoal(async (failures, tell) => {
   const evidence: string[] = [];
   const typoSets = tell.over("fixture typo sets", fixture.typos);
   for (const leg of LEGS) {
     // The twin under the documented name is hired, so a refusal below is the name's, not the flow's.
-    const twin = hireUnder(leg, leg.entry);
+    const twin = await hireUnder(leg, leg.entry);
     if (twin !== null) {
       failures.push(`[${leg.entry}] the flow with \`${leg.factory}\` under "${leg.entry}" was refused: ${twin}`);
       continue;
@@ -147,7 +144,7 @@ await runGoal((failures, tell) => {
         failures.push(`[${leg.entry}] the fixture holds no typo for "${leg.entry}"`);
         continue;
       }
-      const refusal = hireUnder(leg, typo);
+      const refusal = await hireUnder(leg, typo);
       if (refusal === null) {
         failures.push(`[${leg.entry}] \`${leg.factory}\` under "${typo}" was hired`);
         continue;

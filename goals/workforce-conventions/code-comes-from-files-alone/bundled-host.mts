@@ -1,14 +1,16 @@
 /**
  * Leg (e)'s bundle entry, and the hire → session → `answer` sequence leg (d)
  * runs too. The kind is imported only from the generated module. Worker records
- * for the bundled run arrive as JSON on argv. The process prints one line,
+ * for the bundled run arrive as JSON on argv, and are written as a workforce
+ * folder the workforce kit installs. The process prints one line,
  * `{ kinds, answers }`.
  */
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { createWorkerInstallation, hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
+import type { WorkerManifest } from "@flow-state-dev/workforce";
+import { installWorkers, workforceTree } from "../../lib/workers.mts";
 import { workerFlows as kinds } from "./fixtures/workforce/workforce.gen.ts";
 
 export interface SeatAnswer {
@@ -18,7 +20,7 @@ export interface SeatAnswer {
   error?: unknown;
 }
 
-/** Hire `workers` onto the caller's `kinds` and run each seat's `answer`. */
+/** Install the workforce kit over `workers`, written as a folder, with the caller's `kinds`, and run each seat's `answer`. */
 export async function answerSeats(input: {
   kinds: Record<string, unknown>;
   workers: readonly WorkerManifest[];
@@ -27,8 +29,7 @@ export async function answerSeats(input: {
   kind: string;
   seats: readonly string[];
 }): Promise<{ registered: string[]; found: boolean; answers: Record<string, SeatAnswer> }> {
-  const installation = createWorkerInstallation({ standardWorkers: input.workers, workerFlows: input.kinds as never });
-  const copies = hireWorkforce(installation);
+  const { installation, copies } = await installWorkers(workforceTree(input.workers), input.kinds as never);
   const state = createFlowState({
     flows: copies,
     stores: { default: { primary: inMemoryStores() } },

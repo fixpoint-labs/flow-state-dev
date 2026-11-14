@@ -3,8 +3,8 @@
  * worker flow, and the built-in `agent` keeps a worker's own state off org
  * scope while a shared note names who wrote it.
  *
- * Real path, no model: the roster is read from files, registered through
- * `hireWorkforce`, booted with `createFlowState`, and run with `runAction`
+ * Real path, no model: the roster is read from files and registered by the
+ * workforce kit, booted with `createFlowState`, and run with `runAction`
  * for two users of one org, each in a session created naming its worker. A
  * user's own worker on a flow kept for declared workers is refused when a
  * session names it. Graded on what boot refuses and what the store holds
@@ -20,9 +20,8 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { ensureSessionRecord } from "@flow-state-dev/engine/host";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
-import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { fixtureDir, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { workerFlow, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { fixtureDir, installWorkers, loadFixture, readTree, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { defineFlows } from "./fixtures/flows.ts";
 
 type Fixture = {
@@ -50,30 +49,36 @@ await runGoal(async (failures) => {
   const evidence: string[] = [];
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
 
-  const tree = await readWorkforce(join(fixtureDir(import.meta.url), "workforce"));
-  if (tree.errors.length > 0 || tree.skillErrors.length > 0) {
-    return { failures: [`the fixture tree did not load: ${JSON.stringify([tree.errors, tree.skillErrors])}`], evidence: "" };
-  }
-  const workers = tree.workers;
-  /** The app's installation, with the broken flows beside its own when `broken`. The coordinator is kept for declared workers. */
-  const install = (broken: boolean) => {
-    let flows: Record<string, unknown> = {};
-    const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows as never });
-    const built = defineFlows(installation);
-    flows = {
-      ...built.registered,
-      [fixture.keptFlow]: { flow: built.registered.coordinator, standardOnly: true },
-      ...(broken ? built.broken : {})
+  const root = join(fixtureDir(import.meta.url), "workforce");
+  // The kit's reader: a file it can't load refuses here, as it stops an app's start.
+  const { workers } = await readTree(root);
+  /** The flows `defineFlows` builds, by group: named here so the kit's slot can take each as a builder. */
+  const REGISTERED = ["triage", "coordinator", "sharer", "org-keeper"] as const;
+  const BROKEN = ["doorless", "numbered", "loose-attribution"] as const;
+  /**
+   * The app, installed through the workforce kit, with the broken flows beside its own when `broken`.
+   * The coordinator is kept for declared workers.
+   */
+  const install = async (broken: boolean) => {
+    const builtOn = new Map<WorkerInstallation, ReturnType<typeof defineFlows>>();
+    const built = (installation: WorkerInstallation) => {
+      if (!builtOn.has(installation)) builtOn.set(installation, defineFlows(installation));
+      return builtOn.get(installation)!;
     };
-    return { installation, registered: Object.keys(built.registered), broken: Object.keys(built.broken) };
+    const flows = {
+      ...Object.fromEntries(REGISTERED.map((name) => [name, workerFlow((installation) => built(installation).registered[name])])),
+      [fixture.keptFlow]: workerFlow((installation) => built(installation).registered.coordinator, { standardOnly: true }),
+      ...(broken ? Object.fromEntries(BROKEN.map((name) => [name, workerFlow((installation) => built(installation).broken[name])])) : {})
+    };
+    return { ...(await installWorkers(root, flows)), registered: [...REGISTERED], broken: [...BROKEN] };
   };
 
   // ---- leg a · three broken flows refused at boot, by name; nothing hired ----
   let brokenSeats: FlowInstance[] | undefined;
   let bootError = "";
-  const withBroken = install(true);
+  const withBroken = { registered: [...REGISTERED], broken: [...BROKEN] };
   try {
-    brokenSeats = hireWorkforce(withBroken.installation);
+    brokenSeats = (await install(true)).copies;
   } catch (error) {
     bootError = error instanceof Error ? error.message : String(error);
   }
@@ -94,8 +99,7 @@ await runGoal(async (failures) => {
   }
 
   // ---- boot the app that meets the contract ------------------------
-  const { installation } = install(false);
-  const copies = hireWorkforce(installation);
+  const { installation, copies } = await install(false);
   const copyById = new Map(copies.map((copy) => [copy.id, copy]));
   /** The copy of the flow `workerId` runs on. */
   const flowOf = (workerId: string): FlowInstance => {
