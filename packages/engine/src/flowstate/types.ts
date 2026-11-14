@@ -353,6 +353,15 @@ export interface CreateFlowStateOptions<
    * stopped or cancelled. One second to 365 days.
    */
   userDeadlineMs?: RuntimeConfig["userDeadlineMs"];
+
+  // FIX-2625 D2.
+  /**
+   * Which topic scopes' change notices may name what changed (a task, an
+   * entry, a session). On by default; `{ org: false }` sends no org notice to
+   * a browser with ids or a collection entry's key, where even an org's change
+   * timing is sensitive. Read by every push edge of the app.
+   */
+  noticeIds?: RuntimeConfig["noticeIds"];
   
   /**
    * Low-level escape hatch: a pre-built FlowRunner controlling where

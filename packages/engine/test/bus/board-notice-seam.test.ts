@@ -10,12 +10,12 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
-import { publishBoardChange } from "@flow-state-dev/core/internal";
+import { NOTICE_MAX_IDS, publishBoardChange } from "@flow-state-dev/core/internal";
 import { createInMemoryBus, type ChangeNotice } from "../../src/host";
 import { runAction } from "../../src";
 import { createInMemoryStores } from "../../src/host";
 
-const inputSchema = z.object({ filer: z.string(), board: z.string() });
+const inputSchema = z.object({ filer: z.string(), board: z.string(), tasks: z.array(z.string()).default(["t1"]) });
 
 function boardFlow(published: boolean[]) {
   return defineFlow({
@@ -28,7 +28,10 @@ function boardFlow(published: boolean[]) {
           inputSchema,
           outputSchema: z.object({}),
           execute: (input, ctx) => {
-            published.push(publishBoardChange(ctx, { sessionId: input.filer, board: input.board }));
+            // Every task's change in one turn, as a board settling several rows writes them.
+            for (const taskId of input.tasks) {
+              published.push(publishBoardChange(ctx, { sessionId: input.filer, board: input.board, taskId }));
+            }
             return {};
           }
         })
@@ -37,7 +40,7 @@ function boardFlow(published: boolean[]) {
   })();
 }
 
-async function settle(options: { tenantId?: string; filer: string; board: string }) {
+async function settle(options: { tenantId?: string; filer: string; board: string; tasks?: string[] }) {
   const bus = createInMemoryBus();
   const tenantId = options.tenantId ?? "";
   const narrowed: ChangeNotice[] = [];
@@ -51,7 +54,7 @@ async function settle(options: { tenantId?: string; filer: string; board: string
     orgId: DEFAULT_ORG_ID,
     flow: boardFlow(published),
     actionName: "settle",
-    input: { filer: options.filer, board: options.board },
+    input: { filer: options.filer, board: options.board, ...(options.tasks !== undefined ? { tasks: options.tasks } : {}) },
     userId: "alice",
     sessionId: "task-session",
     ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {}),
@@ -70,9 +73,32 @@ describe("publishBoardChange · the engine's seam", () => {
       {
         topic: { scope: "session", id: "conversation", tenantId: "", resource: "tasks" },
         kind: "board",
-        origin: { requestId }
+        origin: { requestId },
+        ids: ["t1"]
       }
     ]);
+  });
+
+  // FIX-2625: the notice names the tasks that changed, so a board view
+  // answers for those rows; one turn's changes go out as one notice.
+  it("names every task one turn changed, in one notice", async () => {
+    const { narrowed } = await settle({ filer: "conversation", board: "tasks", tasks: ["t1", "t2", "t1", "t3"] });
+    expect(narrowed).toHaveLength(1);
+    expect(narrowed[0]!.ids).toEqual(["t1", "t2", "t3"]);
+  });
+
+  it("names no task past the cap: the notice then means read everything", async () => {
+    const tasks = Array.from({ length: NOTICE_MAX_IDS + 1 }, (_, i) => `t${i}`);
+    const { narrowed } = await settle({ filer: "conversation", board: "tasks", tasks });
+    expect(narrowed).toHaveLength(1);
+    expect(narrowed[0]!.kind).toBe("board");
+    expect(narrowed[0]!.ids).toBeUndefined();
+  });
+
+  it("names the tasks up to the cap itself", async () => {
+    const tasks = Array.from({ length: NOTICE_MAX_IDS }, (_, i) => `t${i}`);
+    const { narrowed } = await settle({ filer: "conversation", board: "tasks", tasks });
+    expect(narrowed[0]!.ids).toHaveLength(NOTICE_MAX_IDS);
   });
 
   it("fills the tenant from the running request, so another tenant's view never hears it", async () => {
@@ -88,6 +114,6 @@ describe("publishBoardChange · the engine's seam", () => {
   });
 
   it("publishes nothing from a context with no seam", () => {
-    expect(publishBoardChange({}, { sessionId: "conversation", board: "tasks" })).toBe(false);
+    expect(publishBoardChange({}, { sessionId: "conversation", board: "tasks", taskId: "t1" })).toBe(false);
   });
 });

@@ -108,7 +108,7 @@ flowchart LR
   P -->|"a no-session read, the dependency check"| V["FIX-2623 · views"]
   L["FIX-2551 · one live read"] -->|"the coalescer"| V
   V -->|"views for the helpers' answers · last PR"| R["FIX-2624 · resources by scope"]
-  V -->|"view notices and keys"| I["FIX-2625 · ids · gated"]
+  V -->|"view notices and ids"| I["FIX-2625 · ids · gated"]
   K["FIX-2626 · kits"] -->|"defineKit and slots"| W["FIX-2627 · workforce and harness kits"]
   V -->|"the roster and readiness views"| W
   R -->|"runBy on the workers collection"| W

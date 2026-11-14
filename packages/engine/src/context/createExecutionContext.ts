@@ -189,7 +189,7 @@ import type { BlobStore } from "../blobs/types";
 import type { AttachmentAccepts } from "@flow-state-dev/core/attachments";
 import { resolveHistoryFiles } from "./history-files";
 import { readAttachmentText } from "../blobs/attachment-text";
-import { noticePathFor, publishScopeChange, publishSessionResourceChange } from "../bus/scope-changes";
+import { entryNotice, publishScopeChange, publishSessionResourceChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
   normalizeScopeResources,
@@ -2767,13 +2767,17 @@ export async function createExecutionContext<
    * Publish that `scope` changed, naming this request. The topic's
    * id is the bare session id, the user id or the org id, under the tenant.
    */
-  function publishScopeNotice(scope: "session" | "user" | "org", kind: "state" | "resource", resource?: string): void {
+  function publishScopeNotice(
+    scope: "session" | "user" | "org",
+    kind: "state" | "resource",
+    narrowed: { resource?: string; ids?: string[] } = {}
+  ): void {
     publishScopeChange(stores.bus, {
       scope,
       id: scope === "session" ? sessionId : scope === "user" ? userId : orgRef.current?.orgId ?? resolvedOrgId,
       tenantId: options.tenantId,
       kind,
-      ...(resource !== undefined ? { resource } : {}),
+      ...narrowed,
       requestId: requestRef.current.id
     });
   }
@@ -2810,17 +2814,18 @@ export async function createExecutionContext<
      */
     const publishChange = (resourcePath: string): void => {
       // The session notice, or none, by the scope's published resources.
-      let notice: { resource?: string } | undefined;
+      let notice: { resource?: string; ids?: string[] } | undefined;
       if (publishedSingleKeys.has(resourcePath)) notice = { resource: resourcePath };
       else {
         const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
         if (holders.length > 0) {
-          const named = holders.some((cfg) => noticePathFor(cfg, resourcePath, scope) !== undefined);
-          notice = named ? { resource: resourcePath } : {};
+          // An entry names its key beside its path, when the path may be named (FIX-2625).
+          const named = holders.map((cfg) => entryNotice(cfg, resourcePath, scope)).find((n) => n.resource !== undefined);
+          notice = named ?? {};
         }
       }
       if (scope !== "session") {
-        if (notice !== undefined) publishScopeNotice(scope, "resource", notice.resource);
+        if (notice !== undefined) publishScopeNotice(scope, "resource", notice);
         return;
       }
       // FIX-2623 D1: a session write goes through the one publish surface,

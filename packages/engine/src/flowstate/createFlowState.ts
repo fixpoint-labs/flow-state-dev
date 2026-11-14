@@ -1056,6 +1056,7 @@ class InternalFlowState<TSettings extends object>
       maxDebtAgeMs: this.#options.maxDebtAgeMs,
       waitDeadlines: this.#options.waitDeadlines,
       userDeadlineMs: this.#options.userDeadlineMs,
+      noticeIds: this.#options.noticeIds,
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
       publicReentrySources: this.#options.publicReentrySources,

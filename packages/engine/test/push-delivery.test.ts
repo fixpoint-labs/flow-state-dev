@@ -14,6 +14,7 @@ import type { PushMintAnswer, PushServerFrame } from "@flow-state-dev/core/inter
 import {
   createFlowApiRouter,
   createFlowRegistry,
+  createFlowState,
   type StoreRegistry
 } from "../src";
 import {
@@ -22,6 +23,7 @@ import {
 import {
   createInMemoryBus,
   enablePushDelivery,
+  withChangeBus,
   type ChangeBus,
   type FlowApiRouter,
   type PushDelivery
@@ -41,7 +43,7 @@ function demoFlow(kind = "demo") {
 }
 
 /** A host that verifies user and organization from two headers. */
-function app(options: { bus?: ChangeBus; push?: boolean } = {}) {
+function app(options: { bus?: ChangeBus; push?: boolean; noticeIds?: { session?: boolean; user?: boolean; org?: boolean } } = {}) {
   const registry = createFlowRegistry();
   registry.register(demoFlow());
   const stores: StoreRegistry = { ...createInMemoryStores(), ...(options.bus !== undefined ? { bus: options.bus } : {}) };
@@ -49,6 +51,7 @@ function app(options: { bus?: ChangeBus; push?: boolean } = {}) {
     registry,
     stores,
     tenantIdHeader: "x-tenant-id",
+    ...(options.noticeIds !== undefined ? { noticeIds: options.noticeIds } : {}),
     resolvePrincipal: (context) => {
       const user = context.request?.headers.get("x-user");
       const org = context.request?.headers.get("x-org") ?? "acme";
@@ -57,6 +60,19 @@ function app(options: { bus?: ChangeBus; push?: boolean } = {}) {
   });
   const delivery = options.push === false ? undefined : enablePushDelivery(router, { secret: SECRET });
   return { router, stores, delivery };
+}
+
+function sessionRecord(id: string, owner: { userId: string; orgId: string }) {
+  const now = Date.now();
+  return { id, flowKind: "demo", flowId: "demo", userId: owner.userId, orgId: owner.orgId, state: {}, version: 0, createdAt: now, updatedAt: now, journal: [] } as never;
+}
+
+function requestRecord(id: string, sessionId: string, owner: { userId: string; orgId: string }) {
+  const now = Date.now();
+  return {
+    id, sessionId, flowKind: "demo", actionName: "run", userId: owner.userId, orgId: owner.orgId, source: "http",
+    status: "in_progress", startedAtMs: now, state: {}, version: 0, createdAt: now, updatedAt: now
+  } as never;
 }
 
 async function seedSession(
@@ -502,6 +518,182 @@ describe("the socket session", () => {
     );
     expect(frames).toEqual([{ type: "subscribed" }, { type: "crossing", crosses: true }]);
     session.closed();
+  });
+});
+
+// FIX-2625 D2: a notice may name what changed, and a scope can turn that off.
+// Off means no `ids` and no collection entry key reaches a browser from that
+// scope, whatever topic the socket holds, except an entry the client named.
+describe("the socket session · ids on notices, per scope", () => {
+  async function ticketFor(router: FlowApiRouter, topics: unknown[], headers: Record<string, string> = ALICE, userId = "alice") {
+    const { answer } = await mint(router, topics, headers, userId);
+    if (answer.transport !== "websocket") throw new Error("expected a websocket answer");
+    return answer.ticket;
+  }
+
+  /** One notice of each kind that names ids, under alice's session s1, her user topic and the acme org. */
+  async function publishEveryNamedNotice(bus: ChangeBus, tenantId = "", org = "acme"): Promise<void> {
+    await bus.publish({ topic: { scope: "session", id: "s1", tenantId, resource: "tasks" }, kind: "board", ids: ["task-42"] });
+    await bus.publish({ topic: { scope: "session", id: "s1", tenantId }, kind: "request", ids: ["req-7"] });
+    await bus.publish({ topic: { scope: "session", id: "s1", tenantId, resource: "notes/n9" }, kind: "resource", ids: ["notes/n9"] });
+    await bus.publish({ topic: { scope: "user", id: "alice", tenantId }, kind: "run", ids: ["s1"] });
+    await bus.publish({ topic: { scope: "org", id: org, tenantId, resource: "licenses/ada" }, kind: "resource", ids: ["licenses/ada"] });
+    await bus.publish({ topic: { scope: "org", id: org, tenantId }, kind: "run", ids: ["s-other"] });
+    // A single resource names its resource, never an id.
+    await bus.publish({ topic: { scope: "org", id: org, tenantId, resource: "policy" }, kind: "resource" });
+    await flush();
+  }
+
+  const everyScope = [topic.session("s1"), topic.user(), topic.org()];
+
+  it("passes ids through by default", async () => {
+    const bus = createInMemoryBus();
+    const { router, stores, delivery } = app({ bus });
+    await seedSession(stores, "s1", { userId: "alice" });
+    const ws = socket(delivery!);
+    ws.send({ type: "subscribe", ticket: await ticketFor(router, everyScope) });
+    await publishEveryNamedNotice(bus);
+    expect(ws.notices()).toEqual([
+      { type: "notice", topic: topic.session("s1", { resource: "tasks" }), kind: "board", ids: ["task-42"] },
+      { type: "notice", topic: topic.session("s1"), kind: "request", ids: ["req-7"] },
+      { type: "notice", topic: topic.session("s1", { resource: "notes/n9" }), kind: "resource", ids: ["notes/n9"] },
+      { type: "notice", topic: topic.user(), kind: "run", ids: ["s1"] },
+      { type: "notice", topic: topic.org({ resource: "licenses/ada" }), kind: "resource", ids: ["licenses/ada"] },
+      { type: "notice", topic: topic.org(), kind: "run", ids: ["s-other"] },
+      { type: "notice", topic: topic.org({ resource: "policy" }), kind: "resource" }
+    ]);
+  });
+
+  it("with org ids off, sends no org id and no org entry key to a scope-wide socket, and leaves the other scopes' ids", async () => {
+    const bus = createInMemoryBus();
+    const { router, stores, delivery } = app({ bus, noticeIds: { org: false } });
+    await seedSession(stores, "s1", { userId: "alice" });
+    const ws = socket(delivery!);
+    ws.send({ type: "subscribe", ticket: await ticketFor(router, everyScope) });
+    await publishEveryNamedNotice(bus);
+    const org = ws.notices().filter((n) => n.type === "notice" && n.topic.scope === "org");
+    // Every org notice still arrives, so every org watcher still reads.
+    // A resource notice reaches a scope-wide socket bare, a single resource's included: the edge can't
+    // tell an entry's path from a resource's name without the notice's ids, which a notice from an
+    // older publisher doesn't carry.
+    expect(org).toEqual([
+      { type: "notice", topic: topic.org(), kind: "resource" },
+      { type: "notice", topic: topic.org(), kind: "run" },
+      { type: "notice", topic: topic.org(), kind: "resource" }
+    ]);
+    expect(JSON.stringify(org)).not.toContain("ada");
+    expect(JSON.stringify(org)).not.toContain("s-other");
+    expect(JSON.stringify(org)).not.toContain("ids");
+    // The session's and the user's ids are theirs to keep.
+    expect(ws.notices().filter((n) => n.type === "notice" && n.topic.scope !== "org").map((n) => (n as { ids?: string[] }).ids)).toEqual([
+      ["task-42"],
+      ["req-7"],
+      ["notes/n9"],
+      ["s1"]
+    ]);
+  });
+
+  // BP-030: a publisher from before ids (a process mid-deploy on a shared Postgres bus) sends an
+  // entry's notice with its path and no ids. The switch must cut that path too.
+  it("with org ids off, sends a scope-wide socket no entry path from a notice with no ids, as an older publisher sends it", async () => {
+    const bus = createInMemoryBus();
+    const { router, delivery } = app({ bus, noticeIds: { org: false } });
+    const wide = socket(delivery!);
+    wide.send({ type: "subscribe", ticket: await ticketFor(router, [topic.org()]) });
+    const narrowed = socket(delivery!);
+    narrowed.send({ type: "subscribe", ticket: await ticketFor(router, [topic.org({ resource: "licenses/ada" })]) });
+    await bus.publish({ topic: { scope: "org", id: "acme", tenantId: "", resource: "licenses/ada" }, kind: "resource" });
+    await flush();
+    expect(wide.notices()).toEqual([{ type: "notice", topic: topic.org(), kind: "resource" }]);
+    expect(narrowed.notices()).toEqual([{ type: "notice", topic: topic.org({ resource: "licenses/ada" }), kind: "resource" }]);
+  });
+
+  it("with org ids off, keeps the path for a socket narrowed to that very entry, and still sends it no ids", async () => {
+    const bus = createInMemoryBus();
+    const { router, delivery } = app({ bus, noticeIds: { org: false } });
+    const ws = socket(delivery!);
+    ws.send({ type: "subscribe", ticket: await ticketFor(router, [topic.org({ resource: "licenses/ada" })]) });
+    await publishEveryNamedNotice(bus);
+    expect(ws.notices()).toEqual([{ type: "notice", topic: topic.org({ resource: "licenses/ada" }), kind: "resource" }]);
+  });
+
+  it("with org ids off, strips every tenant's org notices alike", async () => {
+    const bus = createInMemoryBus();
+    const { router, delivery } = app({ bus, noticeIds: { org: false } });
+    const ws = socket(delivery!);
+    ws.send({ type: "subscribe", ticket: await ticketFor(router, [topic.org()], { ...ALICE, "x-tenant-id": "t1" }) });
+    await publishEveryNamedNotice(bus, "t1");
+    const frames = ws.notices();
+    expect(frames.length).toBeGreaterThan(0);
+    expect(JSON.stringify(frames)).not.toContain("ids");
+    expect(JSON.stringify(frames)).not.toContain("ada");
+  });
+
+  it("with session and user ids off, sends their notices bare of ids and entry keys", async () => {
+    const bus = createInMemoryBus();
+    const { router, stores, delivery } = app({ bus, noticeIds: { session: false, user: false } });
+    await seedSession(stores, "s1", { userId: "alice" });
+    const ws = socket(delivery!);
+    ws.send({ type: "subscribe", ticket: await ticketFor(router, everyScope) });
+    await publishEveryNamedNotice(bus);
+    expect(ws.notices().filter((n) => n.type === "notice" && n.topic.scope !== "org")).toEqual([
+      // A board's id is the board's, not a row's: it stays.
+      { type: "notice", topic: topic.session("s1", { resource: "tasks" }), kind: "board" },
+      { type: "notice", topic: topic.session("s1"), kind: "request" },
+      { type: "notice", topic: topic.session("s1"), kind: "resource" },
+      { type: "notice", topic: topic.user(), kind: "run" }
+    ]);
+    // Org ids stay on.
+    expect(ws.notices().filter((n) => n.type === "notice" && n.topic.scope === "org").map((n) => (n as { ids?: string[] }).ids)).toEqual([
+      ["licenses/ada"],
+      ["s-other"],
+      undefined
+    ]);
+  });
+
+  // The user topic is the user's in every org, and the mint grants it by user and tenant alone. A
+  // session's id on it would tell Alice's screen in Globex which Acme sessions moved (an
+  // `fsd-write.` id names a storage key too). Its wakes name nothing, ids on or off.
+  it("wakes a socket signed in to another org on the user topic with no session id, for a session write and a request write", async () => {
+    const bus = createInMemoryBus();
+    const { router, stores, delivery } = app({ bus });
+    const wrapped = withChangeBus({ ...stores, bus });
+    const ws = socket(delivery!);
+    ws.send({ type: "subscribe", ticket: await ticketFor(router, [topic.user()], { "x-user": "alice", "x-org": "globex" }) });
+    for (const id of ["acme-s1", "fsd-write.user~alice~pins"]) {
+      await wrapped.session.set(id, sessionRecord(id, { userId: "alice", orgId: "acme" }), "any");
+    }
+    await wrapped.request.set("acme-r1", requestRecord("acme-r1", "acme-s1", { userId: "alice", orgId: "acme" }), "any");
+    await flush();
+    await flush();
+    const wakes = ws.notices();
+    expect(wakes.length).toBe(3);
+    expect(wakes).toEqual(wakes.map(() => ({ type: "notice", topic: topic.user(), kind: "run" })));
+    expect(JSON.stringify(wakes)).not.toContain("acme");
+    expect(JSON.stringify(wakes)).not.toContain("fsd-write");
+  });
+
+  it("reads the setting `createFlowState` declares, once for the app", async () => {
+    const app = createFlowState({ flows: [demoFlow()], noticeIds: { org: false } });
+    const router = await app.getRouter();
+    const bus = (await app.getRuntime()).stores.bus!;
+    const delivery = enablePushDelivery(router, { secret: SECRET });
+    const ws = socket(delivery);
+    ws.send({ type: "subscribe", ticket: await ticketFor(router, [topic.org()], {}) });
+    // An app that authenticates nothing puts every caller in the default organization.
+    await publishEveryNamedNotice(bus, "", DEFAULT_ORG_ID);
+    const org = ws.notices();
+    expect(org.length).toBeGreaterThan(0);
+    expect(JSON.stringify(org)).not.toContain("ids");
+    expect(JSON.stringify(org)).not.toContain("ada");
+    await app.dispose?.();
+  });
+
+  it("refuses a setting that names no topic scope, or isn't on or off, so a typo can't leave ids on", () => {
+    const registry = createFlowRegistry();
+    registry.register(demoFlow());
+    expect(() => createFlowApiRouter({ registry, stores: createInMemoryStores(), noticeIds: { orgs: false } as never })).toThrow(/noticeIds/);
+    expect(() => createFlowApiRouter({ registry, stores: createInMemoryStores(), noticeIds: { org: "no" } as never })).toThrow(/noticeIds/);
   });
 });
 

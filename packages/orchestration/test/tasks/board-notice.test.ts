@@ -99,26 +99,33 @@ function boot() {
     const result = await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName, input: {}, userId: "alice", sessionId, stores, runtimeConfig: {} });
     if (result.error !== undefined) throw new Error(`${actionName} failed: ${JSON.stringify(result.error)}`);
     await new Promise((resolve) => setTimeout(resolve, 20));
+    lastOutput = result.output;
     return result.requestId!;
   };
-  return { heard, run };
+  let lastOutput: unknown;
+  /** The id of the task the last `file` filed. */
+  const filedTask = () => (lastOutput as { id: string }).id;
+  return { heard, run, filedTask };
 }
 
 describe("a board change publishes a board notice", () => {
   it("on the filer's session, narrowed to the board, for the filing and for a settle in another session", async () => {
-    const { heard, run } = boot();
+    const { heard, run, filedTask } = boot();
     const conversationBoard = heard("conversation", BOARD);
     const taskSession = heard("task-session");
 
     const filed = await run("file", "conversation");
+    const task = filedTask();
+    // FIX-2625: the notice names the task whose row changed.
     expect(conversationBoard).toEqual([
-      { topic: { scope: "session", id: "conversation", tenantId: "", resource: BOARD }, kind: "board", origin: { requestId: filed } }
+      { topic: { scope: "session", id: "conversation", tenantId: "", resource: BOARD }, kind: "board", origin: { requestId: filed }, ids: [task] }
     ]);
 
     const settled = await run("settle", "task-session");
-    // The claim and the completion, folded or not: each names the settling request.
+    // The claim and the completion, folded or not: each names the settling request, and the task.
     expect(conversationBoard.length).toBeGreaterThan(1);
     expect(conversationBoard.slice(1).every((n) => n.origin?.requestId === settled)).toBe(true);
+    expect(conversationBoard.slice(1).map((n) => n.ids)).toEqual(conversationBoard.slice(1).map(() => [task]));
     // The session that wrote is not where the board's view listens.
     expect(taskSession).toEqual([]);
   });
@@ -131,12 +138,13 @@ describe("a board change publishes a board notice", () => {
   });
 
   it("for a write that emits no task-change item: a run's spend, which the board read shows", async () => {
-    const { heard, run } = boot();
+    const { heard, run, filedTask } = boot();
     const conversationBoard = heard("conversation", BOARD);
     await run("file", "conversation");
+    const task = filedTask();
     const spent = await run("spend", "task-session");
     expect(conversationBoard.filter((n) => n.origin?.requestId === spent)).toEqual([
-      { topic: { scope: "session", id: "conversation", tenantId: "", resource: BOARD }, kind: "board", origin: { requestId: spent } }
+      { topic: { scope: "session", id: "conversation", tenantId: "", resource: BOARD }, kind: "board", origin: { requestId: spent }, ids: [task] }
     ]);
   });
 });

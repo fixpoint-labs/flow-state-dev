@@ -172,7 +172,8 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   const runningSession = options.ctx.session?.identity?.id;
   const onWrite = (task: Task): void => {
     const filer = task.filer?.sessionId ?? legacyFiler?.(task) ?? runningSession;
-    if (filer !== undefined) publishBoardChange(options.ctx, { sessionId: filer, board: options.collectionId });
+    // Names the task (FIX-2625): the board's read hides no row from any reader of the session, so its id may go out.
+    if (filer !== undefined) publishBoardChange(options.ctx, { sessionId: filer, board: options.collectionId, taskId: task.id });
   };
   const onChange = (event: TaskChangeEvent): void => {
     // The notice beside the item: the item goes on the writing session's stream.
