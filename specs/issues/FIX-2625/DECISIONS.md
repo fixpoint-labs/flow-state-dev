@@ -175,6 +175,20 @@ Settled on the implementation PRs. Each narrows a decision above; none reverses 
   with no entry on it yet is heard on that session's topic only, until the view next answers
   whole. No board view in the framework lists such a ledger: the workforce board is partitioned by
   its filing session, and its entries are filed there.
+- **A session's collection list holds change signals for a short window, then reads once; it
+  never skips a read** (the owner's call on #5232). One change reaches `useResourceCollection`
+  twice: its `resourceChanges` entry, then the snapshot's count once the session reads its
+  state. Once the license-count view stopped reading on the org `state` notice, the two landed
+  in separate renders and the list read twice. Skipping the second read needs proof the first
+  covered the change, and the server gives none: the list page carries no revision, and the order
+  a client sends reads in is not the order the server serves them, so both skips tried here (a
+  count equal to the length read, then a client-side read position) left a stale list. A
+  trailing window coalesces without skipping: each signal restarts it, the list reads once after
+  the last, and the read starts after every signal it answers. Measured on
+  `realtime/scope-changes-reach-other-sessions`, 5 runs, 46 pairs of one change's signals on one
+  hook: 0.1 to 14.4 ms apart. Window 50 ms; a cap of 250 ms from the first signal keeps a steady
+  stream reading at least that often. The cost is latency: the goal's slowest change shown went
+  from 23 ms to 84 ms, under its 1 s bound.
 
 ## Considered and dropped
 

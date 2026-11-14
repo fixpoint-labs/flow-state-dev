@@ -38,3 +38,6 @@
 | 2026-11-13 | claude/fix-2625-impl-c (pre-push) | n/a | FAIL (expected) | `no-origin`: `d:reads-as-plain` only (2, 3 against 1, 2) |
 | 2026-11-14 | claude/fix-2625-impl-c (pre-push) | n/a | PASS | The count's skip now trusts read order, not the count: it skips only when the snapshot that moved it was read before the list (`read-position.ts`). Three runs: d: 1, 2 per change, as without `live` |
 | 2026-11-14 | claude/fix-2625-impl-c (pre-push) | n/a | FAIL (expected) | `no-origin`: `d:reads-as-plain` only (2, 3 against 1, 2) |
+| 2026-11-14 | claude/fix-2625-impl-c (pre-push) | n/a | PASS | The read-position skip could leave a list stale when the server serves the list before a state read sent first (Gitar on #5232); replaced by a 50 ms trailing window (250 ms cap) that coalesces one change's two signals into one read and never skips one. Three runs: a: plan 4–6 ms, row 67–76 ms, count 12–16 ms · b: 2–7 ms; B made 0 reads · c: plan 18–30 ms, row 71–84 ms · d: 1, 2 per change, as without `live` |
+| 2026-11-14 | claude/fix-2625-impl-c (pre-push) | n/a | FAIL (expected) | `no-publish`: `a:within-1s`, `b:within-1s`, `c:within-1s` |
+| 2026-11-14 | claude/fix-2625-impl-c (pre-push) | n/a | FAIL (expected) | `no-origin`: `d:reads-as-plain` only (2, 3 against 1, 2) |

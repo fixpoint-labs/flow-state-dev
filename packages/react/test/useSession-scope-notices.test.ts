@@ -60,6 +60,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
 import { topic } from "@flow-state-dev/client";
 import { useSession } from "../src/hooks/useSession";
 import { useResourceCollectionList } from "../src/hooks/useResourceCollectionList";
+import { LIST_SIGNAL_WINDOW_MS } from "../src/hooks/useResourceCollection";
 
 function snapshot(extra: Record<string, unknown> = {}) {
   return {
@@ -341,13 +342,20 @@ describe("useSession live · other sessions' scope changes", () => {
     await waitFor(() => expect(subscriptions.filter((s) => !s.closed)).toHaveLength(1));
     await hear(null);
     await flush();
+    // A list reads after a short window for more of the same change (FIX-2625): let the connect's read land.
+    const pastWindow = () =>
+      act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, LIST_SIGNAL_WINDOW_MS * 2));
+      });
+    await pastWindow();
     const rosterReads = () => resourcesMock.listCollectionResources.mock.calls.filter(([, ref]) => ref === "roster").length;
     const before = rosterReads();
     await hear({ topic: topic.org({ resource: "desks/d1" }), kind: "resource" });
     await flush();
+    await pastWindow();
     expect(rosterReads()).toBe(before);
     await hear({ topic: topic.org({ resource: "workforce/workers/ada" }), kind: "resource" });
     await flush();
-    expect(rosterReads()).toBe(before + 1);
+    await waitFor(() => expect(rosterReads()).toBe(before + 1));
   });
 });

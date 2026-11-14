@@ -25,7 +25,6 @@ import { useReadFence, type ReadFence } from "./useReadFence";
 import { useClient } from "../internal/useClient";
 import { mayHold, storageRootsOf } from "@flow-state-dev/client/internal";
 import { useResourceManifest } from "./useResourceManifest";
-import { nextReadPosition, snapshotReadPosition } from "./read-position";
 
 /**
  * Mutation actions available on the collection, shaped by declared permissions.
@@ -161,6 +160,12 @@ function wrapItem<TClient>(
   };
 }
 
+// FIX-2625.
+/** How long a list holds a change signal for more to arrive before it reads: one change's two signals land well inside it. */
+export const LIST_SIGNAL_WINDOW_MS = 50;
+/** The longest a list holds signals while they keep coming: it reads at least this often. */
+export const LIST_SIGNAL_CAP_MS = 250;
+
 // ---------------------------------------------------------------------------
 // useResourceCollection
 // ---------------------------------------------------------------------------
@@ -193,6 +198,37 @@ export function useResourceCollection<TClient = unknown>(
     setGeneration(generationRef.current);
   }, []);
 
+  // FIX-2625: a change signal (a named change, the count moving) is held for
+  // LIST_SIGNAL_WINDOW_MS, and the list reads once after the last one, at the
+  // latest LIST_SIGNAL_CAP_MS after the first. One change's two signals then
+  // cost one read, and the read starts after both, so no signal is skipped.
+  const signalsRef = useRef<{ timer: ReturnType<typeof setTimeout>; firstAt: number } | null>(null);
+  const flushSignals = useCallback(() => {
+    if (signalsRef.current !== null) clearTimeout(signalsRef.current.timer);
+    signalsRef.current = null;
+    invalidate();
+  }, [invalidate]);
+  const signalChange = useCallback(() => {
+    const now = Date.now();
+    const held = signalsRef.current;
+    if (held !== null) clearTimeout(held.timer);
+    const firstAt = held?.firstAt ?? now;
+    const wait = Math.min(LIST_SIGNAL_WINDOW_MS, firstAt + LIST_SIGNAL_CAP_MS - now);
+    if (wait <= 0) {
+      flushSignals();
+      return;
+    }
+    signalsRef.current = { timer: setTimeout(flushSignals, wait), firstAt };
+  }, [flushSignals]);
+  // A held signal is for the collection on screen: dropped with it.
+  useEffect(
+    () => () => {
+      if (signalsRef.current !== null) clearTimeout(signalsRef.current.timer);
+      signalsRef.current = null;
+    },
+    [fence]
+  );
+
   // Watch the session's resource_change notice channel for events touching
   // this collection. `session.items` filters out transients by default, so
   // a hook earlier in the file's history that watched `session.items` for
@@ -215,57 +251,31 @@ export function useResourceCollection<TClient = unknown>(
     lastSeenResourceChangeIdxRef.current = changes.length;
     for (let i = start; i < changes.length; i++) {
       if (mayHold(changes[i]!.resourcePath, roots)) {
-        invalidate();
+        signalChange();
         break;
       }
     }
-  }, [session.resourceChanges, roots, invalidate]);
+  }, [session.resourceChanges, roots, signalChange]);
 
   const collectionEntry = useMemo(
     () => findCollectionEntry(session, ref),
     [session.snapshot, session.sessionId, ref]
   );
 
-  // FIX-2625: the whole list's latest read since the last invalidation: where
-  // it started among the page's reads (`read-position.ts`), and whether it
-  // landed whole (`false` for a page that isn't the whole list, or a failure).
-  const wholeReadRef = useRef<{ owner: object; generation: number; position: number; landed: Promise<boolean> } | null>(null);
-
   // Snapshot refresh as a fallback invalidator, behind the
   // `session.resourceChanges` watcher above. useSession calls
   // `refreshSnapshot()` at request completion when any resource changed
   // during streaming, which updates `count` (always emitted, FIX-427 §3.6).
   // Invalidate whenever count moves so cached pages refetch on the next call,
-  // unless the list was read after the count was: the snapshot that moved it
-  // was read before the whole list's read since the last invalidation started,
-  // so that read holds every change the count does. One change then reads
-  // once, though its entry and its count arrive apart. A snapshot with no
-  // known read position may be newer than any read: it invalidates.
+  // through the same held signal as a named change.
   const lastSeenCountRef = useRef<number | undefined>(collectionEntry?.count);
   useEffect(() => {
     const next = collectionEntry?.count;
-    if (next === lastSeenCountRef.current) return;
-    lastSeenCountRef.current = next;
-    const whole = wholeReadRef.current;
-    const generation = generationRef.current;
-    const countReadAt = snapshotReadPosition(session.snapshot);
-    if (
-      countReadAt === undefined ||
-      whole === null ||
-      whole.owner !== fence ||
-      whole.generation !== generation ||
-      countReadAt >= whole.position
-    ) {
-      invalidate();
-      return;
+    if (next !== lastSeenCountRef.current) {
+      lastSeenCountRef.current = next;
+      signalChange();
     }
-    void whole.landed.then((landed) => {
-      // Something read again meanwhile: that read is the one in play.
-      if (!landed && generationRef.current === generation) invalidate();
-    });
-    // Keyed on the count alone: the snapshot is read for its position when the count moves.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collectionEntry?.count, invalidate, fence]);
+  }, [collectionEntry?.count, signalChange]);
 
   const list = useCallback(
     async (options?: CollectionListOptions): Promise<CollectionListPage> => {
@@ -287,19 +297,7 @@ export function useResourceCollection<TClient = unknown>(
       // Skip the write if invalidate() bumped generation. Write `cache`, not
       // `cacheRef.current`: a switch replaces that ref while this is in flight.
       const startGen = generationRef.current;
-      const reading = client.listCollectionResources(sessionId, ref, options);
-      if (options?.cursor === undefined && options?.topicPrefix === undefined) {
-        wholeReadRef.current = {
-          owner: fence,
-          generation: startGen,
-          position: nextReadPosition(),
-          landed: reading.then(
-            (page) => page.nextCursor === undefined,
-            () => false
-          )
-        };
-      }
-      const page = await reading;
+      const page = await client.listCollectionResources(sessionId, ref, options);
       if (startGen === generationRef.current) {
         cache.pages.set(key, { page });
       }
