@@ -125,7 +125,7 @@ flow: request-triage
 Answer directly when the request is about a feature that already shipped.
 ```
 
-The flow lives in its own file, `workforce/flows/workers/request-triage.ts`, and `fsdev gen`, the command that generates your app's registration files, picks it up from there. It can give the worker fixed steps, branching, or a review before anything is sent:
+The flow lives in its own file, `workforce/flows/workers/request-triage.ts`, and `fsdev gen`, the command that generates your app's registration files, writes it into `workforce/workforce.gen.ts`. Pass that module to the kit, or the worker that names the flow stops the app from starting: `import * as generated from "./workforce/workforce.gen"`, then `workforce({ directory: "./workforce", generated })`. The flow can give the worker fixed steps, branching, or a review before anything is sent:
 
 ```ts title="workforce/flows/workers/request-triage.ts"
 import { defineFlow, handler } from "@flow-state-dev/core";
