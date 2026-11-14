@@ -1,4 +1,7 @@
 {
+  "git": {
+    "deploymentEnabled": false
+  },
   "buildCommand": "pnpm build",
   "outputDirectory": "build",
   "framework": "docusaurus-2",
