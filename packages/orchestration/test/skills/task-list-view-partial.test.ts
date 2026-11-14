@@ -131,11 +131,19 @@ describe("the board's task-list view · a board notice", () => {
 // hearing them answered the whole board for one task's change. Every write to
 // the ledger publishes the board notice (`board-notice.test.ts`).
 describe("the board's task-list view · what its answer hears", () => {
-  it("the board's notices on the session that filed its entries, and not its ledger's user topic", async () => {
+  // The user topic's board notices are a row's insert, named by no id: a
+  // filing from a session the answer never listed (`task-list-view-hearing.test.ts`).
+  it("the board's notices on the session that filed its entries and on the user topic, and not its ledger's user-topic resource notices", async () => {
     const { act, view } = await boot();
     await act("file", { id: "a" });
     const answer = await view();
-    expect(answer.topics).toEqual([{ scope: "session", id: "conversation", resource: BOARD }]);
-    expect(answer.hears).toEqual([{ topic: { scope: "session", id: "conversation", resource: BOARD }, kinds: ["board"] }]);
+    expect(answer.topics).toEqual([
+      { scope: "session", id: "conversation", resource: BOARD },
+      { scope: "user", resource: BOARD }
+    ]);
+    expect(answer.hears).toEqual([
+      { topic: { scope: "session", id: "conversation", resource: BOARD }, kinds: ["board"] },
+      { topic: { scope: "user", resource: BOARD }, kinds: ["board"] }
+    ]);
   });
 });

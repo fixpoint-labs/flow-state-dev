@@ -13,7 +13,7 @@
  * these items, filter by `data.collectionId`, and render the board.
  */
 import type { JsonObject } from "@flow-state-dev/core";
-import { requestHostOf, publishBoardChange, recordBoardRead } from "@flow-state-dev/core/internal";
+import { requestHostOf, publishBoardChange, publishBoardInsert, recordBoardRead } from "@flow-state-dev/core/internal";
 import type { ItemVisibility, OutputItem } from "@flow-state-dev/core/items";
 import type {
   BlockContext,
@@ -180,6 +180,11 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   const onChange = (event: TaskChangeEvent): void => {
     // The notice beside the item: the item goes on the writing session's stream.
     onWrite(event.task);
+    // FIX-2625: a row added to a ledger also goes out on the ledger's own scope
+    // topic, so a view that never named its filer's session still hears it.
+    if (event.kind === "added" && options.backing === "resource") {
+      publishBoardInsert(options.ctx, { board: options.collectionId, taskId: event.task.id, ledger: options.collection });
+    }
     options.ctx.emit.component(
       TASK_CHANGE_COMPONENT_TYPE,
       {
@@ -271,9 +276,11 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     ...(filed !== undefined ? { cascadeFiled: { owes: filed.owes, pay: (row: Task) => filed.pay(ctx, row) } } : {}),
     ...(delivery !== undefined ? { delivery } : {}),
   });
-  // FIX-2625: in a view, the board is heard on its own notices in place of its
-  // ledger's. Here, where every write's `onWrite` publishes one naming its
-  // task, on the session `filerOf` names: each entry's, and the running one's.
+  // FIX-2625: in a view, the board is heard on its own notices, as its ledger's
+  // scope allows (the engine's `ViewDependencies.board`). Here, where every
+  // write's `onWrite` publishes one naming its task, on the session `filerOf`
+  // names (each entry's, and the running one's), and every added row's goes
+  // out on the ledger's scope topic too. An org ledger's view hears no filer.
   const filers = [runningSession, ...ref.list().map(filerOf)].filter((id): id is string => id !== undefined);
   recordBoardRead(ctx, { board: options.collectionId, sessionIds: filers, ledger: options.collection });
   return ref;

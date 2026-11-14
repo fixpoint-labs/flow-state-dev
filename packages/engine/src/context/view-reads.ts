@@ -16,8 +16,10 @@
  * it read and, for a resource, the roots a notice's path must fall under, so
  * a write to another resource of the scope wakes no watcher. A
  * board read through its task collection is heard on its board's own topic,
- * and its ledger's resource notices are not heard at all: every write to the
- * ledger publishes the board notice, which names the task.
+ * and, on a session or user ledger, its ledger's resource notices are not
+ * heard at all: every write to the ledger publishes the board notice, which
+ * names the task. An org board hears its ledger on the org topic instead (see
+ * `ViewDependencies.board`).
  */
 import type { ViewHearing, WireTopic } from "@flow-state-dev/core";
 import type { ChangeKind } from "@flow-state-dev/core/internal";
@@ -35,13 +37,17 @@ import type { StorageReach } from "../resources/lineage-scope";
 type ResourceRead = { resource: string; root: string };
 
 // FIX-2625.
-/** A task board read through its task collection: heard on its board notices, which cover its ledger's accessor. */
-type BoardReadRecord = { board: string; covers: string };
+/**
+ * A task board read through its task collection: heard on its board notices,
+ * which cover its ledger's accessor when `covers` is set. With none (an org
+ * board's), the ledger's own notices stay heard beside it.
+ */
+type BoardReadRecord = { board: string; covers?: string };
 
 /** One read a view's run made: a scope's state, one of its resources by accessor, or a task board. */
 export type RecordedRead =
   | { scope: "session"; sessionId: string; what: "state" | ResourceRead | BoardReadRecord }
-  | { scope: "user" | "org"; what: "state" | ResourceRead };
+  | { scope: "user" | "org"; what: "state" | ResourceRead | BoardReadRecord };
 
 /** A recorder for one run: what it read, and the topics that hear a change to it. */
 export type ReadRecorder = {
@@ -58,7 +64,7 @@ const readKey = (read: RecordedRead): string =>
   [
     read.scope,
     read.scope === "session" ? read.sessionId : "",
-    read.what === "state" ? "state" : "board" in read.what ? `b:${read.what.board}:${read.what.covers}` : `r:${read.what.resource}`
+    read.what === "state" ? "state" : "board" in read.what ? `b:${read.what.board}:${read.what.covers ?? ""}` : `r:${read.what.resource}`
   ].join("\u0000");
 
 /** The kinds a state read hears: a session's every change but its resources and boards; a user's or org's state. */
@@ -74,7 +80,9 @@ type Hearing = { topic: WireTopic; kinds: Set<ChangeKind>; paths: Set<string> };
 /** Every read's hearing, merged per topic and sorted by topic, leaving out resource reads a board read covers. */
 function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
   const all = [...reads];
-  const covered = new Set(all.flatMap((read) => (read.what !== "state" && "board" in read.what ? [read.what.covers] : [])));
+  const covered = new Set(
+    all.flatMap((read) => (read.what !== "state" && "board" in read.what && read.what.covers !== undefined ? [read.what.covers] : []))
+  );
   const byTopic = new Map<string, Hearing>();
   const at = (topic: WireTopic): Hearing => {
     const key = wireTopicKey(topic);
@@ -131,8 +139,8 @@ export function createReadRecorder(): ReadRecorder {
  * - a lineage-shared session resource is also heard on the owner's user
  *   topic, where a write from another lineage member publishes;
  * - another session's read is heard on that session's topic;
- * - a board read through its task collection is heard on each session's
- *   topic narrowed to the board, and its ledger's resource read is not heard.
+ * - a board read through its task collection is heard as its ledger's scope
+ *   allows (`board`).
  *
  * `views-dependency-matrix.test.ts` runs every read path against every scope;
  * a new read path is a new row there and calls in here.
@@ -148,11 +156,20 @@ export type ViewDependencies = {
   session(sessionId: string): void;
   // FIX-2625.
   /**
-   * A task board read through its task collection: heard on `sessionIds`'
-   * topics narrowed to `board`, in place of the ledger at accessor `covers`.
-   * No session: nothing is recorded, and the ledger's read stays heard.
+   * A task board read through its task collection, whose ledger is at
+   * accessor `covers` and lives at `scope`. Every board hears its insert
+   * notices on its scope topic narrowed to `board` (a row filed from a
+   * session no answer named). Beyond that:
+   *
+   * - **session or user ledger:** heard on `sessionIds`' topics narrowed to
+   *   `board` (the filers', which name the task that changed), in place of
+   *   the ledger's resource read. No session: nothing is recorded, and the
+   *   ledger's read stays heard.
+   * - **org ledger:** no session is heard. A filer is another member's
+   *   session, which no client payload names; the ledger's own notices on
+   *   the org topic carry a change to a row, so its read stays heard.
    */
-  board(board: string, sessionIds: readonly string[], covers: string): void;
+  board(board: string, scope: "session" | "user" | "org", sessionIds: readonly string[], covers: string): void;
 };
 
 /**
@@ -178,8 +195,15 @@ export function createViewDependencies(
     session(id) {
       record({ scope: "session", sessionId: id, what: "state" });
     },
-    board(board, sessionIds, covers) {
+    board(board, scope, sessionIds, covers) {
+      if (scope === "org") {
+        record({ scope: "org", what: { board } });
+        return;
+      }
+      if (sessionIds.length === 0) return;
       for (const id of new Set(sessionIds)) record({ scope: "session", sessionId: id, what: { board, covers } });
+      // A session ledger's scope topic is the running session's, which `sessionIds` names first.
+      if (scope === "user") record({ scope: "user", what: { board, covers } });
     }
   };
 }

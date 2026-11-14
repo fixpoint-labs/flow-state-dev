@@ -43,11 +43,14 @@ describe("the board's list, run as a session view", () => {
       // the plan ledger (user-scope cells, reached through the board's
       // resolver), the roster, and the session's own state.
       // FIX-2625 D3: each ledger read through its task collection is also a
-      // board read, heard on the board's notices in place of the ledger's.
+      // board read, heard on the board's notices in place of the ledger's: on
+      // its filers' sessions, and its inserts on the user topic.
       expect(named(answer.reads)).toEqual([
         "session:board:plan",
         "session:board:tasks",
         "session:state",
+        "user:board:plan",
+        "user:board:tasks",
         "user:plan",
         "user:tasks",
         "user:workforceWorkers"
@@ -56,7 +59,9 @@ describe("the board's list, run as a session view", () => {
         { topic: { scope: "session", id: conv }, kinds: ["items", "request", "run", "state"] },
         { topic: { scope: "session", id: conv, resource: "plan" }, kinds: ["board"] },
         { topic: { scope: "session", id: conv, resource: "tasks" }, kinds: ["board"] },
-        { topic: { scope: "user" }, kinds: ["resource"], paths: ["workforce/workers"] }
+        { topic: { scope: "user" }, kinds: ["resource"], paths: ["workforce/workers"] },
+        { topic: { scope: "user", resource: "plan" }, kinds: ["board"] },
+        { topic: { scope: "user", resource: "tasks" }, kinds: ["board"] }
       ]);
     } finally {
       await host.dispose();

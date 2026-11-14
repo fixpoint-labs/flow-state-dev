@@ -1215,8 +1215,6 @@ export async function createExecutionContext<
   // `tenantMatches` is strict equality), so the option and the resolved value
   // cannot differ. Org is the one identity field whose check permits a
   // difference, which is why it is the one that had to change.
-  const boardNoticeSeam =
-    stores.bus !== undefined ? createBoardNoticeSeam(stores.bus, { requestId, tenantId: options.tenantId }) : undefined;
   const requestHostBuild =
     options.requestHost !== undefined
       ? createRequestHost({
@@ -2764,6 +2762,11 @@ export async function createExecutionContext<
   const cascadeController = createCascadeController();
   const reactiveCtxRef: { current: ExecutionContext | undefined } = { current: undefined };
 
+  /** A scope's topic id for this request: the bare session id, the user id or the org id. */
+  function scopeTopicId(scope: "session" | "user" | "org"): string {
+    return scope === "session" ? sessionId : scope === "user" ? userId : orgRef.current?.orgId ?? resolvedOrgId;
+  }
+
   // FIX-1506.
   /**
    * Publish that `scope` changed, naming this request. The topic's
@@ -2776,7 +2779,7 @@ export async function createExecutionContext<
   ): void {
     publishScopeChange(stores.bus, {
       scope,
-      id: scope === "session" ? sessionId : scope === "user" ? userId : orgRef.current?.orgId ?? resolvedOrgId,
+      id: scopeTopicId(scope),
       tenantId: options.tenantId,
       kind,
       ...narrowed,
@@ -3482,19 +3485,36 @@ export async function createExecutionContext<
       return Object.values(flatResourcesHandles);
     }
   } as ResourceRegistry<Record<string, AnyResourceRef>>;
-  // FIX-2625: a board read through its task collection, in a view, is heard on
-  // its board's notices in place of its ledger's: the ledger is named by the
-  // accessor whose handle the collection read through.
+  // FIX-2625: a task board's ledger is named by the accessor whose handle its
+  // task collection read through, and lives at that accessor's scope.
+  const accessorOfHandle = (handle: object): string | undefined =>
+    Object.keys(flatResourcesHandles).find((accessor) => flatResourcesHandles[accessor] === handle);
+  // A board read through its task collection, in a view, is heard on its
+  // board's notices, as its ledger's scope allows (`ViewDependencies.board`).
   const boardReadSeam: BoardReadSeam | undefined =
     viewDependencies === undefined
       ? undefined
       : {
           record(read) {
-            const covers = Object.keys(flatResourcesHandles).find((accessor) => flatResourcesHandles[accessor] === read.ledger);
-            if (covers === undefined || read.sessionIds.length === 0) return;
-            viewDependencies.board(read.board, read.sessionIds, covers);
+            const covers = accessorOfHandle(read.ledger);
+            const scope = covers === undefined ? undefined : accessorScope[covers];
+            if (covers === undefined || scope === undefined) return;
+            viewDependencies.board(read.board, scope, read.sessionIds, covers);
           }
         };
+  // A board's changes go out on the bus; a row added to it, on its ledger's scope topic too.
+  const boardNoticeSeam =
+    stores.bus !== undefined
+      ? createBoardNoticeSeam(stores.bus, {
+          requestId,
+          tenantId: options.tenantId,
+          boardTopicOf: (ledger) => {
+            const accessor = accessorOfHandle(ledger);
+            const scope = accessor === undefined ? undefined : accessorScope[accessor];
+            return scope === undefined ? undefined : { scope, id: scopeTopicId(scope) };
+          }
+        })
+      : undefined;
   if (viewDependencies !== undefined || noSession) {
     for (const accessor of [...Object.keys(flatResourcesHandles), ...sessionAccessorsWithoutSession]) {
       Object.defineProperty(flatResourcesRegistry, accessor, {
