@@ -51,15 +51,15 @@ import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import type { Task, TaskRunLink } from "@flow-state-dev/orchestration/tasks";
 import {
   TASK_ID_STATE_KEY,
-  createWorkerInstallation,
   defineSessionBoard,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -69,6 +69,7 @@ import {
   actingAs,
   hearsMessages,
   modulePatchEnv,
+  readTree,
   runGoal,
   silentLogger,
   untilIdle,
@@ -154,11 +155,13 @@ await runGoal(async (failures) => {
   writeFileSync(OUTBOX, "", "utf8");
 
   // ---- a. the tree alone ----------------------------------------------------
-  const roster = await readWorkforce(TREE);
-  if (roster.errors.length > 0) {
-    return { failures: [`a: the tree did not load cleanly: ${JSON.stringify(roster.errors)}`], evidence: "" };
+  // The kit's own reader: a file it can't load is refused here, as it stops an app's start.
+  let workers: WorkerManifest[];
+  try {
+    workers = [...(await readTree(TREE)).workers];
+  } catch (error) {
+    return { failures: [`a: the tree did not load cleanly: ${(error as Error).message}`], evidence: "" };
   }
-  const workers: WorkerManifest[] = roster.workers;
   const byId = new Map(workers.map((w) => [w.id, w]));
   // The filer: the worker whose file names delegates. Its delegates are the
   // workers it files for, each on the flow its own file names.
@@ -205,31 +208,31 @@ await runGoal(async (failures) => {
       }
     });
 
-  // The installation every worker flow below runs its workers on. It reads the
-  // flows when it first needs them, so they are built on it below.
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => workerFlows as never });
+  // The installation every worker flow below runs its workers on: the kit
+  // hires it from the tree and hands it to each flow's builder.
   const doorInput = z.object({ message: z.string() });
 
   // The filer's flow carries the session board: its delegates give it the
   // task tools and actions, and its board hands each task to the delegate's
   // own flow.
-  const board = defineSessionBoard({ installation, flowKind: filerKind });
   const filerTurn = handler({ name: "run-link-goal-filer-turn", inputSchema: doorInput, execute: async () => "Noted." });
-  const filerFlow = defineFlow({
-    kind: filerKind,
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-    resources: { ...installation.resources, ...board.resources },
-    actions: {
-      respond: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
-      ...board.actions
-    },
-    internal: { actions: board.entries(filerTurn, () => "fixed") }
-  } as never);
+  const filerFlow = (installation: WorkerInstallation) => {
+    const board = defineSessionBoard({ installation, flowKind: filerKind });
+    return defineFlow({
+      kind: filerKind,
+      configSchema: workerConfigSchema(),
+      session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+      resources: { ...installation.resources, ...board.resources },
+      actions: {
+        respond: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
+        ...board.actions
+      },
+      internal: { actions: board.entries(filerTurn, () => "fixed") }
+    } as never);
+  };
 
   // Each delegate's flow takes tasks through Workforce's task entry.
-  const takerFlow = (kind: string) => {
+  const takerFlow = (installation: WorkerInstallation, kind: string) => {
     const turn = turnFor(kind);
     return defineFlow({
       kind,
@@ -241,14 +244,14 @@ await runGoal(async (failures) => {
       task: { actions: { work: workerTaskEntry({ name: `run-link-goal-${kind}-task`, turn }) } }
     } as never);
   };
-  workerFlows = {
-    [filerKind]: { flow: filerFlow, roles: ["manager"] },
-    ...Object.fromEntries(kinds.map((kind) => [kind, { flow: takerFlow(kind), roles: ["contributor"] }]))
-  };
-
-  const hired = hireWorkforce(installation);
   const state = createFlowState({
-    flows: hired,
+    kits: [workforce({ directory: TREE })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        [filerKind]: workerFlow(filerFlow, { roles: ["manager"] }),
+        ...Object.fromEntries(kinds.map((kind) => [kind, workerFlow((installation) => takerFlow(installation, kind), { roles: ["contributor"] })]))
+      }
+    },
     stores: { default: { primary: inMemoryStores() } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {

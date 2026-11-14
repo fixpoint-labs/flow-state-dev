@@ -16,10 +16,11 @@
  * below has nothing to suppress, which is itself an error (TS2578) — so
  * `pnpm typecheck` goes red.
  *
- * Imported through the `./loader` barrel rather than the module, so the type a
- * caller is told to narrow on is also proven to be exported.
+ * Imported from the package-internal `loader/readers` module: the reader's
+ * error union is internal (`./loader` publishes `readWorkforceFolder` alone),
+ * so this pins only that its tagged list narrows on `kind`.
  */
-import type { WorkerSkillError } from "../src/loader";
+import type { WorkerSkillError } from "../src/loader/readers";
 
 /** Narrowing on `kind` reaches the every-level list. */
 export function collidingPaths(entry: WorkerSkillError): string[] | undefined {

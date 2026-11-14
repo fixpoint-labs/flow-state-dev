@@ -18,7 +18,7 @@ import { z } from "zod";
 import { messageReceivedEntry, workerMessagesResources } from "../src/messages";
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
-import { workforce } from "../src/kit";
+import { internalEventsOf, workforce } from "../src/kit";
 import { workerFlow } from "../src/workers/worker-flow";
 
 const states: FlowState[] = [];
@@ -44,7 +44,11 @@ function tree(files: Record<string, string>): string {
 const LEAD = "---\nname: Lead\ndescription: Answers the user.\n---\nYou are Lead.";
 
 /** The least a worker flow is: a door, the worker's configuration, the installation's session, and an ear for messages. */
-function helperFlow(installation: WorkerInstallation, flowName = "helper") {
+function helperFlow(
+  installation: WorkerInstallation,
+  flowName = "helper",
+  extra: { actions?: Record<string, unknown>; resources?: Record<string, unknown> } = {},
+) {
   const door = handler({
     name: "helper-door",
     inputSchema: z.object({ message: z.string() }),
@@ -56,8 +60,8 @@ function helperFlow(installation: WorkerInstallation, flowName = "helper") {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources },
-    actions: { respond: { block: door, userMessage: (input: { message: string }) => input.message } },
+    resources: { ...installation.resources, ...workerMessagesResources, ...extra.resources },
+    actions: { respond: { block: door, userMessage: (input: { message: string }) => input.message }, ...extra.actions },
     internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: flowName, hears: "task-sessions" }) } },
   } as never);
 }
@@ -248,5 +252,46 @@ describe("workforce as a kit", () => {
       const state = track(createFlowState({ kits: [workforce({ directory, ...config, sessionFields: { region: z.string().optional() } })], stores }));
       await expect(state.ready()).rejects.toThrow(/`(agent|coordinator)\.sessionFields` is not read.*`sessionFields`/);
     }
+  });
+  it("serves the internal service flow its internalEvents config declares, and hands its publish to a worker flow built on the installation", async () => {
+    const directory = tree({ "teams/core/workers/lead/WORKER.md": "---\nname: Lead\ndescription: Announces.\nflow: announcer\n---\nYou announce." });
+    const announcer = workerFlow((installation: WorkerInstallation) => {
+      const internal = internalEventsOf(installation);
+      const announce = handler({
+        name: "announce",
+        inputSchema: z.unknown(),
+        resources: internal.resources,
+        execute: async (input, ctx) => internal.publishEvent(ctx, input),
+      });
+      return helperFlow(installation, "announcer", { actions: { announce: { inputSchema: z.unknown(), block: announce } }, resources: internal.resources });
+    });
+    const topics = { "deploy.finished": { kinds: ["succeeded"], description: "A deploy finished." } };
+    const state = track(
+      createFlowState({
+        kits: [workforce({ directory, internalEvents: { topics } })],
+        fill: { [workforce.slots.workerFlows]: { announcer } },
+        stores,
+        resolvePrincipal: (context: any) => {
+          const user = context.request?.headers.get("x-user");
+          return typeof user === "string" ? { userId: user, orgId: "org" } : null;
+        },
+      } as never),
+    );
+    await state.ready();
+    expect([...state.meta.flowKeys]).toContain("internal-service");
+    const inProcess = createInProcessFetch(state);
+    const alice = createClient({
+      userId: "alice",
+      fetcher: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set("x-user", "alice");
+        return inProcess(input, { ...init, headers });
+      },
+    });
+    const session = await alice.flow("announcer").createSession({ state: { workerId: "core.lead" } });
+    const started = await alice.flow("announcer").send("announce", { topic: "deploy.finished", kind: "succeeded", title: "Shipped", text: "v2 is out." }, { sessionId: session.id });
+    const settled = await started.result({ pollMs: 20, timeoutMs: 10_000 });
+    expect(settled.status).toBe("completed");
+    expect(settled.output).toHaveProperty("published");
   });
 });

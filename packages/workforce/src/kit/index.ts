@@ -6,6 +6,7 @@
  * start-up. Import it from the app's server entry.
  */
 export {
+  internalEventsOf,
   workforce,
   type GeneratedWorkforce,
   type WorkforceAgentOptions,

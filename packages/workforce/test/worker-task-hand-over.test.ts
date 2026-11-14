@@ -9,12 +9,8 @@ import { describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import {
-  createWorkerInstallation,
-  createWorkerLookup,
-  defineAgentWorkerFlow,
-  type WorkerInstallation
-} from "../src/index";
+import { createWorkerLookup, defineAgentWorkerFlow, type WorkerInstallation } from "../src/index";
+import { createWorkerInstallation } from "../src/workers/installation";
 import { workerConfigSchema } from "../src/worker-config";
 import { workerDoor } from "./worker-door";
 

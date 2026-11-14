@@ -17,16 +17,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   fixtureDir,
   installWorkers,
+  readTree,
   loadFixture,
   runGoal,
   silentLogger,
   stripIntentOverrides
 } from "../../lib/index.mts";
+import { workerFlow } from "@flow-state-dev/workforce";
 import { TRIAGE_KIND, defineTriageFlow } from "./fixtures/flows";
 
 type SeatFixture = { id: string; desk: string; own: string };
@@ -119,16 +120,8 @@ await runGoal(async (failures) => {
   const dbFile = join(dir, "goal.db");
 
   // ---- (a) the real loader reads the tree, and the real factory hires it ---
-  const { workers, errors, skillErrors, teams, teamErrors } = await readWorkforce(tree("workforce"));
-  if (errors.length > 0) {
-    failures.push(`the loader reported ${errors.length} error(s): ${JSON.stringify(errors)}`);
-  }
-  if (skillErrors.length > 0) {
-    failures.push(`the loader reported skill errors: ${JSON.stringify(skillErrors)}`);
-  }
-  if (teamErrors.length > 0) {
-    failures.push(`the loader reported team errors: ${JSON.stringify(teamErrors)}`);
-  }
+  // The kit's own reader: a file it can't load is refused here, as it stops an app's start.
+  const { workers, teams } = await readTree(tree("workforce"));
   if (workers.length !== allSeats.length) {
     failures.push(`the tree produced ${workers.length} record(s), wanted ${allSeats.length}`);
   }
@@ -148,7 +141,7 @@ await runGoal(async (failures) => {
     );
   }
 
-  const { copies: seats } = installWorkers(workers, (installation) => ({ [TRIAGE_KIND]: defineTriageFlow(installation) }));
+  const { copies: seats } = await installWorkers(tree("workforce"), { [TRIAGE_KIND]: workerFlow((installation) => defineTriageFlow(installation)) });
   if (seats.filter((copy) => copy.kind === TRIAGE_KIND).length !== 1) {
     failures.push(`registered ${seats.filter((copy) => copy.kind === TRIAGE_KIND).length} copies of "${TRIAGE_KIND}", wanted one`);
   }

@@ -34,3 +34,5 @@ Not shown failing: `b:other-user`'s "never shows alice's workers" half. The serv
 | 2026-11-13 | 9404a8752 | n/a | FAIL (expected) | `read-once`: `a:within-1s` (all 15 never shown within 3 s) and `c:no-push` (3 views never) |
 | 2026-11-13 | 9404a8752 | n/a | FAIL (expected) | `timer`: `a:quiet` (4 reads per view over 10 s idle) and `b:other-user` (4 per bob view) |
 | 2026-11-13 | 9404a8752 | n/a | FAIL (expected) | `hand-list`: `d:rail` (listed ["support.help"]) |
+| 2026-11-14 | `claude/fix-2627-impl-e-b4` merged with the rebased `-e` (on 7724f0bf8) | n/a | PASS | The install goes through the workforce kit; the tab writes through the workforce client as on main. a: 3 views × 5 changes, slowest 30 ms; 0 reads over 10 s idle · b: bob's views read 0 times · c: no push, 1528/1524/1514 ms · d: the rail listed support.desk and support.help |
+| 2026-11-14 | same | n/a | FAIL (expected) | `hand-list`: `d:rail` (listed ["support.help"]) |

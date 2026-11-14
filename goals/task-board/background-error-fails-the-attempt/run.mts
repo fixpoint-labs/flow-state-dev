@@ -63,15 +63,16 @@ import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import {
-  createWorkerInstallation,
   defineAgentWorkerFlow,
   defineSessionBoard,
   filingConversationBoard,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { messageLogOf } from "../../../packages/workforce/src/messages/message-log.ts";
 import { MESSAGE_RECEIVED_ENTRY } from "../../../packages/workforce/src/messages/keys.ts";
 import {
@@ -85,7 +86,8 @@ import {
   runGoal,
   silentLogger,
   untilIdle,
-  type ModulePatch
+  type ModulePatch,
+  workforceTree
 } from "../../lib/index.mts";
 
 const USER = "u_background_error";
@@ -185,7 +187,7 @@ console.error = (...args: unknown[]) => {
 
 // ---- the host ---------------------------------------------------------------
 
-const worker = (id: string, declared: Record<string, unknown>, body = ""): WorkerManifest => ({ id, declared, body, skills: [] });
+const worker = (id: string, declared: Record<string, unknown>, body = ""): WorkerManifest => ({ id, declared: { description: `The ${id} worker.`, ...declared }, body, skills: [] });
 const WORKERS: WorkerManifest[] = [
   worker("lead", { flow: "desk", delegates: ["eng.doer", "eng.memo"] }),
   worker("eng.doer", { flow: "doer", delegates: ["eng.helper"] }),
@@ -193,6 +195,8 @@ const WORKERS: WorkerManifest[] = [
   // The built-in agent flow, its after-answer step a capture that fails once per task.
   worker("eng.memo", {}, "You write memos.")
 ];
+/** The workers as the app's `workforce/` folder, which the kit reads. */
+const TREE = workforceTree(WORKERS);
 
 /** What a request's background steps do, by request id: set by its turn, read by its steps. */
 type Plan = { after?: boolean; each?: boolean; finish?: boolean; completed?: boolean };
@@ -206,266 +210,278 @@ const transports = new Map<string, AbortController>();
 const capturedOnce = new Set<string>();
 
 function buildHost(filename: string) {
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => workerFlows as never });
-  const doorInput = z.object({ message: z.string() });
-  const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
-  const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
+  // The kit hands each worker flow's builder the installation it hired; the flows are built once on it.
+  let built: Record<string, unknown> | undefined;
+  let builtOn: WorkerInstallation | undefined;
+  const flowsOn = (installation: WorkerInstallation): Record<string, unknown> => {
+    if (built !== undefined && builtOn === installation) return built;
+    builtOn = installation;
+    const doorInput = z.object({ message: z.string() });
+    const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
+    const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
 
-  // The desk: a person's conversation. Its turn is never woken (fixed policy).
-  const deskTurn = handler({ name: "bg-desk-turn", inputSchema: doorInput, outputSchema: z.unknown(), execute: (input) => `noted: ${input.message}` });
+    // The desk: a person's conversation. Its turn is never woken (fixed policy).
+    const deskTurn = handler({ name: "bg-desk-turn", inputSchema: doorInput, outputSchema: z.unknown(), execute: (input) => `noted: ${input.message}` });
 
-  /** The running row this request holds, read the way the gate wrote it. */
-  const heldRow = async (ctx: BlockContext): Promise<Task | undefined> => {
-    const above = await filingConversationBoard(ctx);
-    const claim = currentWorkerClaim(ctx);
-    return above?.tasks
-      .list({ status: "in_progress" })
-      .find((r) => r.run?.requestId === ctx.request.identity.id || r.id === claim?.taskId);
-  };
-
-  // A peer's message arriving mid-task, addressed to this task session: on attempt 1 only.
-  const queueMessage = markDispatcher(
-    handler({
-      name: "bg-queue-message",
-      inputSchema: z.object({}).passthrough(),
-      outputSchema: z.unknown(),
-      execute: async (_input, rawCtx) => {
-        const ctx = rawCtx as unknown as BlockContext;
-        if ((await heldRow(ctx))?.attempts !== 1) return null;
-        const id = `msg_${RUN_STAMP}_${Math.random().toString(16).slice(2, 10)}`;
-        const sessionId = ctx.session.identity.id;
-        await messageLogOf(ctx).getOrCreate(id, {
-          id,
-          from: "eng.helper",
-          to: "eng.doer",
-          text: "A note while you work. [msg-bg]",
-          exchange: id,
-          fromSession: sessionId,
-          fromFlow: "doer",
-          toSession: sessionId,
-          toFlow: "doer",
-          hop: 1,
-          status: "unconfirmed",
-          at: Date.now()
-        } as never);
-        await dispatchThroughSeam(ctx, {
-          type: "internal",
-          action: MESSAGE_RECEIVED_ENTRY,
-          flowKind: "doer",
-          session: { id: sessionId },
-          payload: { messageId: id },
-          from: "bg-queue-message"
-        });
-        return id;
-      }
-    }),
-    { type: "internal", action: MESSAGE_RECEIVED_ENTRY }
-  );
-
-  type Base = { requestId: string; sessionId: string; taskId?: string; attempt?: number };
-  const answered = (kind: Proof["kind"], base: Base, answer: string, extra: Partial<Proof> = {}) => {
-    prove({ kind, ...base, answer, ...extra, at: Date.now() });
-    return answer;
-  };
-
-  /**
-   * The task's own turn, by its marks. Marks that start background work set
-   * this request's plan; "first" marks act on attempt 1 only.
-   *   [bg:first] [bg:always]   the after-answer step throws
-   *   [each:first]             a `.forEachSideChain` step throws
-   *   [finish:always]          the step `onFinished` starts throws
-   *   [completed:always]       the step `onCompleted` starts throws
-   *   [checkpoint]             report a checkpoint first
-   *   [hold:MS]                take MS
-   *   [stop:R] [stop-first:R]  stop and wait (ctx.suspend); on a [drop] resume, drop the caller
-   *   [message-first]          a message arrives for this session on attempt 1
-   *   [split:N:MS]             file N pieces for eng.helper, each taking MS
-   */
-  const onTask = async (ctx: BlockContext, base: Base, message: string, row: Task | undefined) => {
-    const first = row?.attempts === 1;
-    plans.set(base.requestId, {
-      after: message.includes("[bg:always]") || (first && message.includes("[bg:first]")),
-      each: first && message.includes("[each:first]"),
-      finish: message.includes("[finish:always]"),
-      completed: message.includes("[completed:always]")
-    });
-    const priorOutput = row?.output;
-    if (message.includes("[checkpoint]") && row !== undefined) {
+    /** The running row this request holds, read the way the gate wrote it. */
+    const heldRow = async (ctx: BlockContext): Promise<Task | undefined> => {
       const above = await filingConversationBoard(ctx);
-      await above!.tasks.reportProgress!(row.id, { output: `checkpoint ${base.requestId}` }, { claim: currentWorkerClaim(ctx)! });
-    }
-    const split = /\[split:(\d+):(\d+)\]/.exec(message);
-    if (split !== null) {
-      const ref = await doerBoard.board.resolver(ctx as never);
-      for (let i = 0; i < Number(split[1]); i += 1) {
-        await ref!.createTask({ goal: `piece ${i} of ${row?.id} ${RUN_STAMP} [slow:${split[2]}]`, assignee: "eng.helper" });
-      }
-    }
-    const hold = /\[hold:(\d+)\]/.exec(message);
-    if (hold !== null) await sleep(Number(hold[1]));
-    const stop = /\[stop:([a-z_]+)\]/.exec(message) ?? (first ? /\[stop-first:([a-z_]+)\]/.exec(message) : null);
-    if (stop !== null) {
-      const resolution = await ctx.suspend!({ reason: stop[1]!, message: `waiting (${stop[1]})` });
-      if (message.includes("[drop]") && row !== undefined) transports.get(row.id)?.abort(new Error("the caller went away"));
-      return answered("turn", base, `resumed ${base.requestId} ${JSON.stringify(resolution)}`, { priorOutput });
-    }
-    return answered("turn", base, `work answer ${base.requestId}`, { priorOutput });
-  };
+      const claim = currentWorkerClaim(ctx);
+      return above?.tasks
+        .list({ status: "in_progress" })
+        .find((r) => r.run?.requestId === ctx.request.identity.id || r.id === claim?.taskId);
+    };
 
-  const doerTurn = handler({
-    name: "bg-doer-turn",
-    inputSchema: doorInput,
-    outputSchema: z.unknown(),
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const row = await heldRow(ctx);
-      const base: Base = {
-        requestId: ctx.request.identity.id,
-        sessionId: ctx.session.identity.id,
-        ...(row !== undefined ? { taskId: row.id, attempt: row.attempts } : {})
-      };
-      const message = input.message;
-      if (message.startsWith("Message ")) {
-        // A message is conversation in the task's session: it may run after the task settled.
-        const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY];
-        const task = typeof taskId === "string" ? (await filingConversationBoard(ctx))?.tasks.get(taskId) : undefined;
-        plans.set(base.requestId, { after: message.includes("[msg-bg]") });
-        return answered("message", { ...base, ...(task !== undefined ? { taskId: task.id, attempt: task.attempts } : {}) }, `the message's answer ${base.requestId}`, {
-          claimed: currentWorkerClaim(ctx) !== undefined,
-          ...(task !== undefined ? { taskStatus: task.status } : {})
-        });
-      }
-      if (row === undefined) {
-        // A plain request: no task. Its background step throws all the same.
-        plans.set(base.requestId, { after: message.includes("[bg:always]") });
-        return answered("plain", base, `plain answer ${base.requestId}`);
-      }
-      if (message.startsWith('Task "')) {
-        plans.set(base.requestId, { after: row.goal.includes("[woken-bg]") });
-        return answered("woken", base, `woken answer ${base.requestId}`);
-      }
-      const slow = /\[slow:(\d+)\]/.exec(message);
-      if (slow !== null) {
-        await sleep(Number(slow[1]));
-        return "piece done";
-      }
-      return onTask(ctx, base, message, row);
-    }
-  });
+    // A peer's message arriving mid-task, addressed to this task session: on attempt 1 only.
+    const queueMessage = markDispatcher(
+      handler({
+        name: "bg-queue-message",
+        inputSchema: z.object({}).passthrough(),
+        outputSchema: z.unknown(),
+        execute: async (_input, rawCtx) => {
+          const ctx = rawCtx as unknown as BlockContext;
+          if ((await heldRow(ctx))?.attempts !== 1) return null;
+          const id = `msg_${RUN_STAMP}_${Math.random().toString(16).slice(2, 10)}`;
+          const sessionId = ctx.session.identity.id;
+          await messageLogOf(ctx).getOrCreate(id, {
+            id,
+            from: "eng.helper",
+            to: "eng.doer",
+            text: "A note while you work. [msg-bg]",
+            exchange: id,
+            fromSession: sessionId,
+            fromFlow: "doer",
+            toSession: sessionId,
+            toFlow: "doer",
+            hop: 1,
+            status: "unconfirmed",
+            at: Date.now()
+          } as never);
+          await dispatchThroughSeam(ctx, {
+            type: "internal",
+            action: MESSAGE_RECEIVED_ENTRY,
+            flowKind: "doer",
+            session: { id: sessionId },
+            payload: { messageId: id },
+            from: "bg-queue-message"
+          });
+          return id;
+        }
+      }),
+      { type: "internal", action: MESSAGE_RECEIVED_ENTRY }
+    );
 
-  /** A background step that throws when `throws(ctx)` says so, and proves what it did. */
-  const step = (name: string, throws: (ctx: BlockContext, input: unknown) => boolean, ms = 60) =>
-    handler({
-      name,
-      inputSchema: z.unknown(),
+    type Base = { requestId: string; sessionId: string; taskId?: string; attempt?: number };
+    const answered = (kind: Proof["kind"], base: Base, answer: string, extra: Partial<Proof> = {}) => {
+      prove({ kind, ...base, answer, ...extra, at: Date.now() });
+      return answer;
+    };
+
+    /**
+     * The task's own turn, by its marks. Marks that start background work set
+     * this request's plan; "first" marks act on attempt 1 only.
+     *   [bg:first] [bg:always]   the after-answer step throws
+     *   [each:first]             a `.forEachSideChain` step throws
+     *   [finish:always]          the step `onFinished` starts throws
+     *   [completed:always]       the step `onCompleted` starts throws
+     *   [checkpoint]             report a checkpoint first
+     *   [hold:MS]                take MS
+     *   [stop:R] [stop-first:R]  stop and wait (ctx.suspend); on a [drop] resume, drop the caller
+     *   [message-first]          a message arrives for this session on attempt 1
+     *   [split:N:MS]             file N pieces for eng.helper, each taking MS
+     */
+    const onTask = async (ctx: BlockContext, base: Base, message: string, row: Task | undefined) => {
+      const first = row?.attempts === 1;
+      plans.set(base.requestId, {
+        after: message.includes("[bg:always]") || (first && message.includes("[bg:first]")),
+        each: first && message.includes("[each:first]"),
+        finish: message.includes("[finish:always]"),
+        completed: message.includes("[completed:always]")
+      });
+      const priorOutput = row?.output;
+      if (message.includes("[checkpoint]") && row !== undefined) {
+        const above = await filingConversationBoard(ctx);
+        await above!.tasks.reportProgress!(row.id, { output: `checkpoint ${base.requestId}` }, { claim: currentWorkerClaim(ctx)! });
+      }
+      const split = /\[split:(\d+):(\d+)\]/.exec(message);
+      if (split !== null) {
+        const ref = await doerBoard.board.resolver(ctx as never);
+        for (let i = 0; i < Number(split[1]); i += 1) {
+          await ref!.createTask({ goal: `piece ${i} of ${row?.id} ${RUN_STAMP} [slow:${split[2]}]`, assignee: "eng.helper" });
+        }
+      }
+      const hold = /\[hold:(\d+)\]/.exec(message);
+      if (hold !== null) await sleep(Number(hold[1]));
+      const stop = /\[stop:([a-z_]+)\]/.exec(message) ?? (first ? /\[stop-first:([a-z_]+)\]/.exec(message) : null);
+      if (stop !== null) {
+        const resolution = await ctx.suspend!({ reason: stop[1]!, message: `waiting (${stop[1]})` });
+        if (message.includes("[drop]") && row !== undefined) transports.get(row.id)?.abort(new Error("the caller went away"));
+        return answered("turn", base, `resumed ${base.requestId} ${JSON.stringify(resolution)}`, { priorOutput });
+      }
+      return answered("turn", base, `work answer ${base.requestId}`, { priorOutput });
+    };
+
+    const doerTurn = handler({
+      name: "bg-doer-turn",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
       execute: async (input, rawCtx) => {
         const ctx = rawCtx as unknown as BlockContext;
-        await sleep(ms);
-        const threw = throws(ctx, input);
-        prove({ kind: "step", step: name, did: threw ? "threw" : "ran", requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, at: Date.now() });
-        if (threw) throw new Error(`${name} failed in ${ctx.request.identity.id}`);
+        const row = await heldRow(ctx);
+        const base: Base = {
+          requestId: ctx.request.identity.id,
+          sessionId: ctx.session.identity.id,
+          ...(row !== undefined ? { taskId: row.id, attempt: row.attempts } : {})
+        };
+        const message = input.message;
+        if (message.startsWith("Message ")) {
+          // A message is conversation in the task's session: it may run after the task settled.
+          const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY];
+          const task = typeof taskId === "string" ? (await filingConversationBoard(ctx))?.tasks.get(taskId) : undefined;
+          plans.set(base.requestId, { after: message.includes("[msg-bg]") });
+          return answered("message", { ...base, ...(task !== undefined ? { taskId: task.id, attempt: task.attempts } : {}) }, `the message's answer ${base.requestId}`, {
+            claimed: currentWorkerClaim(ctx) !== undefined,
+            ...(task !== undefined ? { taskStatus: task.status } : {})
+          });
+        }
+        if (row === undefined) {
+          // A plain request: no task. Its background step throws all the same.
+          plans.set(base.requestId, { after: message.includes("[bg:always]") });
+          return answered("plain", base, `plain answer ${base.requestId}`);
+        }
+        if (message.startsWith('Task "')) {
+          plans.set(base.requestId, { after: row.goal.includes("[woken-bg]") });
+          return answered("woken", base, `woken answer ${base.requestId}`);
+        }
+        const slow = /\[slow:(\d+)\]/.exec(message);
+        if (slow !== null) {
+          await sleep(Number(slow[1]));
+          return "piece done";
+        }
+        return onTask(ctx, base, message, row);
       }
     });
 
-  /** Legs i and j: a step before the turn, drained by a default wait. [before:always] or [before:first-run]. */
-  const beforeStep = handler({
-    name: "bg-before",
-    inputSchema: doorInput,
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const runs = (beforeRuns.get(input.message) ?? 0) + 1;
-      beforeRuns.set(input.message, runs);
-      const threw = input.message.includes("[before:always]") || (input.message.includes("[before:first-run]") && runs === 1);
-      prove({ kind: "step", step: "bg-before", did: threw ? "threw" : "ran", requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, answer: runs, at: Date.now() });
-      if (threw) throw new Error(`bg-before failed on run ${runs}`);
-    }
-  });
-
-  /** Leg e: one step that stops on the cancel (or gives up after 4s), one that throws after it anyway. */
-  const stopsOnCancel = handler({
-    name: "bg-stops-on-cancel",
-    inputSchema: z.unknown(),
-    execute: async (_input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const stopped = await new Promise<boolean>((resolve) => {
-        const timer = setTimeout(() => resolve(false), 4000);
-        ctx.signal.addEventListener("abort", () => {
-          clearTimeout(timer);
-          resolve(true);
-        }, { once: true });
+    /** A background step that throws when `throws(ctx)` says so, and proves what it did. */
+    const step = (name: string, throws: (ctx: BlockContext, input: unknown) => boolean, ms = 60) =>
+      handler({
+        name,
+        inputSchema: z.unknown(),
+        execute: async (input, rawCtx) => {
+          const ctx = rawCtx as unknown as BlockContext;
+          await sleep(ms);
+          const threw = throws(ctx, input);
+          prove({ kind: "step", step: name, did: threw ? "threw" : "ran", requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, at: Date.now() });
+          if (threw) throw new Error(`${name} failed in ${ctx.request.identity.id}`);
+        }
       });
-      prove({ kind: "step", step: "bg-stops-on-cancel", did: stopped ? "stopped" : "ran", requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, at: Date.now() });
-      if (stopped) throw new Error("stopped on the cancel");
-    }
-  });
-  const throwsAnyway = step("bg-throws-anyway", () => true, 2500);
 
-  const doerWork = sequencer({ name: "bg-doer-work", inputSchema: doorInput })
-    .sideChainIf((input: { message: string }) => input.message.includes("[before:"), beforeStep)
-    .waitForSideChain()
-    .sideChainIf((input: { message: string }) => input.message.includes("[cancel-steps]"), stopsOnCancel)
-    .sideChainIf((input: { message: string }) => input.message.includes("[cancel-steps]"), throwsAnyway)
-    .tapIf(
-      (input: { message: string }) => input.message.includes("[message-first]") && !input.message.startsWith("Message "),
-      (input: { message: string }) => input,
-      queueMessage
-    )
-    .step(doerTurn)
-    .sideChain(step("bg-after-answer", (ctx) => planOf(ctx).after === true))
-    .forEachSideChain(
-      (_answer: unknown, ctx: BlockContext) => (planOf(ctx).each === true ? ["one", "two"] : []),
-      step("bg-each", (_ctx, item) => item === "two")
-    );
-
-  const throwingHook = (name: string, key: "finish" | "completed") =>
-    sequencer({ name: `${name}-hook`, inputSchema: z.object({ requestId: z.string() }).passthrough() }).sideChainIf(
-      (input: { requestId: string }) => plans.get(input.requestId)?.[key] === true,
-      step(name, () => true)
-    );
-
-  const deskFlow = defineFlow({
-    kind: "desk",
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
-    resources: { ...installation.resources, ...deskBoard.resources },
-    actions: { respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (i: { message: string }) => i.message }, ...deskBoard.actions },
-    internal: { actions: deskBoard.entries(deskTurn, () => "fixed") },
-    task: { actions: { work: workerTaskEntry({ name: "bg-desk-task", turn: deskTurn }) } }
-  } as never);
-  const doerFlow = defineFlow({
-    kind: "doer",
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(doerBoard.sessionStateShape), serverOwned: [...doerBoard.serverOwned] },
-    resources: { ...installation.resources, ...doerBoard.resources },
-    actions: { respond: { inputSchema: doorInput.strict(), block: doerWork, userMessage: (i: { message: string }) => i.message }, ...doerBoard.actions },
-    // A piece's notice wakes the doer's turn (judgment).
-    internal: { actions: doerBoard.entries(doerWork, () => "judgment") },
-    task: {
-      actions: {
-        work: { ...workerTaskEntry({ name: "bg-doer-task", turn: doerWork }), durable: true, onCompleted: throwingHook("bg-on-completed", "completed") }
+    /** Legs i and j: a step before the turn, drained by a default wait. [before:always] or [before:first-run]. */
+    const beforeStep = handler({
+      name: "bg-before",
+      inputSchema: doorInput,
+      execute: async (input, rawCtx) => {
+        const ctx = rawCtx as unknown as BlockContext;
+        const runs = (beforeRuns.get(input.message) ?? 0) + 1;
+        beforeRuns.set(input.message, runs);
+        const threw = input.message.includes("[before:always]") || (input.message.includes("[before:first-run]") && runs === 1);
+        prove({ kind: "step", step: "bg-before", did: threw ? "threw" : "ran", requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, answer: runs, at: Date.now() });
+        if (threw) throw new Error(`bg-before failed on run ${runs}`);
       }
-    },
-    request: { onFinished: throwingHook("bg-on-finished", "finish") }
-  } as never);
-  // The memo worker's capture: fails its first run in each task session, as a capture that times out once does.
-  const memoryCapture = handler({
-    name: "memory-capture",
-    inputSchema: z.unknown(),
-    execute: (_input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.taskId;
-      if (typeof taskId !== "string") return;
-      const first = !capturedOnce.has(taskId);
-      capturedOnce.add(taskId);
-      prove({ kind: "capture", taskId, did: first ? "threw" : "ran", requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, at: Date.now() });
-      if (first) throw new Error("memory-capture timed out");
-    }
-  });
-  workerFlows = { desk: { flow: deskFlow, roles: ["contributor", "manager"] }, doer: { flow: doerFlow, roles: ["contributor", "manager"] }, agent: defineAgentWorkerFlow({ installation, afterAnswer: memoryCapture }) };
+    });
+
+    /** Leg e: one step that stops on the cancel (or gives up after 4s), one that throws after it anyway. */
+    const stopsOnCancel = handler({
+      name: "bg-stops-on-cancel",
+      inputSchema: z.unknown(),
+      execute: async (_input, rawCtx) => {
+        const ctx = rawCtx as unknown as BlockContext;
+        const stopped = await new Promise<boolean>((resolve) => {
+          const timer = setTimeout(() => resolve(false), 4000);
+          ctx.signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            resolve(true);
+          }, { once: true });
+        });
+        prove({ kind: "step", step: "bg-stops-on-cancel", did: stopped ? "stopped" : "ran", requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, at: Date.now() });
+        if (stopped) throw new Error("stopped on the cancel");
+      }
+    });
+    const throwsAnyway = step("bg-throws-anyway", () => true, 2500);
+
+    const doerWork = sequencer({ name: "bg-doer-work", inputSchema: doorInput })
+      .sideChainIf((input: { message: string }) => input.message.includes("[before:"), beforeStep)
+      .waitForSideChain()
+      .sideChainIf((input: { message: string }) => input.message.includes("[cancel-steps]"), stopsOnCancel)
+      .sideChainIf((input: { message: string }) => input.message.includes("[cancel-steps]"), throwsAnyway)
+      .tapIf(
+        (input: { message: string }) => input.message.includes("[message-first]") && !input.message.startsWith("Message "),
+        (input: { message: string }) => input,
+        queueMessage
+      )
+      .step(doerTurn)
+      .sideChain(step("bg-after-answer", (ctx) => planOf(ctx).after === true))
+      .forEachSideChain(
+        (_answer: unknown, ctx: BlockContext) => (planOf(ctx).each === true ? ["one", "two"] : []),
+        step("bg-each", (_ctx, item) => item === "two")
+      );
+
+    const throwingHook = (name: string, key: "finish" | "completed") =>
+      sequencer({ name: `${name}-hook`, inputSchema: z.object({ requestId: z.string() }).passthrough() }).sideChainIf(
+        (input: { requestId: string }) => plans.get(input.requestId)?.[key] === true,
+        step(name, () => true)
+      );
+
+    const deskFlow = defineFlow({
+      kind: "desk",
+      configSchema: workerConfigSchema(),
+      session: { ...installation.session(deskBoard.sessionStateShape), serverOwned: [...deskBoard.serverOwned] },
+      resources: { ...installation.resources, ...deskBoard.resources },
+      actions: { respond: { inputSchema: doorInput.strict(), block: deskTurn, userMessage: (i: { message: string }) => i.message }, ...deskBoard.actions },
+      internal: { actions: deskBoard.entries(deskTurn, () => "fixed") },
+      task: { actions: { work: workerTaskEntry({ name: "bg-desk-task", turn: deskTurn }) } }
+    } as never);
+    const doerFlow = defineFlow({
+      kind: "doer",
+      configSchema: workerConfigSchema(),
+      session: { ...installation.session(doerBoard.sessionStateShape), serverOwned: [...doerBoard.serverOwned] },
+      resources: { ...installation.resources, ...doerBoard.resources },
+      actions: { respond: { inputSchema: doorInput.strict(), block: doerWork, userMessage: (i: { message: string }) => i.message }, ...doerBoard.actions },
+      // A piece's notice wakes the doer's turn (judgment).
+      internal: { actions: doerBoard.entries(doerWork, () => "judgment") },
+      task: {
+        actions: {
+          work: { ...workerTaskEntry({ name: "bg-doer-task", turn: doerWork }), durable: true, onCompleted: throwingHook("bg-on-completed", "completed") }
+        }
+      },
+      request: { onFinished: throwingHook("bg-on-finished", "finish") }
+    } as never);
+    // The memo worker's capture: fails its first run in each task session, as a capture that times out once does.
+    const memoryCapture = handler({
+      name: "memory-capture",
+      inputSchema: z.unknown(),
+      execute: (_input, rawCtx) => {
+        const ctx = rawCtx as unknown as BlockContext;
+        const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.taskId;
+        if (typeof taskId !== "string") return;
+        const first = !capturedOnce.has(taskId);
+        capturedOnce.add(taskId);
+        prove({ kind: "capture", taskId, did: first ? "threw" : "ran", requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, at: Date.now() });
+        if (first) throw new Error("memory-capture timed out");
+      }
+    });
+    return (built = { desk: deskFlow, doer: doerFlow, agent: defineAgentWorkerFlow({ installation, afterAnswer: memoryCapture }) });
+  };
 
   const state = createFlowState({
-    flows: hireWorkforce(installation),
+    kits: [workforce({ directory: TREE })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        desk: workerFlow((installation) => flowsOn(installation).desk, { roles: ["contributor", "manager"] }),
+        doer: workerFlow((installation) => flowsOn(installation).doer, { roles: ["contributor", "manager"] }),
+        agent: workerFlow((installation) => flowsOn(installation).agent)
+      }
+    },
     stores: { default: { primary: sqliteStores({ filename }) } },
     logger: silentLogger,
     modelResolver: createMockModelResolver({

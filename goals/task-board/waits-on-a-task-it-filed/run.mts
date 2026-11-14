@@ -50,13 +50,14 @@ import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
-  createWorkerInstallation,
   defineSessionBoard,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -68,7 +69,8 @@ import {
   runGoal,
   silentLogger,
   untilIdle,
-  type ModulePatch
+  type ModulePatch,
+  workforceTree
 } from "../../lib/index.mts";
 
 const USER = "u_waits";
@@ -248,7 +250,7 @@ function resolve(args: Record<string, unknown>, results: string[]): Record<strin
 
 // ---- the host ------------------------------------------------------------------------
 
-const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
+const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared: { description: `The ${id} worker.`, ...declared }, body: "", skills: [] });
 /** A conversation's worker, and a chain of five doers, each the next one's filer. */
 const WORKERS: WorkerManifest[] = [
   worker("lead", { flow: "desk", delegates: ["doer.a"] }),
@@ -258,68 +260,81 @@ const WORKERS: WorkerManifest[] = [
   worker("doer.d", { flow: "doer", delegates: ["doer.e"] }),
   worker("doer.e", { flow: "doer" })
 ];
+/** The workers as the app's `workforce/` folder, which the kit reads. */
+const TREE = workforceTree(WORKERS);
 
 function buildHost(filename: string, waitDeadlines?: { defaultMs: number; minMs: number }) {
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => workerFlows as never });
-  const doorInput = z.object({ message: z.string() });
-  const model = scriptModel();
+  // The kit hands each worker flow's builder the installation it hired; the flows are built once on it.
+  let built: Record<string, unknown> | undefined;
+  let builtOn: WorkerInstallation | undefined;
+  const flowsOn = (installation: WorkerInstallation): Record<string, unknown> => {
+    if (built !== undefined && builtOn === installation) return built;
+    builtOn = installation;
+    const doorInput = z.object({ message: z.string() });
+    const model = scriptModel();
 
-  // A dispatch that waits for what it started: the probe entry runs the
-  // script it is handed, in a session of its own.
-  const probeWait = (name: string) =>
-    dispatcher({
-      name,
-      action: "probe",
-      inputSchema: z.object({ message: z.string() }),
-      session: {
-        key: (input) => `probe:${input.message.length}:${input.message.slice(-24)}`,
-        // A session of the same worker, as the flow's sessions are.
-        state: (_input, ctx) => ({ workerId: (ctx.session.state as { workerId?: string }).workerId })
-      },
-      wait: true
-    });
+    // A dispatch that waits for what it started: the probe entry runs the
+    // script it is handed, in a session of its own.
+    const probeWait = (name: string) =>
+      dispatcher({
+        name,
+        action: "probe",
+        inputSchema: z.object({ message: z.string() }),
+        session: {
+          key: (input) => `probe:${input.message.length}:${input.message.slice(-24)}`,
+          // A session of the same worker, as the flow's sessions are.
+          state: (_input, ctx) => ({ workerId: (ctx.session.state as { workerId?: string }).workerId })
+        },
+        wait: true
+      });
 
-  const flowOf = (kind: string) => {
-    const board = defineSessionBoard({ installation, flowKind: kind });
-    const turn = generator({
-      name: `${kind}-turn`,
-      model,
-      prompt: "Work the turn its script describes.",
-      inputSchema: doorInput,
-      uses: [board.tools],
-      tools: [probeWait(`${kind}_probe_wait`)],
-      maxIterations: 150,
-      user: (input: { message: string }) => input.message
-    });
-    const planned = board.planned(turn);
-    const probe = generator({
-      name: `${kind}-probe`,
-      model,
-      prompt: "Work the turn its script describes.",
-      inputSchema: doorInput,
-      tools: [probeWait(`${kind}_probe_again`)],
-      user: (input: { message: string }) => input.message
-    });
-    return defineFlow({
-      kind,
-      configSchema: workerConfigSchema(),
-      session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-      resources: { ...installation.resources, ...board.resources },
-      actions: {
-        respond: { inputSchema: doorInput.strict(), block: planned, userMessage: (i: { message: string }) => i.message },
-        // Leg e: an action that is a waited dispatch.
-        askProbe: { inputSchema: doorInput.strict(), block: probeWait(`${kind}-ask-probe`) },
-        ...board.actions
-      },
-      internal: { actions: { ...board.entries(planned), probe: { block: probe } } },
-      task: { actions: { work: workerTaskEntry({ name: `${kind}-task`, turn: planned }) } }
-    } as never);
+    const flowOf = (kind: string) => {
+      const board = defineSessionBoard({ installation, flowKind: kind });
+      const turn = generator({
+        name: `${kind}-turn`,
+        model,
+        prompt: "Work the turn its script describes.",
+        inputSchema: doorInput,
+        uses: [board.tools],
+        tools: [probeWait(`${kind}_probe_wait`)],
+        maxIterations: 150,
+        user: (input: { message: string }) => input.message
+      });
+      const planned = board.planned(turn);
+      const probe = generator({
+        name: `${kind}-probe`,
+        model,
+        prompt: "Work the turn its script describes.",
+        inputSchema: doorInput,
+        tools: [probeWait(`${kind}_probe_again`)],
+        user: (input: { message: string }) => input.message
+      });
+      return defineFlow({
+        kind,
+        configSchema: workerConfigSchema(),
+        session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+        resources: { ...installation.resources, ...board.resources },
+        actions: {
+          respond: { inputSchema: doorInput.strict(), block: planned, userMessage: (i: { message: string }) => i.message },
+          // Leg e: an action that is a waited dispatch.
+          askProbe: { inputSchema: doorInput.strict(), block: probeWait(`${kind}-ask-probe`) },
+          ...board.actions
+        },
+        internal: { actions: { ...board.entries(planned), probe: { block: probe } } },
+        task: { actions: { work: workerTaskEntry({ name: `${kind}-task`, turn: planned }) } }
+      } as never);
+    };
+    return (built = { desk: flowOf("desk"), doer: flowOf("doer") });
   };
-  workerFlows = { desk: { flow: flowOf("desk"), roles: ["contributor", "manager"] }, doer: { flow: flowOf("doer"), roles: ["contributor", "manager"] } };
 
   const state = createFlowState({
-    flows: hireWorkforce(installation),
+    kits: [workforce({ directory: TREE })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        desk: workerFlow((installation) => flowsOn(installation).desk, { roles: ["contributor", "manager"] }),
+        doer: workerFlow((installation) => flowsOn(installation).doer, { roles: ["contributor", "manager"] })
+      }
+    },
     stores: { default: { primary: sqliteStores({ filename }) } },
     durabilityRetention: { sweepIntervalMs: 250 },
     ...(waitDeadlines !== undefined ? { waitDeadlines } : {}),

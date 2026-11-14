@@ -58,14 +58,15 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import {
-  createWorkerInstallation,
   defineSessionBoard,
   filingConversationBoard,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { waitOnTask } from "../../../packages/orchestration/src/tasks/helpers/wait-on-task.ts";
 import {
   REPO_ROOT,
@@ -77,7 +78,8 @@ import {
   modulePatchEnv,
   runGoal,
   silentLogger,
-  type ModulePatch
+  type ModulePatch,
+  workforceTree
 } from "../../lib/index.mts";
 import { KILL_AFTER_ENDING, PATCHES } from "./controls.mts";
 
@@ -122,13 +124,15 @@ const lines = <T,>(file: string): T[] =>
 
 // ---- the host ---------------------------------------------------------------
 
-const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
+const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared: { description: `The ${id} worker.`, ...declared }, body: "", skills: [] });
 const WORKERS: WorkerManifest[] = [
   worker("lead", { flow: "desk", delegates: ["eng.doer"] }),
   // A worker files its pieces for another: one naming itself is a step it works inline.
   worker("eng.doer", { flow: "doer", delegates: ["eng.helper"] }),
   worker("eng.helper", { flow: "doer", delegates: [] })
 ];
+/** The workers as the app's `workforce/` folder, which the kit reads. */
+const TREE = workforceTree(WORKERS);
 
 type Script = { op: "file"; tasks: TaskInit[] } | { op: "wait"; taskId: string } | { op: "two-passes" };
 
@@ -147,77 +151,79 @@ async function work(goal: string, attempt: number): Promise<string> {
 }
 
 function buildHost(filename: string) {
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => workerFlows as never });
-  const doorInput = z.object({ message: z.string() });
-  const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
-  const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
+  // The kit hands each worker flow's builder the installation it hired; the flows are built once on it.
+  let built: Record<string, unknown> | undefined;
+  let builtOn: WorkerInstallation | undefined;
+  const flowsOn = (installation: WorkerInstallation): Record<string, unknown> => {
+    if (built !== undefined && builtOn === installation) return built;
+    builtOn = installation;
+    const doorInput = z.object({ message: z.string() });
+    const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
+    const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
 
-  const deskTurn = handler({
-    name: "every-ending-desk-turn",
-    inputSchema: doorInput,
-    outputSchema: z.unknown(),
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const script = JSON.parse(input.message) as Script;
-      const ref = await deskBoard.board.resolver(ctx as never);
-      if (ref === undefined) return { ok: false, error: "no_delegation_board" };
-      // The wait parks the turn by throwing its park; nothing here may catch it.
-      // Release the held task, then wait on it, as `updateTask({ status:
-      // "pending" })` then `getTask({ id, wait: true })` do (FIX-2082).
-      if (script.op === "wait") {
-        await ref.release(script.taskId);
-        const waited = await waitOnTask(ctx as never, ref, script.taskId, { key: `goal.wait:${script.taskId}` });
-        return waited.ok ? { ok: true, status: waited.task.status, answer: waited.task.output } : waited;
-      }
-      try {
-        if (script.op === "file") return { ok: true, ids: (await ref.createTasks(script.tasks)).map((t) => t.id) };
-        if (script.op === "two-passes") {
-          const send = () =>
-            dispatchThroughSeam(ctx, { type: "internal", action: "dispatch", session: { id: ctx.session.identity.id }, payload: {}, from: "goal-two-passes" });
-          return { ok: true, outcomes: await Promise.all([send(), send()]) };
+    const deskTurn = handler({
+      name: "every-ending-desk-turn",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
+      execute: async (input, rawCtx) => {
+        const ctx = rawCtx as unknown as BlockContext;
+        const script = JSON.parse(input.message) as Script;
+        const ref = await deskBoard.board.resolver(ctx as never);
+        if (ref === undefined) return { ok: false, error: "no_delegation_board" };
+        // The wait parks the turn by throwing its park; nothing here may catch it.
+        // Release the held task, then wait on it, as `updateTask({ status:
+        // "pending" })` then `getTask({ id, wait: true })` do (FIX-2082).
+        if (script.op === "wait") {
+          await ref.release(script.taskId);
+          const waited = await waitOnTask(ctx as never, ref, script.taskId, { key: `goal.wait:${script.taskId}` });
+          return waited.ok ? { ok: true, status: waited.task.status, answer: waited.task.output } : waited;
         }
-        return { ok: false, error: "unknown op" };
-      } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        try {
+          if (script.op === "file") return { ok: true, ids: (await ref.createTasks(script.tasks)).map((t) => t.id) };
+          if (script.op === "two-passes") {
+            const send = () =>
+              dispatchThroughSeam(ctx, { type: "internal", action: "dispatch", session: { id: ctx.session.identity.id }, payload: {}, from: "goal-two-passes" });
+            return { ok: true, outcomes: await Promise.all([send(), send()]) };
+          }
+          return { ok: false, error: "unknown op" };
+        } catch (error) {
+          return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        }
       }
-    }
-  });
+    });
 
-  const doerTurn = handler({
-    name: "every-ending-doer-turn",
-    inputSchema: doorInput,
-    outputSchema: z.unknown(),
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const above = await filingConversationBoard(ctx);
-      const row = above?.tasks.list().find((r) => r.run?.requestId === ctx.request.identity.id && r.status === "in_progress");
-      const attempt = row?.attempts ?? 0;
-      const proof: Proof = { ...(row !== undefined ? { taskId: row.id } : {}), attempt, sessionId: ctx.session.identity.id, goal: input.message, at: Date.now() };
-      appendFileSync(PROOFS, `${JSON.stringify(proof)}\n`, "utf8");
-      const piece = /\[file:([^\]]+)\]/.exec(input.message);
-      if (piece !== null) {
-        const ref = await doerBoard.board.resolver(ctx as never);
-        await ref!.createTask({ goal: `${piece[1]} [slow:400]`, assignee: "eng.helper" });
-        return "filed a piece";
+    const doerTurn = handler({
+      name: "every-ending-doer-turn",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
+      execute: async (input, rawCtx) => {
+        const ctx = rawCtx as unknown as BlockContext;
+        const above = await filingConversationBoard(ctx);
+        const row = above?.tasks.list().find((r) => r.run?.requestId === ctx.request.identity.id && r.status === "in_progress");
+        const attempt = row?.attempts ?? 0;
+        const proof: Proof = { ...(row !== undefined ? { taskId: row.id } : {}), attempt, sessionId: ctx.session.identity.id, goal: input.message, at: Date.now() };
+        appendFileSync(PROOFS, `${JSON.stringify(proof)}\n`, "utf8");
+        const piece = /\[file:([^\]]+)\]/.exec(input.message);
+        if (piece !== null) {
+          const ref = await doerBoard.board.resolver(ctx as never);
+          await ref!.createTask({ goal: `${piece[1]} [slow:400]`, assignee: "eng.helper" });
+          return "filed a piece";
+        }
+        return work(input.message, attempt);
       }
-      return work(input.message, attempt);
-    }
-  });
+    });
 
-  const flowOf = (kind: string, board: ReturnType<typeof defineSessionBoard>, turn: typeof deskTurn) =>
-    defineFlow({
-      kind,
-      configSchema: workerConfigSchema(),
-      session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-      resources: { ...installation.resources, ...board.resources },
-      actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
-      internal: { actions: board.entries(turn, () => "fixed") },
-      task: { actions: { work: workerTaskEntry({ name: `every-ending-${kind}-task`, turn: turn as never }) } }
-    } as never);
-  workerFlows = {
-    desk: { flow: flowOf("desk", deskBoard, deskTurn), roles: ["contributor", "manager"] },
-    doer: { flow: flowOf("doer", doerBoard, doerTurn as never), roles: ["contributor", "manager"] }
+    const flowOf = (kind: string, board: ReturnType<typeof defineSessionBoard>, turn: typeof deskTurn) =>
+      defineFlow({
+        kind,
+        configSchema: workerConfigSchema(),
+        session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+        resources: { ...installation.resources, ...board.resources },
+        actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+        internal: { actions: board.entries(turn, () => "fixed") },
+        task: { actions: { work: workerTaskEntry({ name: `every-ending-${kind}-task`, turn: turn as never }) } }
+      } as never);
+    return (built = { desk: flowOf("desk", deskBoard, deskTurn), doer: flowOf("doer", doerBoard, doerTurn as never) });
   };
 
   // The plain flow: orchestration's board, with no Workforce, handing rows to
@@ -292,7 +298,14 @@ function buildHost(filename: string) {
   } as never)({ id: "error-reporter-intake" });
 
   const state = createFlowState({
-    flows: [...hireWorkforce(installation), planner, intake],
+    kits: [workforce({ directory: TREE })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        desk: workerFlow((installation) => flowsOn(installation).desk, { roles: ["contributor", "manager"] }),
+        doer: workerFlow((installation) => flowsOn(installation).doer, { roles: ["contributor", "manager"] })
+      }
+    },
+    flows: [planner, intake],
     stores: { default: { primary: sqliteStores({ filename }) } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {

@@ -2,7 +2,7 @@
 /**
  * Guard: nothing in the docs corpus may teach that `flowIsolation` keys on the
  * flow KIND. Since FIX-1323 the isolation coordinate is the resolved flow
- * INSTANCE id, and `hireWorkforce` mints one instance per worker.
+ * INSTANCE id, and the workforce hire mints one instance per worker.
  *
  * Why this is a co-occurrence check and not a phrase list. FIX-1420 first
  * shipped with a scan whose patterns were generalized from the stale lines it
@@ -292,7 +292,7 @@ function main() {
     if (hits.length > 0) {
       console.error(
         `\n[isolation-coordinate] ${hits.length} line(s) may still teach per-KIND isolation.\n` +
-          `Since FIX-1323 the coordinate is the flow INSTANCE id; hireWorkforce mints one per seat.\n`
+          `Since FIX-1323 the coordinate is the flow INSTANCE id; the workforce hire mints one per seat.\n`
       );
       for (const h of hits) console.error(`  ${h.file}:${h.line}\n    ${h.text}\n`);
     }

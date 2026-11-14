@@ -128,7 +128,7 @@ export const CONTROLS: Record<ControlName, Control> = {
     legs: ["4"],
     assertion: "4:hire-refuses",
     patches: [{ module: "packages/workforce/src/workers/register.ts", from: String.raw`if \(deaf\.length > 0\) \{`, to: "if (deaf.length < 0) {" }],
-    does: "hireWorkforce takes a worker flow with no onMessageReceived",
+    does: "the workforce kit's hire takes a worker flow with no onMessageReceived",
   },
   "pay-first": {
     name: "pay-first",

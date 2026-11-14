@@ -24,3 +24,5 @@
 |------|--------|-------|---------|-------|
 | 2026-11-09 | FIX-2538 branch + goal | n/a | PASS | 17 tasks across 2 users and 4 desks; observe's 3 inferred tasks per user each held one confirm and ran none; auto's 2 ran; the off desk called no model on an inferred forward; 2 addressed events ran in every mode; 2 drops counted; 12 forwards for alice's 3 desks. (e) not run. |
 | 2026-11-09 | FIX-2538 branch + goal | n/a | FAIL (expected) | `GOAL_CONTROL=no-gate`: (b) every inferred observe task held 0 confirms and the plain ones started an attempt, for both users; (g) both multi tasks held 0 confirms. Nothing else. |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, on the merge of `-e` at `4e8aeba6e` | n/a | PASS | `PASS — 17 tasks across 2 users and 4 desks; observe's inferred tasks each held one confirm and ran none, auto's ran, the off desk called no model on an inferred forward, 2 asks ran in every mode; 2 drops counted` |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, on the merge of `-e` at `4e8aeba6e` | n/a | FAIL (expected) | `GOAL_CONTROL=no-gate`: (b) `alice:observe's "Triage [evt-inf-1] (plain)" holds 0 confirm(s)` · `… started an attempt`. |

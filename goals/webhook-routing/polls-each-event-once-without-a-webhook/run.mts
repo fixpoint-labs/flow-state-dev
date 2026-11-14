@@ -17,22 +17,22 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 import {
   ROSTER_FLOW,
   WORKER_MESSAGES_PATTERN,
-  createWorkerInstallation,
   defineSubscriptionServiceFlow,
   deliveryMessageId,
-  hireWorkforce,
   messageReceivedEntry,
   subscriptionResources,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
   workerTaskEntry,
   type DeclaredRoutine,
   type SubscriptionProvider,
-  type WorkerManifest
+  type WorkerInstallation
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { SUBSCRIPTION_POLLS_PATTERN, workerRoutineVerbs } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
-import { REPO_ROOT, goalTmpDir, runGoal, silentLogger } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, runGoal, silentLogger, workforceTree } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -195,11 +195,7 @@ async function boot(options: BootOptions) {
   };
   // The stores open the SQLite file and lay out its tables first; the index shares the file.
   const stores = sqliteStores({ filename: options.db });
-  const flowsRef: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({
-    standardWorkers: [{ id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] } as WorkerManifest],
-    workerFlows: () => flowsRef as never
-  });
+  const directory = workforceTree([{ id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "" }]);
   // The SQLite stores lay out the index's table as they open, after the flows are built: open the index on first use.
   let opened: ReturnType<typeof createSQLiteScheduleIndex> | undefined;
   const real = () => (opened ??= createSQLiteScheduleIndex(indexDb));
@@ -210,13 +206,11 @@ async function boot(options: BootOptions) {
   };
   const doorInput = z.object({ message: z.string() });
   const door = handler({ name: "follower-run", inputSchema: doorInput, execute: async () => "ok" });
-  let instances: Record<string, FlowInstance> = {};
-  const build = () => {
-    // The worker verbs as actions, called as a model would; their providers and polling come from hireWorkforce's routines.
-    const tools = workerRoutineVerbs(installation);
-    flowsRef.follower = {
-      roles: ["contributor"],
-      flow: defineFlow({
+  const follower = workerFlow(
+    (installation) => {
+      // The worker verbs as actions, called as a model would; their providers and polling come from the kit's routines.
+      const tools = workerRoutineVerbs(installation);
+      return defineFlow({
         kind: "follower",
         configSchema: workerConfigSchema(),
         session: installation.session(),
@@ -227,25 +221,28 @@ async function boot(options: BootOptions) {
         },
         internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
         task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: door }) } }
-      })
-    };
-    // Polling, configured once: its own index, beside the routines' providers and the app's declared routines.
-    const routines = { providers: [github], poll: { index }, ...(options.declared === undefined ? {} : { declared: options.declared }) };
-    instances = Object.fromEntries(hireWorkforce(installation, { routines }).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy]));
-    instances["github-service"] = defineSubscriptionServiceFlow({
+      });
+    },
+    { roles: ["contributor"] }
+  );
+  // Polling, configured once: its own index, beside the routines' providers and the app's declared routines.
+  const routines = { providers: [github], poll: { index }, ...(options.declared === undefined ? {} : { declared: options.declared }) };
+  /** The service flow, built on the installation the kit hires. */
+  const service = (installation: WorkerInstallation): FlowInstance[] => [
+    defineSubscriptionServiceFlow({
       kind: "github-service",
       provider: github,
       installation,
       trustedBots: BOTS,
       capPerHour: 10_000,
       poll: true
-    });
-  };
-  // The index's table exists once the stores initialized; the flows are built after.
+    }) as FlowInstance
+  ];
+  // The index's table exists once the stores initialized; the kit builds the flows at start.
   let captured: InboundTransportHost | undefined;
-  build();
   const state = createFlowState({
-    flows: Object.values(instances),
+    kits: [workforce({ directory, routines })],
+    fill: { [workforce.slots.workerFlows]: { follower }, [workforce.slots.flows]: { service } },
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),
     logger: silentLogger,
@@ -258,6 +255,12 @@ async function boot(options: BootOptions) {
   } as never);
   const router = (await state.getRouter()) as any;
   const runtime = await state.getRuntime();
+  /** A flow the kit serves, by id. */
+  const served = (id: string): FlowInstance =>
+    runtime.registry.get(id) ??
+    (() => {
+      throw new Error(`setup: the workforce kit serves no "${id}" flow`);
+    })();
 
   // Losses: a dispatch the store never recorded, a take that failed, as the FIX-2534 tests make them.
   const injected = { lost: 0, untaken: 0, never: 0 };
@@ -350,13 +353,13 @@ async function boot(options: BootOptions) {
     })) as { output?: any; error?: unknown };
   /** Save an event routine in `sessionId` as a model would: its subscription's id, or why it was refused. */
   const subscribe = async (user: string, sessionId: string, event: Record<string, unknown>): Promise<{ id?: string; refused?: string }> => {
-    const answer = (await run(instances.follower!, user, sessionId, "saveRoutine", { trigger: { event: { provider: "github", ...event } } })).output;
+    const answer = (await run(served("follower"), user, sessionId, "saveRoutine", { trigger: { event: { provider: "github", ...event } } })).output;
     return answer?.ok === true ? { id: String(answer.routine.id).replace(/^event:/, "") } : { refused: answer?.error ?? "no answer" };
   };
   /** Delete the event routine on subscription `id`, as a model would. */
-  const unsubscribe = (user: string, sessionId: string, id: string) => run(instances.follower!, user, sessionId, "deleteRoutine", { id: `event:${id}` });
+  const unsubscribe = (user: string, sessionId: string, id: string) => run(served("follower"), user, sessionId, "deleteRoutine", { id: `event:${id}` });
   /** One roster run for `user`: its request seeds the app's declared routines. */
-  const seed = (user: string) => run(instances.roster!, user, `roster-${user}`, "listRoutines", {});
+  const seed = (user: string) => run(served(ROSTER_FLOW), user, `roster-${user}`, "listRoutines", {});
   const route = async (event: SubscriptionEvent) => {
     const routed = await routeServiceEvent(captured!, { flowKind: "github-service", entry: "routeSubscriptionEvent", input: event, principal: { userId: "service:github", orgId: ORG } });
     if (routed.error !== undefined) throw new Error(`routing failed: ${JSON.stringify(routed.error)}`);
