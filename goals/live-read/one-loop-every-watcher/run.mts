@@ -8,12 +8,18 @@
  * (requests the server answers, never `read` calls against a fake):
  *
  *   rp  React's `Roster` panel, live, rendered by react-dom over happy-dom, read off the rows it draws
- *   rw  Workforce's `watchRoster`, read off what it reports
+ *   rw  Workforce's `watchRoster`, read off what it reports (it, and tm, read the roster view)
  *   sm  Shift Manager's snapshot, under its real `LabProvider`, counted per snapshot read
  *   tm  the Teammates lab's `watchWorkers`
  *   cc  the claude-code-style lab's `watchPins`
  *
- * Alice's other tab writes:
+ * Alice's other tab writes as an app does, with no roster session: hires
+ * through the workforce client, on the roster flow the workers collection's
+ * `runBy` names, and pins through the pins resource's default write
+ * (FIX-2624). Only the React panel, which reads a session's collection, is
+ * handed a roster session the page makes for it.
+ *
+ * It writes:
  *
  *   a  — a burst: 50 hires (the roster) and 50 pins (your user resource), each
  *        landing while every watcher's read is held in flight. Each watcher
@@ -40,7 +46,7 @@ import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@fl
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { Roster } from "@flow-state-dev/react/workforce";
-import { createWorkforceClient, PROJECTS_FLOW, ROSTER_FLOW, type RosterEntry } from "@flow-state-dev/workforce/browser";
+import { createWorkforceClient, PROJECTS_FLOW, ROSTER_FLOW, rosterView, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, type ModulePatch } from "../../lib/index.mts";
 import { buildKitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-hire.ts";
@@ -55,6 +61,10 @@ const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("live-read-one-loop");
 const BURST = 50;
 const MAX_READS_PER_BURST = 2;
 const RECOVER_MS = 2_000;
+/** Leg b's window closes once no notice has reached a watcher for this long... */
+const QUIET_MS = 200;
+/** ...or this long after the write, whichever comes first. */
+const CLOSE_CAP_MS = 3_000;
 const ORG = "acme";
 
 const PATCHES: Record<string, ModulePatch[]> = {
@@ -103,19 +113,30 @@ const ROSTER_WATCHERS: readonly Watcher[] = ["rp", "rw", "sm", "tm"];
 const TOKENS: Record<string, string> = { "tok-rp": "alice", "tok-rw": "alice", "tok-sm": "alice", "tok-tm": "alice", "tok-cc": "alice", "tok-tab": "alice" };
 const tokenOf = (w: Watcher) => `tok-${w}`;
 
-/** Whether `url` is one read of what watcher `w` shows: the roster's own collection, a snapshot's first request, the pins read. */
+/**
+ * Whether `url` is one read of what watcher `w` shows: the panel's read of the roster's own
+ * collection, a roster view call (each roster watch follows the view, FIX-2623), a snapshot's
+ * first request, the pins read.
+ */
 function isReadOf(w: Watcher, url: string): boolean {
   if (w === "sm") return url.includes("/sessions") && url.includes("dispatch-runs");
   if (w === "cc") return url.includes("/resources/user/lab-pins");
-  return url.includes("workforceWorkers") && !url.includes("workforceStandardWorkers");
+  if (w === "rp") return url.includes("workforceWorkers") && !url.includes("workforceStandardWorkers");
+  return url.includes(`/api/flows/${rosterView.flow}/views/${rosterView.view}`);
 }
 
 const reads = new Map<Watcher, number[]>(WATCHERS.map((w) => [w, []]));
 /** While set, each watcher's read is answered only once `release` runs. */
 let held: Promise<void> | undefined;
 let release: () => void = () => {};
-/** Watchers whose next read answers 503. */
-const failNext = new Set<Watcher>();
+/** Watchers whose every read answers 503, while a write's notices land. */
+const failing = new Set<Watcher>();
+/** How many reads each watcher had answered 503 while it was failing. */
+const failedReads = new Map<Watcher, number>();
+/** When each notice frame reached each watcher's socket. */
+const notices = new Map<Watcher, number[]>(WATCHERS.map((w) => [w, []]));
+/** The watcher each push ticket was minted for, from the mint's answer at its fetcher. */
+const ticketOf = new Map<string, Watcher>();
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -124,10 +145,36 @@ globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const w = WATCHERS.find((candidate) => auth === `Bearer ${tokenOf(candidate)}`);
   if (w !== undefined && isReadOf(w, url)) {
     reads.get(w)!.push(Date.now());
-    if (failNext.delete(w)) return new Response(JSON.stringify({ error: "down" }), { status: 503, headers: { "content-type": "application/json" } });
+    if (failing.has(w)) {
+      failedReads.set(w, (failedReads.get(w) ?? 0) + 1);
+      return new Response(JSON.stringify({ error: "down" }), { status: 503, headers: { "content-type": "application/json" } });
+    }
     if (held !== undefined) await held;
   }
+  if (w !== undefined && url.includes("/stream")) {
+    const response = await realFetch(input, init);
+    const ticket = (await response.clone().json().catch(() => undefined)) as { ticket?: unknown } | undefined;
+    if (typeof ticket?.ticket === "string") ticketOf.set(ticket.ticket, w);
+    return response;
+  }
   return realFetch(input, init);
+};
+
+// Each watcher's socket, known by the ticket it subscribes with: every notice frame it receives
+// is recorded, so leg b can check that no notice reached a watcher after its window closed.
+const realSend = WebSocket.prototype.send;
+const tagged = new WeakSet<WebSocket>();
+WebSocket.prototype.send = function (this: WebSocket, data: Parameters<WebSocket["send"]>[0]) {
+  const sent = typeof data === "string" ? (JSON.parse(data) as { type?: unknown; ticket?: unknown }) : undefined;
+  const w = sent?.type === "subscribe" && typeof sent.ticket === "string" ? ticketOf.get(sent.ticket) : undefined;
+  if (w !== undefined && !tagged.has(this)) {
+    tagged.add(this);
+    this.addEventListener("message", (event) => {
+      const frame = JSON.parse(String((event as MessageEvent).data)) as { type?: unknown };
+      if (frame.type === "notice") notices.get(w)!.push(Date.now());
+    });
+  }
+  return realSend.call(this, data);
 };
 
 // ---------------------------------------------------------------------------
@@ -265,10 +312,12 @@ const check = (name: string, ok: boolean, detail: string) => {
 const on = await host();
 const tab = clientOf(on, "tok-tab");
 const tabWorkforce = createWorkforceClient(tab);
-await tabWorkforce.roster();
-const [rosterSession] = await tab.sessions.list({ flowKind: ROSTER_FLOW, userId: "alice" });
-if (rosterSession === undefined) throw new Error("setup: alice has no roster session");
-const hire = (id: string) => tab.flow(ROSTER_FLOW).send("hire", { id, flow: "agent", description: id }, { sessionId: rosterSession.id }).then((sent) => sent.result());
+// The React panel reads a session's collection, and no read makes a session any more (FIX-2624),
+// so the page makes the roster session it hands the panel, as a session-addressed read does today.
+const rosterSession = await tab.flow(ROSTER_FLOW).createSession();
+// A hire as an app writes one: through the workforce client, on the roster flow the workers'
+// `runBy` names, in alice's write session.
+const hire = (id: string) => tabWorkforce.hire({ id, flow: "agent", description: id });
 const pin = (id: string) => tab.resource(labPins).update((s) => ({ pinned: [...s.pinned, id] }));
 
 const unmount = mount(on, rosterSession.id);
@@ -325,18 +374,55 @@ try {
   // b — one failed read each, woken by one write, and then no notice: the roster's watchers by a
   // hire, then the pins' watcher by a pin.
   const recover = async (who: readonly Watcher[], write: () => Promise<unknown>, shows: (w: Watcher) => boolean) => {
-    for (const w of who) failNext.add(w);
-    const failedAt = Date.now();
+    for (const w of who) {
+      failing.add(w);
+      failedReads.set(w, 0);
+    }
+    const from = Date.now();
     await write();
-    const recovered = await waitFor(() => who.every(shows), RECOVER_MS);
-    const failed = who.filter((w) => failNext.has(w));
-    check(`b:failed-once ${who.join(",")}`, failed.length === 0, failed.length === 0 ? "each watcher's read failed once" : `${failed.join(", ")} never read after the write`);
-    check(
-      `b:recovers ${who.join(",")}`,
-      recovered,
-      recovered ? `each showed the change ${Date.now() - failedAt} ms after the write, with no other notice` : `not within ${RECOVER_MS} ms: ${who.map((w) => `${w}:${shows(w)}`).join(" ")}`,
-    );
+    // Every read fails until the write's notices have stopped reaching the watchers (one write
+    // sends several, and a watcher may hear them all): QUIET_MS with none, at most CLOSE_CAP_MS.
+    // After the close only a retry can show the change; a notice after it fails the watcher.
+    const writtenAt = Date.now();
+    const capAt = writtenAt + CLOSE_CAP_MS;
+    for (;;) {
+      const last = Math.max(writtenAt, ...who.map((w) => notices.get(w)!.at(-1) ?? 0));
+      const wait = Math.min(last + QUIET_MS, capAt) - Date.now();
+      if (wait <= 0) break;
+      await delay(wait);
+    }
+    for (const w of who) failing.delete(w);
+    const closedAt = Date.now();
+    const quietAtClose = who.every((w) => (notices.get(w)!.at(-1) ?? 0) <= closedAt - QUIET_MS);
+    const shownAt = new Map<Watcher, number>();
+    await waitFor(() => {
+      for (const w of who) if (!shownAt.has(w) && shows(w)) shownAt.set(w, Date.now());
+      return shownAt.size === who.length;
+    }, RECOVER_MS);
+    // Graded per watcher, so a control that leaves one watcher green shows which.
+    for (const w of who) {
+      const n = failedReads.get(w) ?? 0;
+      const heard = notices.get(w)!.filter((at) => at >= from && at <= closedAt).length;
+      check(
+        `b:failed ${w}`,
+        n > 0 && heard > 0,
+        `${n} read(s) answered 503 while ${heard} notice(s) reached it; window closed ${closedAt - writtenAt} ms after the write${quietAtClose ? "" : " at the cap, not quiet"}`,
+      );
+      const at = shownAt.get(w);
+      const late = notices.get(w)!.filter((t) => t > closedAt && t <= (at ?? Date.now())).length;
+      check(
+        `b:recovers ${w}`,
+        at !== undefined && late === 0,
+        at === undefined
+          ? `not within ${RECOVER_MS} ms of the window's close`
+          : late > 0
+            ? `${late} notice(s) reached it after the window closed, before it showed the change`
+            : `showed the change ${at - closedAt} ms after the window closed, with no notice after it`,
+      );
+    }
   };
+
+
   const smBefore = snapshotReadAt;
   await recover(ROSTER_WATCHERS, () => hire("after-failure"), (w) =>
     w === "sm" ? snapshotReadAt > smBefore : w === "rp" ? rpCount === storeRoster.length + 1 : shown.get(w)!.ids.includes("after-failure"),

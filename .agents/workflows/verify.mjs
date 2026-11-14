@@ -10708,9 +10708,9 @@ check('page-loop: pass 4 runs the retired-terms check on the page, and a page ou
   const kept = sh(page, 'specs/issues/FIX-2697/SPEC.md')
   assert.equal(kept.code, 1, kept.out)
   assert.match(kept.out, /NOT SCANNED: .* the history area/)
-  const read = sh(page, 'docs/contributing/docs-revamp/pages/blocks.md')
+  const read = sh(page, 'docs/contributing/docs-revamp/pages/concepts/blocks.md')
   assert.equal(read.code, 0, read.out)
-  assert.match(read.out, /0 counted line\(s\) on docs\/contributing\/docs-revamp\/pages\/blocks\.md/)
+  assert.match(read.out, /0 counted line\(s\) on docs\/contributing\/docs-revamp\/pages\/concepts\/blocks\.md/)
   const area = command(calls.find((c) => c.label === 'inspect').prompt, 'areaOf')
   assert.match(sh(area, 'specs/x.md', 'docs/contributing/docs-revamp/pages/x.md').out, /^specs\/x\.md: NOT SCANNED\ndocs\/contributing\/docs-revamp\/pages\/x\.md: in scope\n$/)
   // A target the scout reports unscanned stops the run before any agent writes.

@@ -54,7 +54,8 @@ async function judgmentToolNames(options: { skill: boolean; secondInstance?: "pe
     // reach the turn: nothing refuses it before the turn runs.
     ...(options.secondInstance === "per-turn" ? { agent: { uses: [() => [createTaskToolsCapability(async () => undefined)]] } } : {}),
     observeTools: (blockName, names) => {
-      if (blockName === "coordinator-judgment") seen.push(names);
+      // Either arm: holding a skill puts the turn on the skill-loader arm by default.
+      if (blockName?.startsWith("coordinator-judgment") === true) seen.push(names);
     }
   });
   try {
