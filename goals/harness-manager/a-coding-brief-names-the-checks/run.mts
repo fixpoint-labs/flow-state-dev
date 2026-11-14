@@ -12,11 +12,12 @@
  *       GOAL_COMMIT=<sha> (another tree) · GOAL_APPS=kitchen-sink (a subset)
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { REPO_ROOT, runGoal } from "../../lib/index.mts";
+import { placeProbe } from "./place-probe.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const APPS = ["kitchen-sink", "shift-manager"] as const;
@@ -52,14 +53,8 @@ function gitRepository(dir: string, files: Record<string, string>): string {
 
 /** Run `app`'s probe inside `root`; the prompts its agent was handed. */
 function promptsOf(app: App, root: string, scratch: string, check: { command: string; file: string }): string[] {
-  const probe = join(HERE, `${app}.probe.mts`);
-  // Copied to the same place in another tree, so its relative imports reach that tree's code.
-  const placed = join(root, relative(REPO_ROOT, probe));
-  const copied = placed !== probe;
-  if (copied) {
-    mkdirSync(dirname(placed), { recursive: true });
-    copyFileSync(probe, placed);
-  }
+  // Copied to the same depth in another tree, so its relative imports reach that tree's code.
+  const { path: placed, cleanup } = placeProbe(join(HERE, `${app}.probe.mts`), REPO_ROOT, root);
   const env: Record<string, string> = { ...(process.env as Record<string, string>), GOAL_CHECK: check.command, GOAL_CHECK_FILE: check.file };
   if (app === "kitchen-sink") {
     env.KITCHEN_SINK_HARNESS_WORKSPACE = gitRepository(join(scratch, "repo"), { [check.file]: "console.log('ok');\n", ".gitignore": ".fsdev/\n" });
@@ -74,7 +69,7 @@ function promptsOf(app: App, root: string, scratch: string, check: { command: st
     if (out.error !== null) throw new Error(`setup: ${app}'s turn failed: ${out.error}`);
     return out.prompts;
   } finally {
-    if (copied) rmSync(dirname(placed), { recursive: true, force: true });
+    cleanup();
   }
 }
 

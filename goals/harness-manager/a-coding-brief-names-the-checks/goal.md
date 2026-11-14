@@ -32,6 +32,9 @@ code, not this tree's.
 (`GOAL_APPS=kitchen-sink` for one app; `GOAL_COMMIT=<sha>` for another tree, installed under the
 system temp folder on first use).
 
+A probe placed in another tree goes in a folder of its own beside the goal's and only that folder
+is removed, so a tree that already holds this goal keeps its files (`place-probe.check.mts`).
+
 **Control:** `GOAL_COMMIT=5a9ab85f7` (the merge base). Must FAIL "the prompt lacks the check" in
 both apps.
 
