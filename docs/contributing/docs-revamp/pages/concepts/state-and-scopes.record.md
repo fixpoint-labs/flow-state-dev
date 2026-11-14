@@ -14,7 +14,7 @@ Loop: escalated after 3 revise round(s) with 7 finding(s) open. Pass 10 is the o
 
 ## 1 · Fact sheet
 
-Written by `docs-writer` (sonnet): 0 facts, `docs/contributing/docs-revamp/pages/concepts/state-and-scopes.facts.md`.
+Written by `docs-writer` (sonnet): 131 entries (the loop's count read 0; the sheet is full), `docs/contributing/docs-revamp/pages/concepts/state-and-scopes.facts.md`.
 
 ## 2 · Cold-read questions
 

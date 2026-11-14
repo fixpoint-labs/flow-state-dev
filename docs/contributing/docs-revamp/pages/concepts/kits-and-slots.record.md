@@ -12,7 +12,7 @@ Closed after the loop: all 3 open items are settled. The two pass-9 misses (a mi
 
 ## 1 · Fact sheet
 
-Written by `docs-writer` (sonnet): 0 facts, `docs/contributing/docs-revamp/pages/concepts/kits-and-slots.facts.md`.
+Written by `docs-writer` (sonnet): 91 entries (the loop's count read 0; the sheet is full), `docs/contributing/docs-revamp/pages/concepts/kits-and-slots.facts.md`.
 
 ## 2 · Cold-read questions
 
