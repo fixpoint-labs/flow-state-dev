@@ -53,6 +53,8 @@ Written by `docs-writer` (sonnet), 856 words. Scenario: engineering.coder fixing
 
 - After the loop (review): the completion sentence no longer says "only when" the judge agrees. Checks run when the run changed files (fact 44). The judge is on by default for a task with a goal and must not say the goal is unmet (fact 47). A task whose run opened a pull request completes when it merges (fact 49).
 
+- After the loop (review): a judge's `not-done` doesn't fail a run that opened a pull request; the page and fact 47 now say the task waits on the pull request and completes when it merges (`manager.ts:625-627`).
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 be5017eee047, and the 10 Reference row(s) pass 6 moved.
