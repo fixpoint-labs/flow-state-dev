@@ -199,3 +199,82 @@ describe("useResource at session scope", () => {
     expect(result.current.value).toBeNull();
   });
 });
+
+// FIX-2625, Codex on #5232: what a named entry's read may leave on screen.
+describe("useResource · a collection's entries after a named entry's read", () => {
+  type Entry = { topic: string; storageKey: string; value: { name: string }; version: number };
+  const entryOf = (id: string, name = id.toUpperCase(), version = 1): Entry => ({ topic: id, storageKey: `projects/${id}`, value: { name }, version });
+  const named = (...ids: string[]): WireNotice => ({ topic: { scope: "org", resource: ids[0] }, kind: "resource", ids });
+
+  it("reads the whole first page when a named entry is gone from a full page, so the next entry moves in", async () => {
+    // One more entry than a page holds: the 201st is off screen.
+    const stored = Array.from({ length: 201 }, (_, i) => entryOf(`e${String(i).padStart(3, "0")}`));
+    const list = vi.fn(async ({ limit }: { limit: number }) => ({ items: stored.slice(0, limit).map((e) => ({ ...e })) }));
+    const entry = vi.fn((key: string) => ({
+      read: vi.fn(async () => {
+        const found = stored.find((e) => e.storageKey === key);
+        return found === undefined ? { value: null, version: 0 } : { value: found.value, version: found.version };
+      })
+    }));
+    handles.set("projects/*", { list, entry });
+    const { result } = renderHook(() => useResource(projects), { wrapper });
+    await waitFor(() => expect(result.current.value).toHaveLength(200));
+
+    // An entry on the first page is deleted.
+    stored.splice(5, 1);
+    await act(async () => subscriptions[0]!.options.onChange(named("projects/e005")));
+    await waitFor(() => expect(result.current.value!.some((e) => e.storageKey === "projects/e005")).toBe(false));
+    // A full page short of one: the entry after it is the list's to bring in.
+    expect(result.current.value).toHaveLength(200);
+    expect(result.current.value!.map((e) => e.storageKey)).toEqual(stored.slice(0, 200).map((e) => e.storageKey));
+    expect(result.current.value!.at(-1)!.storageKey).toBe("projects/e200");
+  });
+
+  it("keeps a newer read's entries when an older read lands after it, and a named entry's read merges over the newer", async () => {
+    let stored = [entryOf("a"), entryOf("b"), entryOf("c")];
+    // Every list after the first is held until the test serves it, with what the store held when it was sent.
+    const served: Array<{ resolve: (page: { items: Entry[] }) => void; snapshot: Entry[] }> = [];
+    let calls = 0;
+    const list = vi.fn(() => {
+      calls += 1;
+      if (calls === 1) return Promise.resolve({ items: stored.map((e) => ({ ...e })) });
+      const snapshot = stored.map((e) => ({ ...e }));
+      return new Promise<{ items: Entry[] }>((resolve) => served.push({ resolve, snapshot }));
+    });
+    const entry = vi.fn((key: string) => ({
+      set: vi.fn(async (value: { name: string }) => {
+        // The hook names an entry by its bare name; a read names it by its storage key.
+        stored = stored.map((e) => (e.topic === key || e.storageKey === key ? { ...e, value, version: e.version + 1 } : e));
+        return { version: 2 };
+      }),
+      read: vi.fn(async () => {
+        const found = stored.find((e) => e.storageKey === key)!;
+        return { value: found.value, version: found.version };
+      })
+    }));
+    handles.set("projects/*", { list, entry });
+    const { result } = renderHook(() => useResource(projects), { wrapper });
+    await waitFor(() => expect(result.current.value).toHaveLength(3));
+
+    // Read A: a notice that names nothing reads the collection whole; held.
+    await act(async () => {
+      subscriptions[0]!.options.onChange(named());
+    });
+    await waitFor(() => expect(served).toHaveLength(1));
+    // A write to b, then read B, which supersedes A; held too.
+    await act(async () => {
+      void result.current.set("b", { name: "B2" });
+    });
+    await waitFor(() => expect(served).toHaveLength(2));
+    // B is served first, with b's new value.
+    await act(async () => served[1]!.resolve({ items: stored.map((e) => ({ ...e })) }));
+    await waitFor(() => expect(result.current.value?.[1]?.value).toEqual({ name: "B2" }));
+    // Then A, with what the store held before the write.
+    await act(async () => served[0]!.resolve({ items: served[0]!.snapshot }));
+    // A change names c alone; its read merges over the entries on screen.
+    stored = stored.map((e) => (e.storageKey === "projects/c" ? { ...e, value: { name: "C2" }, version: 2 } : e));
+    await act(async () => subscriptions[0]!.options.onChange(named("projects/c")));
+    await waitFor(() => expect(result.current.value?.[2]?.value).toEqual({ name: "C2" }));
+    expect(result.current.value?.[1]?.value).toEqual({ name: "B2" });
+  });
+});

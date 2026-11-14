@@ -77,7 +77,8 @@ const ENTRY_PAGE = 200;
  * `undefined` to read the collection whole: a notice with no ids, or one
  * naming an entry `held` doesn't show (a new entry's place in storage-key
  * order, and whether it fits the page, are the list's to say). A named entry
- * that is gone is dropped.
+ * that is gone is dropped, unless `held` is a full page: then the entry after
+ * the page moves in, which only the list can say, so it reads whole.
  */
 async function withNamedEntries<TValue>(
   handle: ScopeCollectionHandle<TValue>,
@@ -88,6 +89,7 @@ async function withNamedEntries<TValue>(
   if (ids === undefined || ids.length === 0) return undefined;
   if (!ids.every((id) => held.some((entry) => entry.storageKey === id))) return undefined;
   const read = new Map(await Promise.all(ids.map(async (id) => [id, await handle.entry(id).read()] as const)));
+  if (held.length >= ENTRY_PAGE && [...read.values()].some((now) => now.value === null)) return undefined;
   return held.flatMap((entry) => {
     const now = read.get(entry.storageKey);
     if (now === undefined) return [entry];
@@ -162,7 +164,7 @@ export function useResource<TDef extends ScopeResourceDef>(
     [handle, scope, key],
     null,
     `Failed to read "${key}"`,
-    async (_stillCurrent, notice) => {
+    async (stillCurrent, notice) => {
       if (handle === undefined) return null;
       if (!("list" in handle)) return (await handle.read()).value;
       const last = held.current?.handle === handle && reading.current === 0 ? held.current.entries : undefined;
@@ -171,10 +173,11 @@ export function useResource<TDef extends ScopeResourceDef>(
         const entries =
           (last !== undefined ? await withNamedEntries(handle, last, notice) : undefined) ??
           (await handle.list({ limit: ENTRY_PAGE })).items;
-        held.current = { handle, entries };
+        // Only the read in play is a baseline: one a newer read superseded is older than what's shown.
+        if (stillCurrent()) held.current = { handle, entries };
         return entries;
       } catch (error) {
-        held.current = undefined;
+        if (stillCurrent()) held.current = undefined;
         throw error;
       } finally {
         reading.current -= 1;

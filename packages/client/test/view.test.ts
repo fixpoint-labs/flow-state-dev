@@ -312,6 +312,49 @@ describe("watchView", () => {
       expect(after[0]).toBe(before[0]);
     });
 
+    // Greptile on #5232: a partial answer is placed over the rows held, so after
+    // a partial read fails, the rows held are older than the change that failed.
+    it("reads whole after a partial read fails, so a later partial answer can't leave the failed row stale", async () => {
+      // What production shows: the development check would show a whole run and hide it.
+      const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process!.env;
+      const nodeEnv = env.NODE_ENV;
+      env.NODE_ENV = "production";
+      try {
+        const stored: Entry[] = [
+          { id: "a", n: 1 },
+          { id: "b", n: 2 }
+        ];
+        let failNext = false;
+        const fake = fakeViewClient((options) => {
+          if (failNext) {
+            failNext = false;
+            throw new Error("down");
+          }
+          const ids = options?.changed?.ids;
+          if (ids === undefined) return { value: stored.map((e) => ({ ...e })), topics: [{ scope: "user" }], keys: stored.map((e) => e.id) };
+          const named = stored.filter((e) => ids.includes(e.id)).map((e) => ({ ...e }));
+          return { value: named, topics: [{ scope: "user" }], keys: named.map((e) => e.id), partial: { removed: [] } };
+        });
+        const seen: Entry[][] = [];
+        watchView<Entry[]>(fake.client, ROSTER, {}, { onValue: (v) => seen.push(v) }, { pollIntervalMs: null });
+        await flush();
+
+        // a changes; its partial read fails.
+        stored[0] = { id: "a", n: 10 };
+        failNext = true;
+        fake.notify(change("a"));
+        await flush();
+        // b changes before the retry; its read lands.
+        stored[1] = { id: "b", n: 20 };
+        fake.notify(change("b"));
+        await flush();
+
+        expect(seen[seen.length - 1]).toEqual(stored);
+      } finally {
+        env.NODE_ENV = nodeEnv;
+      }
+    });
+
     it("never stops listening to a topic a whole answer named", async () => {
       const fake = server([{ id: "a", n: 1 }]);
       watchView<Entry[]>(fake.client, ROSTER, {}, {}, { pollIntervalMs: null });

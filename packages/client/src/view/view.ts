@@ -277,32 +277,39 @@ export function watchView<TValue = unknown>(
         topicsFromResult: true,
         hear: (notice) => hearsNotice(entry.hears, notice),
         read: async (notice) => {
-          const changed = changeFor(notice, entry.held);
-          let result = await client.view(ref, input, changed !== undefined ? { ...callOptions, changed } : callOptions);
-          if (result.partial !== undefined && entry.held !== undefined && result.keys !== undefined && Array.isArray(result.value)) {
-            result = placePartial(entry.held, result);
-            if (checksPartials()) {
-              // Development and tests: a partial answer must equal a whole run; a difference names the view.
-              const whole = await client.view(ref, input, callOptions);
-              if (JSON.stringify(whole.value) !== JSON.stringify(result.value)) {
-                console.error(
-                  `[flow-state-dev] "${ref.flow}" view "${ref.view}" answered partially for ${JSON.stringify(changed?.ids)} ` +
-                    "and differs from a whole run: a row the change touched was left out, or one moved. The screen shows the whole run."
-                );
-                result = {
-                  ...whole,
-                  topics: unionTopics(result.topics, whole.topics),
-                  ...(result.hears !== undefined && whole.hears !== undefined ? { hears: unionHears(result.hears, whole.hears) } : {})
-                };
+          try {
+            const changed = changeFor(notice, entry.held);
+            let result = await client.view(ref, input, changed !== undefined ? { ...callOptions, changed } : callOptions);
+            if (result.partial !== undefined && entry.held !== undefined && result.keys !== undefined && Array.isArray(result.value)) {
+              result = placePartial(entry.held, result);
+              if (checksPartials()) {
+                // Development and tests: a partial answer must equal a whole run; a difference names the view.
+                const whole = await client.view(ref, input, callOptions);
+                if (JSON.stringify(whole.value) !== JSON.stringify(result.value)) {
+                  console.error(
+                    `[flow-state-dev] "${ref.flow}" view "${ref.view}" answered partially for ${JSON.stringify(changed?.ids)} ` +
+                      "and differs from a whole run: a row the change touched was left out, or one moved. The screen shows the whole run."
+                  );
+                  result = {
+                    ...whole,
+                    topics: unionTopics(result.topics, whole.topics),
+                    ...(result.hears !== undefined && whole.hears !== undefined ? { hears: unionHears(result.hears, whole.hears) } : {})
+                  };
+                }
               }
             }
+            entry.held =
+              result.keys !== undefined && Array.isArray(result.value)
+                ? { entries: result.value, keys: result.keys, topics: result.topics, ...(result.hears !== undefined ? { hears: result.hears } : {}) }
+                : undefined;
+            entry.hears = result.hears;
+            return { value: keepUnchangedEntries(entry, result), topics: result.topics };
+          } catch (error) {
+            // FIX-2625: the rows held are older than the change whose read failed: the next read
+            // answers whole, or a later partial answer placed over them leaves that row stale.
+            entry.held = undefined;
+            throw error;
           }
-          entry.held =
-            result.keys !== undefined && Array.isArray(result.value)
-              ? { entries: result.value, keys: result.keys, topics: result.topics, ...(result.hears !== undefined ? { hears: result.hears } : {}) }
-              : undefined;
-          entry.hears = result.hears;
-          return { value: keepUnchangedEntries(entry, result), topics: result.topics };
         },
         onValue: (value) => {
           entry.current = { value };
