@@ -11,24 +11,23 @@ import { routeServiceEvent } from "@flow-state-dev/engine/internal";
 import { type InboundTransportHost } from "@flow-state-dev/engine/host";
 import { createMockModelResolver, mockEvaluationModel } from "@flow-state-dev/testing";
 import {
-  ROSTER_FLOW,
   WORKER_MESSAGES_PATTERN,
-  createWorkerInstallation,
   defineSubscriptionServiceFlow,
-  hireWorkforce,
   messageReceivedEntry,
   subscriptionResources,
   unheard,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
   workerTaskEntry,
   type Routed,
   type SubscriptionProvider,
-  type WorkerManifest
+  type WorkerInstallation
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { workerRoutineVerbs } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
-import { REPO_ROOT, goalTmpDir, runGoal, silentLogger } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, runGoal, silentLogger, workforceTree } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -172,34 +171,32 @@ async function world(modelUp: boolean): Promise<Measured> {
     self: (ctx) => `${(ctx.session.identity as { userId: string }).userId}-gh`,
     screens: { interestModel: "typesafe-ai/jev", custom: CUSTOM }
   };
-  const installationFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({
-    standardWorkers: [{ id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] } as WorkerManifest],
-    workerFlows: () => installationFlows as never
-  });
-  // The worker verbs as actions, called as a model would; their providers come from hireWorkforce's routines.
-  const tools = workerRoutineVerbs(installation);
+  const directory = workforceTree([{ id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "" }]);
   const doorInput = z.object({ message: z.string() });
   const door = handler({ name: "follower-run", inputSchema: doorInput, execute: async () => "ok" });
-  installationFlows.follower = {
-    roles: ["contributor"],
-    flow: defineFlow({
-      kind: "follower",
-      configSchema: workerConfigSchema(),
-      session: installation.session(),
-      resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
-      actions: {
-        respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
-        ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
-      },
-      internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
-      task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: door }) } }
-    })
-  };
-  const instances: Record<string, FlowInstance> = Object.fromEntries(
-    hireWorkforce(installation, { routines: { providers: [github] } }).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
+  const follower = workerFlow(
+    (installation) => {
+      // The worker verbs as actions, called as a model would; their providers come from the kit's routines.
+      const tools = workerRoutineVerbs(installation);
+      return defineFlow({
+        kind: "follower",
+        configSchema: workerConfigSchema(),
+        session: installation.session(),
+        resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
+        actions: {
+          respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
+          ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
+        },
+        internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
+        task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: door }) } }
+      });
+    },
+    { roles: ["contributor"] }
   );
-  instances["github-service"] = defineSubscriptionServiceFlow({ kind: "github-service", provider: github, installation, trustedBots: BOTS, capPerHour: 10_000 });
+  /** The service flow, built on the installation the kit hires. */
+  const service = (installation: WorkerInstallation): FlowInstance[] => [
+    defineSubscriptionServiceFlow({ kind: "github-service", provider: github, installation, trustedBots: BOTS, capPerHour: 10_000 }) as FlowInstance
+  ];
 
   // Generators resolve through the resolver itself; the evaluator through its hook, scripted by block name.
   const mocks = createMockModelResolver({ evaluators: { [INTEREST_EVALUATOR]: model } });
@@ -210,7 +207,8 @@ async function world(modelUp: boolean): Promise<Measured> {
 
   let captured: InboundTransportHost | undefined;
   const state = createFlowState({
-    flows: Object.values(instances),
+    kits: [workforce({ directory, routines: { providers: [github] } })],
+    fill: { [workforce.slots.workerFlows]: { follower }, [workforce.slots.flows]: { service } },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver,
     logger: silentLogger,
@@ -222,6 +220,11 @@ async function world(modelUp: boolean): Promise<Measured> {
   } as never);
   const router = (await state.getRouter()) as any;
   const runtime = await state.getRuntime();
+  const followerFlow: FlowInstance =
+    runtime.registry.get("follower") ??
+    (() => {
+      throw new Error("setup: the workforce kit serves no follower flow");
+    })();
   const resourceState = runtime.stores.resourceState as unknown as Record<string, (...args: unknown[]) => unknown>;
   for (const method of ["get", "getByPrefix", "getMany", "list"]) {
     const original = resourceState[method];
@@ -264,7 +267,7 @@ async function world(modelUp: boolean): Promise<Measured> {
   };
   const act = async (user: string, sessionId: string, action: string, input: unknown) =>
     (await runAction({
-      flow: instances.follower!,
+      flow: followerFlow,
       actionName: action,
       input,
       userId: user,

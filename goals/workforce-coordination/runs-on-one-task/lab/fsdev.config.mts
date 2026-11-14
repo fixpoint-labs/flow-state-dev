@@ -23,8 +23,7 @@ import { appendFileSync } from "node:fs";
 import { createModelResolver } from "@flow-state-dev/core";
 import * as engine from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import * as workforce from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { ORG, PEOPLE } from "../../../workers/files-and-splits-down-the-chain/lab/people.mts";
 
 const STORE = process.env.GOAL_STORE ?? "";
@@ -32,8 +31,6 @@ const TREE = process.env.GOAL_TREE ?? "";
 const REAL_MODEL = process.env.GOAL_REAL_MODEL ?? "";
 if (STORE === "" || TREE === "" || REAL_MODEL === "") throw new Error("GOAL_STORE, GOAL_TREE and GOAL_REAL_MODEL must each name something");
 
-const tree = await readWorkforce(TREE);
-if (tree.errors.length > 0) throw new Error(`the closure's tree did not load: ${JSON.stringify(tree.errors).slice(0, 600)}`);
 
 /**
  * A model that refuses every call, after a while: leg c's researcher, whose task fails out once
@@ -73,14 +70,8 @@ const modelResolver = Object.assign(
   { resolveId: (id: string) => (id === "goal/real" ? REAL_MODEL : id) },
 );
 
-const wf = workforce as unknown as Record<string, any>;
-let flows: Record<string, unknown> = {};
-const installation = wf.createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
-flows = {
-  agent: wf.defineAgentWorkerFlow({ installation }),
-  coordinator: wf.defineCoordinatorFlow({ installation, routeModel: "goal/real" }),
-};
-const copies = wf.hireWorkforce(installation, {}) as Array<{ id: string }>;
+/** The workforce kit over the tree: its built-in `agent` and coordinator, and nothing else. A file it can't load refuses start. */
+const kit = workforce({ directory: TREE, agent: {}, coordinator: { routeModel: "goal/real" } });
 
 const bearers = Object.values(PEOPLE).map((person) =>
   engine.createBearerSecretPrincipalResolver({ secret: person.bearer, principal: { userId: person.userId, orgId: ORG } }),
@@ -100,7 +91,7 @@ const resolvePrincipal = async (context: unknown) => {
 };
 
 export default engine.createFlowState({
-  flows: copies,
+  kits: [kit],
   stores: { default: { primary: sqliteStores({ filename: STORE }) } },
   // Durable execution keeps wakes, so a notice owed when the server dies is paid when it is back (leg b).
   durable: true,

@@ -382,7 +382,7 @@ export const ENTRIES = [
   },
   {
     term: "Message budget",
-    means: "`hireWorkforce`'s `messages.budget`: the one budget a user's line starts.",
+    means: "The workforce kit's `messages.budget`: the one budget a user's line starts.",
     decision: "FIX-2246",
     retires: [
       {

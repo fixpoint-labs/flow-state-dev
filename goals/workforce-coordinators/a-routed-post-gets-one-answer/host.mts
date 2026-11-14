@@ -40,15 +40,8 @@ import {
   type MockGeneratorInstance,
   type MockGeneratorScriptStep
 } from "@flow-state-dev/testing";
-import {
-  createWorkerInstallation,
-  defineAgentWorkerFlow,
-  defineCoordinatorFlow,
-  hireWorkforce,
-  type WorkerInstallation,
-  type WorkerManifest
-} from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { defineAgentWorkerFlow, defineCoordinatorFlow, workerFlow, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 
 /** The user who talks to the coordinators. */
 export const OWNER = "u_routed_host";
@@ -64,8 +57,6 @@ export const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 
 /** The goal check's seams. An app passes none. */
 export interface HostSeams {
-  /** The worker files as the host reads them, before anything is built. */
-  adaptWorkers?: (workers: WorkerManifest[]) => WorkerManifest[];
   /** Best fit's scripted evaluation, wrapped before the host routes with it. */
   adaptRoute?: (model: EvaluationModel) => EvaluationModel;
   /** The `agent` flow, replaced by one of the app's own built on the installation. */
@@ -135,33 +126,27 @@ function scriptedAnswer(): MockGeneratorInstance {
 }
 
 /**
- * Read the team's files, register one copy of each worker flow, the
- * coordinator's among them, and serve them.
+ * Install the workforce kit over the team's files, with one copy of each
+ * worker flow, the coordinator's among them, and serve them.
  *
  * @param tree The workforce root to read.
  * @param seams The goal check's seams. An app passes nothing.
  */
 export async function startRoutedHost(tree: string, seams: HostSeams = {}): Promise<RoutedHost> {
-  const read = await readWorkforce(tree);
-  if (read.errors.length > 0) {
-    throw new Error(`the tree did not load: ${read.errors.map((e) => `${e.path}: ${String(e.error)}`).join(", ")}`);
-  }
-  const workers = seams.adaptWorkers?.(read.workers) ?? read.workers;
-
-  // The flows are handed to the installation lazily, so each can be built on it.
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows as never });
-  // A control's own agent takes tasks; the built-in declares its own roles.
-  const control = seams.agent?.(installation);
-  flows = {
-    agent: control === undefined ? defineAgentWorkerFlow({ installation }) : { flow: control, roles: ["contributor"] },
-    coordinator: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL })
+  // Each flow is built on the installation the workforce kit hires. A control's
+  // own agent takes tasks; the built-in declares its own roles.
+  const workerFlows = {
+    agent:
+      seams.agent === undefined
+        ? workerFlow((installation) => defineAgentWorkerFlow({ installation }))
+        : workerFlow((installation) => seams.agent!(installation), { roles: ["contributor"] }),
+    coordinator: workerFlow((installation) => defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }))
   };
-  const copies = hireWorkforce(installation);
 
   const route = scriptedRoute();
   const state = createFlowState({
-    flows: copies,
+    kits: [workforce({ directory: tree })],
+    fill: { [workforce.slots.workerFlows]: workerFlows },
     stores: { default: { primary: inMemoryStores() } },
     // Who every request is, and the org its sessions bind to. Ignores the
     // request: one caller, and a body read would be caller-controlled identity.
@@ -175,5 +160,6 @@ export async function startRoutedHost(tree: string, seams: HostSeams = {}): Prom
       })
   } as never);
   const router = await state.getRouter();
+  const copies = (await state.getRuntime()).registry.list();
   return { state, router, copies, routeCalls: seams.live === undefined ? route.calls : [] };
 }

@@ -1,16 +1,22 @@
 /**
- * `@flow-state-dev/workforce` — the worker factory and its persona helpers.
+ * `@flow-state-dev/workforce` — the records and helpers a workforce app
+ * composes, beside the workforce kit that installs it.
  *
- * The package supplies `hireWorkforce`, which registers one copy of each
- * worker flow and the roster flow, and declares `WorkerManifest`, the
- * record those workers are made of, whether described in files or written by
- * hand. Reading that description off disk is the `./loader` subpath's job, kept
- * out of the root so importing this package does not pull a consumer onto
- * `node:fs`.
+ * An app installs workforce as a kit: `workforce({ directory })` from the
+ * `./kit` subpath, in `createFlowState({ kits })`. The kit reads the folder,
+ * builds the installation every worker flow runs on, and registers one copy
+ * of each worker flow and the roster flow. The root carries what an app
+ * composes around that: `WorkerManifest`, the record a worker is made of,
+ * whether described in files or written by hand; `workerFlow`, which hands a
+ * flow of the app's own the installation from the kit's `workerFlows` slot;
+ * and the entries, roles and contracts such a flow declares. Reading the
+ * folder off disk is the `./loader` subpath's job (`readWorkforceFolder`),
+ * kept out of the root so importing this package does not pull a consumer
+ * onto `node:fs`.
  *
  * The same split covers file-declared documents: `ResourceDoc` is the record,
- * `./loader` reads it off disk, and `resourcesFromDocs` here turns records into
- * the resource map an app spreads into its flow. A `resources/` folder takes
+ * the kit reads it off disk, and `resourcesFromDocs` here turns records into
+ * the resource map a flow spreads in. A `resources/` folder takes
  * TypeScript beside the Markdown, and that half lands the same way:
  * `./codegen` finds the modules, `fsdev gen` renders them onto a
  * `resourceModules` map, and `splitResourceModules` here separates the
@@ -21,12 +27,12 @@
  * only the flow it runs on. A record that names no flow is hired into
  * the built-in `agent` worker flow, which `defineAgentWorkerFlow` builds — called
  * with no arguments it *is* the built-in, and called with arguments it is how
- * an app replaces it. Beside the
- * worker factory sit two helpers: `definePersona`, which declares the persona
- * resources a flow renders as a system prompt, and `createWorkforceCapability`,
- * which surfaces a roster through the capability system.
+ * an app replaces it. Beside them sit two helpers: `definePersona`, which
+ * declares the persona resources a flow renders as a system prompt, and
+ * `createWorkforceCapability`, which surfaces a roster through the capability
+ * system.
  *
- * Beside the worker factory sits the **inventory**: an org-scoped resource
+ * Beside the workers sits the **inventory**: an org-scoped resource
  * collection holding the workers registered in this org, which a folder of files
  * cannot answer at run time because a block does not walk folders. `inventory/
  * collections.ts` is canonical for what it holds and how it joins back to the
@@ -35,8 +41,8 @@
  * And beside the inventory sits the **roster**: each user's own workers,
  * hired while the app runs, which files cannot hold because a hire writes no
  * file. A worker of the user's own is a row of their worker collection
- * (`workers/worker-row.ts`), and the roster flow `hireWorkforce` registers
- * carries the four writes to it, `hire`, `fork`, `edit` and `fire`
+ * (`workers/worker-row.ts`), and the roster flow the kit registers carries the
+ * four writes to it, `hire`, `fork`, `edit` and `fire`
  * (`workers/hire-blocks.ts`); an app calls them through the workforce client.
  * Nothing is registered by a write: each worker flow loads its turn's worker
  * from the row when the turn starts, so a hire, an edit or a fire reaches the

@@ -25,22 +25,26 @@
  *   install-everything  turn every preset on for the whole kind, which is the
  *                       shape the seat key exists to replace — both seats then
  *                       know both facts
- *   ignore-selection    drop each seat's `capabilities:` before hiring, so the
- *                       seat that named one is no better off than its sibling
+ *   ignore-selection    drop each seat's `capabilities:` line from a copy of
+ *                       the tree, so the seat that named one is no better off
+ *                       than its sibling
  */
 import { createGateway } from "@ai-sdk/gateway";
 import { createModelResolver } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   WORKER_ID_STATE_KEY,
-  createWorkerInstallation,
   defineAgentWorkerFlow,
-  hireWorkforce,
   inventoryWorkers,
   splitResourceModules,
   workerFlow,
+  type WorkerInstallation,
 } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { workforce, type WorkforceConfig } from "@flow-state-dev/workforce/kit";
+import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 
 const MODEL = process.env.GOAL_MODEL ?? "vercel:openai/gpt-5.4-mini";
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -115,18 +119,51 @@ function assistantText(items: Item[]): string {
     .trim();
 }
 
+// The harness runs from the app's root and can't import `goals/lib`, so what
+// it needs of `goals/lib/workers.mts` is written out here.
+
+/** What the workforce kit reads of `directory`. */
+const readTree = (directory: string) => readWorkforceFolder({ path: directory, claim: () => undefined });
+
+/** A copy of the tree at `directory` with every `WORKER.md`'s `key:` line taken out. */
+function treeWithout(directory: string, key: string): string {
+  const copy = join(mkdtempSync(join(tmpdir(), "fsd-goal-capabilities-")), "workforce");
+  cpSync(directory, copy, { recursive: true });
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (name === "WORKER.md") writeFileSync(path, readFileSync(path, "utf8").replace(new RegExp(`^${key}:.*\\n`, "m"), ""));
+    }
+  };
+  walk(copy);
+  return copy;
+}
+
+/** The workforce kit over `directory`, installed as an app's start does, and what it hired and serves. */
+async function installWorkers(directory: string, config: Omit<WorkforceConfig, "directory"> = {}, workerFlows: Record<string, unknown> = {}) {
+  let installation: WorkerInstallation | undefined;
+  const state = createFlowState({
+    kits: [workforce({ ...config, directory })],
+    fill: {
+      [workforce.slots.workerFlows]: workerFlows,
+      [workforce.slots.flows]: { harness: (hired: WorkerInstallation) => ((installation = hired), []) },
+    },
+    stores: { dev: { primary: inMemoryStores() } },
+  });
+  await state.ready();
+  const copies = (await state.getRuntime()).registry.list();
+  await state.dispose();
+  return { installation: installation!, copies };
+}
+
 async function main(): Promise<void> {
   const out: Record<string, unknown> = { ok: false, control: CONTROL || null, model: MODEL };
 
   // ---- the roster and the capability, from files alone --------------------
-  const loaded = await readWorkforce(WORKFORCE_DIR);
-  out.loadErrors = loaded.errors ?? [];
-  out.skillErrors = loaded.skillErrors ?? [];
-
-  const workers = loaded.workers.map((w) => ({ ...w, declared: { ...w.declared } }));
-  if (CONTROL === "ignore-selection") {
-    for (const w of workers) delete w.declared.capabilities;
-  }
+  // The kit's reader: a file it can't load stops the harness, as it stops an app's start.
+  const directory = CONTROL === "ignore-selection" ? treeWithout(WORKFORCE_DIR, "capabilities") : WORKFORCE_DIR;
+  const workers = (await readTree(directory)).workers;
   out.rosterIds = workers.map((w) => w.id);
   out.selections = Object.fromEntries(workers.map((w) => [w.id, w.declared.capabilities ?? null]));
 
@@ -152,13 +189,11 @@ async function main(): Promise<void> {
         )
       : capabilities;
 
-  // The kind, carrying the capabilities, built on the installation that runs
-  // both seats on its one copy.
-  const installation = createWorkerInstallation({
-    standardWorkers: workers,
-    workerFlows: { agent: workerFlow((on) => defineAgentWorkerFlow({ installation: on, uses: installed as never })) },
+  // The kind, carrying the capabilities, built on the installation the
+  // workforce kit hires, which runs both seats on its one copy.
+  const { installation, copies } = await installWorkers(directory, {}, {
+    agent: workerFlow((on) => defineAgentWorkerFlow({ installation: on, uses: installed as never })),
   });
-  const copies = hireWorkforce(installation);
   // Each seat, and the flow it runs on.
   const seats = inventoryWorkers(installation);
   out.workerIds = seats.map((s) => s.id);

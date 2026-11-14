@@ -19,8 +19,8 @@ import {
   inventoryWriterActions,
   openInventory,
   type InventoryActionRequest,
+  workerFlow,
 } from "@flow-state-dev/workforce";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { fileURLToPath } from "node:url";
 import { installWorkers } from "../../../../lib/workers.mts";
@@ -38,13 +38,10 @@ const ROUTE_MODEL = "vercel:openai/gpt-5.4-mini";
 /** The flow the inventory's seat rows are written from: the Lab's own, carrying the writer. */
 const INVENTORY_WRITER_FLOW = "inventory-writer";
 
-const tree = await readDeclaredRoster(fileURLToPath(new URL("./workforce", import.meta.url)));
-if (tree.problems.length > 0) throw new Error(`the asker tree did not load: ${tree.problems.map((p) => p.error.message).join("; ")}`);
-
-const { installation, copies } = installWorkers(tree.workers, (installation) => ({
-  [ASKER_FLOW]: defineAskerFlow(installation),
-  [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
-}));
+const { installation, copies } = await installWorkers(fileURLToPath(new URL("./workforce", import.meta.url)), {
+  [ASKER_FLOW]: workerFlow((installation) => defineAskerFlow(installation)),
+  [COORDINATOR_FLOW]: workerFlow((installation) => defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL })),
+});
 // The seat write takes caller-supplied rows, so it is internal only.
 const writer = defineFlow({
   kind: INVENTORY_WRITER_FLOW,

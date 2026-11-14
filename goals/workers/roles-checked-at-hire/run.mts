@@ -4,7 +4,7 @@
  * runs its delegation board on `dispatch`. No model. The legs, what each
  * reads, and the control are in goal.md.
  *
- *   a  six flows with one fault each are each refused by `hireWorkforce`,
+ *   a  six flows with one fault each are each refused by the workforce kit's hire,
  *      with one problem naming the flow, the role and the entry; nothing hired
  *   b  a flow wired only from `workerTaskEntry`, `defineSessionBoard` and a
  *      `respond` door hires as both roles on a real engine; a task it files
@@ -27,15 +27,15 @@ import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
-  createWorkerInstallation,
-  defineAgentWorkerFlow,
-  defineCoordinatorFlow,
   defineSessionBoard,
-  hireWorkforce,
+  messageReceivedEntry,
   workerConfigSchema,
+  workerFlow,
+  workerMessagesResources,
   workerTaskEntry,
   type WorkerInstallation,
-  type WorkerManifest
+  type WorkerManifest,
+  type WorkerRole
 } from "@flow-state-dev/workforce";
 import {
   REPO_ROOT,
@@ -44,10 +44,12 @@ import {
   describePatches,
   goalTmpDir,
   actingAs,
+  installWorkers,
   modulePatchEnv,
   runGoal,
   silentLogger,
   untilIdle,
+  workforceTree,
   type ModulePatch
 } from "../../lib/index.mts";
 import { openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
@@ -90,15 +92,19 @@ const doorInput = z.object({ message: z.string() });
 const turn = handler({ name: "roles-goal-turn", inputSchema: doorInput, execute: async () => "Noted." });
 const respond = { inputSchema: doorInput.strict(), block: turn, userMessage: (input: { message: string }) => input.message };
 
-/** A worker flow on `installation`, with the door and whatever `over` adds. */
+/** The message ear every flow the kit hires carries, so a fixture's one fault is its role fault. */
+const ear = (installation: WorkerInstallation, kind: string) => ({ onMessageReceived: messageReceivedEntry({ installation, flowKind: kind }) });
+
+/** A worker flow on `installation`, with the door, the message ear and whatever `over` adds. */
 function flowOn(installation: WorkerInstallation, kind: string, over: Record<string, unknown> = {}): unknown {
   return defineFlow({
     kind,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
     actions: { respond },
+    internal: { actions: ear(installation, kind) },
     ...over
   } as never);
 }
@@ -116,9 +122,9 @@ function kitFlow(
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-    resources: { ...installation.resources, ...board.resources },
+    resources: { ...installation.resources, ...workerMessagesResources, ...board.resources },
     actions: { respond, ...(actions ? board.actions : {}) },
-    internal: { actions: pick(board.entries(turn)) }
+    internal: { actions: { ...ear(installation, kind), ...pick(board.entries(turn)) } }
   } as never);
 }
 
@@ -176,13 +182,10 @@ const BROKEN: Array<{ name: string; fault: string; roles: string[]; build: (i: W
   }
 ];
 
-/** What `hireWorkforce` did with one flow: the copies it returned, or what it threw. */
-function hire(entry: { name: string; roles: string[]; build: (i: WorkerInstallation) => unknown }): { copies?: FlowInstance[]; refusal?: string } {
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ workerFlows: () => flows as never });
-  flows = { [entry.name]: { flow: entry.build(installation), roles: entry.roles } };
+/** What the workforce kit's hire did with one flow: the copies it served, or what it threw. */
+async function hire(entry: { name: string; roles: string[]; build: (i: WorkerInstallation) => unknown }): Promise<{ copies?: FlowInstance[]; refusal?: string }> {
   try {
-    return { copies: hireWorkforce(installation) };
+    return { copies: (await installWorkers(workforceTree([]), { [entry.name]: workerFlow(entry.build, { roles: entry.roles as WorkerRole[] }) })).copies };
   } catch (error) {
     return { refusal: error instanceof Error ? error.message : String(error) };
   }
@@ -198,7 +201,7 @@ await runGoal(async (failures, tell) => {
   // ---- a. each broken flow is refused at hire, by name -----------------------
   const refused: string[] = [];
   for (const broken of tell.over("a · broken flows", BROKEN)) {
-    const { copies, refusal } = hire(broken);
+    const { copies, refusal } = await hire(broken);
     if (refusal === undefined) {
       failures.push(`a:refused · ${broken.name} (${broken.fault}): hired ${copies?.length ?? 0} copies, nothing refused`);
       continue;
@@ -218,26 +221,28 @@ await runGoal(async (failures, tell) => {
   const LEAD = "desk.lead";
   const HAND = "desk.hand";
   const workers: WorkerManifest[] = [
-    { id: LEAD, declared: { flow: "desk", delegates: [HAND] }, body: "Files the work." },
-    { id: HAND, declared: { flow: "desk" }, body: "Does the work." }
+    { id: LEAD, declared: { flow: "desk", description: "Files the work.", delegates: [HAND] }, body: "Files the work." },
+    { id: HAND, declared: { flow: "desk", description: "Does the work." }, body: "Does the work." }
   ];
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows as never });
-  const board = defineSessionBoard({ installation, flowKind: "desk" });
-  const desk = defineFlow({
-    kind: "desk",
-    cardinality: "collection",
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-    resources: { ...installation.resources, ...board.resources },
-    actions: { respond, ...board.actions },
-    internal: { actions: board.entries(turn, () => "fixed") },
-    task: { actions: { work: workerTaskEntry({ name: "roles-goal-desk-work", turn }) } }
-  } as never);
-  flows = { desk: { flow: desk, roles: ["contributor", "manager"] } };
+  const desk = workerFlow(
+    (installation) => {
+      const board = defineSessionBoard({ installation, flowKind: "desk" });
+      return defineFlow({
+        kind: "desk",
+        cardinality: "collection",
+        configSchema: workerConfigSchema(),
+        session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+        resources: { ...installation.resources, ...board.resources },
+        actions: { respond, ...board.actions },
+        internal: { actions: board.entries(turn, () => "fixed") },
+        task: { actions: { work: workerTaskEntry({ name: "roles-goal-desk-work", turn }) } }
+      } as never);
+    },
+    { roles: ["contributor", "manager"] }
+  );
   let hired: FlowInstance[] = [];
   try {
-    hired = hireWorkforce(installation);
+    hired = (await installWorkers(workforceTree(workers), { desk })).copies;
   } catch (error) {
     failures.push(`b:hired · the flow built from the factories was refused: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -286,15 +291,11 @@ await runGoal(async (failures, tell) => {
   // ---- c. the repo's worker flows ---------------------------------------------
   const copies: Array<{ host: string; copy: FlowInstance; manager: boolean }> = [];
   {
-    let builtIns: Record<string, unknown> = {};
-    const builtInstallation = createWorkerInstallation({ workerFlows: () => builtIns as never });
-    builtIns = {
-      agent: defineAgentWorkerFlow({ installation: builtInstallation }),
-      coordinator: defineCoordinatorFlow({ installation: builtInstallation, routeModel: "roles-goal/route" })
-    };
     try {
-      const resolved = builtInstallation.workerFlows();
-      for (const copy of hireWorkforce(builtInstallation)) {
+      // The kit's own built-in agent and coordinator, as an app gets them from config alone.
+      const built = await installWorkers(workforceTree([]), {}, { agent: {}, coordinator: { routeModel: "roles-goal/route" } });
+      const resolved = built.installation.workerFlows();
+      for (const copy of built.copies) {
         // The roster flow is no worker flow; a host with no roles reads as none.
         if (resolved[copy.id] === undefined) continue;
         const roles: readonly string[] = resolved[copy.id]!.roles ?? [];

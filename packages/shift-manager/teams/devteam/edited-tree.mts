@@ -14,7 +14,8 @@
  * - a skill's `SKILL.md`, wherever a skill of that name sits;
  * - a worker's own skills: one taken away, or one's `SKILL.md` replaced. A
  *   skill shared from its team or the org can't change for one worker alone:
- *   a skill name reaches a worker from one level only, so that is refused;
+ *   a skill name reaches a worker from one level only, so that is refused.
+ *   A worker left with none of its own loses its `skills/` folder too;
  * - a document's body, by its ref.
  */
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -147,6 +148,8 @@ function write(root: string, copy: string, edits: TreeEdits, label: string): str
     };
     for (const name of remove) rmSync(ownOf(name), { recursive: true });
     for (const [name, skillMd] of Object.entries(replace)) writeFileSync(join(ownOf(name), "SKILL.md"), skillMd);
+    // A worker left with no skill of its own has no `skills/` folder: the kit refuses an empty one.
+    if (remove.length > 0 && readdirSync(own).length === 0) rmSync(own, { recursive: true });
   }
   for (const [ref, body] of Object.entries(edits.documents ?? {})) {
     const path = files.find((file) => refOf(file) === ref);

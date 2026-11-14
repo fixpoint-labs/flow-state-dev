@@ -41,7 +41,7 @@ import { defineFlow, defineResource, handler, type DeclaredResources } from "@fl
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
-import { readReferencesDirectory, readResourcesDirectory } from "../src/loader";
+import { readReferencesDirectory, readResourcesDirectory } from "../src/loader/readers";
 import { discoverResourceModules } from "../src/codegen/discover-resource-modules";
 import { readDeclaredRoster } from "../src/loader/read-declared-roster";
 import { referencesFromDocs } from "../src/references-from-docs";

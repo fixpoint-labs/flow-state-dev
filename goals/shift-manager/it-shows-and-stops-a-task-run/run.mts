@@ -80,9 +80,8 @@ import { compareItemOrder, createClient } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, planResourcesPrefix, readPlanTarget } from "@flow-state-dev/core/harness";
 import { DEFAULT_LEASE_DURATION_MS, RENEWAL_DIVISOR } from "@flow-state-dev/orchestration/internal";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
-import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, intentFreeEnv, readTree as readKitTree, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
@@ -137,8 +136,8 @@ const CONVERSATION_BOARD = "tasks";
 type Tree = { leadId: string; leadFlow: string; members: string[]; sharedFlow: string };
 
 async function readTree(): Promise<Tree> {
-  const roster = await readDeclaredRoster(TREE);
-  if (roster.problems.length > 0) throw new Error(`the tree did not load: ${roster.problems.map((p) => p.path).join(", ")}`);
+  // The kit's reader refuses the tree whole if anything did not load.
+  const roster = await readKitTree(TREE);
   const lead = roster.workers.find((w) => w.declared.flow !== "coordinator" && ((w.declared.delegates as string[] | undefined) ?? []).length > 0);
   if (lead === undefined) throw new Error("the tree declares no worker that files for delegates");
   const members = lead.declared.delegates as string[];

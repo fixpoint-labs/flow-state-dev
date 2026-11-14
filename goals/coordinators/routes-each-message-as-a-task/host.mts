@@ -9,7 +9,8 @@
  * `run.mts` as its own process, so a control's module patch is in place before
  * any Workforce module loads, and so leg b can kill it. Against another
  * commit, `run.mts` copies this file into that checkout's `goals/`, so every
- * import resolves to that commit's packages.
+ * import resolves to that commit's packages. The app installs Workforce as its
+ * kit, so a commit without `@flow-state-dev/workforce/kit` reports `setup:`.
  *
  * `GOAL_PHASE` picks what it runs, on the tree and store under `GOAL_SCRATCH`:
  *
@@ -59,7 +60,6 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { mockEvaluationModel } from "@flow-state-dev/testing";
 import * as workforce from "@flow-state-dev/workforce";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
 import { boardRowPrefix, isRoutedTask } from "../../lib/routed-tasks.mts";
 
@@ -90,11 +90,17 @@ const report = (value: unknown) => new Promise<void>((resolve) => process.stdout
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const wf = workforce as unknown as Record<string, any>;
-const missing = ["defineCoordinatorFlow", "workerTaskEntry", "defineAgentWorkerFlow", "createWorkerInstallation", "hireWorkforce", "workerConfigSchema"].filter(
+const missing = ["defineCoordinatorFlow", "workerTaskEntry", "defineAgentWorkerFlow", "workerFlow", "workerConfigSchema"].filter(
   (name) => typeof wf[name] !== "function",
 );
 if (missing.length > 0) {
   await report({ setup: `this commit's @flow-state-dev/workforce exports no ${missing.join(", ")}, so no coordinator can be built` });
+  process.exit(0);
+}
+// Imported here, not above, so a commit without the kit reports rather than fails to load.
+const kit = await import("@flow-state-dev/workforce/kit").catch(() => undefined);
+if (kit === undefined) {
+  await report({ setup: "this commit has no @flow-state-dev/workforce/kit, so the app can't install Workforce" });
   process.exit(0);
 }
 /** A commit from before routed tasks: its delegates take posts, on an entry of their own. */
@@ -150,49 +156,11 @@ for (const [name, c] of Object.entries(coordinators)) {
       `${c.fallback === undefined ? "" : `fallback: ${c.fallback}\n`}${c.tools === undefined ? "" : `tools: [${c.tools.join(", ")}]\n`}---\n\nHand each message on.\n`,
   );
 }
-const tree = await readWorkforce(treeDir);
-if (tree.errors.length > 0) {
-  await report({ setup: `the run's tree did not load: ${JSON.stringify(tree.errors).slice(0, 600)}` });
-  process.exit(0);
-}
-
 // ---- the app ----------------------------------------------------------------
-
-let flows: Record<string, unknown> = {};
-const installation = wf.createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
 
 /** Every message a helper delegate was handed: by whom, in which session, when. */
 const heard: Array<{ worker: string; message: string; sessionId: string; at: number }> = [];
 
-const doorInput = z.object({ message: z.string() });
-const door = core.handler({
-  name: "goal-helper-run",
-  inputSchema: doorInput,
-  resources: { ...installation.resources },
-  execute: async (input: { message: string }, ctx: any) => {
-    const worker = await installation.resolveWorker(ctx, "helper");
-    heard.push({ worker: worker.id, message: input.message, sessionId: ctx.session.identity.id, at: Date.now() });
-    if (input.message.includes(`[fail:${worker.id}]`)) throw new Error(`${worker.id} fails on this message`);
-    if (input.message.includes(`[slow:${worker.id}]`)) await sleep(SLOW_MS);
-    if (input.message.includes(`[slower:${worker.id}]`)) await sleep(SLOWER_MS);
-    return `${worker.id} answers: ${input.message}`;
-  },
-});
-const work = wf.workerTaskEntry({ name: "goal-helper-task", turn: door });
-const helper = core.defineFlow({
-  kind: "helper",
-  configSchema: wf.workerConfigSchema(),
-  session: installation.session(),
-  resources: { ...installation.resources },
-  actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-  // A delegate is a worker whose flow takes tasks (FIX-2083). Before it, a post had an entry of its own.
-  task: { actions: { work, ...(POST_ERA ? { onDelegatedPost: wf.delegatedPostEntry(door) } : {}) } },
-  // Every worker flow hears a worker's message from FIX-2238 on; hire refuses one that can't.
-  ...(typeof wf.messageReceivedEntry === "function"
-    ? { internal: { actions: { onMessageReceived: wf.messageReceivedEntry({ installation, flowKind: "helper" }) } } }
-    : {}),
-} as never);
-const agent = wf.defineAgentWorkerFlow({ installation });
 
 type StepOptions = { messages?: Array<{ role?: string; content?: unknown }>; tools?: Array<{ name: string; parameters?: unknown }> };
 
@@ -310,21 +278,69 @@ const modelResolver = Object.assign(
   },
 );
 
-// Leg d: a worker's open checks its lead with the fit check, on the same model as best fit.
-const workstreams = wf.defineWorkstreamBlocks({ installation, leadFlows: [agent], leadFit: { model: FIT_MODEL } });
-const coordinator = wf.defineCoordinatorFlow({
-  installation,
-  ...(POST_ERA ? { delegateFlows: [helper, agent] } : {}),
-  routeModel: FIT_MODEL,
-  roundDeadlineMs: DEADLINE_MS,
-  agent: { catalog: { openWorkstream: workstreams.openWorkstreamTool.as({ name: "openWorkstream", description: "Open a workstream." }) } },
-});
-flows = { helper: { flow: helper, roles: ["contributor"] }, agent, coordinator };
-/** The app's own flow, where Alice creates leg d's project and reads its workstreams. */
-const lab = core.defineFlow({ kind: "lab", actions: { ...wf.defineProjectBlocks().actions, ...workstreams.actions } } as never);
-const copies = wf.hireWorkforce(installation) as Array<{ id: string; task?: { actions?: object }; internal?: { actions?: object } }>;
+
+/**
+ * The app's flows on the installation the workforce kit hires: the helper
+ * delegates' flow, `agent`, the coordinator, and the app's own `lab`. Built
+ * once, by whichever of the kit's slots asks first.
+ */
+function buildOn(installation: any) {
+  const doorInput = z.object({ message: z.string() });
+  const door = core.handler({
+    name: "goal-helper-run",
+    inputSchema: doorInput,
+    resources: { ...installation.resources },
+    execute: async (input: { message: string }, ctx: any) => {
+      const worker = await installation.resolveWorker(ctx, "helper");
+      heard.push({ worker: worker.id, message: input.message, sessionId: ctx.session.identity.id, at: Date.now() });
+      if (input.message.includes(`[fail:${worker.id}]`)) throw new Error(`${worker.id} fails on this message`);
+      if (input.message.includes(`[slow:${worker.id}]`)) await sleep(SLOW_MS);
+      if (input.message.includes(`[slower:${worker.id}]`)) await sleep(SLOWER_MS);
+      return `${worker.id} answers: ${input.message}`;
+    },
+  });
+  const work = wf.workerTaskEntry({ name: "goal-helper-task", turn: door });
+  const helper = core.defineFlow({
+    kind: "helper",
+    configSchema: wf.workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources },
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    // A delegate is a worker whose flow takes tasks (FIX-2083). Before it, a post had an entry of its own.
+    task: { actions: { work, ...(POST_ERA ? { onDelegatedPost: wf.delegatedPostEntry(door) } : {}) } },
+    // Every worker flow hears a worker's message from FIX-2238 on; hire refuses one that can't.
+    ...(typeof wf.messageReceivedEntry === "function"
+      ? { internal: { actions: { onMessageReceived: wf.messageReceivedEntry({ installation, flowKind: "helper" }) } } }
+      : {}),
+  } as never);
+  const agent = wf.defineAgentWorkerFlow({ installation });
+  // Leg d: a worker's open checks its lead with the fit check, on the same model as best fit.
+  const workstreams = wf.defineWorkstreamBlocks({ installation, leadFlows: [agent], leadFit: { model: FIT_MODEL } });
+  const coordinator = wf.defineCoordinatorFlow({
+    installation,
+    ...(POST_ERA ? { delegateFlows: [helper, agent] } : {}),
+    routeModel: FIT_MODEL,
+    roundDeadlineMs: DEADLINE_MS,
+    agent: { catalog: { openWorkstream: workstreams.openWorkstreamTool.as({ name: "openWorkstream", description: "Open a workstream." }) } },
+  });
+  /** The app's own flow, where Alice creates leg d's project and reads its workstreams. */
+  const lab = core.defineFlow({ kind: "lab", actions: { ...wf.defineProjectBlocks().actions, ...workstreams.actions } } as never);
+  return { helper, agent, coordinator, lab: (lab as () => unknown)() };
+}
+let built: ReturnType<typeof buildOn> | undefined;
+const on = (installation: any) => (built ??= buildOn(installation));
+
+const workforceKit = kit.workforce;
 const state = engine.createFlowState({
-  flows: [...copies, (lab as () => unknown)()],
+  kits: [workforceKit({ directory: treeDir })],
+  fill: {
+    [workforceKit.slots.workerFlows]: {
+      helper: wf.workerFlow((installation: any) => on(installation).helper, { roles: ["contributor"] }),
+      agent: wf.workerFlow((installation: any) => on(installation).agent),
+      coordinator: wf.workerFlow((installation: any) => on(installation).coordinator),
+    },
+    [workforceKit.slots.flows]: { lab: (installation: any) => [on(installation).lab] },
+  },
   stores: { default: { primary: sqliteStores({ filename: storeFile }) } },
   modelResolver,
   resolvePrincipal: (context: any) => {
@@ -332,6 +348,15 @@ const state = engine.createFlowState({
     return typeof user === "string" ? { userId: user, orgId: ORG } : null;
   },
 } as never) as any;
+// The app's start: the kit reads the tree, and refuses a file it can't load.
+const started = await state.ready().then(
+  () => undefined,
+  (error: unknown) => (error instanceof Error ? error.message : String(error)),
+);
+if (started !== undefined) {
+  await report({ setup: `the run's tree did not load: ${started.slice(0, 600)}` });
+  process.exit(0);
+}
 
 /** A fetch that hands each request to the router, as Alice. */
 const fetcher = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -705,6 +730,7 @@ try {
   const opened = ((project.output?.workstreams ?? []) as Array<{ id: string }>).map((workstream) => workstream.id);
 
   // The sweep: what every flow declares, and the tool fields the judgment turn was offered.
+  const copies = (await state.getRuntime()).registry.list() as Array<{ id: string; task?: { actions?: object }; internal?: { actions?: object } }>;
   const declared = copies.map((copy) => ({
     id: copy.id,
     task: Object.keys(copy.task?.actions ?? {}),

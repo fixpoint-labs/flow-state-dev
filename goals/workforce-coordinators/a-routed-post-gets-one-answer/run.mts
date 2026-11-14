@@ -57,14 +57,14 @@ import { z } from "zod";
 import { createModelResolver, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import type { EvaluationModel, ModelResolver } from "@flow-state-dev/core/types";
 import {
+  messageReceivedEntry,
   workerConfigOf,
   workerConfigSchema,
+  workerMessagesResources,
   workerTaskEntry,
-  type WorkerInstallation,
-  type WorkerManifest
+  type WorkerInstallation
 } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { gatewayModel, runGoal, stripIntentOverrides } from "../../lib/index.mts";
+import { gatewayModel, readTree, runGoal, stripIntentOverrides, workforceTree } from "../../lib/index.mts";
 import type { HostSeams, RoutedHost } from "./host.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
@@ -76,9 +76,10 @@ const LIVE = process.env.GOAL_LIVE === "1";
 const EXPECTED: Record<string, string[]> = {
   // Every delegate hears every post, and each answers it: every best-fit leg.
   "no-route": ["one", "lands", "followup", "held", "context", "fallback"],
-  // No answer ever lands, so the specialist on the first post holds every next
-  // one: lands, every leg the hold then diverts, and the answers on everyone.
-  "no-landing": ["one", "lands", "followup", "context", "fallback", "everyone"],
+  // No answer ever lands: lands, the fallback's context answer and the answers on everyone.
+  // Its turn fails, so the task ends with nothing open, and no hold keeps the next post:
+  // held, whose post is routed by a fresh evaluation instead.
+  "no-landing": ["lands", "held", "context", "everyone"],
   // No resolver names the org: every session lands in the development default.
   "no-org": ["org"],
   // The evaluation cannot see the account answer, so the follow-up falls back.
@@ -132,7 +133,9 @@ function quietAgentFlow(installation: WorkerInstallation) {
     kind: "agent",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
+    // Every worker flow the kit hires hears another worker's message.
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "agent" }) } },
     request: { onStarted: loadWorker },
     actions: { respond: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "quiet-agent-task", block: quiet }) } }
@@ -164,7 +167,9 @@ function linelessAgentFlow(installation: WorkerInstallation) {
     kind: "agent",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources },
+    resources: { ...installation.resources, ...workerMessagesResources },
+    // Every worker flow the kit hires hears another worker's message.
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "agent" }) } },
     request: { onStarted: loadWorker },
     actions: { respond: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
     task: { actions: { work: workerTaskEntry({ name: "lineless-agent-task", turn: run }) } }
@@ -175,10 +180,8 @@ function linelessAgentFlow(installation: WorkerInstallation) {
 function controlSeams(): HostSeams {
   switch (CONTROL) {
     case "no-route":
-      return {
-        adaptWorkers: (workers: WorkerManifest[]) =>
-          workers.map((w) => (w.declared.routing === "best-fit" ? { ...w, declared: { ...w.declared, routing: "everyone" } } : w))
-      };
+      // The routed coordinator read as `routing: everyone`: the host gets a copy of the tree saying so.
+      return {};
     case "no-landing":
       return { agent: (installation: WorkerInstallation) => quietAgentFlow(installation) };
     case "no-org":
@@ -279,7 +282,7 @@ async function quiet(app: RoutedHost, ms: number): Promise<void> {
 
 /** The two coordinators the fixture holds: the routed one and the one on `everyone`, read off the tree. */
 async function coordinatorsOf(tree: string) {
-  const { workers } = await readWorkforce(tree);
+  const { workers } = await readTree(tree);
   const coordinators = workers.filter((w) => w.declared.flow === "coordinator");
   const help = coordinators.find((w) => w.declared.routing === "best-fit");
   const lounge = coordinators.find((w) => w.declared.routing === "everyone");
@@ -296,7 +299,17 @@ async function scriptedLegs(fail: (leg: string, line: string) => void, evidence:
   if (s3 === undefined) throw new Error(`the routed coordinator needs three specialists beside its fallback; read ${delegates.join(", ")}`);
 
   const { startRoutedHost, OWNER, ORG, REPLY_MARKER } = await import("./host.mts");
-  const app = await startRoutedHost(TREE, controlSeams());
+  const tree =
+    CONTROL === "no-route"
+      ? workforceTree(
+          (await readTree(TREE)).workers.map((w) =>
+            w.declared.routing === "best-fit" ? { ...w, declared: { ...w.declared, routing: "everyone" } } : w
+          ),
+          {},
+          [TREE]
+        )
+      : TREE;
+  const app = await startRoutedHost(tree, controlSeams());
   const io = reader(app, OWNER);
   const run = randomUUID().replace(/-/g, "").slice(0, 10);
   const tok = (n: number) => `tok-${run}p${n}`;
@@ -529,7 +542,7 @@ await runGoal(async (failures) => {
   if (foreign.length > 0) fail("source", `host.mts imports from outside @flow-state-dev/*: ${foreign.join(", ")}`);
   if (builds.test(host)) fail("source", `host.mts builds its own ${builds.exec(host)![1]}`);
   if (!/defineCoordinatorFlow\s*\(/.test(host)) fail("source", "host.mts never registers defineCoordinatorFlow");
-  const routed = (await readWorkforce(TREE)).workers.filter((w) => w.declared.flow === "coordinator" && w.declared.routing === "best-fit");
+  const routed = (await readTree(TREE)).workers.filter((w) => w.declared.flow === "coordinator" && w.declared.routing === "best-fit");
   if (routed.length !== 1) fail("source", `the tree declares routing: best-fit on ${routed.length} coordinators (want 1)`);
   if (!failures.some((f) => f.startsWith("[source]"))) {
     evidence.push(`host.mts imports only ${[...new Set(imports)].join(", ")}, registers defineCoordinatorFlow, and builds no dispatcher or router`);

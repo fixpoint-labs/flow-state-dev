@@ -44,14 +44,15 @@ import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { Task, TaskInit } from "@flow-state-dev/orchestration/tasks";
 import {
-  createWorkerInstallation,
   defineSessionBoard,
   filingConversationBoard,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 // The wait `getTask({ id, wait: true })` makes (FIX-2082), called as the task tools call it.
 import { waitOnTask } from "../../../packages/orchestration/src/tasks/helpers/wait-on-task.ts";
 import {
@@ -65,7 +66,8 @@ import {
   runGoal,
   silentLogger,
   untilIdle,
-  type ModulePatch
+  type ModulePatch,
+  workforceTree
 } from "../../lib/index.mts";
 import { PATCHES } from "./controls.mts";
 
@@ -128,13 +130,15 @@ function readProofs(): Proof[] {
 
 // ---- the host ---------------------------------------------------------------
 
-const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
+const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared: { description: `The ${id} worker.`, ...declared }, body: "", skills: [] });
 const WORKERS: WorkerManifest[] = [
   worker("lead", { flow: "desk", delegates: ["eng.doer"] }),
   // A worker files its pieces for someone else: its own steps are a plan's (FIX-2076).
   worker("eng.doer", { flow: "doer", delegates: ["eng.helper"] }),
   worker("eng.helper", { flow: "doer" })
 ];
+/** The workers as the app's `workforce/` folder, which the kit reads. */
+const TREE = workforceTree(WORKERS);
 
 /** A filer turn's script: what the desk's deterministic turn does with the board it holds. */
 type Script =
@@ -143,102 +147,110 @@ type Script =
   | { op: "wait"; taskId: string };
 
 function buildHost(filename: string) {
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => workerFlows as never });
-  const doorInput = z.object({ message: z.string() });
-  const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
-  const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
+  // The kit hands each worker flow's builder the installation it hired; the flows are built once on it.
+  let built: Record<string, unknown> | undefined;
+  let builtOn: WorkerInstallation | undefined;
+  const flowsOn = (installation: WorkerInstallation): Record<string, unknown> => {
+    if (built !== undefined && builtOn === installation) return built;
+    builtOn = installation;
+    const doorInput = z.object({ message: z.string() });
+    const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
+    const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
 
-  // The desk's turn runs a script against the board its conversation holds:
-  // the same guarded ref the task tools and actions write through.
-  const deskTurn = handler({
-    name: "filing-settings-desk-turn",
-    inputSchema: doorInput,
-    outputSchema: z.unknown(),
-    execute: async (input, ctx) => {
-      const script = JSON.parse(input.message) as Script;
-      const ref = await deskBoard.board.resolver(ctx as never);
-      if (ref === undefined) return { ok: false, error: "no_delegation_board" };
-      try {
-        if (script.op === "file") return { ok: true, ids: (await ref.createTasks(script.tasks)).map((t) => t.id) };
-        if (script.op === "settings") return { ok: true, outcome: await ref.patchSettings(script.id, script.patch) };
-        return await waitOnTask(ctx as never, ref, script.taskId, { key: `goal.wait:${script.taskId}` });
-      } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
-      }
-    }
-  });
-
-  // The doer's turn: it writes what it saw, then does what the goal says.
-  //   [file:NAME]        file a piece for itself, open for PIECE_MS
-  //   [file-ongoing]     try to file a piece in the ongoing session
-  //   [file-conversation] try to file a piece whose result goes to the conversation
-  //   [slow:N]           take N ms
-  //   [fail]             throw; [fail-until:N] throw on every attempt below N
-  const doerTurn = handler({
-    name: "filing-settings-doer-turn",
-    inputSchema: doorInput,
-    outputSchema: z.unknown(),
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const above = await filingConversationBoard(ctx);
-      const row = above?.tasks.list().find((r) => r.run?.requestId === ctx.request.identity.id && r.status === "in_progress");
-      const attempt = row?.attempts ?? 0;
-      const message = input.message;
-      const refused: string[] = [];
-      const own = /\[file(-ongoing|-conversation)?(?::([^\]]+))?\]/g;
-      let match: RegExpExecArray | null;
-      while ((match = own.exec(message)) !== null) {
-        const ref = await doerBoard.board.resolver(ctx as never);
-        const goal =
-          match[1] === undefined ? `${match[2]}#${attempt} [slow:${PIECE_MS}]` : `refused piece${match[1]} ${RUN_STAMP}`;
+    // The desk's turn runs a script against the board its conversation holds:
+    // the same guarded ref the task tools and actions write through.
+    const deskTurn = handler({
+      name: "filing-settings-desk-turn",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
+      execute: async (input, ctx) => {
+        const script = JSON.parse(input.message) as Script;
+        const ref = await deskBoard.board.resolver(ctx as never);
+        if (ref === undefined) return { ok: false, error: "no_delegation_board" };
         try {
-          await ref!.createTask({
-            goal,
-            assignee: "eng.helper",
-            ...(match[1] === "-ongoing" ? { session: "ongoing" as const } : {}),
-            ...(match[1] === "-conversation" ? { resultTo: "conversation" as const } : {})
-          });
+          if (script.op === "file") return { ok: true, ids: (await ref.createTasks(script.tasks)).map((t) => t.id) };
+          if (script.op === "settings") return { ok: true, outcome: await ref.patchSettings(script.id, script.patch) };
+          return await waitOnTask(ctx as never, ref, script.taskId, { key: `goal.wait:${script.taskId}` });
         } catch (error) {
-          refused.push(error instanceof Error ? error.message : String(error));
+          return { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
       }
-      const proof: Proof = {
-        ...(row !== undefined ? { taskId: row.id } : {}),
-        attempt,
-        sessionId: ctx.session.identity.id,
-        requestId: ctx.request.identity.id,
-        message,
-        at: Date.now(),
-        ...(refused.length > 0 ? { refused } : {})
-      };
-      appendFileSync(PROOFS, `${JSON.stringify(proof)}\n`, "utf8");
-      const slow = /\[slow:(\d+)\]/.exec(message);
-      if (slow !== null) await sleep(Number(slow[1]));
-      if (message.includes("[fail]")) throw new Error(`attempt ${attempt} fails on purpose`);
-      const until = /\[fail-until:(\d+)\]/.exec(message);
-      if (until !== null && attempt < Number(until[1])) throw new Error(`attempt ${attempt} fails on purpose`);
-      return `done: ${message}`;
-    }
-  });
+    });
 
-  const flowOf = (kind: string, board: ReturnType<typeof defineSessionBoard>, turn: typeof deskTurn | typeof doerTurn) =>
-    defineFlow({
-      kind,
-      configSchema: workerConfigSchema(),
-      session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-      resources: { ...installation.resources, ...board.resources },
-      actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
-      internal: { actions: board.entries(turn, () => "fixed") },
-      task: { actions: { work: workerTaskEntry({ name: `filing-settings-${kind}-task`, turn }) } }
-    } as never);
-  workerFlows = {
-    desk: { flow: flowOf("desk", deskBoard, deskTurn), roles: ["contributor", "manager"] },
-    doer: { flow: flowOf("doer", doerBoard, doerTurn), roles: ["contributor", "manager"] }
+    // The doer's turn: it writes what it saw, then does what the goal says.
+    //   [file:NAME]        file a piece for itself, open for PIECE_MS
+    //   [file-ongoing]     try to file a piece in the ongoing session
+    //   [file-conversation] try to file a piece whose result goes to the conversation
+    //   [slow:N]           take N ms
+    //   [fail]             throw; [fail-until:N] throw on every attempt below N
+    const doerTurn = handler({
+      name: "filing-settings-doer-turn",
+      inputSchema: doorInput,
+      outputSchema: z.unknown(),
+      execute: async (input, rawCtx) => {
+        const ctx = rawCtx as unknown as BlockContext;
+        const above = await filingConversationBoard(ctx);
+        const row = above?.tasks.list().find((r) => r.run?.requestId === ctx.request.identity.id && r.status === "in_progress");
+        const attempt = row?.attempts ?? 0;
+        const message = input.message;
+        const refused: string[] = [];
+        const own = /\[file(-ongoing|-conversation)?(?::([^\]]+))?\]/g;
+        let match: RegExpExecArray | null;
+        while ((match = own.exec(message)) !== null) {
+          const ref = await doerBoard.board.resolver(ctx as never);
+          const goal =
+            match[1] === undefined ? `${match[2]}#${attempt} [slow:${PIECE_MS}]` : `refused piece${match[1]} ${RUN_STAMP}`;
+          try {
+            await ref!.createTask({
+              goal,
+              assignee: "eng.helper",
+              ...(match[1] === "-ongoing" ? { session: "ongoing" as const } : {}),
+              ...(match[1] === "-conversation" ? { resultTo: "conversation" as const } : {})
+            });
+          } catch (error) {
+            refused.push(error instanceof Error ? error.message : String(error));
+          }
+        }
+        const proof: Proof = {
+          ...(row !== undefined ? { taskId: row.id } : {}),
+          attempt,
+          sessionId: ctx.session.identity.id,
+          requestId: ctx.request.identity.id,
+          message,
+          at: Date.now(),
+          ...(refused.length > 0 ? { refused } : {})
+        };
+        appendFileSync(PROOFS, `${JSON.stringify(proof)}\n`, "utf8");
+        const slow = /\[slow:(\d+)\]/.exec(message);
+        if (slow !== null) await sleep(Number(slow[1]));
+        if (message.includes("[fail]")) throw new Error(`attempt ${attempt} fails on purpose`);
+        const until = /\[fail-until:(\d+)\]/.exec(message);
+        if (until !== null && attempt < Number(until[1])) throw new Error(`attempt ${attempt} fails on purpose`);
+        return `done: ${message}`;
+      }
+    });
+
+    const flowOf = (kind: string, board: ReturnType<typeof defineSessionBoard>, turn: typeof deskTurn | typeof doerTurn) =>
+      defineFlow({
+        kind,
+        configSchema: workerConfigSchema(),
+        session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+        resources: { ...installation.resources, ...board.resources },
+        actions: { respond: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
+        internal: { actions: board.entries(turn, () => "fixed") },
+        task: { actions: { work: workerTaskEntry({ name: `filing-settings-${kind}-task`, turn }) } }
+      } as never);
+    return (built = { desk: flowOf("desk", deskBoard, deskTurn), doer: flowOf("doer", doerBoard, doerTurn) });
   };
 
   const state = createFlowState({
-    flows: hireWorkforce(installation),
+    kits: [workforce({ directory: TREE })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        desk: workerFlow((installation) => flowsOn(installation).desk, { roles: ["contributor", "manager"] }),
+        doer: workerFlow((installation) => flowsOn(installation).doer, { roles: ["contributor", "manager"] })
+      }
+    },
     stores: { default: { primary: sqliteStores({ filename }) } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {

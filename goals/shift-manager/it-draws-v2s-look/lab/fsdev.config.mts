@@ -31,9 +31,9 @@ import {
   inventoryWriterActions,
   openInventory,
   type InventoryActionRequest,
+  workerFlow,
 } from "@flow-state-dev/workforce";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { installWorkers } from "../../../lib/workers.mts";
+import { installWorkers, readTree } from "../../../lib/workers.mts";
 
 /** The one person this Lab runs as. */
 export const USER_ID = "u_look_goal";
@@ -51,18 +51,15 @@ const fixture = JSON.parse(readFileSync(fileURLToPath(new URL("../fixtures/input
   desk: { reply: string };
 };
 
-const tree = await readDeclaredRoster(fileURLToPath(new URL("./workforce", import.meta.url)));
-if (tree.problems.length > 0) throw new Error(`the desk tree did not load: ${tree.problems.map((p) => p.error.message).join("; ")}`);
+const TREE = fileURLToPath(new URL("./workforce", import.meta.url));
+const tree = await readTree(TREE);
 // The Shift Coordinator's model, as its WORKER.md names it: the one id the mock answers for.
 const modelId = tree.workers.map((w) => w.declared.model).find((m): m is string => typeof m === "string");
 if (modelId === undefined) throw new Error("the desk tree's Shift Coordinator names no model");
 
-const { installation, copies } = installWorkers(tree.workers, (installation) => {
-  const agent = defineAgentWorkerFlow({ installation });
-  return {
-    [AGENT_FLOW]: agent,
-    [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL }),
-  };
+const { installation, copies } = await installWorkers(TREE, {
+  [AGENT_FLOW]: workerFlow((installation) => defineAgentWorkerFlow({ installation })),
+  [COORDINATOR_FLOW]: workerFlow((installation) => defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL })),
 });
 // The worker-row write takes caller-supplied rows, so it is internal only.
 const writer = defineFlow({

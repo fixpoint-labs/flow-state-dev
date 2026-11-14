@@ -11,7 +11,8 @@
  * Controls: GOAL_CONTROL=org-scoped-workers must FAIL leg b on "b:reads-worker";
  * GOAL_CONTROL=no-create-check must FAIL leg b on "b:create".
  */
-import { mkdtempSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
@@ -19,9 +20,21 @@ import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@fl
 import { type FlowRegistry } from "@flow-state-dev/engine/host";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { createWorkforceClient, ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { fixtureDir, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { appFlows, markerEchoModel, RESEARCH, verified, type Control } from "./fixtures/app";
+import {
+  REPO_ROOT,
+  RUN_STAMP,
+  assertPatched,
+  describePatches,
+  fixtureDir,
+  goalTmpDir,
+  loadFixture,
+  modulePatchEnv,
+  runGoal,
+  silentLogger,
+  stripIntentOverrides,
+  type ModulePatch,
+} from "../../lib/index.mts";
+import { appFlows, markerEchoModel, RESEARCH, verified } from "./fixtures/app";
 
 type Fixture = {
   org: string;
@@ -36,23 +49,49 @@ type Fixture = {
 stripIntentOverrides();
 
 const fixture = loadFixture<Fixture>(import.meta.url);
-const CONTROLS = ["org-scoped-workers", "no-create-check"] as const;
-const control = process.env.GOAL_CONTROL as Control;
-if (control !== undefined && !(CONTROLS as readonly string[]).includes(control)) {
-  throw new Error(`Unknown GOAL_CONTROL "${control}". This goal understands: ${CONTROLS.join(", ")}.`);
+/**
+ * Each control weakens one thing in workforce's own source, in a child
+ * process the control re-runs this goal in: the app is the kit's, so the
+ * weakening is in what the kit installs, never in a copy of it.
+ */
+const CONTROLS: Record<string, ModulePatch[]> = {
+  // The user's workers kept at org scope.
+  "org-scoped-workers": [{ module: "packages/workforce/src/workers/worker-row.ts", from: String.raw`scope: "user",`, to: `scope: "org",` }],
+  // The worker flows' create check passes every create.
+  "no-create-check": [
+    {
+      module: "packages/workforce/src/workers/installation.ts",
+      from: String.raw`const workerId = input\.state\[WORKER_ID_STATE_KEY\];`,
+      to: "const workerId = input.state[WORKER_ID_STATE_KEY]; return { ok: true };",
+    },
+  ],
+};
+const control = process.env.GOAL_CONTROL || undefined;
+if (control !== undefined && CONTROLS[control] === undefined) {
+  throw new Error(`Unknown GOAL_CONTROL "${control}". This goal understands: ${Object.keys(CONTROLS).join(", ")}.`);
+}
+if (control !== undefined && process.env.GOAL_MODULE_PATCH === undefined) {
+  const patches = CONTROLS[control]!;
+  const mark = join(goalTmpDir("workers-as-resources"), `patch-mark-${RUN_STAMP}`);
+  rmSync(mark, { force: true });
+  console.error(`control ${control}:\n${describePatches(patches, REPO_ROOT)}`);
+  const child = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
+    stdio: "inherit",
+    env: { ...process.env, ...modulePatchEnv(patches, REPO_ROOT, mark) },
+  });
+  assertPatched(patches, REPO_ROOT, mark);
+  process.exit(child.status ?? 1);
 }
 
-const tree = await readWorkforce(join(fixtureDir(import.meta.url), "workforce"));
-if (tree.errors.length > 0 || tree.skillErrors.length > 0) {
-  throw new Error(`the fixture tree did not load: ${JSON.stringify([tree.errors, tree.skillErrors])}`);
-}
+// The app's folder: the kit reads it, and refuses on a file it can't load, as an app's start does.
+const directory = join(fixtureDir(import.meta.url), "workforce");
 const MARKERS = [fixture.markers.onAgent, fixture.markers.onResearch, fixture.markers.skill, fixture.hire.marker];
 
 /** One process of the app over the SQLite file. */
-function host(dbFile: string) {
+async function host(dbFile: string) {
   const stores = createSQLiteStores({ filename: dbFile }) as unknown as StoreRegistry;
   const registry: FlowRegistry = createFlowRegistry();
-  for (const flow of appFlows(tree.workers, control)) registry.register(flow);
+  for (const flow of await appFlows(directory)) registry.register(flow);
   const router = createFlowApiRouter({
     registry,
     stores,
@@ -117,10 +156,10 @@ await runGoal(async (failures) => {
   const { markers, standard, fork, hire } = fixture;
   const dbFile = join(mkdtempSync(join(tmpdir(), "fsd-workers-as-resources-")), "goal.db");
 
-  const first = host(dbFile);
+  const first = await host(dbFile);
   // The second process is up before anything is hired.
-  const second = host(dbFile);
-  const registered = (h: ReturnType<typeof host>) => h.registry.list().map((flow) => flow.id).sort();
+  const second = await host(dbFile);
+  const registered = (h: Awaited<ReturnType<typeof host>>) => h.registry.list().map((flow) => flow.id).sort();
   const before = { first: registered(first), second: registered(second) };
 
   // ---- leg a: Alice forks, hires and talks --------------------------------
@@ -144,7 +183,7 @@ await runGoal(async (failures) => {
 
   // Each worker answers as its own configuration. The hire is reached through
   // the second process, which was never restarted.
-  const talks: Array<{ worker: string; via: ReturnType<typeof host>; own: string[]; leg: string }> = [
+  const talks: Array<{ worker: string; via: Awaited<ReturnType<typeof host>>; own: string[]; leg: string }> = [
     { worker: standard.onAgent, via: first, own: [markers.onAgent, markers.skill], leg: "a:standard" },
     { worker: fork.id, via: first, own: [markers.onAgent, markers.skill], leg: "a:fork-answers" },
     { worker: hire.id, via: second, own: [hire.marker], leg: "a:second-host" },

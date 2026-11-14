@@ -47,7 +47,7 @@ import {
   REFERENCES_SLOT,
   RESOURCES_SLOT,
   siblingSlotPath,
-} from "../loader";
+} from "../loader/readers";
 import { walkResourcePlaces } from "../loader/resource-walk";
 import { typescriptExtension } from "./typescript-module";
 

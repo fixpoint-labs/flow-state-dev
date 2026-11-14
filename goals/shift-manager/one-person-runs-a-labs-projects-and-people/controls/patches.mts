@@ -35,9 +35,13 @@ export function extraFlow(flow: string): Patch {
     apply(lab) {
       const host = join(lab, "host.mts");
       let text = readFileSync(host, "utf8");
-      const anchor = "  const copies = hireWorkforce(installation);";
-      if (!text.includes(anchor)) throw new Error("extra-flow: host.mts no longer has the line this patch edits");
+      // The flow is built where the Lab builds its own, on the installation the kit hires,
+      // and named among the Lab's flows, so the kit's `workerFlows` slot registers it.
+      const anchor = "  hiredOn = { builtFlows, projectsFlow };";
+      const named = "  const labFlows = [EM_FLOW, CODER_FLOW, AGENT_FLOW, COORDINATOR_FLOW, ";
+      if (!text.includes(anchor) || !text.includes(named)) throw new Error("extra-flow: host.mts no longer has the lines this patch edits");
       const k = JSON.stringify(flow);
+      text = text.replace(named, `${named}${k}, `);
       const door = JSON.stringify(EXTRA_FLOW_DOOR);
       text = text.replace(
         anchor,

@@ -4,13 +4,12 @@
  * names. A session names its worker once, when it is created, and loads it on
  * every turn.
  *
- * - `createWorkerInstallation`: the create check, `resolveWorker`, and the
- *   session declaration and collections a worker flow spreads in.
+ * - `WorkerInstallation`: the create check, `resolveWorker`, and the session
+ *   declaration and collections a worker flow spreads in. The workforce kit
+ *   builds it and hands it to every worker flow's builder.
  * - `createWorkerHireBlocks`: hire, fork, edit, fire and reset, as writes to the
  *   caller's roster.
  * - `defineWorkerRosterFlow`: the flow a client reads a roster through.
- * - `hireWorkforce`: the copies to register, one per worker flow, and the
- *   roster flow.
  * - `workerConfigOf`: the configuration of the worker a turn loaded.
  * - `workerFlow`: a worker flow built on its installation, for a flow that
  *   lives in its own file.
@@ -47,20 +46,18 @@ export {
 export { defineWorkerCollection, parseWorkerResourceState, workerResourceStateSchema, type WorkerResourceState } from "./worker-row";
 export { defineStandardWorkerCollection, standardWorkerResourceStateSchema, type StandardWorkerResourceState } from "./standard-workers";
 export {
-  createWorkerInstallation,
   verifiedWorkerOf,
   WorkerTurnRefusedError,
   type ResolvedWorker,
   type RosterWorker,
   type WorkerGrants,
   type WorkerInstallation,
-  type WorkerInstallationOptions,
   type WorkerSessionStateShape,
   type WorkerTurnContext
 } from "./installation";
 export { createWorkerHireBlocks, type WorkerHireBlocks } from "./hire-blocks";
 export { defineWorkerRosterFlow } from "./roster-flow";
-export { hireWorkforce, inventoryWorkers, type HireWorkforceOptions } from "./register";
+export { inventoryWorkers } from "./register";
 export { workerConfigOf } from "./verified-worker";
 export {
   readWorkerUsage,

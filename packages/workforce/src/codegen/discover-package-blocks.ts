@@ -32,7 +32,7 @@ import {
   WORKERS_LEVEL,
   validateSegment,
   walkTeams,
-} from "../loader";
+} from "../loader/readers";
 import { BLOCKS_SLOT, readBlocksSlot } from "./discover-worker-blocks";
 
 /** Where a package's blocks may sit, as the command reports it. */

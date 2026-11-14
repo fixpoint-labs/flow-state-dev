@@ -36,8 +36,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, readTree, runGoal } from "../../lib/index.mts";
 import { readShiftManagerTheme } from "../../lib/colour.mts";
 import { probeClaudeCodeAccount } from "@flow-state-dev/claude-code";
 import { claudeCodeEnv } from "../../../packages/shift-manager/teams/devteam/harness.mts";
@@ -274,7 +273,7 @@ type Control = {
 };
 
 /** DevForce's declared seats, written into the static-names control's build. */
-const devforceSeats = async () => (await readDeclaredRoster(TREES.devforce)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }));
+const devforceSeats = async () => (await readTree(TREES.devforce)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }));
 
 const CONTROLS: Control[] = [
   {

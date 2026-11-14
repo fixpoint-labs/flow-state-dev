@@ -52,13 +52,20 @@ function walk(dir, out = []) {
   return out;
 }
 
+/**
+ * The UI registry's sources: files `fsdev ui add` copies into an app (the
+ * workforce starter's `TEAM.md` and `WORKER.md` among them), not a workforce
+ * folder any app reads where they sit.
+ */
+const REGISTRY_SOURCES = path.join(REPO, "packages", "ui", "registry") + path.sep;
+
 function repoFiles() {
   const files = [];
   for (const top of fs.readdirSync(REPO, { withFileTypes: true })) {
     if (!top.isDirectory() || SKIP_DIRS.has(top.name) || SKIP_TOP.has(top.name) || top.name.startsWith(".")) continue;
     walk(path.join(REPO, top.name), files);
   }
-  return files;
+  return files.filter((file) => !file.startsWith(REGISTRY_SOURCES));
 }
 
 /** Roots: a folder named `workforce` holding `teams/` or `org/`, and the root above every WORKER.md. */

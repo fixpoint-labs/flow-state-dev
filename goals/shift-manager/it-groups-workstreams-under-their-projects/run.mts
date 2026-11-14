@@ -87,8 +87,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Browser, Page } from "playwright";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, loadFixture, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, loadFixture, readTree, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, devteamShiftCoordinatorModel, personPage, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { LAB_CROWD, LAB_USERS, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
@@ -380,7 +379,7 @@ type Setup = { projectCoordinator: string; coordinatorFlow: string; leads: strin
 
 /** The flow a standard worker runs on, as its file names it. */
 async function flowOf(worker: string): Promise<string> {
-  const roster = await readDeclaredRoster(TREE);
+  const roster = await readTree(TREE);
   const flow = roster.workers.find((w) => w.id === worker)?.declared.flow;
   if (typeof flow !== "string") throw new Error(`the tree declares no "${worker}" with a flow`);
   return flow;
@@ -392,7 +391,7 @@ async function flowOf(worker: string): Promise<string> {
  * boot finds it.
  */
 async function leadsOf(): Promise<{ leads: string[]; lead: string }> {
-  const roster = await readDeclaredRoster(TREE);
+  const roster = await readTree(TREE);
   const leads = roster.workers.filter(
     (w) => ["agent", "em"].includes(String(w.declared.flow)) && Array.isArray(w.declared.delegates) && w.declared.delegates.length > 0,
   );

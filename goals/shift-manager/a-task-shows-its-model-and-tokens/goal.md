@@ -53,3 +53,4 @@ The Shift Coordinator's model is scripted to file one coder task per `[[usage:<t
 | 2026-10-28 | same, `GOAL_CONTROL=from-traces` | n/a | FAIL (expected) | **e:same-numbers**: leg a reads `null` in production, 8 + 8 in development. |
 | 2026-10-28 | same, `GOAL_CONTROL=add-result` | n/a | FAIL (expected) | **b:exact**: 1 300 + 260. **f:equal**: worker usage added 1 000 + 200. |
 | 2026-10-28 | same, `GOAL_CONTROL=by-session` | n/a | FAIL (expected) | **g:own-only**: the cancelled task stays live at 200 + 40; the first reads 1 100 + 220. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (not from this change) | The Lab never starts: *"Failed to load fsdev config …/lab/fsdev.config.mts: …/lab/scripted-sdk.mjs is installed, but its version can't be read (its manifest could not be located)"*. The unconverted `lab/fsdev.config.mts` from `claude/fix-2627-impl-e` fails the same way. No control was run. |

@@ -27,6 +27,7 @@
 - `GOAL_CONTROL=post-map-off` turns FIX-2080's map entry `post` off, so a stored post row reads as the row it is. It must FAIL `e:legacy`.
 - `GOAL_COMMIT=b43150fea` (`main` before FIX-2083) must FAIL `c:after` and the sweep.
 - `GOAL_COMMIT=e196901d5` (`main` before D3, with its two fit calls) must FAIL `d:lead-refused` and `d:one-check`: its lead vet asks a generator of its own, not the fit check.
+- Since FIX-2627 the host installs Workforce as its kit, so neither `GOAL_COMMIT` before-state above can run from this file: a commit without `@flow-state-dev/workforce/kit` reports `setup:`. Their FAIL rows below stay as history. `GOAL_CONTROL=round-timer` (`b:restart`) and `GOAL_CONTROL=post-map-off` (`e:legacy`) are the runnable controls that replace them.
 
 **Run:**
 
@@ -55,3 +56,7 @@ GOAL_COMMIT=<sha> pnpm tsx goals/coordinators/routes-each-message-as-a-task/run.
 | 2026-10-23 | `e196901d5` (`main` before D3, `GOAL_COMMIT`) | none (scripted) | FAIL (expected) | `d:lead-refused`, `d:lead-bare` and `d:one-check`: the lead vet asked a generator of its own (`workstream-lead-fit`, twice) and never the fit check, so research under the misfit lead opened. Best fit's two legs green there: its ladder is unchanged. a, b, c, e and the sweep green |
 | 2026-10-28 | `claude/project-thread-q4ufsb` on ba527aa22, uncommitted (FIX-2266) | none (scripted) | **PASS** | Legs a to e and the sweep. b:failed: the failing delegate's two tasks (round 0, and round 1 carrying its fail mark again) each landed one line, `<worker> couldn't answer: <worker> fails on this message`; round 0 closed 1728 ms before its deadline. The goal's `helper` flow now mounts `onMessageReceived` when the commit has it: from FIX-2238 on, hire refused the flow and the host printed no result |
 | 2026-10-28 | the same, with `packages/workforce/src` at ba527aa22 | none (scripted) | FAIL (expected) | Only `b:failed`: two failed tasks, no line. a, c, d, e and the sweep green |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, on the merge of `-e` at `4e8aeba6e` | n/a | FAIL (not from this change) | `c:after — wanted one line under desk.writer's name, carrying the result of the task it filed; its lines ["Filed the piece."]` and `e:legacy`; the same two on `-e`'s unconverted copy. |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, `4e8aeba6e` unconverted copy | n/a | FAIL (not from this change) | `c:after — … its lines ["Filed the piece."]` and `e:legacy — wanted the stored post row worked once, as a routed task` |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, on the merge of `-e` at `4e8aeba6e` | n/a | FAIL (expected) | `GOAL_CONTROL=round-timer`: `control round-timer: failed on b:restart, as it must`; `c:after` and `e:legacy` red as in the clean run, not from this change. |
+| 2026-11-13 | `claude/fix-2627-impl-e-b4`, on the merge of `-e` at `4e8aeba6e` | n/a | FAIL (not from this change) | `GOAL_CONTROL=post-map-off`: `packages/orchestration/src/tasks/schema/retired-shapes.ts has nothing matching /if \(!isObject\(row\.sealed\) …/ to patch`: the control no longer applies, the same on `-e`. |

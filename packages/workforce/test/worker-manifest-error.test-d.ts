@@ -19,7 +19,7 @@
  * Imported through the `./loader` barrel rather than the module, so the type a
  * caller is told to narrow on is also proven to be exported.
  */
-import type { ReadWorkforceDirectoryResult, WorkerManifestError } from "../src/loader";
+import type { ReadWorkforceDirectoryResult, WorkerManifestError } from "../src/loader/readers";
 
 /** The result's own list is the tagged one — not a structurally similar neighbour. */
 export const fromTheResult = (result: ReadWorkforceDirectoryResult): WorkerManifestError[] =>

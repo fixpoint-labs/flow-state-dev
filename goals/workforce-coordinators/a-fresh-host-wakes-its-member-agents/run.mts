@@ -43,9 +43,7 @@ import { createInProcessFetch } from "@flow-state-dev/engine";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { WorkerManifest } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { KITCHEN_SINK, runGoal } from "../../lib/index.mts";
+import { KITCHEN_SINK, readTree, runGoal, workforceTree } from "../../lib/index.mts";
 import type { FreshHost, HostSeams } from "./host.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
@@ -71,16 +69,17 @@ function controlSeams(): HostSeams {
     case "no-wake":
       // The agent flow read as declaring no task entry (FIX-2083: a delegate is a worker whose flow takes tasks).
       return {
-        adaptAgentFlow: <T extends object>(agent: T): T =>
-          Object.assign((...args: unknown[]) => (agent as unknown as (...a: unknown[]) => unknown)(...args), agent, {
-            task: { actions: {} },
-          }) as unknown as T,
+        adaptAgentFlow: <T extends object>(agent: T): T => {
+          const wrapped = (...args: unknown[]) => (agent as unknown as (...a: unknown[]) => unknown)(...args);
+          // Every own property, then no task entry; registered as a manager only, so the hire takes it.
+          Object.defineProperties(wrapped, Object.getOwnPropertyDescriptors(agent));
+          return Object.assign(wrapped, { task: { actions: {} } }) as unknown as T;
+        },
+        agentRoles: ["manager"],
       };
     case "answers-go-on":
-      return {
-        adaptWorkers: (workers: WorkerManifest[]) =>
-          workers.map((w) => (w.declared.flow === "coordinator" ? { ...w, declared: { ...w.declared, rounds: 1 } } : w)),
-      };
+      // The coordinator read with `rounds: 1`: run.mts hands the host a copy of the tree saying so.
+      return {};
     case "no-org":
       return { omitPrincipal: true };
     default:
@@ -121,7 +120,7 @@ await runGoal(async (failures) => {
   evidence.push("defineCoordinatorFlow resolves from @flow-state-dev/workforce");
 
   // ---- the tree: the coordinator, and who should hear a post ------------------
-  const { workers } = await readWorkforce(TREE);
+  const { workers } = await readTree(TREE);
   const coordinators = workers.filter((w) => w.declared.flow === "coordinator");
   const coordinator = coordinators[0];
   if (coordinators.length !== 1 || coordinator === undefined) {
@@ -161,7 +160,15 @@ await runGoal(async (failures) => {
   }
 
   const { startFreshHost, OWNER, ORG, REPLY_MARKER } = await import("./host.mts");
-  const app = await startFreshHost(TREE, controlSeams());
+  const tree =
+    CONTROL === "answers-go-on"
+      ? workforceTree(
+          workers.map((w) => (w.declared.flow === "coordinator" ? { ...w, declared: { ...w.declared, rounds: 1 } } : w)),
+          {},
+          [TREE],
+        )
+      : TREE;
+  const app = await startFreshHost(tree, controlSeams());
   const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
     const res = await createInProcessFetch(app.router)(`http://fresh-host.local/api/flows/${segments.map(encodeURIComponent).join("/")}${query}`, {
         method,

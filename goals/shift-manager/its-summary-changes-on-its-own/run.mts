@@ -43,19 +43,19 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { TaskInit } from "@flow-state-dev/orchestration/tasks";
 import { routinesView } from "@flow-state-dev/workforce/browser";
 import {
-  createWorkerInstallation,
   defineSessionBoard,
   defineWorkerInventoryCollection,
-  hireWorkforce,
   inventoryWorkers,
   inventoryWriterActions,
   openInventory,
   workerConfigSchema,
+  workerFlow,
   workerTaskEntry,
+  type WorkerInstallation,
   type WorkerManifest,
 } from "@flow-state-dev/workforce";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, sleep, type ModulePatch } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, installWorkers, modulePatchEnv, runGoal, silentLogger, sleep, workforceTree, type ModulePatch } from "../../lib/index.mts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { readHarnessUsageView } from "../../../packages/shift-manager/src/lib/usage.ts";
 
@@ -140,13 +140,15 @@ globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
 // ---------------------------------------------------------------------------
 
 const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
-const WORKERS: WorkerManifest[] = [worker("lead", { flow: "desk", delegates: ["eng.doer"] }), worker("eng.doer", { flow: "doer", delegates: [] })];
+const WORKERS: WorkerManifest[] = [
+  worker("lead", { flow: "desk", description: "Files the tasks.", delegates: ["eng.doer"] }),
+  worker("eng.doer", { flow: "doer", description: "Works the tasks it is filed.", delegates: [] }),
+];
 
 type Script = { op: "file"; tasks: TaskInit[] } | { op: "chat"; count: number; ms: number };
 
-function buildHost(stores: StoreAdapter): { state: FlowState; flows: Record<string, unknown>; open: () => Promise<void> } {
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => workerFlows as never });
+/** The desk's and the doer's flows, built on the installation that runs their workers. */
+function workerFlowsOn(installation: WorkerInstallation) {
   const doorInput = z.object({ message: z.string() });
   const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
   const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
@@ -208,13 +210,20 @@ function buildHost(stores: StoreAdapter): { state: FlowState; flows: Record<stri
       internal: { actions: board.entries(turn as never) },
       task: { actions: { work: workerTaskEntry({ name: `summary-${kind}-task`, turn: turn as never }) } },
     } as never);
-  workerFlows = {
-    desk: { flow: flowOf("desk", deskBoard, deskBoard.planned(deskTurn)), roles: ["contributor", "manager"] },
-    doer: { flow: flowOf("doer", doerBoard, doerTurn), roles: ["contributor", "manager"] },
-  };
+  return { desk: flowOf("desk", deskBoard, deskBoard.planned(deskTurn)), doer: flowOf("doer", doerBoard, doerTurn) };
+}
+
+async function buildHost(stores: StoreAdapter): Promise<{ state: FlowState; flows: Record<string, unknown>; open: () => Promise<void> }> {
+  // The two flows share their boards, so both are built once, on the one installation the kit hires.
+  let built: ReturnType<typeof workerFlowsOn> | undefined;
+  const on = (installation: WorkerInstallation) => (built ??= workerFlowsOn(installation));
+  const { installation, copies } = await installWorkers(workforceTree(WORKERS), {
+    desk: workerFlow((installation) => on(installation).desk, { roles: ["contributor", "manager"] }),
+    doer: workerFlow((installation) => on(installation).doer, { roles: ["contributor", "manager"] }),
+  });
 
   const flows: Record<string, unknown> = {
-    ...Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy])),
+    ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
     [INVENTORY_WRITER_FLOW]: defineFlow({ kind: INVENTORY_WRITER_FLOW, internal: { actions: { ...inventoryWriterActions() } } } as never)(),
   };
   // The inventory, written once as a Lab's boot does, so Shift Manager's read finds the workers.
@@ -263,7 +272,7 @@ function stores(name: string, bus?: ReturnType<typeof crossingBus>, options: { f
 type Host = { state: FlowState; flows: Record<string, unknown>; handle: ServeHandle; base: string };
 
 async function host(stores: StoreAdapter, options: { openInventory: boolean } = { openInventory: true }): Promise<Host> {
-  const { state, flows, open } = buildHost(stores);
+  const { state, flows, open } = await buildHost(stores);
   if (options.openInventory) await open();
   const handle = await serve(await state.getRouter(), { port: 0, host: "127.0.0.1", handleSignals: false, shutdownGraceMs: 200 });
   return { state, flows, handle, base: `http://127.0.0.1:${handle.port}` };
