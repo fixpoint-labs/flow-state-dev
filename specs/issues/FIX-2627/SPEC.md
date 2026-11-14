@@ -138,8 +138,8 @@ harness ([Decided, not asked](DECISIONS.md#decided-not-asked)).
 | Two workforce slots, `workerFlows` (keyed) and `uses` (list) | The `workerFlows` callback; each host's `uses` | **Replaces** both. Not the issue's `coordinatorTools` or `boardFields`: nothing fills them |
 | The harness kit, its `harnesses` slot, the harness value | `HarnessReadinessSlot`, `CoderHarness`, the hosts' harness maps | **Replaces** the three shapes with one value |
 | One coding worker flow (harness-manager) | claude-code-style's `harness-thread.mts`, teammates' `coder.ts` | **Merges** the two |
-| The coding board view: a task's harness before its run reports one | claude-code-style's `harnessOf` and `boardOf` (FIX-2626 D1's 42 lines) | **New:** harness-manager now depends on workforce, so one package serves the join |
-| Worker sessions and turns views (workforce) | `createWorkforceClient`'s `listWorkerSessions` and `findWorkerSession`; the lab adapters' turn assembly | **Re-expresses** the client's reads as views, on FIX-2623's `defineView`; the client's reads go, its writes stay |
+| The coding board view: a task's harness before its run reports one | claude-code-style's `harnessOf` and `boardOf` (FIX-2626 D1's 42 lines) | **Deferred to FIX-2725** (owner, 2026-11-13): a kit can't add a view to flows another kit builds. `harnessOf` and `boardOf` stay |
+| Worker sessions and turns views (workforce) | `createWorkforceClient`'s `listWorkerSessions` and `findWorkerSession`; the lab adapters' turn assembly | **Deferred to FIX-2725** (owner, 2026-11-13): a view can't read a session listing or a session's requests. The client's reads and the lab's turn assembly stay |
 | `@flow-state-dev/workforce/react` | `@flow-state-dev/react/workforce` | **Moves** it, no alias, bound to the roster view |
 | `claudeCode()`, a small kit | `work-collections`, `workspace-collections` | **Composed:** installs them and fills the slot |
 | `sourceReadCapability` (workforce) | `projectSourceCapability` | **Extracted:** its tool body over a `WorkspaceHost`, with no project; `projectSourceCapability` becomes it plus the project resources |
@@ -148,7 +148,7 @@ harness ([Decided, not asked](DECISIONS.md#decided-not-asked)).
 | The debt | |
 |---|---|
 | **Removes** | `hireWorkforce`, `createWorkerInstallation` and `readDeclaredRoster` from the public surface, moving 122 caller files ([callers](poc/claim-census/README.md)); two coding worker flows (559 lines); four hosts' readiness maps and two readiness flows; `HarnessReadinessSlot`; workforce's walk primitives and its `*_SLOT` folder names, a third meaning of "slot"; `@flow-state-dev/react/workforce`; 7 silently ignored files |
-| **Adds** | Three kits, three slots and the harness value: public contracts, permanent by design. harness-manager depends on workforce, through a subpath only: permanent by design. Three views (coding board, worker sessions, turns), each replacing hand assembly |
+| **Adds** | Three kits, three slots and the harness value: public contracts, permanent by design. harness-manager depends on workforce, through a subpath only: permanent by design. Three views (coding board, worker sessions, turns), each replacing hand assembly, are deferred to FIX-2725 |
 | **Leaves** | Shift Manager's own coding worker flow, app policy and permanent by design; FIX-2583's policy moves, now aimed at this flow; teammates' and Shift Manager's adapters (epic follow-ups) |
 
 **Net: down.** Two kits replace five host-side pieces in four hosts; two flows become one.

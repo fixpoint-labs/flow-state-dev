@@ -109,6 +109,7 @@ import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rul
 import { setWorkProjectAction } from "./projects/work-project";
 import { SET_WORK_PROJECT_ACTION } from "./workers/keys";
 import type { WorkerInstallation } from "./workers/installation";
+import { withSessionFields, type SessionFields } from "./workers/session-fields";
 import { workerIdentityPrompt } from "./messages/worker-identity";
 import { skillLoaderOn, workerDefaultLayer, type WorkerDefaults } from "./worker-default-layer";
 import { steerOrTalk } from "./conversation-board/steer";
@@ -437,6 +438,11 @@ export interface AgentWorkerFlowOptions {
    * one worker does.
    */
   installation?: WorkerInstallation;
+  /**
+   * Session fields the app declares on this flow's sessions, server-written only. Needs `installation`.
+   * Every field is visible to the session's browser. Never put a secret here.
+   */
+  sessionFields?: SessionFields;
 }
 
 /**
@@ -1366,12 +1372,21 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // installation's visibility rule reads the worker this turn loaded. Typed
   // as the optional fields they fill, so the flow's type is one shape either
   // way.
+  // A field the app declares lives on the installation's session; with none it would be dropped,
+  // and a create could seed a field the app thinks only the server writes.
+  const fieldNames = Object.keys(options.sessionFields ?? {});
+  if (fieldNames.length > 0 && installation === undefined) {
+    throw new Error(
+      `defineAgentWorkerFlow: \`sessionFields\` (${fieldNames.map((name) => `"${name}"`).join(", ")}) needs \`installation\`: ` +
+        `the fields are declared on the installation's session, and this flow has none.`
+    );
+  }
   const bound: AgentTurnBinding =
     installation !== undefined
       ? {
           // The session's delegates and its board's notices, server-written:
           // a create that seeds either is refused.
-          session: installation.session(board?.sessionStateShape),
+          session: withSessionFields(installation.session(board?.sessionStateShape), options.sessionFields),
           resources: { ...installation.resources, ...installation.documents, ...(board?.resources ?? {}) },
           resourceVisibility: installation.resourceVisibility,
           request: { onStarted: resolveTurnWorker }

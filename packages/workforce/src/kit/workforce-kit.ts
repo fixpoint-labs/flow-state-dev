@@ -27,7 +27,8 @@
  */
 import { defineKit, slot, type CapabilityRef, type UsesEntry } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { z } from "zod";
+import { z, type ZodTypeAny } from "zod";
+import type { SessionFields } from "../workers/session-fields";
 import { AGENT_FLOW, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "../agent-worker-flow";
 import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import { defineCoordinatorFlow, type CoordinatorFlowOptions } from "../coordinator/coordinator-flow";
@@ -47,13 +48,13 @@ import { hireWorkforce } from "../workers/register";
 import { workerFlow } from "../workers/worker-flow";
 
 /** The built-in agent flow's options, as the kit's config takes them. */
-export type WorkforceAgentOptions = Omit<AgentWorkerFlowOptions, "installation"> & {
+export type WorkforceAgentOptions = Omit<AgentWorkerFlowOptions, "installation" | "sessionFields"> & {
   /** The settings a user sees on a worker's roster row (`icon`, `color`). */
   showSettings?: readonly string[];
 };
 
 /** The coordinator flow's options, as the kit's config takes them. */
-export type WorkforceCoordinatorOptions = Omit<CoordinatorFlowOptions, "installation">;
+export type WorkforceCoordinatorOptions = Omit<CoordinatorFlowOptions, "installation" | "sessionFields">;
 
 /** What `fsdev gen` renders into `workforce/workforce.gen.ts`: the app imports it and hands it over whole. */
 export interface GeneratedWorkforce {
@@ -93,6 +94,13 @@ export interface WorkforceConfig {
   messages?: MessageLimits;
   /** The standard worker each user's project coordinator runs as. */
   projectCoordinator?: string;
+  /**
+   * Session fields the app declares on the agent and coordinator sessions, a
+   * schema each, by name. Only the server writes one: a create that seeds it
+   * is refused, naming it, and the client reads it off the session.
+   * Every field is visible to the session's browser. Never put a secret here.
+   */
+  sessionFields?: SessionFields;
 }
 
 /** Accepts any object: what the field holds is checked where it is used. */
@@ -125,6 +133,7 @@ const configSchema: z.ZodType<WorkforceConfig, z.ZodTypeDef, WorkforceConfig> = 
     taskChainLimit: z.number().int().positive().optional(),
     messages: object<MessageLimits>().optional(),
     projectCoordinator: z.string().min(1).optional(),
+    sessionFields: z.record(z.custom<ZodTypeAny>((value) => value instanceof z.ZodType, { message: "a session field is a zod schema" })).optional(),
   })
   .strict();
 
@@ -187,6 +196,13 @@ function installWorkforce(
   if (config.agent !== undefined && Object.hasOwn(filled, AGENT_FLOW)) {
     throw new Error(`workforce: \`agent\` is configured, and the app's worker flows hold an "${AGENT_FLOW}" flow too. Keep one.`);
   }
+  // The kit's `sessionFields` is the one place the app declares session fields: it would overwrite
+  // a nested one, leaving that field open to a seeded create.
+  for (const key of ["agent", "coordinator"] as const) {
+    if (Object.hasOwn(config[key] ?? {}, "sessionFields")) {
+      throw new Error(`workforce: \`${key}.sessionFields\` is not read; declare session fields on the kit's \`sessionFields\`.`);
+    }
+  }
   if (config.coordinator !== undefined && Object.hasOwn(filled, COORDINATOR_FLOW)) {
     throw new Error(`workforce: \`coordinator\` is configured, and the app's worker flows hold a "${COORDINATOR_FLOW}" flow too. Keep one.`);
   }
@@ -201,6 +217,8 @@ function installWorkforce(
       createRoutinesCapability(installation),
     ] as CapabilityRef[];
 
+  /** The app's session fields, for the agent and coordinator flows the kit builds. */
+  const fields = config.sessionFields === undefined ? {} : { sessionFields: config.sessionFields };
   const builtIn: Record<string, WorkerFlowEntry> = {};
   if (!Object.hasOwn(filled, AGENT_FLOW)) {
     const { showSettings, ...agent } = config.agent ?? {};
@@ -210,6 +228,7 @@ function installWorkforce(
           ...(generated.blocks === undefined ? {} : { catalog: generated.blocks as never }),
           ...agent,
           installation,
+          ...fields,
           uses: [...(agent.uses ?? []), ...added(installation)],
         }),
       { showSettings: showSettings ?? [] },
@@ -221,6 +240,7 @@ function installWorkforce(
       defineCoordinatorFlow({
         ...coordinator,
         installation,
+        ...fields,
         agent: { ...coordinator.agent, uses: [...(coordinator.agent?.uses ?? []), ...added(installation)] },
       }),
     );

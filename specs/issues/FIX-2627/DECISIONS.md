@@ -147,6 +147,13 @@ other way, a stretch where the goals don't cover the install every app uses.
 Settled on the implementation branch (`claude/fix-2627-impl`). Each narrows a decision above;
 none reverses one.
 
+- **The three views are deferred to FIX-2725 (owner decision, 2026-11-13).** The worker
+  sessions, session turns and coding board views aren't built here. A view's block context
+  has no session read: it can't list a user's sessions or read a session's requests, and the
+  engine records no such read to wake a watcher. And a session view runs only on its own
+  session's flow, while a kit can't add a view to flows another kit builds. So
+  `listWorkerSessions`/`findWorkerSession`, claude-code-style's turn assembly and its
+  `boardOf`/`harnessOf` stay exactly as they are, and no `views` slot is built.
 - **Where the kits are imported from.** `workforce` from `@flow-state-dev/workforce/kit`, beside
   `harnesses` at `@flow-state-dev/harness-manager/kit`: both read the file system at start, so
   neither sits on a package root a browser bundle reaches.
@@ -208,6 +215,22 @@ none reverses one.
   disposed; kitchen-sink's, which the app reads for as long as it runs, when the process exits.
 - **The planted stray is named by its folder.** With nothing else under `workforce/flows/`, the
   claim pass names `flows`, the topmost entry no reader used; the goal check asserts that.
+- **`sessionFields` reaches the agent and coordinator flows as a factory option.** The kit hands
+  its `sessionFields` to the two flows it builds (`defineAgentWorkerFlow`, `defineCoordinatorFlow`);
+  each field joins that session's schema, its `serverOwned` list and its client data. A field
+  named like a key workforce keeps on the session refuses start. Every field is visible to the
+  session's browser, as `workProjectId` is: never put a secret in one. No per-field expose option
+  is built; nothing needs one yet. `workProjectId` stays as it is
+  until FIX-2628 moves projects to the app.
+  The kit's `sessionFields` is the one place they are declared: a nested `agent.sessionFields`
+  or `coordinator.sessionFields` refuses start, as `agent.sessionFields` does on the coordinator
+  and the error reporter, because each would be overwritten or dropped and its field left open
+  to a seeded create.
+- **The starter files are one registry item, `workforce-starter`.** `fsdev ui add
+  workforce-starter` copies `workforce/teams/team/TEAM.md` and
+  `workforce/teams/team/workers/assistant/WORKER.md` into the app (the copy-in FIX-2626 names),
+  so the registry gains its first `registry:file` item beside its components. No `init` command
+  exists to add it to; the item is the whole of `init` for workforce.
 
 ## Considered and dropped
 
