@@ -51,6 +51,8 @@ Written by `docs-writer` (sonnet), 856 words. Scenario: engineering.coder fixing
 - After the loop: "Choosing a harness" says the flow checks the named harness can run on this machine before each task, fails at once with the reason and what to run (`codex login`), and never falls back to another agent (facts 51, 79). "Its own checkout" says two users on the same issue get separate checkouts (fact 30).
 - Closed after the loop: all 8 open findings (pass 4; pass 7, findings 1-4; pass 9).
 
+- After the loop (review): the completion sentence no longer says "only when" the judge agrees. Checks run when the run changed files (fact 44). The judge is on by default for a task with a goal and must not say the goal is unmet (fact 47). A task whose run opened a pull request completes when it merges (fact 49).
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 be5017eee047, and the 10 Reference row(s) pass 6 moved.

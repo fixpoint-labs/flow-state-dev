@@ -88,7 +88,7 @@ The checkout is where the agent is pointed, not a jail. The sandbox on its harne
 
 ## A verdict before it counts
 
-The agent finishing and the task being done are separate facts. A task completes only when the run ended normally, your `checks` pass in the checkout, and the judge agrees the goal is met. The judge is a model that reads the goal against the agent's answer and its commits. A run that spends its turns or budget stops cleanly and is not done.
+The agent finishing and the task being done are separate facts. A task completes when the run ended normally and, if it changed files, your `checks` pass in the checkout. For a task with a goal, the judge, on by default, must also not say the goal is unmet. The judge is a model that reads the goal against the agent's answer and its commits. If the run opened a pull request, the task completes when that pull request merges. A run that spends its turns or budget stops cleanly and is not done.
 
 Anything short of done fails the attempt, and the next attempt is told why. A green check is evidence, not proof: the checkout's scripts are ones the agent could edit. Set `review: true` on the kit to have a user read the commits before the task completes. The order of the conditions and the run's statuses are in [Harness runs](../reference/harness-runs.md).
 
