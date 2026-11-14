@@ -30,8 +30,7 @@ import { createClient, type SessionStateSnapshotResponse } from "@flow-state-dev
 import type { MessageItem, OutputItem, SuspensionItem, ToolOutputItem } from "@flow-state-dev/core/items";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { harnessSessionStateSchema, runRecordStateSchema } from "@flow-state-dev/harness-manager";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { foldOf, goalTmpDir, sessionWindow, intentFreeEnv, onClosed, REPO_ROOT, refuseIfAnswering, runGoal, sleep, stopProcessGroup, type SessionReads } from "../lib/index.mts";
+import { foldOf, goalTmpDir, sessionWindow, intentFreeEnv, onClosed, readTree, REPO_ROOT, refuseIfAnswering, runGoal, sleep, stopProcessGroup, type SessionReads } from "../lib/index.mts";
 import {
   ASKS,
   cellsFor,
@@ -301,9 +300,9 @@ export function skillFiles(workerDir: string, skill: Draw["skill"], switchOn: bo
   return files;
 }
 
-/** The skill names the worker `workerId` holds, as the loader resolves them from the served tree. */
+/** The skill names the worker `workerId` holds, as the workforce kit reads them from the served tree. */
 export async function heldSkills(tree: string, workerId: string): Promise<string[]> {
-  const { workers } = await readWorkforce(tree);
+  const { workers } = await readTree(tree);
   return (workers.find((w) => w.id === workerId)?.skills ?? []).map((s) => s.name);
 }
 

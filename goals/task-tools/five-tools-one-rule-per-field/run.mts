@@ -50,12 +50,12 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createMockModelResolver, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import {
   ROSTER_FLOW,
-  createWorkerInstallation,
   defineAgentWorkerFlow,
   defineCoordinatorFlow,
-  hireWorkforce,
+  workerFlow,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -67,7 +67,8 @@ import {
   runGoal,
   silentLogger,
   untilIdle,
-  type ModulePatch
+  type ModulePatch,
+  workforceTree
 } from "../../lib/index.mts";
 
 const ALICE = "u_tools_alice";
@@ -244,7 +245,7 @@ function modelResolver() {
 
 // ---- the host ----------------------------------------------------------------------
 
-const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
+const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared: { description: `The ${id} worker.`, ...declared }, body: "", skills: [] });
 const WORKERS: WorkerManifest[] = [
   worker("desk", { flow: "coordinator", delegates: ["eng.a", "eng.b"], description: "The person's desk." }),
   worker("chief", { flow: "coordinator", delegates: ["eng.a"], editsOwnDelegates: true, description: "Changes its own delegates." }),
@@ -253,21 +254,23 @@ const WORKERS: WorkerManifest[] = [
   worker("eng.b", { flow: "agent", description: "Does work." }),
   worker("eng.c", { flow: "agent", description: "On the roster, nobody's delegate." })
 ];
+/** The workers as the app's `workforce/` folder, which the kit reads. */
+const TREE = workforceTree(WORKERS);
 
 /** The fields `updateTask` edits, two values each: one for the tool, one for the action. */
 const FIELDS = ["goal", "title", "context", "input", "deps", "priority", "labels", "metadata", "assignee", "maxAttempts"] as const;
 type Field = (typeof FIELDS)[number];
 
 function buildHost(filename: string) {
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => flows as never });
-  const agent = defineAgentWorkerFlow({ installation });
-  const coordinator = defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" });
-  flows = { agent, coordinator };
-  const copies = hireWorkforce(installation);
-  const instances = Object.fromEntries(copies.map((copy) => [copy.id, copy]));
+  // The agent and coordinator flows as the goal builds them, in place of the kit's own.
   const state = createFlowState({
-    flows: Object.values(instances),
+    kits: [workforce({ directory: TREE })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        agent: workerFlow((installation) => defineAgentWorkerFlow({ installation })),
+        coordinator: workerFlow((installation) => defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" }))
+      }
+    },
     stores: { default: { primary: sqliteStores({ filename }) } },
     logger: silentLogger,
     modelResolver: modelResolver(),
@@ -276,14 +279,14 @@ function buildHost(filename: string) {
       return typeof user === "string" ? { userId: user, orgId: ORG } : null;
     }
   } as never);
-  return { state, instances };
+  return { state };
 }
 
 // ---- the legs ----------------------------------------------------------------------
 
 await runGoal(async (failures) => {
   rmSync(join(SCRATCH, "main.sqlite"), { force: true });
-  const { state, instances } = buildHost(join(SCRATCH, "main.sqlite"));
+  const { state } = buildHost(join(SCRATCH, "main.sqlite"));
   const notes: string[] = [];
   const leg = async (name: string, body: () => Promise<void>) => {
     try {
@@ -294,6 +297,8 @@ await runGoal(async (failures) => {
   };
   try {
     const runtime = await state.getRuntime();
+    /** Every flow the host serves, by its id: the kit's copies and the roster flow. */
+    const instances = Object.fromEntries(runtime.registry.list().map((copy) => [copy.id, copy]));
     const router = (await state.getRouter()) as never;
     const alice = actingAs(router, ALICE);
     const bob = actingAs(router, BOB);
