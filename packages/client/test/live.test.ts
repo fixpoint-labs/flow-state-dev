@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createClient, type SubscribeOptions, type WireNotice, type WireTopic } from "../src";
 import { liveRead } from "../src/live/live-read";
 import { mayHold, storageRootsOf } from "../src/live/paths";
+import { NOTICE_MAX_IDS } from "@flow-state-dev/contracts/types/push-delivery";
 
 type Held = { topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean };
 
@@ -124,6 +125,51 @@ describe("liveRead: the filter runs before the merge", () => {
     gate.calls[1]!.resolve(1);
     await flush();
     expect(gate.calls[2]!.notice).toBeNull();
+  });
+
+  // FIX-2625: the merge unions the ids of one topic and kind, up to one cap;
+  // no ids beats ids, and different topics or kinds still read everything.
+  it("unions the ids of notices on one topic and kind, so the waiting read names every row that changed", async () => {
+    const sub = fakeSubscribe();
+    const gate = gatedRead<number>();
+    liveRead(sub.subscribe, [{ scope: "user" }], { read: gate.read });
+    const board = (ids?: string[]): WireNotice => ({
+      topic: { scope: "session", id: "s1", resource: "tasks" },
+      kind: "board",
+      ...(ids !== undefined ? { ids } : {})
+    });
+    sub.notify(board(["t1"]));
+    sub.notify(board(["t2", "t1"]));
+    sub.notify(board(["t3"]));
+    gate.calls[0]!.resolve(1);
+    await flush();
+    expect(gate.calls[1]!.notice).toEqual(board(["t1", "t2", "t3"]));
+
+    // A notice with no ids among them: read everything that changed.
+    sub.notify(board(["t1"]));
+    sub.notify(board());
+    gate.calls[1]!.resolve(1);
+    await flush();
+    expect(gate.calls[2]!.notice).toEqual(board());
+
+    // Past the cap: none.
+    for (let i = 0; i <= NOTICE_MAX_IDS; i++) sub.notify(board([`t${i}`]));
+    gate.calls[2]!.resolve(1);
+    await flush();
+    expect(gate.calls[3]!.notice).toEqual(board());
+
+    // Up to the cap: all of them.
+    for (let i = 0; i < NOTICE_MAX_IDS; i++) sub.notify(board([`t${i}`]));
+    gate.calls[3]!.resolve(1);
+    await flush();
+    expect(gate.calls[4]!.notice?.ids).toHaveLength(NOTICE_MAX_IDS);
+
+    // Another kind on the same topic: null, as before.
+    sub.notify(board(["t1"]));
+    sub.notify({ topic: { scope: "session", id: "s1", resource: "tasks" }, kind: "resource", ids: ["t1"] });
+    gate.calls[4]!.resolve(1);
+    await flush();
+    expect(gate.calls[5]!.notice).toBeNull();
   });
 
   it("drops a notice the caller doesn't hear, but always reads on a connect, tick or resync", async () => {

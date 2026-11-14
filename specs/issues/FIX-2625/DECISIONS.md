@@ -107,6 +107,39 @@ that entry keys already reach org members today. Then the push edge strips `ids`
 - **Changeset:** `minor` for `contracts`, `core`, `engine`, `store-postgres`, `client`, `react`, `orchestration` (the notice payload, the view option, the bus payload and the board's opt-in all ship); the glossary's
   *View* entry gains the partial answer in the implementation PR (ER-9). No new public term.
 
+## Decided during implementation
+
+Settled on the implementation PRs. Each narrows a decision above; none reverses one.
+
+- **The switch is the app's, on `RuntimeConfig`.** `noticeIds: { org: false }` on
+  `createFlowState` or `createFlowApiRouter` (`RuntimeConfig.noticeIds`), held on the router's
+  push state and read by every socket it opens. Not on `EnablePushDeliveryOptions`: that is per
+  host, so a second host (FIX-380's Ably arm) could forget it and leak. A key that isn't
+  `session`, `user` or `org`, or a value that isn't a boolean, is refused at construction, so a
+  typo can't leave ids on.
+- **An entry's id is its storage key**, the same string as the path it already names: the
+  direct read places entries by storage key, and the entry route reads by it.
+- **With ids off, the push edge cuts every `resource` path for a scope-wide subscription**, not
+  only those whose ids mark an entry. A process from before ids (mid-deploy, on a shared Postgres
+  bus) sends an entry's path with no ids, and the socket can't tell that path from a single
+  resource's name (BP-030; Codex on #5212). A single resource's watchers in that scope read once
+  more. A subscription narrowed to the resource keeps the path its client named. The rule lives
+  only at the edge: the Postgres bus drops ids, then widens, for size alone.
+- **A session's own `run` notice names nothing**: the topic is that one session. Its parent's
+  names it.
+- **The `run` notice on the owner's user topic names nothing**, narrowing *Which notices carry
+  ids*' run row. The user topic is the user's in every org, and the mint grants it by user and
+  tenant alone, so a session id there would tell their screen in one org which sessions moved in
+  another (an `fsd-write.` id names a storage key too), the same reason `noticePathFor` keeps
+  user-scope keys off it (Cursor's security review on #5212). A list of the user's sessions reads
+  whole on it, as before this issue. Ids there would need the org on the grant and the topic: a
+  follow-up, if a user-topic screen proves worth narrowing.
+- **The board's read hides no row from a reader of its session.** `listTasks` lists every row the
+  resolved board holds, with no per-reader filter, and the session's stream already carries each
+  row's task id (`task-change` items), so a board notice names its task.
+- **The cap is 100** (`NOTICE_MAX_IDS`, `contracts/types/push-delivery`), one constant and one
+  union rule (`unionNoticeIds`) for the fold and the merge. A hundred 40-byte ids fit `NOTIFY`.
+
 ## Considered and dropped
 
 | Alternative | Why not |

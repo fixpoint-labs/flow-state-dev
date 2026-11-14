@@ -34,6 +34,7 @@ import {
   type WireNotice,
   type WireTopic
 } from "@flow-state-dev/contracts";
+import { noticeIdsOf } from "@flow-state-dev/contracts/types/push-delivery";
 import { BACKOFF_INITIAL_MS, backoffDelay } from "../internal/backoff";
 import type { Transport } from "../internal/http";
 import type { FlowCapabilities } from "../types";
@@ -109,7 +110,11 @@ function readServerFrame(value: unknown): PushServerFrame | undefined {
   if (topic.resource !== undefined && typeof topic.resource !== "string") return undefined;
   const scoped =
     topic.scope === "session" ? typeof topic.id === "string" : topic.scope === "user" || topic.scope === "org";
-  return scoped ? (frame as PushServerFrame) : undefined;
+  if (!scoped) return undefined;
+  // FIX-2625: ids that aren't a list of strings are dropped, never the notice (`noticeIdsOf`).
+  const { ids, ...notice } = frame;
+  const named = noticeIdsOf(ids);
+  return (named !== undefined ? { ...notice, ids: named } : notice) as PushServerFrame;
 }
 
 /** Whether `subscribed` covers a notice under `heard`. */

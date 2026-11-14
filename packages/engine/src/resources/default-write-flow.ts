@@ -42,7 +42,7 @@ import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBo
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { PrincipalResolver } from "../transports/types";
-import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
+import { entryNotice, publishScopeChange } from "../bus/scope-changes";
 import { pinRejectsCaller } from "../context/instance-pin";
 import { parseResourceWriteState } from "./normalize-resource-state";
 import { ownerWriteRefusal } from "./owner-private";
@@ -370,13 +370,13 @@ function writeOperations(registry: FlowRegistry, host: BuiltInHost) {
   };
 
   /** Publish the write's change on its scope's topic, as any action write does. */
-  const publish = (write: AdmittedWrite, resource: string | undefined, requestId: string): void => {
+  const publish = (write: AdmittedWrite, narrowed: { resource?: string; ids?: string[] }, requestId: string): void => {
     publishScopeChange(stores.bus, {
       scope: write.target.scope,
       id: write.target.scope === "user" ? write.caller.userId : write.caller.orgId,
       tenantId: write.tenantId,
       kind: "resource",
-      ...(resource !== undefined ? { resource } : {}),
+      ...narrowed,
       requestId
     });
   };
@@ -445,7 +445,7 @@ function writeOperations(registry: FlowRegistry, host: BuiltInHost) {
         return next;
       }
     });
-    if (written.committed) publish(write, target.key, requestId);
+    if (written.committed) publish(write, { resource: target.key }, requestId);
     return { version: written.version };
   };
 
@@ -490,7 +490,7 @@ function writeOperations(registry: FlowRegistry, host: BuiltInHost) {
         return next;
       }
     });
-    if (written.committed) publish(write, noticePathFor(config, storageKey, write.target.scope), requestId);
+    if (written.committed) publish(write, entryNotice(config, storageKey, write.target.scope), requestId);
     return { version: written.version };
   };
 
@@ -555,7 +555,7 @@ function createDefaultWriteFlow(options: { registry: FlowRegistry }): FlowInstan
       // The entry's content goes with it, as the resource routes' and a run's deletes do,
       // so a key created again starts with none.
       await stores.content.delete(write.target.scope, write.cell, storageKey);
-      publish(write, noticePathFor(config, storageKey, write.target.scope), ctx.request.identity.id);
+      publish(write, entryNotice(config, storageKey, write.target.scope), ctx.request.identity.id);
       return { version: deleted.version };
     }
   });

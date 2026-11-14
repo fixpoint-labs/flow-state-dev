@@ -23,6 +23,7 @@ import { type WireTopic } from "@flow-state-dev/core";
 import { PUSH_CLOSE_CODES, wireTopicKey, type PushServerFrame } from "@flow-state-dev/core/internal";
 import type { BusTopic, ChangeBus, ChangeNotice } from "../bus/types";
 import { verifyPushTicket } from "./ticket";
+import type { NoticeIdScopes } from "../runtime-config";
 
 /** The socket session's clocks. */
 export const PUSH_SOCKET_TIMINGS = {
@@ -55,10 +56,13 @@ export type OpenPushSocketOptions = {
   io: PushSocketIO;
   /** Where a refused ticket is reported. Default `console`. */
   logger?: { warn(message: string, meta?: Record<string, unknown>): void };
+  // FIX-2625 D2.
+  /** Which scopes' notices may name what changed (`RuntimeConfig.noticeIds`). Default: every scope's. */
+  noticeIds?: NoticeIdScopes;
 };
 
 /** A bus topic as the wire names it: no tenant, and no user or org id. */
-function toWire(topic: BusTopic): WireTopic {
+function toWire(topic: Omit<BusTopic, "resource"> & { resource?: string | undefined }): WireTopic {
   const resource = topic.resource !== undefined ? { resource: topic.resource } : {};
   return topic.scope === "session" ? { scope: "session", id: topic.id, ...resource } : { scope: topic.scope, ...resource };
 }
@@ -105,12 +109,27 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
   const send = (frame: PushServerFrame): void => {
     if (!ended) io.send(frame);
   };
-  const hear = (notice: ChangeNotice): void => {
+  // FIX-2625 D2: the one place a notice's ids reach a browser, so the
+  // per-scope switch lives here. With ids off for the notice's scope it goes
+  // out with none, and every `resource` notice goes to a scope-wide
+  // subscription on the bare scope topic, as an owner-private row's already
+  // does: a collection entry's path is an id too. Every one, not just those
+  // whose ids mark an entry: a publisher from before ids (a process mid-deploy
+  // on a shared bus) sends an entry's path with no ids, and the socket can't
+  // tell an entry's path from a single resource's name (BP-030). A single
+  // resource's watchers read once more for it. A subscription narrowed to the
+  // resource keeps the path its client named.
+  const idsOff = (scope: BusTopic["scope"]): boolean => options.noticeIds?.[scope] === false;
+  const hear = (notice: ChangeNotice, subscribed: BusTopic): void => {
+    const off = idsOff(notice.topic.scope);
+    const bare = off && notice.kind === "resource" && subscribed.resource === undefined;
+    const topic = bare ? { ...notice.topic, resource: undefined } : notice.topic;
     send({
       type: "notice",
-      topic: toWire(notice.topic),
+      topic: toWire(topic),
       kind: notice.kind,
-      ...(notice.origin !== undefined ? { origin: notice.origin } : {})
+      ...(notice.origin !== undefined ? { origin: notice.origin } : {}),
+      ...(!off && notice.ids !== undefined ? { ids: notice.ids } : {})
     });
   };
 
@@ -127,7 +146,10 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
     for (const granted of checked.claims.topics) {
       const key = busKey(granted.bus);
       if (subscriptions.has(key)) continue;
-      subscriptions.set(key, { wireKey: wireTopicKey(toWire(granted.bus)), off: bus.subscribe(granted.bus, hear) });
+      subscriptions.set(key, {
+        wireKey: wireTopicKey(toWire(granted.bus)),
+        off: bus.subscribe(granted.bus, (notice) => hear(notice, granted.bus))
+      });
     }
     // Its topics are heard from here on: a read the client makes once it
     // hears this misses nothing under them.

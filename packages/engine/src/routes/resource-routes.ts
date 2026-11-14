@@ -58,7 +58,7 @@ import {
   sessionKeySharesLineage,
   sessionStorageScope,
 } from "../resources/lineage-scope";
-import { noticePathFor, publishSessionResourceChange } from "../bus/scope-changes";
+import { entryNotice, publishSessionResourceChange } from "../bus/scope-changes";
 
 type ResourceRouteContext = {
   registry: FlowRegistry;
@@ -101,12 +101,11 @@ function publishSessionResource(
   // FIX-2623 D1: through the one publish surface. Lineage sharing is the
   // stored key's (the same rule the write above routed by), and the owner is
   // the session record this handler loaded.
-  const resource = noticePathFor(collection, storageKey);
   publishSessionResourceChange(ctx.stores.bus, {
     sessionId,
     ownerUserId: session.userId,
     tenantId: ctx.tenantId,
-    notice: resource !== undefined ? { resource } : {},
+    notice: entryNotice(collection, storageKey),
     lineageShared: sessionKeySharesLineage(flowResources, storageKey),
     hostHasViews: registryHasViews(ctx.registry)
   });
