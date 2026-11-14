@@ -193,24 +193,6 @@ describe("a collection list, for one change", () => {
     await waitFor(() => expect(result.current.items.map((i) => i.topic)).toEqual(["b", "c"]));
     expect(reads.length - before).toBe(1);
   });
-
-  // Gitar on #5232: the order reads start in is not the order the server serves them.
-  it("reads again when the server serves the list before a snapshot whose read was sent first", async () => {
-    const stored = ["a"];
-    const reads = server(stored);
-    const { result, rerender } = renderHook(({ session }: { session: SessionView }) => useResourceCollectionList(session, REF), {
-      wrapper,
-      initialProps: { session: view(1, []) }
-    });
-    await waitFor(() => expect(result.current.items.map((i) => i.topic)).toEqual(["a"]));
-
-    // The session sends its state read first; a named change creates b, and the list reads [a, b].
-    stored.push("b");
-    rerender({ session: view(1, ["docs/b"]) });
-    await waitFor(() => expect(result.current.items.map((i) => i.topic)).toEqual(["a", "b"]));
-    // Another session's write, which no entry names, lands; then the server serves the state read, with it.
-    stored.push("c");
-    rerender({ session: view(3, ["docs/b"]) });
-    await waitFor(() => expect(result.current.items.map((i) => i.topic)).toEqual(["a", "b", "c"]));
-  });
+  // The server serving a list before a state read sent first needs the real session view:
+  // `useSession-scope-notices.test.ts`.
 });
