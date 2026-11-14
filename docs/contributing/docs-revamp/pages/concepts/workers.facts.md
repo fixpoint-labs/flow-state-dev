@@ -277,3 +277,14 @@ Each is a fact above; the page may state a benefit only if it is here.
 - The worker flow file sits at `workforce/flows/workers/request-triage.ts` and default-exports `workerFlow((installation) => defineFlow(...))`; `fsdev gen` registers it. `wk/workers/worker-flow.ts:1-20`, `wk/loader/read-workforce-folder.ts:13-20,50`. A `flow:` naming a flow not passed to the installation is refused at start. `wk/hire.ts:258`. [ref]
 - The page links these rows instead of stating them: R-28 (WORKER.md settings table: the required `description`, what `name`, `model`, `delegates`, `flow` do, how the id is formed from the path; what makes a file unusable and the startup refusal naming the file); R-25 (refusals table: task filed for a worker not in `delegates` is refused naming the worker; limits: a worker acts only for its owner, a message crosses workers on one roster, never users). The page has no limits section.
 - The page now ends with "What it gets you" (from section 8) and "How it fits with the others" (section 9).
+
+## Revisions (round 2)
+
+- The triage example now declares `actions.respond` (`userMessage`, `block`, `inputSchema`) because `defineFlow` requires `actions`. It uses a `handler` block as `packages/workforce/test/agent-worker-flow.test.ts:420-428` does, and `configSchema: workerConfigSchema()` per `wd:402-406`. The handler's routing on the word "refund" is the example's own, not a framework behaviour.
+- `session.flowKind` is the flow the worker runs on; every worker flow takes `respond` (`wd:408-411`, `packages/client/src/types/index.ts:129-132`). So the talk call works for any worker.
+- `workerFlow` passes the installation to the builder; the flow takes `installation.session()` (readonly `workerId`) and `installation.resources` (`wk/workers/worker-flow.ts:1-20`, `wd:415-420`). `fsdev gen` finds files under `workforce/flows/workers/` (`wk/loader/read-workforce-folder.ts:13-20,50`).
+- Workforce is glossed at first use in the opening ("the kit that provides workers"); the coordinator clause in the closing section and the duplicate no-TypeScript sentence are cut (once in "What it gets you").
+
+## Revisions (round 3)
+
+- The page now has a section "Where the tasks show up", answering sitemap question 4 (section 5, "Where tasks are shown to a page"): the board of the session that filed them; a read through the `tasks` collection of that session, on a flow that keeps boards; every session the user filed from, never another user's; input, output and metadata never sent. `dw:169`, `dw:188-190`, `ui:60-130`. The example passes the conversation's session id from `ensureWorkerSession` to `BoardColumns` with `boardRef="tasks"` and a `client`, as `ui:~100-110` does. The section links the Workforce screens page for `live` and `BoardList` options.

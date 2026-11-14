@@ -11,7 +11,7 @@ import WhatIsReal from "./figures/what-is-real-in-a-test.svg";
 
 An AI backend is awkward to test when every run needs a server, a database and a model that words its answer differently each time. Flow State's testing package runs a flow, the unit of backend a client calls, inside your test process, on in-memory storage. The one unpredictable part, the model call, is answered by a scripted reply.
 
-This works because a flow is made of blocks, named pieces of work with a typed input and output. One block can run alone, and a whole action can run from input to output. The test is the real run with a single stand-in.
+A flow is made of blocks, named pieces of work with a typed input and output, so one block can run alone and a whole action can run from input to output. The test is the real run with a single stand-in.
 
 The example is the support desk from [Blocks](./blocks.md): `handleTicket` cleans a customer's message, then `draftReply` has a model write the answer.
 
@@ -58,27 +58,34 @@ it("replies to a customer", async () => {
 });
 ```
 
-The mock is attached under the block's `name`, `"draft-reply"`, not its variable name. Everything else in the run is the real one: the input is checked, `cleanMessage` trims the message, and the reply comes back as an item. A run that fails does not throw. It comes back with `status: "failed"` and an `error`.
+The mock is attached under the block's `name`, `"draft-reply"`, not its variable name. Everything else in the run is the real one: the input is checked, `cleanMessage` trims the message, and the reply comes back as an item. A failed run does not throw; it returns `status: "failed"` and an `error`. The [testing reference](../reference/api/testing.md) lists the options and result fields.
 
 ## Standing in for a generator
 
-`mockGenerator` takes the block's name and a script, a list of replies used in order, one per call. A step is `{ text }` for a text reply or `{ structuredOutput }` for a generator that returns an object. Calling the generator more times than the script has steps fails the run.
+`mockGenerator` takes the block's name and a script, a list of replies used in order, one per call. A step is `{ text }` for a text reply or `{ structuredOutput }` for a generator that returns an object.
 
 The mock also records what it was sent, so you can assert on the prompt without a model reading it:
 
-```ts title="test/support.test.ts"
-const draft = mockGenerator({ name: "draft-reply", script: [{ text: "Your order shipped." }] });
-await testFlow({
-  flow,
-  action: "reply",
-  userId: "test-user",
-  input: { message: "where is my order" },
-  generators: { "draft-reply": draft },
+```ts title="test/draft-prompt.test.ts"
+import { expect, it } from "vitest";
+import { mockGenerator, testFlow } from "@flow-state-dev/testing";
+import flow from "../src/flows/support/flow";
+
+it("sends the cleaned message to the model", async () => {
+  const draft = mockGenerator({ name: "draft-reply", script: [{ text: "Your order shipped." }] });
+  await testFlow({
+    flow,
+    action: "reply",
+    userId: "test-user",
+    input: { message: "where is my order" },
+    generators: { "draft-reply": draft },
+  });
+
+  expect(draft.calls[0].input).toContainEqual({ role: "user", content: "where is my order" });
 });
-expect(draft.calls[0].input).toContainEqual({ role: "user", content: "where is my order" });
 ```
 
-A mock keeps its place in the script and its calls, so build a new one per test or call `draft.reset()`. A generator with no mock fails the run with an error naming it, so a test cannot reach a provider by accident. To attach a mock by model id instead, use `models: { "openai/gpt-6-luna": mock }`.
+A generator with no mock fails the run with an error naming it, so a test cannot reach a provider by accident. Script position, `reset()` and attaching a mock by model id are in the [reference](../reference/api/testing.md).
 
 ## Testing one block
 
@@ -97,14 +104,14 @@ it("trims the message", async () => {
 });
 ```
 
-Like `testFlow`, it does not throw when the block fails. The failure is on `result.error`.
+A failing block does not throw. The failure is on `result.error`, as in the [reference](../reference/api/testing.md).
 
 ## What to assert on
 
-Not the model's wording, because the script fixed it. Assert on three things your code decides:
+Not the model's wording, because the script fixed it. Assert on what your code decides:
 
 - **The output.** `result.output`, as above.
-- **The items.** `result.items` is what a client would have received. `testItems(result.items)` filters it: `messages()`, `byType("block_trace")`, `blockOutputs("draft-reply")`.
+- **The items.** `result.items` is what a client would have received. `testItems(result.items).messages()` returns the messages; the other filters are in the [reference](../reference/api/testing.md).
 - **The state.** What the run wrote to a session, user or org.
 
 For state, seed the starting point and read the result. Say a handler counts a customer's tickets in session state:
@@ -138,27 +145,54 @@ it("adds one to the count", async () => {
 });
 ```
 
-`testFlow` seeds the same scopes under `seed: { session: { state } }`. It returns no state, so pass `stores` from `createInMemoryStores()` (in `@flow-state-dev/engine/host`) and read `stores.session.get("test-session")` afterwards. Passing the same `stores` to two calls makes the second turn see the first one's writes.
+`testFlow` seeds the same scopes under `seed: { session: { state } }`. It returns no state, so pass your own `stores` and read the session back from them. Here a flow registers `countTicket` as an action named `count`:
+
+```ts title="test/session-state.test.ts"
+import { expect, it } from "vitest";
+import { defineFlow } from "@flow-state-dev/core";
+import { testFlow } from "@flow-state-dev/testing";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { countTicket } from "../src/flows/support/blocks/count-ticket";
+
+const flow = defineFlow({
+  kind: "support",
+  requireUser: true,
+  actions: { count: { block: countTicket } },
+})();
+
+it("adds one to the count", async () => {
+  const stores = createInMemoryStores();
+  await testFlow({
+    flow,
+    action: "count",
+    userId: "test-user",
+    input: { message: "hi" },
+    seed: { session: { state: { ticketCount: 5 } } },
+    stores,
+  });
+
+  const session = await stores.session.get("test-session");
+  expect(session?.state).toMatchObject({ ticketCount: 6 });
+});
+```
+
+`"test-session"` is the session id `testFlow` uses unless you pass `sessionId`. Sharing `stores` across calls is covered in the [reference](../reference/api/testing.md).
 
 ## Checking the model's work: evals
 
-A test checks that your code does what you wrote, against a scripted model. It cannot tell you whether the replies are any good, because the replies are scripted. An eval can: `evalBlock` runs a block over a dataset of cases, scores each result, and returns a report with `passed` and a `summary` per scorer. Scorers are code checks such as `contains`, or `analyzerScorer`, which has a model grade the output against criteria you write.
-
-An eval calls a real model only when you hand it a `modelResolver`. Without one, a case that reaches a generator fails like any unmocked test, and `analyzerScorer` grades with a no-op model.
+A test checks that your code does what you wrote, against a scripted model. It cannot tell you whether the replies are any good, because the replies are scripted. An eval can: `evalBlock` scores a block's output across many cases, and calls a real model only when you hand it a `modelResolver`. Without one, a case that reaches a generator fails like any unmocked test. Datasets, scorers and the report are in the [reference](../reference/api/testing.md).
 
 ## What it gets you
 
-- **Fast runs with no key.** `handleTicket` runs in tens of milliseconds, with no API key.
+- **Fast runs with no key.** `handleTicket` runs in milliseconds, with no API key.
 - **The same answer every time.** The mock returns the scripted step.
 - **No accidental provider calls.** An unmocked generator fails the test and names the block.
-- **The real run around the stand-in.** Input checks, block order, state writes and items come from the engine's own run.
+- **The real run around the stand-in.** Input checks, block order, state writes and items are the same as in a real run.
 - **Isolated tests.** Each call gets fresh in-memory stores unless you share `stores`.
-
-The stores are in memory, so what a persistent store does across a crash is not tested here.
 
 ## How it fits with the others
 
-An eval is not a test: it scores quality across many cases and may call a real model, and it does not replace the scripted test. A benchmark compares whole coordination patterns against each other, where an eval scores one block or flow; see [Benchmarks](../build/benchmark-patterns.md).
+The stores are in memory, so what a persistent store does across a crash is not tested here. A benchmark compares whole patterns, the ways of splitting work across several blocks such as a supervisor that hands tasks to workers, against each other, where an eval scores one block or flow; see [Benchmarks](../build/benchmark-patterns.md).
 
 ## Next
 

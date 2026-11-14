@@ -9,7 +9,7 @@ import PathOfAnError from "./figures/the-path-of-an-error.svg";
 
 # When something fails
 
-Code in a flow fails the way any TypeScript does: it throws. Flow State adds no error channel, no result type to check and no status to set. What it decides is where a throw goes next: back to the caller as a plain error message, to a fallback you attach to the step, and to a hook that tells you, so you can log it or send it to an error tracker.
+Code in a flow fails the way any TypeScript does: it throws. Flow State adds no error channel, no result type to check and no status to set. What it decides is where a throw goes next: to a fallback you attach to the step, or, with none, back to the caller as a plain error message. Hooks tell you about failures, so you can log them or send them to an error tracker.
 
 The example is a support desk. A block is one unit of work: a function, a model call, or a chain of them. `handleTicket` is a sequencer, a block that runs other blocks in order. It looks up the customer's order with `lookUpOrder`, then has a model write the reply with `draftReply`.
 
@@ -70,7 +70,9 @@ export const handleTicket = sequencer({
   .step((order) => `The order is ${order.status}.`, draftReply);
 ```
 
-When `lookUpOrder` throws, the sequencer stops. `draftReply` never runs. The error goes up to the action that called `handleTicket`, and with nothing to catch it, the request ends `failed`.
+The function before `draftReply` turns the order into the text `draftReply` takes.
+
+When `lookUpOrder` throws, the sequencer stops. `draftReply` never runs. The error goes up to the action, the named entry point a caller invokes (here `reply`), and with nothing to catch it, the request ends `failed`.
 
 A model can also call `lookUpOrder` as a tool. A throw there does not fail the request. The model is told the tool failed, with the message, and carries on. [Generators and tools](./generators-and-tools.md) covers that path.
 
@@ -88,11 +90,11 @@ The stream ends with an item of type `error`, then `request.failed`.
 }
 ```
 
-`message` is the text you threw, `code` is your code, and `details` are what you passed. There is no stack trace. Write the message as something a caller may read. The [error item's fields](../reference/errors.md) are in Reference.
+`message` is the text you threw, `code` is your code, and `details` are what you passed. There is no stack trace. Write the message as something a caller may read. The message of an error you did not write, such as a failed `fetch`, reaches the caller too. The [error item's fields](../reference/errors.md) are in Reference.
 
 ## Catching it in the flow
 
-A `.rescue()` is how you handle a failure inside the flow. You give it a fallback block, and its output takes the place of the failed value. The [`.rescue()` row](../reference/sequencer-methods.md) lists the handler options, such as matching only some error classes.
+A `.rescue()` is how you handle a failure inside the flow. You give it a fallback block, and its output takes the place of the failed block's output. The [`.rescue()` row](../reference/sequencer-methods.md) lists the handler options, such as matching only some error classes.
 
 Say a failed model call should become an apology, not an error.
 
@@ -109,7 +111,7 @@ export const apologize = handler({
 });
 ```
 
-In `handleTicket`, the last step becomes `draftReply.rescue([{ block: apologize }])`. `apologize` receives the error and returns a string, as `draftReply` does.
+In `handleTicket`, the last step becomes `.step((order) => ..., draftReply.rescue([{ block: apologize }]))`, with the function unchanged. `apologize` receives the error and returns a string, as `draftReply` does.
 
 Put on a single step, the rescue is local. If `draftReply` throws, `apologize` runs, its text is the step's output, and the rest of the chain goes on. Put on the sequencer, as `handleTicket.rescue([...])`, it recovers the whole chain: the fallback's output is the sequencer's output and nothing after the failure runs.
 
@@ -150,7 +152,7 @@ export const logFailure = handler({
 });
 ```
 
-A hook runs after the caller has the item, so it can watch the failure but not change it. The [`onErrored` row](../reference/errors.md) has the timing and what happens when a hook throws.
+`onErrored` runs only for a request that failed, so a rescued failure never reaches it. It runs after the caller has the item, so it can watch the failure but not change it. The [`onErrored` row](../reference/errors.md) has the timing and what happens when a hook throws.
 
 `errorCapture` is for your error tracker. It is an option on the server, and it is off until you set it. The example logs where you would call your tracker.
 
@@ -169,14 +171,14 @@ export default createFlowState({
 });
 ```
 
-The callback fires for the block that threw, and once more for the request, with `final: true`, when the request ends failed. A failure that a rescue handled fires the first kind and never the second. Keep only `event.final` for one report per request that really failed. Skip it to hear about the failing block too. Forward both and you report one failure twice. [The capture event row](../reference/errors.md) has the details.
+The callback fires for the block that threw, and once more for the request, with `final: true`, when the request ends failed. A failure a rescue handled fires the block event only, never the `final` one. To get one report for each request that failed, keep the `if (!event.final) return` check. Remove it and you also hear about each failing block, but a request that fails then reaches your tracker twice. [The capture event row](../reference/errors.md) has the details.
 
 [Sending errors to Sentry](../build/errors-to-sentry.md) goes through the tags and levels.
 
 ## What it gets you
 
 - **A caller gets an item, not a crash.** The request settles as `failed`, and the stream carries the message you threw.
-- **The caller sees only what you chose.** The message and code you threw, and nothing from the server.
+- **No stack trace leaves the server.** The caller gets the message, code and details of what was thrown, with no stack and no server paths.
 - **A fallback stays local.** `draftReply` can fail while `lookUpOrder`'s result and the rest of `handleTicket` carry on.
 - **One request, one report.** `final` gives your tracker a single event for each request that failed.
 - **The failed run is kept.** The `error` item and what the request emitted before it stay in the store, as for a finished request. [Stores](../reference/stores.md) says which survive a restart.

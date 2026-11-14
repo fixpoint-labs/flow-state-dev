@@ -47,9 +47,31 @@ export default defineFlow({
 
 `analyst` and `writer` are blocks, the framework's units of work: a model call, a function, or a chain of them. Each lives in its own file beside the flow. `workers` maps each `assignee` name to the block that does that kind of task.
 
-`board.drain` is the drain, and it is a block too. Here the flow exposes it as an action named `run` that a client can call. It could as easily be one step in a longer chain.
+```ts title="src/flows/research/blocks/analyst.ts"
+import { handler } from "@flow-state-dev/core";
+import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 
-When `compare` runs, its block receives what the three research tasks produced on `input.deps`, keyed by task id.
+export const analyst = handler({
+  name: "analyst",
+  inputSchema: taskWorkerInputSchema,
+  execute: (input): unknown => ({ findings: `Notes on: ${input.goal}` }),
+});
+```
+
+```ts title="src/flows/research/blocks/writer.ts"
+import { handler } from "@flow-state-dev/core";
+import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+
+export const writer = handler({
+  name: "writer",
+  inputSchema: taskWorkerInputSchema,
+  execute: (input): unknown => ({ report: JSON.stringify(input.deps) }),
+});
+```
+
+Here both are plain functions, so the page runs without a model. A block that calls a model works in the same place. The board hands each block the task as its input: `goal`, and for `compare`, what the three research tasks produced on `input.deps`, keyed by task id.
+
+`board.drain` is the drain, and it is a block too. Here the flow exposes it as an action named `run` that a client can call. It could as easily be one step in a longer chain.
 
 ## What a task carries
 

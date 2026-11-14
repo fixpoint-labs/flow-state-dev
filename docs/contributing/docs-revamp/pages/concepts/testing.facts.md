@@ -80,6 +80,7 @@ Legend: **[page]** the page states it. **[ref]** belongs on the generated `@flow
 
 What to assert on (cold-read Q2): the stream's items, the stored state, and the block's output. Not the model's wording, which the script fixed.
 
+- `byType(type)` is typed to `OutputItem["type"]`, which excludes `block_trace`; trace rows come only through `blockOutputs(name?)`. [ran: type check] `t/test-utilities/testItems.ts:18-24`. The page shows only `messages()`.
 - `result.items` is the list of items the run emitted, which is what a client would have received. For `hello-chat` it came back, in order: the user message, a `block_trace` for each block (`chat-pipeline`, `chat-generator`, `increment-message-count`), the assistant message, and a `state_change` on `session`. [ran] [page: an example list is fine] `hc/src/flows/hello-chat/flow.ts:71-73`
 - `testItems(result.items)` returns selectors, each a list in item order: `all()`, `byType(type)`, `messages()`, `errors()`, `blockOutputs(blockName?)` (the `block_trace` items, filtered by block name), `components(name?)`, `sideChain()`, `main()`, `byAgent(name)`, `byVisibility({ client?, history? })`. [page: `messages`, `byType`, `blockOutputs`; rest [ref]] `t/test-utilities/testItems.ts:11-79`
 - A user message item is `role: "user"` with `content: [{ type: "output_text", text }]`, and the assistant's is `role: "assistant"` the same way. For input `"hello"` and a script step `{ text: "Hi there" }` the two messages were `[ "user", "hello" ]` and `[ "assistant", "Hi there" ]`. [ran] [page] `t/test-utilities/testItems.ts:25-29`
@@ -125,7 +126,7 @@ The split (cold-read Q3): a test checks that your code does what you wrote, agai
 
 Each is something the reader can see, from facts above.
 
-- A run that never leaves the process, so a test of `handleTicket` takes tens of milliseconds and needs no key. [ran: whole probe file, four `testFlow` calls, finished in 36 ms] `t/test-utilities/testFlow.ts:11,185,215`
+- A run that never leaves the process, so a test of `handleTicket` takes milliseconds and needs no key. [ran: whole probe file, four `testFlow` calls, finished in 36 ms; the page says "milliseconds", no tighter figure] `t/test-utilities/testFlow.ts:11,185,215`
 - The same answer each run, because the stand-in returns the scripted step. [page] `t/mocks/mockGenerator.ts:434-488`
 - A model call you did not mock fails the test naming the block, so a test cannot reach a provider by accident. [page] `t/mocks/mockGenerator.ts:384-389` [ran]
 - The run is the real one: input validation, block order, state writes, items emitted. A flow that passes `testFlow` did those through the engine's own `runAction`. [page; avoid "if it passes in tests it behaves the same in production", which `old-ov:269` claims and which is wider than what is checked] `t/test-utilities/testFlow.ts:211-216`
@@ -162,7 +163,7 @@ A flow test for the example would need a flow instance. `defineFlow({ kind: "sup
 2. Test one block. `testBlock(cleanMessage, { input })` and `expect(result.output)`; `result.error` is `null`. [ran] `t/test-utilities/testBlock.ts:145-148`
 3. A generator stand-in. `mockGenerator({ name: "draft-reply", script: [{ text: "Your order shipped." }] })`, passed as `generators: { "draft-reply": mock }`. With `handleTicket` as the block under test, `result.output` was `"Your order shipped."`. [ran] `t/mocks/mockGenerator.ts:434-437`
 4. Seed state. `seed: { session: { state: { ... } } }` on `testFlow`, or `session: { state }` on `testBlock`. `hc/test/flow.test.ts:98-114`; `t/test-utilities/types.ts:21-26`
-5. Read state after a flow run through `stores.session.get("test-session")`. [ran] `tt/test-utilities.test.ts:237-238`
+5. Read state after a flow run through `stores.session.get("test-session")`. The page seeds `session: { state: { ticketCount: 5 } }` on a flow whose `count` action runs `countTicket`, and the stored session state came back `{ ticketCount: 6 }`. [ran] `tt/test-utilities.test.ts:237-238`
 6. Items: `testItems(result.items).messages()`. [ran]
 
 All of these import from `@flow-state-dev/testing` (`testFlow`, `testBlock`, `testItems`, `mockGenerator`, `evalBlock`, scorers) and `createInMemoryStores` from `@flow-state-dev/engine/host`. `t/index.ts:5-62`; `packages/engine/package.json:35`.

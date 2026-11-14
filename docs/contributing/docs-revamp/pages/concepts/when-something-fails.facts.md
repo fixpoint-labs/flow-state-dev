@@ -148,3 +148,15 @@ Stored parts a failure creates: (a) the `error` item, (b) the failed request rec
 - A generator with no `outputSchema` outputs a string (`z.string()` default). `core/blocks/generator.ts:2865`. So `draftReply` returns text, and `apologize` returning a string matches it.
 - The page now shows `draft-reply.ts` (same file as on Blocks) and `log-failure.ts`; `errorCapture` example logs with `console.error` instead of importing a tracker SDK.
 - Moved to Reference (page links): FlowError field list and plain-throw wrap (R-22); error item fields and `details.cause` (R-22); `.rescue()` handler options (R-03); `onErrored` row and capture event row (R-22); what a store keeps of a failed request (R-16).
+
+## Revisions (revise round 2)
+
+- `message` reaches the caller verbatim for any thrown error, not only a `FlowError` you wrote: `normalizeError` copies `normalized.message` onto the wrapper. So a library or `fetch` error's message goes out too. The page says "no stack trace leaves the server", not "only what you chose". `eng/errors/normalize-error.ts:46-92`; `eng/execution/runAction.ts:921-923`. [page]
+- The `.step(fn, block)` form: the function before the block maps the previous output to the block's input. `handleTicket` maps the order to the text `draftReply` takes. [page]
+- "Action" is defined at first use on the page as the named entry point a caller invokes (`reply` in the `defineFlow` example). `flows:386-396`.
+- `errorCapture`: the `if (!event.final) return` check keeps one report per failed request; without it the callback also fires for the failing block, so a failed request fires twice. `eng/test/error-capture-wiring.test.ts:81-110`. [page]
+
+## Revisions (revise round 3)
+
+- `onErrored` (action and request) runs only on the failed-request path, after `emitRequestStatus("failed")`; a rescued failure completes the request and never reaches it. `errorCapture` still fires its per-block event for a rescued failure, never `final`. `eng/execution/runAction.ts:3290-3308`. So the opening says "hooks", not that every failure reaches `onErrored`. [page]
+- The message of an error you did not write reaches the caller; stated once, in "What the caller sees", not under "What it gets you".
