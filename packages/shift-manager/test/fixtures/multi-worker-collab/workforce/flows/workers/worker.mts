@@ -122,7 +122,7 @@ export interface WorkerFlowOptions {
 /**
  * Build the `worker` flow. Every worker is hired onto this one factory.
  *
- * @returns The flow `hireWorkforce` registers one copy of, which every worker runs on.
+ * @returns The flow the workforce kit registers one copy of, which every worker runs on.
  */
 export function defineWorkerFlow(options: WorkerFlowOptions) {
   const { installation, outbox, control } = options;

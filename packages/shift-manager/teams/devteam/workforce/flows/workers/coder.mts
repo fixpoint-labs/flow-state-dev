@@ -219,7 +219,7 @@ export interface CoderWorkerFlowOptions {
  * Build the working worker flow.
  *
  * @param options The installation, the harness slot, the workspaces, the phases, the judge and the documents.
- * @returns The flow factory `hireWorkforce` registers one copy of, which every coder worker runs on.
+ * @returns The flow factory the workforce kit registers one copy of, which every coder worker runs on.
  * @throws If the harness isn't detached: the claim gate would refuse the entry.
  */
 export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {

@@ -81,11 +81,10 @@ import { readClaudeCodeUsage } from "@flow-state-dev/claude-code";
 import { readCodexUsage } from "@flow-state-dev/codex";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
 import { claudeCodeEnv, codexEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
 import { CHECKOUT } from "./fsd-checkouts.mts";
-import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab, operatorGitHubToken } from "./host.mts";
+import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab, operatorGitHubToken, readDevTeamTree } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
@@ -157,7 +156,7 @@ const DEFAULT_PROJECTS = [
 
 // Read off the tree: the EM, and the coder its doors file for, its first
 // delegate on the coder worker flow.
-const roster = await readDeclaredRoster(LAB_TREE);
+const roster = await readDevTeamTree(LAB_TREE);
 const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const em = roster.workers.find((w) => w.declared.flow === EM_FLOW);
 if (em === undefined) throw new Error("the DevTeam tree declares no EM");
@@ -214,7 +213,7 @@ const lab = await openLab({
       readCodexUsage({ env: codexEnv(), ...(signal === undefined ? {} : { signal }) }),
     "claude-code": ({ signal } = {}) => readClaudeCodeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
-  readiness: harness.readiness,
+  harnessValues: harness.harnessValues,
   // A routine that follows a GitHub pull request reads GitHub with the operator's token, for the Lab's owner alone.
   githubToken: operatorGitHubToken(),
   // Clock routines and GitHub's polls, each from its own file beside the store.

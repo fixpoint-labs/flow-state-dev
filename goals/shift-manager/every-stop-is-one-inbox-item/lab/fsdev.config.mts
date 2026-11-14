@@ -32,7 +32,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
-import { defineSessionBoard, filingConversationBoard, workerConfigSchema, workerTaskEntry } from "@flow-state-dev/workforce";
+import { defineSessionBoard, filingConversationBoard, workerConfigSchema, workerFlow, workerTaskEntry } from "@flow-state-dev/workforce";
 import { TASK_ID_STATE_KEY } from "../../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../../packages/workforce/src/conversation-board/steer.ts";
 import { claudeCodeHarness } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
@@ -135,7 +135,7 @@ function doerFlows(installation: Parameters<typeof defineSessionBoard>[0]["insta
     internal: { actions: board.entries(doerWork, () => "judgment") },
     task: { actions: { work: { ...workerTaskEntry({ name: "closure-doer-task", turn: doerWork }), durable: true } } },
   } as never);
-  return { doer: { flow: doerFlow as never, roles: ["contributor", "manager"] } } as never;
+  return doerFlow;
 }
 
 // ---- the coder's harness, recorded ------------------------------------------------------------
@@ -221,7 +221,8 @@ const lab = await openLab({
   devtool: true,
   withoutJudge: true,
   projects: [{ id: "storefront", title: "Storefront", repository: REMOTE }],
-  workerFlows: doerFlows,
+  // The doer flow is built on the installation the Lab's workforce kit hires.
+  workerFlows: { doer: workerFlow(doerFlows as never, { roles: ["contributor", "manager"] }) },
   ...(userDeadlineMs === undefined ? {} : { userDeadlineMs }),
   ...(sweepIntervalMs === undefined ? {} : { sweepIntervalMs }),
 } as never);

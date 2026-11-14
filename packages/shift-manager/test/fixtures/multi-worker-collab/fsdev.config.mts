@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file -- `fsdev` loads it by path (`--config`), so no import reaches it.
 /**
  * What `fsdev dev` serves — the whole of serving the hire.
  *
@@ -61,7 +62,9 @@ const hired = hireLab({
 });
 
 const flowstate = createFlowState({
-  flows: Object.values(hired.flows),
+  kits: hired.kits,
+  fill: hired.fill,
+  flows: hired.flows,
   stores: { default: { primary: sqliteStores({ filename: LAB_DB_PATH }) } },
   // The documented DevTool setting: which user the navigator lists sessions
   // for. Not a wrapper — the same field any app sets.

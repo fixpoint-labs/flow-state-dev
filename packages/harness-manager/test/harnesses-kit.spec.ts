@@ -10,7 +10,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { workforce } from "@flow-state-dev/workforce/kit";
@@ -116,5 +116,22 @@ describe("the harness kit", () => {
     // Refused for the harness it names, not for a missing flow: the kit's `coder` is there.
     expect(refused).toMatch(/harness/);
     expect(refused).not.toMatch(/names no flow/);
+  });
+
+  it("with logReadiness, logs each harness's entry at start, with what to do for one that can't run", async () => {
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((line: unknown) => void logged.push(String(line)));
+    try {
+      const state = start([harnesses({ workspace, logReadiness: true }), workforce({ directory: tree(TEAM) })], {
+        [harnesses.slots.harnesses]: [harness("codex", true), harness("cursor", false)],
+      });
+      await state.ready();
+      await vi.waitFor(() => expect(logged.some((line) => line.includes("CURSOR"))).toBe(true));
+    } finally {
+      spy.mockRestore();
+    }
+    const table = logged.find((line) => line.includes("CURSOR"))!;
+    expect(table).toContain("CODEX");
+    expect(table).toContain("sign cursor in");
   });
 });

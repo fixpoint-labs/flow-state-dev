@@ -119,7 +119,7 @@ fallback: support.general
 ---
 ```
 
-`flow: coordinator` puts it on Workforce's coordinator flow, which `lib/workforce-hire.ts` registers with `defineCoordinatorFlow`, naming the built-in agent flow as the one its delegates answer on and `ROUTE_MODEL` as the model it picks with. For each post from a person, if their last post is still waiting on a specialist, this one goes there too. Otherwise one evaluator call picks a specialist from the four descriptions, reading the post. (An evaluator is a block that answers a typed question with one model call.) If that call fails, `support.general` takes the post. Only the chosen specialist hears it.
+`flow: coordinator` puts it on Workforce's coordinator flow, which the workforce kit builds from its `coordinator` config in `lib/workforce-kit.ts`, naming the built-in agent flow as the one its delegates answer on and `ROUTE_MODEL` as the model it picks with. For each post from a person, if their last post is still waiting on a specialist, this one goes there too. Otherwise one evaluator call picks a specialist from the four descriptions, reading the post. (An evaluator is a block that answers a typed question with one model call.) If that call fails, `support.general` takes the post. Only the chosen specialist hears it.
 
 `ROUTE_MODEL` lives in `lib/models.ts`. It has to be a model that can evaluate, and not every chat model can: see [Evaluation models](../docs/docs/fundamentals/models.md#evaluation-models). The specialists answer on the [`chat` intent](../docs/docs/fundamentals/models.md#intents) under `models.intents` in `fsdev.config.ts`, because no `WORKER.md` names a `model:` of its own.
 
@@ -165,7 +165,7 @@ Your posts are the `user` messages. Each specialist's answer is a message whose 
 
 ### Where the pieces come from
 
-Tools, blocks and capabilities come from files too: a file under `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That module is committed, so the code an app can run is fixed when you run the command, which is what lets a bundler see it. The roster is read at boot: `buildKitchenSinkWorkforce()` walks `workforce/teams/` and reads a worker per `WORKER.md`. Adding a specialist means a folder, a line in the coordinator's `delegates:`, and a restart. Adding a tool means a file and `fsdev gen`.
+Tools, blocks and capabilities come from files too: a file under `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That module is committed, so the code an app can run is fixed when you run the command, which is what lets a bundler see it. The roster is read at boot: the workforce kit (`kitchenSinkWorkforce()` in `lib/workforce-kit.ts`) reads `workforce/` and a worker per `WORKER.md`, and refuses to start on a file it doesn't read. Adding a specialist means a folder, a line in the coordinator's `delegates:`, and a restart. Adding a tool means a file and `fsdev gen`.
 
 A conversation copies the coordinator's `delegates:` the first time it routes a post, and keeps its own list after that, so a specialist added to the file later reaches new conversations, not ones already under way.
 

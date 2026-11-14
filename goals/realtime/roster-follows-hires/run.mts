@@ -55,8 +55,8 @@ import { COORDINATOR_FLOW, createWorkerInstallation, defineAgentWorkerFlow, defi
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { createWorkforceClient, ROSTER_FLOW, rosterView, type RosterEntry, type WorkforceClient } from "@flow-state-dev/workforce/browser";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
-import { buildKitchenSinkWorkforce, workforceRoot } from "../../../apps/kitchen-sink/lib/workforce-hire.ts";
+import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
+import { kitchenSinkWorkforce, workforceRoot } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { TeamPanel } from "../../../apps/kitchen-sink/components/team-panel.tsx";
 import { railSessions } from "../../../apps/kitchen-sink/lib/rail-sessions.ts";
 import { ROUTE_MODEL } from "../../../apps/kitchen-sink/lib/models.ts";
@@ -163,7 +163,7 @@ globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
 type Host = { handle: ServeHandle; base: string; stores: StoreRegistry; roster: FlowInstance };
 
 async function host(push: boolean): Promise<Host> {
-  const { copies } = await buildKitchenSinkWorkforce();
+  const copies = await kitFlows([kitchenSinkWorkforce()]);
   const registry = createFlowRegistry();
   for (const copy of copies) registry.register(copy);
   const stores: StoreRegistry = { ...createInMemoryStores(), bus: crossingBus() };

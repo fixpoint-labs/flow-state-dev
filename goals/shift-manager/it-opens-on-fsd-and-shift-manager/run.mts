@@ -24,7 +24,7 @@
  *   c  no credential (no ANTHROPIC_API_KEY, no CLAUDE_CODE_OAUTH_TOKEN, an empty
  *      home), as `start` and as `dev` (`--dev`) run it: the Lab still listens
  *      with Claude Code as its coder, its log has a not-ready Claude Code row
- *      naming `ANTHROPIC_API_KEY`, and the projects flow's `readiness` view,
+ *      naming `ANTHROPIC_API_KEY`, and the harness kit's `readiness` view,
  *      read with no session, returns Claude Code not ready with that remedy (FIX-2391).
  *
  * `GOAL_LEG=a,c` runs only those legs (default: all three). An empty or
@@ -49,7 +49,6 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "n
 import { join, sep } from "node:path";
 import { goalTmpDir, intentFreeEnv, keysServing, modulePatchEnv, assertPatched, describePatches, runGoal, RUN_STAMP, REPO_ROOT, repoPath, type ModulePatch } from "../../lib/index.mts";
 import { buildShiftManagerPages, devteamShiftCoordinatorModel, labApi, labRoutes, servedAddresses } from "../../lib/shift-manager.mts";
-import { PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { harnessReadinessViewRef } from "@flow-state-dev/harness-manager/browser";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 
@@ -74,9 +73,9 @@ const SILENT_STUB: ModulePatch[] = [
     to: 'const harness = selectHarness("stub", stepMs, defaultChoice);',
   },
   {
-    module: "packages/shift-manager/teams/devteam/harness.mts",
-    from: "const table = readiness\\.read\\(\\)\\.then\\(\\(rows\\) => log\\(formatHarnessReadiness\\(rows\\)\\)\\);",
-    to: "const table = Promise.resolve();",
+    module: "packages/shift-manager/teams/devteam/host.mts",
+    from: "harnesses\\(\\{ workspace: workspaceHost \\?\\? answerHost, logReadiness: true \\}\\)",
+    to: "harnesses({ workspace: workspaceHost ?? answerHost, logReadiness: false })",
   },
 ];
 
@@ -338,9 +337,9 @@ await runGoal(async (failures) => {
         if (!row.includes("ANTHROPIC_API_KEY")) note(`c:logs-what-to-set (${form})`, `no not-ready Claude Code row naming ANTHROPIC_API_KEY: ${JSON.stringify(row || log.slice(-600))}`);
         const user = await pageUser(started.origin);
         const person = { userId: user.userId, bearer: user.bearerToken ?? "" };
-        // The projects flow's readiness view, read with no session.
+        // The harness kit's readiness view, read with no session.
         const read: { rows: ReadinessRow[]; error: string | undefined } = await connect({ userId: person.userId, baseUrl: started.origin, bearerToken: person.bearer })
-          .view(harnessReadinessViewRef(PROJECTS_FLOW), {})
+          .view(harnessReadinessViewRef("harnesses"), {})
           .then(
             (answer) => ({ rows: answer.value as ReadinessRow[], error: undefined }),
             (error: unknown) => ({ rows: [], error: String(error) }),

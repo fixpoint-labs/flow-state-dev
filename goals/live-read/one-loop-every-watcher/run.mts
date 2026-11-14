@@ -48,8 +48,8 @@ import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { Roster } from "@flow-state-dev/react/workforce";
 import { createWorkforceClient, PROJECTS_FLOW, ROSTER_FLOW, rosterView, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, type ModulePatch } from "../../lib/index.mts";
-import { buildKitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-hire.ts";
+import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, type ModulePatch } from "../../lib/index.mts";
+import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { createLabAdapter, type LabWorker } from "../../../labs/teammates/src/adapter.ts";
 import { createWiredLab } from "../../../labs/claude-code-style/src/adapter.ts";
@@ -184,7 +184,7 @@ WebSocket.prototype.send = function (this: WebSocket, data: Parameters<WebSocket
 type Host = { handle: ServeHandle; base: string; stores: StoreRegistry };
 
 async function host(): Promise<Host> {
-  const { copies } = await buildKitchenSinkWorkforce();
+  const copies = await kitFlows([kitchenSinkWorkforce()]);
   const registry = createFlowRegistry();
   for (const copy of copies) registry.register(copy);
   // The lab's pins: a user resource the host declares, written through the default write flow.
