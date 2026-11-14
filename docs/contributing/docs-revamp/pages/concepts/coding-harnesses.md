@@ -22,7 +22,7 @@ The difference is who runs it. Flow State runs the agent as a step with a typed 
 
 ## The model
 
-Take a task, `fix-cart-test`, a row on a board, filed for the worker `engineering.coder` with the goal "make `cart.test.ts` pass". The run happens in a checkout, a directory and git branch made for that task. When the agent stops, a verdict is read. Only then does the task complete.
+Take a task called `fix-cart-test`. It sits on a board, filed for the worker `engineering.coder`, with the goal "make `cart.test.ts` pass". The run happens in a checkout, a directory and git branch made for that task. When the agent stops, a verdict is read. Only then does the task complete.
 
 <Figure svg={SupervisedRun} caption="A supervised run: checkout, agent, verdict" description={"Three boxes from left to right. The task fix-cart-test, with its goal, worker engineering.coder and harness claude-code, is on the board and has a hatched top because it outlives the request. An arrow leads to the run, claude-code working in its own git branch and its own directory, with a note that your working tree is not edited. An arrow leads to the verdict: status completed, outcome finished, pnpm test passes. The last row, then the task completes, is highlighted. A dashed arrow runs from the verdict back to the task and is labelled not done."} />
 
@@ -82,31 +82,37 @@ Fix what the task describes. Keep the change small.
 
 ## Its own checkout
 
-Each task gets its own git branch and its own directory, and a retry picks up the work already in it. Runs never touch your working tree or index. They do share the repository's refs: a run can create or move branches and tags in a repo you list in `localRepositories`.
+Each task gets its own git branch and its own directory, and a retry picks up the work already in it. Two users working the same issue get separate checkouts. Runs never touch your working tree or index. They do share the repository's refs: a run can create or move branches and tags in a repo you list in `localRepositories`.
 
 The checkout is where the agent is pointed, not a jail. The sandbox on its harness sets what it may run. [Harness runs](../reference/harness-runs.md) has the workspace options and each agent's sandbox.
 
 ## A verdict before it counts
 
-The agent finishing and the task being done are separate facts. A task completes only when the run ended normally, your `checks` pass in the checkout, and a judge, a model that reads the goal against the answer and the commits, agrees the goal is met. A run that spends its turns or budget stops cleanly and is not done.
+The agent finishing and the task being done are separate facts. A task completes only when the run ended normally, your `checks` pass in the checkout, and the judge agrees the goal is met. The judge is a model that reads the goal against the agent's answer and its commits. A run that spends its turns or budget stops cleanly and is not done.
 
 Anything short of done fails the attempt, and the next attempt is told why. A green check is evidence, not proof: the checkout's scripts are ones the agent could edit. Set `review: true` on the kit to have a user read the commits before the task completes. The order of the conditions and the run's statuses are in [Harness runs](../reference/harness-runs.md).
 
 ## Asking you a question
 
-A task can stop and wait on you, and nothing is spent while you think. The question shows in your Inbox, the list of things waiting on a user. The judge puts one there when it cannot tell whether the goal is met, and a review you turned on waits there too. By default the agent does not ask you questions itself. [Harness runs](../reference/harness-runs.md) shows how to let it.
+A task can stop and wait on you. While it waits it holds no lease and no checkout, and starts no other run. The question shows in your Inbox, the list of things waiting on a user. The judge puts one there when it cannot tell whether the goal is met, and a review you turned on waits there too. By default the agent does not ask you questions itself. [Harness runs](../reference/harness-runs.md) shows how to let it.
 
 You answer in the Inbox, or by typing a line in the run's session. The answer resumes the same coding session in the same checkout, and does not use up a retry.
 
 ## Choosing a harness
 
-Agents go in a slot, an opening the harness kit leaves for other kits to fill, called `harnesses`, one value per agent. A worker's `harness:` line names one by id.
+Agents go in a slot called `harnesses`. A slot is an opening the harness kit leaves for other kits to fill, and each agent is one value in it. A worker's `harness:` line names one by id.
 
 <Figure svg={HarnessSlot} caption="The agent is a value in a slot" description={"Three boxes from left to right. The worker file for engineering.coder says flow coder and harness claude-code; the harness line is highlighted as the one line you change. An arrow leads to the coder flow, which takes the checkout, runs the agent and reads the verdict, the same for every agent. An arrow leads to the harnesses slot, which holds two values in boxes, claude-code from claudeCode() and codex from codexHarness()."} />
 
-Moving `engineering.coder` from Claude Code to Codex changes the `harness:` line to `codex`, and puts Codex's value in the slot. Codex is not a kit like Claude Code, so it goes in with `fill`, which puts values into a slot another kit opened. In `fsdev.config.ts`, drop `claudeCode()` from `kits` and add `fill` beside it, with `codexHarness` imported from `@flow-state-dev/codex`:
+Moving `engineering.coder` from Claude Code to Codex changes the `harness:` line to `codex`, and puts Codex's value in the slot. Codex is not a kit like Claude Code, so it goes in with `fill`, which puts values into a slot another kit opened. In `fsdev.config.ts`, drop `claudeCode()` from `kits` and add `fill` beside it:
 
 ```ts title="fsdev.config.ts"
+import { codexHarness } from "@flow-state-dev/codex";
+import { createFlowState } from "@flow-state-dev/engine";
+import { harnesses } from "@flow-state-dev/harness-manager/kit";
+import { workforce } from "@flow-state-dev/workforce/kit";
+// workspace as in the first example
+
 export default createFlowState({
   kits: [
     workforce({ agent: { model: "openai/gpt-6-luna" } }),
@@ -116,7 +122,7 @@ export default createFlowState({
 });
 ```
 
-The flow does not change, and what differs between agents, such as the sandbox, lives inside each harness value.
+The flow does not change, and what differs between agents, such as the sandbox, lives inside each harness value. Before each task the flow checks that the named harness can run on this machine. If it can't, say Codex has never been signed in here, the task fails at once with the reason and what to run, such as `codex login`. It never falls back to another agent.
 
 ## What it gets you
 
