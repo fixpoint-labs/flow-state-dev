@@ -21,7 +21,8 @@ import { runView } from "../src/execution/runView";
 const workers = defineResourceCollection({ scope: "user", pattern: "workers/*", stateSchema: z.object({ name: z.string().default("") }) });
 const pins = defineResource({ scope: "user", ref: "pins", stateSchema: z.object({ n: z.number().default(0) }) });
 const desk = defineResourceCollection({ scope: "user", pattern: "desk/**", stateSchema: z.object({}).passthrough() });
-const resources = { workers, pins, desk };
+const orgDesk = defineResourceCollection({ scope: "org", pattern: "org-desk/**", stateSchema: z.object({}).passthrough() });
+const resources = { workers, pins, desk, orgDesk };
 const out = z.object({ n: z.number() });
 
 const view = (name: string, execute: (ctx: any) => Promise<number> | number) =>
@@ -45,6 +46,12 @@ function flow(): FlowInstance {
         const ledger = ctx.resources.desk;
         const entries = await ledger.list();
         recordBoardRead(ctx, { board: "desk", sessionIds: [ctx.session.identity.id, "filer-2", ctx.session.identity.id], ledger });
+        return entries.length;
+      }),
+      orgBoard: view("org-board", async (ctx) => {
+        const ledger = ctx.resources.orgDesk;
+        const entries = await ledger.list();
+        recordBoardRead(ctx, { board: "org-desk", sessionIds: [ctx.session.identity.id, "filer-2"], ledger });
         return entries.length;
       }),
       boardNoSession: view("board-no-session", async (ctx) => {
@@ -84,15 +91,32 @@ describe("a view's answer says which notices change what it read", () => {
     expect((await run("items")).hears).toEqual([{ topic: { scope: "session", id: "s1" }, kinds: ["items", "request", "run", "state"] }]);
   });
 
-  it("a board read hears the board's notices on each session it names, and not its ledger's scope", async () => {
+  // A user ledger's filing in a session the answer never named is heard as
+  // its insert notice on the user topic, narrowed to the board (no ids: the
+  // user topic spans the user's orgs).
+  it("a user board read hears the board's notices on each session it names and on the user topic, and not its ledger's resource notices", async () => {
     const answer = await run("board");
     expect(answer.topics).toEqual([
       { scope: "session", id: "filer-2", resource: "desk" },
-      { scope: "session", id: "s1", resource: "desk" }
+      { scope: "session", id: "s1", resource: "desk" },
+      { scope: "user", resource: "desk" }
     ]);
     expect(answer.hears).toEqual([
       { topic: { scope: "session", id: "filer-2", resource: "desk" }, kinds: ["board"] },
-      { topic: { scope: "session", id: "s1", resource: "desk" }, kinds: ["board"] }
+      { topic: { scope: "session", id: "s1", resource: "desk" }, kinds: ["board"] },
+      { topic: { scope: "user", resource: "desk" }, kinds: ["board"] }
+    ]);
+  });
+
+  // Cursor on #5232: a session another member filed from is not the viewer's
+  // to be told of. An org board hears its ledger on the org topic, and its
+  // insert notices there.
+  it("an org board read hears the org topic only: its ledger's notices and the board's insert notices, no session", async () => {
+    const answer = await run("orgBoard");
+    expect(answer.topics).toEqual([{ scope: "org" }, { scope: "org", resource: "org-desk" }]);
+    expect(answer.hears).toEqual([
+      { topic: { scope: "org" }, kinds: ["resource"], paths: ["org-desk"] },
+      { topic: { scope: "org", resource: "org-desk" }, kinds: ["board"] }
     ]);
   });
 
