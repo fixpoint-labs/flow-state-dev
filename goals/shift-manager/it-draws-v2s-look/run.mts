@@ -60,8 +60,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { RUN_STAMP, goalTmpDir, loadFixture, repoPath, runGoal } from "../../lib/index.mts";
+import { RUN_STAMP, goalTmpDir, loadFixture, readTree, repoPath, runGoal } from "../../lib/index.mts";
 import { EM_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { hex, parseColour, type Rgb } from "../../lib/colour.mts";
@@ -856,7 +855,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
     const injected = (await page.evaluate(() => (window as any).__FSD_DEVTOOL_CONFIG__ ?? null)) as { userId?: string; bearerToken?: string } | null;
     if (injected?.userId === undefined) throw new Error(`${lab}: the page was handed no userId`);
     const api = labApi(served.origin, injected.bearerToken);
-    const roster = await readDeclaredRoster(LABS[lab].tree);
+    const roster = await readTree(LABS[lab].tree);
     // A worker file declares no mailbox, so neither Lab has a mailbox workstream, and the sweep
     // opens no workstream or Board screen on either.
     const mailbox = "";

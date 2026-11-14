@@ -15,9 +15,8 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Page } from "playwright";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
-import { REPO_ROOT, intentFreeEnv } from "../../lib/index.mts";
+import { REPO_ROOT, intentFreeEnv, readTree as readKitTree } from "../../lib/index.mts";
 import { SHIFT_MANAGER, SHIFT_MANAGER_COMMAND, buildShiftManagerCopy, labApi as labRoutes, pendingSeatAsks, servedAddresses, type Patch } from "../../lib/shift-manager.mts";
 
 export { SHIFT_MANAGER, type Patch };
@@ -202,8 +201,8 @@ export type Tree = {
 };
 
 export async function readTree(root: string): Promise<Tree> {
-  const roster = await readDeclaredRoster(root);
-  if (roster.problems.length > 0) throw new Error(`the tree at ${root} did not load: ${roster.problems.map((p) => p.path).join(", ")}`);
+  // The kit's reader refuses the tree whole if anything did not load.
+  const roster = await readKitTree(root);
   const seats = roster.workers.map((w) => w.id);
   return {
     root,

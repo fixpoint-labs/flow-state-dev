@@ -37,3 +37,7 @@
 | 2026-11-11 | claude/fix-2551-impl (pre-push) | n/a | PASS | The snapshot is `client.live` now, its filter in `hear`/`paths`. a: 123 ms · a2: 81 ms · b: 0 reads over 10 s idle · c: 4 reads for 200 items, 4 for 2 · d: 28442 ms |
 | 2026-11-11 | claude/fix-2551-impl (pre-push) | n/a | FAIL (expected) | `no-subscribe` (patch moved to the live read's effect): `a:ask-within-1s` |
 | 2026-11-11 | claude/fix-2551-impl (pre-push) | n/a | FAIL (expected) | `no-poll` (`pollIntervalMs: null`): `d:ask-within-poll` |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | PASS | The host installs the workforce kit over a folder holding `lead` and `eng.doer`. *"a: Inbox 0 → 1 65 ms after the run read suspended … a2: Inbox 1 → 2 85 ms … b: 0 snapshot reads over 10 s idle … c: 4 snapshot reads during a 200-item reply, 4 during a 2-item one · d (no crossing bus): Inbox 0 → 1 28349 ms"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `no-subscribe`: *"a:ask-within-1s: the provider's Inbox count never went 0 → 1 within 3000 ms of the run reading suspended"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `every-kind`: *"c:as-short: 163 snapshot reads during a 200-item reply, 5 during a 2-item reply of the same length (allowed 1 more)"* |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (expected) | `no-poll`: *"d:ask-within-poll: the provider's Inbox count never went 0 → 1 within 33000 ms of the run reading suspended"* |

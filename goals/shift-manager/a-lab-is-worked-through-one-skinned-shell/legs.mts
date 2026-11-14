@@ -15,9 +15,8 @@ import { join, relative } from "node:path";
 import type { Browser, Page } from "playwright";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { hex, near, parseColour, readShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
-import { REPO_ROOT } from "../../lib/index.mts";
+import { REPO_ROOT, readTree as readKitTree } from "../../lib/index.mts";
 import { pickShift } from "../../lib/shift-manager.mts";
 import { FENCE_EXEMPT, fencedHits, findThemeValues, themeValues } from "../../../labs/design-system/test/theme.ts";
 import {
@@ -314,7 +313,7 @@ async function runningRow(api: LabApi, userId: string, withinMs: number): Promis
  * conversation ledger, read through that conversation and kept to its rows.
  */
 async function conversationRunningRow(api: LabApi, root: string, userId: string, withinMs: number): Promise<{ id: string } | undefined> {
-  const roster = await readDeclaredRoster(root);
+  const roster = await readKitTree(root);
   const lead = roster.workers.find((w) => w.declared.flow !== "coordinator" && ((w.declared.delegates as string[] | undefined) ?? []).length > 0);
   if (lead === undefined) return undefined;
   for (const until = Date.now() + withinMs; Date.now() < until; await sleep(500)) {
