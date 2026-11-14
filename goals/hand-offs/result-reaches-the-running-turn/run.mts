@@ -25,21 +25,21 @@
 import { createRequire } from "node:module";
 import { randomBytes } from "node:crypto";
 import { createModelResolver, handler } from "@flow-state-dev/core";
-import type { BlockContext, FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
+import type { BlockContext, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { defineFlow } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { isTerminalStatus, noticeText, type Task } from "@flow-state-dev/orchestration/tasks";
 import { readCommittedTask } from "@flow-state-dev/orchestration/internal";
 import {
-  createWorkerInstallation,
   defineAgentWorkerFlow,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
   workerTaskEntry,
   type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { z } from "zod";
 // The read-only control's block reads its own conversation's ledger, as a lab with no take would.
 import { ownConversationLedger } from "../../../packages/workforce/src/conversation-board/ledger.ts";
@@ -53,7 +53,8 @@ import {
   runGoal,
   silentLogger,
   stripIntentOverrides,
-  untilIdle
+  untilIdle,
+  workforceTree
 } from "../../lib/index.mts";
 
 // A container's FSDEV_DEFAULT_MODEL / FSDEV_INTENT_* would swap the model under the resolver.
@@ -172,14 +173,12 @@ async function startApp(resolver: ModelResolver, timing: Timing) {
     { id: MAIN, declared: { description: "Coordinates lookups.", delegates: [DELEGATE] }, body: fixture.instructions, skills: [] },
     { id: DELEGATE, declared: { description: "Looks up release codes.", flow: "lookup" }, body: "", skills: [] }
   ];
-  let flows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows as never });
   const answerAgain = CONTROL === "no-source" ? {} : { answerAgain: CONTROL === "read-only" ? readOnlySource : (true as const) };
-  flows = {
-    agent: defineAgentWorkerFlow({ installation, model: gatewayModel(process.env.GOAL_MODEL), ...answerAgain }),
-    lookup: { flow: lookupFlow(installation, timing), roles: ["contributor"] }
+  // The main worker's `agent` flow as this goal configures it, in place of the kit's own.
+  const workerFlows = {
+    agent: workerFlow((installation) => defineAgentWorkerFlow({ installation, model: gatewayModel(process.env.GOAL_MODEL), ...answerAgain })),
+    lookup: workerFlow((installation) => lookupFlow(installation, timing), { roles: ["contributor"] })
   };
-  const copies = hireWorkforce(installation) as FlowInstance[];
   let state!: FlowState;
   const rows = async (): Promise<Task[]> => {
     const runtime = await state.getRuntime();
@@ -247,7 +246,8 @@ async function startApp(resolver: ModelResolver, timing: Timing) {
     resolver
   );
   state = createFlowState({
-    flows: copies,
+    kits: [workforce({ directory: workforceTree(workers) })],
+    fill: { [workforce.slots.workerFlows]: workerFlows },
     stores: { default: { primary: inMemoryStores() } },
     resolvePrincipal: (context: { request?: Request }) => {
       const user = context.request?.headers.get("x-user");
