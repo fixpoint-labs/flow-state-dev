@@ -66,11 +66,27 @@ there would cross orgs), so one task's change answered the whole board.
 |---|---|
 | **Instead of** | The board view hearing its ledger's resource notices on the user topic beside its board notices, so every task change answers all of it · or ids on the user topic, which part 1 ruled out |
 | **Because** | A board notice names the task that changed; the ledger's user-topic notice can't. Hearing both answers whole every time, which is the cost the issue names |
-| **Locks in** | A view's read of a board through its task collection is heard on that board's notices only, on the session each entry's notices go to (its filer, and the running session), and the ledger's own resource notices are not heard. The task collection records that read (`recordBoardRead`) in the one place it wires every write to the board notice (`getOrCreateTaskCollection`'s `onWrite`), so a ledger read any other way stays heard on the user topic |
+| **Locks in** | A view's read of a board through its task collection is heard on that board's notices, and the ledger's own resource notices are not heard, except on an org board (below). Where a board's notices are heard depends on its ledger's scope (amended 2026-11-14, [below](#d3-amendment)): a **user** board hears the session each entry's notices go to (its filer, and the running session) and its user topic narrowed to the board; an **org** board hears its board notices and its ledger's own notices on the org topic and names no session; a **session** board hears the running session. The task collection records that read (`recordBoardRead`) in the one place it wires every write to the board notice (`getOrCreateTaskCollection`'s `onWrite`), so a ledger read any other way stays heard on the user topic |
 | **The trade-off** | A ledger write that published no board notice would leave every screen of the board stale, with nothing else to wake it. Closed at the publisher: every write to the ledger goes through the task collection's write paths, each of which publishes the board notice naming its task, and `board-notice.test.ts` checks it at the store for each write the task collection offers. The write paths were audited for this change; none bypasses it |
 
 **What would change my mind:** a write to a task ledger that bypasses the shared publish path.
 Then the board hears its ledger's notices again, or the bypass moves onto the path.
+
+<a name="d3-amendment"></a>
+**Amended 2026-11-14, the owner's call on #5232's review (option c+), shipped in #5248.** Two
+findings on #5232 held. An org board's answer named each filer's session in what it hears, though a
+filer is stripped from every other client payload. And a member who filed their first task after a
+view opened was never heard until it next answered whole. So:
+
+- **An org board names no session.** It hears its board notices and its ledger's own notices on the
+  org topic. An org member already sees every row, and with org ids off the push edge still strips
+  the ids.
+- **Every board publishes an insert-only board notice on its ledger's scope topic** when a row is
+  added (`publishBoardInsert`). The engine derives the scope from the handle it issued. On the user
+  topic the notice names no task, which keeps part 1's cross-org rule. A view that never listed the
+  filer's session hears it there and reads the new row.
+- **Left open:** a session board shared across a session's lineage still hears only the sessions it
+  listed (FIX-2733); no framework board is one.
 
 ## Decided, not asked
 
@@ -169,12 +185,12 @@ Settled on the implementation PRs. Each narrows a decision above; none reverses 
   every one, as a single resource's name already is on that topic. Without it, every resource
   notice on the user topic named no path, every view and direct read of the scope heard it, and
   the client's path rule never ran there. With org ids off, the edge cuts it as it cuts every path.
-- **The board read covers the filers' sessions it can see.** A board notice goes to each
-  entry's filer. The read records the running session and each listed entry's filer, so a change
-  to an entry filed in another session is heard. An entry filed into the same ledger from a session
-  with no entry on it yet is heard on that session's topic only, until the view next answers
-  whole. No board view in the framework lists such a ledger: the workforce board is partitioned by
-  its filing session, and its entries are filed there.
+- **The board read covers the filers' sessions it can see, and a new filer through the insert
+  notice.** On a user board a board notice goes to each entry's filer, and the read records the
+  running session and each listed entry's filer, so a change to an entry filed in another session
+  is heard. A first entry filed from a session with no entry on the board yet is heard through the
+  insert notice on the ledger's scope topic ([D3, amended](#d3-amendment)). An org board names no
+  session at all.
 - **A session's collection list holds change signals for a short window, then reads once; it
   never skips a read** (the owner's call on #5232). One change reaches `useResourceCollection`
   twice: its `resourceChanges` entry, then the snapshot's count once the session reads its
