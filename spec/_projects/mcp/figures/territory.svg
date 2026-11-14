@@ -1,0 +1,77 @@
+<svg viewBox="0 0 940 380" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The territory of the MCP project. Inside the project are two halves of how FSD speaks MCP. As a server: each flow is its own MCP server, hardened and proven on several real clients, with docs, an example and a reference deployment, the not-yet-filed epic. As a client: MCP servers installed once at the host as connectors, projects that enable them, and users' keys kept on the server, epic FIX-2615. To the right, outside the project: which tools a flow exposes, such as workforce over MCP FIX-2331 in Shift Manager; choosing third-party servers beyond Linear; how a model sees MCP tools; and Linear's Agents API, FIX-567. Below a fence sits the substrate the project builds on and does not own: the engine's flow routes and principal resolution, workforce's projects, the harness packages' MCP plumbing, and Shift Manager's key settings. The fence asks whether the work is how FSD speaks MCP.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-own  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-ep   { fill:var(--surface); stroke:var(--accent); stroke-width:1.2; }
+    .n-todo { fill:var(--surface); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-sub  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-out  { fill:none; stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-out  { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:6 4; fill:none; }
+    .t-fence{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+  </style>
+
+  <g id="owned">
+    <rect class="n-own" x="16" y="16" width="620" height="220" rx="6"/>
+    <text class="t-lbl" x="32" y="36">THIS PROJECT · HOW FSD SPEAKS MCP</text>
+    <g id="server">
+      <rect class="n-todo" x="32" y="50" width="290" height="170" rx="5"/>
+      <text class="t-lbl" x="46" y="70">AS A SERVER · FIX-XXX, NOT FILED</text>
+      <text class="t-b"  x="46" y="92">each flow is its own MCP server</text>
+      <text class="t-s"  x="46" y="116">actions become tools at /api/flows/:kind/mcp</text>
+      <text class="t-s"  x="46" y="134">hardened, proven on several real clients</text>
+      <text class="t-s"  x="46" y="152">Claude Desktop · Claude Code · Cursor</text>
+      <text class="t-s"  x="46" y="170">docs that match its behaviour</text>
+      <text class="t-s"  x="46" y="188">an example beyond Kitchen Sink</text>
+      <text class="t-s"  x="46" y="206">a reference deployment</text>
+    </g>
+    <g id="client">
+      <rect class="n-ep" x="330" y="50" width="290" height="170" rx="5"/>
+      <text class="t-lbl" x="344" y="70">AS A CLIENT · FIX-2615</text>
+      <text class="t-b"  x="344" y="92">workers reach MCP servers</text>
+      <text class="t-s"  x="344" y="116">connectors installed once at the host</text>
+      <text class="t-s"  x="344" y="134">used with or without a project</text>
+      <text class="t-s"  x="344" y="152">what a project is, and the connectors</text>
+      <text class="t-s"  x="344" y="170">it enables from the host's set</text>
+      <text class="t-s"  x="344" y="188">each user's key stays on the server</text>
+      <text class="t-s"  x="344" y="206">first consumer: the teammates lab</text>
+    </g>
+  </g>
+
+  <g id="not-here">
+    <rect class="n-out" x="656" y="16" width="268" height="220" rx="6"/>
+    <text class="t-lbl" x="672" y="36">NOT HERE</text>
+    <text class="t-out" x="672" y="62">which tools a flow exposes</text>
+    <text class="t-s"   x="672" y="78">FIX-2331 · the Shift Manager project</text>
+    <text class="t-out" x="672" y="106">third-party servers beyond Linear</text>
+    <text class="t-s"   x="672" y="122">a later call, after connectors</text>
+    <text class="t-out" x="672" y="150">how a model sees MCP tools</text>
+    <text class="t-s"   x="672" y="166">the MCP client's own surface</text>
+    <text class="t-out" x="672" y="194">Linear's Agents API</text>
+    <text class="t-s"   x="672" y="210">FIX-567 · a different protocol</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M16 256 H924"/>
+    <text class="t-fence" x="16" y="250">Is it how FSD speaks MCP, as a server or a client?  Yes → above.  What one flow exposes over it → that flow's owner.</text>
+  </g>
+
+  <g id="substrate">
+    <rect class="n-sub" x="16" y="272" width="908" height="92" rx="6"/>
+    <text class="t-lbl" x="32" y="292">SUBSTRATE · BUILT ON BY THIS PROJECT, OWNED ELSEWHERE</text>
+    <text class="t-b"  x="32" y="316">the engine's flow routes and principal resolution · workforce's projects and workers</text>
+    <text class="t-b"  x="32" y="338">the harness packages' MCP plumbing · Shift Manager's key settings</text>
+    <text class="t-s"  x="32" y="356">this project speaks MCP through them · it does not own them</text>
+  </g>
+</svg>
