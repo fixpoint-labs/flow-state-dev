@@ -39,6 +39,7 @@ import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
 import { resolveItemVisibility } from "@flow-state-dev/contracts";
 import { useFlowContext } from "../context/FlowContext";
 import { useClient } from "../internal/useClient";
+import { markSnapshotRead, nextReadPosition } from "./read-position";
 import { answerStop } from "../internal/answerStop";
 import {
   isReducibleStateChange,
@@ -63,7 +64,9 @@ type StateRead = { sequence: number; changesBefore: number };
  * copies had arrived by then, its place among the reads that load items, and
  * its place as a read of state.
  */
-type SnapshotRead = { arrivalsBefore: number; sequence: number; state: StateRead };
+// FIX-2625.
+/** A snapshot read: its order among this view's reads, and among the page's (`read-position.ts`). */
+type SnapshotRead = { arrivalsBefore: number; sequence: number; state: StateRead; position: number };
 
 /** How many live state and resource changes the view keeps for reads in flight to put back. */
 const KEPT_LIVE_CHANGES = 256;
@@ -1038,7 +1041,8 @@ export function useSession(
     (): SnapshotRead => ({
       arrivalsBefore: liveArrivalsRef.current,
       sequence: ++snapshotSequenceRef.current,
-      state: beginStateRead()
+      state: beginStateRead(),
+      position: nextReadPosition()
     }),
     [beginStateRead]
   );
@@ -1146,6 +1150,8 @@ export function useSession(
       // Drain buffered live resource_change deltas the same way (FIX-739).
       const pendingResources = pendingResourceChangesRef.current;
       pendingResourceChangesRef.current = [];
+      // The snapshot shows what this read read, unless a resource change merged in first.
+      const readsAsOf = pendingResources.length === 0;
       for (const resourceChange of pendingResources) {
         const next = mergeResourceChangeIntoSnapshot(merged, resourceChange);
         if (next !== null) {
@@ -1159,17 +1165,24 @@ export function useSession(
       const heldState = heldStateRef.current;
       heldStateRef.current = null;
       const superseded = read.state.sequence <= stateAppliedSequenceRef.current;
+      const own = takeState(merged, read.state);
       const state =
-        takeState(merged, read.state) ??
-        (heldState !== null ? withLiveChanges({ ...merged, ...heldState.state }, heldState.changesAt, true) : null);
+        own ?? (heldState !== null ? withLiveChanges({ ...merged, ...heldState.state }, heldState.changesAt, true) : null);
       if (!superseded) {
         if (nextDetail !== undefined) setDetail(nextDetail);
       } else if (heldState !== null) {
         setDetail(heldState.detail);
       }
       snapshotLandedRef.current = true;
+      // FIX-2625: marked with where its read started only when this read is all it shows.
       setSnapshot((prev) =>
-        state !== null ? { ...merged, ...state } : prev === null ? merged : { ...merged, clientData: prev.clientData, resources: prev.resources }
+        state !== null
+          ? own !== null && readsAsOf
+            ? markSnapshotRead({ ...merged, ...state }, read.position)
+            : { ...merged, ...state }
+          : prev === null
+            ? merged
+            : { ...merged, clientData: prev.clientData, resources: prev.resources }
       );
 
       if (!itemConfig.enabled) {
@@ -1328,6 +1341,7 @@ export function useSession(
   const readState = useCallback(async () => {
     if (sessionId === undefined) return;
     const read = beginStateRead();
+    const position = nextReadPosition();
     const [nextDetail, next] = await Promise.all([
       sessionsApi.get(sessionId),
       sessionsApi.state(sessionId, { includeItems: false })
@@ -1341,7 +1355,8 @@ export function useSession(
       heldStateRef.current = { state, detail: nextDetail, changesAt: liveChangeCountRef.current };
       return;
     }
-    setSnapshot((prev) => (prev === null ? prev : { ...prev, ...state }));
+    // FIX-2625: its state and resources are this read's, so it is marked with where the read started.
+    setSnapshot((prev) => (prev === null ? prev : markSnapshotRead({ ...prev, ...state }, position)));
   }, [sessionId, sessionsApi, beginStateRead, takeState]);
 
   /**

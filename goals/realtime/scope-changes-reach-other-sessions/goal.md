@@ -36,3 +36,5 @@
 | 2026-11-13 | claude/fix-2625-impl-c (pre-push) | n/a | PASS | `useResourceCollection` reads once per change: the count no longer invalidates when the whole list read since the last invalidation holds as many entries. Three runs: a: plan 5–10 ms, row 21–25 ms, count 14–18 ms · b: 3 ms; B made 0 reads · c: plan 18–19 ms, row 22–23 ms · d: 1, 2 per change, as without `live` |
 | 2026-11-13 | claude/fix-2625-impl-c (pre-push) | n/a | FAIL (expected) | `no-publish`: `a:within-1s`, `b:within-1s`, `c:within-1s` |
 | 2026-11-13 | claude/fix-2625-impl-c (pre-push) | n/a | FAIL (expected) | `no-origin`: `d:reads-as-plain` only (2, 3 against 1, 2) |
+| 2026-11-14 | claude/fix-2625-impl-c (pre-push) | n/a | PASS | The count's skip now trusts read order, not the count: it skips only when the snapshot that moved it was read before the list (`read-position.ts`). Three runs: d: 1, 2 per change, as without `live` |
+| 2026-11-14 | claude/fix-2625-impl-c (pre-push) | n/a | FAIL (expected) | `no-origin`: `d:reads-as-plain` only (2, 3 against 1, 2) |

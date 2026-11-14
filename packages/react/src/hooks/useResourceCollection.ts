@@ -25,6 +25,7 @@ import { useReadFence, type ReadFence } from "./useReadFence";
 import { useClient } from "../internal/useClient";
 import { mayHold, storageRootsOf } from "@flow-state-dev/client/internal";
 import { useResourceManifest } from "./useResourceManifest";
+import { nextReadPosition, snapshotReadPosition } from "./read-position";
 
 /**
  * Mutation actions available on the collection, shaped by declared permissions.
@@ -225,19 +226,21 @@ export function useResourceCollection<TClient = unknown>(
     [session.snapshot, session.sessionId, ref]
   );
 
-  // FIX-2625: the whole list's latest read since the last invalidation: how
-  // many entries it holds, once it lands (`undefined` for a page that isn't
-  // the whole list, or a read that failed).
-  const wholeReadRef = useRef<{ owner: object; generation: number; length: Promise<number | undefined> } | null>(null);
+  // FIX-2625: the whole list's latest read since the last invalidation: where
+  // it started among the page's reads (`read-position.ts`), and whether it
+  // landed whole (`false` for a page that isn't the whole list, or a failure).
+  const wholeReadRef = useRef<{ owner: object; generation: number; position: number; landed: Promise<boolean> } | null>(null);
 
   // Snapshot refresh as a fallback invalidator, behind the
   // `session.resourceChanges` watcher above. useSession calls
   // `refreshSnapshot()` at request completion when any resource changed
   // during streaming, which updates `count` (always emitted, FIX-427 §3.6).
   // Invalidate whenever count moves so cached pages refetch on the next call,
-  // unless the change that moved it was already read: the whole list, read
-  // since the last invalidation, holds as many entries as the count says. One
-  // change then reads once, though its entry and its count arrive apart.
+  // unless the list was read after the count was: the snapshot that moved it
+  // was read before the whole list's read since the last invalidation started,
+  // so that read holds every change the count does. One change then reads
+  // once, though its entry and its count arrive apart. A snapshot with no
+  // known read position may be newer than any read: it invalidates.
   const lastSeenCountRef = useRef<number | undefined>(collectionEntry?.count);
   useEffect(() => {
     const next = collectionEntry?.count;
@@ -245,14 +248,23 @@ export function useResourceCollection<TClient = unknown>(
     lastSeenCountRef.current = next;
     const whole = wholeReadRef.current;
     const generation = generationRef.current;
-    if (next === undefined || whole === null || whole.owner !== fence || whole.generation !== generation) {
+    const countReadAt = snapshotReadPosition(session.snapshot);
+    if (
+      countReadAt === undefined ||
+      whole === null ||
+      whole.owner !== fence ||
+      whole.generation !== generation ||
+      countReadAt >= whole.position
+    ) {
       invalidate();
       return;
     }
-    void whole.length.then((length) => {
+    void whole.landed.then((landed) => {
       // Something read again meanwhile: that read is the one in play.
-      if (length !== next && generationRef.current === generation) invalidate();
+      if (!landed && generationRef.current === generation) invalidate();
     });
+    // Keyed on the count alone: the snapshot is read for its position when the count moves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionEntry?.count, invalidate, fence]);
 
   const list = useCallback(
@@ -280,9 +292,10 @@ export function useResourceCollection<TClient = unknown>(
         wholeReadRef.current = {
           owner: fence,
           generation: startGen,
-          length: reading.then(
-            (page) => (page.nextCursor === undefined ? page.items.length : undefined),
-            () => undefined
+          position: nextReadPosition(),
+          landed: reading.then(
+            (page) => page.nextCursor === undefined,
+            () => false
           )
         };
       }
