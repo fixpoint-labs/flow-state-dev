@@ -96,7 +96,7 @@ Anything short of done fails the attempt, and the next attempt is told why. A gr
 
 A task can stop and wait on you. While it waits it holds no lease and no checkout, and starts no other run. The question shows in your Inbox, the list of things waiting on a user. The judge puts one there when it cannot tell whether the goal is met, and a review you turned on waits there too. By default the agent does not ask you questions itself. [Harness runs](../reference/harness-runs.md) shows how to let it.
 
-You answer in the Inbox, or by typing a line in the run's session. The answer resumes the same coding session in the same checkout, and does not use up a retry.
+You answer a question in the Inbox, or by typing a line in the run's session. The answer resumes the same coding session in the same checkout, and does not use up a retry. A review is answered in the Inbox: accepting it completes the task, and asking for changes sends your words to the same session for one more run.
 
 ## Choosing a harness
 

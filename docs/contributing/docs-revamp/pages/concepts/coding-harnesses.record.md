@@ -57,6 +57,8 @@ Written by `docs-writer` (sonnet), 856 words. Scenario: engineering.coder fixing
 
 - After the loop (security review): the checkout claims ("never touch your working tree", "Your tree is safe", the figure's note) now say only setup leaves your tree alone, and the page says `claudeCode()` as installed runs shell commands with no sandbox (`claude-code/src/sdk/kit.ts:54`, `agent.ts:370`). The judge sentence now says only a confident "not done" fails the attempt; a reading under the 0.7 floor or a judge that errors leaves it to the checks (`goal-judge.ts:35`).
 
+- After the loop (review): the answer paragraph now separates questions from reviews. A typed session line answers a question; a review is answered in the Inbox, where accepting completes the task without resuming the agent (`manager.ts:577`, `session-door.ts:293`; fact 48).
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 be5017eee047, and the 10 Reference row(s) pass 6 moved.
