@@ -17,8 +17,7 @@
  *       GOAL_ASKS=date,sizing (a subset) · GOAL_RUNS · GOAL_FOLD_TURNS_MAX
  */
 import { join } from "node:path";
-import { askAfterFold, askWorker, clientFor, gitRepository, heldSkills, runChecks, runClosure, serveFsdev, skillFiles, type AppDriver } from "../closure.mts";
-import { claudeCodeSettings } from "../model.mts";
+import { askAfterFold, askWorker, clientFor, coderRepository, heldSkills, runChecks, runClosure, serveFsdev, skillFiles, type AppDriver } from "../closure.mts";
 import { storeFile, teammatesServe, tree, USER } from "./serve.mts";
 
 const LEAD = "teammates.chief-of-staff";
@@ -29,9 +28,8 @@ const driver: AppDriver = {
   plant: (d, p) => skillFiles(join(tree(p.root), "teams", "teammates", "workers", "chief-of-staff"), d.skill, p.switches),
   start: async (d, p, scratch) => {
     const store = storeFile(scratch);
-    // The working folder: a git checkout holding the draw's files, the coder ask's failing check, and on
-    // Haiku the project settings that set its Claude Code runs to Haiku.
-    const workdir = gitRepository(join(scratch, "workdir"), { ...d.files, [d.coder.file]: d.coder.script, ...claudeCodeSettings(p.model) });
+    // The working folder: the coder ask's repository.
+    const workdir = coderRepository(join(scratch, "workdir"), d, p.model);
     const served = await serveFsdev(teammatesServe(d, p, scratch, workdir));
     const fsd = clientFor(served.origin, USER);
     const lead = (line: string, budgetMs?: number) => askWorker(fsd, { user: USER, worker: LEAD, line, ...(budgetMs === undefined ? {} : { budgetMs }) });

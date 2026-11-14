@@ -52,7 +52,7 @@ import {
   type Turn,
 } from "./asks.mts";
 import { draw, type Draw } from "./fixtures.mts";
-import { closureModel, servedModel, type ClosureModel } from "./model.mts";
+import { claudeCodeSettings, closureModel, servedModel, type ClosureModel } from "./model.mts";
 
 export type Fsd = ReturnType<typeof createClient>;
 
@@ -521,6 +521,15 @@ export function gitRepository(dir: string, files: Record<string, string>): strin
   git("add", "-A");
   git("commit", "-q", "-m", "start");
   return dir;
+}
+
+/**
+ * A coder ask's project repository, a git checkout at `dir`: the draw's files, the coder ask's failing
+ * check, the `.gitignore` line for `.fsdev/` a harness-manager run refuses to start without (it writes
+ * its question under `.fsdev/ask/`), and on Haiku the project settings that set its Claude Code runs to Haiku.
+ */
+export function coderRepository(dir: string, d: Draw, model: ClosureModel): string {
+  return gitRepository(dir, { ...d.files, [d.coder.file]: d.coder.script, ".gitignore": ".fsdev/\n", ...claudeCodeSettings(model) });
 }
 
 /** Run one action and hand back its output, or throw why it failed. */
