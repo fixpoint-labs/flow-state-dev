@@ -64,7 +64,7 @@ at boot:
 
 | | Keys | Whose |
 |---|---|---|
-| **The admission contract** | `instructions?`, `teamInstructions?`, `workerSkills`, `workerTools`, `workerPackages?`, `workerId` | The framework's. Every hireable worker flow admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
+| **The admission contract** | `instructions?`, `teamInstructions?`, `workerSkills`, `workerTools`, `workerPackages?`, `workerId`, `delegates`, `defaults?` | The framework's. Every hireable worker flow admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
 | **This flow's own** | `model`, `tools`, `skills` (the switches) | The default worker flow's alone. They sit at the top level beside the contract's, where the framework closes the set and an undeclared key refuses by name. `tools` is the one of the three that is **reserved** — see below. |
 | **The hire step's** | `flow`, `description`, `resources` | Never a worker flow's. Read and removed before admission, so no `configSchema` sees them — see `resources` below. |
 
@@ -188,9 +188,11 @@ call. Two ship in this worker flow. The first is held only because the worker's 
 for it; the second is held by every worker on the flow, and a worker's configuration narrows it rather
 than requesting it:
 
-- **The skill loader.** A worker that sets `skills.activateTool: true` is bound with
+- **The skill loader.** A worker whose `skills.activateTool` resolves on is bound with
   `dynamicActivation`, which installs the loader as a control. It reaches the model without
-  appearing in `tools:` — by design, because the worker's own setting is the declaration.
+  appearing in `tools:` — by design, because the worker's own configuration is the declaration:
+  its `activateTool` when it set one, else its `defaults` (on, for a worker that holds a skill;
+  see C5).
 - **The discovery door (FIX-817).** `createWorkforceCapability` contributes `discover` as a
   control, and it ships **on**. This is the one control a worker does not ask for: composing the
   capability is itself the declaration that a worker may ask what is around it, so a second per-worker
@@ -215,9 +217,21 @@ depends on them for safety. Do not add a per-consumer fence: core is the one str
 enforcement point, and a second would be another door to forget.
 
 The shared `default` prompt is owned by FIX-2334 (FIX-1344 carried it and closed without it). It
-is fixed framework text, not a setting: later default text joins it as a line, not a second entry,
-and an app that wants other words registers its own `agent` worker flow. A configurable org-wide
-default is the point at which this seam should be re-decided rather than widened.
+is fixed framework text, not a setting, and an app that wants other words registers its own
+`agent` worker flow. A configurable org-wide default is the point at which this seam should be
+re-decided rather than widened.
+
+**The default layer has two places (FIX-2498 D1).** The identity text above stays the prompt's
+first entry. The layer's sections — `date` and `skillsIndex`, owned by `workerDefaultLayer`
+(`packages/workforce/src/worker-default-layer.ts`) — render as tagged context *after* the whole
+prompt, through the generator's `context` slot, so a section that changes daily never moves the
+prompt's start. Each is on by default and turned off by the contract's `defaults` key
+(`defaults: false` turns both off); identity is not under `defaults`. The fixed text of every
+section stays under 1,600 characters, checked by a test (epic FIX-2490 ER-1); an app's `date`
+line and each skill's listing entry are outside it. An app adds a line to the date block by
+writing under the `date` context key from a capability it composes — the one place app text joins
+the layer, and it is free text nothing checks. A later section (FIX-2500's summary) goes through
+the same module and says which of the two places it uses.
 
 ### C1a — Settings are a default layer, not the only layer
 
@@ -421,6 +435,13 @@ claim a test can falsify.
 — it is not blocked on the memory work either way. FIX-1364 owns the composition-seam design, the
 gap honesty, and the teaching surface for *how* an app composes memory in. FIX-1366 teaches that
 honestly — not "remembers with zero configuration", and not "one setting on the stock worker flow".
+
+**The skills index is the one default that is on (FIX-2498, amending this clause).** A worker that
+holds a skill it can load is shown the list of those skills, the loader, and one line telling it
+to load a fitting skill before it answers, with no setting. "Cheap" still holds for a worker that
+holds no skill: it gets no loader, no list and no line, so it pays nothing. `skills.activateTool`
+has no default: unset follows `defaults.skillsIndex`; a value the worker set always wins, so a
+config written as `activateTool: false` keeps it off (BP-030). The classifier tier stays off.
 
 ### The skills entry point is pinned: `createSkillsLibrary` + per-generator binding
 

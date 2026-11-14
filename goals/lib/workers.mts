@@ -24,15 +24,33 @@ import { workforce, type WorkforceConfig } from "@flow-state-dev/workforce/kit";
 import { readWorkforceFolder, type WorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 
-/** One frontmatter value as the workforce frontmatter reader takes it: JSON-quoted strings, flow lists. */
-function frontmatterValue(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map((item) => JSON.stringify(item)).join(", ")}]`;
+/**
+ * One scalar written so the workforce frontmatter reader gives it back unchanged.
+ * The reader strips one pair of outer quotes and unescapes nothing, so a string
+ * is quoted with a mark it doesn't hold. One it can't give back is refused
+ * rather than written as a different value.
+ */
+function frontmatterScalar(value: unknown): string {
   if (typeof value === "object" && value !== null) {
+    throw new Error(`workerFile: a list item can't be a mapping (${JSON.stringify(value)})`);
+  }
+  if (typeof value !== "string") return String(value);
+  if (value.includes("\n")) throw new Error(`workerFile: a frontmatter string can't hold a line break (${JSON.stringify(value)})`);
+  if (!value.includes('"')) return `"${value}"`;
+  if (!value.includes("'")) return `'${value}'`;
+  throw new Error(`workerFile: the workforce reader can't give back a string holding both quote marks (${JSON.stringify(value)})`);
+}
+
+/** One frontmatter value as the workforce frontmatter reader takes it: quoted strings, flow lists, mappings indented a level deeper each. */
+function frontmatterValue(value: unknown, indent = ""): string {
+  if (Array.isArray(value)) return `[${value.map(frontmatterScalar).join(", ")}]`;
+  if (typeof value === "object" && value !== null) {
+    const inner = `${indent}  `;
     return `\n${Object.entries(value as Record<string, unknown>)
-      .map(([key, entry]) => `  ${key}: ${frontmatterValue(entry)}`)
+      .map(([key, entry]) => `${inner}${key}: ${frontmatterValue(entry, inner)}`)
       .join("\n")}`;
   }
-  return typeof value === "string" ? JSON.stringify(value) : String(value);
+  return frontmatterScalar(value);
 }
 
 /** A worker's `WORKER.md` path under the folder, from its id: `team.worker`, or an org worker's bare id. */

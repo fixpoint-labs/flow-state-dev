@@ -8,6 +8,7 @@
  */
 import { generator } from "@flow-state-dev/core";
 import { voiceContext } from "@flow-state-dev/engine";
+import { workerDate } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { inputSchema, userStateSchema, modeSchema, thinkingStyleSchema } from "../../shared/schemas";
 import { featuresCapability } from "../../shared/capabilities/features";
@@ -35,9 +36,8 @@ export const assistantGenerator = generator({
   // tags; same-key contributions across sources aggregate cleanly. See
   // docs/fundamentals/generator-context.md for the full contract.
   context: {
-    // A function, so it is read on every turn — a value here would be fixed
-    // at module load and go stale on a long-running server.
-    todaysDate: () => new Date().toLocaleDateString(),
+    // The same date block every workforce worker gets, read on every turn.
+    date: workerDate,
     voice: voiceContext
   },
 

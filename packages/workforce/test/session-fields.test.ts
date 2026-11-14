@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { defineCoordinatorFlow } from "../src/coordinator/coordinator-flow";
+import { defineErrorReporterFlow } from "../src/error-reporter/flow";
 import { createWorkerInstallation } from "../src/workers/installation";
 
 describe("sessionFields on the agent flow", () => {
@@ -23,5 +24,11 @@ describe("sessionFields on the agent flow", () => {
     expect(() => defineCoordinatorFlow({ installation, routeModel: "openai/gpt-6-luna", agent: nested })).toThrow(
       /`agent.sessionFields`.*`sessionFields`/,
     );
+  });
+
+  it("refuses session fields on the error reporter's agent options: its session is its own and would drop them", () => {
+    const installation = createWorkerInstallation({ standardWorkers: [] });
+    const nested = { sessionFields: { repositoryId: z.string().optional() } } as never;
+    expect(() => defineErrorReporterFlow({ installation, agent: nested } as never)).toThrow(/`agent.sessionFields` is not read/);
   });
 });

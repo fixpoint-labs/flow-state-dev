@@ -1,16 +1,18 @@
 /**
- * Chat-agent assistant — the date the model sees is read on every turn.
+ * Chat-agent assistant — the model is told today's date with the same block
+ * every workforce worker gets, read on every turn.
  *
- * Kitchen Sink runs as a long-lived server. If the `todaysDate` context entry
- * were computed when the module loads, every turn after midnight would tell
- * the model a stale date, skewing anything time-sensitive ("latest", news,
- * scheduling). This test moves the clock after the module is imported and
- * checks the rendered prompt carries the new date, not the import-time one.
+ * The assistant is a standalone generator, not a worker, so it composes
+ * `workerDate` itself rather than writing a date line of its own: one way to
+ * tell a model the date. Kitchen Sink runs as a long-lived server, so the
+ * test also moves the clock after the module is imported and checks the
+ * prompt carries the new day, not the import-time one.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { z } from "zod";
 import { mockGenerator, testBlock } from "@flow-state-dev/testing";
+import { workerDate } from "@flow-state-dev/workforce";
 import { assistantGenerator } from "../flows/chat-agent/run/assistant/assistant";
 import { artifactsCollection } from "../flows/chat-agent/shared/artifacts";
 import { userStateSchema } from "../flows/chat-agent/shared/schemas";
@@ -83,12 +85,12 @@ async function runTurn(): Promise<string> {
   return JSON.stringify(assistantFixture.calls[0]?.input);
 }
 
-describe("chat-agent assistant todaysDate", () => {
+describe("chat-agent assistant date", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("tells the model the date of the turn, not the date the server started", async () => {
+  it("tells the model the turn's date with the workforce date block, not the date the server started", async () => {
     // Two dates far from the real clock (and from each other), so neither can
     // match the import-time date by accident.
     const first = new Date(2031, 0, 15, 12);
@@ -97,12 +99,14 @@ describe("chat-agent assistant todaysDate", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
 
     vi.setSystemTime(first);
+    const firstBlock = workerDate();
     const firstPrompt = await runTurn();
-    expect(firstPrompt).toContain(first.toLocaleDateString());
+    expect(firstPrompt).toContain(`<date>`);
+    expect(firstPrompt).toContain(firstBlock);
 
     vi.setSystemTime(second);
     const secondPrompt = await runTurn();
-    expect(secondPrompt).toContain(second.toLocaleDateString());
-    expect(secondPrompt).not.toContain(first.toLocaleDateString());
+    expect(secondPrompt).toContain(workerDate());
+    expect(secondPrompt).not.toContain(firstBlock);
   });
 });
