@@ -144,7 +144,7 @@ The `WORKER.md` is a stored part (it lives in the repo).
 - A read on any other session fails with a 404, `Unknown resource "tasks"`. `dw:188`. [ref]
 - The read covers the tasks of every session that user has filed from and never another user's. `dw:188`. [page]
 - `clientData` holds `id`, `title`, `goal`, `status`, `assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`, `updatedAt`, `startedAt` and `completedAt`; a task's input, output and metadata are never sent. `dw:190`. [ref]
-- Ready-made screens: `Roster`, `BoardColumns` and `BoardList` from `@flow-state-dev/react`; `BoardColumns` and `BoardList` take `sessionId`, `boardRef="tasks"` and `client`, and `live` to read again on a change. `ui:7-18`, `ui:60-130`. [page: name them, one clause; props are [ref]]
+- Ready-made screens: `Roster`, `BoardColumns` and `BoardList` from `@flow-state-dev/workforce/react`; `BoardColumns` and `BoardList` take `sessionId`, `boardRef="tasks"` and `client`, and `live` to read again on a change. `ui:7-18`, `ui:60-130`. [page: name them, one clause; props are [ref]]
 - The page's link for rendering a board: `tasks-and-boards` (C-21) for what a board is, `ui.md` for the components. [link only]
 
 ### A task, for the stored part: four questions
@@ -269,7 +269,7 @@ Each is a fact above; the page may state a benefit only if it is here.
 1. **Alice edits the lead from inside the app. What does Bob see? What happens to the file?** Bob sees the lead unchanged: his turn runs the file's version, and his roster row shows it unedited. The file is never written. Alice's edit made her own copy of the lead under the same id; her conversations stay where they are and her next turn runs the copy. A reset deletes her copy. `wt/worker-roster.test.ts:286-310` (Bob's turn: `instructions: "Research carefully."`, `edited: false`), `wk/workers/hire-blocks.ts:11-14`, `:81-90`.
 2. **The lead is asked to write code. What does it do?** It files a task for `engineering.coder` (a delegate that takes tasks). The coder works it in a session of its own, with the task as its message; its answer is recorded as the task's result; when the task ends, the lead hears it in its conversation and carries on. The lead does not write the code itself ("You do not write code yourself" is the file's own instruction). A task for a worker that is not one of its delegates is refused and names the worker. `dw:10-14`, `ov:128-132`, `co:438-466`, `wt/delegates-as-authority.test.ts:17-31`.
 3. **A worker needs fixed steps and a review. What do you change, and what stays a document?** You write a flow that holds the steps and the review, and name it in the worker's `flow:`. The `WORKER.md` stays a document, still editable by someone who does not write TypeScript. `wd:759`, `wd:827`, `wd:37`.
-4. **Where do a worker's tasks show up for a page to render?** On the board that belongs to the conversation that filed them; a page reads it as the `tasks` collection on any of the user's sessions, or with `BoardColumns` / `BoardList` from `@flow-state-dev/react`. `dw:169`, `dw:188`, `ui:60-130`.
+4. **Where do a worker's tasks show up for a page to render?** On the board that belongs to the conversation that filed them; a page reads it as the `tasks` collection on any of the user's sessions, or with `BoardColumns` / `BoardList` from `@flow-state-dev/workforce/react`. `dw:169`, `dw:188`, `ui:60-130`.
 
 ## Revisions (round 1)
 

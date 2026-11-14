@@ -53,7 +53,7 @@ export default createFlowState({
 });
 ```
 
-The folder is read when the app starts, and a file the kit can't use stops the app from starting. The [WORKER.md reference](../reference/worker-md.md) lists what makes a file unusable.
+The folder is read when the app starts. A file in it that Workforce doesn't read, or a `WORKER.md` that doesn't load, stops the app from starting, and the error names the file. The [WORKER.md reference](../reference/worker-md.md) lists what makes a file unusable.
 
 ## Talk to one
 
@@ -77,7 +77,7 @@ export async function askLead(userId: string, message: string) {
 
 ## Hand one a task
 
-A worker with `delegates` can hand work to the workers it names. The lead above doesn't write code. It files a task for `engineering.coder`. The coder works on it in a session of its own, with the task's goal as its message, and its answer is recorded as the task's result. When the task ends, the lead is told and carries on.
+A worker with `delegates` can hand work to the workers it names. The lead above doesn't write code. It files a task for `engineering.coder`. The coder works on it in a session of its own, with the task's title, goal and context as its message, and its answer is recorded as the task's result. When the task ends, the lead's conversation hears about it once, in a line under the coder's name.
 
 A worker can only hand work to its own delegates. The [refusals table](../reference/workforce.md) shows what a task for anyone else gets back.
 
@@ -87,12 +87,12 @@ When you want one front door for a whole team, make it a [coordinator](../catalo
 
 Every session of a worker that files keeps its own [board](./tasks-and-boards.md), and a worker files onto the board of the session it is in. So the tasks the lead hands out sit on the board of the conversation Alice had with it.
 
-A page reads them through the `tasks` collection of that session. `BoardColumns` from `@flow-state-dev/react` draws the board by status, waiting, running and done:
+A page reads them through the `tasks` collection of that session. `BoardColumns` from `@flow-state-dev/workforce/react` draws the board by status, waiting, running and done:
 
 ```tsx title="src/app/lead-tasks.tsx"
 import { useMemo } from "react";
 import { createClient } from "@flow-state-dev/client";
-import { BoardColumns } from "@flow-state-dev/react";
+import { BoardColumns } from "@flow-state-dev/workforce/react";
 
 export function LeadTasks({ userId, sessionId }: { userId: string; sessionId: string }) {
   const client = useMemo(() => createClient({ userId, baseUrl: "" }), [userId]);
@@ -106,7 +106,7 @@ The session has to be on a flow that keeps a board, and the built-in worker flow
 
 ## Whose worker it is
 
-The files in your repo define the **standard** workers. Every user gets each of them, and each user's set of workers is their **roster**. Take two users, Alice and Bob. Alice's lead answers to Alice. Bob can't open her conversations or read what her lead remembers about her.
+The files in your repo define the **standard** workers. Every user gets each of them, and each user's set of workers is their **roster**. Take two users, Alice and Bob. Alice's lead answers to Alice. Bob can't open her conversations, name her lead as a delegate, or read what it remembers about her. To Bob, her lead looks like a worker that doesn't exist.
 
 A user can edit a standard worker from inside the app. The edit makes that user's own copy under the same id, and the file in your repo never changes; a reset deletes the copy and brings the standard back. A user who wants a second worker beside it **forks** it, and gets a new worker of their own that starts from the same settings. A user can also hire a worker from scratch while the app runs. Those workers belong to that user alone. No file changes and nothing restarts.
 

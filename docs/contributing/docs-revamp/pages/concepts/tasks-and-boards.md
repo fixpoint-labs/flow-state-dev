@@ -100,6 +100,23 @@ The tasks are stored data, and you choose where. That choice is the board's life
 | The request (the default) | One request | The work starts and finishes in one go |
 | A resource in session, user or org scope | Across requests | People add tasks over time, or come back for results |
 
+To keep the list, declare a task collection and give it to the board. Nothing else changes: `initialTasks` and `board.drain` stay as they were.
+
+```ts title="src/flows/research/flow.ts"
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+
+const research = defineTaskCollection({ id: "research", scope: "session" });
+
+const board = taskBoard({
+  name: "competitor-research",
+  collection: research,
+  workers: { analyst, writer },
+  initialTasks: [/* the same four tasks */],
+});
+```
+
+`scope: "session"` gives each conversation its own list. A `user` list is shared by every session of that user, and an `org` list by everyone in the organization. Each drain applies `initialTasks` again but skips a task whose `id` is already in the list, so a second request does not add the four tasks twice. A task with no `id` would be added again on every drain.
+
 The drain has no lifetime of its own. It runs while a request is running `board.drain`, and then it is gone. Nothing runs it on its own, and nothing wakes it when a task is added. Tasks added afterwards wait where they are until a request runs a drain again. So a board on its own is not a background queue.
 
 ## Who does the work
