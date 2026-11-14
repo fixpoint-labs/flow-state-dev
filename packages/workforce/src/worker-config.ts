@@ -45,6 +45,7 @@
 import { z } from "zod";
 import type { BlockDefinition } from "@flow-state-dev/core";
 import { ALL_DELEGATES, MAX_DELEGATES } from "./delegates/delegate-keys";
+import { workerDefaultsSchema } from "./worker-default-layer";
 import {
   INSTRUCTIONS_KEY,
   WORKER_ID_KEY,
@@ -211,7 +212,20 @@ export function workerConfigSchema() {
      */
     delegates: z
       .union([z.literal(ALL_DELEGATES), z.array(z.string().min(1)).max(MAX_DELEGATES)])
-      .default([])
+      .default([]),
+
+    // FIX-2498.
+    /**
+     * Which of the default layer's sections this worker turns off: `false`
+     * for all of them, or `{ date: false }`, `{ skillsIndex: false }`.
+     * Authored, like `delegates`. Absent, every section is on. A section the
+     * layer does not know is refused by name.
+     *
+     * Read by the built-in `agent` worker flow and the coordinator, which
+     * render the layer (`./worker-default-layer`). A worker flow of an app's
+     * own that renders no layer accepts it and does nothing with it.
+     */
+    defaults: workerDefaultsSchema
   });
 }
 

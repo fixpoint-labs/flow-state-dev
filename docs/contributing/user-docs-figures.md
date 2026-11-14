@@ -339,8 +339,8 @@ where their meaning is true, and that the highlighted thing is the page's one id
 ## Exemplars
 
 The three pilot figures, redrawn to these rules. Each passes the brand lint with no findings
-and was rendered and read in both modes. `docs-revamp/pages/figures/blocks.svg` has not been redrawn
-yet; it is redrawn with its page, and until then the lint skips it and `pages/blocks.md`.
+and was rendered and read in both modes. The lint holds every revamp page to the standard, at any
+depth under `pages/` and `pilot/`.
 
 ### Layer boxes: `docs-revamp/pilot/figures/layers.svg`
 

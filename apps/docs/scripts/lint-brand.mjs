@@ -65,8 +65,6 @@ const REVAMP = resolve(DOCS, "../../docs/contributing/docs-revamp");
 const FIGURE_FIXTURES = join(FIXTURES, "figures");
 // Where the whole figure standard holds, by path prefix. The site's published diagrams are not here: they keep rules 1 to 5 until cutover redraws them.
 const HELD_TO_STANDARD = [REVAMP, FIGURE_FIXTURES];
-// Drawn before the figure standard; FIX-2701 redraws them with their page and drops them from here.
-const PREDATE_STANDARD = ["pages/blocks.md", "pages/figures/blocks.svg"].map((p) => join(REVAMP, p));
 
 const RULES = [
   "colour", "stroke", "dash", "info", "font", "svg", "fill", "attr", "element",
@@ -832,23 +830,18 @@ if (broken.length) {
 
 // 2. The real files: the site's diagrams and custom.css, and the revamp's figures and pages.
 const args = process.argv.slice(2);
+// Every page under pages/ and pilot/, at any depth: Concepts pages sit in pages/concepts/.
 const pagesIn = (dir) =>
-  readdirSync(join(REVAMP, dir))
+  readdirSync(join(REVAMP, dir), { recursive: true })
     .filter((f) => /\.mdx?$/.test(f) && !/\.(record|facts)\.md$/.test(f))
     .map((f) => join(REVAMP, dir, f));
 const revamp = [...svgsUnder(REVAMP), ...["pages", "pilot"].flatMap(pagesIn)];
-const stale = PREDATE_STANDARD.filter((f) => !revamp.includes(f));
-if (!args.length && stale.length) {
-  // An exemption for a file that is gone would quietly exempt whatever takes its name.
-  console.error(`brand lint: exempt from the figure standard, and gone: ${stale.map((f) => relative(REVAMP, f)).join(", ")}`);
-  process.exit(1);
-}
 const files = args.length
   ? args
   : [
       ...["docs", "guides", "blog"].flatMap((d) => svgsUnder(join(DOCS, d))),
       join(DOCS, "src/css/custom.css"),
-      ...revamp.filter((f) => !PREDATE_STANDARD.includes(f)),
+      ...revamp,
     ];
 const findings = [...files.flatMap((f) => lintFile(f, allowed)), ...(args.length ? [] : lintPageCss())];
 for (const f of findings) console.error(show(f));

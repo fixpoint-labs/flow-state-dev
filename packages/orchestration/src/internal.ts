@@ -114,6 +114,8 @@ export {
 } from "./skills/steer-context";
 export { pushActiveSkill, type ActiveSkillEntry } from "./skills/active-skill-state";
 export { formatAllowedToolsIntentNote } from "./skills/render-skill-body";
+// The skills listing itself, so workforce's default layer can print its line only beside it.
+export { buildLoadCatalogContext } from "./skills/load-tool";
 
 // The frontmatter dialect `SKILL.md` and workforce's `WORKER.md` share.
 export { splitFrontmatter, parseFrontmatterYaml } from "./shared/frontmatter";
