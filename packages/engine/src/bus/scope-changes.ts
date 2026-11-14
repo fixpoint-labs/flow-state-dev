@@ -18,6 +18,7 @@
  * state publish nothing: no screen watches them.
  */
 import type { ChangeKind, TopicScope } from "@flow-state-dev/core/internal";
+import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { publishNotices } from "./publish-writes";
 import { ownerKeyAdmits } from "../resources/owner-private";
 import type { ChangeBus } from "./types";
@@ -49,8 +50,11 @@ export type ScopeChange = {
  * its notice names no path. Every view of the scope wakes and reads again
  * through its own checks: the owner sees the change, and nobody else learns
  * the key. A single resource (`collection` undefined) is the same for every
- * caller, so its key is named. A user-scope entry names no path either: the
- * user topic spans the user's orgs, and their user cells don't.
+ * caller, so its key is named. A user-scope entry names its collection's
+ * root instead (the static prefix of its pattern, `""` naming nothing): the
+ * user topic spans the user's orgs, and their user cells don't, so the key
+ * stays off it, while the root is the same in every org and lets a screen of
+ * another resource skip the notice.
  */
 export function noticePathFor(
   collection: object | undefined,
@@ -60,20 +64,25 @@ export function noticePathFor(
   if (collection === undefined) return storageKey;
   // A user's topic is theirs in every org, while their user cell is per org:
   // an entry's key written in one org would reach their pages in the others.
-  // The bare notice still wakes every view of the scope (FIX-2624).
-  if (scope === "user") return undefined;
+  // Its collection's root is the same in every org (FIX-2625).
+  if (scope === "user") {
+    const root = getPatternPrefix((collection as { pattern: string }).pattern);
+    return root === "" ? undefined : root;
+  }
   return ownerKeyAdmits(collection, storageKey, undefined) ? storageKey : undefined;
 }
 
 // FIX-2625.
 /**
  * A collection entry's notice: narrowed to its path and naming its storage key
- * when the path may be named (`noticePathFor`), else bare, naming nothing. A
- * notice that names no path names no id (epic ER-10).
+ * when the path may be named (`noticePathFor`); narrowed to its collection's
+ * root and naming nothing on the user topic; else bare, naming nothing. A
+ * notice that names no entry's path names no id (epic ER-10).
  */
 export function entryNotice(collection: object, storageKey: string, scope?: TopicScope): { resource?: string; ids?: string[] } {
   const resource = noticePathFor(collection, storageKey, scope);
-  return resource === undefined ? {} : { resource, ids: [resource] };
+  if (resource === undefined) return {};
+  return resource === storageKey ? { resource, ids: [resource] } : { resource };
 }
 
 // FIX-2623 D1.

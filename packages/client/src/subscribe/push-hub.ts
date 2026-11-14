@@ -118,7 +118,7 @@ function readServerFrame(value: unknown): PushServerFrame | undefined {
 }
 
 /** Whether `subscribed` covers a notice under `heard`. */
-function covers(subscribed: WireTopic, heard: WireTopic): boolean {
+export function covers(subscribed: WireTopic, heard: WireTopic): boolean {
   if (subscribed.scope !== heard.scope) return false;
   if (subscribed.scope === "session" && heard.scope === "session" && subscribed.id !== heard.id) return false;
   return subscribed.resource === undefined || subscribed.resource === heard.resource;

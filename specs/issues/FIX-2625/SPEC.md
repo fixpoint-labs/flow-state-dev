@@ -119,7 +119,9 @@ and [FIX-2551](../FIX-2551/DECISIONS.md#decided-not-asked)'s one merge function.
 - Topics, the mint and its checks, the hour an open socket lives ([FIX-2428 D2](../FIX-2428/DECISIONS.md#d2)).
   No topic is added ([FIX-2367 ER-2](../../epics/FIX-2367/DECISIONS.md#who-owns-what)).
 - A collection entry's path on its topic ([FIX-1506](../FIX-1506/DECISIONS.md#decided-not-asked)),
-  and which writes publish ([FIX-2623 D1](../FIX-2623/DECISIONS.md#d1)'s host-wide rule).
+  and which writes publish ([FIX-2623 D1](../FIX-2623/DECISIONS.md#d1)'s host-wide rule). A
+  user-scope entry, which named no path, now names its collection's root, never its key
+  ([Decided during implementation](DECISIONS.md#decided-during-implementation)).
 - Every full read: connect, reconnect, `resync`, a poll tick, a bus that doesn't cross processes.
 - `client.live`'s entry point and `useView`'s and `useResource`'s results.
 
@@ -163,6 +165,10 @@ apart, which one publisher writes both of.
    The one to weigh. If wrong: a view author's mistake shows a stale row until the next whole read.
 2. **[D2](DECISIONS.md#d2) · Turning ids off also hides the entry keys notices already carry.**
    If wrong: a scope with ids off reads more than it needs, or keeps leaking what it switched off.
+3. **[D3](DECISIONS.md#d3) · The board view hears only its own board notices.** Decided by the
+   owner during implementation: the board no longer hears its ledger's user-topic notices, which
+   name no task. If wrong: a ledger write with no board notice leaves the board stale, which the
+   publisher's one write path and its test close.
 
 **Before implementation starts:** FIX-2551, FIX-2623 and FIX-2624 are built; this is the last of
 the four on the live read.

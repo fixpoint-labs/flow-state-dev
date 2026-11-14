@@ -160,6 +160,12 @@ function wrapItem<TClient>(
   };
 }
 
+// FIX-2625.
+/** How long a list holds a change signal for more to arrive before it reads: one change's two signals land well inside it. */
+export const LIST_SIGNAL_WINDOW_MS = 50;
+/** The longest a list holds signals while they keep coming: it reads at least this often. */
+export const LIST_SIGNAL_CAP_MS = 250;
+
 // ---------------------------------------------------------------------------
 // useResourceCollection
 // ---------------------------------------------------------------------------
@@ -192,6 +198,37 @@ export function useResourceCollection<TClient = unknown>(
     setGeneration(generationRef.current);
   }, []);
 
+  // FIX-2625: a change signal (a named change, the count moving) is held for
+  // LIST_SIGNAL_WINDOW_MS, and the list reads once after the last one, at the
+  // latest LIST_SIGNAL_CAP_MS after the first. One change's two signals then
+  // cost one read, and the read starts after both, so no signal is skipped.
+  const signalsRef = useRef<{ timer: ReturnType<typeof setTimeout>; firstAt: number } | null>(null);
+  const flushSignals = useCallback(() => {
+    if (signalsRef.current !== null) clearTimeout(signalsRef.current.timer);
+    signalsRef.current = null;
+    invalidate();
+  }, [invalidate]);
+  const signalChange = useCallback(() => {
+    const now = Date.now();
+    const held = signalsRef.current;
+    if (held !== null) clearTimeout(held.timer);
+    const firstAt = held?.firstAt ?? now;
+    const wait = Math.min(LIST_SIGNAL_WINDOW_MS, firstAt + LIST_SIGNAL_CAP_MS - now);
+    if (wait <= 0) {
+      flushSignals();
+      return;
+    }
+    signalsRef.current = { timer: setTimeout(flushSignals, wait), firstAt };
+  }, [flushSignals]);
+  // A held signal is for the collection on screen: dropped with it.
+  useEffect(
+    () => () => {
+      if (signalsRef.current !== null) clearTimeout(signalsRef.current.timer);
+      signalsRef.current = null;
+    },
+    [fence]
+  );
+
   // Watch the session's resource_change notice channel for events touching
   // this collection. `session.items` filters out transients by default, so
   // a hook earlier in the file's history that watched `session.items` for
@@ -214,11 +251,11 @@ export function useResourceCollection<TClient = unknown>(
     lastSeenResourceChangeIdxRef.current = changes.length;
     for (let i = start; i < changes.length; i++) {
       if (mayHold(changes[i]!.resourcePath, roots)) {
-        invalidate();
+        signalChange();
         break;
       }
     }
-  }, [session.resourceChanges, roots, invalidate]);
+  }, [session.resourceChanges, roots, signalChange]);
 
   const collectionEntry = useMemo(
     () => findCollectionEntry(session, ref),
@@ -229,15 +266,16 @@ export function useResourceCollection<TClient = unknown>(
   // `session.resourceChanges` watcher above. useSession calls
   // `refreshSnapshot()` at request completion when any resource changed
   // during streaming, which updates `count` (always emitted, FIX-427 §3.6).
-  // Invalidate whenever count moves so cached pages refetch on the next call.
+  // Invalidate whenever count moves so cached pages refetch on the next call,
+  // through the same held signal as a named change.
   const lastSeenCountRef = useRef<number | undefined>(collectionEntry?.count);
   useEffect(() => {
     const next = collectionEntry?.count;
     if (next !== lastSeenCountRef.current) {
       lastSeenCountRef.current = next;
-      invalidate();
+      signalChange();
     }
-  }, [collectionEntry?.count, invalidate]);
+  }, [collectionEntry?.count, signalChange]);
 
   const list = useCallback(
     async (options?: CollectionListOptions): Promise<CollectionListPage> => {

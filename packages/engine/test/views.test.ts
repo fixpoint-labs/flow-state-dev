@@ -249,10 +249,14 @@ describe("a user or org view runs with no session", () => {
     routers.push(router);
     const res = await view(router, "orgNotes");
     expect(res.status, await res.clone().text()).toBe(200);
-    expect(await res.json()).toEqual({ output: { texts: ["org note"] }, topics: [{ scope: "org" }] });
+    expect(await res.json()).toEqual({
+      output: { texts: ["org note"] },
+      topics: [{ scope: "org" }],
+      hears: [{ topic: { scope: "org" }, kinds: ["resource"], paths: ["org-notes"] }]
+    });
 
     const pinsRes = await view(router, "pins");
-    expect(await pinsRes.json()).toEqual({ output: [], topics: [{ scope: "user" }], keys: [] });
+    expect(await pinsRes.json()).toEqual({ output: [], topics: [{ scope: "user" }], hears: [{ topic: { scope: "user" }, kinds: ["resource"], paths: ["pins"] }], keys: [] });
     expect(calls).toEqual([]);
     expect((await seededStores.session.list({})).map((s) => s.id)).toEqual(sessionsBefore);
   });
@@ -293,12 +297,17 @@ describe("the answer names the topics of what the run read", () => {
     await act(router, stores, "s1", "addNote", { title: "alpha" });
     const res = await view(router, "notes", "alice", "s1");
     expect(res.status, await res.clone().text()).toBe(200);
-    expect(await res.json()).toEqual({ output: { titles: ["alpha"], topic: "alpha" }, topics: [{ scope: "session", id: "s1" }] });
+    expect(await res.json()).toEqual({
+      output: { titles: ["alpha"], topic: "alpha" },
+      topics: [{ scope: "session", id: "s1" }],
+      // Its state and its notes collection: every change to the session but its other resources and boards.
+      hears: [{ topic: { scope: "session", id: "s1" }, kinds: ["items", "request", "run", "state", "resource"], paths: ["notes"] }]
+    });
   });
 
   it("names no topic for a view that read nothing", async () => {
     const { router } = build();
-    expect(await (await view(router, "nothing")).json()).toEqual({ output: { ok: true }, topics: [] });
+    expect(await (await view(router, "nothing")).json()).toEqual({ output: { ok: true }, topics: [], hears: [] });
   });
 
   it("records a read made one block down, in a sequencer step", async () => {
@@ -307,7 +316,7 @@ describe("the answer names the topics of what the run read", () => {
     const { router } = build();
     const res = await view(router, "probe");
     expect(res.status, await res.clone().text()).toBe(200);
-    expect(await res.json()).toEqual({ output: { count: 0 }, topics: [{ scope: "user" }] });
+    expect(await res.json()).toEqual({ output: { count: 0 }, topics: [{ scope: "user" }], hears: [{ topic: { scope: "user" }, kinds: ["resource"], paths: ["pins"] }] });
   });
 
   it("records by accessor, child blocks included, at runView", async () => {
@@ -384,8 +393,8 @@ describe("once a host has a view, every resource write publishes", () => {
     const bus = createInMemoryBus();
     const heard = hear(bus, userTopic);
     await write(bus, true);
-    // A user entry's notice names no path: the user topic spans the user's orgs (FIX-2624).
-    expect(heard.filter((n) => n.kind === "resource").map((n) => n.topic.resource)).toEqual([undefined]);
+    // A user entry's notice names its collection's root, never its key: the user topic spans the user's orgs (FIX-2624, FIX-2625).
+    expect(heard.filter((n) => n.kind === "resource").map((n) => n.topic.resource)).toEqual(["pins"]);
   });
 
   it("publishes nothing for it on a host with no view", async () => {

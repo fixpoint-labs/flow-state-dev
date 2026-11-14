@@ -7,33 +7,33 @@
  * never a tool a turn is offered, and the task surface's checks read the
  * tools' files for what a turn may be offered.
  */
-import { defineView, FlowError, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
-import { z } from "zod";
-import { listTasksBlockFor, type TaskCollectionResolver } from "../task-tools-capability";
-import { listedTaskSchema } from "../task-listing";
+import { defineView, handler } from "@flow-state-dev/core";
+import {
+  taskListEntriesFor,
+  LIST_TASKS_DESCRIPTION,
+  listTasksInputSchema,
+  taskListOutputSchema,
+  type TaskCollectionResolver
+} from "../task-tools-capability";
+import { taskToolSuffix } from "../task-tool-suffix";
+import { taskActionName } from "../../inbox/client";
 
-/** One board's task list as a session view: its rows, keyed by task id. See {@link taskToolViews}. */
+// FIX-2625.
+/**
+ * One board's task list as a session view: its rows, keyed by task id. It
+ * answers for just the rows a board notice's tasks touch, through
+ * the same list code as the action. See {@link taskToolViews}.
+ */
 function taskListView(collectionId: string, resolve: TaskCollectionResolver) {
-  const listTasks = listTasksBlockFor(collectionId, resolve);
-  const listedTasks = z.array(listedTaskSchema);
-  const block = sequencer({ name: listTasks.name, inputSchema: listTasks.inputSchema, outputSchema: listedTasks })
-    .step(listTasks)
-    .step(handler, {
-      name: `${listTasks.name}-rows`,
-      outputSchema: listedTasks,
-      // The list's refusal (no board this session can file on) is the view's, by its own name.
-      execute: (listed) => {
-        if (!listed.ok) throw new FlowError(`The task list can't be read here: ${listed.error}`, { code: listed.error, retryable: false });
-        return listed.tasks;
-      },
-    });
-  block.validate();
-  // Core types a sequencer as `BlockDefinition<any, any>`; this one declares `listedTasks` as its output
-  // schema (checked by `validate` above and on every exit), so the view is typed by it, never `any`.
-  // FIX-2684
-  const typed = block as unknown as BlockDefinition<typeof listTasks.inputSchema, typeof listedTasks>;
-  return defineView({ scope: "session", block: typed, key: (task) => task.id, description: listTasks.description });
+  // Named as a view, never as the task surface's `listTasks_<suffix>` tool: no model is offered it.
+  const block = handler({
+    name: `task-list-view-${taskToolSuffix(collectionId)}`,
+    description: LIST_TASKS_DESCRIPTION,
+    inputSchema: listTasksInputSchema,
+    outputSchema: taskListOutputSchema,
+    execute: async (input, ctx) => taskListEntriesFor(collectionId, await resolve(ctx), input, ctx.view)
+  });
+  return defineView({ scope: "session", block, key: (task) => task.id, description: block.description });
 }
 
 /** A board's task-list view, as {@link taskToolViews} builds it: for a client's `viewRef<TaskListView>`. */
@@ -53,6 +53,6 @@ export type TaskListView = ReturnType<typeof taskListView>;
  * is the action's, not this one's.
  */
 export function taskToolViews(collectionId: string, resolve: TaskCollectionResolver): Record<string, TaskListView> {
-  const view = taskListView(collectionId, resolve);
-  return { [view.block.name]: view };
+  // Addressed as the action is (`taskListViewRef`): `listTasks_<suffix>`.
+  return { [taskActionName("listTasks", collectionId)]: taskListView(collectionId, resolve) };
 }
