@@ -272,7 +272,7 @@ function withJudgmentModel(
 ): ReturnType<typeof createMockModelResolver> {
   if (model === undefined && agent === undefined) return base;
   const resolver = ((modelId: string, blockName?: string) => {
-    if (model !== undefined && blockName === "coordinator-judgment") return model;
+    if (model !== undefined && blockName?.startsWith("coordinator-judgment") === true) return model;
     if (agent !== undefined && blockName?.startsWith("agent-answer") === true) return agent;
     return (base as any)(modelId, blockName);
   }) as ReturnType<typeof createMockModelResolver>;
@@ -321,7 +321,15 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     evaluators: {
       [COORDINATOR_ROUTE]: mockEvaluationModel({ answers: { worker: { type: "choice", choice: "eng.tasker" } } })
     },
-    generators: { "coordinator-judgment": judgment, "agent-answer": agentAnswer, ...(options.generators ?? {}) }
+    // Each turn under both of its arms' names: a worker holding a skill answers
+    // on the skill-loader arm by default, and it is one answer built two ways.
+    generators: {
+      "coordinator-judgment": judgment,
+      "coordinator-judgment-with-activate-tool": judgment,
+      "agent-answer": agentAnswer,
+      "agent-answer-with-activate-tool": agentAnswer,
+      ...(options.generators ?? {})
+    }
   });
   const state = createFlowState({
     flows: Object.values(instances),

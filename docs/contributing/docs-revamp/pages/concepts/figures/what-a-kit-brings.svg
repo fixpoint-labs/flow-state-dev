@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 452">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="864" height="354"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">YOUR APP · FSDEV.CONFIG.TS</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="60" width="200" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="142" y="89" text-anchor="middle">help-desk</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="258" y="89">your own flow, listed in flows</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="128" width="836" height="236"/>
+<rect class="hl" fill="#e8f551" x="56" y="138" width="92" height="24"/>
+<text class="nm on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="60" y="155">workforce</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="160" y="155">one entry in kits</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="56" y="180" width="248" height="72"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="70" y="202">ITS FLOWS</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="70" y="226">served beside</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="70" y="243">your own flows</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="336" y="180" width="248" height="72"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="350" y="202">A FOLDER IT READS</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="350" y="226">workforce/</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="350" y="243">one WORKER.md per worker</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="616" y="180" width="248" height="72"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="630" y="202">ITS VIEWS</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="630" y="226">roster</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="630" y="243">what a screen reads</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="740" y1="254" x2="740" y2="290" marker-end="url(#ah)"/>
+<rect fill="url(#hatch)" x="616" y="292" width="248" height="10"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="616" y="292" width="248" height="52"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="630" y="324">hired workers</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="402" x2="920" y2="402"/>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="426" x2="54" y2="426" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="430">READS</text>
+<rect fill="url(#hatch)" x="131" y="420" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="131" y="420" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="165" y="430">OUTLIVES THE REQUEST</text>
+<rect class="hl" fill="#e8f551" x="347" y="420" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="381" y="430">ONE LINE OF CONFIG</text>
+</g>
+</svg>

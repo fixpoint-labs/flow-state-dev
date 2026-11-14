@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 590">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="560" height="64"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">YOUR PAGE · IN THE BROWSER</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="70">session.sendAction("chat", { message })</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="50">Send is pressed. The page</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="67">calls the action chat.</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="128" width="560" height="120"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="150">THE ENGINE · ON YOUR SERVER</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="167">checks the input and whose session it is</text>
+<rect fill="url(#hatch)" x="42" y="180" width="532" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="42" y1="190.5" x2="574" y2="190.5"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="180" width="532" height="54"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="56" y="212">THE SESSION</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="170">Rejects bad input, then runs the</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="187">action on the session.</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="288" width="560" height="72"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="310">THE FLOW</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="332">help-desk</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="349">action chat · state · what the page may see</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="320">help-desk names its actions.</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="337">chat starts the blocks below.</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="400" width="560" height="116"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="422">THE BLOCKS</text>
+<rect class="dash" fill="none" stroke="#1b1a15" stroke-width="1.4" stroke-dasharray="5 4" x="42" y="434" width="532" height="70"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="56" y="456">ONE RUN OF THE ACTION</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="56" y="466" width="200" height="28"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="156" y="484" text-anchor="middle">chatGenerator</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="300" y="466" width="200" height="28"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="400" y="484" text-anchor="middle">incrementMessageCount</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="436">chatGenerator writes the reply.</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="453">incrementMessageCount counts it.</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="612" y="470">The reply streams back as items.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="150" y1="88" x2="150" y2="128" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="450" y1="128" x2="450" y2="88" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="150" y1="248" x2="150" y2="288" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="450" y1="288" x2="450" y2="248" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="150" y1="360" x2="150" y2="400" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="450" y1="400" x2="450" y2="360" marker-end="url(#ah)"/>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="540" x2="920" y2="540"/>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="564" x2="54" y2="564" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="568">CALLS · STREAMS BACK</text>
+<line class="dash" fill="none" stroke="#1b1a15" stroke-width="1.4" stroke-dasharray="5 4" x1="244" y1="564" x2="270" y2="564"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="278" y="568">LASTS ONE ACTION RUN</text>
+<rect fill="url(#hatch)" x="460" y="558" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="460" y="558" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="494" y="568">OUTLIVES THE REQUEST</text>
+</g>
+</svg>

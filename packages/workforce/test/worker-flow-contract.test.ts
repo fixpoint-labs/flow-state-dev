@@ -53,6 +53,7 @@ describe("a flow that meets the contract", () => {
         workerPackages: z.array(z.any()).optional(),
         workerId: z.string().optional(),
         delegates: z.array(z.string()).default([]),
+        defaults: z.any().optional(),
         desk: z.string().default("front")
       })
     });

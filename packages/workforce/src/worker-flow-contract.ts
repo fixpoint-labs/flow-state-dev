@@ -72,7 +72,8 @@ export const CONTRACT_PROBE_BAG: Readonly<Record<string, unknown>> = Object.free
   workerTools: [PROBE_TOOL],
   workerPackages: [{ name: "probe", path: "teams/probe/packages/probe", tools: [PROBE_TOOL] }],
   workerId: "probe",
-  delegates: ["probe"]
+  delegates: ["probe"],
+  defaults: { date: false, skillsIndex: false }
 });
 
 /**
