@@ -245,6 +245,14 @@ describe("workforce as a kit", () => {
     const state = track(createFlowState({ kits: [workforce({ directory, sessionFields: { workProjectId: z.string().optional() } })], stores }));
     await expect(state.ready()).rejects.toThrow(/session field "workProjectId" is one workforce keeps/);
   });
+  it("refuses session fields declared on `agent` or `coordinator`: the kit's `sessionFields` is the one place, and would overwrite them", async () => {
+    const directory = tree({ "teams/core/workers/lead/WORKER.md": LEAD });
+    const nested = { sessionFields: { repositoryId: z.string().optional() } } as never;
+    for (const config of [{ agent: nested }, { coordinator: { routeModel: "openai/gpt-6-luna", ...(nested as object) } as never }]) {
+      const state = track(createFlowState({ kits: [workforce({ directory, ...config, sessionFields: { region: z.string().optional() } })], stores }));
+      await expect(state.ready()).rejects.toThrow(/`(agent|coordinator)\.sessionFields` is not read.*`sessionFields`/);
+    }
+  });
   it("serves the internal service flow its internalEvents config declares, and hands its publish to a worker flow built on the installation", async () => {
     const directory = tree({ "teams/core/workers/lead/WORKER.md": "---\nname: Lead\ndescription: Announces.\nflow: announcer\n---\nYou announce." });
     const announcer = workerFlow((installation: WorkerInstallation) => {
