@@ -1,7 +1,7 @@
 ---
 title: Resources
 type: concept
-description: A resource is named, stored data that a block declares, such as a document, a record, or a collection of them.
+description: A resource is named, stored data, like a file with typed state of its own, declared by a block or by the flow.
 ---
 
 import Figure from "@site/src/components/Figure";
@@ -10,9 +10,9 @@ import AResourceTravels from "./figures/a-resource-travels.svg";
 
 # Resources
 
-A resource is named, stored data that a block declares: a document, a record, or a collection of them. It is for things that have a name and a body of their own, like a refund policy every reply should follow, or the notes piling up on a support ticket.
+A resource is named, stored data, a bit like a file. It can hold a body of content, and it can also carry typed state of its own. Each write to that state is atomic, so two requests changing it at once both land. It is for things that have a name of their own, like a refund policy every reply should follow, or the notes piling up on a support ticket. A collection is a set of them.
 
-A block is one piece of work in a flow, one of the steps your app calls through its actions. Declare a resource on the block that needs it, and the framework stores it and hands the block a handle to it, kept apart from session state and from other resources. The examples are a support desk. `refundPolicy` is a document, `draftReply` is the block that drafts each reply, and `ticketNotes` is a collection.
+A block is one piece of work in a flow, one of the steps your app calls through its actions. Declare a resource on the block that needs it, and the framework stores it and hands the block a handle to it, kept apart from session state and from other resources. When any block in the flow should reach it, rather than one block in particular, declare it on the flow instead. The examples are a support desk. `refundPolicy` is a document, `draftReply` is the block that drafts each reply, and `ticketNotes` is a collection.
 
 A flow also keeps session state, the typed fields on each session's record. The figure sets the two side by side.
 
