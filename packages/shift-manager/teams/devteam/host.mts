@@ -1043,11 +1043,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     requireAcceptance: options.requireAcceptance === true,
     ...(options.dropTask === true ? { dropTask: true } : {}),
   });
-  // On projects, done also means the project's checks (its row's `checks`) pass; a fixed repository has no project to ask.
+  // On projects, done also means the project's checks (its row's `checks`) pass, and the brief names them;
+  // a fixed repository has no project to ask.
   const coderPhase =
     workspaceHost === undefined
       ? implementPhase
-      : commandCheck(implementPhase, { commands: projectChecks(), timeoutMs: 10 * 60_000 });
+      : commandCheck(implementPhase, { commands: projectChecks(), timeoutMs: 10 * 60_000, inBrief: true });
   const runTimeoutMs = options.runTimeoutMs ?? 60_000;
   // A shutdown waits for a coding run still going (its checks and judge too)
   // rather than the engine's 30 s default, which would cancel it.

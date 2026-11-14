@@ -30,8 +30,9 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { ASK_MARKER_DIR, assertBaseRefExists, HARNESS_FEATURE_KEY, harnessFeatureOf } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_DIR, assertBaseRefExists, codingBrief, HARNESS_FEATURE_KEY, harnessFeatureOf } from "@flow-state-dev/harness-manager";
 import type {
+  CodingBriefParts,
   CompletionRunContext,
   PhaseSpec,
   PromptRunContext,
@@ -67,13 +68,14 @@ export function featureIssueOfInput(input: unknown): string | undefined {
 type ValidatedWorkspace = { baseRef: string } | { host: true };
 
 /**
- * Compose the prompt: the task first, then the worker that was woken.
+ * Compose the prompt: harness-manager's coding brief, the task first, then the
+ * worker that was woken.
  *
  * The task is the job, as the board handed it over (`run.task`): what a user
  * approved or posted, word for word. The worker's files are how this team works:
  * its instructions, its standing brief and its conventions. Where the two
  * disagree, the task wins, which is why it comes first. The run's terms close
- * it.
+ * it. On a project, `commandCheck` adds the checks that decide done.
  *
  * Nothing else reaches the prompt: not the filing session, not the
  * environment.
@@ -93,39 +95,28 @@ export async function buildWorkerPrompt(
   run: PromptRunContext,
   options: ImplementPhaseOptions,
 ): Promise<string> {
-  const { worker } = await workerSections(run, options.workerOf);
-
-  return [
-    ...(options.dropTask === true ? [] : taskSection(run.task)),
-    ...worker,
-    `# Where and how to work`,
-    ``,
-    `Task ${run.issue}, phase ${run.phase}, attempt ${run.attempt}.`,
-    ...issueLine(run),
-    `Work in ${run.workspacePath}, on branch ${run.branch}.`,
-    options.requireAcceptance === true
-      ? `Commit your work. The task is done when this branch carries a commit its base does not ` +
-        `and the acceptance check that comes with your brief passes against it. The acceptance ` +
-        `check decides, not your own tests.`
-      : `Commit your work. The task is done when this branch carries a commit its base does not.`,
-    ...(run.feedback === undefined
-      ? []
-      : ["", `# Why the last attempt stopped`, "", run.feedback]),
-  ].join("\n");
+  const parts = await workerParts(run, options.workerOf);
+  return codingBrief(options.dropTask === true ? { ...run, task: { goal: "" } } : run, {
+    ...parts,
+    terms: [
+      options.requireAcceptance === true
+        ? `Commit your work. The task is done when this branch carries a commit its base does not ` +
+          `and the acceptance check that comes with your brief passes against it. The acceptance ` +
+          `check decides, not your own tests.`
+        : `Commit your work. The task is done when this branch carries a commit its base does not.`,
+    ],
+  });
 }
 
 /**
- * The prompt's sections out of the woken worker's own configuration: its
- * `WORKER.md` instructions, its standing brief and its conventions. Both
- * phases carry them, so a coder works the same way whichever board its task
- * came from.
+ * The brief's parts out of the woken worker's own configuration: its
+ * `WORKER.md` instructions, its standing brief and its conventions (its
+ * skills). Both phases carry them, so a coder works the same way whichever
+ * board its task came from.
  *
  * @throws If the worker declares a document it does not hold.
  */
-async function workerSections(
-  run: PromptRunContext,
-  workerOf: WorkerOf,
-): Promise<{ worker: string[] }> {
+async function workerParts(run: PromptRunContext, workerOf: WorkerOf): Promise<CodingBriefParts> {
   const ctx = run.ctx;
   const { config } = await workerOf(ctx as never);
 
@@ -147,72 +138,13 @@ async function workerSections(
 
   const skills = config.workerSkills ?? [];
   return {
-    worker: [
-      `# Your instructions`,
-      ``,
-      (config.instructions ?? "").trim(),
-      ``,
-      `# Your team's standing brief (${documentRef})`,
-      ``,
-      brief.trim(),
-      ``,
-      `# Your team's conventions`,
-      ``,
-      skills.map((skill) => skill.skillMd.trim()).join("\n\n"),
-      ``,
-    ],
+    ...(config.instructions === undefined ? {} : { instructions: config.instructions }),
+    standingBrief: { name: documentRef, text: brief },
+    // No skills: the brief's own line pointing at the repository's conventions.
+    ...(skills.length === 0 ? {} : { conventions: skills.map((skill) => skill.skillMd.trim()).join("\n\n") }),
   };
 }
 
-/**
- * The most of each of `deps` and `priorWork` a prompt carries, in characters of
- * its JSON. The task leads the prompt, so an uncapped dependency output would
- * push the worker's files and the run's terms toward the end of the context. The
- * goal and context are never capped: they are what a user wrote.
- */
-const MAX_TASK_OUTPUT_CHARS = 4_000;
-
-/** `value` as indented JSON, cut at {@link MAX_TASK_OUTPUT_CHARS} with a visible marker. */
-function cappedJson(value: unknown): string {
-  const text = JSON.stringify(value, null, 2);
-  if (text.length <= MAX_TASK_OUTPUT_CHARS) return text;
-  const dropped = text.length - MAX_TASK_OUTPUT_CHARS;
-  return `${text.slice(0, MAX_TASK_OUTPUT_CHARS)}\n[truncated: ${dropped} more characters]`;
-}
-
-/**
- * The issue the row's payload names, when the run's row id is not it: a
- * board that mints its own task ids runs a feature row under the minted id,
- * so without this line the prompt names the row and never the issue.
- */
-function issueLine(run: PromptRunContext): string[] {
-  const issue = harnessFeatureOf(run.task.input)?.issue;
-  return issue !== undefined && issue !== run.issue ? [`Issue ${issue}.`] : [];
-}
-
-/**
- * The task's section, as the board packed it: the goal, then what the row adds.
- *
- * `input` is deliberately not rendered: this team's rows carry only
- * `{ harnessFeature: { issue, phase } }`, which the run's terms already name ({@link issueLine}
- * covers the one case where they don't).
- */
-function taskSection(task: PromptRunContext["task"]): string[] {
-  return [
-    `# Your task`,
-    ``,
-    ...(task.title === undefined ? [] : [task.title, ``]),
-    task.goal.trim(),
-    ``,
-    ...(task.context === undefined ? [] : [task.context.trim(), ``]),
-    ...(task.deps === undefined
-      ? []
-      : [`What the tasks this one depends on produced:`, ``, cappedJson(task.deps), ``]),
-    ...(task.priorWork === undefined
-      ? []
-      : [`What earlier tasks on this board found:`, ``, cappedJson(task.priorWork), ``]),
-  ];
-}
 
 /**
  * Is there a commit on a host-provisioned checkout's branch that its remote
@@ -413,28 +345,17 @@ export interface AnswerPhaseOptions {
  * @returns The prompt.
  */
 export async function buildAnswerPrompt(run: PromptRunContext, options: AnswerPhaseOptions): Promise<string> {
-  const { worker } = await workerSections(run, options.workerOf);
-  return [
-    ...taskSection(run.task),
-    ...worker,
-    `# Where and how to work`,
-    ``,
-    `Task ${run.issue}, attempt ${run.attempt}.`,
-    `Work in ${run.workspacePath}.`,
-    `Answer in your last message: it is what the user who asked reads. Commit only if the ` +
-      `task asks for a change.`,
-    `If you can't go on without the user deciding something, write your question to ` +
-      `${run.askMarkerPath} and stop.`,
-    ...(run.answers.length === 0
-      ? []
-      : [
-          "",
-          `# Answers to your questions`,
-          "",
-          ...run.answers.map((answered) => `You asked: ${answered.question}\nThey answered: ${answered.answer}`),
-        ]),
-    ...(run.feedback === undefined ? [] : ["", `# Why the last attempt stopped`, "", run.feedback]),
-  ].join("\n");
+  const parts = await workerParts(run, options.workerOf);
+  // A project with no repository runs on its files (`workspace/`), which have no branch.
+  return codingBrief(basename(run.workspacePath) === "workspace" ? { ...run, branch: "" } : run, {
+    ...parts,
+    terms: [
+      `Answer in your last message: it is what the user who asked reads. Commit only if the ` +
+        `task asks for a change.`,
+      `If you can't go on without the user deciding something, write your question to ` +
+        `${run.askMarkerPath} and stop.`,
+    ],
+  });
 }
 
 /**
