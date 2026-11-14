@@ -113,7 +113,7 @@ The [CLI reference](../reference/cli.md) lists the flags that set the input and 
 
 - **The session survives.** The session lives in your store, so with `sqliteStores` a user comes back after a restart and finds it.
 - **A dropped connection loses nothing.** The stream picks up where it stopped, so a half-written reply finishes.
-- **The browser sees only what the flow exposes.** Everything else in session state stays on the server.
+- **The browser's client data holds only what the flow exposes.** A change to another field can pass through the stream while a request runs, so keep secrets out of session state.
 - **You can test without the page.** `fsdev run` runs the same action on the same engine and stores, from a terminal.
 
 ## How it fits with the others

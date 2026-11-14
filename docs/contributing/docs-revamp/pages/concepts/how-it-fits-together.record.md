@@ -48,6 +48,8 @@ Written by `docs-writer` (sonnet), 715 words. Scenario: A help-desk app: a user 
 - After the owner's review edits, page sha256 7e0240d66ba8: exit 0.
 - After the owner-approved edits, page sha256 b4d5379697d6: exit 0.
 
+- Post-review edit (Codex on #5226, same claim as C-10): the 'what it gets you' bullet now limits `expose` to client data. Re-ran check-docs-page.mjs: ok.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 d0a69ab845a4.
@@ -55,6 +57,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 d0a
 No untrue claim found.
 - After the owner's review edits, page sha256 7e0240d66ba8: Owner review, 2026-11-13: the flow is defined as the top-level unit you register and clients connect to, not "a backend"; the session is the record that keeps a user's requests together, not "one conversation". Checked: `useFlow` with `autoCreateSession` creates the session (`react/hooks/useFlow.ts:146`).
 - After the owner-approved edits, page sha256 b4d5379697d6: Owner direction 2026-11-13: the one-line flow definition now matches C-05 (a self-contained system, registered for clients to call).
+
+- Post-review edit: `state_change` deltas carry raw unexposed keys (`react/src/internal/mergeStateChangeIntoSnapshot.ts:8-14`); only `clientData` is filtered.
 
 ## 6 · Depth pass
 
