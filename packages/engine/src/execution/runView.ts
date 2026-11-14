@@ -16,11 +16,24 @@
  * - **Model calls** refuse with `ViewModelCallError` (D2).
  * - **Reads** are recorded where the engine builds each block's context
  *   (`view-reads.ts`), child blocks included, and the answer carries the
- *   topics they fall under.
+ *   topics they fall under and what it hears under each.
+ * - **A change** the caller names (`changed`) reaches every block as
+ *   `ctx.view.changed`, for a keyed view only. A view that calls
+ *   `ctx.view.partial` answers just the rows it chose, flagged `partial`;
+ *   any other answer is whole.
  *
  * A view ends like a read: its side chains drain and request-end hooks run.
  */
-import type { BlockDefinition, FlowInstance, ViewDefinition, ViewScope, WireTopic } from "@flow-state-dev/core";
+import type {
+  BlockDefinition,
+  FlowInstance,
+  ViewChange,
+  ViewDefinition,
+  ViewHearing,
+  ViewRunContext,
+  ViewScope,
+  WireTopic
+} from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
 import { createExecutionContext } from "../context/createExecutionContext";
 import { NoSessionError } from "../context/no-session";
@@ -47,16 +60,28 @@ export type RunViewOptions = {
   stores: StoreRegistry;
   runtimeConfig?: Pick<RuntimeConfig, "settings" | "logger" | "tracingLevel">;
   signal?: AbortSignal;
+  // FIX-2625 D1.
+  /** The change the caller asks the view to answer for: `ctx.view.changed`. A view with no `key` ignores it. */
+  changed?: ViewChange;
 };
 
 /** A view's answer: its block's output, and the topics a change to what it read publishes on. */
 export type ViewAnswer = {
   output: unknown;
   topics: WireTopic[];
+  // FIX-2625.
+  /** Which notices under `topics` may change what the run read (`ViewHearing`). */
+  hears: ViewHearing[];
   /** Every distinct read the run made, by scope and accessor. Not on the wire: for diagnostics and tests. */
   reads: readonly RecordedRead[];
   /** A keyed view's row keys, in the answer's order. */
   keys?: string[];
+  // FIX-2625 D1.
+  /**
+   * Set when the view answered for just some rows (`ctx.view.partial`): the
+   * output is the rows to place by key, and `removed` the keys to drop.
+   */
+  partial?: { removed: string[] };
 };
 
 /** A view the flow doesn't declare. */
@@ -240,6 +265,8 @@ type ReadOnlyRun = {
   signal?: AbortSignal;
   /** The run's source label. */
   source: "view";
+  /** `ctx.view` on every block of the run. */
+  view: ViewRunContext;
 };
 
 /**
@@ -274,6 +301,7 @@ async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
     stores: readOnlyStores(run.stores, requestId),
     recordRead: (read) => recorder.record(read),
     refuseModelCalls: true,
+    view: run.view,
     settings: run.runtimeConfig?.settings,
     logger: run.runtimeConfig?.logger,
     tracingLevel: run.runtimeConfig?.tracingLevel,
@@ -304,7 +332,7 @@ async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
     );
   }
   if (result.error !== undefined) throw viewRefusalIn(result.error) ?? result.error;
-  return { output: result.output, topics: recorder.topics(), reads: recorder.reads() };
+  return { output: result.output, topics: recorder.topics(), hears: recorder.hears(), reads: recorder.reads() };
 }
 
 /**
@@ -330,6 +358,7 @@ export async function runView(options: RunViewOptions): Promise<ViewAnswer> {
     : undefined;
   if (view === undefined) throw new UnknownViewError(options.flow.id, options.viewName);
   const input = parseInput("View", view.inputSchema ?? view.block.inputSchema, options.input);
+  const partial = partialAnswers(options.viewName, view, options.changed);
   const answer = await runReadOnly({
     flow: options.flow,
     name: options.viewName,
@@ -343,8 +372,50 @@ export async function runView(options: RunViewOptions): Promise<ViewAnswer> {
     stores: options.stores,
     ...(options.runtimeConfig !== undefined ? { runtimeConfig: options.runtimeConfig } : {}),
     ...(options.signal !== undefined ? { signal: options.signal } : {}),
-    source: "view"
+    source: "view",
+    view: partial.context
   });
-  return view.key !== undefined ? { ...answer, keys: keysOf(options.viewName, view.key, answer.output) } : answer;
+  if (view.key === undefined) return answer;
+  const keyed = { ...answer, keys: keysOf(options.viewName, view.key, answer.output) };
+  return partial.removed !== undefined ? { ...keyed, partial: { removed: partial.removed } } : keyed;
+}
+
+// FIX-2625 D1.
+/**
+ * A view run's `ctx.view`, and what its `partial` call recorded. A view with
+ * no `key` is never handed a change: it has no rows to place by key.
+ */
+function partialAnswers(
+  viewName: string,
+  view: ViewDefinition,
+  changed: ViewChange | undefined
+): { context: ViewRunContext; readonly removed: string[] | undefined } {
+  const handed = view.key !== undefined ? changed : undefined;
+  const state: { removed: string[] | undefined } = { removed: undefined };
+  const context: ViewRunContext = {
+    ...(handed !== undefined ? { changed: handed } : {}),
+    partial(entries, options) {
+      if (view.key === undefined) {
+        throw new FlowError(`View "${viewName}" declares no \`key\`, so it can't answer for just some rows`, {
+          code: "view_partial_refused",
+          retryable: false
+        });
+      }
+      if (handed === undefined) {
+        throw new FlowError(`View "${viewName}" answered partially on a run with no change (\`ctx.view.changed\` is unset): answer whole`, {
+          code: "view_partial_refused",
+          retryable: false
+        });
+      }
+      state.removed = [...(options?.removed ?? [])];
+      return entries;
+    }
+  };
+  return {
+    context,
+    get removed() {
+      return state.removed;
+    }
+  };
 }
 

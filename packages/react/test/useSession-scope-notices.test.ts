@@ -60,6 +60,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
 import { topic } from "@flow-state-dev/client";
 import { useSession } from "../src/hooks/useSession";
 import { useResourceCollectionList } from "../src/hooks/useResourceCollectionList";
+import { LIST_SIGNAL_WINDOW_MS } from "../src/hooks/useResourceCollection";
 
 function snapshot(extra: Record<string, unknown> = {}) {
   return {
@@ -341,13 +342,77 @@ describe("useSession live · other sessions' scope changes", () => {
     await waitFor(() => expect(subscriptions.filter((s) => !s.closed)).toHaveLength(1));
     await hear(null);
     await flush();
+    // A list reads after a short window for more of the same change (FIX-2625): let the connect's read land.
+    const pastWindow = () =>
+      act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, LIST_SIGNAL_WINDOW_MS * 2));
+      });
+    await pastWindow();
     const rosterReads = () => resourcesMock.listCollectionResources.mock.calls.filter(([, ref]) => ref === "roster").length;
     const before = rosterReads();
     await hear({ topic: topic.org({ resource: "desks/d1" }), kind: "resource" });
     await flush();
+    await pastWindow();
     expect(rosterReads()).toBe(before);
     await hear({ topic: topic.org({ resource: "workforce/workers/ada" }), kind: "resource" });
     await flush();
-    expect(rosterReads()).toBe(before + 1);
+    await waitFor(() => expect(rosterReads()).toBe(before + 1));
+  });
+
+  // FIX-2625, Gitar on #5232: the order a page sends reads in is not the order
+  // the server serves them. The session sends a state read; its own stream then
+  // names a change, which makes the list read, and the server serves that read
+  // first; another session's write that nothing names lands; then the state
+  // read is served, its count with it. Nothing else reads. The list must end on
+  // the store, not on the read that came before that write.
+  it("ends a list on the store when the server serves its read before a state read sent first", async () => {
+    const stored = ["a"];
+    resourcesMock.listCollectionResources.mockImplementation(async () => ({ items: stored.map((topic) => ({ topic })) }));
+    // The server's state answers the roster's count as the store holds it when served.
+    const served = () => snapshot({ clientData: {}, resources: { org: { roster: { count: stored.length } } } });
+    sessionsMock.state.mockImplementation(async () => served());
+    const view = renderHook(() => {
+      const session = useSession("sess1", { flowKind: "demo", live: true });
+      const roster = useResourceCollectionList(session, "roster");
+      return { session, roster };
+    });
+    const shown = () => view.result.current.roster.items.map((item) => item.topic);
+    await waitFor(() => expect(view.result.current.session.isLoading).toBe(false));
+    await waitFor(() => expect(subscriptions.filter((s) => !s.closed)).toHaveLength(1));
+    await hear(null);
+    await waitFor(() => expect(shown()).toEqual(["a"]));
+
+    // The view's own request runs: its stream is how it names its changes.
+    await sendOwn({ get current() { return view.result.current.session; } });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, LIST_SIGNAL_WINDOW_MS * 2));
+    });
+    const listsBefore = resourcesMock.listCollectionResources.mock.calls.length;
+
+    // The session sends a state read, which the server holds.
+    let serveState: (value: unknown) => void = () => {};
+    sessionsMock.state.mockImplementationOnce(() => new Promise((resolve) => (serveState = resolve)));
+    const statesBefore = stateOnlyReads().length;
+    await hear({ topic: topic.org(), kind: "state" });
+    expect(stateOnlyReads()).toHaveLength(statesBefore + 1);
+
+    // Its own stream names b; the list reads, and the server serves that read first.
+    stored.push("b");
+    await act(async () => {
+      ownStreams[ownStreams.length - 1]!.onItemAdded?.({
+        item: { id: "rc-b", type: "resource_change", resourcePath: "workforce/workers/b", changeType: "created", scope: "org" }
+      });
+    });
+    await waitFor(() => expect(shown()).toEqual(["a", "b"]));
+    expect(resourcesMock.listCollectionResources.mock.calls.length).toBeGreaterThan(listsBefore);
+
+    // Another session's write, which nothing names, lands; then the state read is served, with it.
+    stored.push("c");
+    await act(async () => {
+      serveState(served());
+    });
+    await waitFor(() => expect(shown()).toEqual(["a", "b", "c"]));
+    // Only the held state read: nothing else could have read the list current.
+    expect(stateOnlyReads()).toHaveLength(statesBefore + 1);
   });
 });

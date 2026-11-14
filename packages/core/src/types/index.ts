@@ -119,7 +119,7 @@ export type {
   UserConfig
 } from "./flow";
 
-export type { ViewConfig, ViewDefinition, ViewInput, ViewOutput, ViewElement, ViewScope } from "./view";
+export type { ViewChange, ViewConfig, ViewDefinition, ViewHearing, ViewInput, ViewOutput, ViewElement, ViewRunContext, ViewScope } from "./view";
 
 export type {
   AuthenticationConfig,

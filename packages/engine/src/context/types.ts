@@ -12,7 +12,7 @@ import type {
   InternalBlockContext,
   WaitDeadlines
 } from "@flow-state-dev/core/internal";
-import type { TracingLevel } from "@flow-state-dev/core";
+import type { TracingLevel, ViewRunContext } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
 import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
@@ -88,6 +88,9 @@ export type CreateExecutionContextOptions<
   recordRead?: (read: RecordedRead) => void;
   /** Refuse every model call with `ViewModelCallError`. Set by the view runner (D2). */
   refuseModelCalls?: boolean;
+  // FIX-2625 D1.
+  /** `ctx.view` on every block of the run. Set by the view runner. */
+  view?: ViewRunContext;
   // FIX-1442.
   /**
    * The organization this execution runs under. **Required** —

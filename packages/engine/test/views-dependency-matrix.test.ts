@@ -6,9 +6,10 @@
  * template resolved for a resource, the session handle, the request host}
  * and scope {session, user, org, lineage-shared}. Each cell runs a view that
  * reads through that path, subscribes to exactly the topics its answer names,
- * has another writer change what was read, and requires the notice to arrive
- * and the view to answer differently. A read path that forgets to record
- * fails its row; a new path or scope is a new row here.
+ * has another writer change what was read, and requires the notice to arrive,
+ * the answer's hearing to admit it (FIX-2625), and the view to answer
+ * differently. A read path that forgets to record fails its row; a new path or
+ * scope is a new row here.
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -19,7 +20,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowRegistry, runAction } from "../src";
 import { handleCreateCollectionResource } from "../src/routes/resource-routes";
 import { createInMemoryBus, createInMemoryStores, type BusTopic, type ChangeNotice } from "../src/host";
-import { runView } from "../src/execution/runView";
+import { runView, type ViewAnswer } from "../src/execution/runView";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
 const value = z.object({ v: z.string().default("") });
@@ -191,6 +192,28 @@ async function seed(stores: StoreRegistry, id: string, parent?: string) {
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+// FIX-2625.
+/**
+ * The notices of `heard` a watcher of `answer` reads on: its hearing's topic
+ * covers the notice, lists its kind, and a resource path falls at or under one
+ * of its roots. The client's rule (`watchView`, `paths.ts`), restated here
+ * because the engine doesn't depend on the client.
+ */
+function admitted(answer: ViewAnswer, heard: readonly ChangeNotice[]): ChangeNotice[] {
+  return heard.filter((notice) =>
+    answer.hears.some((hearing) => {
+      const topic = hearing.topic;
+      if (topic.scope !== notice.topic.scope) return false;
+      if (topic.scope === "session" && topic.id !== notice.topic.id) return false;
+      if (topic.resource !== undefined && topic.resource !== notice.topic.resource) return false;
+      if (!hearing.kinds.includes(notice.kind)) return false;
+      const path = notice.topic.resource;
+      if (notice.kind !== "resource" || path === undefined || hearing.paths === undefined) return true;
+      return hearing.paths.some((root) => root === "" || path === root || path.startsWith(`${root}/`));
+    })
+  );
+}
+
 async function cell(viewName: string, actionName: string, writer: string, writeFirst = true) {
   const bus = createInMemoryBus();
   const stores = { ...createInMemoryStores(), bus };
@@ -233,6 +256,7 @@ describe("a view hears a change through every read path, at every scope", () => 
         const { before, after, heard } = await cell(`${path}_${scope}`, `${path}_${scope}`, scope === "lineage" ? "b" : "a");
         expect(after.output).not.toEqual(before.output);
         expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+        expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
       });
     }
   }
@@ -241,12 +265,14 @@ describe("a view hears a change through every read path, at every scope", () => 
     const { before, after, heard } = await cell("overlap_lineage", "overlap_lineage", "b");
     expect(after.output).not.toEqual(before.output);
     expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+    expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
   });
 
   it("session handle × session", async () => {
     const { before, after, heard } = await cell("handle_session", "say", "a");
     expect(after.output).not.toEqual(before.output);
     expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+    expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
   });
 
   it("request host × session", async () => {
@@ -254,6 +280,7 @@ describe("a view hears a change through every read path, at every scope", () => 
     const { before, after, heard } = await cell("host_session", "say", "c", false);
     expect(after.output).not.toEqual(before.output);
     expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+    expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
   });
 });
 
@@ -290,6 +317,7 @@ describe("a browser's write through the resource routes reaches the same view", 
         const after = await runView({ flow, viewName: "overlap_lineage", input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores });
         expect(after.output).not.toEqual(before.output);
         expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+        expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
       });
     }
   }

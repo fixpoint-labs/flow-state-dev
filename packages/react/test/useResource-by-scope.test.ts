@@ -108,6 +108,66 @@ describe("useResource at user or org scope", () => {
   });
 });
 
+// FIX-2625: a notice that names entries re-reads those entries, not the
+// collection; anything it can't place safely reads the collection.
+describe("useResource · a collection notice that names its entries", () => {
+  type Entry = { topic: string; storageKey: string; value: { name: string }; version: number };
+  function org(entries: Entry[]) {
+    const list = vi.fn(async () => ({ items: entries.map((e) => ({ ...e })) }));
+    const reads: string[] = [];
+    const entry = vi.fn((key: string) => ({
+      read: vi.fn(async () => {
+        reads.push(key);
+        const found = entries.find((e) => e.storageKey === key);
+        return found === undefined ? { value: null, version: 0 } : { value: found.value, version: found.version };
+      })
+    }));
+    handles.set("projects/*", { list, entry });
+    return { list, reads };
+  }
+  const named = (...ids: string[]): WireNotice => ({ topic: { scope: "org", resource: ids[0] }, kind: "resource", ids });
+  const three = (): Entry[] =>
+    ["a", "b", "c"].map((id) => ({ topic: id, storageKey: `projects/${id}`, value: { name: id.toUpperCase() }, version: 1 }));
+
+  it("fetches just the named entry, places it, and equals the collection read whole", async () => {
+    const entries = three();
+    const { list, reads } = org(entries);
+    const { result } = renderHook(() => useResource(projects), { wrapper });
+    await waitFor(() => expect(result.current.value).toHaveLength(3));
+    entries[1] = { ...entries[1]!, value: { name: "B2" }, version: 2 };
+    await act(async () => subscriptions[0]!.options.onChange(named("projects/b")));
+    await waitFor(() => expect(result.current.value?.[1]).toMatchObject({ value: { name: "B2" }, version: 2 }));
+    expect(reads).toEqual(["projects/b"]);
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(result.current.value).toEqual(entries);
+  });
+
+  it("drops an entry the notice names that is gone", async () => {
+    const entries = three();
+    const { list } = org(entries);
+    const { result } = renderHook(() => useResource(projects), { wrapper });
+    await waitFor(() => expect(result.current.value).toHaveLength(3));
+    entries.splice(0, 1);
+    await act(async () => subscriptions[0]!.options.onChange(named("projects/a")));
+    await waitFor(() => expect(result.current.value).toEqual(entries));
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the collection whole for an entry it doesn't hold, or a notice with no ids", async () => {
+    const entries = three();
+    const { list, reads } = org(entries);
+    const { result } = renderHook(() => useResource(projects), { wrapper });
+    await waitFor(() => expect(result.current.value).toHaveLength(3));
+    entries.push({ topic: "d", storageKey: "projects/d", value: { name: "D" }, version: 1 });
+    await act(async () => subscriptions[0]!.options.onChange(named("projects/d")));
+    await waitFor(() => expect(result.current.value).toEqual(entries));
+    expect(list).toHaveBeenCalledTimes(2);
+    await act(async () => subscriptions[0]!.options.onChange(notice(undefined, "org")));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(3));
+    expect(reads).toEqual([]);
+  });
+});
+
 describe("useResource at session scope", () => {
   it("reads the resource from the session's snapshot, as the old form did", () => {
     const soul = { scope: "session" as const, ref: "soul", ClientType: { mood: "" } };

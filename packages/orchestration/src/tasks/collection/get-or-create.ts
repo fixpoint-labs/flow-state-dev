@@ -13,7 +13,7 @@
  * these items, filter by `data.collectionId`, and render the board.
  */
 import type { JsonObject } from "@flow-state-dev/core";
-import { requestHostOf, publishBoardChange } from "@flow-state-dev/core/internal";
+import { requestHostOf, publishBoardChange, recordBoardRead } from "@flow-state-dev/core/internal";
 import type { ItemVisibility, OutputItem } from "@flow-state-dev/core/items";
 import type {
   BlockContext,
@@ -170,8 +170,10 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // (BP-031). No `Task.filer`: the ledger's legacy filer, else the running session.
   const legacyFiler = legacyFilerOf(options);
   const runningSession = options.ctx.session?.identity?.id;
+  /** The session an entry's board notices go to: the one rule for the publish and for a view's read of the board. */
+  const filerOf = (task: Task): string | undefined => task.filer?.sessionId ?? legacyFiler?.(task) ?? runningSession;
   const onWrite = (task: Task): void => {
-    const filer = task.filer?.sessionId ?? legacyFiler?.(task) ?? runningSession;
+    const filer = filerOf(task);
     // Names the task (FIX-2625): the board's read hides no row from any reader of the session, so its id may go out.
     if (filer !== undefined) publishBoardChange(options.ctx, { sessionId: filer, board: options.collectionId, taskId: task.id });
   };
@@ -249,7 +251,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
           }),
         }
       : undefined;
-  return await createResourceBackedTaskCollection<TInput, TOutput>({
+  const ref = await createResourceBackedTaskCollection<TInput, TOutput>({
     collectionId: options.collectionId,
     collection:
       partition === undefined
@@ -269,6 +271,12 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     ...(filed !== undefined ? { cascadeFiled: { owes: filed.owes, pay: (row: Task) => filed.pay(ctx, row) } } : {}),
     ...(delivery !== undefined ? { delivery } : {}),
   });
+  // FIX-2625: in a view, the board is heard on its own notices in place of its
+  // ledger's. Here, where every write's `onWrite` publishes one naming its
+  // task, on the session `filerOf` names: each entry's, and the running one's.
+  const filers = [runningSession, ...ref.list().map(filerOf)].filter((id): id is string => id !== undefined);
+  recordBoardRead(ctx, { board: options.collectionId, sessionIds: filers, ledger: options.collection });
+  return ref;
 }
 
 /** The legacy filer a resource-backed ledger declares, bound to the partition it is read at. */
