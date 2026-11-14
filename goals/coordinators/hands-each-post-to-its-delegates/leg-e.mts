@@ -8,7 +8,8 @@
  * (`goals/lib/module-patch.mjs`, through `NODE_OPTIONS`) is in place before any
  * Workforce module loads. Against another commit, `run.mts` copies this file
  * and `fixtures/` into that checkout's `goals/`, so every import resolves to
- * that commit's packages.
+ * that commit's packages. The app installs Workforce as its kit, so a commit
+ * without `@flow-state-dev/workforce/kit` reports `setup:`.
  *
  * The tree (`fixtures/workforce/`): four coordinators over the same two
  * delegates, `desk.alpha` and `desk.beta`, on the goal's `helper` flow.
@@ -48,7 +49,6 @@ import { createClient } from "@flow-state-dev/client";
 import { mockEvaluationModel } from "@flow-state-dev/testing";
 import * as workforce from "@flow-state-dev/workforce";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
 import { boardRowPrefix, toRoutedDeliveries } from "../../lib/routed-tasks.mts";
 
@@ -69,49 +69,21 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 type Item = { type?: string; role?: string; component?: string; data?: any; agentName?: string; content?: unknown; text?: string; requestId?: string };
 
 const wf = workforce as unknown as Record<string, any>;
-const missing = ["defineCoordinatorFlow", "workerTaskEntry", "createWorkerInstallation", "hireWorkforce", "workerConfigSchema"].filter(
+const missing = ["defineCoordinatorFlow", "workerTaskEntry", "workerFlow", "workerConfigSchema"].filter(
   (name) => typeof wf[name] !== "function",
 );
 if (missing.length > 0) {
   await report({ setup: `this commit's @flow-state-dev/workforce exports no ${missing.join(", ")}, so no coordinator can be built` });
   process.exit(0);
 }
-
-const tree = await readWorkforce(join(HERE, "fixtures", "workforce"));
-if (tree.errors.length > 0) {
-  await report({ setup: `the goal-local tree did not load: ${JSON.stringify(tree.errors).slice(0, 600)}` });
+// Imported here, not above, so a commit without the kit reports rather than fails to load.
+const kit = await import("@flow-state-dev/workforce/kit").catch(() => undefined);
+if (kit === undefined) {
+  await report({ setup: "this commit has no @flow-state-dev/workforce/kit, so the app can't install Workforce" });
   process.exit(0);
 }
 
 // ---- the app ----------------------------------------------------------------
-
-let flows: Record<string, unknown> = {};
-const installation = wf.createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
-
-const doorInput = z.object({ message: z.string() });
-const door = core.handler({
-  name: "goal-helper-run",
-  inputSchema: doorInput,
-  resources: { ...installation.resources },
-  execute: async (input: { message: string }, ctx: any) => {
-    const worker = await installation.resolveWorker(ctx, "helper");
-    if (input.message.includes(`[slow:${worker.id}]`)) await sleep(SLOW_MS);
-    return `${worker.id} answers: ${input.message}`;
-  },
-});
-const helper = core.defineFlow({
-  kind: "helper",
-  configSchema: wf.workerConfigSchema(),
-  session: installation.session(),
-  resources: { ...installation.resources, ...(wf.workerMessagesResources ?? {}) },
-  actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-  // Every worker flow hears messages (FIX-2238); an older commit has no entry to build.
-  ...(typeof wf.messageReceivedEntry === "function"
-    ? { internal: { actions: { onMessageReceived: wf.messageReceivedEntry({ installation, flowKind: "helper" }) } } }
-    : {}),
-  // A delegate is a worker whose flow takes tasks: a routed task arrives on `work` (FIX-2083).
-  task: { actions: { work: wf.workerTaskEntry({ name: "goal-helper-task", turn: door }) } },
-} as never);
 
 /**
  * Best fit's evaluator: the first `[route:<choice>]` mark it is offered, else a
@@ -160,11 +132,44 @@ const modelResolver = Object.assign(
   { resolveId: (id: string) => id },
 );
 
-const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: route });
-flows = { helper: { flow: helper, roles: ["contributor"] }, coordinator };
-const copies = wf.hireWorkforce(installation) as Array<{ id: string }>;
+/** The goal's helper flow, its delegates' flow, on the installation the workforce kit hires. */
+function helperOn(installation: any) {
+  const doorInput = z.object({ message: z.string() });
+  const door = core.handler({
+    name: "goal-helper-run",
+    inputSchema: doorInput,
+    resources: { ...installation.resources },
+    execute: async (input: { message: string }, ctx: any) => {
+      const worker = await installation.resolveWorker(ctx, "helper");
+      if (input.message.includes(`[slow:${worker.id}]`)) await sleep(SLOW_MS);
+      return `${worker.id} answers: ${input.message}`;
+    },
+  });
+  const helper = core.defineFlow({
+    kind: "helper",
+    configSchema: wf.workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources, ...(wf.workerMessagesResources ?? {}) },
+    actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
+    // Every worker flow hears messages (FIX-2238); an older commit has no entry to build.
+    ...(typeof wf.messageReceivedEntry === "function"
+      ? { internal: { actions: { onMessageReceived: wf.messageReceivedEntry({ installation, flowKind: "helper" }) } } }
+      : {}),
+    // A delegate is a worker whose flow takes tasks: a routed task arrives on `work` (FIX-2083).
+    task: { actions: { work: wf.workerTaskEntry({ name: "goal-helper-task", turn: door }) } },
+  } as never);
+  return helper;
+}
+
+const workforceKit = kit.workforce;
 const state = engine.createFlowState({
-  flows: copies,
+  kits: [workforceKit({ directory: join(HERE, "fixtures", "workforce") })],
+  fill: {
+    [workforceKit.slots.workerFlows]: {
+      helper: wf.workerFlow(helperOn, { roles: ["contributor"] }),
+      coordinator: wf.workerFlow((installation: any) => wf.defineCoordinatorFlow({ installation, routeModel: route })),
+    },
+  },
   stores: { default: { primary: engine.inMemoryStores() } },
   modelResolver,
   resolvePrincipal: (context: any) => {
@@ -172,6 +177,15 @@ const state = engine.createFlowState({
     return typeof user === "string" ? { userId: user, orgId: ORG } : null;
   },
 } as never) as any;
+// The app's start: the kit reads the goal-local tree, and refuses a file it can't load.
+const started = await state.ready().then(
+  () => undefined,
+  (error: unknown) => (error instanceof Error ? error.message : String(error)),
+);
+if (started !== undefined) {
+  await report({ setup: `the goal-local tree did not load: ${started.slice(0, 600)}` });
+  process.exit(0);
+}
 
 /** A fetch that hands each request to the router, as `userId`. */
 const fetcher =

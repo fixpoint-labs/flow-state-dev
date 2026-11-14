@@ -22,7 +22,8 @@
  *      partition, read straight out of storage, and nowhere at org scope
  *
  * Controls (GOAL_CONTROL=...), each perturbing THIS FILE, never the tree:
- *   no-delegates  the filer's file is read without its `delegates:` line.
+ *   no-delegates  the kit reads a copy of the tree whose filer's file has
+ *                 no `delegates:` line, written here (the tree is untouched).
  *                 Must FAIL at leg (b) and (c): nothing grants it the task
  *                 tools, so its filing is refused; (d) and (e) follow.
  *   hollow-run    the delegate's run writes nothing outside the board. Must
@@ -39,16 +40,15 @@ import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
-  createWorkerInstallation,
   defineSessionBoard,
-  hireWorkforce,
   workerConfigSchema,
+  workerFlow,
   workerMessagesResources,
   workerTaskEntry,
-  type WorkerManifest
+  type WorkerInstallation
 } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { goalTmpDir, actingAs, hearsMessages, runGoal, silentLogger, untilIdle } from "../../lib/index.mts";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import { goalTmpDir, actingAs, hearsMessages, readTree, runGoal, silentLogger, untilIdle, workforceTree } from "../../lib/index.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const USER_ID = "u_mailbox_boards";
@@ -71,15 +71,21 @@ await runGoal(async (failures) => {
   writeFileSync(OUTBOX, "", "utf8");
 
   // ---- a. the tree alone produces the roster --------------------------------
-  const roster = await readWorkforce(TREE);
-  if (roster.errors.length > 0) return { failures: [`a: the tree did not load cleanly: ${JSON.stringify(roster.errors)}`], evidence: "" };
-  const workers: WorkerManifest[] =
+  // The kit's own reader; whether the whole tree loads is graded by the app's start below.
+  const roster = await readTree(TREE);
+  // The folder the app installs: the tree, or under the control a copy whose
+  // files carry no `delegates:` line.
+  const directory =
     CONTROL === "no-delegates"
-      ? roster.workers.map((w) => {
-          const { delegates: _dropped, ...declared } = w.declared as Record<string, unknown>;
-          return { ...w, declared };
-        })
-      : roster.workers;
+      ? workforceTree(
+          roster.workers.map((w) => {
+            const { delegates: _dropped, ...declared } = w.declared as Record<string, unknown>;
+            return { ...w, declared };
+          }),
+          {},
+          [TREE]
+        )
+      : TREE;
   // Read off the FILES, never hardcoded: the filer is the worker whose file
   // names delegates, and its first delegate is the one it files for.
   const filer = roster.workers.find((w) => Array.isArray(w.declared.delegates) && (w.declared.delegates as unknown[]).length > 0);
@@ -96,23 +102,23 @@ await runGoal(async (failures) => {
   }
 
   // ---- the two flows. Neither names a ledger, a board or a partition. -------
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => workerFlows as never });
   const doorInput = z.object({ message: z.string() });
 
-  const board = defineSessionBoard({ installation, flowKind: filerKind });
   const filerTurn = handler({ name: "row-goal-filer-turn", inputSchema: doorInput, execute: async () => "Noted." });
-  const filerFlow = defineFlow({
-    kind: filerKind,
-    configSchema: workerConfigSchema(),
-    session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
-    resources: { ...installation.resources, ...board.resources },
-    actions: {
-      respond: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
-      ...board.actions
-    },
-    internal: { actions: board.entries(filerTurn, () => "fixed") }
-  } as never);
+  const filerFlow = (installation: WorkerInstallation) => {
+    const board = defineSessionBoard({ installation, flowKind: filerKind });
+    return defineFlow({
+      kind: filerKind,
+      configSchema: workerConfigSchema(),
+      session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
+      resources: { ...installation.resources, ...board.resources },
+      actions: {
+        respond: { inputSchema: doorInput.strict(), block: filerTurn, userMessage: (input: { message: string }) => input.message },
+        ...board.actions
+      },
+      internal: { actions: board.entries(filerTurn, () => "fixed") }
+    } as never);
+  };
 
   const delegateTurn = handler({
     name: "row-goal-delegate-turn",
@@ -124,20 +130,25 @@ await runGoal(async (failures) => {
       return `done: ${input.message}`;
     }
   });
-  const delegateFlow = defineFlow({
-    kind: delegateKind,
-    configSchema: workerConfigSchema(),
-    session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources },
-    actions: { respond: { inputSchema: doorInput, block: delegateTurn, userMessage: (input: { message: string }) => input.message } },
-    internal: { actions: hearsMessages(installation, delegateKind) },
-    task: { actions: { work: workerTaskEntry({ name: "row-goal-delegate-task", turn: delegateTurn }) } }
-  } as never);
+  const delegateFlow = (installation: WorkerInstallation) =>
+    defineFlow({
+      kind: delegateKind,
+      configSchema: workerConfigSchema(),
+      session: installation.session(),
+      resources: { ...installation.resources, ...workerMessagesResources },
+      actions: { respond: { inputSchema: doorInput, block: delegateTurn, userMessage: (input: { message: string }) => input.message } },
+      internal: { actions: hearsMessages(installation, delegateKind) },
+      task: { actions: { work: workerTaskEntry({ name: "row-goal-delegate-task", turn: delegateTurn }) } }
+    } as never);
 
-  workerFlows = { [filerKind]: { flow: filerFlow, roles: ["manager"] }, [delegateKind]: { flow: delegateFlow, roles: ["contributor"] } };
-  const hired = hireWorkforce(installation);
   const state = createFlowState({
-    flows: hired,
+    kits: [workforce({ directory })],
+    fill: {
+      [workforce.slots.workerFlows]: {
+        [filerKind]: workerFlow(filerFlow, { roles: ["manager"] }),
+        [delegateKind]: workerFlow(delegateFlow, { roles: ["contributor"] })
+      }
+    },
     stores: { default: { primary: inMemoryStores() } },
     logger: silentLogger,
     resolvePrincipal: (context: any) => {
@@ -145,6 +156,16 @@ await runGoal(async (failures) => {
       return typeof user === "string" ? { userId: user, orgId: ORG_ID } : null;
     }
   } as never);
+
+  // The app's start: the kit reads the whole folder, and refuses a file it can't load.
+  const started = await state.ready().then(
+    () => undefined,
+    (error: unknown) => (error instanceof Error ? error.message : String(error))
+  );
+  if (started !== undefined) {
+    await state.dispose();
+    return { failures: [`a: the app did not start on the tree: ${started}`], evidence: "" };
+  }
 
   try {
     const runtime = await state.getRuntime();

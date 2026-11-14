@@ -22,8 +22,7 @@ import { fileURLToPath } from "node:url";
 import { createModelResolver, handler } from "@flow-state-dev/core";
 import * as engine from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import * as workforce from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { workforce } from "@flow-state-dev/workforce/kit";
 import { z } from "zod";
 import { ALICE, ORG } from "./people.mts";
 
@@ -32,10 +31,6 @@ const STORE = process.env.GOAL_STORE ?? "";
 if (STORE === "") throw new Error("GOAL_STORE names no store file");
 const KEY = process.env.AI_GATEWAY_API_KEY ?? "";
 if (KEY === "") throw new Error("AI_GATEWAY_API_KEY is not set");
-
-const wf = workforce as unknown as Record<string, any>;
-const tree = await readWorkforce(join(HERE, "..", "fixtures", "workforce"));
-if (tree.errors.length > 0) throw new Error(`the goal-local tree did not load: ${JSON.stringify(tree.errors).slice(0, 600)}`);
 
 // ---- models ----------------------------------------------------------------
 
@@ -76,17 +71,18 @@ const drawTicket = handler({
 
 // ---- the app -----------------------------------------------------------------
 
-let flows: Record<string, unknown> = {};
-const installation = wf.createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
-const agent = wf.defineAgentWorkerFlow({ installation, catalog: { drawTicket } });
-const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: "scripted/route" });
-flows = { agent, coordinator };
-const copies = wf.hireWorkforce(installation) as Array<{ id: string }>;
+// The kit reads the goal-local tree at start, refusing a file it can't load, and serves `agent`
+// (with the ticket tool in its catalog) and the coordinator.
+const kit = workforce({
+  directory: join(HERE, "..", "fixtures", "workforce"),
+  agent: { catalog: { drawTicket } },
+  coordinator: { routeModel: "scripted/route" },
+});
 
 const verify = engine.createBearerSecretPrincipalResolver({ secret: ALICE.bearer, principal: { userId: ALICE.userId, orgId: ORG } });
 
 export default engine.createFlowState({
-  flows: copies,
+  kits: [kit],
   stores: { default: { primary: sqliteStores({ filename: STORE }) } },
   modelResolver,
   resolvePrincipal: verify,

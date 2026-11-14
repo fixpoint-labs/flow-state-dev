@@ -3,9 +3,9 @@
  * gate and the model-backed routing check drive the *same* tree, hire and
  * wiring, and differ by who files.
  *
- * What `openLab` does, in order, and nothing else: read the tree, build the
- * installation and its two worker flows, hire one copy of each, open the
- * manager's conversation, hand back handles. Every file it reads is found by
+ * What `openLab` does, in order, and nothing else: read the tree, install the
+ * workforce kit over it with the lab's two worker flows (the kit hires one
+ * copy of each), open the manager's conversation, hand back handles. Every file it reads is found by
  * walking from one root; no file is named in this code.
  *
  * ## The manager runs on Workforce's coordinator flow
@@ -33,33 +33,32 @@
  *
  * 1. **The builder flow.** A stub that writes one line per task to a file
  *    outside the board, and takes tasks through `workerTaskEntry`.
- * 2. **The worker records the installation is handed.** Read off the tree,
- *    and the one thing the `repointed-map` control moves: it swaps two
- *    builders' files under their ids, so the tree on disk and what each
- *    worker runs with come apart.
- * 3. **The refusal policy.** `readDeclaredRoster` collects rather than throws,
- *    which is right for a library and wrong here: a worker that failed to load
- *    is a worker this lab does not have.
+ * 2. **The folder the kit installs.** The tree, or, under an arm or the
+ *    `repointed-map` control, a copy of it with the workers' files rewritten:
+ *    that control swaps two builders' files under their ids, so the tree on
+ *    disk and what each worker runs with come apart.
+ * 3. **The refusal policy.** The kit's start refuses a file it can't load, and
+ *    a worker that would be refused on its turn, naming it: a worker that
+ *    failed to load is a worker this lab does not have.
  */
 
 import { createModelResolver, type GeneratorTool } from "@flow-state-dev/core";
-import { encodeUserSegment, type FlowInstance, type GeneratorModel } from "@flow-state-dev/core/types";
+import { encodeUserSegment, type GeneratorModel } from "@flow-state-dev/core/types";
 import { createFlowState } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
   COORDINATOR_JUDGMENT,
   COORDINATOR_FLOW,
-  ROSTER_FLOW,
-  createWorkerInstallation,
   defineCoordinatorFlow,
-  hireWorkforce,
+  workerFlow,
   type WorkerManifest,
 } from "@flow-state-dev/workforce";
-import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import type { WorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { actingAs, untilIdle } from "../../lib/index.mts";
+import { actingAs, readTree, untilIdle, workforceTree } from "../../lib/index.mts";
 import { BUILDER_KIND, defineBuilderWorkerFlow, workLineSchema, type WorkLine } from "./workforce/flows/workers/builder.mts";
 
 /** The authored tree — the one path this code names. Everything else is walked. */
@@ -74,23 +73,6 @@ export const NOTE_TOOL = "note";
 
 /** What the model-free turn says: it reads what woke it and does nothing else. */
 const QUIET_TURN = "Noted.";
-
-/**
- * Read a workforce tree into records, refusing a tree that did not load
- * cleanly, naming every problem in one pass.
- */
-async function loadTree(root: string): Promise<DeclaredRoster> {
-  const roster = await readDeclaredRoster(root);
-  if (roster.problems.length > 0) {
-    const lines = roster.problems.map((problem) =>
-      problem.worker === undefined
-        ? `${problem.layer} ${problem.path}: ${problem.error.message}`
-        : `${problem.layer} ${problem.path} (worker ${problem.worker}): ${problem.error.message}`,
-    );
-    throw new Error(`the tree at ${root} did not load cleanly:\n  - ${lines.join("\n  - ")}`);
-  }
-  return roster;
-}
 
 /** The lab's one catalog tool. It does nothing; it is a tool a `tools:` fence can take away. */
 function noteTool(): GeneratorTool {
@@ -154,7 +136,7 @@ export interface OpenLabOptions {
 
 /** Everything a check needs to drive and observe one lab. */
 export interface Lab {
-  roster: DeclaredRoster;
+  roster: WorkforceFolder;
   /** The workers as hired, by id, with the flow each runs on. */
   hired: Record<string, string>;
   /** The manager's id, read off the tree rather than named. */
@@ -248,18 +230,19 @@ function quietModel(modelId: string): GeneratorModel {
 }
 
 /**
- * Read the tree, build the flows, hire, and open the manager's conversation.
+ * Read the tree, install the workforce kit over it, and open the manager's
+ * conversation.
  *
  * @param options The stores, the outbox, the model, and any arm or control.
  * @returns The live lab. Call `dispose()` when done.
  * @throws If the tree does not load, or if any record refuses at the hire —
- *   both deliberately fatal: nothing is hired and nothing is registered.
+ *   both deliberately fatal: the app does not start and nothing is served.
  */
 export async function openLab(options: OpenLabOptions): Promise<Lab> {
-  const roster = await loadTree(LAB_TREE);
+  const roster = await readTree(LAB_TREE);
 
-  // The records the installation is handed. Every arm and control mutates a
-  // COPY here, before the hire, so the tree on disk stays the oracle.
+  // The records the kit installs. Every arm and control mutates a COPY here,
+  // written as a copy of the tree, so the tree on disk stays the oracle.
   const kindOverrides = options.kindOverrides ?? {};
   let workers: WorkerManifest[] = roster.workers.map((worker) => {
     const declared = { ...worker.declared };
@@ -304,34 +287,26 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     }
   };
 
-  let workerFlows: Record<string, unknown> = {};
-  const installation = createWorkerInstallation({
-    standardWorkers: workers,
-    workerFlows: () => workerFlows as never,
-  });
+  const perturbed = Object.keys(kindOverrides).length > 0 || options.managerTools !== undefined || options.swapBuilders === true;
+  const directory = perturbed ? workforceTree(workers, {}, [LAB_TREE]) : LAB_TREE;
   const model = options.model ?? "lab/quiet";
-  const builder = defineBuilderWorkerFlow({
-    installation,
-    outbox: options.outbox,
-    gate,
-    ...(options.builderTakesTasks === false ? { takesTasks: false } : {}),
-  });
-  const coordinator = defineCoordinatorFlow({
-    installation,
-    routeModel: model,
-    agent: { catalog: { [NOTE_TOOL]: noteTool() } as never, model },
-  });
-  // The twin's `work` is gated elsewhere and takes no task, so it declares no role.
-  workerFlows = {
-    [COORDINATOR_FLOW]: coordinator,
-    [BUILDER_KIND]: options.builderTakesTasks === false ? builder : { flow: builder, roles: ["contributor"] },
-  };
-
-  // Refuses the WHOLE roster when any worker would be refused on its turn,
-  // naming the worker. Nothing is registered partially.
-  const copies = hireWorkforce(installation);
-  const instances: Record<string, FlowInstance> = Object.fromEntries(
-    copies.map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy]),
+  const builder = workerFlow(
+    (installation) =>
+      defineBuilderWorkerFlow({
+        installation,
+        outbox: options.outbox,
+        gate,
+        ...(options.builderTakesTasks === false ? { takesTasks: false } : {}),
+      }),
+    // The twin's `work` is gated elsewhere and takes no task, so it declares no role.
+    options.builderTakesTasks === false ? {} : { roles: ["contributor"] },
+  );
+  const coordinator = workerFlow((installation) =>
+    defineCoordinatorFlow({
+      installation,
+      routeModel: model,
+      agent: { catalog: { [NOTE_TOOL]: noteTool() } as never, model },
+    }),
   );
   const hired = Object.fromEntries(workers.map((worker) => [worker.id, String(worker.declared.flow)]));
 
@@ -343,8 +318,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     options.probe === undefined ? undefined : { tool: options.probe.tool, args: options.probe.input(builderIds) };
   const resolver = Object.assign(observing(base, judgmentCalls, probe), live ?? {});
 
+  // The kit's start refuses the WHOLE roster when any worker would be refused
+  // on its turn, naming the worker. Nothing is registered partially.
   const state = createFlowState({
-    flows: Object.values(instances),
+    kits: [workforce({ directory })],
+    fill: { [workforce.slots.workerFlows]: { [COORDINATOR_FLOW]: coordinator, [BUILDER_KIND]: builder } },
     stores: { default: { primary: options.stores } },
     modelResolver: resolver,
     // The verified caller, as an app's auth would supply it.
@@ -353,7 +331,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       return typeof user === "string" ? { userId: user, orgId: LAB_ORG_ID } : null;
     },
   } as never);
-  const runtime = await state.getRuntime();
+  const runtime = await state.getRuntime().catch(async (error: unknown) => {
+    await state.dispose().catch(() => undefined);
+    throw error;
+  });
   if (options.logger !== undefined) {
     (runtime.runtimeConfig as { logger?: unknown }).logger = options.logger;
   }
