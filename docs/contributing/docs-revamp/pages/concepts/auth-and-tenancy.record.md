@@ -47,6 +47,8 @@ Closed after the loop: both open findings. The question 4 miss is answered on th
 
 - After the loop: the `flow.ts` example names the definition `supportFlow` and ends `export default supportFlow();`, matching Flows and actions and Background work.
 
+- After the loop (review): the 403 is for reading the session (`org-boundary-routes.test.ts:184-216`); an action on it answers 404, as an unknown session (`action-routes.ts:274-280`).
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 1d6f85244362, and the 10 Reference row(s) pass 6 moved.

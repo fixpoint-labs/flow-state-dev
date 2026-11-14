@@ -40,6 +40,8 @@ Written by `docs-writer` (sonnet), 716 words. Scenario: A support desk: `classif
 
 - After the loop: the pass-9 miss on question 1 (what else the app configures) is answered in the `model` paragraph, which now says a full model string needs no `models` setting on `createFlowState`, only the provider's key.
 
+- After the loop (review): the page says a provider needs its package installed as well as its key; the resolver throws `Package ... is not installed` without it (`createModelResolver.ts:198`).
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 58d6531d917e, and the 7 Reference row(s) pass 6 moved.
