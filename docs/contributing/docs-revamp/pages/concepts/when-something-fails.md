@@ -9,9 +9,9 @@ import PathOfAnError from "./figures/the-path-of-an-error.svg";
 
 # When something fails
 
-Code in a flow fails the way any TypeScript does: it throws. Flow State adds no error channel, no result type to check and no status to set. What it decides is where a throw goes next, and there are three places. It goes back to the caller as a plain error message. It goes to a fallback you attach to the step, if you attached one. And it goes to a hook that tells you, so you can log it or send it to an error tracker.
+Code in a flow fails the way any TypeScript does: it throws. Flow State adds no error channel, no result type to check and no status to set. What it decides is where a throw goes next: back to the caller as a plain error message, to a fallback you attach to the step, and to a hook that tells you, so you can log it or send it to an error tracker.
 
-The example is a support desk. `handleTicket` is a sequencer, a block that runs other blocks in order. It looks up the customer's order with `lookUpOrder`, then has a model write the reply with `draftReply`. A block is one unit of work: a function, a model call, or a chain of them.
+The example is a support desk. A block is one unit of work: a function, a model call, or a chain of them. `handleTicket` is a sequencer, a block that runs other blocks in order. It looks up the customer's order with `lookUpOrder`, then has a model write the reply with `draftReply`.
 
 <Figure svg={PathOfAnError} caption="The path of an error" description={"On the left, a solid box for the sequencer handleTicket, holding two steps. lookUpOrder is marked in red as throwing. draftReply below it is marked as never running. A black arrow labelled THROWS leaves lookUpOrder, with a red bar across it for the failure, and runs to a box on the right for what the caller sees on the stream: an error item marked FAILED in red, carrying the message you threw and no stack trace, and then request.failed ending the stream. A second arrow runs down from that box to a box for what runs after the item is sent. In it, onErrored is highlighted as the place you listen, and errorCapture is named beneath it for your error tracker. Two notes say that nothing catches the throw, so the sequencer stops and the request ends failed, and that the hooks run after the caller has the item, so they cannot change it."} />
 
@@ -39,7 +39,22 @@ export const lookUpOrder = handler({
 });
 ```
 
-`FlowError` is an `Error` with an optional `code`, `retryable`, `details` and `cause`. A plain `throw new Error(...)` works too. Flow State wraps it in a `FlowError` with the generic code `execution_error` and keeps the original as `cause`.
+`FlowError` is an `Error` that carries a `code` and `details` you choose. A plain `throw new Error(...)` works too, with a generic code. [Error shapes and codes](../reference/errors.md) lists the fields.
+
+`draftReply` is a generator, a block that calls a model. It takes the text of a message and returns the model's reply as a string.
+
+```ts title="src/flows/support/blocks/draft-reply.ts"
+import { generator } from "@flow-state-dev/core";
+import { z } from "zod";
+
+export const draftReply = generator({
+  name: "draft-reply",
+  model: "openai/gpt-6-luna",
+  prompt: "You answer customer support messages. Be brief and specific.",
+  inputSchema: z.string(),
+  user: (input) => input,
+});
+```
 
 ```ts title="src/flows/support/blocks/handle-ticket.ts"
 import { sequencer } from "@flow-state-dev/core";
@@ -73,11 +88,11 @@ The stream ends with an item of type `error`, then `request.failed`.
 }
 ```
 
-`message` is the text you threw, `code` is your code, or `execution_error` for a plain throw, and `details` are what you passed. There is no stack trace. Where an error has a `cause`, `details.cause` lists its name and message only. So write the message as something a caller may read.
+`message` is the text you threw, `code` is your code, and `details` are what you passed. There is no stack trace. Write the message as something a caller may read. The [error item's fields](../reference/errors.md) are in Reference.
 
 ## Catching it in the flow
 
-A `.rescue()` is how you handle a failure inside the flow. It takes a list of handlers, each a block, and an optional `when` list of error classes. The first handler that matches runs, and a handler with no `when` matches anything. The block receives the error as its input, and its output takes the place of the failed value.
+A `.rescue()` is how you handle a failure inside the flow. You give it a fallback block, and its output takes the place of the failed value. The [`.rescue()` row](../reference/sequencer-methods.md) lists the handler options, such as matching only some error classes.
 
 Say a failed model call should become an apology, not an error.
 
@@ -94,7 +109,7 @@ export const apologize = handler({
 });
 ```
 
-In `handleTicket`, the last step becomes `draftReply.rescue([{ block: apologize }])`. `apologize` returns a string, the same shape as `draftReply`.
+In `handleTicket`, the last step becomes `draftReply.rescue([{ block: apologize }])`. `apologize` receives the error and returns a string, as `draftReply` does.
 
 Put on a single step, the rescue is local. If `draftReply` throws, `apologize` runs, its text is the step's output, and the rest of the chain goes on. Put on the sequencer, as `handleTicket.rescue([...])`, it recovers the whole chain: the fallback's output is the sequencer's output and nothing after the failure runs.
 
@@ -102,7 +117,7 @@ A rescued failure is not an error to the caller. The request completes, with no 
 
 ## Hearing about it
 
-`onErrored` is for code inside the flow. It is a block, set on an action, and it takes `{ requestId, actionName, error }`.
+`onErrored` lets the flow itself react to a failure. It is a block, set on an action, and it takes `{ requestId, actionName, error }`.
 
 ```ts title="src/flows/support/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
@@ -115,14 +130,33 @@ export default defineFlow({
 })();
 ```
 
-`logFailure` is a handler block, in its own file, that logs the `requestId` and `error.code`. A hook runs after the caller has the item and the request is recorded `failed`, so it can watch the failure but not change it. A hook that throws is ignored.
+`logFailure` logs the `requestId` and `error.code`.
 
-`errorCapture` is for your error tracker. It is an option on the server, and it is off until you set it.
+```ts title="src/flows/support/blocks/log-failure.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+export const logFailure = handler({
+  name: "log-failure",
+  inputSchema: z.object({
+    requestId: z.string(),
+    error: z.object({ code: z.string().optional() }),
+  }),
+  outputSchema: z.object({}),
+  execute: async ({ requestId, error }) => {
+    console.error(`request ${requestId} failed`, error.code);
+    return {};
+  },
+});
+```
+
+A hook runs after the caller has the item, so it can watch the failure but not change it. The [`onErrored` row](../reference/errors.md) has the timing and what happens when a hook throws.
+
+`errorCapture` is for your error tracker. It is an option on the server, and it is off until you set it. The example logs where you would call your tracker.
 
 ```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import * as Sentry from "@sentry/node";
 import support from "./src/flows/support/flow";
 
 export default createFlowState({
@@ -130,24 +164,22 @@ export default createFlowState({
   stores: sqliteStores({ filename: "support.db" }),
   errorCapture: (event) => {
     if (!event.final) return;
-    Sentry.captureException(event.error, {
-      extra: { requestId: event.requestId },
-    });
+    console.error("request failed", event.requestId, event.error.code);
   },
 });
 ```
 
-The callback fires once for each block that failed, and once more for the request, with `final: true`, when the request ends failed. A failure that a rescue handled fires the first kind and never the second. Keep only `event.final` for one report per request that really failed. Skip it to hear about every failing block. Forward both and you report one failure twice.
+The callback fires for the block that threw, and once more for the request, with `final: true`, when the request ends failed. A failure that a rescue handled fires the first kind and never the second. Keep only `event.final` for one report per request that really failed. Skip it to hear about the failing block too. Forward both and you report one failure twice. [The capture event row](../reference/errors.md) has the details.
 
 [Sending errors to Sentry](../build/errors-to-sentry.md) goes through the tags and levels.
 
 ## What it gets you
 
 - **A caller gets an item, not a crash.** The request settles as `failed`, and the stream carries the message you threw.
-- **Nothing leaks beyond what the block threw.** No stack, no server paths.
+- **The caller sees only what you chose.** The message and code you threw, and nothing from the server.
 - **A fallback stays local.** `draftReply` can fail while `lookUpOrder`'s result and the rest of `handleTicket` carry on.
 - **One request, one report.** `final` gives your tracker a single event for each request that failed.
-- **The failed run is kept.** The `error` item and everything the request emitted before the throw stay on its record in the store, as for a finished request. With `sqliteStores` they survive a restart. The in-memory store does not keep them.
+- **The failed run is kept.** The `error` item and what the request emitted before it stay in the store, as for a finished request. [Stores](../reference/stores.md) says which survive a restart.
 
 ## How it fits with the others
 
