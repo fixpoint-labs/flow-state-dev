@@ -168,31 +168,13 @@ function commandParts(report: string): string[] {
 
 /** A command line split at `;`, `&&`, `||` and `|`; a separator inside single or double quotes, or escaped, does not split. */
 function shellParts(line: string): string[] {
-  const parts: string[] = [];
-  let part = "";
-  let quote: string | null = null;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]!;
-    if (ch === "\\" && quote !== "'") {
-      part += ch + (line[++i] ?? "");
-    } else if (quote !== null) {
-      if (ch === quote) quote = null;
-      part += ch;
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-      part += ch;
-    } else if (line.startsWith("&&", i) || line.startsWith("||", i)) {
-      parts.push(part);
-      part = "";
-      i++;
-    } else if (ch === ";" || ch === "|") {
-      parts.push(part);
-      part = "";
-    } else {
-      part += ch;
-    }
+  // A quoted string or an escaped character is one token, so a separator inside it is not a token of its own.
+  const tokens = line.match(/"(?:\\.|[^"\\])*"|'[^']*'|\\.|&&|\|\||[;|]|[^"'\\;|&]+|./g) ?? [];
+  const parts = [""];
+  for (const token of tokens) {
+    if (token === "&&" || token === "||" || token === ";" || token === "|") parts.push("");
+    else parts[parts.length - 1] += token;
   }
-  parts.push(part);
   return parts;
 }
 const norm = (c: string) => c.replace(/\s+/g, " ").trim();
