@@ -152,7 +152,7 @@ export const logFailure = handler({
 });
 ```
 
-`onErrored` runs only for a request that failed, so a rescued failure never reaches it. It runs after the caller has the item, so it can watch the failure but not change it. The [`onErrored` row](../reference/errors.md) has the timing and what happens when a hook throws.
+`onErrored` runs only for a request that failed, so a rescued failure never reaches it. It runs after the caller has the item and the request is recorded as failed, so it can watch the failure but not change it. A hook that throws is ignored, and the original failure stands. The [`onErrored` row](../reference/errors.md) has the exact order.
 
 `errorCapture` is for your error tracker. It is an option on the server, and it is off until you set it. The example logs where you would call your tracker.
 
@@ -181,7 +181,7 @@ The callback fires for the block that threw, and once more for the request, with
 - **No stack trace leaves the server.** The caller gets the message, code and details of what was thrown, with no stack and no server paths.
 - **A fallback stays local.** `draftReply` can fail while `lookUpOrder`'s result and the rest of `handleTicket` carry on.
 - **One request, one report.** `final` gives your tracker a single event for each request that failed.
-- **The failed run is kept.** The `error` item and what the request emitted before it stay in the store, as for a finished request. [Stores](../reference/stores.md) says which survive a restart.
+- **The failed run is kept.** The request is stored with status `failed` and its error, beside the items it emitted before the throw and a trace of the block that threw, which the DevTool shows. The in-memory store loses it on restart; SQLite and Postgres keep it. [Stores](../reference/stores.md) has the rest.
 
 ## How it fits with the others
 

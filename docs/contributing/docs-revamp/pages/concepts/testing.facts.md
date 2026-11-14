@@ -39,6 +39,8 @@ Legend: **[page]** the page states it. **[ref]** belongs on the generated `@flow
 - Installation: `pnpm add -D @flow-state-dev/testing vitest`. [page: one line, or leave to Start] `old-tf:11-13`
 - A test needs no API key. `hello-chat`'s tests spy on `fetch` and make it throw, to prove no network request is made, and still pass. [page, optional] `hc/test/flow.test.ts:57-67`
 
+- The page glosses three terms on first use: an action is one of the named calls a flow exposes (`actions: { reply: ... }`, `hc/src/flows/hello-chat/flow.ts:78-95`); an item is what a client receives from a run (section 5, `result.items`); `handleTicket` is a sequencer in `src/flows/support/blocks/handle-ticket.ts` (`blocks.md:22-75`). The page's test files import `handle-ticket` and `clean-message` from there without showing them. "Milliseconds" rests on section 8's 36 ms run of four `testFlow` calls.
+
 ## 2. Test one block: `testBlock`
 
 - `testBlock(block, { input, ...seeds })` returns a promise of a result. Types are inferred from the block's schemas: input from `inputSchema`, output from `outputSchema`. [page] `t/test-utilities/testBlock.ts:72-86`

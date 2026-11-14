@@ -11,9 +11,9 @@ import WhatIsReal from "./figures/what-is-real-in-a-test.svg";
 
 An AI backend is awkward to test when every run needs a server, a database and a model that words its answer differently each time. Flow State's testing package runs a flow, the unit of backend a client calls, inside your test process, on in-memory storage. The one unpredictable part, the model call, is answered by a scripted reply.
 
-A flow is made of blocks, named pieces of work with a typed input and output, so one block can run alone and a whole action can run from input to output. The test is the real run with a single stand-in.
+A flow is made of blocks, named pieces of work with a typed input and output, so one block can run alone and a whole action, one of the named calls a flow exposes, can run from input to output. The test is the real run with a single stand-in.
 
-The example is the support desk from [Blocks](./blocks.md): `handleTicket` cleans a customer's message, then `draftReply` has a model write the answer.
+The example is the support desk from [Blocks](./blocks.md). `handleTicket` is a sequencer, a block that runs other blocks in order, defined in `src/flows/support/blocks/handle-ticket.ts`. It runs `cleanMessage` to clean a customer's message, then `draftReply` has a model write the answer. Each block lives in its own file beside the flow, as it does on that page.
 
 <Figure svg={WhatIsReal} caption="What is real in a test" description={"The handleTicket sequencer drawn as a large box that runs in the test process on in-memory stores. Inside it, a handler named cleanMessage hands its output to a generator named draftReply, and both run as written. Inside draftReply, highlighted, is a mockGenerator with one scripted reply: it is the only stand-in, and it takes the place of the model call. A note says the block code, the input and output checks, the state writes and the emitted items are real, while the model call is faked and there is no server and no network."} />
 
@@ -58,7 +58,7 @@ it("replies to a customer", async () => {
 });
 ```
 
-The mock is attached under the block's `name`, `"draft-reply"`, not its variable name. Everything else in the run is the real one: the input is checked, `cleanMessage` trims the message, and the reply comes back as an item. A failed run does not throw; it returns `status: "failed"` and an `error`. The [testing reference](../reference/api/testing.md) lists the options and result fields.
+The mock is attached under the block's `name`, `"draft-reply"`, not its variable name. Everything else in the run is the real one: the input is checked, `cleanMessage` trims the message, and the reply comes back as an item, the unit a client receives from a run. A failed run does not throw; it returns `status: "failed"` and an `error`. The [testing reference](../reference/api/testing.md) lists the options and result fields.
 
 ## Standing in for a generator
 
@@ -192,7 +192,7 @@ A test checks that your code does what you wrote, against a scripted model. It c
 
 ## How it fits with the others
 
-The stores are in memory, so what a persistent store does across a crash is not tested here. A benchmark compares whole patterns, the ways of splitting work across several blocks such as a supervisor that hands tasks to workers, against each other, where an eval scores one block or flow; see [Benchmarks](../build/benchmark-patterns.md).
+The stores are in memory, so what a persistent store does across a crash is not tested here. An eval scores one block or flow. A benchmark compares whole patterns against each other, a pattern being a way of splitting work across several blocks; see [Benchmarks](../build/benchmark-patterns.md).
 
 ## Next
 
