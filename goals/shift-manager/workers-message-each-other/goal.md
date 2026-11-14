@@ -48,7 +48,7 @@
 - `GOAL_CONTROL=no-roster-check`: a worker not on the sender's user's roster is taken as theirs (`messages/send-message.ts`). Leg 4 must fail **`4:bobs-worker-refused`**.
 - `GOAL_CONTROL=refuse-at-receive`: the send no longer refuses a worker that hears only in its tasks' sessions, so the row is written and the refusal is left to its entry (`messages/send-message.ts`). Leg 4 must fail **`4:coder-refused`**.
 - `GOAL_CONTROL=no-turn-back`: a coordinator that hands every line on is refused `no_turn`, as before (`messages/send-message.ts`). Leg 4 must fail **`4:round-robin-heard`**.
-- `GOAL_CONTROL=no-hire-check`: `hireWorkforce` takes a worker flow with no `onMessageReceived` (`workers/register.ts`). Leg 4 must fail **`4:hire-refuses`**.
+- `GOAL_CONTROL=no-hire-check`: the workforce kit's hire takes a worker flow with no `onMessageReceived` (`workers/register.ts`). Leg 4 must fail **`4:hire-refuses`**.
 - `GOAL_CONTROL=memory-log`: the log is kept in the server's memory (`messages/message-log.ts`). Leg 5 must fail **`5:lists-every-message`** after the restart.
 - `GOAL_CONTROL=task-to-conversation`: a `{ task }` message lands in the conversation that filed the task (`messages/message-target.ts`). Leg 6 must fail **`6:lands-in-task-session`**.
 - `GOAL_CONTROL=no-kind-check`: a `{ session }` target isn't checked for a task's or a delegate's session (`messages/message-target.ts`). Leg 7 must fail **`7:refusals`**.

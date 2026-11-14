@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { readClaudeCodeUsage } from "@flow-state-dev/claude-code";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { readTree } from "../../../lib/workers.mts";
 import { claudeCodeHarness, CLAUDE_CODE_RUN_TIMEOUT_MS } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
 import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "../../../../packages/shift-manager/teams/devteam/host.mts";
 import { CODER_FLOW } from "../../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
@@ -37,7 +37,7 @@ if (!STORE || !SETUP) throw new Error("CLAUDE_USAGE_GOAL_STORE and CLAUDE_USAGE_
 /** Sandbox: a project with no repository, so a run works on its files. */
 export const SANDBOX = { visibility: "shared", id: "sandbox" } as const;
 
-const roster = await readDeclaredRoster(LAB_TREE);
+const roster = await readTree(LAB_TREE);
 const workerFlowOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const em = roster.workers.find((w) => w.declared.flow === EM_FLOW);
 const coderWorkerId = ((em?.declared.delegates as string[] | undefined) ?? []).find((id) => workerFlowOf(id) === CODER_FLOW);

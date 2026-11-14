@@ -13,7 +13,7 @@ import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Browser, Page } from "playwright";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { readTree } from "../../lib/workers.mts";
 import { PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import {
   labRoutes,
@@ -359,7 +359,7 @@ export function textOf(item: StoredItem | undefined): string {
 
 /** The workers the tree beside the profile the Lab is served from now declares, each with its `WORKER.md` frontmatter. */
 export async function treeWorkers(world: World): Promise<Array<{ id: string; declared: Record<string, unknown> }>> {
-  return (await readDeclaredRoster(join(dirname(world.config), "workforce"))).workers;
+  return [...(await readTree(join(dirname(world.config), "workforce"))).workers];
 }
 
 /**

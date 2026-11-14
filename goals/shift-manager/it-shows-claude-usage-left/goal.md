@@ -39,3 +39,4 @@
 | 2026-10-23 | same, `GOAL_CONTROL=absent-as-zero` | n/a | FAIL (expected) | **a:no-number**: "0% used"; c, e and f show 0% too. |
 | 2026-10-23 | same, `GOAL_CONTROL=fan-out` | n/a | FAIL (expected) | **d:no-claude-window**: Alice's run wrote Bob's row; a and b read c's window from the shared row. |
 | 2026-10-23 | same, `GOAL_CONTROL=read-replaces-run` | n/a | FAIL (expected) | **e:keeps-the-runs-window**: the look left 0 windows; the view's looks in a, b and c emptied their rows too. |
+| 2026-11-13 | claude/fix-2627-impl-e-b2 (the workforce kit) | n/a | FAIL (not from this change) | The Lab never starts: *"Failed to load fsdev config …/lab/fsdev.config.mts: …/lab/scripted-sdk.mjs is installed, but its version can't be read (its manifest could not be located)"*. The unconverted `lab/fsdev.config.mts` from `claude/fix-2627-impl-e` fails the same way. No control was run. |
