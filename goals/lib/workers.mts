@@ -60,7 +60,7 @@ export function workerPath(id: string): string {
 }
 
 /** A worker record as its `WORKER.md`: its declared keys as frontmatter, its body below. */
-export function workerFile(worker: Pick<WorkerManifest, "declared" | "body">): string {
+function workerFile(worker: Pick<WorkerManifest, "declared" | "body">): string {
   const keys = Object.entries(worker.declared).filter(([, value]) => value !== undefined);
   return `---\n${keys.map(([key, value]) => `${key}: ${frontmatterValue(value)}`).join("\n")}\n---\n${worker.body}\n`;
 }
