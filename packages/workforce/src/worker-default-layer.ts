@@ -1,10 +1,11 @@
 // FIX-2498; the section shape is epic FIX-2490's ER-1, the placement FIX-2498 D1.
+// FIX-2500: the history summary section.
 /**
  * `workerDefaultLayer`: the sections every worker on the built-in worker flow
  * is told after its own text, and the one place their order, their opt-outs
  * and their length ceiling live.
  *
- * Two sections, each on by default, each with an opt-out in the worker's
+ * Three sections, each on by default, each with an opt-out in the worker's
  * `defaults` key:
  *
  * - **`date`** — today's date with its weekday, read from the server's clock
@@ -19,8 +20,15 @@
  *   module only decides that an unset `activateTool` follows `defaults`, and
  *   adds the line, under the same `skills` key, only when the list prints. A
  *   worker that holds no skill it can load pays nothing.
+ * - **`historySummary`** — a running summary of the turns about to leave the
+ *   history window, folded before the worker answers and handed to it as an
+ *   `<earlier-conversation>` context section, with history read from after the
+ *   summary's mark. Core's `historySummary`, with the summarizer the Teammates
+ *   lab proved, run on the worker's own model. A short conversation pays one
+ *   store read per turn and no model call. An app that brings its own summary
+ *   replaces this one ({@link workerDefaultLayer}'s `appSummary`).
  *
- * Both render as tagged context after the prompt rather than inside it: the
+ * All three render as tagged context after the prompt rather than inside it: the
  * date changes every day, and at the front it would change the start of every
  * worker's prompt. The identity layer
  * (`messages/worker-identity`) stays the prompt's first entry and is not under
@@ -30,10 +38,13 @@
  * flow; an app that wants another date fact writes it under `date`.
  */
 import { z } from "zod";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { handler, sequencer, utility, type CapabilityRef } from "@flow-state-dev/core";
+import { getBaseCapability } from "@flow-state-dev/core/capability";
+import type { BlockContext, LLMMessage } from "@flow-state-dev/core/types";
+import type { WorkerCapabilityCatalog } from "./worker-capabilities";
 
-/** One section of the default layer, by its key in `defaults`. They render skills index first, then date. */
-type WorkerDefaultSection = "skillsIndex" | "date";
+/** One section of the default layer, by its key in `defaults`. The context renders skills index, then date; the history summary reaches the answer through `uses`. */
+type WorkerDefaultSection = "skillsIndex" | "date" | "historySummary";
 
 /**
  * The most characters the layer's fixed text may take, with its longest
@@ -55,7 +66,9 @@ export const workerDefaultsSchema = z
         /** `false`: no date block for this worker. */
         date: z.boolean().optional(),
         /** `false`: no skills list, no load tool, no load line (unless `skills.activateTool` says otherwise). */
-        skillsIndex: z.boolean().optional()
+        skillsIndex: z.boolean().optional(),
+        /** `false`: no summary of older turns; past the window they drop out. */
+        historySummary: z.boolean().optional()
       })
       .strict()
   ])
@@ -131,6 +144,91 @@ interface LayerConfig {
   skills?: { activateTool?: boolean };
 }
 
+// Moved from the Teammates lab (FIX-2500 D1): the summarizer the fold ask passed on.
+/** What the default summary is told to keep. Named, or a small model summarizes the newer turns alone and drops the summary so far. */
+const HISTORY_SUMMARY_OBJECTIVES = [
+  "The input's `summary` is the summary so far and `turns` are newer turns: write one summary of both, never of the turns alone.",
+  "Your summary replaces the summary so far: everything it says must still be in yours, then add what the newer turns add.",
+  "Keep every name, date, code and number the user or another worker stated, word for word. Small talk can shrink; those never go."
+];
+
+/** How a worker flow reads the turns it folds, when it reads its history its own way. */
+type ReadFoldedTurns = (turns: LLMMessage[], ctx: BlockContext) => Promise<LLMMessage[]> | LLMMessage[];
+
+/**
+ * The history summary section: core's `historySummary` with the default
+ * summarizer, both halves behind one reader of the worker's `defaults`.
+ *
+ * `readTurns` is the flow's own reading of its history, when it has one (the
+ * coordinator says who wrote each delegate's answer): the summarizer is
+ * handed the folded turns read that way, so what the summary stands for
+ * reads as the turns did.
+ *
+ * The fold runs when `on` says so; the summary and the history mark reach the
+ * answer through `uses`, a per-turn entry, so a worker that turned it off
+ * reads the plain window. Gating one half alone breaks: core's summary refuses
+ * to render once turns have left the window and no fold has run. The
+ * resource is declared through `resources`, statically, since a per-turn
+ * entry installs none.
+ */
+function historySummarySection(
+  configOf: (ctx: BlockContext) => LayerConfig,
+  modelOf: (ctx: BlockContext) => string,
+  readTurns: ReadFoldedTurns | undefined
+) {
+  const summarize = utility.summarizer({
+    name: "earlier-turns",
+    // The model the worker answers with.
+    model: (_input: unknown, ctx: BlockContext) => modelOf(ctx),
+    granularity: "detailed",
+    objectives: HISTORY_SUMMARY_OBJECTIVES
+  });
+  const foldInput = z.object({ summary: z.string().nullable(), turns: z.array(z.any()) });
+  const earlier = utility.historySummary({
+    summarize:
+      readTurns === undefined
+        ? summarize
+        : sequencer({ name: "earlier-turns-read", inputSchema: foldInput })
+            .step(
+              handler({
+                name: "earlier-turns-as-read",
+                inputSchema: foldInput,
+                execute: async (input, ctx) => ({ summary: input.summary, turns: await readTurns(input.turns as LLMMessage[], ctx) })
+              })
+            )
+            .step(summarize)
+  });
+  const on = (ctx: BlockContext): boolean => defaultSectionOn(configOf(ctx).defaults, "historySummary");
+  return {
+    /** Whether this turn's worker folds and reads the summary. */
+    on,
+    /** The fold step, run before the answer when {@link on}. */
+    fold: earlier.fold,
+    /** The answer's per-turn `uses` entry: the summary's context and history mark, when {@link on}. */
+    uses: (ctx: BlockContext): CapabilityRef[] => (on(ctx) ? [earlier.capability] : []),
+    /** The summary's session resource, `historySummary`, for the answer to declare. */
+    resources: { historySummary: earlier.resource }
+  };
+}
+
+/**
+ * Whether the app brought its own history summary: a capability in the worker
+ * flow's catalogue (its top-level static `uses`) that declares a resource on
+ * core's `historySummaryStateSchema`. Matched on the schema, by reference, not
+ * by name: another name would double, the same name would refuse to build. A
+ * summary passed as a dynamic entry, or not built from core's piece, is not
+ * seen.
+ */
+export function bringsHistorySummary(catalog: WorkerCapabilityCatalog): boolean {
+  for (const { ref } of catalog.values()) {
+    const resources = Object.values(getBaseCapability(ref).resources ?? {});
+    if (resources.some((entry) => (entry as { stateSchema?: unknown }).stateSchema === utility.historySummaryStateSchema)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * The layer's context entries for a worker flow's answer generator.
  *
@@ -138,20 +236,36 @@ interface LayerConfig {
  * @param options.skillsListing The skills library's own list of what this
  *   worker can load, or `null` when it lists nothing: the line prints only
  *   beside it.
- * @returns An object-form context value, keyed `skills` then `date`.
+ * @param options.modelOf The model the turn's worker answers with.
+ * @param options.readFoldedTurns The flow's own reading of the turns its summary folds.
+ * @param options.hasAppHistorySummary Whether the app brought its own history summary
+ *   ({@link bringsHistorySummary}): then the layer has no summary section.
+ * @returns `context`, an object-form context value keyed `skills` then
+ *   `date`; and `historySummary`, the summary section's fold, per-turn `uses`
+ *   entry and resource, absent when the app brought its own.
  */
 export function workerDefaultLayer(options: {
   configOf: (ctx: BlockContext) => LayerConfig;
   /** Whether the turn's worker gets the skill loader: the worker flow's own read of {@link skillLoaderOn}. */
   loaderOn: (ctx: BlockContext) => boolean;
   skillsListing: (input: unknown, ctx: BlockContext) => Promise<string | null>;
+  /** The model the turn's worker answers with, which its summary folds on. */
+  modelOf: (ctx: BlockContext) => string;
+  /** The flow's own reading of the turns its summary folds, when its history reads them its own way. */
+  readFoldedTurns?: ReadFoldedTurns;
+  hasAppHistorySummary: boolean;
 }) {
   return {
-    skills: async (input: unknown, ctx: BlockContext): Promise<string | null> => {
-      if (!defaultSectionOn(options.configOf(ctx).defaults, "skillsIndex") || !options.loaderOn(ctx)) return null;
-      return (await options.skillsListing(input, ctx)) === null ? null : SKILLS_INDEX_LINE;
+    context: {
+      skills: async (input: unknown, ctx: BlockContext): Promise<string | null> => {
+        if (!defaultSectionOn(options.configOf(ctx).defaults, "skillsIndex") || !options.loaderOn(ctx)) return null;
+        return (await options.skillsListing(input, ctx)) === null ? null : SKILLS_INDEX_LINE;
+      },
+      date: (_input: unknown, ctx: BlockContext): string | null =>
+        defaultSectionOn(options.configOf(ctx).defaults, "date") ? workerDate() : null
     },
-    date: (_input: unknown, ctx: BlockContext): string | null =>
-      defaultSectionOn(options.configOf(ctx).defaults, "date") ? workerDate() : null
+    historySummary: options.hasAppHistorySummary
+      ? undefined
+      : historySummarySection(options.configOf, options.modelOf, options.readFoldedTurns)
   };
 }

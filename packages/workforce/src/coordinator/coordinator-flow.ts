@@ -91,7 +91,7 @@ import {
 } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { requestHostOf, dispatchThroughSeam, logicalBlockIdOf } from "@flow-state-dev/core/internal";
-import type { BlockContext, BlockDefinition, EvaluationModel } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, EvaluationModel, LLMMessage } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { defineFitCheck, failedFitSchema } from "../fit-check";
 import {
@@ -876,6 +876,16 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * adds a second set; they are on a turn while one of its delegates takes a
    * task.
    */
+  /** `history` as the coordinator's turn reads it: each delegate's answer by its writer, each routed post as handled. */
+  const readAsCoordinator = (history: LLMMessage[], ctx: BlockContext) =>
+    coordinatorHistory(
+      history,
+      [
+        ...ctx.session.items.all({ itemTypes: ["message"], itemVisibility: { client: true, history: true } }),
+        ...ctx.session.items.all({ itemTypes: ["component"] })
+      ],
+      turn.answerNames
+    );
   const turn = agentWorkerTurn(
     { ...(options.agent ?? {}), installation },
     {
@@ -885,15 +895,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // The turn's model reads a delegate's answer as a line from that
       // delegate, never as its own reply, and a message the routing handed on
       // as handled (`coordinatorHistory`).
-      history: async (input, ctx) =>
-        coordinatorHistory(
-          await routedTaskHistory(input, ctx),
-          [
-            ...ctx.session.items.all({ itemTypes: ["message"], itemVisibility: { client: true, history: true } }),
-            ...ctx.session.items.all({ itemTypes: ["component"] })
-          ],
-          turn.answerNames
-        )
+      history: async (input, ctx) => readAsCoordinator(await routedTaskHistory(input, ctx), ctx),
+      // A fold reads the turns it summarizes the same way, or the summary would
+      // keep a delegate's answer as the coordinator's own and a routed post as
+      // waiting, with the originals gone from the turn's history.
+      readFoldedTurns: (turns, ctx) => readAsCoordinator(turns, ctx)
     }
   );
 

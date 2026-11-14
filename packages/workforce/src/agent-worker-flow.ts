@@ -110,7 +110,7 @@ import { setWorkProjectAction } from "./projects/work-project";
 import { SET_WORK_PROJECT_ACTION } from "./workers/keys";
 import type { WorkerInstallation } from "./workers/installation";
 import { workerIdentityPrompt } from "./messages/worker-identity";
-import { skillLoaderOn, workerDefaultLayer, type WorkerDefaults } from "./worker-default-layer";
+import { bringsHistorySummary, skillLoaderOn, workerDefaultLayer, type WorkerDefaults } from "./worker-default-layer";
 import { steerOrTalk } from "./conversation-board/steer";
 import { worksConversationResultTask } from "./conversation-board/task-admission";
 
@@ -393,9 +393,10 @@ export interface AgentWorkerFlowOptions {
    * failure in it fails the turn, so a block that must not (a history
    * summary's fold, say) rescues its own.
    *
-   * A history summary's fold goes here (`beforeAnswer: earlier.fold`, with
-   * `earlier.capability` in {@link uses}), so the answer reads a summary that
-   * already holds the turns about to leave the window.
+   * Every worker already folds older turns into a history summary by
+   * default. An app that wants its own summary puts its fold here
+   * (`beforeAnswer: earlier.fold`, with `earlier.capability` in {@link uses}),
+   * and it replaces the default: fold, context section and all.
    *
    * Omitted, the flow's sequence is exactly what it is today.
    */
@@ -899,6 +900,12 @@ export interface AgentTurnShare {
    * coordinator's says each delegate's answer as a line from that delegate.
    */
   readonly history?: (input: unknown, ctx: BlockContext) => Promise<LLMMessage[]>;
+  /**
+   * The turns the history summary folds, read the way {@link history} reads
+   * them, so a fold keeps what the flow's reading adds (the coordinator's says
+   * who wrote each delegate's answer). Omitted, the turns as stored.
+   */
+  readonly readFoldedTurns?: (turns: LLMMessage[], ctx: BlockContext) => Promise<LLMMessage[]> | LLMMessage[];
 }
 
 const AGENT_TURN: AgentTurnShare = { kind: AGENT_FLOW, answerName: "agent-answer" };
@@ -1087,12 +1094,20 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     skillLoaderOn(turnConfig(ctx), workerCatalog(ctx).length > 0);
 
   // The default layer's sections after the worker's text (FIX-2498): the
-  // skills line, printed only beside the library's own listing, and the date.
+  // skills line, printed only beside the library's own listing, and the date;
+  // and the history summary (FIX-2500), unless the app brought its own.
   const defaultLayer = workerDefaultLayer({
     configOf: (ctx) => turnConfig(ctx),
     loaderOn: activateToolOn,
-    skillsListing: buildLoadCatalogContext({ collectionKey: SKILLS_COLLECTION, initialSkills: workerCatalog })
+    skillsListing: buildLoadCatalogContext({ collectionKey: SKILLS_COLLECTION, initialSkills: workerCatalog }),
+    modelOf: (ctx) => turnConfig(ctx).model,
+    ...(share.readFoldedTurns !== undefined ? { readFoldedTurns: share.readFoldedTurns } : {}),
+    hasAppHistorySummary: bringsHistorySummary(workerCapabilityCatalog)
   });
+  const summary = defaultLayer.historySummary;
+  // What the answer declares: the catalog's resources, and the summary's.
+  const answerResources =
+    summary === undefined ? catalogResources : { ...(catalogResources ?? {}), ...summary.resources };
 
   const answerWith = (binding: ReturnType<typeof skills.with>, name: string) =>
     generator({
@@ -1103,7 +1118,9 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // The earlier turns of THIS conversation, so a follow-up keeps its
       // subject. A conversation is one session: a worker has one per
       // conversation, so nothing said in one reaches another. Bounded by the
-      // session's history window (the framework's default, 50 turns); older turns fall out rather than being summarized.
+      // session's history window (the framework's default, 50 turns); older
+      // turns are folded into the history summary before they leave it, unless
+      // the worker turned the summary off.
       // On a coordinator's routed task, the routing conversation's recent
       // lines join it as one user-role message before the message, for this
       // call only; on any other turn it is `history: true` unchanged. A
@@ -1114,10 +1131,11 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // static walk installs it — see `catalogDeclaredResources`. Omitted
       // entirely when the catalog declares nothing, so a flow built without one
       // is byte-for-byte the block it was before this existed.
-      ...(catalogResources !== undefined ? { resources: catalogResources } : {}),
+      ...(answerResources !== undefined ? { resources: answerResources } : {}),
       // The skills binding stays FIRST and is never displaced: an app's own
       // capabilities compose beside it. That is what the `uses` option is for.
-      uses: [binding, ...usesEntries],
+      // The history summary's context and mark, per turn, after the app's own.
+      uses: [binding, ...usesEntries, ...(summary !== undefined ? [summary.uses] : [])],
       // The prompt seam — A MARKED INSERTION POINT, NOT AN ABSTRACTION.
       //
       // Four layers, in this order every time: the framework's default layer
@@ -1168,7 +1186,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // The default layer's sections, as tagged context after the prompt: the
       // skills line joins the library's `skills` tag, and an app's capability
       // that writes under `date` joins the date block.
-      context: defaultLayer,
+      context: defaultLayer.context,
       model: (_input, ctx) => turnConfig(ctx).model,
       // The worker's granted tools. With a written `tools:` line, both halves of
       // it: `tools` holds the names that resolved to the app's CATALOG;
@@ -1329,9 +1347,12 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     .tapIf((_input, ctx) => turnConfig(ctx).skills.enableLlmClassifier !== true, matcherWithoutClassifier)
     .tapIf((_input, ctx) => turnConfig(ctx).skills.enableLlmClassifier === true, matcherWithClassifier)
     .tap(appendWorkerDefaults);
+  // The history summary's fold, on the same reader as its context half, so a
+  // worker that turned it off neither folds nor reads a summary.
+  const folded = summary !== undefined ? prepared.tapIf((_input, ctx) => summary.on(ctx), summary.fold) : prepared;
   // Appended only when the app passed one, like afterAnswer below, so a call
   // without it builds the sequence it built before the option existed.
-  const answered = (options.beforeAnswer ? prepared.tap(options.beforeAnswer) : prepared)
+  const answered = (options.beforeAnswer ? folded.tap(options.beforeAnswer) : folded)
     // Two arms rather than two `.stepIf`s: the answer is the sequencer's OUTPUT,
     // and a second conditional step would have to be typed against the first
     // one's result. A branch says what this is — one answer, built two ways —

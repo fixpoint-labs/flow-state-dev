@@ -8,9 +8,9 @@
  * - **Lead, researcher and writer** run on the built-in `agent` flow, so each
  *   has `sendMessage` and one conversation where messages land. Memory is
  *   composed in through `uses` (read) and `afterAnswer` (record each turn).
- *   A history summary keeps what was said before the history window: its
- *   capability goes in `uses` and its fold runs as `beforeAnswer`, so a turn
- *   is summarized before it leaves the window the worker reads word for word.
+ *   What was said before the history window is kept by the built-in flow,
+ *   which folds older turns into a summary by default (workforce's history
+ *   summary section), so the lab wires none of its own.
  *   The flow's tool catalog holds web search and fetch, and `uses` adds
  *   reading the working folder's source; each worker's `tools:` line picks its
  *   own from them.
@@ -79,7 +79,6 @@ import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { createSQLiteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
 import Database from "better-sqlite3";
-import { utility } from "@flow-state-dev/core";
 import { fetch, search } from "@flow-state-dev/tools";
 import {
   AGENT_FLOW,
@@ -376,19 +375,6 @@ export async function openTeammates(options: TeammatesOptions) {
   }
 
   const mem = system({ model: options.model, working: { capacity: 7 }, episodic: true, semantic: true });
-  const earlier = utility.historySummary({
-    summarize: utility.summarizer({
-      name: "earlier-turns",
-      model: options.model,
-      granularity: "detailed",
-      // Named, or a small model summarizes the newer turns alone and drops the summary so far.
-      objectives: [
-        "The input's `summary` is the summary so far and `turns` are newer turns: write one summary of both, never of the turns alone.",
-        "Your summary replaces the summary so far: everything it says must still be in yours, then add what the newer turns add.",
-        "Keep every name, date, code and number the user or another worker stated, word for word. Small talk can shrink; those never go.",
-      ],
-    }),
-  });
   // One host for coder's runs and the workers' reads, on one constant source: the working folder.
   const workspace = localWorkspaceHost({
     root: options.runsRoot,
@@ -445,7 +431,6 @@ export async function openTeammates(options: TeammatesOptions) {
         },
         uses: [
           mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }),
-          earlier.capability,
           // Offered to a worker whose file picks `consultSessions: [consult]` (Lead).
           consultSessionsCapability(installation),
           // Which harnesses can run here, so a coding task is filed only on a ready one.
@@ -453,7 +438,6 @@ export async function openTeammates(options: TeammatesOptions) {
           // List, save, pause and delete routines: offered to a worker whose file picks `routines: [tools]` (each one here).
           createRoutinesCapability(installation),
         ],
-        beforeAnswer: earlier.fold,
         afterAnswer: mem.captureFromItems,
         // researcher reads a whole repository a file at a time: room to dig before it answers.
         maxSteps: 100,
