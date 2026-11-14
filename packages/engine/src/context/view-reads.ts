@@ -164,12 +164,15 @@ export type ViewDependencies = {
    * - **session or user ledger:** heard on `sessionIds`' topics narrowed to
    *   `board` (the filers', which name the task that changed), in place of
    *   the ledger's resource read. No session: nothing is recorded, and the
-   *   ledger's read stays heard.
+   *   ledger's read stays heard. A session ledger whose storage (`reach`) is
+   *   lineage-shared is also heard on the owner's user topic narrowed to
+   *   `board`, where another lineage member's filing publishes, as a
+   *   lineage-shared resource read is.
    * - **org ledger:** no session is heard. A filer is another member's
    *   session, which no client payload names; the ledger's own notices on
    *   the org topic carry a change to a row, so its read stays heard.
    */
-  board(board: string, scope: "session" | "user" | "org", sessionIds: readonly string[], covers: string): void;
+  board(board: string, scope: "session" | "user" | "org", sessionIds: readonly string[], covers: string, reach: StorageReach): void;
 };
 
 /**
@@ -195,7 +198,7 @@ export function createViewDependencies(
     session(id) {
       record({ scope: "session", sessionId: id, what: "state" });
     },
-    board(board, scope, sessionIds, covers) {
+    board(board, scope, sessionIds, covers, reach) {
       if (scope === "org") {
         record({ scope: "org", what: { board } });
         return;
@@ -203,7 +206,7 @@ export function createViewDependencies(
       if (sessionIds.length === 0) return;
       for (const id of new Set(sessionIds)) record({ scope: "session", sessionId: id, what: { board, covers } });
       // A session ledger's scope topic is the running session's, which `sessionIds` names first.
-      if (scope === "user") record({ scope: "user", what: { board, covers } });
+      if (scope === "user" || sharesLineage(reach)) record({ scope: "user", what: { board, covers } });
     }
   };
 }
