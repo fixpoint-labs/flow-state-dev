@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 480">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect fill="url(#hatch)" x="28" y="24" width="220" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="28" y1="34.5" x2="248" y2="34.5"/><rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="220" height="150"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="56">USER RECORD</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="84">alice in acme</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="108">plan: "pro"</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="130">read by both sessions</text>
+<rect fill="url(#hatch)" x="308" y="24" width="252" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="308" y1="34.5" x2="560" y2="34.5"/><rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="308" y="24" width="252" height="150"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="322" y="56">ALICE'S SESSIONS</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="322" y="66" width="224" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="336" y="85">s1</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="336" y="101">ticketCount: 3</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="322" y="118" width="224" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="336" y="137">s2</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="336" y="153">ticketCount: 1</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="308" y1="99" x2="250" y2="99" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="560" y1="99" x2="618" y2="99" marker-end="url(#ah)"/>
+<rect fill="url(#hatch)" x="28" y="198" width="220" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="28" y1="208.5" x2="248" y2="208.5"/><rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="198" width="220" height="150"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="230">USER RECORD</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="258">bob in acme</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="282">plan: "free"</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="304">read by both sessions</text>
+<rect fill="url(#hatch)" x="308" y="198" width="252" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="308" y1="208.5" x2="560" y2="208.5"/><rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="308" y="198" width="252" height="150"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="322" y="230">BOB'S SESSIONS</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="322" y="240" width="224" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="336" y="259">s3</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="336" y="275">ticketCount: 2</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="322" y="292" width="224" height="44"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="336" y="311">s4</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="336" y="327">ticketCount: 0</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="308" y1="273" x2="250" y2="273" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="560" y1="273" x2="618" y2="273" marker-end="url(#ah)"/>
+<rect fill="url(#hatch)" x="620" y="24" width="272" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="620" y1="34.5" x2="892" y2="34.5"/><rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="620" y="24" width="272" height="324"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="634" y="56">ORG RECORD</text>
+<rect class="hl" fill="#e8f551" x="634" y="116" width="244" height="140"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="634" y="116" width="244" height="140"/>
+<text class="nm on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="756" y="160" text-anchor="middle">acme</text>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="756" y="190" text-anchor="middle">licenses: 9</text>
+<text class="sub on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="756" y="216" text-anchor="middle">one record for the</text>
+<text class="sub on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="756" y="232" text-anchor="middle">whole organization</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="376" x2="920" y2="376"/>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="402">01</text><text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="402">Alice and Bob share the org record and nothing else. Each has a user record of their own.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="427">02</text><text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="427">Alice in another organization would have a different user record.</text>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="454" x2="54" y2="454" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="458">READS AND WRITES</text>
+<rect fill="url(#hatch)" x="214" y="448" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="214" y="448" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="248" y="458">OUTLIVES THE REQUEST</text>
+<rect class="hl" fill="#e8f551" x="430" y="448" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="464" y="458">SHARED BY BOTH USERS</text>
+</g>
+</svg>

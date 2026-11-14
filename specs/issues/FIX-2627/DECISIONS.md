@@ -147,6 +147,13 @@ other way, a stretch where the goals don't cover the install every app uses.
 Settled on the implementation branch (`claude/fix-2627-impl`). Each narrows a decision above;
 none reverses one.
 
+- **The three views are deferred to FIX-2725 (owner decision, 2026-11-13).** The worker
+  sessions, session turns and coding board views aren't built here. A view's block context
+  has no session read: it can't list a user's sessions or read a session's requests, and the
+  engine records no such read to wake a watcher. And a session view runs only on its own
+  session's flow, while a kit can't add a view to flows another kit builds. So
+  `listWorkerSessions`/`findWorkerSession`, claude-code-style's turn assembly and its
+  `boardOf`/`harnessOf` stay exactly as they are, and no `views` slot is built.
 - **Where the kits are imported from.** `workforce` from `@flow-state-dev/workforce/kit`, beside
   `harnesses` at `@flow-state-dev/harness-manager/kit`: both read the file system at start, so
   neither sits on a package root a browser bundle reaches.
