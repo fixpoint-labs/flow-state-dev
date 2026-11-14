@@ -82,7 +82,7 @@ Fix what the task describes. Keep the change small.
 
 ## Its own checkout
 
-Each task gets its own git branch and its own directory, and a retry picks up the work already in it. Your checkout's working tree, index and branches are not edited. A repository you list in `localRepositories` is shared with runs, which can create or move its branches and tags.
+Each task gets its own git branch and its own directory, and a retry picks up the work already in it. Runs never touch your working tree or index. They do share the repository's refs: a run can create or move branches and tags in a repo you list in `localRepositories`.
 
 The checkout is where the agent is pointed, not a jail. The sandbox on its harness sets what it may run. [Harness runs](../reference/harness-runs.md) has the workspace options and each agent's sandbox.
 
@@ -94,25 +94,19 @@ Anything short of done fails the attempt, and the next attempt is told why. A gr
 
 ## Asking you a question
 
-When a run needs a decision, the task stops and waits, and nothing is spent while you think. The question shows in your Inbox, the list of things waiting on a user. The judge asks when it cannot tell whether the goal is met.
+A task can stop and wait on you, and nothing is spent while you think. The question shows in your Inbox, the list of things waiting on a user. The judge puts one there when it cannot tell whether the goal is met, and a review you turned on waits there too. By default the agent does not ask you questions itself. [Harness runs](../reference/harness-runs.md) shows how to let it.
 
 You answer in the Inbox, or by typing a line in the run's session. The answer resumes the same coding session in the same checkout, and does not use up a retry.
 
 ## Choosing a harness
 
-The harness is a slot: one value for each agent. A worker's `harness:` line names one by id.
+Agents go in a slot, an opening the harness kit leaves for other kits to fill, called `harnesses`, one value per agent. A worker's `harness:` line names one by id.
 
 <Figure svg={HarnessSlot} caption="The agent is a value in a slot" description={"Three boxes from left to right. The worker file for engineering.coder says flow coder and harness claude-code; the harness line is highlighted as the one line you change. An arrow leads to the coder flow, which takes the checkout, runs the agent and reads the verdict, the same for every agent. An arrow leads to the harnesses slot, which holds two values in boxes, claude-code from claudeCode() and codex from codexHarness()."} />
 
-Moving `engineering.coder` from Claude Code to Codex changes the `harness:` line to `codex`, and puts Codex's value in the slot. Codex is not a kit like Claude Code, so it goes in with `fill`, which puts values into a slot another kit opened:
+Moving `engineering.coder` from Claude Code to Codex changes the `harness:` line to `codex`, and puts Codex's value in the slot. Codex is not a kit like Claude Code, so it goes in with `fill`, which puts values into a slot another kit opened. In `fsdev.config.ts`, drop `claudeCode()` from `kits` and add `fill` beside it, with `codexHarness` imported from `@flow-state-dev/codex`:
 
 ```ts title="fsdev.config.ts"
-import { codexHarness } from "@flow-state-dev/codex";
-import { createFlowState } from "@flow-state-dev/engine";
-import { harnesses } from "@flow-state-dev/harness-manager/kit";
-import { workforce } from "@flow-state-dev/workforce/kit";
-
-// `workspace` is the host built in the install section.
 export default createFlowState({
   kits: [
     workforce({ agent: { model: "openai/gpt-6-luna" } }),
@@ -122,14 +116,14 @@ export default createFlowState({
 });
 ```
 
-The flow does not change, and what differs between agents, such as the sandbox, lives inside each harness value. A harness that is not set up on the machine fails the task at once and says why. It never moves to another agent.
+The flow does not change, and what differs between agents, such as the sandbox, lives inside each harness value.
 
 ## What it gets you
 
 - **Your tree is safe.** A failed attempt leaves its mess in a branch, not in your checkout.
 - **Done means checked.** `fix-cart-test` is not closed because the agent went quiet.
-- **Questions wait for you.** Your answer continues the same session.
-- **Agents are interchangeable.** Switching from Claude Code to Codex is a line in a file.
+- **Questions wait for you.** Your answer continues the same session, without using a retry.
+- **Agents are interchangeable.** Switching from Claude Code to Codex changes the worker's `harness:` line and the slot's value. The flow stays the same.
 
 ## How it fits with the others
 
