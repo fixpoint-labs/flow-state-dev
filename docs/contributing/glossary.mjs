@@ -883,6 +883,12 @@ const EXEMPTIONS = [
     why: "the Teammates lab's own worker is called Chief of Staff; the Shift Coordinator decision (FIX-2244) retires that name for Shift Manager's coordinator, not for this lab",
   },
   {
+    // The docs-revamp pages that describe the Teammates lab name its worker as the lab does.
+    path: /^docs\/contributing\/docs-revamp\/pages\/(?:start\/(?:run-a-starter|what-flow-state-is)|catalog\/starters\/teammates)(?:\.facts|\.record)?\.md$/,
+    rules: ["shift-coordinator-names", "shift-coordinator-prose"],
+    why: "FIX-2696: pages about the Teammates lab name its Chief of Staff worker and its `teammates.chief-of-staff` id as the lab ships them; FIX-2244 retires the name for Shift Manager's coordinator, not for this lab",
+  },
+  {
     path: /^\.changeset\/fix-2614-routines\.md$/,
     rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "LIST_SCHEDULES_ACTION", "listedScheduleSchema"],
     why: "FIX-2614: the release note that tells consumers what each retired schedule and subscription name became",
