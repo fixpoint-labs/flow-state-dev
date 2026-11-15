@@ -66,6 +66,23 @@ export const handleTicket = sequencer({
 
 A sequencer is a block that runs other blocks in order. `cleanMessage` trims the customer's message and returns an object, `{ text, truncated }`. `draftReply` asks a model to write the answer and takes a string. Nothing between them turns one into the other. TypeScript accepts the file, and the run fails. The [Blocks](../concepts/blocks.md) page explains both blocks.
 
+The flow gives the sequencer a `reply` action:
+
+```ts title="src/flows/support/flow.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import { z } from "zod";
+import { handleTicket } from "./blocks/handle-ticket";
+
+export const supportFlow = defineFlow({
+  kind: "support",
+  actions: {
+    reply: { block: handleTicket, inputSchema: z.object({ message: z.string() }) },
+  },
+});
+
+export default supportFlow();
+```
+
 ## 1. Open the DevTool
 
 Install the CLI and the DevTool's pre-built page as dev dependencies.

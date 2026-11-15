@@ -34,6 +34,8 @@ Written by `docs-writer` (sonnet), 1541 words. Scenario: The support desk's repl
 - After revise round 2, page sha256 c2f349eee95e: exit 0.
 - After revise round 3, page sha256 fd51a7986d81: exit 0.
 
+- After the loop (review): the page now shows `src/flows/support/flow.ts`, which default-exports the `support` flow with its `reply` action. Without it `fsdev run` and `fsdev dev` find no flow (`packages/fsdev/src/resolve-flow.ts`). It is written the way B-03 writes its flow file.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 99db4160edc2, and the 10 Reference row(s) pass 6 moved.
