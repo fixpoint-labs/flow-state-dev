@@ -282,7 +282,7 @@ describe("watchSessions", () => {
 
     listed.set("desk.main", [{ id: "s1", updatedAt: 1 }, { id: "s_new", updatedAt: 9 }]);
     await lab.openSession("session", "private/p1");
-    await until(() => seen.at(-1)!.some((row) => row.id === "s_new"));
+    await until(() => seen.at(-1)!.some((session) => session.id === "s_new"));
     expect(h.subscriptions.filter((s) => !s.closed).at(-1)!.topics).toEqual(expect.arrayContaining([{ scope: "session", id: "s_new" }]));
   });
 });
@@ -322,10 +322,10 @@ describe("watchTasks' freshness", () => {
   it("says stale while its read of the board fails, keeping the last rows, and fresh once one succeeds", async () => {
     const h = host();
     h.list([{ id: "t1", goal: "Fix it", status: "in_progress" }]);
-    const rows: unknown[][] = [];
+    const seen: unknown[][] = [];
     const stale: boolean[] = [];
-    stops.push(createWiredLab(h.client).watchTasks("s1", (next) => rows.push(next), (next) => stale.push(next)));
-    await until(() => rows.length === 1);
+    stops.push(createWiredLab(h.client).watchTasks("s1", (next) => seen.push(next), (next) => stale.push(next)));
+    await until(() => seen.length === 1);
     expect(stale).toEqual([]);
 
     // The next read fails: the rows handed last stay, and the watch says they may be old.
@@ -334,7 +334,7 @@ describe("watchTasks' freshness", () => {
     h.hear({ kind: "resource" } as WireNotice);
     await until(() => stale.length === 1);
     expect(stale).toEqual([true]);
-    expect(rows).toHaveLength(1);
+    expect(seen).toHaveLength(1);
 
     // The retry reads again, and the watch says the rows are fresh.
     await until(() => stale.length === 2);
