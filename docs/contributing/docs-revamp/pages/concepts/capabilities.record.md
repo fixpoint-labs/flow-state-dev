@@ -67,6 +67,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Post-loop edit: the three suspected inaccuracies, checked. Evaluators take `uses` (`packages/core/src/blocks/evaluator.ts:391`), so line 73 now says every kind of block takes it. A capability that brings context or tools to a non-generator throws when the block is built (`packages/core/src/capability/merge.ts:561-590`); lines 73 and 148 now say that plainly. Capabilities can declare state (`define-capability.ts:128-133`), so line 147 stands.
 
 - Post-review edit: control tools pass the fence by design, `packages/core/src/capability/types.ts:100-121`; generator collects them with the fence up, `generator.ts:3006-3035`.
+- Re-run after the review edit: no wrong claim. `inputSchema` and the `user` slot are valid generator fields and `user` supplies the user message (`packages/core/src/types/block.ts:611-612,1073`; `packages/core/src/blocks/generator.ts:3145-3162`).
 
 ## 6 · Depth pass
 
