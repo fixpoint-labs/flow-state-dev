@@ -11,11 +11,11 @@
  * The host is durable: a thread's review or question waits on you, and a
  * coding run's review needs durable execution.
  *
- * A coding run works in a git worktree of its project's repository, on its
+ * A coding run works in a git worktree of its session's repository, on its
  * own branch, when that repository is one the lab may cut from: those named in
  * `CLAUDE_CODE_STYLE_REPOSITORIES` (paths, `:`-separated), or by default the
  * repository the lab is started in. The worktree lives under the data folder
- * and its branch in the repository. A project on any other repository runs in
+ * and its branch in the repository. A session on any other repository runs in
  * a clone of it under the data folder.
  *
  * Settings, all optional: `CLAUDE_CODE_STYLE_MODEL` (default
@@ -31,10 +31,8 @@
  * before the server takes it as interrupted (default one minute), so a goal can
  * read a dead run's row before the board takes it back.
  *
- * A coding run is done only when its project's checks pass (the project entry's
- * `checks`; none named runs nothing). `CLAUDE_CODE_STYLE_SETUP`, one command
- * such as `pnpm install --frozen-lockfile`, runs in each fresh worktree before
- * its run starts, so the checks find what they need; it runs with no shell,
+ * `CLAUDE_CODE_STYLE_SETUP`, one command such as `pnpm install --frozen-lockfile`,
+ * runs in each fresh worktree before its run starts; it runs with no shell,
  * and a command that needs one stops the lab at start. Unset, nothing runs.
  *
  * A session asked to follow a GitHub pull request reads GitHub with
@@ -80,6 +78,8 @@ const { flowState } = await openLab({
   ...(process.env.CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS === undefined ? {} : { staleThresholdMs: Number(process.env.CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS) }),
   // `GOAL_CONTROL=no-repository-check` leaves the project repository check off, for the goal check's control.
   checkRepository: process.env.GOAL_CONTROL !== "no-repository-check",
+  // `GOAL_CONTROL=first-repository` answers every run the first listed repository, for the goal check's control.
+  ignoreSessionRepository: process.env.GOAL_CONTROL === "first-repository",
   // `GOAL_FLOWS` names a module of a goal check's own flows (a goal's delivered message). Never set otherwise.
   ...(process.env.GOAL_FLOWS ? { goalFlows: process.env.GOAL_FLOWS } : {}),
   githubToken: operatorGitHubToken(),

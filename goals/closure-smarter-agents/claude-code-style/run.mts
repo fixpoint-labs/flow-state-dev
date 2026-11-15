@@ -22,7 +22,8 @@
  *       GOAL_ASKS=date,sizing (a subset) · GOAL_RUNS · GOAL_FOLD_TURNS_MAX
  */
 import { join } from "node:path";
-import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+import { createWorkforceClient, SET_SESSION_FIELDS_ACTION } from "@flow-state-dev/workforce/browser";
+import { REPO_ROOT } from "../../lib/index.mts";
 import { act, askAfterFold, askWorker, clientFor, coderRepository, heldSkills, runClosure, serveFsdev, settledRunChecks, skillFiles, type AppDriver } from "../closure.mts";
 
 const USER = "u_closure";
@@ -52,10 +53,12 @@ const driver: AppDriver = {
     // The project's checks are project data the coder's run reads, like its repository: a fixture, not a switch.
     await act(fsd, "projects", projects, "createProject", { id: projectId, title: "Closure", visibility: "private", repository: `file://${repo}`, checks: [d.coder.check] });
     const project = { visibility: "private" as const, id: projectId };
-    /** A fresh session of `worker`, set to the project. */
+    /** A fresh session of `worker`, set to the project and opened on its repository, as the lab's open does. */
     const sessionOf = async (worker: string) => {
       const id = (await fsd.flow("agent").createSession({ state: { workerId: worker } })).id;
       await workforce.setWorkProject(worker, project, { sessionId: id });
+      // An older tree (the control's commit) finds its repository through the project, and has no session repository.
+      if (p.root === REPO_ROOT) await act(fsd, "agent", id, SET_SESSION_FIELDS_ACTION, { worker, fields: { repository: `file://${repo}` } });
       return id;
     };
     const main = async (line: string, budgetMs?: number) =>

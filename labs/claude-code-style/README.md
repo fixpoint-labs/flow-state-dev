@@ -140,16 +140,15 @@ coding runs work on. The host allows `file://` repositories only, and the reposi
 checkout gets, and keeps Create off with the problem shown when it fails; the server refuses the
 same project (`repository-unusable`). The picker also says what its view does and shows which
 coding harnesses can run here, with Re-check, and an empty session offers starter lines that fill
-the composer. A run works in a git worktree of the repository under
-the data folder, on a branch of its own that you'll find in the repository, so your checked-out
+the composer. A session opened on a project works in the project's repository: the server writes
+it on the session when it opens, and every task the session files carries it down, so each coding
+run and each source read finds its repository from its session. A run works in a git worktree of
+that repository under the data folder, on a branch of its own that you'll find in the repository, so your checked-out
 branch and files don't change. A repository not in `CLAUDE_CODE_STYLE_REPOSITORIES` gets a clone
 under the data folder instead. Before a run settles, a judge (harness-manager's `goalJudge`) reads
 its answer and commits against the task's goal: it can send the run back, ask you a question, or
-let it through, and threads mode shows its verdict on the coding thread's card. A run is also done only when
-its project's checks pass: the commands the project names in `checks` (none by default) run in the
-run's worktree after the harness finishes, and a red one sends the run back with the command's
-output in its next brief. A run that changed no files, such as one that answers a question, skips
-them, so you can still ask about a project whose branch is already red.
+let it through, and threads mode shows its verdict on the coding thread's card. The lab runs no
+project checks: a project's `checks` are not read.
 
 Every task card shows the model its run uses and a token count that rises while the run works,
 and the harness tag names the harness the run reported. Finished rows keep the final total, and a
@@ -182,12 +181,12 @@ a package call:
 | The screen | Package piece |
 |---|---|
 | The sessions list | `listWorkerSessions("desk.main")` from `@flow-state-dev/workforce/browser` |
-| *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject` |
+| *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject`, then workforce's `setSessionFields` with the project's repository: the session's `repository` (`flows/session-repository.mts`), which the host's run source reads |
 | The project picker and *New project* | `listProjects`, `createProject` and `checkRepository`, from `defineProjectBlocks` with the workspace host's check (`flows/projects.mts`) |
 | The picker's harness chips | the harness kit's `harnesses` flow's `readiness` view, read with no session |
 | Sending and the thread | the `respond` action, and the session's message and tool items |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
-| The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
+| The main session reading the repository's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host and its run source, the session's repository; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
 | Interrupting | aborting the turns running when you press Stop; the thread then shows the registry's `request-recovery` stopped line after that turn, read from its `aborted` request, with the count of background work still running from the session stream's runs |
 | A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery` (installed in `src/components/flow-state/`); Retry is the client's `request(id).retry()`, on the newest turn only |
 | The tasks pane and a task's work | the `listTasks_tasks` read (stores nothing per poll), and the items of the task's run session |
@@ -213,7 +212,7 @@ the list and pins every 3 seconds, the running turn every 1.5.
 
 `desk.coder` and `desk.thread-coder`, and their plan, Codex and Cursor siblings, are on the harness kit's
 coding worker flow, `coder`: a `harnessManager` per harness, picked by the worker's
-`harness:` line, working in the session's project (the kit's `project: true`). A worker with
+`harness:` line, working in the session's repository (the host's run source). A worker with
 `review: true`, as threads mode's `desk.thread-coder` is, runs on the manager built with
 `reviewChanges: true`: a run that committed waits for your review before its task completes.
 Session mode's coders have no review line, since that mode has no review to answer.

@@ -68,6 +68,8 @@ function host() {
       return json({ value: { pinned }, version: 1 });
     }
     if (path === "/api/flows/resources/user/lab-dismissals") return json({ value: { dismissed }, version: 1 });
+    // Your projects, read as a session opens on one: none here, so it writes no repository.
+    if (path.endsWith("/entries")) return json({ items: [] });
     // The board's task-list view: its rows, keyed, and the topic a change to them publishes on.
     if (path.endsWith("/views/listTasks_tasks")) {
       const session = path.split("/")[4]!;

@@ -12,7 +12,8 @@
  * | `listProjects`  | the projects collections read by scope: only projects the user may work in |
  * | `createProject` | the project blocks' `createProject`, a private project on a repository,  |
  * |                 | sent to the projects collection and run by the projects flow (`runBy`)   |
- * | `openSession`   | a new session on the mode's main worker, then `setWorkProject`            |
+ * | `openSession`   | a new session on the mode's main worker, then `setWorkProject`, and the   |
+ * |                 | repository it works in, the project's, through workforce's `setSessionFields` |
  * | `send`          | the worker's door, `respond`, in that session, with the line's files       |
  * | `upload`        | the client's `upload`: a file the composer attached, stored, as its reference |
  * | `readFile`      | the server's read route for a file a line carries, through the page's fetcher |
@@ -80,6 +81,7 @@ import {
   projectRef,
   checkRepositoryView,
   PROJECTS_PATTERN,
+  SET_SESSION_FIELDS_ACTION,
   WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
@@ -92,6 +94,7 @@ import type { HarnessReadinessChipRow } from "./components/flow-state/harness-re
 import type { LandedWork, ReviewAnswer, ReviewLand } from "./components/flow-state/review-hold";
 import { dismissalKey, taskOfDismissal, waitingOnYou } from "./lib/columns";
 import { labDismissals, labPins } from "../flows/user-marks.mts";
+import { REPOSITORY_FIELD } from "../flows/session-repository.mts";
 import { resultSummary } from "./lib/result-summary";
 import { firstLineOfText, NEW_SESSION_TITLE, sessionTitle } from "./lib/session-title";
 import { filedTaskOf, toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
@@ -797,7 +800,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
       },
     };
     return (await readEveryCollectionPage(pages, scope, PROJECTS_PATTERN)).map(
-      (row) => row.clientData as { id: string; title: string; members: string[] },
+      (row) => row.clientData as { id: string; title: string; members: string[]; repository: string | null },
     );
   };
 
@@ -1302,8 +1305,12 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
       const { worker } = modeById(mode);
       const project = parseProjectRef(projectId);
       if (project === undefined) throw new Error(`"${projectId}" names no project.`);
-      const created = await fsd.flow(await flowOf(worker)).createSession({ state: { [WORKER_ID_STATE_KEY]: worker } });
+      const flow = await flowOf(worker);
+      const created = await fsd.flow(flow).createSession({ state: { [WORKER_ID_STATE_KEY]: worker } });
       await workforce.setWorkProject(worker, project, { sessionId: created.id });
+      // The repository the session works in: the project's, written by the server, once, at open.
+      const repository = (await everyProject(project.visibility === "shared" ? "org" : "user")).find((entry) => entry.id === project.id)?.repository;
+      if (typeof repository === "string") await run(flow, created.id, SET_SESSION_FIELDS_ACTION, { worker, fields: { [REPOSITORY_FIELD]: repository } });
       for (const tell of [...sessionOpened]) tell();
       return { id: created.id, title: NEW_SESSION_TITLE, worker, updatedAt: created.updatedAt, running: false, waiting: 0, projectId };
     },

@@ -11,14 +11,21 @@
  *   turn runs is taken into that turn (epic D2). The lab writes no block for it.
  * - `desk.researcher` and `desk.thread` are on `agent` too; `desk.lead` is on
  *   the built-in `coordinator` flow.
+ * - **A session works in a repository** (`flows/session-repository.mts`): the
+ *   workforce kit's one session field, `repository`, which the server writes
+ *   when the session opens and every hand-over carries down to the tasks it
+ *   files. The host's run source (`repositoryOfRun`) reads it from the session
+ *   a run or a read is in: a repository the lab lists runs in a worktree of it,
+ *   any other `file://` one in a clone, and a session with none is refused.
  * - The `agent` flow carries `projectSourceCapability` over the same host the
  *   coding runs use, so a worker whose file names its `read` preset reads the
- *   session's project itself, from the host's clone at the default branch.
+ *   session's repository itself, from the host's clone at the default branch.
  * - `desk.coder` and `desk.thread-coder` are on the harness kit's coding worker
- *   flow, `coder`, which works in the session's project; only
+ *   flow, `coder`, which works in the session's repository; only
  *   `desk.thread-coder` waits for your review.
  * - `projects` (`flows/projects.mts`, the lab's own) lists and creates the
- *   projects a session works in, and declares your pins and dismissals, user
+ *   projects the picker offers, each naming the repository a session opened
+ *   from it works in, and declares your pins and dismissals, user
  *   resources the screen reads and writes with no session (`flows/user-marks.mts`).
  *   A project's repository is checked when it is
  *   made, by the workspace host's `checkRepository`: one no coding run could
@@ -40,6 +47,7 @@ import { claudeCode } from "@flow-state-dev/claude-code";
 import { codexHarness } from "@flow-state-dev/codex";
 import { utility } from "@flow-state-dev/core";
 import type { BlockContext, ModelResolver } from "@flow-state-dev/core/types";
+import type { RunSource } from "@flow-state-dev/workspace";
 import { cursorHarness } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
 import { ASK_MARKER_IGNORED, scriptedHarness, type Harness } from "@flow-state-dev/harness-manager";
@@ -47,11 +55,12 @@ import { codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { createSQLiteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
-import { githubSubscriptionProvider, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
+import { githubSubscriptionProvider, projectSourceCapability } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import Database from "better-sqlite3";
 import { localWorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { defineProjectsFlow, PROJECTS_FLOW } from "./flows/projects.mts";
+import { REPOSITORY_FIELD, sessionFields } from "./flows/session-repository.mts";
 
 /** What {@link openLab} builds the host from. */
 export interface LabOptions {
@@ -75,6 +84,8 @@ export interface LabOptions {
   staleThresholdMs?: number;
   /** False leaves the project repository check off: the goal check's control. Default true. */
   checkRepository?: boolean;
+  /** True answers every run the first of `repositories`, whatever its session's: the goal check's control. Default false. */
+  ignoreSessionRepository?: boolean;
   /** A goal check's own flows beside the lab's, from the module this names (its default export lists them). */
   goalFlows?: string;
   /** Resolves every model the host calls, in place of the gateway: tests pass a scripted one. Absent: the gateway. */
@@ -139,16 +150,23 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
     const real = isAbsolute(path) && existsSync(path) ? realpathSync(path) : undefined;
     return real !== undefined && options.repositories.includes(real) ? real : undefined;
   };
-  const source = projectWorkspace();
+  /**
+   * The lab's run source: the repository the run's session works in, its own or, in a task's
+   * session, the one its hand-over carried down. Read from the session's server-written state only.
+   */
+  const repositoryOfRun: RunSource = (ctx) => {
+    if (options.ignoreSessionRepository === true && options.repositories[0] !== undefined) return { kind: "repo", repo: options.repositories[0] };
+    const repository = (ctx.session.state as Record<string, unknown> | undefined)?.[REPOSITORY_FIELD];
+    if (typeof repository !== "string") {
+      return { kind: "refused", reason: "no-repository", message: "This session works in no repository. Open a new session on one." };
+    }
+    return { kind: "repo", repo: listed(repository) ?? repository };
+  };
   const workspace = localWorkspaceHost({
     root: join(data, "runs"),
     remotes: { allow: ["file"] },
     localRepositories: [...options.repositories],
-    source: async (ctx) => {
-      const answer = await source(ctx);
-      const local = answer.kind === "repo" ? listed(answer.repo) : undefined;
-      return answer.kind === "repo" && local !== undefined ? { ...answer, repo: local } : answer;
-    },
+    source: repositoryOfRun,
     ...(options.setup === undefined ? {} : { setup: options.setup }),
   });
 
@@ -182,7 +200,7 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
           model,
           ...(options.answerAgain === false ? {} : { answerAgain: true as const }),
           afterAnswer: titler(),
-          // A worker whose file names its `read` preset reads the session's project itself, on the coding runs' host.
+          // A worker whose file names its `read` preset reads the session's repository itself, on the coding runs' host.
           uses: [projectSourceCapability({ workspace })],
         },
         coordinator: { routeModel: model, agent: { model, afterAnswer: titler() } },
@@ -192,9 +210,10 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
           poll: { index: scheduleIndexAt(join(data, "poll.db")) },
         },
         github: { provider: github, poll: true },
+        sessionFields,
       }),
-      // A task works in its session's project: it needs one, runs in its checkout, and the project's checks pass first.
-      harnesses({ workspace, project: true, logReadiness: true }),
+      // A task works in its session's repository, through the host's run source.
+      harnesses({ workspace, logReadiness: true }),
       scripted === undefined
         ? claude
         : claude.without(harnesses.slots.harnesses, "claude-code").without(harnesses.slots.harnesses, "claude-code-plan"),
@@ -210,7 +229,7 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
     adapters: [createScheduledTransportAdapter()],
     durable: true,
     // A shutdown waits for a coding run still going, its checks and judge included, rather than the engine's 30 s default.
-    dispatchDrainTimeoutMs: codingDrainBudgetMs({ project: true }),
+    dispatchDrainTimeoutMs: codingDrainBudgetMs({}),
     ...(scripted !== undefined && options.staleThresholdMs !== undefined ? { staleSweepThresholdMs: options.staleThresholdMs } : {}),
     resolvePrincipal: () => ({ userId: options.userId, orgId: "claude-code-style-lab" }),
     devtool: { userId: options.userId },
