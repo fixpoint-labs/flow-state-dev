@@ -54,7 +54,7 @@ export default createFlowState({
 });
 ```
 
-`workspace` is where runs get their checkouts. Options, defaults, the model id and sandbox settings are in [Harness runs](../../reference/harness-runs.md).
+`workspace` is where runs get their checkouts. `cursorHarness()` turns Cursor's sandbox off unless you pass `agent: { local: { sandboxOptions: { enabled: true } } }`, so by default a command Cursor runs is not confined to the checkout. Options, defaults, the model id and sandbox settings are in [Harness runs](../../reference/harness-runs.md).
 
 A worker names the harness by its id, `cursor`:
 
@@ -78,7 +78,8 @@ The same agent is also a block you step in your own flow:
 
 ```ts title="src/flows/tidy/blocks/tidy-imports.ts"
 import { readFile, writeFile } from "node:fs/promises";
-import { cursorAgent } from "@flow-state-dev/cursor";
+import { harnessEnv } from "@flow-state-dev/core/harness";
+import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import { steering } from "../steering";
 
 // One saved agent per flow session, so two sessions never share a conversation.
@@ -87,6 +88,7 @@ const idFile = (sessionId: string) => `/work/acme-shop/.cursor-agent-${sessionId
 export const tidyImports = cursorAgent({
   cwd: () => "/work/acme-shop",
   model: "composer-2.5",
+  env: harnessEnv({ pass: CURSOR_PASS }), // without it, every shell command gets the server's whole environment
   resume: (ctx) => readFile(idFile(ctx.session.identity.id), "utf8").catch(() => null), // the agent to continue
   onSession: (id, ctx) => writeFile(idFile(ctx.session.identity.id), id), // saves the id when Cursor opens the agent
   onSteerable: steering.onSteerable, // see Steering a running turn

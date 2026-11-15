@@ -87,7 +87,7 @@ Each task gets a git worktree on its own branch, such as `conductor/fix-cart-tes
 
 ### The verdict
 
-A task completes when its run ended normally and the commands in `checks` pass in the run's checkout. The judge, on by default, can also hold it open: an evaluation model that reads the run against the task's goal and answers done, not done or ask. With `pullRequests` on, also the default, a pull request the run opened holds the task until it merges or closes. With `review` on, a user's review does too.
+A task completes when its run ended normally and the commands in `checks` pass in the run's checkout. The judge, on by default, can also hold it open: an evaluation model that reads the run against the task's goal and answers done, not done or ask. It holds a task only when it is at least 70% sure; below that, not done and ask count as done, and a judge that errors or times out leaves the checks to decide alone. With `pullRequests` on, also the default, a pull request the run opened holds the task until it merges or closes, even when the judge says not done. With `review` on, a user's review does too.
 
 Add `checks: { commands: ["pnpm test"] }` to the kit and `fix-cart-test` completes only when `pnpm test` passes in its checkout. A green check is evidence, not proof: the checkout's scripts are ones the agent could edit.
 

@@ -50,6 +50,7 @@ export async function startErrorReporter(
   const flowState = createFlowState({
     flows: [reporterFlow(), intakeFlow()],
     errorCapture: reporter.capture,
+    durable: true, // the operator's answer waits across restarts; on by default over a persistent store
   });
 
   await reporter.bind(host);
@@ -67,7 +68,7 @@ A Shift Manager Lab does all of this when you pass `errorReporter` to `openLab`.
 
 ## Use it
 
-For each report, the reporter gathers what failed, a coding harness drafts the issue, the operator answers, and only then is it filed. Secrets are removed before anything is stored or shown.
+For each report, the reporter gathers what failed, a coding harness drafts the issue, the operator answers, and only then is it filed. Before anything is stored or shown, the reporter removes the values of environment variables whose names contain KEY, TOKEN, SECRET, PASSWORD, CREDENTIAL, AUTH, COOKIE or PRIVATE (8 characters or longer), the values `createErrorReporter`'s `secrets` function returns, the user's stored MCP keys, and text shaped like a known key. Any other secret in the error, such as a password inside `DATABASE_URL`, is kept and filed with the report, so return it from `secrets`.
 
 The operator sees the draft as an ordinary question in Inbox:
 

@@ -60,12 +60,18 @@ The probe spends no model turn and never throws. Pass the same `env` the run wil
 The block is `claudeCodeAgent`. Its input is `{ prompt }` and optional `attachments`, so you set the directory and session as options to `claudeCodeAgent(...)`, and a model that holds the block as a tool cannot choose them.
 
 ```ts title="src/flows/tidy/blocks/tidy-imports.ts"
-import { claudeCodeAgent } from "@flow-state-dev/claude-code";
+import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 
 export const tidyImports = claudeCodeAgent({
   cwd: () => "/work/acme-shop",
+  env: harnessEnv({ pass: CLAUDE_CODE_PASS }), // only the variables Claude Code needs
+  settingSources: ["project"], // the repo's settings, not the server user's
+  settings: { disableAllHooks: true }, // a hook in the repo does not run
 });
 ```
+
+The block's own defaults include none of these three. Left out, the run gets the server's whole environment, secrets included, and loads every settings file Claude Code finds, so a hook a repository ships runs as the server's user. The `claudeCode()` kit sets all three for you.
 
 ```ts title="src/flows/tidy/flow.ts"
 import { defineFlow, sequencer } from "@flow-state-dev/core";
@@ -114,7 +120,7 @@ File operations and pull requests are not items. Alongside the stream, a run rec
 
 ## Approving tools
 
-By default the kit's runs ask nothing: its tool list and approved edits cover what a coding task does. To have Claude Code ask before a call, build the worker yourself with `harnessManager({ approveTools: true })` from `@flow-state-dev/harness-manager`, in place of the one the `harnesses` kit sets up, because the kit does not turn approvals on. The call then shows as an "Allow Bash?" approval in the user's Inbox, the list of things waiting on a user. Only Claude Code asks per call. [Harness runs](../../reference/harness-runs.md) covers `onToolApproval` and what each answer does to the turn.
+By default the kit's runs ask nothing: its tool list and approved edits cover what a coding task does. To have Claude Code ask before a call, build the worker yourself with `harnessManager({ approveTools: true })` from `@flow-state-dev/harness-manager`, in place of the one the `harnesses` kit sets up, because the kit does not turn approvals on. A call to a tool the harness does not pre-allow then shows as an approval, such as "Allow WebFetch?", in the user's Inbox, the list of things waiting on a user. The kit pre-allows `Read`, `Write`, `Edit` and `Bash`, and a pre-allowed call never asks, so to approve those, give the worker an agent whose `allowedTools` leaves them out. Approvals need durable execution. Only Claude Code asks per call. [Harness runs](../../reference/harness-runs.md) covers `onToolApproval` and what each answer does to the turn.
 
 ## Next
 
