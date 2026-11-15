@@ -149,8 +149,8 @@ It comes down to the cost on every list: the fallback reads a message per untitl
   requests (number, link, title), beside `changes`.
 - **`findWorkerSession` stays:** it derives the one session a write goes to.
 - **Names:** `list`, `turns`, and the views' names are new public names; none is a word the
-  glossary retires. **Changeset:** `minor` for `core`, `engine`, `workforce`, `harness-manager`,
-  `client`.
+  glossary retires. **Changeset:** `minor` for `core`, `engine`, `workforce` and
+  `harness-manager`. Nothing in `packages/client` changes: `listWorkerSessions` is workforce's.
 
 ## Considered and dropped
 

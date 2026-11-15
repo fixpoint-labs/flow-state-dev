@@ -162,6 +162,6 @@ from the first.
 [Q2](DECISIONS.md#q2) · what the sidebar shows before a title is generated: I recommend
 "Untitled", dropping the first-line fallback.
 
-Feature · `core`, `engine`, `workforce`, `harness-manager`, `client` · M (two reads, the hearing
+Feature · `core`, `engine`, `workforce`, `harness-manager` · M (two reads, the hearing
 rules, four views, two rules moved, one client call removed) · after FIX-2625, FIX-2627, FIX-2734
 (merged) · blocks FIX-2628 · [Linear](https://linear.app/fixpoint-labs/issue/FIX-2725)
