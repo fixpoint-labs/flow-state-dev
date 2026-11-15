@@ -220,24 +220,29 @@ function Chat() {
     event.preventDefault();
     const text = message.trim();
     if (!text) return;
-    setMessage("");
-    await session.sendAction("chat", { message: text });
+    try {
+      await session.sendAction("chat", { message: text });
+      setMessage("");
+    } catch {
+      // session.error holds why, and the text stays for a retry
+    }
   }
 
   return (
     <main>
       <p>Messages sent: {String(data?.messageCount ?? 0)}</p>
       <ItemsRenderer items={session.items} />
+      {session.error && <p role="alert">{session.error.message}</p>}
       <form onSubmit={send}>
         <input value={message} onChange={(e) => setMessage(e.target.value)} />
-        <button type="submit" disabled={!session.canSendAction}>Send</button>
+        <button type="submit" disabled={!session.canSendAction || !flow.activeSessionId}>Send</button>
       </form>
     </main>
   );
 }
 ```
 
-`FlowProvider` gives everything beneath it the flow and the user. `useFlow` lists the user's sessions and, with `autoCreateSession`, opens one when there are none. `useSession` returns the session's `items`, and `sendAction("chat", { message })` calls the action by name. `canSendAction` is false while a request is running, which disables Send. `useClientData` reads the field you exposed in step 5. `ItemsRenderer` draws the items, and the generator's messages appear because of its `itemVisibility`.
+`FlowProvider` gives everything beneath it the flow and the user. `useFlow` lists the user's sessions and, with `autoCreateSession`, opens one when there are none. `useSession` returns the session's `items`, and `sendAction("chat", { message })` calls the action by name. `canSendAction` is false while a request is running, and the session id is empty until `useFlow` has one, so Send waits for both. A refused send rejects and leaves the reason in `session.error`, so the form clears the text only on success. `useClientData` reads the field you exposed in step 5. `ItemsRenderer` draws the items, and the generator's messages appear because of its `itemVisibility`.
 
 `userId` says who is chatting. `devuser` is a stand-in; a real app passes the signed-in user.
 

@@ -33,6 +33,7 @@ Written by `docs-writer` (sonnet), 1366 words. Scenario: hello-chat: flow `hello
 - After revise round 1, page sha256 fe02cf16e490: exit 0.
 - After revise round 2, page sha256 e3e65d3b20ef: exit 0.
 - After revise round 3, page sha256 8739c5f69b4a: exit 0.
+- After the loop (review): the page's form keeps the text until `sendAction` resolves, shows `session.error`, and waits for `flow.activeSessionId` before Send is enabled. `sendAction` throws without a session id and rethrows a refused send after `setError` (`packages/react/src/hooks/useSession.ts`), and `canSendAction` tracks only streaming (`:2687`). Type-checks.
 
 ## 5 · Fact check
 

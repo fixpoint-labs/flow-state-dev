@@ -153,11 +153,11 @@ If these sections are missing, the [environment reference](../reference/environm
 
 ## 5. Look at state and resources
 
-The top of the right-hand rail is `Session Context`. It shows the session's state, and its refresh button is `Refresh state`. The support flow keeps a `ticketCount` in session state, as [State and scopes](../concepts/state-and-scopes.md) shows. `Client Data` underneath holds what a browser would receive from it.
+The top of the right-hand rail is `Session Context`. It shows the session's state, and its refresh button is `Refresh state`. `Client Data` underneath holds what a browser would receive from it. The flow on this page declares no state, so both are empty; add the `ticketCount` from [State and scopes](../concepts/state-and-scopes.md) and it appears here.
 
-Below it is `Resources`, which shows each resource's full state on the server. A `ticketNotes` collection from [Resources](../concepts/resources.md) lists its notes here. The [resources reference](../reference/resources.md) explains how this server copy differs from what a browser receives.
+Below it is `Resources`, which shows each resource's full state on the server. Add the `ticketNotes` collection from [Resources](../concepts/resources.md) and its notes are listed here. The [resources reference](../reference/resources.md) explains how this server copy differs from what a browser receives.
 
-Both panels show state as it is when you look, not as it was when `draft-reply` failed. To see state at a step, open `handle-ticket` in the Trace tab and read its state section: a row of buttons, `init` first, then one per step.
+Both panels show state as it is when you look, not as it was when `draft-reply` failed. The DevTool keeps no history of earlier values.
 
 On a non-local `--host`, the Resources panel and the Suspensions tab show a message that debug endpoints are disabled instead of their contents. The [CLI reference](../reference/cli.md) says why.
 

@@ -161,6 +161,7 @@ function Form() {
   return (
     <div>
       <button
+        disabled={!flow.activeSessionId}
         onClick={() => session.sendAction("refund", { orderId: "order_1042", amount: 250 })}
       >
         Ask for a $250 refund
@@ -207,11 +208,14 @@ Render `PendingRefunds` at `/approvals/[sessionId]`. Request the refund on the r
 Give each row a card that answers. `useApproval` takes one `suspension` item and returns the click handlers and the state to draw.
 
 ```tsx title="src/lib/refund-card.tsx"
-import { useApproval } from "@flow-state-dev/react";
-import type { SuspensionItem } from "@flow-state-dev/core/items";
+import { useApproval, type SuspensionView } from "@flow-state-dev/react";
 
-export function RefundCard({ item }: { item: SuspensionItem }) {
-  const a = useApproval(item);
+export function RefundCard({ view }: { view: SuspensionView }) {
+  const { item } = view;
+  const a = useApproval(item, {
+    isResolved: !view.pending,
+    resolution: view.pending ? undefined : view.status,
+  });
   if (a.resolved) {
     return <p>{a.outcome.icon} {a.outcome.label}</p>;
   }
@@ -224,12 +228,13 @@ export function RefundCard({ item }: { item: SuspensionItem }) {
       <button disabled={!a.canReject || a.isResolving} onClick={a.reject}>
         Reject
       </button>
+      {a.error && <p role="alert">{a.error}</p>}
     </div>
   );
 }
 ```
 
-In `Queue`, render `<RefundCard item={item} />` in place of `{item.message}`, and wrap the list in `<SuspensionResolverProvider resolve={session.answerSuspension}>`, imported from `@flow-state-dev/react`. The provider answers through the session, so after a click the card shows the rest of the run as it happens. The [durable execution reference](../reference/durable-execution.md) lists the four ways to answer.
+In `Queue`, list `suspensions` instead of `pending`, so an answered row stays on the page. Render `<RefundCard view={view} />` for each `view` in place of `{item.message}`, and wrap the list in `<SuspensionResolverProvider resolve={session.answerSuspension}>`, imported from `@flow-state-dev/react`. The provider answers through the session, so after a click the card shows the rest of the run as it happens. The [durable execution reference](../reference/durable-execution.md) lists the four ways to answer.
 
 A list can answer without cards. `useSuspensions` also returns `approve(suspensionId)` and `reject(suspensionId)`, one call each.
 

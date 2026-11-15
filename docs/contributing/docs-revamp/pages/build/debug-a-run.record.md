@@ -36,6 +36,7 @@ Written by `docs-writer` (sonnet), 1541 words. Scenario: The support desk's repl
 
 - After the loop (review): the page now shows `src/flows/support/flow.ts`, which default-exports the `support` flow with its `reply` action. Without it `fsdev run` and `fsdev dev` find no flow (`packages/fsdev/src/resolve-flow.ts`). It is written the way B-03 writes its flow file.
 - After the loop (review): step 4 no longer points at an Input section or a Connected Input section on `draft-reply`. A step's input is recorded as a reference to the step before, and the panel draws Input only for an inline value (`packages/devtool/src/react/components/detail/item-detail.tsx:146-149`; `packages/core/src/blocks/sequencer.ts` `inputDescriptorFromPrevPath`). Connected Input fills only from a block's own `connectInput` (`packages/core/src/blocks/internal/build-block.ts:336-353`), not a sequencer step's connector. The page now reads the object from `clean-message`'s Output and the row's `in` preview.
+- After the loop (review): step 5 no longer promises per-step state buttons, since the trace keeps one state snapshot per sequencer (`packages/devtool/src/react/components/detail/sequencer-state-panel.tsx` header), and says `ticketCount` and `ticketNotes` appear only once added from the linked pages, since the page's flow declares neither.
 
 ## 5 · Fact check
 
