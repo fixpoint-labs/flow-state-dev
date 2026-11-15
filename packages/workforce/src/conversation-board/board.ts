@@ -127,6 +127,7 @@ import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
 import { soleTaskDelegate, type TaskDelegates } from "../delegates/worker-delegates";
 import { delegateKey } from "../delegates/delegate-list";
+import { carriedSessionFields, type SessionFields } from "../workers/session-fields";
 import { resolveWorkstreamTarget } from "../projects/project-coordinator";
 import { cancelIfParentEnded, refuseIfParentCancelled, stampFiledMarker } from "./cascade";
 import {
@@ -210,6 +211,12 @@ export interface ConversationBoardOptions {
    * anything is reserved or written. Omitted, no flow needs one.
    */
   needsProject?: (flowKind: string) => boolean;
+  /**
+   * The app's session fields (the installation's `sessionFields`): each
+   * hand-over carries the filer's values down to the session it opens, beside
+   * the filing project. Omitted, none.
+   */
+  sessionFields?: SessionFields;
   // FIX-2083.
   /**
    * How a session that routes messages files a routed task from its model's
@@ -946,7 +953,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ...carriedHopState(ctx.session.state),
         [TASK_FLOW_STATE_KEY]: options.flowKind,
         ...(workstream === undefined ? {} : { [FILING_WORKSTREAM_STATE_KEY]: workstream }),
-        ...(project === undefined ? {} : { [FILING_PROJECT_STATE_KEY]: project })
+        ...(project === undefined ? {} : { [FILING_PROJECT_STATE_KEY]: project }),
+        ...carriedSessionFields(options.sessionFields ?? {}, ctx.session.state)
       };
     }
   };
@@ -1077,7 +1085,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           [FILING_FLOW_STATE_KEY]: options.flowKind,
           ...filingWorkerOf(ctx.session.state),
           ...carriedHopState(ctx.session.state),
-          ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {})
+          ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {}),
+          ...carriedSessionFields(options.sessionFields ?? {}, ctx.session.state)
         };
       }
       // The session's task: a follow-up's root, though the root's own
@@ -1098,7 +1107,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ...carriedHopState(ctx.session.state),
         ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {}),
         ...(workstream === undefined ? {} : { [FILING_WORKSTREAM_STATE_KEY]: workstream }),
-        ...(project === undefined ? {} : { [FILING_PROJECT_STATE_KEY]: project })
+        ...(project === undefined ? {} : { [FILING_PROJECT_STATE_KEY]: project }),
+        ...carriedSessionFields(options.sessionFields ?? {}, ctx.session.state)
       };
     }
   };

@@ -83,6 +83,7 @@ import { ALL_DELEGATES } from "../delegates/delegate-keys";
 import { WORKER_USAGE_RESOURCE, workerSpendHook, workerUsageCollection } from "./worker-usage";
 import { routineResourcesOf, type RoutineResources } from "../routines/routine-resources";
 import { routineSeedOf } from "../routines/routines-options";
+import { withSessionFields, type SessionFields } from "./session-fields";
 
 export { verifiedWorkerOf } from "./verified-worker";
 
@@ -123,6 +124,12 @@ export interface WorkerInstallationOptions {
    * Omitted, no session links to a project.
    */
   projectCoordinator?: string;
+  /**
+   * The app's session fields, a schema each, by name ({@link SessionFields}):
+   * declared on every worker flow's session through {@link WorkerInstallation.session},
+   * written by the server only, at open and at each hand-over. Omitted, none.
+   */
+  sessionFields?: SessionFields;
 }
 
 /**
@@ -276,6 +283,12 @@ export interface WorkerInstallation extends WorkerGrants {
    * (not readonly: the work-project action writes and replaces it).
    */
   readonly sessionStateShape: WorkerSessionStateShape;
+  /**
+   * The app's session fields ({@link WorkerInstallationOptions.sessionFields}):
+   * {@link session} declares them on every worker flow, and each hand-over
+   * carries the filer's values down. Empty when the app declares none.
+   */
+  readonly sessionFields: SessionFields;
   /** The create check a worker flow declares as `session.createCheck`. */
   readonly createCheck: SessionCreateCheck;
   /**
@@ -285,7 +298,8 @@ export interface WorkerInstallation extends WorkerGrants {
    * `serverOwned` the delegate and board fields only the server writes
    * ({@link SESSION_BOARD_SERVER_OWNED}, which carries `workProjectId` too). A flow without those fields still refuses a
    * create that seeds one, by name, rather than dropping it. `workProjectId` is exposed to the
-   * session read too, so a screen shows the project a conversation works in. It also carries,
+   * session read too, so a screen shows the project a conversation works in. The app's
+   * {@link sessionFields} join the schema, `serverOwned` and the session read. It also carries,
    * under a framework-only symbol, the request-end hook that adds every
    * request's spend to the worker's usage record (`worker-usage`).
    */
@@ -411,6 +425,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   }
 
   const projectCoordinator = options.projectCoordinator;
+  const sessionFields: SessionFields = Object.freeze({ ...(options.sessionFields ?? {}) });
   if (projectCoordinator !== undefined) {
     const manifest = standard.get(projectCoordinator);
     if (manifest === undefined) {
@@ -648,6 +663,17 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
           ok: false,
           status: 400,
           message: `"${key}" is set only when a session's board hands a task over; a caller cannot set it.`
+        };
+      }
+    }
+    // The app's session fields: written by the server at open, or born with a hand-over. Refused
+    // here too, not only by `serverOwned`, which a flow that declares its own list replaces.
+    for (const key of Object.keys(sessionFields)) {
+      if (input.state[key] !== undefined && input.via !== "dispatch") {
+        return {
+          ok: false,
+          status: 400,
+          message: `"${key}" is written only by the server, when the session opens or a task is handed over; a caller cannot set it.`
         };
       }
     }
@@ -964,14 +990,18 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     createCheck,
     rosterWorker,
     roster,
+    sessionFields,
     session(extraShape) {
-      return {
-        stateSchema: z.object({ ...sessionStateShape, ...workerMessageStateShape, ...(extraShape ?? {}) }) as never,
-        createCheck,
-        serverOwned: SESSION_BOARD_SERVER_OWNED,
-        client: { expose: [WORK_PROJECT_STATE_KEY] },
-        [SESSION_REQUEST_END_HOOK]: workerRequestEnd
-      };
+      const session = withSessionFields(
+        {
+          stateSchema: z.object({ ...sessionStateShape, ...workerMessageStateShape, ...(extraShape ?? {}) }) as never,
+          createCheck,
+          serverOwned: SESSION_BOARD_SERVER_OWNED,
+          client: { expose: [WORK_PROJECT_STATE_KEY] }
+        },
+        sessionFields
+      );
+      return { ...session, [SESSION_REQUEST_END_HOOK]: workerRequestEnd } as never;
     },
     resolveWorker,
     standardWorker: (id) => standard.get(id),

@@ -95,7 +95,7 @@ export const workerMessageStateShape = { ...messageHopStateShape, ...messageDeli
 const SCREEN_FILING_ACTION = "createTask_tasks";
 
 /** {@link workerMessageStateShape}'s fields, for a flow's `session.serverOwned`. */
-export const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = Object.keys(workerMessageStateShape);
+const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = Object.keys(workerMessageStateShape);
 
 /**
  * The session-state fields this factory's delegate list and board write, and only
@@ -176,6 +176,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     chainLimit: () => taskChainLimitOf(options.installation),
     // A coding flow's task is refused when it is filed with no project (FIX-2333).
     needsProject: (flow) => options.installation.workerFlows()[flow]?.needsProject === true,
+    // The app's session fields go down every hand-over with the filing project.
+    sessionFields: options.installation.sessionFields,
     // The messages the session sent that haven't landed (FIX-2240): the pass sends them again.
     // And the reply-requested messages it landed that its turns never answered (FIX-2310): the pass says "no answer".
     messages: {
