@@ -66,8 +66,8 @@ codes are the proposal in section 3. "G line" is the term's line in `glossary.mj
 | **Direct read** | R | `client.resource(def, { key? })`: reads a user or org resource, or a collection's entries, by scope and key with no session, and writes through the flow its `runBy` names. Reads nothing until a method is called. No block runs. | `client/client.ts:535-540`; G:694 |
 | **Default write flow** | R | The flow that writes a user or org resource, or a collection's entries, named by `runBy: "default"`. `canWrite` decides the write; `runBy` requires client state read access (`client: { state: { read: true } }`) and refuses `eviction` collections. | `core/types/resource-collection.ts:252-260`, `:552-572`; G:709 |
 | **Principal** | R | The verified caller: a `userId` and an `orgId`. `resolvePrincipal` configures it. | OLD "Principal"; `bullmq/src/worker.ts:57-62` (`resolvePrincipal?: PrincipalResolver`) |
-| **User** | R | A person, signed in, always inside one org. Every action is taken by one user. No system users in the framework. | G:467; OLD "User" |
-| **Suspension** | R | A run that stops to wait for a person's approval or answer, then resumes where it stopped (`ctx.suspendForUser`). | `contracts/types/suspension.ts:54-77`; OLD "Suspension" |
+| **User** | R | The signed-in human making a request, always inside one org. Every action is taken by one user. No system users in the framework. | G:467; OLD "User" |
+| **Suspension** | R | A run that stops to wait for a user's approval or answer, then resumes where it stopped (`ctx.suspendForUser`). | `contracts/types/suspension.ts:54-77`; OLD "Suspension" |
 | **Hold** | R | What keeps a task open for a person; a question is one kind (`holdTaskForUser`, `suspendForUser`). | G:325; `orch/task-board/turn-wait.ts:22` (`PersonWaitTool`) |
 | **Ask** | R (Shift Manager) | Only a question to a person (an approval, a clarifying question). Never delivering work. | G:203; OLD "Ask" (an approval or question a run is suspended on) |
 | **Routine** | R | A standing instruction that fires on its own as its owner, with exactly one trigger: a clock (recurring) or an event (a subscription). Four verbs: `listRoutines`, `saveRoutine`, `pauseRoutine`, `deleteRoutine`. A clock routine's id is `clock:<key>`; an event routine's is `event:<subscription id>`. A worker reaches them as tools through `createRoutinesCapability` and only the routines that act through it. | G:783; `wf/routines/routines.ts:1-25` |
@@ -103,7 +103,7 @@ codes are the proposal in section 3. "G line" is the term's line in `glossary.mj
 | **Worker flow** | R | The flow a worker runs on: the built-in `agent`, the coordinator, or an app-registered flow. Each registered once; every worker naming it shares that copy. | G:517; OLD "Worker flow" |
 | **Standard worker** | R | A worker every user has, read from the installation's files, the same for everyone. Nobody edits one; fork it. | G:523; OLD "Standard worker" |
 | **Fork** | R | Copies a standard worker into a worker of your own, from its configuration. | G:524 |
-| **Roster** | R | The workers one user has, standard ones included. Shift Manager's Roster screen shows the same workers by what they are doing (on shift or off shift), worked out on each read, not stored. | G:526; OLD "Roster" (Workforce and Shift Manager rows) |
+| **Roster** | R | The workers one user has, standard ones included. Shift Manager's Roster screen shows the same workers by what they are doing (on shift or off shift). | G:526; OLD "Roster" (Workforce and Shift Manager rows) |
 | **Coordinator** | R | A worker that hands each message to its delegates as routed tasks. Never a mailbox. | G:533; OLD "Coordinator" |
 | **Routed task** | C/R | A coordinator's post; the message it routes is named by the request that carried it (`messageRequestId`). | G:370; `wf/coordinator/coordinator-flow.ts:263`, `:294` |
 | **Delegate** | R | A worker a conversation may delegate to, and the only workers it can give work to. Listed under `delegates:` in the worker's file, or `delegates: all`. | G:548; OLD "Delegate" |
@@ -119,13 +119,13 @@ codes are the proposal in section 3. "G line" is the term's line in `glossary.mj
 | **Task tools** | R | The filer's tools: `createTask` files, `getTask` and `listTasks` read, `updateTask` changes or cancels; the worker's `reportProgress`. | G:356; OLD "Task tools" |
 | **Assignee** | R | Who a task goes to: an entry in a task board's workers, or a name the board's assignee check accepts. | G:503; OLD "Assignee" |
 | **claimsUnassigned** | R (option) | An `AssigneeRoster` flag: the board's default worker claims a task with no assignee, so a model's `createTask` may file one unassigned. Absent or false, the task goes to `soleAssignee()`, or the call is refused with `assignee_required`. | G:510; `orch/skills/task-tools-capability.ts:324`, `:332`, `:363`, `:396` |
-| **Claim order** | R | The rule that picks the next ready task: `topological` (default), `fifo`, `priority`, or your own `ClaimOrder`. | G:317; OLD "Claim order" |
+| **Claim order** | R | The rule that picks the next ready task: `fifo` (the default), `priority`, or your own `ClaimOrder`. There is no `topological` order; neither named order claims a task with unmet deps. `orchestration/src/task-board/index.ts:463-468`, `shared.ts:27-41`. | G:317; OLD "Claim order" |
 | **Dispatch** | R | Start work on another worker. A task board's pass is a dispatch. OLD calls the task form "Dispatch a task". | G:174; OLD "Dispatch a task" |
 | **Wait** | R | What a turn does on a task it dispatched: `getTask({ id, wait: true })` or `dispatcher({ wait: true })`; pauses until the work ends or the deadline; the deadline cancels nothing. A board's `onIdle: "wait"` is a different setting. | G:189; OLD "Wait" |
 | **Hand-off** | R | A session that was doing the work passes it to another session, mid-work. Never delivering new work. | G:242; OLD "Hand-off" |
 | **Follow-up** | C/R | What a finished task takes (`followUpOf`). | G:428; `core/types/dispatch.ts:72`, `:335` |
 | **Split** | C | A task split into pieces with no board, settle or cancel of its own. | G:398 |
-| **Lab**, **Inbox**, **Tasks**, **General**, **Team profile** | R (Shift Manager) | See OLD "Shift Manager" table. | OLD rows of the same names |
+| **Lab**, **Inbox**, **Tasks**, **General** | R (Shift Manager) | See OLD "Shift Manager" table. | OLD rows of the same names |
 
 ### Contradictions between OLD and G (code or G wins; settle at pass 5)
 
@@ -183,3 +183,15 @@ Only terms that store data. Answers are from code or G; "not verified" means the
 - Pass 2/3: which of the 16 `published` terms plus the reader-facing unpublished ones (View, Kit, Slot, Routine, Topic, Harness, Live read, Direct read, Default write flow) belong on a reference page that links out. The sitemap says every term is linked from "every page's first use of a term".
 - Pass 4: `scripts/check-retired-terms.mjs` on the new page; the word "person" is retired for "user" (G:467 `User` entry's retirements).
 - Pass 5: confirm `client.live` release state (0.9), the OLD/G Dispatch name (2.1), and the Kind definition (2.2).
+
+## 8. Revise round 1
+
+- Corrected: claim order names are `fifo` (default) and `priority` only; the page now says "such as `fifo` or `priority`".
+- Moved to Reference (page keeps one definition and a link): block instance id format and retry (R-17 `durable-execution`); sequencer methods, connectors, side chains (R-03 `sequencer-methods`); model resolver fallbacks (R-21 `models`); action fields, flow instance cardinality (R-05 `flows`); principal default org (R-20 `authentication`); flow registry duplicate ids (R-12 `runtime`); request resume (R-06 `items`); stores profiles (R-16 `stores`); durable and scheduled detail (R-17, R-33 `schedules`); task statuses, task tools rule, assignee resolution, claim order, dispatch, wait, flow policy (R-23 `task-board`, R-24 `task-collections`, R-19 `background-work`); skill (R-30, slug `skills` **[verify]**); harness manager (R-27 `harness-runs`); patterns (R-41); memory tiers (R-37 `memory`); worker flow, standard worker, hire/fire, coordinator modes, role entries, workstream and project coordinator detail (R-25 `workforce`); address, delegates (R-28 `worker-md`); team and package folder rules (R-29 `workforce-folder`).
+- The `updateTask` per-field rule, the hire refusal on missing role entries, and "nothing holds a request open" are off the page and not claimed. "Entry" no longer appears as a term.
+- "Built from" names the lower terms a term is made of, not where its data lives.
+- "Words that mean two things" now has Shift Coordinator (worker, and Shift Manager screen) and a corrected Kind entry.
+- Figures copied into `glossary/` beside the page; the five SVGs pass brand lint.
+
+- 5.1 Team profile is left off the page: it is a Lab config kept in the Shift Manager source folder and is not in the published package, so a reader who installed the package cannot use it.
+- 5.2 Package is listed under "Words that mean two things": the Package column names an npm package, while a Workforce package is a `PACKAGE.md` folder a worker can hold.
