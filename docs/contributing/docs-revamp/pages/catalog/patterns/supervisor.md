@@ -89,7 +89,7 @@ export const checkLength = handler({
 });
 ```
 
-Add `reviewer: checkLength` to the `supervisor` call. The reviewer sees the task's `goal`, `attempts`, `workerOutput` and your `reviewCriteria`. A verdict's `decision` is `approve`, `reject` or `needs-revision`, and `feedback` is required on the last two. The supervisor treats `reject` and `needs-revision` identically: same retry, same `failed-review` label, same counts. They differ only in what you tell a model reviewer, `needs-revision` for "close, fix these points". Pass `reviewer: false` to skip review, so every worker output counts as done.
+Add `reviewer: checkLength` to the `supervisor` call. The reviewer sees the task's `goal`, `attempts`, `workerOutput` and your `reviewCriteria`. A verdict's `decision` is `approve`, `reject` or `needs-revision`, and `feedback` is required on the last two. The supervisor treats `reject` and `needs-revision` identically: same retry and same `failed-review` label. The difference is only in meaning: use `needs-revision` when the output is close and needs specific fixes, and `reject` when it needs redoing. The default model reviewer is prompted to choose between them the same way. Pass `reviewer: false` to skip review, so every worker output counts as done.
 
 ## When a task is rejected
 

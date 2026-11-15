@@ -69,7 +69,7 @@ export const featureDebate = debate({
 });
 ```
 
-Add `featureDebate` as a step in the flow, with input like `{ question: "Should we ship the new billing page this week?" }`. Every debater speaks in each round, in the order listed. Each turn's prompt carries the debater's stance and every earlier argument, tagged by stance, as in `[ship now] ...`. Names are not shown. The default prompt tells each debater to defend its stance without conceding.
+Add `featureDebate` as a step in the flow, with input like `{ question: "Should we ship the new billing page this week?" }`. Every debater speaks in each round, in the order listed. Each turn's prompt carries the debater's stance and every earlier argument, tagged by stance, as in `[ship now] ...`. Debaters see stances, not names. The default prompt tells each debater to defend its stance without conceding.
 
 The output matches `outputSchema`. Pass `synthesizer: false` to skip the synthesizer and get the raw result back: `{ rounds, question, transcript, verdict, moderatorDecisions }`. Setting `outputSchema` together with `synthesizer: false` is an error. The [Patterns reference](../../reference/patterns.md) has the full shape and every config field with its default.
 
@@ -113,7 +113,7 @@ Each round the moderator returns:
 - `newAngle`: a question to focus this round on, or `null`.
 - `done`: when `true`, this round runs as planned and the debate ends after it.
 
-Give the moderator `tools` or `uses` and it can research before it briefs, so every debater argues from the same facts. Its tool calls stream as ordinary items. The default debater adds a `briefing` and a `newAngle` to its prompt when they are set, and a debater block you write reads them from `state.moderatorDecisions`.
+Give the moderator `tools` or `uses` and it can research before it briefs, so every debater argues from the same facts. Its tool calls stream as ordinary items. The default debater adds a `briefing` and a `newAngle` to its prompt when they are set, and a debater block you write reads them from `ctx.sequencer.state.moderatorDecisions`, taking the entry whose `round` matches `ctx.sequencer.state.round`.
 
 A moderator naming a debater who is not in the roster fails the run. The error lists the available names. With a moderator, `moderatorDecisions` on the raw result has one entry per round.
 
@@ -144,7 +144,7 @@ export const securityReviewer = generator({
 
 In `featureDebate`, `{ name: "skeptic", stance: "do not ship now", block: securityReviewer }` takes the place of the default skeptic. The block returns a string or `{ text }`. It brings its own prompt, tools and resources, so pattern-level `instructions`, `uses`, `tools` and `context` do not reach it.
 
-You can also replace the `judge` with a block that takes `{ question }`, reads the transcript and returns `{ verdict, winner, reasoning }`. A judge always runs, and the `moderator` cannot be `false`. The Patterns reference has the override contracts.
+You can also replace the `judge` with a block that takes `{ question }`, reads the transcript and returns `{ verdict, winner, reasoning }`. A judge always runs. To run without a moderator, leave `moderator` out; `moderator: false` is rejected. The Patterns reference has the override contracts.
 
 ## What it won't do
 
@@ -155,7 +155,7 @@ You can also replace the `judge` with a block that takes `{ question }`, reads t
 
 ## Where it goes wrong
 
-- **Sycophantic convergence.** Across rounds, models tend to give up positions when pushed. Keep `maxRounds` small. The factory logs a warning above 4.
+- **Sycophantic convergence.** Across rounds, models tend to give up positions when pushed. Keep `maxRounds` small. `debate` logs a warning when `maxRounds` is above 4.
 - **Identity self-bias.** A judge on the same model as a debater can favour its own side when it sees names. `anonymizeTranscript` hides them from the judge and is on by default.
 - **Judge position bias.** A judge can favour the first or last argument it reads. `shuffleForJudge` randomizes the order within each round and is on by default.
 - **A weak moderator.** It can repeat the same speakers, miss a plateau or drift off topic. `maxRounds` and `terminateWhen` are the safety net.

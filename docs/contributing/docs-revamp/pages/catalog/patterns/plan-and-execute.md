@@ -6,7 +6,7 @@ description: Plan a task graph, work through it, and replan with what came back.
 
 # Plan and Execute
 
-Some goals are a list where later items need earlier results. Research two competitors, then write the comparison. The comparison can't start until the research is in, and if one competitor's research fails, you want the comparison to say so rather than the run to stop. `planAndExecute` asks a model to break the goal into tasks, each naming the tasks it depends on. It works through them on a [task board](../../concepts/tasks-and-boards.md) (a stored list of tasks and the loop that works through it), in dependency order, and writes the final answer from what came back. It can also replan the remaining tasks as results arrive.
+Some goals are a list where later items need earlier results. Research two competitors, then write the comparison. The comparison can't start until the research is in, and if one competitor's research fails, you want the run to finish and tell you what failed and what it skipped, rather than stop. `planAndExecute` asks a model to break the goal into tasks, each naming the tasks it depends on. It works through them on a [task board](../../concepts/tasks-and-boards.md) (a stored list of tasks and the loop that works through it), in dependency order, and writes the final answer from what came back. It can also replan the remaining tasks as results arrive.
 
 Reach for it when:
 
@@ -59,7 +59,7 @@ export const researchFlow = defineFlow({
 
 Send it "Compare Acme and Globex for a procurement review." The planner might return three tasks: one research task per company, then a comparison that depends on both. The tasks run one at a time by default. Set `maxConcurrency` to run independent tasks side by side.
 
-The plan lasts for one action run. Keep the answer if you need it afterwards.
+The plan lasts for one action run. The final answer is the action's result, and the default answer also joins the conversation history.
 
 ## What comes back
 
@@ -94,7 +94,7 @@ A task is `pending`, `in-progress`, `completed`, `failed` or `skipped`. The [pat
 
 ## When a step fails
 
-A step fails when its executor throws, or returns `success: false`. Every pending task that depends on it, directly or through a chain, is skipped and never runs. Tasks that don't depend on it carry on. The run doesn't error: it finishes, and the plan lists which tasks failed and which were skipped.
+A step fails when its executor throws, or returns `success: false`. Every pending task that depends on it, directly or through a chain, is skipped and never runs. Tasks that don't depend on it carry on. The run doesn't error: it finishes, and the plan lists which tasks failed and which were skipped. The default answer is written from the tasks that completed and isn't asked to report the failures, so to see them in the result, pass `synthesizer: false` or a synthesizer of your own.
 
 If every step fails, the default synthesizer runs anyway. It answers the goal from the model's own knowledge and doesn't mention the failed plan.
 

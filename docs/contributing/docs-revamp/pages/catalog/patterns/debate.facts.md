@@ -153,3 +153,10 @@ The pattern stores three things. Answers cite the code; where a reading is by co
 - Round Robin is a sibling to pick when you want a deliverable, not what Debate is built on (flag 2). The page does not say "chassis".
 - Transcript mismatch: the page says only that the moderator must share the debate's transcript (`ix:155-165`); when the rejection happens is not asserted by a test, so it is not stated.
 - Page cites no mitigation as proven; it names the two judge toggles and the warning above 4 rounds as settings. Mitigation defaults beyond those are Reference.
+
+## Revise round 2
+
+- `moderator: false` is rejected at construction (`ix:263-267`, `t:1287-1299`): leave `moderator` out. `judge: false` is typed out, not guarded at runtime (3.5); the page says only that a judge always runs.
+- Custom debaters read the moderator decisions from sequencer state, `ctx.sequencer.state.moderatorDecisions`, picking the entry whose `round` equals `state.round` (`dd:109-127`).
+- `createModerator({ name })` names its block `<name>-moderator` (`dm:59-60`), so the moderator in the page's example does not collide with the debate block's name.
+- Debaters see stances, not names (`dd:268-271`); the judge's view is governed by `anonymizeTranscript` (8.2).

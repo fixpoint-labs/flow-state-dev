@@ -169,3 +169,8 @@ Every identifier in an example must be imported or declared there (`docs/contrib
 - Composability recipes, internal block factories, exported schema lists, status mapping, stream-item shapes and `flowPolicy` are not on the page; they are Reference rows (R-41, R-23, R-24, R-06).
 - Example model is `openai/gpt-6-luna`. Sibling links are `./parallel-tasks.md` and `./supervisor.md`.
 - The page links `../../reference/items.md` for the `TaskPlan` item shapes and `<TaskPlan collectionId="research" />` (`rd:312-319`).
+
+## Revise round 2
+
+- Opening promise now matches the cascade: the run finishes and reports failed and skipped tasks (in the plan, with `synthesizer: false`). The default synthesizer is not asked to report failures: its prompt (`ix:559-566`) says never to say the work could not be completed, and it writes from completed tasks (`ix:511-`). Nothing in the default path reports the failure in prose.
+- "Keep the answer" replaced by what the sources support (`ix:243`, section 8): the final output is the action's result and the default synthesizer's answer joins history. No session-state recipe is stated; none is citable.
