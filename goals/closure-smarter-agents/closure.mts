@@ -249,14 +249,17 @@ function restoreFrom(file: string, journal: Journal): void {
  * error). The served tree is this checkout or a scratch tree; either way it
  * leaves as it came. What is to be put back is journaled first, so a run
  * killed before its `finally` is undone by the next one, before `plant`
- * reads the tree.
+ * reads the tree. A journal left under `legacyKey` (the per-app key used before
+ * the key named the tree) is put back first in the same way.
  */
-export async function planted<T>(key: string, plant: () => Record<string, string>, fn: () => Promise<T>): Promise<T> {
+export async function planted<T>(key: string, plant: () => Record<string, string>, fn: () => Promise<T>, legacyKey?: string): Promise<T> {
   const file = journalFile(key);
-  // Put back what a killed run left first: `plant` reads the tree it planted into.
-  if (existsSync(file)) {
-    console.error(`putting back what a killed run left planted (${file})`);
-    restoreFrom(file, JSON.parse(readFileSync(file, "utf8")) as Journal);
+  // Put back what a killed run left first: `plant` reads the tree it planted into. `legacyKey` is the
+  // journal's key from before it was keyed per tree (the app alone), read once so its tree is put back too.
+  for (const left of legacyKey === undefined ? [file] : [journalFile(legacyKey), file]) {
+    if (!existsSync(left)) continue;
+    console.error(`putting back what a killed run left planted (${left})`);
+    restoreFrom(left, JSON.parse(readFileSync(left, "utf8")) as Journal);
   }
   const files = plant();
   const journal: Journal = { before: {}, made: [] };
@@ -675,7 +678,7 @@ export async function runClosure(driver: AppDriver): Promise<void> {
           notes.push(`${ask} run ${n}: ${graded.length === 0 ? "pass" : "FAIL"}`);
           console.error(`[${driver.app} ${ask} run ${n}] ${graded.length === 0 ? "pass" : graded.join("; ")}\n  reply: ${JSON.stringify(turn.reply.slice(0, 400))}\n  tools: ${turn.tools.map((t) => t.name).join(", ")}`);
         }
-      });
+      }, driver.app);
     }
     tell.over("asks graded", asks.flatMap((ask) => sheet[ask]?.[driver.app] ?? []));
     // A run of a subset (`GOAL_ASKS`) replaces only the asks it graded in the pass's sheet.

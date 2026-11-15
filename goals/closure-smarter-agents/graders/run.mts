@@ -6,7 +6,7 @@
  *
  * Run: pnpm tsx goals/closure-smarter-agents/graders/run.mts
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -379,6 +379,36 @@ async function parallelTreesKeepTheirPlants(): Promise<string | undefined> {
 const parallelTrees = await parallelTreesKeepTheirPlants();
 
 /**
+ * A run killed while the journal was keyed by app alone left its journal at
+ * that path. The first run under the per-tree key must put that tree back
+ * before it plants, or it records the planted file as the original and every
+ * later run restores the plant.
+ */
+async function legacyJournalIsRestored(): Promise<string | undefined> {
+  const dir = mkdtempSync(join(tmpdir(), "closure-legacy-"));
+  const target = join(dir, "WORKER.md");
+  const app = `legacy-probe-${process.pid}`;
+  const legacy = join(tmpdir(), `fsd-goal-closure-planted-${app}.json`);
+  try {
+    // The killed run: its file planted, its journal at the per-app path, nothing put back.
+    writeFileSync(target, "planted\n");
+    writeFileSync(legacy, JSON.stringify({ before: { [target]: "original\n" }, made: [] }));
+    await planted(plantKey(app, dir), () => ({ [target]: "planted\n" }), async () => undefined, app);
+    const after = readFileSync(target, "utf8");
+    const problems: string[] = [];
+    if (after !== "original\n") problems.push(`the tree is left planted (${JSON.stringify(after)})`);
+    if (existsSync(legacy)) problems.push("the per-app journal is still there");
+    return problems.length === 0 ? undefined : problems.join("; ");
+  } catch (error) {
+    return String(error);
+  } finally {
+    rmSync(legacy, { force: true });
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+const legacyJournal = await legacyJournalIsRestored();
+
+/**
  * The coder ask's repository, as the Claude Code-style, Teammates and Shift
  * Manager drivers build it, put to the check a harness-manager run makes
  * before it starts: a repository that does not ignore `.fsdev/` is refused,
@@ -514,6 +544,7 @@ const failedStart = await aFailedStartStopsItsServer();
 await runGoal((failures, tell) => {
   if (recovery !== undefined) failures.push(`planting after a killed run: ${recovery}`);
   if (parallelTrees !== undefined) failures.push(`two trees planted side by side: ${parallelTrees}`);
+  if (legacyJournal !== undefined) failures.push(`a journal left at the per-app path: ${legacyJournal}`);
   if (signalled !== undefined) failures.push(`a signal mid-run: ${signalled}`);
   if (failedStart !== undefined) failures.push(`a start that throws after serving: ${failedStart}`);
   if (coderRepo !== undefined) failures.push(`the coder ask's repository: ${coderRepo}`);
@@ -523,5 +554,5 @@ await runGoal((failures, tell) => {
   }
   for (const [name, got, want] of tell.over("verdict rules", rules)) if (got !== want) failures.push(`${name}: got ${got}`);
   for (const [name, got, want] of tell.over("model switch rules", modelRules)) if (got !== want) failures.push(`${name}: got ${got}`);
-  return { failures, evidence: `${cases.length} grader cases (${cases.filter((c) => !c[2]).length} hollow, each refused), ${rules.length} verdict rules, ${modelRules.length} model switch rules, planting after a killed run, two trees planted side by side, a signal mid-run, a start that throws after serving, and the coder ask's repository accepted by a run's check` };
+  return { failures, evidence: `${cases.length} grader cases (${cases.filter((c) => !c[2]).length} hollow, each refused), ${rules.length} verdict rules, ${modelRules.length} model switch rules, planting after a killed run, two trees planted side by side, a journal left at the per-app path, a signal mid-run, a start that throws after serving, and the coder ask's repository accepted by a run's check` };
 });
