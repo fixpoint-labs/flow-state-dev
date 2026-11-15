@@ -12,7 +12,7 @@ repo root. No spec, changeset or internal doc is cited.
    `packages/ui/src/generative/renderers.ts:26-29`.
 2. The same Zod object is the tool's `inputSchema` and the renderer's data contract.
    `packages/ui/src/generative/info-card/schema.ts:1-4`; `info-card/tool.ts:25`; renderer reads
-   `item.data as InfoCardData`, a type-only import: `info-card/renderer.tsx:9-13`.
+   `item.value as InfoCardData`, a type-only import: `info-card/renderer.tsx:9-13`.
 3. The model picks the shape by calling the tool: the generator "picks the rendering shape".
    EP:15. Tool `description` is what the model sees, `USE FOR` / `DO NOT USE FOR` template:
    `info-card/tool.ts:12-16`; `link-card/tool.ts:11-15`; test asserts both phrases:
@@ -20,25 +20,25 @@ repo root. No spec, changeset or internal doc is cited.
 
 ## The two things that travel together (question 1)
 
-4. One shape is a tool and a renderer, linked by one string, the component name (`"info-card"`).
+4. One shape is a tool and a renderer, linked by one string, the shape's name, which is the emitted item's `dataType` (`"info-card"`).
    Tool side: `GenerativeTool.name` "matches the renderer's `name`" `tool-types.ts:25`; renderer side:
    `GenerativeRenderer.name` "matches the tool's `name`" `renderer-types.ts:13-14`.
-5. Tool block names differ from component names: block `emitInfoCard` emits component `info-card`;
+5. Tool block names differ from shape names: block `emitInfoCard` emits a data item with `dataType` `info-card`;
    block `emitLinkCard` emits `link-card`. `info-card/tool.ts:23,27`; `link-card/tool.ts:22,26`;
    `packages/ui/test/generative/aggregator.test.ts:10-13`.
-6. What the tool does when the model calls it: `ctx.emit.component(name, input, { key })`, then
+6. What the tool does when the model calls it: `ctx.emit.data(name, input, { key })`, then
    returns `{ rendered: true, kind: "info-card", id }` (link card: `{ rendered: true, kind:
    "link-card", url }`). `info-card/tool.ts:26-29`; `link-card/tool.ts:25-28`; test
    `info-card.test.ts:23-46`. The return value is what the model sees as the tool result (the
    handler's return); not otherwise verified.
-7. The emitted item is type `component`, with `component` (the name), `data` and optional `key`.
-   `packages/contracts/src/items/types.ts:494-509`.
-8. On the page, `FlowProvider`'s `renderers.component` map is looked up by `item.component`; the
-   matching React component is rendered with `{ item }`. `packages/react/src/registry/block-renderers.ts:66-68`;
-   `packages/react/src/components/ItemRenderer.ts:242-250,260-262`.
-9. A name with no registered renderer renders a dev fallback `<pre>` of JSON with `type`,
-   `component` and `status` (not `data`). `ItemRenderer.ts:288-304`. A renderer entry set to `false`
-   renders nothing. `ItemRenderer.ts:252-255`; `block-renderers.ts:45`.
+7. The emitted item is a data item: type `data`, with `dataType` (the name), `value` and optional `key`.
+   `packages/contracts/src/items/types.ts:506-523`.
+8. On the page, `FlowProvider`'s `renderers.data` map is looked up by `item.dataType`; the
+   matching React component is rendered with `{ item }`. `packages/react/src/registry/block-renderers.ts:53-58,83-85`;
+   `packages/react/src/components/ItemRenderer.ts:244-261`.
+9. A data item with no registered renderer renders nothing; it never reaches the JSON dev fallback.
+   `ItemRenderer.ts:263-267`. A renderer entry set to `false` also renders nothing.
+   `ItemRenderer.ts:253-256`; `block-renderers.ts:58`.
 
 ## Set it up (question: the starter pack on a generator, the renderers on a page)
 
@@ -47,9 +47,9 @@ repo root. No spec, changeset or internal doc is cited.
 11. `generativeTools()` returns `BlockDefinition[]`, one handler block per shape, spread into a
     generator's `tools`. `tools.ts:28-42`; test `aggregator.test.ts:6-14`. Page example:
     `tools: generativeTools()` (the page example no longer adds an app tool of its own; EP:44-53 had `webSearch`).
-12. `generativeRenderers()` returns `Record<string, ComponentType<{ item: ComponentItem }>>`, passed
-    as `renderers={{ component: generativeRenderers() }}`. `renderers.ts:32-49`; test
-    `aggregator.test.ts:29-34`; EP:57-67.
+12. `generativeRenderers()` returns `Record<string, ComponentType<{ item: DataItem }>>`, passed
+    as `renderers={{ data: generativeRenderers() }}`. `renderers.ts:10-12,31-49`; test
+    `aggregator.test.ts:29-34`.
 13. `FlowProvider` props used in the existing example: `flowKind`, `userId`, `renderers`. EP:60-66.
     (Prop names are copied from the existing page; the page example is not type-checked here. Verify
     against `packages/react` when drafting.)
@@ -61,11 +61,11 @@ repo root. No spec, changeset or internal doc is cited.
 
 ## Pick a tighter set (question 2)
 
-16. `generativeTools.pick(...names)` and `generativeRenderers.pick(...names)` take component names
+16. `generativeTools.pick(...names)` and `generativeRenderers.pick(...names)` take shape names
     (`"info-card"`, `"link-card"`), not block names. `tools.ts:40-41`; `renderers.ts:47-48`.
 17. Unknown names are ignored, no error. Tests: `aggregator.test.ts:22-26,41-45`.
 18. The two surfaces are picked separately, nothing links them; a name picked on the tool side with
-    no renderer shows the JSON fallback (fact 9). EP:83. Follows from `tools.ts` and `renderers.ts`
+    no renderer draws nothing (fact 9). Follows from `tools.ts` and `renderers.ts`
     each filtering its own list.
 19. Fewer tools means better selection on smaller models. `tools.ts:13-14` (doc comment), EP:73.
     A claim about model behaviour; the only source is the doc comment.
@@ -93,12 +93,12 @@ repo root. No spec, changeset or internal doc is cited.
 
 ## Re-emitting with the same key
 
-26. Emitting a component with the same `key` replaces the earlier one on the client; the live
-    stream sees each state; the persisted record keeps one entry per `(requestId, key)`, data
-    replaced, not merged. `packages/contracts/src/items/types.ts:498-508`;
-    `apps/docs/docs/streaming/emitting-items.md:109-123`.
-27. `ctx.emit.component(component, data, options?)` options: `key`, `itemVisibility`, `agentName`,
-    `transient`. Default is persisted (`transient: false`). `packages/core/src/types/block.ts:495-515`.
+26. Emitting a data item with the same `key` replaces the earlier one on the client; the live
+    stream sees each state; the persisted record keeps one entry per `(requestId, key)`, `value`
+    replaced, not merged. `packages/contracts/src/items/types.ts:510-522`;
+    `packages/core/src/types/block.ts:518-521`.
+27. `ctx.emit.data(dataType, value, options?)` options: `key`, `itemVisibility`, `agentName`,
+    `transient`. Default is persisted (`transient: false`). `packages/core/src/types/block.ts:143-155,508-527`.
 28. `keyFrom` option on a tool factory replaces the default key:
     `emitInfoCardTool({ keyFrom: (i) => \`card:${i.title}\` })`. `tool-types.ts:15-21`; test
     `info-card.test.ts:48-62`. `keyFrom` is the only option on a pack tool factory (the interface
@@ -110,22 +110,22 @@ repo root. No spec, changeset or internal doc is cited.
 
 ## Your own shapes (question 3: where your own renderer goes)
 
-30. Your renderer is a React component that takes `{ item }` (a `ComponentItem`) and reads `item.data`.
+30. Your renderer is a React component that takes `{ item }` (a `DataItem`) and reads `item.value`.
     `renderer-types.ts:15-20`; `info-card/renderer.tsx:12-13`.
-31. It goes in `renderers.component` on `FlowProvider`, under the component name, which must equal the
-    first argument your tool passes to `ctx.emit.component`. `block-renderers.ts:45,66-68`.
+31. It goes in `renderers.data` on `FlowProvider`, under the shape's name, which must equal the
+    first argument your tool passes to `ctx.emit.data`. `block-renderers.ts:53-58,83-85`.
 32. Overriding a pack renderer: spread `generativeRenderers()` and set the entry:
-    `component: { ...generativeRenderers(), "info-card": InfoCardRenderer }`. EP:128-136 (the page
+    `data: { ...generativeRenderers(), "info-card": InfoCardRenderer }`. `renderers.ts:31-49` (EP's
     example omits `flowKind`/`userId`/children; the page should show a full element).
 33. `fsdev ui add info-card` (and `link-card`) copies a renderer into the app at
     `components/flow-state/generative/info-card.tsx`, which the user then owns. `packages/ui/registry.json:626-638,641-651`;
     `packages/ui/README.md:5,13`. The page's import alias `@/components/flow-state/generative/info-card`
     matches that target (alias `@/` is the app's own tsconfig, not verified).
-34. The copied file defines its own local `InfoCardData` interface and imports `ComponentItem` from
+34. The copied file defines its own local `InfoCardData` interface and imports `DataItem` from
     `@flow-state-dev/core/items`; it does not import the schema.
-    `packages/ui/registry/components/generative/info-card.tsx:13-26`.
+    `packages/ui/registry/components/generative/info-card.tsx:12-24`.
 35. Your own tool: a `handler` block whose `inputSchema` is a Zod object and whose `execute` calls
-    `ctx.emit.component(name, input, { key })`. Pattern copied from `info-card/tool.ts:22-30`
+    `ctx.emit.data(name, input, { key })`. Pattern copied from `info-card/tool.ts:22-30`
     (`handler` from `@flow-state-dev/core`, `BlockDefinition` type from
     `@flow-state-dev/core/types`). Pass it in a generator's `tools` with the pack's tools:
     `tools: [...generativeTools(), myTool]` (same shape as fact 11). A custom tool is not
@@ -139,14 +139,14 @@ repo root. No spec, changeset or internal doc is cited.
 
 ## Stored parts: the four questions
 
-The page's one stored part is the emitted component item.
+The page's one stored part is the emitted data item.
 
 | Question | Answer | Source |
 | --- | --- | --- |
-| Who owns it | The run (request) that emitted it: the item carries `requestId`; keyed items are unique per `(requestId, key)` | `contracts/src/items/types.ts:29-57,498-508` |
-| Who can see it | Whoever can read the session's items; visibility is set per emit with `itemVisibility` and, on the generator, `itemVisibility` (the example sets `client: true, history: true`). The `history` flag's meaning is not verified in this pass | `core/src/types/block.ts:506-514`; EP:50 |
-| Where stored | The session's item log, as a persisted item (default `transient: false`); a `transient: true` emit is streamed only and not replayed on reload. Which store holds it is the app's store choice (not this page) | `contracts/src/items/types.ts:37-44`; `block.ts:495-499` |
-| How many | One per emit without a key; one per `(requestId, key)` with a key, latest data wins. A turn can hold many cards: an info card per `id`, a link card per `url` | `contracts/src/items/types.ts:498-508`; facts 24, 26 |
+| Who owns it | The run (request) that emitted it: the item carries `requestId`; keyed items are unique per `(requestId, key)` | `contracts/src/items/types.ts:29-57,512-522` |
+| Who can see it | Whoever can read the session's items. With no `itemVisibility` on the emit, a data item reaches the client and not model history; an enclosing generator's visibility is not inherited | `core/src/types/block.ts:143-155,514-516` |
+| Where stored | The session's item log, as a persisted item (default `transient: false`); a `transient: true` emit is streamed only and not replayed on reload. Which store holds it is the app's store choice (not this page) | `contracts/src/items/types.ts:37-44`; `block.ts:153-154` |
+| How many | One per emit without a key; one per `(requestId, key)` with a key, latest `value` wins. A turn can hold many cards: an info card per `id`, a link card per `url` | `contracts/src/items/types.ts:512-522`; facts 24, 26 |
 
 The renderers store nothing. The copied registry renderer is a file in the user's app (fact 33),
 owned by the user, one copy per `fsdev ui add`.
@@ -154,9 +154,9 @@ owned by the user, one copy per `fsdev ui add`.
 ## Figure: From tool call to component
 
 F1. Model's call: the model calls `emitInfoCard` with input matching `InfoCardSchema` (fact 3, 6).
-F2. `EMITS`: the handler runs `ctx.emit.component("info-card", input, { key: input.id })` (fact 6).
-F3. The item: `type: "component"`, `component: "info-card"`, `data`, `key` (fact 7).
-F4. `RENDERS`: `renderers.component["info-card"]` receives `{ item }` (fact 8).
+F2. `EMITS`: the handler runs `ctx.emit.data("info-card", input, { key: input.id })` (fact 6).
+F3. The item: `type: "data"`, `dataType: "info-card"`, `value`, `key` (fact 7).
+F4. `RENDERS`: `renderers.data["info-card"]` receives `{ item }` (fact 8).
 F5. Dashed outline on the run: the tool call and the emit happen within one run (the item's
     `requestId`, fact in stored-parts table). The item itself persists (default not transient).
     Hatching, per the figure standard, would mark the persisted item; the planned marks only

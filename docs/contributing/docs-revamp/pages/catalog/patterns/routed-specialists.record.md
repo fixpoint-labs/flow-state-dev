@@ -33,6 +33,7 @@ Skipped: K-25 is kept in the sitemap, and the page was already at `routed-specia
 - After revise round 1, page sha256 63d89b5b2bdb: exit 1. Failed: type-check of TypeScript examples (scratch apps/kitchen-sink/.docs-tc-K-25, deleted afterwards).
 - After revise round 2, page sha256 2bae48831c38: exit 0.
 - After the loop (review): link pass. Repointed links that led to old-site pages or to pages outside the sitemap: `../orchestration/task-board.md` to `../../concepts/tasks-and-boards.md`. Every link on the page now resolves to a sitemap page. No prose or example changed. Page sha256 0628e761a437.
+- After the loop (review): emit.data migration: the per-pass `routedSpecialists` snapshot is a data item, defined once; the container renderer registration is unchanged. 767 words. Page sha256 06b2c8f3dc2b.
 
 ## 5 · Fact check
 
@@ -45,6 +46,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 3: Row 3: "every field" of the config, 12 fields Untrue: RoutedSpecialistsConfig has 16 fields. The table omits `context` (context slot for default controller and synthesizer), `uses` (capabilities for the default blocks), `controllerVisibility` (default `{ client: true, history: false }`) and `synthesizerVisibility` (default `{ client: true, history: true }`). (packages/patterns/src/routedSpecialists/index.ts:71-153) The row is recorded corrected.
 - Reference row 5: Row 5: workspace is a separate writable resource, TaskCollection is sequencer-state-backed with collectionId defaulting to name, queried with collection.list({ status: "completed" }) Untrue: These facts are true (backing "state" on the sequencer, collectionId = config.collectionId ?? name, createWorkspace returns a writable session-scoped resource). The row itself should drop the implementation wording as instructed; note the workspace is session-scoped. (packages/patterns/src/routedSpecialists/index.ts:410,305-312; packages/patterns/src/routedSpecialists/schemas.ts:26-35) The row is recorded corrected.
 - Re-run after the review edit: the edit changed link targets only, so no claim changed. Each new target is a sitemap entry (specs/epics/FIX-2696/SITEMAP/*.md) that covers what the link text names.
+- Re-run after the review edit: `ctx.emit.data("routedSpecialists", { state, iteration, specialist, done }, { key: name, ... })` (packages/patterns/src/routedSpecialists/index.ts:555-574) inside the `routedSpecialists` container (:599); the shipped container renderer reads it through `useContainerItems` (packages/ui/registry/components/routed-specialists.tsx:24-34).
 
 ## 6 · Depth pass
 

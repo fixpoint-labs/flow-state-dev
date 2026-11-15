@@ -45,7 +45,7 @@ codes are the proposal in section 3. "G line" is the term's line in `glossary.mj
 | **Tool** | R | A block listed in a generator's `tools`; the model can call it. No separate tool type. `ToolsSlot` is `GeneratorTool[]` or a function returning one. | OLD "Tool"; `core/blocks/generator.ts:425` |
 | **Dispatcher** | R | The block `dispatcher()` builds; only it carries the name. Sends its input to an entry on another flow. Not a sixth kind. | G:274 (`"The dispatcher block, and only it."`); `core/blocks/dispatcher.ts:306`; OLD "Dispatcher block" |
 | **Side chain** | R | Work that runs alongside the turn (`sideChain`, `side-chain`). `background` is the umbrella over all three tiers. | G:717; OLD "Side chain" (its items are marked side-chain output) |
-| **Item** | R | One typed record a request streams back (`OutputItem`, `getItems`): a message, reasoning, a tool output, a status, an error, a state or resource change, a suspension and others. Not a resource in a collection. | G:166; OLD "Item" |
+| **Item** | R | One typed record a request streams back (`OutputItem`, `getItems`; the union, `data` included, is `packages/contracts/src/items/types.ts:820-833`): a message, reasoning, a tool output, a data item, a status, an error, a state or resource change, a suspension and others. Not a resource in a collection. | G:166; OLD "Item" |
 | **Status** | C | A lifecycle enum with no `Type` suffix. | G:154 |
 | **State** | R (short) | Scope state or resource state, and nothing else. A block's own state is `ctx.self`. | G:160; OLD "State" |
 

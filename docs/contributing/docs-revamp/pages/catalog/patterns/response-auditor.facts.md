@@ -128,30 +128,28 @@ not covered by the shipped test; the page may state them, and a cold fact check 
 ## 4. Where the audit shows
 
 1. Two paths: a rendered card on the chat surface, and the block's output for code.
-2. When at least one result surfaces, the auditor emits a `component` item named `audit-annotation`
-   whose data is the same `{ results, surfacedResults, overallScore }`.
-   index:125-143 (`ctx.emit.component("audit-annotation", input)`), 228 (`tapIf` on
+2. When at least one result surfaces, the auditor emits a data item whose `dataType` is `audit-annotation`
+   and whose `value` is the same `{ results, surfacedResults, overallScore }`.
+   index:125-143 (`ctx.emit.data("audit-annotation", input, { itemVisibility: { client: true, history: false } })`, line 141), 228 (`tapIf` on
    `surfacedResults.length > 0`); test:348-366 (one card, `surfacedResults` length 1).
 3. When nothing surfaces, no card is emitted. test:368-383.
 4. The item is append-only: no `key`, so each auditor run in a request gets its own card and later runs
-   do not overwrite earlier ones. index:131-133, 141 (no options passed to `emit.component`).
-5. A component item is persisted by default (`transient: false`), so the card is still there after a
-   page refresh. `packages/core/src/types/block.ts:495-500`;
-   `docs/architecture/items.md:125` ("`false` for `emit.message` and `emit.component` (persisted)").
+   do not overwrite earlier ones. index:131-133, 141 (no `key` passed to `emit.data`).
+5. A data item is persisted by default (`transient: false`), so the card is still there after a
+   page refresh. `packages/core/src/types/block.ts:153-154,514`.
    The `.tapIf` emits from the auditor sequencer, and the emission is a side effect of the block,
-   so it reaches the client's item stream like any emitted item. (Streaming: `component` items default to
-   `{ client: true, history: false }`, items.md:28: the card goes to the client and is not put into the
-   model's history.)
+   so it reaches the client's item stream like any emitted item. (The emit passes
+   `{ client: true, history: false }`, which is also the data default, `packages/contracts/src/items/resolve-visibility.ts:42,52`:
+   the card goes to the client and is not put into the model's history.)
 6. The renderer is in the `@flow-state-dev/ui` registry as `audit-annotation`.
-   `chatAssistantRenderers` maps `component: { "audit-annotation": AuditAnnotation }`, so a chat surface
+   `chatAssistantRenderers` maps `data: { "audit-annotation": AuditAnnotation }`, so a chat surface
    built on `chatAssistantRenderers` shows the card with no extra code.
-   `packages/ui/registry/components/chat-assistant.tsx:60`; `packages/ui/README.md:69, 110`;
-   `apps/docs/docs/ui/flow-aware-components.md:169-175`.
+   `packages/ui/registry/components/chat-assistant.tsx:63-66`. The card takes `{ item: DataItem }` and
+   reads `item.value` (`packages/ui/registry/components/audit-annotation.tsx:90-91`).
 7. Without `chatAssistantRenderers`, install the card with `fsdev ui add audit-annotation` (the docs
    write `pnpm fsdev ui add audit-annotation`) and register it under
-   `renderers.component["audit-annotation"]`. Existing page lines 95-101;
-   `apps/docs/docs/ui/flow-aware-components.md:173-175`. A component type no renderer names falls
-   through to a `<pre>` of its JSON. `docs/architecture/items.md:189`.
+   `renderers.data["audit-annotation"]` (`packages/react/src/registry/block-renderers.ts:53-58`). A data
+   item no renderer names renders nothing. `packages/react/src/components/ItemRenderer.ts:263-267`.
 8. What the card shows. `audit-annotation.tsx`:
    - Header "Response Audit" with a count badge, "N finding(s)", the total annotations across the
      surfaced results (lines 97-121).
@@ -180,9 +178,9 @@ not covered by the shipped test; the page may state them, and a cold fact check 
       `.stepIf` example. If a step needs the verdict, `.waitForSideChain()` is the documented barrier
       (`apps/docs/docs/advanced/sequencer-side-chains.md:97-102`).
     - Used as a normal step, the output is the step's value.
-11. The goal confirms the end to end result with a real analyzer: a component item
+11. The goal confirms the end to end result with a real analyzer: a data item
     `audit-annotation` with a non-empty `surfacedResults` appears in the run's item stream for a
-    one-sided response. `goals/response-auditor/emits-audit-annotation/goal.md` (Outcome, Signal).
+    one-sided response. `goals/response-auditor/emits-audit-annotation/harness.mts:75-76` (matches `type === "data"` and `dataType === "audit-annotation"`).
 
 ## 5. Add your own analyzer
 
@@ -248,7 +246,7 @@ emitted `audit-annotation` item.
 | Part | Who owns it | Who can see it | Where stored | How many |
 | --- | --- | --- | --- | --- |
 | Sequencer state (`userInput`, `response`, `results`, `surfacedResults`, `overallScore`) | The one run of the auditor sequencer | Nobody reads it back as an app. It streams live as `state_change` items (`apps/docs/docs/advanced/block-state.md:119`), is checkpointed at each step boundary so an interrupted run resumes (`apps/docs/docs/advanced/sequencer-state.md:7, 121-125`), and the final checkpoint is retained for inspection unless `flow.request.cleanupCheckpointsOnTerminal` is set (same file, line 137) | The checkpoint store, keyed by request id and block instance id; latest record only (sequencer-state.md:123) | One per auditor run, overwritten at each step |
-| `audit-annotation` component item | The request that ran the audit | The client on the item stream; shown by the registered renderer (`items.md:28, 200`) | The request record, persistent (`items.md:119, 200`) | One per auditor run that surfaces something; none if nothing surfaces. Never replaced by a later run in the same request (append-only, no key: index:131-133) |
+| `audit-annotation` data item | The request that ran the audit | The client on the item stream; shown by the registered renderer (`index:141`; `chat-assistant.tsx:63-66`) | The request record, persistent (`block.ts:153-154`) | One per auditor run that surfaces something; none if nothing surfaces. Never replaced by a later run in the same request (append-only, no key: index:131-133) |
 
 The page can state in one line that the audit lives with the request that produced it and is not
 saved to session, user or org state. Nothing in `index.ts` writes to session, user or org scope or to a

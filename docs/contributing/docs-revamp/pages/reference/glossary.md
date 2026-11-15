@@ -37,7 +37,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 
 | Term | Package | What it is | Built from |
 |---|---|---|---|
-| **Item** | contracts | One typed record a request streams: a message, reasoning, a tool output, a component, a status, an error, a state or resource change, a suspension, and a few more. See [Items](./items.md). | Content and a visibility setting |
+| **Item** | contracts | One typed record a request streams: a message, reasoning, a tool output, a data item, a status, an error, a state or resource change, a suspension, and a few more. See [Items](./items.md). | Content and a visibility setting |
 | **Block instance id** | contracts | The id of one attempt at one step in one run. See [Durable execution](./durable-execution.md). | The request id and the step's path |
 | **Block** | core | A typed unit of work with an input schema and an output schema. You define it, and the framework runs it. See [Blocks](../concepts/blocks.md). | Zod schemas and a block context (`ctx`) |
 | **Block kind** | core | Exactly five: `handler` (plain code), `generator` (a model call), `evaluator` (a model judgment), `sequencer` (runs blocks in order) and `router` (picks one block to run). | Block |

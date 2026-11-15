@@ -153,7 +153,7 @@ A drain can leave a task waiting on a person's answer, or on an event outside th
 
 ## Stream items
 
-The loop emits one `goal-seek-loop-termination` item when it exits, carrying the collection id, the stop reason and the drain count. It is for tooling and never reaches model history. The shipped chat renderers hide it. If your app has its own renderer registry, add `"goal-seek-loop-termination": false` to its `component` map, or the item shows as raw JSON. Every field and reason is on the [items reference](../../reference/items.md).
+The loop emits one `goal-seek-loop-termination` data item when it exits, a structured record carrying the collection id, the stop reason and the drain count. It is for tooling: it stays on the request's items, and never reaches a client or model history. Every field and reason is on the [items reference](../../reference/items.md).
 
 ## Limits
 

@@ -34,6 +34,7 @@ Skipped: K-41 is kept in the sitemap, and the page was already at `generative.md
 - After revise round 2, page sha256 82fed7cef35c: exit 0.
 - After revise round 3, page sha256 081687855ced: exit 0.
 - After the loop (review): Greptile review on the PR. frontmatter: the `description` held an unquoted `: `, which YAML refuses ("Nested mappings are not allowed in compact mappings", checked with the `yaml` package apps/docs uses). It is now quoted, with the text unchanged. No prose or example changed. Page sha256 6e48a126f701.
+- After the loop (review): emit.data migration: the tool emits a data item whose `dataType` is the shape's name, defined once; renderers go in `renderers.data` in both provider examples; an unregistered shape draws nothing instead of a JSON fallback (two sentences); the custom shape calls `ctx.emit.data` and its renderer reads `item.value`; the table header and `.pick` say shape names. Type-check in apps/kitchen-sink/zz-emitdata (the `@flow-state-dev/ui/generative/*` and copied `info-card` imports path-mapped to packages/ui), deleted afterwards: only the planted errors. 843 words. Page sha256 d8202fc553c8.
 
 ## 5 · Fact check
 
@@ -45,6 +46,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 8: Page lines 99-101 and row 8: the tool description template has 'DO NOT USE FOR: <2–3 cases ...>'. Untrue: The shipped info-card description lists four DO NOT USE FOR cases (comparisons, tabular numeric data, external resources with a URL, long prose). The link-card description lists three. The USE FOR lists have four examples each, which fits the page's '2-4'. Those redirects also name emitDualColumn and emitMetricGrid, which do not exist in this pack. (packages/ui/src/generative/info-card/tool.ts:12-16; packages/ui/src/generative/link-card/tool.ts:11-15) The row is recorded corrected.
 - Page lines 108 and 114: re-emissions replace prior versions in place / collapse to a single card (unqualified). Untrue: This holds only within one request, because the key is scoped by requestId. Across requests the same `id` or `url` produces separate cards. (packages/react/src/components/ItemsRenderer.ts:103-105)
 - Re-run after the review edit: no claim changed; the frontmatter parses, and `description` reads back the same text.
+- Re-run after the review edit: the tools call `ctx.emit.data("info-card" | "link-card", input, { key })` (packages/ui/src/generative/info-card/tool.ts:27, link-card/tool.ts:26); `generativeRenderers()` returns `Record<string, ComponentType<{ item: DataItem }>>` for the `data` slot (packages/ui/src/generative/renderers.ts:10-12,31-49); renderers read `item.value` (packages/ui/src/generative/info-card/renderer.tsx:12-13; packages/ui/registry/components/generative/info-card.tsx:12-24); `renderers.data` lookup by `dataType` (packages/react/src/registry/block-renderers.ts:83-85; packages/react/src/components/ItemRenderer.ts:244-261); a data item with no renderer renders nothing (ItemRenderer.ts:263-267); keyed `value` replaced whole (packages/contracts/src/items/types.ts:510-522).
 
 ## 6 · Depth pass
 
