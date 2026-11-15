@@ -167,7 +167,7 @@ The DevTool is a viewer. What it stores is small; what it shows is stored by the
 
 ## Answer key, by sitemap question
 
-- **Q1 Where do you see what a block received and returned?** Trace tab, click the block; the right-hand panel has `Input` (open on a failed block) and `Output` (closed), plus `Connected Input` for what a connector handed it. The row itself carries a one-line `in` / `out` preview. Facts 6, 43, 44.
+- **Q1 Where do you see what a block received and returned?** Trace tab: the row carries a one-line `in` / `out` preview; click a block for its `Output` (closed). A sequencer step's input is a reference to the step before, so its panel has no `Input` section; read the previous block's `Output` instead. Facts 6, 43, 44.
 - **Q2 How do you tell what the model was told?** On a generator's block detail: `Prompt`, `User Message`, `History (n)`, and `Resolved Config` for the model and tools. Present unless `FSDEV_TRACE_OBSERVABILITY` is off (it is on by default outside production). Facts 7, 44, 45.
 - **Q3 A run is waiting on approval. Can you resolve it here?** Yes. Suspensions tab, select the pending row, optionally enter resume data as JSON, `Approve` or `Reject`. The same request continues under its own id and streams the rest. A run paused from `fsdev run` appears there too because both write the same SQLite file as the same user; reload the page to see it. Facts 30, 64-73.
 

@@ -137,10 +137,9 @@ Under each row, one line reads `in` and `out` with a short preview of what the b
 Click `draft-reply`. The right-hand panel opens with a `Block` header showing the block's kind and name, its status and how long it took. Its sections include:
 
 - **Error** has the message.
-- **Input** is open on a failed block. It holds `{ text, truncated }`, the object `cleanMessage` returned.
-- **Output**, closed by default, is what a block returned. Open it on `clean-message` to see the same object from the other side.
+- **Output**, closed by default, is what a block returned. `draft-reply` has none, so click `clean-message` and open its Output: `{ text, truncated }`.
 
-`draftReply` takes `z.string()`, so the mismatch is plain: it was handed an object. The [errors reference](../reference/errors.md) lists the other shapes a failed block's panel can show.
+That object is what `draft-reply` was handed, and its row's `in` preview shows the same value. `draftReply` takes `z.string()`, so the mismatch is plain: it was handed an object. The [errors reference](../reference/errors.md) lists the other shapes a failed block's panel can show.
 
 Fix it with a connector, a function between two steps that reshapes one block's output into the next block's input. In `handleTicket`, change the second step to `.step((cleaned) => cleaned.text, draftReply)`, which hands `draftReply` the string. Restart `fsdev dev` and reload the page. The DevTool reopens the session you had open; if it does not, select it. Send `reply` again. This time all three rows are `completed`.
 
@@ -149,7 +148,6 @@ Open `draft-reply` once more. A generator's panel shows what the model was told:
 - **Prompt** is the prompt after it resolved: `You answer customer support messages. Be brief and specific.`
 - **User Message** is what was sent this turn, the string the connector produced.
 - **History** lists the earlier conversation sent along with it, and **Resolved Config** holds the model and its tools.
-- **Connected Input** is the value the connector handed the block.
 
 If these sections are missing, the [environment reference](../reference/environment.md) covers `FSDEV_TRACE_OBSERVABILITY`, the setting that records them.
 
@@ -189,7 +187,7 @@ A run you paused from `fsdev run` shows up here too, after a reload. How long a 
 
 When something looks wrong, here is where to look.
 
-- **A block did not get the input you expected.** Its `Input` and `Connected Input` sections.
+- **A block did not get the input you expected.** Its row's `in` preview, and the Output of the block before it.
 - **State did not update.** `Session Context`, then the state section of the sequencer.
 - **An item shows here but not in your app.** The `Stream` tab also shows the framework's own trace items, which your app's client does not receive. [Items](../reference/items.md) lists them.
 - **A generator returned the wrong shape.** `Raw output` and `Validation issues` on the failed block.
