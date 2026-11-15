@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 493">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="420" height="392"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">WORKFORCE/ IN YOUR REPO</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="520" y="46">IN THE APP</text>
+<rect class="hl" fill="#e8f551" x="42" y="60" width="392" height="36"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="60" width="392" height="36"/>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="83">teams/support/workers/lead/WORKER.md</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="434" y1="78" x2="518" y2="78" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="520" y="60" width="372" height="36"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="534" y="82">a worker, support.lead</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="104" width="392" height="36"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="127">teams/support/TEAM.md</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="434" y1="122" x2="518" y2="122" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="520" y="104" width="372" height="36"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="534" y="126">instructions every support worker is told</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="148" width="392" height="36"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="171">teams/support/references/</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="434" y1="166" x2="518" y2="166" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="520" y="148" width="372" height="36"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="534" y="170">read-only documents, read from the file</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="192" width="392" height="36"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="215">teams/support/resources/</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="434" y1="210" x2="518" y2="210" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="520" y="192" width="372" height="36"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="534" y="214">documents workers write; capabilities</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="236" width="392" height="36"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="259">teams/support/packages/</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="434" y1="254" x2="518" y2="254" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="520" y="236" width="372" height="36"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="534" y="258">instructions and tools a worker holds</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="280" width="392" height="36"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="303">teams/support/skills/</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="434" y1="298" x2="518" y2="298" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="520" y="280" width="372" height="36"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="534" y="302">skills every support worker holds</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="324" width="392" height="36"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="347">flows/workers/ · blocks/</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="434" y1="342" x2="518" y2="342" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="520" y="324" width="372" height="36"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="534" y="346">worker flows, and tools any worker may name</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="368" width="392" height="36"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="391">org/</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="434" y1="386" x2="518" y2="386" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="520" y="368" width="372" height="36"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="534" y="390">workers, documents, skills, packages for every team</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="440" x2="920" y2="440"/>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="467" x2="54" y2="467" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="471">BECOMES</text>
+<rect class="hl" fill="#e8f551" x="190" y="461" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="224" y="471">WHERE YOU START</text>
+</g>
+</svg>

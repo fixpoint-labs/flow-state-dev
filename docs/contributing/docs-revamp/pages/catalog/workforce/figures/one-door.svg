@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 335">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="100" width="200" height="82"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="122">A MESSAGE</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="144">from the user</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="316" y="24" width="252" height="234"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="330" y="46">COORDINATOR</text>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="330" y="70">support.help</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="316" y1="84" x2="568" y2="84"/>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="330" y="106">routing: best-fit</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="330" y="122">fallback: support.general</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="330" y="150">reads the message and</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="330" y="166">picks who takes it</text>
+<rect class="hl" fill="#e8f551" x="640" y="24" width="252" height="48"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="640" y="24" width="252" height="48"/>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="654" y="53">support.devices</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="640" y="86" width="252" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="654" y="115">support.accounts</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="640" y="148" width="252" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="654" y="177">support.fsd</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="640" y="210" width="252" height="48"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="654" y="239">support.general</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="228" y1="141" x2="314" y2="141" marker-end="url(#ah)"/>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="568" y1="48" x2="638" y2="48" marker-end="url(#ah)"/>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="282" x2="920" y2="282"/>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="309" x2="54" y2="309" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="313">HANDS TO</text>
+<rect class="hl" fill="#e8f551" x="188" y="303" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="222" y="313">THE ONE IT CHOSE</text>
+</g>
+</svg>

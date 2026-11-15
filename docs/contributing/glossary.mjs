@@ -822,8 +822,8 @@ export const PERSON_PINS = [
   { path: "apps/docs/docs/workforce/workers-on-disk.md", phrase: /\bhands off to a person\b/g },
 ];
 
-/** The projects surface, where "member" is a project's: its modules, their tests, the Projects page and figure. */
-const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workforce\/test\/(?:projects?|workstreams?)[\w-]*\.test\.ts$|^apps\/docs\/docs\/workforce\/(?:projects\.md|project-overview\.svg)$/;
+/** The projects surface, where "member" is a project's: its modules, their tests, the Projects page and figure, and the revamp's Projects page with its sheets. */
+const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workforce\/test\/(?:projects?|workstreams?)[\w-]*\.test\.ts$|^apps\/docs\/docs\/workforce\/(?:projects\.md|project-overview\.svg)$|^docs\/contributing\/docs-revamp\/pages\/catalog\/workforce\/(?:projects(?:\.facts|\.record)?\.md|figures\/a-shared-project\.svg)$/;
 
 /**
  * Every place a retired word is kept on purpose. Each names the retirements it keeps and why.
@@ -883,10 +883,17 @@ const EXEMPTIONS = [
     why: "the Teammates lab's own worker is called Chief of Staff; the Shift Coordinator decision (FIX-2244) retires that name for Shift Manager's coordinator, not for this lab",
   },
   {
+    // The Messaging record quotes Shift Manager's own line text for a send that asks for a reply.
+    path: /^docs\/contributing\/docs-revamp\/pages\/catalog\/workforce\/messaging\.record\.md$/,
+    line: /"Asked <id>"/,
+    rules: ["ask-symbol-in-docs"],
+    why: "FIX-2703: a pass-5 fact check quoting Shift Manager's UI string \"Asked <id>\" verbatim; the rule's backtick pattern spans the prose between two code spans",
+  },
+  {
     // The docs-revamp pages that describe the Teammates lab name its worker as the lab does.
-    path: /^docs\/contributing\/docs-revamp\/pages\/(?:start\/(?:run-a-starter|what-flow-state-is)|catalog\/starters\/teammates)(?:\.facts|\.record)?\.md$/,
+    path: /^docs\/contributing\/docs-revamp\/pages\/(?:start\/(?:run-a-starter|what-flow-state-is)|catalog\/starters\/teammates|catalog\/workforce\/messaging)(?:\.facts|\.record)?\.md$/,
     rules: ["shift-coordinator-names", "shift-coordinator-prose"],
-    why: "FIX-2696: pages about the Teammates lab name its Chief of Staff worker and its `teammates.chief-of-staff` id as the lab ships them; FIX-2244 retires the name for Shift Manager's coordinator, not for this lab",
+    why: "FIX-2696: pages about the Teammates lab, and the Messaging page whose example is that lab, name its Chief of Staff worker and its `teammates.chief-of-staff` id as the lab ships them; FIX-2244 retires the name for Shift Manager's coordinator, not for this lab",
   },
   {
     path: /^\.changeset\/fix-2614-routines\.md$/,
@@ -1304,6 +1311,13 @@ const EXEMPTIONS = [
     where: (path) => path.startsWith("labs/claude-code-style/"),
     strip: /\bthreads?\b/gi,
     why: "Claude Code's threads mode, which the Claude Code-style lab copies by name: a thread is a task in a session of its own, not a mailbox's",
+  },
+  {
+    id: "claude-code-style-worker-ids",
+    terms: ["thread"],
+    where: (path) => path.startsWith("docs/contributing/docs-revamp/pages/"),
+    strip: /\bdesk\.thread(?:-coder(?:-[a-z]+)?)?\b|`thread-coder(?:-[a-z]+)?`/g,
+    why: "the Claude Code-style lab's worker ids (`desk.thread`, `desk.thread-coder`), quoted as the lab ships them; the lab names its threads mode after Claude Code's",
   },
   {
     id: "subscription-modules",
