@@ -69,7 +69,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const GOAL_DIR = relative(REPO_ROOT, HERE);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("a-change-reaches-every-screen");
-const SCENES = new Set((process.env.GOAL_SCENES ?? "a,b,c,d,j2,j3,j4").split(",").map((s) => s.trim()).filter(Boolean));
+const KNOWN_SCENES = ["a", "b", "c", "d", "j2", "j3", "j4"];
+const SCENES = new Set((process.env.GOAL_SCENES ?? KNOWN_SCENES.join(",")).split(",").map((s) => s.trim()).filter(Boolean));
+// A selection that runs nothing would grade PASS on no evidence.
+const unknownScenes = [...SCENES].filter((s) => !KNOWN_SCENES.includes(s));
+if (SCENES.size === 0 || unknownScenes.length > 0) {
+  throw new Error(`setup: GOAL_SCENES must name at least one of ${KNOWN_SCENES.join(", ")} (got ${JSON.stringify(process.env.GOAL_SCENES)})`);
+}
 const BOUND_MS = 1_000;
 const SAMPLES = 5;
 const IDLE_MS = 10_000;
@@ -877,9 +883,13 @@ async function legB(
         failures.push(`j2:no-poll: ${v.name} sent ${v.reads.length} requests in ${IDLE_MS / 1000} s with nothing written, ${prompted} after a notice (${v.reads.slice(0, 3).map((s) => `${s.method} ${new URL(s.url).pathname} answered ${s.status ?? "?"}`).join(", ")})`);
       }
       // The session stream reads on the server, out of the browser's sight: Postgres says whether it read on a clock.
-      if (db.log !== undefined) {
+      if (db.log === undefined) {
+        tell.over("j2:no-poll · Shift Manager's statements naming the conversation, idle (FSD_DB_URL: no server log to read)", []);
+      } else {
+        tell.over("j2:no-poll · Shift Manager's logged statements (the log reads its process)", statements(db.log).filter((x) => x.app === "goal-shift-manager"));
         const smIdle = statements(db.log).filter((x) => x.app === "goal-shift-manager" && x.at >= from && x.at < to && !isBusTraffic(x));
-        const naming = smIdle.filter((x) => x.text.includes(lead) || x.params.includes(lead));
+        const naming = tell.over("j2:no-poll · Shift Manager's statements naming the conversation, idle", smIdle.filter((x) => x.text.includes(lead) || x.params.includes(lead)), { emptyIs: "the claim: no timed read" });
+        if (naming.length > 0) failures.push(`j2:no-poll: Shift Manager's process read the conversation ${naming.length} times in ${IDLE_MS / 1000} s with nothing written (${naming[0]!.text.slice(0, 80)})`);
         note(`j2: over the idle window Shift Manager's process logged ${smIdle.length} statements, ${naming.length} naming the conversation`);
       }
       note(`j2: Shift Manager idle ${IDLE_MS / 1000} s, ${idle.map((v) => `${v.name} ${v.reads.length}`).join(", ")} requests`);
