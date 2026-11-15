@@ -9,8 +9,8 @@
  * `request`; a session's identity its `run`; none hears `items`, which a
  * reply publishes once per stored chunk. And a view answers only the caller's
  * own sessions, as the HTTP list would: what the owner rule or the view's
- * admission refuses answers nothing and records nothing, so its topic is
- * never named.
+ * admission refuses answers nothing and never names its topic; a `read` that
+ * answers nothing is heard on the caller's own user topic alone.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -46,12 +46,18 @@ function app(): FlowInstance {
         scope: "user",
         block: handler({
           name: "turns",
-          inputSchema: z.object({ ids: z.array(z.string()), status: z.array(z.string()).optional(), actions: z.array(z.string()).optional() }),
+          inputSchema: z.object({
+            ids: z.array(z.string()),
+            status: z.array(z.string()).optional(),
+            actions: z.array(z.string()).optional(),
+            limit: z.number().optional()
+          }),
           outputSchema: out,
           execute: async (input, ctx) =>
             host(ctx).turns(input.ids.length === 1 ? input.ids[0]! : input.ids, {
               ...(input.status !== undefined ? { status: input.status as never } : {}),
-              ...(input.actions !== undefined ? { actions: input.actions } : {})
+              ...(input.actions !== undefined ? { actions: input.actions } : {}),
+              ...(input.limit !== undefined ? { limit: input.limit } : {})
             })
         })
       }),
@@ -196,6 +202,18 @@ describe("sessions.turns in a view", () => {
     expect((await view(stores, flow, "turns", { ids: ["mine"], actions: ["touch"] })).output).toHaveLength(1);
   });
 
+  it("bounds each session on its own, so a busy session's newer requests never hide a quiet one's", async () => {
+    // A worker's sessions are read at once: a reply running in the quiet
+    // session must still answer when another session has more newer requests
+    // than the limit, or the list reports that conversation as idle.
+    const stores = createInMemoryStores();
+    const flow = app();
+    await act(stores, flow, "quiet");
+    for (let at = 0; at < 3; at += 1) await act(stores, flow, "busy");
+    const turns = (await view(stores, flow, "turns", { ids: ["busy", "quiet"], limit: 1 })).output as Array<{ sessionId: string }>;
+    expect(turns.map((turn) => turn.sessionId).sort()).toEqual(["busy", "quiet"]);
+  });
+
   it("answers at most 50 a session", async () => {
     const stores = createInMemoryStores();
     const flow = app();
@@ -217,11 +235,22 @@ describe("sessions.read in a user view", () => {
     expect(withState.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["run", "state"] }]);
   });
 
-  it("answers nothing and records nothing for a session the admission refuses", async () => {
+  it("answers nothing for a refused or missing session, heard on the caller's own user topic alone, alike", async () => {
+    // A session made later under the id publishes `run` there, so the view
+    // wakes; the session's own topic, which the caller can't be shown is
+    // theirs, is never named, and a refusal reads as a missing session.
     const stores = createInMemoryStores();
     await seed(stores, "mine");
-    const answer = await view(stores, app(), "identity", { id: "mine" }, { admitSession: async () => false });
-    expect(answer.output).toBeNull();
-    expect(answer.hears).toEqual([]);
+    await seed(stores, "bobs", { userId: "bob" });
+    const own = [{ topic: { scope: "user" }, kinds: ["run"] }];
+    const refused = await view(stores, app(), "identity", { id: "mine" }, { admitSession: async () => false });
+    expect(refused.output).toBeNull();
+    expect(refused.hears).toEqual(own);
+    const others = await view(stores, app(), "identity", { id: "bobs" });
+    expect(others.output).toBeNull();
+    expect(others.hears).toEqual(own);
+    const missing = await view(stores, app(), "identity", { id: "nobody" });
+    expect(missing.output).toBeNull();
+    expect(missing.hears).toEqual(own);
   });
 });

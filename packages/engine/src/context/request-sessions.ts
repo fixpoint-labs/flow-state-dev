@@ -197,40 +197,40 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     const per = bounded(query?.limit, SESSION_TURNS_MAX);
     if (per === 0) return [];
     const statuses = query?.status;
-    // One read across the sessions, filtered at the store by owner, tenant,
-    // organization and status. The request stores keep no action column, so
-    // `actions` cuts the bounded read. Across many sessions the read is the
-    // newest `per` x their number, so ask by status to read what runs now.
-    const requests = await inputs.requests.list({
-      sessionId: read.map((entry) => entry.id),
-      userId: identity.userId,
-      tenantId: identity.tenantId,
-      orgId: identity.orgId,
-      ...(statuses !== undefined ? { status: statuses } : {}),
-      orderBy: "startedAtMs",
-      limit: per * read.length
-    });
+    const requests = inputs.requests;
+    // One read a session, each bounded to its own newest `per` and filtered at
+    // the store by its own request scope (owner, tenant, organization, flow)
+    // and status: a session with many newer requests never crowds another
+    // out of a shared limit. At most 100 reads of at most 50 (BP-042). The
+    // request stores keep no action column, so `actions` cuts each bounded read.
+    const perSession = await Promise.all(
+      read.map((entry) =>
+        requests.list({
+          ...sessionRequestScope(entry.id, entry.record, identity.tenantId),
+          ...(statuses !== undefined ? { status: statuses } : {}),
+          orderBy: "startedAtMs",
+          limit: per
+        })
+      )
+    );
     const actions = query?.actions === undefined ? undefined : new Set(query.actions);
-    const kept = new Map<string, number>();
-    const answered: SessionTurn[] = [];
-    for (const request of requests) {
-      const entry = read.find((candidate) => candidate.id === request.sessionId);
-      // The session's own request scope (`sessionRequestScope`): its flow, and
-      // its owning instance when it records one.
-      if (entry === undefined || request.flowKind !== entry.record.flowKind) continue;
-      if (entry.record.flowId != null && request.flowId !== entry.record.flowId) continue;
-      const count = kept.get(entry.id) ?? 0;
-      if (count >= per) continue;
-      kept.set(entry.id, count + 1);
-      if (actions === undefined || actions.has(request.actionName)) answered.push(turnOf(request));
-    }
-    return answered;
+    return perSession
+      .flat()
+      .filter((request) => actions === undefined || actions.has(request.actionName))
+      .sort((a, b) => b.startedAtMs - a.startedAtMs)
+      .map(turnOf);
   }
 
   return {
     async read(sessionId: string): Promise<PeerSessionView | undefined> {
       const record = await owned(sessionId);
-      if (record === undefined) return undefined;
+      if (record === undefined) {
+        // Heard as the caller's list is, on their own user topic, so a session
+        // made later under the id wakes the view; never on this id's topic,
+        // which may be someone else's. A refusal and a missing session alike.
+        inputs.observe?.list();
+        return undefined;
+      }
       inputs.observe?.identity(sessionId);
       const state = readonlyStateOf(record);
       const view = {
