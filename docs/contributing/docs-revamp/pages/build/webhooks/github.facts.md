@@ -257,7 +257,9 @@ C9. The guide links the reference as `/docs/server/webhooks`; the revamp plan's 
 R1. The page declares the block `reviewPullRequest` (a `handler`, file
     `src/flows/repo/blocks/review-pull-request.ts`) and uses that one name in prose and code. It
     says "block", never "action". `sequencer` and `reviewPipeline` are gone (C2, C3 resolved).
-    `reviews` is the reader's own helper, as `ledger` is on the Stripe page.
+    `reviews` is the reader's own helper, as `ledger` is on the Stripe page. The page shows it as a
+    stub file `src/lib/reviews.ts` (`reviews.start(key: string, data: unknown): Promise<void>`) so the
+    block's import resolves; it type-checks with the other three files (round 3).
 R2. Files: `src/flows/repo/flow.ts`, `src/lib/flowstate.ts`, `src/app/api/flows/[...path]/route.ts`
     (C8 resolved). One engine import; `flows: [repoFlow()]` (C1). `repoFlow()` is callable: a flow
     definition instantiates the way `billingFlow()` does on the Stripe page. [S1-C1]

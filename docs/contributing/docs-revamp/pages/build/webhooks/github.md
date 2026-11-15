@@ -20,7 +20,16 @@ the header, and a `when` predicate on the binding narrows to `opened`.
 
 The flow says which GitHub event runs which block. The secret and signature
 check go on the server, in step 2. `reviews` is your own helper that starts a
-review.
+review. This stub stands in for it.
+
+```ts title="src/lib/reviews.ts"
+export const reviews = {
+  async start(key: string, data: unknown): Promise<void> {
+    // Replace with your review logic. Calling twice with the same key must be safe.
+    console.log("review started", key, data);
+  },
+};
+```
 
 ```ts title="src/flows/repo/blocks/review-pull-request.ts"
 import { handler } from "@flow-state-dev/core";

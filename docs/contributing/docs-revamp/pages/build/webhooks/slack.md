@@ -1,109 +1,64 @@
 ---
 title: Receive Slack events
 type: recipe
-description: "This guide covers Slack's **Events API** — asynchronous server-to-server notifications, received over the webhook transport."
+description: "Run a flow block when someone posts in a Slack channel your bot is in, with verified signatures and Slack's one-time URL check answered."
 ---
 
 # Receive Slack events
 
-This guide covers Slack's **Events API** — asynchronous server-to-server
-notifications, received over the webhook transport.
+When someone posts in a channel your bot is in, you want your backend to see it.
+Slack's Events API does this by POSTing each event to a URL you give it, and
+expecting a fast 2xx back. By the end you have an endpoint Slack can POST to and
+a `slack` flow that ingests each message. The server answers Slack's one-time
+URL check and rejects any request whose signature doesn't verify.
 
-**What we're building:** when someone posts in a channel our bot is in, our
-`slack` flow runs an `ingestMessage` action. We answer Slack's one-time URL
-verification handshake, verify every signature, and read the event type out of
-Slack's nested payload.
+The Events API is one-directional. There is no reply channel, so use it to
+ingest Slack activity, not to hold a conversation.
 
-## How the Events API behaves
+## 1. The flow declares routing
 
-The Events API is one-directional. Slack POSTs your endpoint when something
-happens — a message, a reaction, a member joining — and expects a fast 2xx. No
-reply channel; the webhook transport returns a 202 and the action runs in the
-background. Use it when you're ingesting Slack activity into your backend, not
-holding a conversation.
+The flow says which Slack event runs which block. The secret, the signature
+check and the URL check go on the server, in step 2.
 
-## 1. The URL verification handshake
+`saveMessage` is your own helper that writes to your database; this stub stands
+in for it.
 
-Before Slack sends real events, it posts a one-time challenge:
-
-```json
-{ "type": "url_verification", "challenge": "3eZbrw1a..." }
+```ts title="src/lib/inbox.ts"
+export const inbox = {
+  async saveMessage(channel: string, user: string, text: string): Promise<void> {
+    // Replace with a write to your database.
+  },
+};
 ```
 
-Slack expects the `challenge` string echoed straight back. The provider's
-`acknowledge` hook handles this: return the challenge and the adapter responds
-200 with it and skips dispatch. Return `null` for everything else and normal
-routing proceeds.
+```ts title="src/flows/slack/blocks/ingest-message.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { inbox } from "../../../lib/inbox";
 
-## 2. The host verifies and answers the handshake
-
-```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import {
-  createWebhookTransportAdapter,
-  slackWebhookVerifier,
-} from "@flow-state-dev/engine";
-import { slackFlow } from "@/flows/slack";
-
-interface SlackEnvelope {
-  type?: string;            // "url_verification" | "event_callback"
-  challenge?: string;       // present on the handshake
-  event_id?: string;        // stable per-delivery id
-  event?: { type?: string }; // "message" | "reaction_added" | ...
-}
-
-export const flowstate = createFlowState({
-  flows: { slack: slackFlow() },
-  stores: { default: { primary: inMemoryStores() } },
-  adapters: [
-    createWebhookTransportAdapter({
-      providers: {
-        slack: {
-          verify: slackWebhookVerifier(() => process.env.SLACK_SIGNING_SECRET!),
-          // Answer the one-time url_verification challenge, skip dispatch.
-          acknowledge: (e) => {
-            const p = e.payload as SlackEnvelope;
-            return p.type === "url_verification" ? p.challenge ?? null : null;
-          },
-          // Event type lives nested under event.type for real events.
-          eventType: (payload) => {
-            const p = payload as SlackEnvelope;
-            return p.event?.type ?? p.type ?? null;
-          },
-          deliveryId: (payload) => (payload as SlackEnvelope).event_id,
-        },
-      },
-    }),
-  ],
+export const ingestMessage = handler({
+  name: "ingest-message",
+  inputSchema: z.object({ text: z.string(), user: z.string(), channel: z.string() }),
+  execute: async ({ text, user, channel }) => {
+    await inbox.saveMessage(channel, user, text);
+  },
 });
 ```
 
-`slackWebhookVerifier` implements Slack's signing scheme: it signs
-`v0:<timestamp>:<rawBody>`, with the timestamp coming from the
-`X-Slack-Request-Timestamp` header and the signature from `X-Slack-Signature`,
-and rejects stale requests (default five-minute window). The signing secret is
-the one from your Slack app's **Basic Information** page, not a bot token.
+Slack nests the event type inside the body, so the `on` key below is the inner
+`event.type`, such as `message`. It is not the name of the subscription you pick
+in Slack's settings (`message.channels`).
 
-```ts title="app/api/flows/[...path]/route.ts"
-import { flowstate } from "@/lib/flowstate";
-import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
-
-export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
-```
-
-## 3. The flow declares routing
-
-The `on` keys match the nested `event.type` the host extracts.
-
-```ts title="flows/slack.ts"
-import { defineFlow, defineWebhookBinding, sequencer } from "@flow-state-dev/core";
+```ts title="src/flows/slack/flow.ts"
+import { defineFlow, defineWebhookBinding } from "@flow-state-dev/core";
+import { ingestMessage } from "./blocks/ingest-message";
 
 interface SlackEventCallback {
   event: {
     type: string;
     text?: string;
     user?: string;
-    channel?: string;
+    channel: string;
     ts?: string;
   };
 }
@@ -116,12 +71,12 @@ export const slackFlow = defineFlow({
     slack: {
       on: {
         message: defineWebhookBinding<SlackEventCallback>({
-          block: ingestPipeline,
-          // Ignore the bot's own messages to avoid a loop.
+          block: ingestMessage,
+          // Skip events that carry no `user`.
           when: (e) => e.payload.event.user !== undefined,
           input: (e) => ({
             text: e.payload.event.text ?? "",
-            user: e.payload.event.user,
+            user: e.payload.event.user ?? "",
             channel: e.payload.event.channel,
           }),
           sessionId: (e) => `channel-${e.payload.event.channel}`,
@@ -132,28 +87,93 @@ export const slackFlow = defineFlow({
 });
 ```
 
-## 4. Point Slack at the endpoint
+`requireUser: false` with `defaultUserId: "slack-bot"` runs each delivery as a
+bot user, since no signed-in user sends a webhook. `sessionId` keeps each
+channel's messages in one session; drop it if you don't need that.
 
-In your Slack app's **Event Subscriptions** settings:
+## 2. The server verifies and answers the URL check
+
+The server's webhook receiver is `createWebhookTransportAdapter`. You give it a
+provider entry under the same `slack` name the flow used. The entry checks the
+signature, reads the event type and answers Slack's URL check.
+
+```ts title="src/lib/flowstate.ts"
+import {
+  createFlowState,
+  createWebhookTransportAdapter,
+  inMemoryStores,
+  slackWebhookVerifier,
+} from "@flow-state-dev/engine";
+import { slackFlow } from "../flows/slack/flow";
+
+interface SlackEnvelope {
+  type?: string;             // "url_verification" | "event_callback"
+  challenge?: string;        // present on the URL check
+  event_id?: string;         // stable per-delivery id
+  event?: { type?: string }; // "message" | "reaction_added" | ...
+}
+
+export const flowstate = createFlowState({
+  flows: [slackFlow()],
+  stores: { default: { primary: inMemoryStores() } },
+  adapters: [
+    createWebhookTransportAdapter({
+      providers: {
+        slack: {
+          verify: slackWebhookVerifier(() => process.env.SLACK_SIGNING_SECRET!),
+          // Answer the one-time url_verification challenge and skip dispatch.
+          acknowledge: (e) => {
+            const p = e.payload as SlackEnvelope;
+            return p.type === "url_verification" ? p.challenge ?? null : null;
+          },
+          // Real events carry their type under event.type.
+          eventType: (payload) => {
+            const p = payload as SlackEnvelope;
+            return p.event?.type ?? p.type ?? null;
+          },
+          deliveryId: (payload) => (payload as SlackEnvelope).event_id,
+        },
+      },
+    }),
+  ],
+});
+```
+
+```ts title="src/app/api/flows/[...path]/route.ts"
+import { flowstate } from "../../../../lib/flowstate";
+import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+
+export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+```
+
+Before Slack sends real events, it posts `{ "type": "url_verification",
+"challenge": "..." }` and expects the challenge string echoed back. The
+`acknowledge` hook returns it, so the server answers 200 with the challenge and
+runs nothing. For every other request it returns `null` and routing continues.
+
+`slackWebhookVerifier` checks Slack's signature on every request and rejects
+stale ones. The secret is the signing secret from your Slack app's **Basic
+Information** page, not a bot token.
+
+## 3. Point Slack at the endpoint
+
+The endpoint is `POST /api/flows/slack/webhooks/slack`. In your Slack app's
+**Event Subscriptions** settings:
 
 - Turn events on and set the **Request URL** to
   `https://your-app.example.com/api/flows/slack/webhooks/slack`.
-- Slack immediately posts the `url_verification` challenge. The `acknowledge`
-  hook answers it; the URL shows as Verified.
+- Slack immediately posts the URL check. The `acknowledge` hook answers it and
+  the URL shows as Verified.
 - Under **Subscribe to bot events**, add `message.channels` (and any others you
   want), then reinstall the app.
 
-Slack is strict about the response budget — three seconds — and retries on a
-miss. Because the action runs after the 202, the ack returns fast no matter how
-long ingestion takes. Slack stamps each delivery with `event_id`; wiring
-`deliveryId` puts it on `metadata.webhook` so a retried delivery can be deduped
-in your action.
+Events the flow has no binding for, such as a `reaction_added`, are
+acknowledged and dropped, so subscribing to more than you bind is safe.
 
-## What you have
+`deliveryId` puts Slack's `event_id` on `metadata.webhook.deliveryId` of the
+delivery's request. Slack retries a delivery it thinks was missed, and the
+framework does not deduplicate, so a block with side effects should key its
+write on that id.
 
-- A verified Slack Events endpoint that auto-answers the URL handshake.
-- `message` events routed to `ingestMessage`, the bot's own messages filtered
-  out, keyed per channel.
-- The nested event type handled by the host's `eventType` extractor.
-
-For the full surface, see the [webhook receivers reference](/docs/server/webhooks).
+The [webhook receivers reference](/docs/server/webhooks) covers the response
+codes, timing, the `when` predicate and idempotency.
