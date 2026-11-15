@@ -322,6 +322,14 @@ export interface AssigneeRoster {
    * no default.
    */
   soleAssignee?(): string | undefined;
+  // FIX-2735.
+  /**
+   * True when the board's default worker claims a task with no assignee, so
+   * `createTask` may file one unassigned. Absent or `false`: nothing on the
+   * board takes a task naming nobody, so `createTask` gives it to
+   * {@link soleAssignee}, or refuses it ({@link ownerForUnassigned}).
+   */
+  readonly claimsUnassigned?: boolean;
 }
 
 // FIX-1794 T1.
@@ -351,9 +359,44 @@ const unknownAssigneeError = (assignee: string, roster: AssigneeRoster) => ({
   ok: false as const,
   error:
     `unknown_assignee: "${assignee}" is not on this board's team. ` +
-    `Available: ${roster.describe()}. Name one of these exactly, or leave ` +
-    `assignee unset to run the task on the default worker.`,
+    `Available: ${roster.describe()}. ` +
+    (roster.claimsUnassigned === true
+      ? `Name one of these exactly, or leave assignee unset to run the task on the default worker.`
+      : `Name one of these exactly.`),
 });
+
+// FIX-2735.
+/**
+ * Who a model's new task with no assignee goes to: an unassigned task is
+ * filed only when something will take it. The task tools' actions
+ * ({@link taskToolActions}) don't ask: a person or an app filing one names
+ * its owner later, beside the board. In order:
+ *
+ * - **No roster**, or a board whose default worker claims a task naming
+ *   nobody ({@link AssigneeRoster.claimsUnassigned}): `undefined`, and the task
+ *   is filed unassigned, as before.
+ * - **The roster names one worker** ({@link AssigneeRoster.soleAssignee}): the
+ *   task is filed for it.
+ * - **A held task**: `undefined`. A hold waits for a person, who names its
+ *   owner when they release it.
+ * - **Otherwise**: refused, listing who can take it. Filed, the task would
+ *   wait pending with nothing to run it while its filer believes it started.
+ */
+export function ownerForUnassigned(
+  roster: AssigneeRoster | undefined,
+  held: boolean,
+): { assignee: string } | { ok: false; error: string } | undefined {
+  if (roster === undefined || roster.claimsUnassigned === true) return undefined;
+  const sole = roster.soleAssignee?.();
+  if (sole !== undefined) return { assignee: sole };
+  if (held) return undefined;
+  return {
+    ok: false,
+    error:
+      `assignee_required: nothing on this board starts a task with no assignee, so it would wait and never run. ` +
+      `Name one of these as assignee: ${roster.describe()}. Nothing was filed.`,
+  };
+}
 
 // FIX-940; BP-030; FIX-923 / FIX-641.
 /**
@@ -363,9 +406,11 @@ const unknownAssigneeError = (assignee: string, roster: AssigneeRoster) => ({
  *
  * Two shapes pass unchecked, both deliberate:
  *
- * - **No assignee.** An unassigned task is a valid plan — it runs on the board's
- *   default worker (its floor). Reaching the floor by *intent* stays
- *   open; only reaching it by *accident* (a typo) is closed.
+ * - **No assignee.** Nothing to check here: `updateTask` sends none to leave
+ *   the owner as it is, and a new task with none is decided by
+ *   {@link ownerForUnassigned}, which files it unassigned only where
+ *   something will take it. Only reaching a worker by *accident* (a typo) is
+ *   closed here.
  * - **No roster.** A caller that passes none supplies none — there is nothing to validate against, so
  *   validation is inert and every assignee is accepted as before (the old,
  *   roster-less shape is tolerated).
@@ -1299,7 +1344,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       if ("error" in resolved) return resolved;
       followUp = resolved;
     }
-    const assignee = followUp !== undefined ? followUp.assignee : input.assignee;
+    let assignee = followUp !== undefined ? followUp.assignee : input.assignee;
     // Failure order is deliberate and uniform across the tools that touch an
     // assignee: no board (the caller's) -> unknown assignee -> creation cap.
     //
@@ -1316,6 +1361,17 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ? undefined
         : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, await rosterFor(roster, ctx)) ?? null);
     if (bad) return bad;
+    // A model's task with no assignee is filed only where something will take
+    // it (FIX-2735): decided once per call, since the roster can change
+    // between a call and its replay. An action is a person's or an app's
+    // move, made beside the board it fills, which names the owner later.
+    if (assignee === undefined && !claimless) {
+      const owner = await decideOnce(ctx, memoize, "unassigned", async () =>
+        ownerForUnassigned(await rosterFor(roster, ctx), input.held === true) ?? null,
+      );
+      if (owner !== null && "error" in owner) return owner;
+      if (owner !== null) assignee = owner.assignee;
+    }
     // One piece of work, one task (FIX-2350): the same goal for the same
     // worker while a task for it is open is a second start, from a call sent
     // twice or retried. Decided once per call, so a replay finds its own row.

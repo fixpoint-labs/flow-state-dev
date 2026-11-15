@@ -447,7 +447,7 @@ A delegate whose `takes` is `nothing` is refused the same way, and the error say
 { "ok": false, "error": "unknown_assignee: \"eng.coder\" is not on this board's team. Available: support.devices, licenses. Not taking tasks now: eng.coder: Worker \"eng.coder\" runs on flow \"coder\", which takes no task. …" }
 ```
 
-A task with no assignee goes to the conversation's only delegate that takes tasks. With several, it waits on the board unassigned until you give it one with `updateTask_tasks`, so name one when you file it.
+A task with no assignee goes to the conversation's only delegate that takes tasks. With several, it waits on the board unassigned until you give it one with `updateTask_tasks`, so name one when you file it. A worker's own `createTask` can't leave it unassigned that way: with several delegates, a call with no assignee and no `held: true` is refused with `assignee_required`, which lists the delegates, and nothing is filed.
 
 `createTask_tasks` answers `{ ok: true, taskId }` once the task is stored, without waiting for it to run. The task starts at once: the delegate works it in a new session of its own, its **task session**, which belongs to you like every other session your workers run, on whichever flow the delegate runs on. The delegate is checked again when the task is handed over. If the delegate was removed or fired in the meantime, or its flow takes no task, it doesn't run the task. The task fails, and the conversation hears that it failed.
 
