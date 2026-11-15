@@ -105,7 +105,7 @@ The `WORKER.md` is a stored part (it lives in the repo).
 - A user can hold more than one conversation with the same worker: create another on the worker's flow with `state: { workerId }`; `ensureWorkerSession` and `findWorkerSession` never return it. `wd:865-873`. [ref]
 - `workerId` is a readonly field of the session's state: nothing changes it after the create. The server checks at create that the worker is the user's or a standard one and runs on this flow; a session created without a worker is refused. `wd:875-879`, `wk/workers/keys.ts:31-37`. [ref]
 - A worker that is not yours is refused with the same answer as one that does not exist. `wd:875-877`, `dh:99-104`. [page, as the Alice/Bob answer: Bob cannot reach Alice's worker or its sessions] 
-- The roster flow's worker sessions view (`workerSessionsViewRef`) lists the user's conversations with a worker, the default first and marked; `findWorkerSession` returns the default one or nothing. `wd:861`, `wd:881-900`. [ref]
+- `listWorkerSessions(worker)` lists the user's conversations with a worker; `findWorkerSession` returns the default one or nothing. `wd:861`, `wd:881-900`. [ref]
 - A message that names a worker is refused (a message names no worker). A turn on a session whose worker was fired, or moved to another flow since the session was created, is refused. `wd:908-909`. [ref]
 - In React, `useFlow` creates sessions with no starting state, which a worker's flow refuses: find or start the session with the client, then `selectSession`. `wd:929-946`. [ref; one clause on the page at most]
 - Messages from other workers land in the default conversation. `wd:858`, `mw:12`. [ref]
