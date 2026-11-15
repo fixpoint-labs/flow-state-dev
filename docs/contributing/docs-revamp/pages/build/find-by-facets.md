@@ -8,7 +8,7 @@ description: "Have a model answer fixed questions about each record when it is w
 
 "Open billing tickets" should find the ticket that says "my card was billed again for a plan I already paid for", which says neither "open" nor "billing". A model can answer that, but asking it on every search is slow and costs a call per lookup.
 
-Facets move the question to write time. When a ticket's body is written, an [evaluator](../concepts/blocks.md) (a block that answers fixed questions with typed answers) answers a few questions about it, such as topic and status. The answers are stored on the ticket. A search then filters the stored answers, and no model runs.
+Facets are answers stored on each record, so the question moves to write time. When a ticket's body is written, an [evaluator](../concepts/blocks.md) (a block that answers fixed questions with typed answers) answers a few questions about it, such as topic and status, and stores the answers on the ticket. A search then filters the stored answers, and no model runs.
 
 ## 1. Write the questions
 
@@ -28,17 +28,19 @@ const STATUSES = {
   closed: "The problem is resolved",
 } as const;
 
+// Annotated as EvaluatorQuestions so step 2 type-checks under `strict`. The search's input
+// type then loses the option keys; the search checks them when it runs.
 export const ticketQuestions: EvaluatorQuestions = {
   topic: choice("What is this support ticket about?", TOPICS),
   status: choice("Is the customer's problem open?", STATUSES),
 };
 ```
 
-The `EvaluatorQuestions` type keeps the evaluator in step 2 assignable under `strict`. Answers to yes/no and scale questions are stored too, where your own code can read them. A search can't filter on them.
+Yes/no and scale questions are also available; the [Resources reference](../reference/resources.md) says which kinds a search can filter on.
 
 ## 2. Define the collection
 
-`triage` is an evaluator that asks those questions. The model is named here and nowhere else.
+`triage` is an evaluator that asks those questions. To change the model, change it here.
 
 ```ts title="src/flows/tickets/blocks/triage.ts"
 import { evaluator } from "@flow-state-dev/core";
@@ -46,12 +48,12 @@ import { ticketQuestions } from "../facets";
 
 export const triage = evaluator({
   name: "ticket-facets",
-  model: "typesafe-ai/jev",
+  model: "openai/gpt-6-luna",
   questions: ticketQuestions,
 });
 ```
 
-`defineFacetedCollection` takes the evaluator, reads the questions off it, and returns the collection, a search block and a reindex block. The questions must be a fixed object, not a function. The evaluator's input is the ticket body.
+`defineFacetedCollection` takes the evaluator and returns the collection, the `resources` to give the flow, a search block and a reindex block.
 
 ```ts title="src/flows/tickets/resources/tickets.ts"
 import { defineFacetedCollection } from "@flow-state-dev/core";
@@ -67,11 +69,11 @@ export const tickets = defineFacetedCollection({
 });
 ```
 
-The collection adds two fields beside yours, `facets` and `indexedAs`. Don't put them in `stateSchema`. The [reference](../reference/resources.md) lists what `defineFacetedCollection` refuses.
+The collection reserves the field names `facets` and `indexedAs` for the stored answers, so leave them out of `stateSchema`. The [Resources reference](../reference/resources.md) lists what `defineFacetedCollection` refuses.
 
 ## 3. Write and search
 
-A block writes a ticket's body through the collection. Any body write inside a flow turn classifies the ticket, whether it comes from an action, a tool or an agent.
+A block writes a ticket's body through the collection. Any body write during an action run classifies the ticket, whether an action, a tool or an agent made it.
 
 ```ts title="src/flows/tickets/blocks/write-ticket.ts"
 import { handler } from "@flow-state-dev/core";
@@ -91,7 +93,7 @@ export const writeTicket = handler({
 });
 ```
 
-Pass `tickets.resources` to `defineFlow`, and don't add another `tickets` entry.
+The blocks bring the collection into the flow themselves. Pass `tickets.resources` as the flow's `resources` as well: it carries any resources the evaluator declares, which reach the flow no other way.
 
 ```ts title="src/flows/tickets/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
@@ -110,27 +112,25 @@ export default defineFlow({
 })();
 ```
 
-Search takes one optional value per choice question and returns the matching keys:
+Search takes one optional value per choice question and returns the matching keys of the signed-in user's tickets, since the collection is `scope: "user"` (see [scopes](../concepts/state-and-scopes.md)). The [Resources reference](../reference/resources.md) has the rest of its input and output.
 
 ```text
 search  { "topic": "billing", "status": "open" }
         → { "keys": ["t1", "t7"] }
 ```
 
-A ticket with no facets never matches. You can give `tickets.search` to an agent as a tool, and the agent sees each question's options as the allowed values.
-
-Classification runs on a side chain, in the background of the turn. If it fails, the save succeeds and the ticket has no facets until you reindex it. Facets always describe the current body: if a body is rewritten while an earlier classification runs, the earlier answers are discarded.
+Each body write makes one evaluator call that answers every question, during the write's action run. Once the write action returns, the ticket is classified, and a search finds it. If the model call fails, the save succeeds, but the ticket has no facets and matches no search, not even `{}`, which returns every classified ticket. Nothing retries it until the body is written again or you reindex. Writing a new body clears the old facets first, so search never matches a ticket on answers about an earlier body.
 
 ## 4. Reindex
 
-Tickets written before you added facets, and tickets whose classification failed, have no facets. Call `reindex` to classify them. After you change the questions, call it with `{ "force": true }` to reclassify every ticket.
+Call `reindex` to classify tickets that have no facets. After you change the questions, call it with `{ "force": true }` to reclassify every ticket.
 
 ```text
 reindex  { "force": true }
          → { "reindexed": ["t1", "t7"], "failed": [] }
 ```
 
-Nothing retries a failed ticket. Run reindex again when the model is back.
+Tickets it classifies are listed in `reindexed`, and tickets whose model call fails again are listed in `failed`, with no retry. The [Resources reference](../reference/resources.md) has the rest.
 
 ## Next
 
