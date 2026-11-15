@@ -64,7 +64,7 @@ import { firecrawlFetch } from "@flow-state-dev/tools";
 export const readWithFirecrawl = firecrawlFetch({ keys: { firecrawl: "fc-key-here" } });
 ```
 
-`jinaFetch()` works the same way and, named explicitly, runs without a key. Each constructor goes in its own file.
+`jinaFetch()` works the same way, and runs without a key when you call it directly.
 
 ```ts title="src/flows/research/tools/read-direct.ts"
 import { builtinFetch } from "@flow-state-dev/tools";

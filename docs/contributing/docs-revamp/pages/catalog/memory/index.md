@@ -1,14 +1,14 @@
 ---
 title: Memory
 type: catalog
-description: Give an agent something to hold onto between turns: four optional tiers behind one capability.
+description: Give an agent something to hold onto between turns: four tiers, three of them optional, behind one capability.
 ---
 
 # Memory
 
-`@flow-state-dev/memory` gives your agent something to hold onto between turns. One factory, four optional tiers, and a capability you wire into a generator with one line.
+`@flow-state-dev/memory` gives your agent something to hold onto between turns. Four tiers, three of them optional, and a capability you add to a generator with one line.
 
-If you've ever watched an agent forget what the user told it two turns ago, you already know why this package exists. Most non-trivial agents need to remember something across turns. What the user just said. What they prefer in general. What happened last session. The memory system lets you compose those needs from four tiers, each independent, each opt-in. Pick what you need, leave the rest.
+If you've ever watched an agent forget what the user told it two turns ago, you already know why this package exists. Most non-trivial agents need to remember something across turns. What the user said a moment ago. What they prefer in general. What happened last session. The memory system lets you compose those needs from four tiers: one always-on working tier and three you opt into. Pick what you need, leave the rest.
 
 ## Installation
 
@@ -20,11 +20,7 @@ pnpm add @flow-state-dev/memory
 npm install @flow-state-dev/memory
 ```
 
-Then import the factory and capabilities directly from the package root:
-
-```ts
-import { system, workingMemoryCapability } from "@flow-state-dev/memory";
-```
+Everything imports from the package root, `@flow-state-dev/memory`: `createMemoryCapability`, `system`, and `workingMemoryCapability`.
 
 ## What memory is
 
@@ -33,79 +29,85 @@ Memory here is a composed system, not a single store. Each tier has its own scop
 | Tier | Scope | Best for |
 |------|-------|----------|
 | Working | session | Recent observations, decaying salience over the current conversation |
-| Episodic | user | Past sessions stored as discrete episodes, recallable by content |
-| Semantic | user | Consolidated facts the agent has decided are worth keeping |
-| Digest | user | Summarized rollups across many sessions |
+| Episodic | user by default, or org | Past sessions stored as discrete episodes, recallable by content |
+| Semantic | follows episodic | Consolidated facts the agent has decided are worth keeping |
+| Digest | follows semantic | Summarized rollups across many sessions |
 
-Working is always present. Episodic, semantic, and digest are opt-in via config. Working-only is a real configuration. A chat that just needs to remember the last few turns can wire in working alone and stop there.
+Working is always present. Episodic, semantic, and digest are opt-in via config. Semantic needs episodic, and digest needs semantic. Working-only is a real configuration: a chat that needs to remember the last few turns can wire in working alone and stop there.
 
-Once you have semantic or episodic configured, the system also runs a periodic [hygiene pass](./hygiene): semantic confidence decays over time so stale facts rank below freshly-reinforced ones, and old persistent episodes are evicted. The pass is on by default and tunable — turn it off entirely with `hygiene: false` if you'd rather keep raw confidence and unbounded growth.
+Memory also tidies itself. With semantic or episodic configured, a periodic [hygiene pass](./hygiene) ranks stale facts below reinforced ones and evicts old episodes. It is on by default; `hygiene: false` turns it off.
 
-Every memory also carries a subject: who it's about. The primary user is `user`; other people the user mentions get their own subject (a partner named Moni becomes `moni`). That subject is assigned when the observation is first extracted and carried through every tier, so the same person stays distinct as facts move from episode to consolidated fact to digest. Consolidation and prune won't rewrite or merge a fact across subjects, and the digest stays about the user — other people show up described in relation to them ("his wife Moni"), not folded into the user's own facts.
+Each memory records who it is about, so facts about the user and facts about other people they mention stay separate in every tier. The [memory reference](../../reference/memory) has the subject rules.
 
 ## Choosing an entry point
 
-There are two ways into memory. They take the same tier configs; they differ in what they wire up.
+Both entry points take the same tier configs and differ in what they wire up:
 
 - **`createMemoryCapability()`** builds the read side: the `<memory>` context block, the recall tool, and typed helpers. It does not build the capture pipeline, so nothing writes into memory on its own.
-- **`system()`** builds that same capability and adds the write side: auto-capture, consolidation, prune, and the hygiene janitor.
+- **`system()`** builds that same capability and adds the write side: auto-capture of observations from each turn, consolidation (turning episodes into lasting facts), prune (trimming old facts), and the hygiene pass.
 
-The decision is about writes. If your flow never feeds turns back into memory — a rewrite step, a summariser, a personalisation read — reach for `createMemoryCapability`. If it captures what happened so memory grows over time, reach for `system()`.
+The decision is about writes. If your flow never feeds turns back into memory, for example a rewrite step, a summariser, or a personalisation read, reach for `createMemoryCapability`. If it captures what happened so memory grows over time, reach for `system()`.
 
 ## Quickest start
 
-This flow only reads memory, so it uses `createMemoryCapability`:
+This flow only reads memory, so it uses `createMemoryCapability`. The memory goes in a helper file, the generator that uses it in a block file, and the flow exposes the block as an action:
 
-```ts
-import { defineFlow, generator } from "@flow-state-dev/core";
+```ts title="src/lib/memory.ts"
 import { createMemoryCapability } from "@flow-state-dev/memory";
 
-const mem = createMemoryCapability({
+export const mem = createMemoryCapability({
   model: "openai/gpt-6-luna",
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
 });
+```
 
-const reply = generator({
-  uses: [mem],
+```ts title="src/flows/support/blocks/reply.ts"
+import { generator } from "@flow-state-dev/core";
+import { mem } from "../../../lib/memory";
+
+export const reply = generator({
+  name: "reply",
+  model: "openai/gpt-6-luna",
+  prompt: "You answer support questions. Use what you remember about the user.",
   // The capability injects a <memory> context block, installs the recall tool,
-  // and exposes typed mem.* helpers on ctx.cap.
-});
-
-export const myFlow = defineFlow({
-  kind: "my-flow",
-  resources: { ...mem.sessionResources, ...mem.userResources },
-  actions: { /* ... */ },
+  // and exposes typed helpers on ctx.cap.
+  uses: [mem],
 });
 ```
 
-That's enough to give the agent a per-turn `<memory>` summary and a recall tool it can call when the auto-injected context isn't enough.
+```ts title="src/flows/support/flow.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import { reply } from "./blocks/reply";
 
-`system()` gives you the same generator surface — swap `createMemoryCapability(...)` for `system(...)` and `uses: [mem]` for `uses: [mem.capability]` — plus the capture pipeline that writes new observations back into the tiers. See [Configuration](./configuration#choosing-an-entry-point) for the side-by-side.
+export const supportFlow = defineFlow({
+  kind: "support",
+  actions: { reply: { block: reply } },
+});
+```
+
+That's enough to give the agent a per-turn `<memory>` summary and a recall tool it can call when the auto-injected context isn't enough. The memory resources come with `uses: [mem]`, so the flow does not list them.
+
+`system()` gives you the same generator surface plus the capture pipeline that writes new observations back into the tiers. Swap `createMemoryCapability(...)` for `system(...)`, and `uses: [mem]` for `uses: [mem.capability]`. The [memory reference](../../reference/memory) has the side-by-side.
 
 ## How it integrates
 
-`mem.capability` is the piece that actually wires the system into a block. A capability is FSD's way of bundling resources, context, and tools so a block can pick up everything it needs with a single `uses:` entry. Here, it contributes:
+A capability is FSD's way of bundling resources, context, and tools so a block can pick up everything it needs with a single `uses:` entry. Memory's capability (`mem` from `createMemoryCapability`, or `mem.capability` from `system()`) contributes:
 
 - A context formatter that produces the `<memory>` section the generator reads each turn.
 - The `memory/recall` tool the model can invoke to search semantic facts and past episodes on demand.
 - Typed `ctx.cap.*` helpers so handlers can read and write memory without manually reaching into resources.
 
-If you only need a subset, [presets](./configuration#capability-presets) toggle each piece individually. If you only need working memory, you can skip `system()` entirely and use `workingMemoryCapability` directly. See [Configuration](./configuration#per-tier-capabilities).
+To use only part of it, or to use working memory alone, see the [memory reference](../../reference/memory) for presets and per-tier capabilities.
 
 For the broader picture of how `uses` wires resources, context, and tools into a block, see [Capabilities](../fundamentals/capabilities).
 
-## Where it lives
-
-Memory ships from its own package, `@flow-state-dev/memory`, so apps that don't need it don't carry it. Install it alongside `@flow-state-dev/core` when an agent needs cross-turn persistence. It previously lived at `@thought-fabric/core/memory`. That path no longer resolves, so update old imports to `@flow-state-dev/memory`.
-
 ## Further reading
 
-- [Configuration](./configuration) — every knob `system()` exposes and when to reach for them.
-- [Deciding which turns to observe](./configuration#deciding-which-turns-to-observe) — put an
-  evaluator in front of capture so small-talk turns skip the observer.
-- [Relations](./relations) — the opt-in layer that stores typed connections between entities, for connection and multi-hop recall.
-- [Recall tool](./recall-tool) — the agent-invocable search surface, plus custom strategies.
-- [Resources](../resources/overview) — how memory persistence is scoped.
-- [The built-in worker](../workforce/built-in-worker#giving-workers-memory) — the recipe for attaching memory to a roster of workers, including giving each worker its own.
+- [Memory reference](../../reference/memory): every option `createMemoryCapability` and `system()` take, presets, and defaults.
+- [Hygiene](./hygiene): how stale facts and old episodes age out.
+- [Relations](./relations): the opt-in layer that stores typed connections between entities, for connection and multi-hop recall.
+- [Recall tool](./recall-tool): the agent-invocable search surface, plus custom strategies.
+- [Resources](../resources/overview): how memory persistence is scoped.
+- [The built-in worker](../workforce/built-in-worker#giving-workers-memory): the recipe for attaching memory to a roster of workers, including giving each worker its own.
