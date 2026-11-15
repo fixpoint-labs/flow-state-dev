@@ -116,4 +116,4 @@ The event carries `userId`, `sessionId`, `orgId` and `details`; the page does no
 ## Revise round 2 changes
 
 - Added a field-to-place list under the adapter (facts 18, 19): `requestId` finds the run (shared by block events and `final`, shown by the DevTool and `fsdev run`), `userId` as `user: { id }`, `sessionId` and `blockInstanceId` in `extra`, low-cardinality values in `tags`.
-- Wire-it-in paragraph now states what a throwing or unreachable callback does (facts 5, 8, 27) and the freeze-after-response loss with a flush-in-your-deploy pointer (fact 25, unverified `onBackgroundWork` coverage still not claimed).
+- Wire-it-in paragraph now states what a throwing or unreachable callback does (facts 5, 8, 27) and the freeze-after-response loss with a flush-in-your-deploy pointer (fact 25, unverified `onBackgroundWork` coverage not claimed).

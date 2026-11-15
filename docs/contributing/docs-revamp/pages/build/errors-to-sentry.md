@@ -73,7 +73,7 @@ export default createFlowState({
 });
 ```
 
-Every runtime block failure reaches Sentry with the failing block's name, the flow and action, and the request and user IDs. The request does not wait for your callback and ignores its return value. If Sentry is unreachable or `captureToSentry` throws, the error is caught and logged at `warn`, the request is unaffected, and the DevTool and the stream still show the failure. One catch: on a host that freezes the function after the response, such as Vercel, a callback still sending at that point is lost, so flush Sentry in your own deploy.
+Every runtime block failure reaches Sentry with the failing block's name, the flow and action, and the request and user IDs. The request does not wait for your callback and ignores its return value. If Sentry is unreachable or `captureToSentry` throws, the error is caught and logged at `warn`, the request is unaffected, and the DevTool and the stream show the failure. One catch: on a host that freezes the function after the response, such as Vercel, a callback that is mid-send at that point is lost, so flush Sentry in your own deploy.
 
 ## Test it locally
 
