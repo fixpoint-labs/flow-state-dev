@@ -103,12 +103,12 @@ Claude Code's stream becomes items in the flow's stream as the run goes:
 | --- | --- |
 | Writes text | A `message` item, streamed token by token |
 | Thinks | A `reasoning` item |
-| Calls a tool | A `tool_output` item. While it runs, a transient status: a `Bash` call's description, otherwise "Using <tool>..." |
+| Calls a tool | A `tool_output` item. While it runs, a transient status: a `Bash` call's description, otherwise `Using <tool>...` |
 | Starts a sub-agent | A `container` item |
 | Fails | An `error` item |
 | Starts, retries an API call, compacts its context | A transient status such as "Starting Claude Code..." |
 
-When the run ends, a kept status says "Claude Code agent run completed in ..." or "... errored (<reason>)." Afterwards, read the handle's `outcome` to tell finished from `stopped-at-limit` from `failed`. The handle also has `sessionId`, `resultSubtype` and `toolsObserved`. The wording and details are in [Harness runs](../../reference/harness-runs.md).
+When the run ends, a kept status says `Claude Code agent run completed in ...` or `... errored (<reason>).` Afterwards, read the handle's `outcome` to tell finished from `stopped-at-limit` from `failed`. The handle also has `sessionId`, `resultSubtype` and `toolsObserved`. The wording and details are in [Harness runs](../../reference/harness-runs.md).
 
 File operations and pull requests are not items. Alongside the stream, a run records the files its file tools touched (`observed-file-ops`, never their contents), Claude Code's to-do list (`observed-plan`) and the pull requests it opened (`observed-pull-requests`). They are stored as resources on the session that ran, and you read them the way [Resources](../../concepts/resources.md) shows.
 
