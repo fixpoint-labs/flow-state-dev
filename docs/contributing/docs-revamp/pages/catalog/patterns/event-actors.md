@@ -86,7 +86,7 @@ export const alertWatcher = handler({
 });
 ```
 
-`actor` pairs a block with the patterns it watches, and `eventActors` wires the actors to the workspace. The `name` of an actor must be unique in its `eventActors` call. It is shown as the assignee of the actor's run.
+`actor` pairs a block with the patterns it watches, and `eventActors` wires the actors to the workspace. The `name` of an actor must be unique in its `eventActors` call.
 
 ```ts title="src/flows/feedback/blocks/feedback.ts"
 import { actor, eventActors } from "@flow-state-dev/patterns";
@@ -130,6 +130,10 @@ export const feedbackFlow = defineFlow({
 
 Emitting `{ type: "observation", topic: "slack.message", body: { text: "Checkout is broken" } }` records the entry and runs `slack-monitor`. `alert-watcher` doesn't match, so it doesn't run. Putting `emit` in a flow adds the workspace to it. You declare nothing else.
 
+`emit` finishes without an error once every actor it started has settled. Its output holds no actor results, so read those from the log or the tasks (see [Seeing it run](#seeing-it-run)).
+
+The log keeps one entry per type and topic. Emit a second `observation:slack.message` and it isn't added to the log, but `slack-monitor` runs on it anyway.
+
 ## Topic patterns
 
 A pattern is matched against `type:topic` as one string, for example `observation:slack.message`. The whole string must match.
@@ -146,21 +150,21 @@ A pattern is matched against `type:topic` as one string, for example `observatio
 
 ## Run one actor from another
 
-By default an actor's output is ignored. Set `reEmit: true` in `feedback.ts` and any `{ type, topic, body }` an actor returns, alone, in an array or as `{ entries: [...] }`, is recorded and goes to the actors that watch it. Anything else in the output is dropped.
+By default an actor's output is ignored. Set `reEmit: true` on the `eventActors` call. An actor can then return an entry, an array of entries, or `{ entries: [...] }`, and each entry is recorded and goes to the actors that watch it. Anything else in the output is dropped.
 
-With that set, the Slack message above runs `slack-monitor`, which returns an `event:alert.urgent` entry, and `alert-watcher` runs on it. A chain stops after `maxDepth` levels (default 3). Actors at that depth run and their output is recorded, but it goes no further.
+With that set, the Slack message above runs `slack-monitor`, which returns an `event:alert.urgent` entry, and `alert-watcher` runs on it. A chain stops after `maxDepth` levels (default 3). The emitted entry's actors are depth 1, so `slack-monitor` is depth 1 and `alert-watcher`'s run on the re-emitted entry is depth 2. Actors at the last level run and their output is recorded, but it goes no further.
 
 ## When an actor fails
 
-A failing actor is recorded as failed and the rest carry on. One actor failing doesn't stop or change the other actors. A failed actor isn't retried.
+A failing actor's task is marked failed. The other actors run as usual, `emit` still finishes without an error, and a failed actor isn't retried.
 
 ## Seeing it run
 
-Each run of an actor is a task, with the actor's name as its assignee. The log is stored with the session, and a UI can read its `entries`. The log keeps one entry per type and topic: emitting a second entry with the same type and topic doesn't add it to the log.
+Each run of an actor is a task, with the actor's name as its assignee. The log is stored with the session, and a UI can read its `entries`.
 
 ## Change it
 
-`concurrency` (default 4) is how many actors run at once. `maxDepth` and `reEmit` are above. Two more options bound how many tasks one `emit` can create. Their defaults, every option and the exports for building your own `emit` are in the [patterns reference](../../reference/patterns.md).
+`concurrency` (default 4) is how many actors run at once. `maxDepth` and `reEmit` are above. `maxTotalTasks` (default 500) and `maxEnqueuedTasks` (default 100) bound how many tasks one `emit` can create. Their defaults, every option and the exports for building your own `emit` are in the [patterns reference](../../reference/patterns.md).
 
 ## See also
 

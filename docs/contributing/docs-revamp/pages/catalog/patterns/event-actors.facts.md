@@ -340,3 +340,15 @@ For the patterns Reference page, not the page:
   (unconfirmed, fact 53).
 - Cut, not moved: block-by-block composition, the wake-filter and default-concurrency history, the
   two-tier router example (beyond the plan, fact 74).
+
+## 14. Revise round 2
+
+Run against the package (a probe test, removed): two actors, one throwing. Emitting the same
+`observation:slack.message` twice with different bodies runs the non-throwing actor both times (fact 33
+now confirmed by a run, and fact 43 by the code comment), `emit` returns `error: null` in both, and the
+throwing actor does not stop its sibling (facts 51, 52 confirmed for a real throw). The output of `emit`
+is the drain loop's status entries (`{ shouldContinue: false, reason: "drained" }`), no actor results; the
+page says the output holds no actor results and does not show the shape. Page now states: a repeated
+type and topic is not recorded but still runs its actors (facts 31, 33); `emit` finishes without error
+and a failed actor does not change that; depth counting (emitted entry's actors are depth 1, fact 45);
+`reEmit` is an option of `eventActors`; the two cap options by name and default (fact 17).

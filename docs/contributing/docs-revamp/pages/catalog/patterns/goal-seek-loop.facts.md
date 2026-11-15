@@ -163,3 +163,10 @@ The loop stores two things of its own, and drains a third that belongs to the bo
 - `waiting-on-an-event` is a stop reason beside `waiting-on-a-user`; both end the pass without a judge, replan or `finalize`, and neither spends an iteration (`gsl:254-256`, `gsl:387-398`, `gt:645-679`). The page says "a person's answer, or an event outside the board"; the reason strings are in the Reference rows moved to the items and task board references. **[checked]**
 - Moved to Reference, not on the page: budget semantics and `max-iterations` handling, `onError`, `mapToVerdict`, the three construction refusals, the stream item's fields and reasons, the late-answer extra drains and their cap, and the not-supported list beyond one sentence.
 - Link targets: `./plan-and-execute.md`, `./parallel-tasks.md`, `./supervisor.md`, `../../concepts/tasks-and-boards.md`, `../../concepts/generators-and-tools.md`, `../../reference/{patterns,task-board,items}.md`.
+
+## 11. Revise round 2 (what the page now states)
+
+- A pass that ends waiting returns the board as the drain left it (`tasks`, `results`), the waiting task still `in_progress`; `finalize` does not run. `gt:604-643` (output row status `in_progress`), `gsl:646`. The termination item carries `waiting-on-a-user` or `waiting-on-an-event`. **[checked]**
+- `drainResult` is the drain's raw result (`gsl:91-94`); the page calls it a summary of the drain that just ran. The `replanner` is a block whose output is `{ tasks }` (`gsl:152-157`). **[checked]**
+- The page says the judge decides whether the loop stops once the goal is met; `maxIterations` alone guarantees it ends (`gsl:162-167`). **[checked]**
+- The board's own `maxIterations` sentence now sits after the loop's `maxIterations` paragraph; the heading before the pattern table is "Patterns built on it".

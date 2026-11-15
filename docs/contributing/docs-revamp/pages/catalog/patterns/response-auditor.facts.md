@@ -301,3 +301,9 @@ schemas:43-49).
 - Moved to the patterns reference (R-41) and not on the page: exports table, annotation fields table, bias types, bias block names, `captureContext`/`aggregateResults`/`applyThreshold` detail. `.tap()` against `.step()` is for R-03.
 - The bias adapter example (5.8) is `bias-check.ts` retitled into the page's support flow; it adds `outputSchema: AnalyzerResultSchema` and drops `label` and `sycophancyScore` from `supplementary` (the card reads only `summary` and `counterArguments`, 4.8).
 - Cost line: bias audit is two or three model calls (counterpoint skipped below threshold).
+
+## Revise round 2 additions
+
+- **[ran]** An analyzer with `outputSchema: AnalyzerResultSchema` that returns `score: 2` fails inside its own `.rescue()`: the audit succeeds and `results` holds only the other analyzer's result. The same analyzer without an `outputSchema` fails the whole audit (`execution_error` on `response-auditor`, no output).
+- `biasAnalyzer` (`packages/thought-fabric-core/src/metacognition/bias-detection-blocks.ts:371-375`) skips counter-arguments below its own `counterpointThreshold`, default 0.4 (`bias-detection-helpers.ts:19`). It is not the auditor's `threshold`.
+- `openai/gpt-6.1-sol` is a current name (the default model in the fsdev README); the small model is `openai/gpt-6-luna`.

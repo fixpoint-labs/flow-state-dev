@@ -105,7 +105,7 @@ Abbreviations:
 - The default synthesizer is a generator that integrates the step results into one answer the goal asks for, in full, citing sources only when the steps used them, never saying the work could not be done. `ix:559-566`. **[page]**
 - Its output is text (`z.string()`). `ix:591`. **[page]**
 - Its input is the plan so far: `{ goal, status?, tasks, completedSteps, totalSteps }`. `ix:576-590`, `sy:52-118`. **[page]** (what a custom synthesizer receives) / **[ref]**
-- Task rows in that input: `{ id, goal, status, result?, error? }`; statuses are `pending`, `in-progress`, `completed`, `failed`, `skipped`. `sy:62-70`, `sy:39-44`, `sc:27`. **[page]** the five names / **[ref]** how they map from the board's own statuses.
+- Task entries in that input: `{ id, goal, status, result?, error? }`; statuses are `pending`, `in-progress`, `completed`, `failed`, `skipped`. `sy:62-70`, `sy:39-44`, `sc:27`. **[page]** the five names / **[ref]** how they map from the board's own statuses.
 - `synthesizer: false` skips the model call and returns the plan object. Use it when you want the task results themselves, or are chaining. `ix:674-677`, `sy:143`, `t:102-134`. **[page]**
 - A custom `synthesizer` is a block that takes the plan object; it may return any shape (its own `outputSchema`). `op`'s custom synthesizer example uses a `generator` with `outputSchema` and `user: (plan) => JSON.stringify(plan)`. `op:362-388`. **[page]** (this is the real way to get a structured answer; see Flag 1)
 - `synthesizeInstructions` and `executionInstructions` append to the default synthesizer's and executor's prompts. `ix:233-235`, `ix:359`, `ix:592`. **[ref]**

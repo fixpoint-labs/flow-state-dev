@@ -74,14 +74,14 @@ An analyzer is any block that takes `{ userInput, response }` and returns an `An
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `analyzerId` | string | Names the analyzer. Keep it unique, because the card keys each result by it. |
+| `analyzerId` | string | Names the analyzer. Keep it unique: results with the same id collide on the audit card ([Show the audit](#show-the-audit)). |
 | `category` | string | The domain, such as `tone` or `compliance`. |
 | `score` | number, 0 to 1 | Higher means more concern. |
 | `shouldSurface` | boolean | Shows the result when its score is under the threshold. |
 | `annotations` | array | Each has `type`, `label`, `description`, `severity` and optional `evidence`. |
-| `supplementary` | object, optional | Extras for the card. It reads `summary` and `counterArguments`. |
+| `supplementary` | object, optional | Extras shown on the audit card ([Show the audit](#show-the-audit)): `summary` and `counterArguments`. |
 
-A model-backed analyzer is a generator that returns a typed object, followed by a handler that turns it into a result. Giving the analyzer an `outputSchema` catches a malformed result at the analyzer. A result that fails validation fails the whole audit.
+A model-backed analyzer is a generator that returns a typed object, followed by a handler that turns it into a result. With an `outputSchema`, a malformed result fails only that analyzer, which is left out like one that throws. Without one, it fails the whole audit.
 
 ```ts title="src/flows/support/blocks/tone-check.ts"
 import { generator, handler, sequencer } from "@flow-state-dev/core";
@@ -135,7 +135,7 @@ export const toneCheck = sequencer({
   .step(formatTone);
 ```
 
-`auditorInputSchema` and `AnalyzerResultSchema` are exported by the auditor's entry point. The generator and the handler each live in one file here to keep the example short.
+`auditorInputSchema` and `AnalyzerResultSchema` are exported by the auditor's entry point. The generator and the handler share one file here to keep the example short.
 
 Every analyzer that calls a model is one more model call per answer, in the background. With no analyzers, `overallScore` is 0, which can look like a clean bill.
 
@@ -181,11 +181,11 @@ export const biasAdapter = sequencer({
   });
 ```
 
-Each bias audit makes two or three model calls. The counter-argument call is skipped when the score is below the threshold. Add `biasAdapter` to `analyzers` beside `toneCheck`.
+Each bias audit makes two or three model calls. `biasAnalyzer` skips the counter-argument call when its score is below its own `counterpointThreshold` (default 0.4), which is separate from the auditor's `threshold`. Add `biasAdapter` to `analyzers` beside `toneCheck`.
 
 ## Show the audit
 
-When at least one result surfaces, the auditor emits an `audit-annotation` component item with the same `{ results, surfacedResults, overallScore }`. Each audit in a request renders its own card, and a card lists only the surfaced results. Nothing is emitted when nothing surfaces.
+When at least one result surfaces, the auditor emits an `audit-annotation` component item (a stream item the client renders with a registered component) with the same `{ results, surfacedResults, overallScore }`. Each audit in a request renders its own card, and a card lists only the surfaced results. Nothing is emitted when nothing surfaces.
 
 `chatAssistantRenderers` from `@flow-state-dev/ui` includes the card, so a chat built on it shows the audit with no extra code. Otherwise run `fsdev ui add audit-annotation` and register it under `renderers.component["audit-annotation"]`. The [UI reference](../../reference/ui-components.md) has the component's details.
 

@@ -22,7 +22,7 @@ seed → drain → judge → (replan) → drain again → … → finalize
 - **replan** adds tasks when the judge asks for them.
 - **finalize** turns the settled board into the loop's output.
 
-`maxIterations` is required. It is the number of drains, and it is what guarantees the loop ends. When the budget runs out without a `done` verdict, the loop doesn't throw: it runs `finalize` over whatever settled. Details of the budget, errors and construction rules are on the [patterns reference](../../reference/patterns.md).
+`maxIterations` is required. It is the number of drains, and it is what guarantees the loop ends. When the budget runs out without a `done` verdict, the loop doesn't throw: it runs `finalize` over whatever settled. The board's own `maxIterations` is a separate cap inside a single drain. Details of the budget, errors and construction rules are on the [patterns reference](../../reference/patterns.md).
 
 ## Writing a judge
 
@@ -30,15 +30,15 @@ You write the judge. It is an inline function, a block or a sequencer, and it re
 
 - `done` ends the loop.
 - `continue` drains again with no new tasks. Use it when a task is yet to finish.
-- `replan` adds work, as a `tasks` array on the verdict or from the `replanner` slot when the verdict has none.
+- `replan` adds work, as a `tasks` array on the verdict or from a `replanner` option (a block that returns tasks) when the verdict has none.
 
-An inline judge receives `{ collection, drainResult }`. `collection.list()` returns the board's tasks, each with an `id`, `goal`, `status` and `output`.
+An inline judge receives `{ collection, drainResult }`, where `drainResult` summarizes the drain that just ran. `collection.list()` returns the board's tasks, each with an `id`, `goal`, `status` and `output`.
 
 :::caution Cost
-Every iteration is a full drain plus a judge call. A judge that returns `continue` over a finished board re-drains it with nothing to do until the cap. Return `continue` only when a task is yet to finish, and `replan` when you have new work.
+Every iteration is a full drain plus a judge call. A judge that returns `continue` over a finished board re-drains it with nothing to do until the cap.
 :::
 
-How reliably the loop exits depends on what the judge checks. An LLM asked "are we done?" can flap or report success that isn't there. A check on a concrete property of the settled tasks holds up better.
+Whether the loop stops once the goal is actually met depends on what the judge checks. An LLM asked "are we done?" can flap or report success that isn't there. A check on a concrete property of the settled tasks holds up better.
 
 ## Use it
 
@@ -120,9 +120,7 @@ export const researchLoop = goalSeekLoop({
 
 With no `finalize`, the loop returns the settled board: its tasks, plus `results`, the outputs of the completed ones. The loop returns a sequencer, so a flow uses it like any block.
 
-## What it builds on
-
-The board has its own `maxIterations`, a safety cap inside a single drain. It is unrelated to the loop's.
+## Patterns built on it
 
 | Pattern | Judge | Drains |
 | --- | --- | --- |
@@ -149,7 +147,7 @@ export const chatAgent = generator({
 
 ## When a task waits
 
-A drain can leave a task waiting on a person's answer, or on an event outside the board. The loop ends that pass without judging or running `finalize`, and the drain doesn't use up an iteration. After the person answers, run the loop again and its drain takes the task's next turn. This needs a board whose tasks outlive the request. The stop reasons and the extra drains after a late answer are on the [task board reference](../../reference/task-board.md).
+A drain can leave a task waiting on a person's answer, or on an event outside the board. The loop ends that pass without judging or running `finalize`, and the drain doesn't use up an iteration. The call returns the board as the drain left it, with the waiting task still unfinished, and the termination item below carries the stop reason. After the person answers, run the loop again; the next drain picks the waiting task back up. This needs a board whose tasks outlive the request. The stop reasons are on the [task board reference](../../reference/task-board.md).
 
 ## Stream items
 
