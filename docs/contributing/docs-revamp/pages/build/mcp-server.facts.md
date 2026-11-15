@@ -1,4 +1,4 @@
-# Facts for Expose flows as an MCP server (B-30, recipe)
+# Facts for Expose a flow as an MCP server (B-30, recipe)
 
 Every fact the page may state, with file and line. Sources are limited to what a fact sheet may cite: existing user docs, the exported surface and its doc comments, tests, `goals/`, one example. No spec, no `docs/internal/`, no `CLAUDE.md`, no PR or commit text. Nothing here was run; every claim is read from source or a test, and a claim a test pins is marked **[test]**.
 

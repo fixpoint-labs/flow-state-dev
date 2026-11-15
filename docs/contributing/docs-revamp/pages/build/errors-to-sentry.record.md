@@ -37,6 +37,7 @@ Skipped: B-20 is kept in the sitemap, and the page was already at `errors-to-sen
 - After revise round 1, page sha256 ced89a1d613f: exit 0.
 - After revise round 2, page sha256 6bf2316901bc: exit 1. Failed: node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/build/errors-to-sentry.md.
 - After revise round 3, page sha256 44cb799fa698: exit 1. Failed: type-check of TypeScript examples.
+- After the loop (review): [pass 4] type-check: the page says in one line that `./src/flows/support/flow` is the reader's own flow module and any `defineFlow` result works. With a stub for that module and an ambient `@sentry/node` declaration (not installed in the workspace), both examples type-check in labs/teammates with only the planted error. Links: `/docs/advanced/error-capture` is `../reference/errors.md`. Page sha256 ac33f28b762e: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
@@ -47,6 +48,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 3: Row 3: the code comment shrinks to a pointer to the row. Untrue: This is not a claim about behavior. The behavior it describes (per-block and final events both reaching the hook) is true. The final event bypasses the dedup set on purpose. (packages/engine/src/context/createExecutionContext.ts:3697-3700) The row is recorded corrected.
 - Page, Filter the noise: `if (event.transient || event.error.retryable) return;` keeps only "failures that were not retried". Untrue: `event.transient` is true for failures in high-frequency transient blocks such as poll loops, not for retried failures. The filter drops events from transient blocks and events whose error type is retryable, whether or not a retry happened. A retried attempt is only identifiable by `attempt > 0` for later attempts, or by `error.retryable`. Failures that were rescued carry no flag. The sentence and the example do not match what the flags mean. (packages/engine/src/errors/error-capture.ts:45-46; docs/contributing/docs-revamp/pages/build/errors-to-sentry.md:78-85)
 - Page, Filter the noise: "rescued and retried failures fire too" so the default captures them, and the final-only filter gives one event per request "after rescues and retries". Untrue: The filter matches the code. Each retried attempt fires its own per-block event, and the final event only exists when the request settles failed. (packages/engine/src/execution/executeBlock.ts:453-467; packages/engine/src/errors/error-capture.ts:48-55)
+- Re-run after the review edit: No new claim about the framework: the edit says the imported flow module is the reader's own, and `createFlowState({ flows })` takes flow instances, which the type-check confirmed against packages/engine (packages/engine/src/flowstate/types.ts:124, 206).
 
 ## 6 · Depth pass
 

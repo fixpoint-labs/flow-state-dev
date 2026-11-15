@@ -37,6 +37,7 @@ Skipped: B-22 is kept in the sitemap, and the page was already at `prompts-in-ma
 - After revise round 1, page sha256 bae8cb875301: exit 0.
 - After revise round 2, page sha256 c32396d1385f: exit 0.
 - After revise round 3, page sha256 e23e4230fca7: exit 1. Failed: node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/build/prompts-in-markdown.md.
+- After the loop (review): [pass 4] word budget: 818 to 799 words. Cut "The edit ships with the code.", shortened the code-review sentence, the TypeScript-stays sentence, the `resolveBaseDir` sentence and a trailing "too". No example changed, so no type-check was needed. Page sha256 6be26be2c210: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
@@ -44,6 +45,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 - Reference row 2: Row 2: a missing variable throws at render time (the page, line 55, says the same: strict-variable checking is on, so a reference to something that does not exist throws). Untrue: Only the `<system>` and `<user>` sections render under strictVariables. The `<context>` section renders on a lenient engine with strictVariables false, so an absent key such as `{% if config.context.foo %}` does not throw. An unknown filter still throws at parse time, because strictFilters is true on both engines. (/home/user/flow-state-dev/packages/core/src/prompt/prompt-file.ts:291-317) The row is recorded corrected.
 - Row 4 and page line 61: `definePromptFile` fills the `prompt`, `user`, `caching`, `maxTokens` and `temperature` fields from the file. The list is presented as the full set. Untrue: `definePromptFile` also fills `name` and `description` from frontmatter, and sets `user` only when the file has a `<user>` section. The page's own `name` warning two bullets later depends on this. The `PromptFile` expansion in the generator also covers all six keys: name, description, user, caching, maxTokens, temperature. (/home/user/flow-state-dev/packages/core/src/prompt/prompt-file.ts:437-457; /home/user/flow-state-dev/packages/core/src/blocks/generator.ts:2880)
+- Re-run after the review edit: No new or changed claim: the cuts only shorten sentences, and the shortened `resolveBaseDir` sentence (first candidate holding `expect`) matches the first-candidate loop in packages/engine/src/prompt-file-loader.ts:86-100.
 
 ## 6 · Depth pass
 

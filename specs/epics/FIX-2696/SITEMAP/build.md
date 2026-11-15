@@ -211,7 +211,7 @@ Steps: get the flow · call an action without HTTP · read the items. Questions:
 **B-29 · Chat with a flow from the terminal** · `build/chat-from-the-terminal` · recipe · 500 words
 Steps: start a chat · continue a session · switch flows. Questions: How do you resume yesterday's session? Example: `fsdev chat`. Links: `reference/cli`. Source: `cli/interactive-chat` (keep).
 
-**B-30 · Expose flows as an MCP server** · `build/mcp-server` · recipe · 700 words
+**B-30 · Expose a flow as an MCP server** · `build/mcp-server` · recipe · 700 words
 Steps: turn it on · choose which actions are tools · connect a client · who the caller is. Questions: Which actions become tools? · How is the caller identified? Links: `reference/mcp-server`, C-17. Source: `server/mcp` (keep, trim).
 
 ### Build blocks and prompts

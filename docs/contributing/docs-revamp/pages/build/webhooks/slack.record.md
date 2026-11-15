@@ -38,7 +38,7 @@ Skipped: B-14 is kept in the sitemap, and the page was already at `slack.md`.
 - After revise round 1, page sha256 b5e31d9b3223: exit 0.
 - After revise round 2, page sha256 0dfa9956d85e: exit 0.
 - After revise round 3, page sha256 1608096dde45: exit 0.
-- After the loop (review): Pass 9 sessions question: a paragraph says two channels make two sessions, both owned by `slack-bot` rather than the posters, and a teammate signed in as someone else gets `Unknown session` (404). Pass 9 timing question: a paragraph says the 202 with `requestId` comes once the request is recorded and before the block runs, a recording failure is a 503 Slack retries, and a block's error lands on the request and shows in DevTool. The old-site link points at reference/webhooks. No example changed. 620 words. Page sha256 dba364d0a689: the page check exits 0 and the brand lint has 0 findings.
+- After the loop (review): Pass 9 sessions question: a paragraph says two channels make two sessions, both owned by `slack-bot` rather than the posters, and a teammate signed in as someone else gets `Unknown session` (404). Pass 9 timing question: a paragraph says the 202 with `requestId` comes once the request is recorded and before the block runs, a recording failure is a 503 Slack retries, and a block's error lands on the request and shows in DevTool. The old-site link points at reference/webhooks. No example changed. 625 words. Page sha256 dba364d0a689: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
