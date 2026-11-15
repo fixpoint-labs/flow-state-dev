@@ -279,16 +279,16 @@ pattern has them) · Next. One figure each: *the pattern's shape*, its blocks an
 between them, drawn on the grid K-19 uses. Marks: arrow, dashed outline on what runs inside one
 action run, hatching where a list or transcript is stored. Config tables → `reference/patterns`.
 
-| Id | Page | Words | Job | Cold-read questions | Examples | Source verdict |
-| --- | --- | --- | --- | --- | --- | --- |
-| K-20 | Parallel Tasks | 800 | Split a goal once, run the pieces side by side, combine | One task fails: what does the result hold? · Is there a review step? · Where do you swap the planner? | `parallelTasks` basic use; a custom synthesizer | Keep |
-| K-21 | Supervisor | 1,000 | Fan out, review each result, retry the ones rejected | Who decides a result is good? · How many retries does a task get? · What does a worker receive on a retry? | `supervisor` basic use; a reviewer | Keep |
-| K-22 | Plan and Execute | 1,300 | Plan a task graph, work through it, replan with what came back | When does it replan? · A step fails: what happens to steps that depend on it? · Where does the goal come from in a conversation? | `planAndExecute` basic use; a custom step executor | Keep; trim |
-| K-23 | Debate | 1,300 | Agents argue assigned positions; a judge reads the transcript and decides | Who ends the debate? · Pick a winner or synthesize: who chooses? · When is debate the wrong tool? | `debate` basic use; stances | Keep; trim |
-| K-24 | Round Robin | 1,100 | A fixed roster takes turns; an optional referee critiques each round | What stops the loop? · What does the referee change? · Who reads the contributions? | `roundRobin` basic use; a referee | Keep |
-| K-25 | Routed Specialists | 700 | A controller picks the next specialist over a shared workspace until it converges | Who decides which specialist runs next? · What do specialists share? · What ends it? | `routedSpecialists` minimal example | Keep |
-| K-26 | Event Actors | 900 | Actors react to topics they watch; no controller | You add an actor: what else changes? · One actor throws: what happens to the others? · How does an actor trigger another? | `eventActors` basic use; topic matching | Keep |
-| K-27 | Response Auditor | 1,000 | Run a finished answer through analyzers that score and annotate it | What does an analyzer return? · Where does the audit show? · How do you add your own analyzer? | The auditor after a generator; a custom analyzer | Keep |
+| Id | Page | Slug | Words | Job | Cold-read questions | Examples | Source verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| K-20 | Parallel Tasks | `catalog/patterns/parallel-tasks` | 800 | Split a goal once, run the pieces side by side, combine | One task fails: what does the result hold? · Is there a review step? · Where do you swap the planner? | `parallelTasks` basic use; a custom synthesizer | Keep |
+| K-21 | Supervisor | `catalog/patterns/supervisor` | 1,000 | Fan out, review each result, retry the ones rejected | Who decides a result is good? · How many retries does a task get? · What does a worker receive on a retry? | `supervisor` basic use; a reviewer | Keep |
+| K-22 | Plan and Execute | `catalog/patterns/plan-and-execute` | 1,300 | Plan a task graph, work through it, replan with what came back | When does it replan? · A step fails: what happens to steps that depend on it? · Where does the goal come from in a conversation? | `planAndExecute` basic use; a custom step executor | Keep; trim |
+| K-23 | Debate | `catalog/patterns/debate` | 1,300 | Agents argue assigned positions; a judge reads the transcript and decides | Who ends the debate? · Pick a winner or synthesize: who chooses? · When is debate the wrong tool? | `debate` basic use; stances | Keep; trim |
+| K-24 | Round Robin | `catalog/patterns/round-robin` | 1,100 | A fixed roster takes turns; an optional referee critiques each round | What stops the loop? · What does the referee change? · Who reads the contributions? | `roundRobin` basic use; a referee | Keep |
+| K-25 | Routed Specialists | `catalog/patterns/routed-specialists` | 700 | A controller picks the next specialist over a shared workspace until it converges | Who decides which specialist runs next? · What do specialists share? · What ends it? | `routedSpecialists` minimal example | Keep |
+| K-26 | Event Actors | `catalog/patterns/event-actors` | 900 | Actors react to topics they watch; no controller | You add an actor: what else changes? · One actor throws: what happens to the others? · How does an actor trigger another? | `eventActors` basic use; topic matching | Keep |
+| K-27 | Response Auditor | `catalog/patterns/response-auditor` | 1,000 | Run a finished answer through analyzers that score and annotate it | What does an analyzer return? · Where does the audit show? · How do you add your own analyzer? | The auditor after a generator; a custom analyzer | Keep |
 
 All eight: FIX-2703. Sources: `patterns/parallelTasks`, `patterns/supervisor`, `patterns/plan-and-execute`, `patterns/debate`, `patterns/round-robin`, `patterns/routed-specialists`, `patterns/event-actors`, `patterns/response-auditor`.
 
