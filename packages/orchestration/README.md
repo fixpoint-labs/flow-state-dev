@@ -924,12 +924,8 @@ returns or throws.
 board, and an optional roster makes `createTask` and `updateTask` refuse
 an assignee it does not name. The roster can be a function of the running block's
 context, read on each call that checks an assignee, for a board whose team changes
-while it is in use. With a roster, a model's `createTask` with no assignee files the task only
-where something will run it: unassigned when the roster sets `claimsUnassigned: true` (the
-board's default worker takes a task naming nobody), for the roster's one worker when
-`soleAssignee()` names one, and held when it is filed `held: true`. Otherwise it answers
-`assignee_required`, listing the roster, and files nothing. `taskToolActions` exposes the same tools as flow
-actions; an action may file a task with no assignee, for its caller to assign later. With no board resolvable, a call returns
+while it is in use. `taskToolActions` exposes the same tools as flow
+actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing. A new task's `input`, on
 `createTask`, is a JSON object: a string, number or array is refused by the
 tool's schema, so a model that would send the payload as a JSON string is told to send the object.

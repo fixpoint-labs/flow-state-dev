@@ -2338,8 +2338,7 @@ Any worker's turn, a task's included, can wait on a task it filed with
 
 A task's worker can split it into pieces for its own delegates; a piece for any other worker is
 refused with `unknown_assignee`. An unassigned piece goes to
-its delegate when it has exactly one; with several, `createTask` refuses it with
-`assignee_required`, listing them, unless it is filed `held: true`. Each piece carries `filedByTask`, the task it was split from.
+its delegate when it has exactly one. Each piece carries `filedByTask`, the task it was split from.
 The task stays running while a piece is open, with no lease (`keptOpenBy: "filed"`). Each piece's
 ending wakes a turn in the task session, which decides what it means: a failed piece fails nothing
 by itself. Once no piece holds it, the task completes with its output like any task's: the latest

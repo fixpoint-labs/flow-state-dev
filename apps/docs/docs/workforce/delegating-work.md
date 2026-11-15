@@ -212,7 +212,7 @@ The read answers in pages: 50 rows by default, up to 200 if you pass `limit`. `r
 
 ## Splitting a task
 
-A worker given a task can split it into pieces for its own delegates. A piece for any other worker is refused with `unknown_assignee`, and nothing is filed. When the task needs a worker that isn't a delegate, the worker should say so in its answer, and whoever filed the task decides. A piece filed with no assignee goes to the worker's delegate when it has exactly one. With several, `createTask` refuses it with `assignee_required` and lists them, unless the piece is filed `held: true`.
+A worker given a task can split it into pieces for its own delegates. A piece for any other worker is refused with `unknown_assignee`, and nothing is filed. When the task needs a worker that isn't a delegate, the worker should say so in its answer, and whoever filed the task decides. A piece filed with no assignee goes to the worker's delegate when it has exactly one.
 
 The pieces go on the task session's own board. The worker either waits on a piece in the same turn, with `getTask({ id, wait: true })`, or files them and ends its turn. Waits nest up to five deep, so a task's turn can wait on a piece whose own turn waits on another. When the turn ends instead, nothing runs for the task while the pieces are worked, but the task stays `in_progress`, with `keptOpenBy: "filed"` on its row, and it isn't handed out again while it waits. See [When a dispatched task is done](../orchestration/task-board.md#when-a-dispatched-task-is-done) for the rule every dispatched task follows.
 
