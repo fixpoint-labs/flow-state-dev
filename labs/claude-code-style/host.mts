@@ -167,16 +167,33 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
     return real !== undefined && options.repositories.includes(real) ? real : undefined;
   };
   /**
+   * The workspace host's check of a repository a run could use: a git repository whose commit
+   * ignores `.fsdev/`. A project's create asks it, and so does a run in a repository the lab doesn't
+   * list. Off (`checkRepository: false`) for the goal check's control, for both.
+   */
+  const checkRepository =
+    options.checkRepository === false
+      ? undefined
+      : (repository: string) => workspace.checkRepository!(listed(repository) ?? repository, { ignored: ASK_MARKER_IGNORED });
+  /**
    * The lab's run source: the repository the run's session works in, its own or, in a task's
    * session, the one its hand-over carried down. Read from the session's server-written state only.
+   * A listed repository runs in a worktree of it; any other must pass {@link checkRepository}, as a
+   * project's repository did when the project was made.
    */
-  const repositoryOfRun: RunSource = (ctx) => {
+  const repositoryOfRun: RunSource = async (ctx) => {
     if (options.ignoreSessionRepository === true && options.repositories[0] !== undefined) return { kind: "repo", repo: options.repositories[0] };
     const repository = (ctx.session.state as Record<string, unknown> | undefined)?.[REPOSITORY_FIELD];
     if (typeof repository !== "string") {
       return { kind: "refused", reason: "no-repository", message: "This session works in no repository. Open a new session on one." };
     }
-    return { kind: "repo", repo: listed(repository) ?? repository };
+    const local = listed(repository);
+    if (local !== undefined) return { kind: "repo", repo: local };
+    const answer = await checkRepository?.(repository);
+    if (answer !== undefined && !answer.usable) {
+      return { kind: "refused", reason: "repository-unusable", message: `repository-unusable: ${answer.problem}` };
+    }
+    return { kind: "repo", repo: repository };
   };
   const workspace = localWorkspaceHost({
     root: join(data, "runs"),
@@ -189,10 +206,6 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
   /** Core's session title generator, one per flow that runs it. */
   const titler = () => utility.sessionTitleGenerator({ name: "auto-title", model: options.utilityModel });
   const github = operatorGitHub(options.userId, options.githubToken, options.githubApiUrl);
-  const checkRepository =
-    options.checkRepository === false
-      ? undefined
-      : (repository: string) => workspace.checkRepository!(listed(repository) ?? repository, { ignored: ASK_MARKER_IGNORED });
   const projects = defineProjectsFlow({ checkRepository })({ id: PROJECTS_FLOW }) as { id: string };
   // The operator's checks, run in a run's worktree once it changed files. Not a project's: the lab runs none.
   const checks = { commands: [...(options.checks ?? [])], timeoutMs: CHECKS_TIMEOUT_MS };
