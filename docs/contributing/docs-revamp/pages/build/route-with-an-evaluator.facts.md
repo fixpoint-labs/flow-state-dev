@@ -83,7 +83,7 @@ All from `gate:42-60` and its tests `crt:32-129`.
 - A level asks its evaluator once; on resume the recorded answer is replayed, not asked again: `cr:15-16`; `ert:366-398` (both models called exactly once across a suspend and a resume, `expect(departmentModel.calls).toHaveLength(1)`). [ref; needs durable execution, see section 6]
 - On a model that reports no confidence, every edge goes to `ambiguous` and the tree never reaches level 2: `cr:225-226`; `util:1045`; `ert:183-195`; `goal:Outcome` and its `o1`-`o3` signal (three tickets: each `no-confidence` at `root`, review ran, level 2 never asked, per the 2026-09-24 verdict row). [page]
 - To branch on the bare answer from such a model, put a plain `router` after the evaluator that reads `answers.team.choice`; its leaves then receive the evaluator's answers, not the ticket: `util:1045-1057`; `blk:584`. [page: one sentence and a link; the code listing is [ref]]
-- **[conflict] `guide` line 193-194** says that a question which isn't a support ticket ... Jev's pick doesn't clear the edge's floor". The guide's run command is not a recorded test; `goal` records a clear billing-urgent ticket on Jev routing to the escalate leaf, and no off-topic ticket run. **[verify]** keep that sentence off the page.
+- **[conflict] `guide` line 193-194** says that a question which isn't a support ticket ... Jev's pick doesn't clear the edge's floor. The guide's run command is not a recorded test; `goal` records a clear billing-urgent ticket on Jev routing to the escalate leaf, and no off-topic ticket run. **[verify]** keep that sentence off the page.
 
 ### What the trace shows
 

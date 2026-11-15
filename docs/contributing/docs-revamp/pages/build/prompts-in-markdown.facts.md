@@ -121,3 +121,11 @@ The page stores data in two places. Both are answered from source, not from a ru
 6. A resource template: `contentTemplate` renders a file against `state`; `contentTemplateRef` makes the template editable at run time. (38, 39, 42, 46)
 7. Failures: unreadable file, bad frontmatter, no `<system>`, unknown filter or partial fail when the file loads; a missing variable fails when the prompt renders. (2, 29)
 8. Links: `reference/markdown-templates` for sections, config view, filters, partials, loaders, limits and errors; Generators and tools (C-03) for the `context` slot.
+
+## Revise round 1: what the page now states beyond the items above
+
+50. **`definePromptFile` fills `name`, `description`, `user` (only when the file has a `<user>` section), `caching`, `maxTokens` and `temperature`.** `pf:437-457`; `prompt: pf` expands the same six keys, `gen:2870-2886`. The page names only `name` (the spread warning) and `<user>` and frontmatter values generally; the full list is [ref]. **[source]**
+51. **The page uses the support desk end to end.** The trading-desk example of the kept guide is not in this repo (item 7), so the page no longer cites it. Layout used: `src/flows/support/blocks/draft-reply.prompt.md`, `blocks/_partials/house-style.md`, `src/flows/support/prompts.ts` (loader), all new names the page defines. **[page example, not run]**
+52. **`resolveBaseDir` takes the first candidate that exists and contains the `expect` path**; the page uses `expect: "flow.ts"` (as the kitchen-sink anchor does, item 32), `ldr:86-127`. `moduleDir(importerUrl)` defaults to the module's own directory, `ldr:42`. **[source]**
+53. **`<user>` replaces the generator's `user` line.** A `user` written on the generator would win over the file's (item 13), so the page deletes that line from `draftReply`. **[test]** `gpt:110-143`
+54. **Variable, filter and section detail (missing-variable behaviour per section, filter table, `<context>`) moved to the Reference page `reference/markdown-templates`; the page links it.** The `<context>` section is no longer on the page.
