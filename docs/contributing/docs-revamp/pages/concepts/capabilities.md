@@ -67,8 +67,8 @@ export const draftReply = generator({
   name: "draftReply",
   model: "openai/gpt-6-luna",
   prompt: "Answer the customer's question about their order.",
-  inputSchema: z.object({ message: z.string() }),
-  user: (input) => input.message,
+  inputSchema: z.string(),
+  user: (input) => input,
   uses: [orders],
 });
 ```
@@ -88,8 +88,8 @@ export const summarizeOrder = generator({
   name: "summarizeOrder",
   model: "openai/gpt-6-luna",
   prompt: "Summarize the order in one sentence.",
-  inputSchema: z.object({ message: z.string() }),
-  user: (input) => input.message,
+  inputSchema: z.string(),
+  user: (input) => input,
   uses: [orders.with({ tools: false })],
 });
 ```
@@ -110,8 +110,8 @@ export const refundReply = generator({
   name: "refundReply",
   model: "openai/gpt-6-luna",
   prompt: "Handle the refund request.",
-  inputSchema: z.object({ message: z.string() }),
-  user: (input) => input.message,
+  inputSchema: z.string(),
+  user: (input) => input,
   tools: [issueRefund],
   uses: [orders],
 });
