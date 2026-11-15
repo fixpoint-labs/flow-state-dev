@@ -2,7 +2,6 @@
 "@flow-state-dev/core": patch
 ---
 
-`utility.historySummary` keeps whatever its summary says inside the `<earlier-conversation>` section the model reads (FIX-2736).
+`utility.historySummary` keeps everything its summary says inside the `<earlier-conversation>` section the model reads, even a summary that contains the section's own tags; a summary without them reads as before (FIX-2736, part of FIX-2490). A summary is now capped at 8,000 characters, and a longer one ends with `[earlier summary truncated]`.
 
-- **core:** an `<earlier-conversation>` or `</earlier-conversation>` tag inside the stored summary, in any letter case or spacing, is escaped (`&lt;`) when the section is built, so a summary written from user text can no longer close the section early and have the text after it read as outside the summary. A summary without such a tag reads exactly as before.
-- **core:** a summary is capped at 8,000 characters, when it is stored and when it is read. A longer one keeps its start and ends with `[earlier summary truncated]`.
+Docs: apps/docs/docs/advanced/generator-context.md
