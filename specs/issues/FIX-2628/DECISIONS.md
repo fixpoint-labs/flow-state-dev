@@ -70,14 +70,15 @@ It comes down to the sibling's approval: the screens are the same, so reopening 
 
 ## Decided, not asked
 
-- **The session's repository is written by the server when the session opens,** from a
+- **The session's repository is written by the server when the session opens** ([amended
+  2026-11-15](#how-it-got-here): a workforce session field, carried down each hand-over), from a
   repository in the host's list, and is read-only after. A task session finds it through its
   filer (`filingSessionId`, set by the board's hand-over). Never from a task's input, the
   request body or a header (BP-031). The **convergence point** is the app's run source: every
   coding run and every source read asks it, and it refuses a repository the host no longer
   lists, with the host's reason. The field's carrier is FIX-2627's `sessionFields` option on
   workforce.
-- **Old sessions keep their repository.** A session opened on a project before this lands is
+- **Old sessions keep their repository** ([open in the implementation, 2026-11-15](#how-it-got-here)). A session opened on a project before this lands is
   read once: its project's repository, if the host lists it (BP-030). Otherwise it shows no
   repository and asks. The read goes when the adapter's last caller does.
 - **Pins and dismissals move into the app kit, as they are.** FIX-2624 made them user
@@ -151,3 +152,17 @@ fresh agent: this dispatch has no sub-agent tool. One finding folded: the storag
 - **Amended 2026-11-11, from FIX-2624's implementation (#5111)** — pins and dismissals are user
   resources declared on the projects flow, with no legacy copy, so `user-marks.mts` moves into
   the app kit rather than going, and nothing here removes a fallback.
+- **Amended 2026-11-15, from the implementation (owner decision, Fork A)** — the repository
+  binding is a workforce session field (`sessionFields`), not a lab-owned record. Workforce writes
+  it once, when a user's conversation opens (`setSessionFields`, server-side; a create that seeds
+  it is refused), and each hand-over carries it down beside `filingProjectId`, so a task's
+  session holds its filer's repository and the run source reads the run's own session, not its
+  filer's. To carry it, `sessionFields` moved from the agent and coordinator flows to the worker
+  installation ([FIX-2627, amended the same day](../FIX-2627/DECISIONS.md#how-it-got-here)). Q1
+  is settled by the order the work took: the lab's sessions bind to a repository here, while the
+  picker still lists workforce projects until FIX-2594's dialog lands; the open writes the picked
+  project's repository on the session, and the run never reads the project. The lab runs no
+  project checks; its checks are the host's (`CLAUDE_CODE_STYLE_CHECKS`, as Teammates' are), and
+  `projectSourceCapability` stays until its words leave with the adapter.
+  The read-once of a session opened on a project before this landed is not built: such a session
+  has no repository, and its runs are refused `no-repository` (raised with the owner under BP-030).

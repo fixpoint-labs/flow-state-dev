@@ -52,6 +52,7 @@ export { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run, runToEnd } from "./ex
 export type { RunToEndResult } from "./exec";
 export {
   CHECK_OUTPUT_TAIL_CHARS,
+  checkCommandsFrom,
   checkoutCommandPassed,
   checkoutCommandProblem,
   parseCheckoutCommand,

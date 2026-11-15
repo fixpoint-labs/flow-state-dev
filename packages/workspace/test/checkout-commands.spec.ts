@@ -8,12 +8,28 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CHECK_OUTPUT_TAIL_CHARS,
+  checkCommandsFrom,
   checkoutCommandPassed,
   checkoutCommandProblem,
   parseCheckoutCommand,
   runCheckoutCommands,
   splitCheckoutCommand,
 } from "../src/index";
+
+describe("a setting's checks", () => {
+  it("are its `;`-separated commands, trimmed, blanks dropped", () => {
+    expect(checkCommandsFrom(" pnpm typecheck ;; pnpm --filter web test ", "APP_CHECKS")).toEqual(["pnpm typecheck", "pnpm --filter web test"]);
+  });
+
+  it("are none when the setting is unset or blank", () => {
+    expect(checkCommandsFrom(undefined, "APP_CHECKS")).toBeUndefined();
+    expect(checkCommandsFrom(" ; ", "APP_CHECKS")).toBeUndefined();
+  });
+
+  it("refuse a command that needs a shell, naming the setting", () => {
+    expect(() => checkCommandsFrom("pnpm build && pnpm test", "APP_CHECKS")).toThrow(/^APP_CHECKS: .*shell operator/);
+  });
+});
 
 describe("what a command is", () => {
   it("splits words and keeps quoted words together", () => {

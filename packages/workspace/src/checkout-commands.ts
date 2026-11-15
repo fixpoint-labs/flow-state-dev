@@ -95,6 +95,27 @@ export function checkoutCommandProblem(command: string): string | undefined {
 }
 
 /**
+ * The checks a setting names, `;`-separated (`pnpm typecheck; pnpm test`):
+ * each command trimmed, blanks dropped, and each checked with
+ * {@link checkoutCommandProblem}. Commands run with no shell, so a `;` can only
+ * separate two of them. For a host reading its checks from the environment.
+ *
+ * @param value The setting's value, as read.
+ * @param setting The setting's name, which a refusal starts with.
+ * @returns The commands, or `undefined` when the value names none.
+ * @throws `${setting}: <problem>` for the first command that can't be a check.
+ */
+export function checkCommandsFrom(value: string | undefined, setting: string): string[] | undefined {
+  const commands = (value ?? "").split(";").map((command) => command.trim()).filter((command) => command !== "");
+  if (commands.length === 0) return undefined;
+  for (const command of commands) {
+    const problem = checkoutCommandProblem(command);
+    if (problem !== undefined) throw new Error(`${setting}: ${problem}`);
+  }
+  return commands;
+}
+
+/**
  * A command's words, checked once: the refusals of {@link checkoutCommandProblem}
  * and the split of {@link splitCheckoutCommand} together.
  *
