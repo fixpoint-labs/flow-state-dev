@@ -18,7 +18,8 @@ idea applied to picking skills.
 Every snippet here is trimmed from
 [`examples/guides/routing-with-evaluators`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/routing-with-evaluators),
 which has a passing test suite that needs no API key. The example uses Jev, an evaluation model
-served by Vercel's AI Gateway, so running it against a real model needs `AI_GATEWAY_API_KEY`:
+(one that answers fixed questions with typed answers rather than generating text) served by
+Vercel's AI Gateway, so running it against a real model needs `AI_GATEWAY_API_KEY`:
 
 ```bash
 cd examples/guides/routing-with-evaluators
@@ -67,8 +68,9 @@ the `confidence` key is then absent. Step 2 depends on that.
 
 When one answer decides which question to ask next, write the tree with `cascadingRouter`.
 Each level asks one evaluator a choice question, and each branch names the option that opens it
-and, optionally, the minimum confidence it needs. Anything that doesn't open an edge goes to your
-required `ambiguous` block instead of a guess.
+and, optionally, the minimum confidence it needs. A ticket whose answer matches no branch, or
+falls below that branch's `minConfidence`, goes to your required `ambiguous` block instead of a
+guess.
 
 ```ts title="src/flows/support/blocks/triage.ts"
 import { evaluator, choice, utility } from "@flow-state-dev/core";
@@ -137,6 +139,10 @@ file beside this one. In the example they're handlers that return a queue name l
 Branch keys are checked against the question's options, so a typo is a compile error. The router
 takes no model of its own; the evaluators carry it. Only the levels on the chosen path run.
 
+One limit: with `strict: true` in `tsconfig.json`, `ask` rejects an evaluator that has typed
+questions, with a `strictFunctionTypes` error. The example's tsconfig sets `strict: false`; set
+`strictFunctionTypes: false` to match.
+
 Run it with a clear, urgent billing complaint and it lands on `urgentBilling`:
 
 ```bash
@@ -145,8 +151,8 @@ pnpm fsdev run routing-with-evaluators route -i '{"message":"I was charged twice
 
 A ticket where the model's confidence falls below a branch's `minConfidence` lands on `review`.
 
-**On a model that reports no confidence, every edge goes to `ambiguous`,** whether or not the
-edge sets a minimum. To branch on the bare answer from such a model, run an evaluator and follow
+**On a model that reports no confidence, every ticket lands on `ambiguous`,** even on branches
+with no `minConfidence`. To branch on the bare answer from such a model, run an evaluator and follow
 it with a plain [`router`](/docs/fundamentals/blocks#router--runtime-dispatch) that reads
 `answers.team.choice`.
 
@@ -172,8 +178,8 @@ export const skillActivator = createSkillActivator({
 });
 ```
 
-Slash commands and keywords win when they match. Otherwise the model's pick is final, and
-it works on a model that reports no confidence. See
+Slash commands and keywords win when they match. Otherwise the skills the evaluator picks
+are the ones that activate. A model that reports no confidence works here too. See
 [Activation paths](/docs/skills/activation#tier-3-with-an-evaluator).
 
 ## Where to go next

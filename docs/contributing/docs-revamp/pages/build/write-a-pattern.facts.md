@@ -116,3 +116,11 @@ A pattern that wraps `taskBoard` stores its tasks; the sheet answers for them. T
 - The sitemap's step "accept `uses`" has no code in the example (fact 6, 30); the page's version is new code.
 - Nothing in `examples/guides/custom-pattern` tests a failing `map` block, a pattern mounted as a step of another sequencer, or `uses`. The facts above that rest on those are marked **[scratch]** or cite the `parallelTasks` tests.
 - `g` mentions the `create-pattern` skill in the repo (`g` "Where to look next"). It is a contributor skill, not user docs; the page does not link to it.
+
+## Revise round 1: what the page now states
+
+- The page's factory (`src/lib/plan-map-reduce.ts`) writes and reads tasks through `board.capability` (facts 23, 24), names the board `${config.name}-board` (fact 5), and omits `concurrency` and `claimOrder`. It was type-checked and run with `testFlow` in a scratch copy of the example (`{ total: 6 }`); the scratch files were deleted. Because the capability route is used, the page does not mention `backing`, and the request backing is the default (`tb:337-345`). The seed and reduce steps of the example (`pm:66-99`) are not what the page shows.
+- `TaskPlan` needs `collectionId` (`packages/ui/registry/components/task-plan.tsx:137,201-202`) and reads items from `useSessionItems()` by default (`packages/ui/README.md:117-134`). The board's default `collectionId` is its `name` (`tb:337-345`), so for this page it is `word-count-board`.
+- Moved to Reference rows, linked from the page: task limits and what the drain hands the next step (R-23 `reference/task-board`); collection reads and writes (R-24 `reference/task-collections`); the `task-change` and `task-board-meta` items (R-06 `reference/items`); the `TaskPlan` install command and import path (R-36 `reference/ui-components`).
+- The consumer's flow is `export default wordCountFlow();` (`wf:62`), as in the example. The run command is piped through `jq`; the last stdout line carries `output` (fact 2).
+- The `create-pattern` skill is not on the page (contributor tooling, see "Left out").

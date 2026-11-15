@@ -135,3 +135,9 @@ The page stores data in two places. Both are answered from source, not from a ru
 55. **Sibling partials need no setup.** Every other `.md` file beside the prompt file registers as a partial (item 28), so the page puts `house-style.md` in `src/flows/support/blocks/` first; the `_partials` directory plus `createPromptLoader({ partialsDir })` is an optional second step. **[test]** `ldt:30-36`, `ldt:64-70`.
 56. **`<user>` is "the user message sent each turn, written as a template"**, not fixed: it renders with the same variables as `<system>` (item 13). The page tells the reader to delete a `user` they set on the generator (item 53).
 57. **The `name`-in-frontmatter warning is off the page** (item 15); the recipe never uses the spread form.
+
+## Revise round 3
+
+58. **Page now states who can change a prompt (Q1)**: only whoever changes the file in the repo, through code review; read when `loadPromptFile` runs, so a module-level load is at import; no hot reload (items 6, 102 block).
+59. **Page states frontmatter `model` does nothing and `name` behavior** (items 8, 15, 30): `prompt: pf` keeps the generator's `name`; the spread after the generator's `name` overwrites it. Item 57 is superseded: the warning is back, one sentence.
+60. **Page has a resource-template section** (items 38-47, 43, 45, four-questions block): one variable `state`, missing field throws, `contentTemplate` file is app code shared by sessions, `contentTemplateRef` re-read each `readContent()`, `writable: true`, client access only with `client`, scope decides copies (not run across two sessions), exclusive content sources (`readContentRaw()` stays [ref], cut for budget).

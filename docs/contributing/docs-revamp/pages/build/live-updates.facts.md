@@ -132,3 +132,10 @@ The page was rewritten to the recipe shape (672 words, two titled blocks, five n
 - **R-23 (`../reference/task-board.md`)**: board notices, announced on the filing session's topic narrowed to the board id wherever the change was made. The page keeps one sentence in "When not to use this".
 - **R-25**: Workforce's `listTasks_tasks` read returns the conversation board plus the planning worker's `plan` board; subscribing `plan` with no planning worker is harmless. The page no longer mentions it; it is a view, watched with `useView`.
 - Link slugs are provisional, as on sibling pages. **[verify]** at cutover.
+
+## Revise round 2 changes
+
+- **First read** (correction 3, fact 15; `ph:261-265`, `us:79`): the page now says the hook makes no read of its own on mount, and that on a push host the connect calls the read once with `null`, so a screen may read twice on mount (the effect's read, then the connect's). On a no-push host with no `pollIntervalMs` there is no second read. Checked against `push-hub.ts` `touched` and `noPush`.
+- **Topic** is defined where first used (opening), in "a name for what to listen to, such as one session".
+- **No timer, no push** (fact 16, 34): the several-process line now says the next read may never come on a host with no push and no `pollIntervalMs`, matching step 4.
+- **Wording**: "dropped, the same as a session that doesn't exist"; the open-connection clause no longer repeats "never what"; the `useSession` bullet names changes "to that state, whichever session or process makes them".

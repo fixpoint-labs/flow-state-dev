@@ -6,9 +6,7 @@ description: "`fsdev chat` opens a persistent terminal session over your flows."
 
 # Chat with a flow from the terminal
 
-`fsdev chat` opens a persistent terminal session over your flows. Type a message, it routes to whichever flow is driving, and the reply streams back live. It's a REPL — a read-eval-print loop, the same shape as a Python or Node shell — except each turn runs a flow action and the conversation persists across turns.
-
-Every other way to talk to a flow-state project is one-shot: `fsdev run` executes a single action, the DevTool drives one request at a time from the browser. `fsdev chat` is the one that holds a live session you can talk to.
+`fsdev chat` opens a persistent terminal session over your flows. Type a message, it goes to the flow you're talking to, and the reply streams back live. Each turn runs a flow action, and the conversation carries across turns.
 
 ## Starting a session
 
@@ -16,51 +14,65 @@ Every other way to talk to a flow-state project is one-shot: `fsdev run` execute
 pnpm fsdev chat hello-chat chat
 ```
 
-The two positional arguments are a flow kind and an action — the same pair `fsdev run` takes. That flow becomes the **default target**: the flow and action your typed messages route to. Runtime resolution is identical to `fsdev run` — an `fsdev.config.ts` in the cwd wins, otherwise flows are discovered from `src/flows/` and `flows/`. See [App Configuration](./configuration) for the config convention.
+The two arguments are a flow kind and an action, the same pair `fsdev run` takes. That flow becomes the **default target**: where your typed messages go. It finds your flows the way `fsdev run` does: from `fsdev.config.ts` in the current directory if there is one, otherwise from `src/flows/` and `flows/`. See [App Configuration](./configuration).
 
-You don't have to name a target up front:
+You can leave the target out:
 
-- **One flow, one action** in the project — `fsdev chat` binds it automatically.
-- **Several available** — the session starts unbound. Run `/targets` to see them and `/use <flow>` to pick one.
-- **A config default** — set `chat: { default: "hello-chat.chat" }` on `createFlowState` and bare `fsdev chat` binds it.
-- **No flows at all** — that's a hard error, not an empty prompt.
+- **One flow, one action** in the project: `fsdev chat` binds it automatically.
+- **Several available**: the session starts unbound. `/targets` lists them and `/use <flow>` picks one.
+- **A config default**: set `chat: { default: "hello-chat.chat" }` on `createFlowState` and a bare `fsdev chat` binds it.
+- **No flows at all**: an error, not an empty prompt.
 
 ## Sending messages
 
-Anything that isn't a command is a message. It's sent to the default target as `{ message: "<your text>" }`, so the target's action needs to accept that shape (most chat-style flows do). Replies stream token by token as the model produces them.
+Anything that isn't a command is a message. It's sent to the default target as `{ message: "<your text>" }`, so the target's action needs to accept that shape. Replies stream as the model produces them.
 
-If an action's input schema rejects `{ message }`, the turn fails with the validation error and a note that the target isn't chat-shaped. The session stays open — switch to another target with `/use` and keep going.
+If the action's input schema rejects `{ message }`, the turn fails with the validation error. The session stays open, so `/use` another target and keep going.
 
-While a turn is running, an in-flight block may report what it's doing right now — "Running search-web...", "Synthesizing findings..." — as a single status line that updates in place rather than scrolling the terminal. It clears as soon as real output (the reply, a tool call) arrives, and it only appears in an interactive terminal; piped output stays silent so scripts never have to filter it out.
+While a turn runs, a block may report what it's doing, such as "Searching the knowledge base...", as one status line that updates in place. It clears when the reply or a tool call arrives, and it only shows in an interactive terminal, not in piped output.
 
 ## Slash commands
 
-A line beginning with `/` is a command. Six are built in:
+A line beginning with `/` is a command. The built-in commands:
 
 | Command | What it does |
 |---------|--------------|
 | `/help` | List the commands. |
 | `/targets` | List the available `flow · action` targets; the current default is marked. |
 | `/use <flow> [action]` | Switch the default target. Omit the action when the flow has only one. |
-| `/status` | Show the current target, session id, turn count, and runtime source. |
-| `/session [new\|<id>]` | Print the current flow's session id, rotate it (`new`), or bind an existing one. |
-| `/exit` | Leave the session (so do Ctrl-D and a double Ctrl-C). |
+| `/status` | Show the current target, session id, turn count, and where the runtime came from. |
+| `/session [new\|<id>]` | Print the current flow's session id, start a new one (`new`), or bind an existing one. |
+| `/exit` | Leave the session. Ctrl-D and a double Ctrl-C do the same. |
 
-Anything after `/` that no built-in claims is sent to the flow unchanged. That's deliberate: a project's own skills are invoked as `/<skill-name> args`, and the harness passes those straight through so the flow's skill matcher can act on them. To send a literal message that starts with `/`, put a space in front of it.
+A line like `/name args` (lowercase letters, digits and hyphens in the name) that no built-in claims goes to the flow as typed, so a project's own skills run as `/<skill-name> args`. Any other line starting with `/`, such as `/etc/hosts` or `/Foo`, prints a hint and isn't sent. To send a literal message that starts with `/`, put a space in front of it.
 
 ## Sessions and state
 
-Each flow kind gets its own session within a run, so conversation history and state don't bleed across a `/use` switch. Switch away and back, and the first flow's session resumes where it left off. History persists in the engine's stores — the same SQLite database (`.fsdev/data/fsdev.db`) the DevTool reads in the discovery path — so a conversation survives restarts of the session. A turn that stops to wait for a person is held there too: the session prints one line with what it is waiting for, the stop's id, and that you answer it in `fsdev dev`.
+Each flow kind gets its own session within a run, so history and state don't bleed across a `/use` switch. Switch away and back and the first session resumes.
 
-Turns run as whoever your app's resolver says, asked once per turn for that turn's flow. With no resolver, that is `devuser` in the development organization, `DEFAULT_ORG_ID` (`__fsd_default_org__` in output): the user the DevTool defaults to, so a chat session shows in the DevTool's session list. If a flow's resolver refuses the CLI, that turn fails and the chat keeps going. Pass `--org` to get past it. `/status` shows the organization the current flow's last turn ran in. See [Who a run is](./configuration.md#who-a-run-is) for how the resolver is asked and what `--org` and `--user` change.
+With no `fsdev.config.ts`, history is saved to `.fsdev/data/fsdev.db`, the database the DevTool reads. With a config, chat uses your app's own stores, and a conversation survives restarting `fsdev chat` only if those stores persist. With no `stores` option, state lives in memory.
 
-`--session <id>` resumes a specific session for the initially bound flow. A session that belongs to a different flow is rejected rather than silently reused, since the engine routes state by the session's flow.
+When a turn stops for a user's answer, the session prints what it is waiting for and the stop's id. See [Human in the loop](./human-in-the-loop.md).
+
+Turns run as the user your app's resolver returns. The resolver is the function in your config that says which user a request runs as. With none, turns run as `devuser` in the development organization (`__fsd_default_org__`), which is also the DevTool's default user, so the session shows in its list. If a resolver refuses the terminal, that turn fails and the chat keeps going. `--org <id>` names the organization yourself and skips the resolver. See [Who a run is](./configuration.md#who-a-run-is).
+
+### Resume yesterday's session
+
+Copy the id from the opening line, `/status`, or the DevTool's session list, then start with it:
+
+```bash
+pnpm fsdev chat hello-chat chat --session sess_1760000000000_ab12cd
+```
+
+`--session <id>` resumes that session for the flow you start with. An id from a different flow is rejected. An id that doesn't exist isn't: you get a new, empty session labelled "resumed". Resume as the same user and organization that created the session, or the turn is refused. On the SQLite store, run it from the same directory.
+
+Inside a running chat, `/use <flow>` then `/session <id>` does the same. `/session new` starts over; the old session stays stored.
 
 ## chat vs run vs dev
 
-- **`fsdev chat`** — a live, multi-turn conversation from the terminal. Reach for it to prod a flow interactively, test that history threads, or drive one flow then switch to another.
-- **`fsdev run`** — one action, one result, NDJSON to stdout. Best for scripts and the edit → run → read loop.
-- **`fsdev dev`** — the DevTool in a browser, with rich rendering and resource inspection. Best when you want to *see* the stream and state, not just read it.
+- **`fsdev chat`**: a live, multi-turn conversation. Reach for it to prod a flow, check that history threads, or switch between flows.
+- **`fsdev run`**: one action, one result, NDJSON to stdout. Best for scripts and the edit, run, read loop.
+- **`fsdev dev`**: the DevTool in a browser, with rich rendering and resource inspection. Best when you want to see the stream and state rendered.
 
 ## A session
 
@@ -84,5 +96,5 @@ Store:   app-configured stores
 
 ## Next steps
 
-- [Agent Dev Loop](./agent-dev-loop.md) — the non-interactive edit → `fsdev run` → read loop.
-- [CLI API](/docs/api/cli) — the full `fsdev chat` flag and command reference.
+- [Agent Dev Loop](./agent-dev-loop.md): the non-interactive edit → `fsdev run` → read loop.
+- [CLI API](/docs/api/cli): the full `fsdev chat` flag and command reference.

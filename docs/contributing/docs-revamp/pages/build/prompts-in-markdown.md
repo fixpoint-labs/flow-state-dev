@@ -8,7 +8,7 @@ description: "Move a generator's system prompt into a separate Markdown file and
 
 A generator is a block that calls a model, and its prompt is the prose the model reads. While that prose is short, an inline string is the right home. When it runs past a screen, fills with `${...}` interpolation, or gets copied across generators, the prompt is buried in TypeScript quoting.
 
-You can move it into a `.md` file and load it back. Inline prompts and file prompts work side by side, so move only the prompts that have outgrown a string. Skip a three-line instruction; it gains nothing from a file.
+You can move it into a `.md` file and load it back. Inline and file prompts work side by side, so move only the prompts that have outgrown a string.
 
 This page moves the `draftReply` generator of the support desk onto a prompt file. For every option and error, see the [Markdown templates reference](../reference/markdown-templates.md).
 
@@ -40,7 +40,7 @@ The body is a Liquid template, not a JavaScript template literal. Write `{{ inpu
 `${input}` is not interpreted. It reaches the model as the literal characters `${input}`.
 :::
 
-A variable that does not exist throws when the prompt renders. For an optional value, write `{{ input.note | default: "" }}`. To render a list or a table without flattening it in TypeScript, use a built-in filter such as `{{ input.items | fsd_table }}`. The [reference](../reference/markdown-templates.md) lists the variables, the filters and the sections that differ.
+A variable that does not exist throws when the prompt renders. For an optional value, write `{{ input.note | default: "" }}`. The [reference](../reference/markdown-templates.md) lists the variables, filters and sections.
 
 ## Step 3: Load it into the generator
 
@@ -60,17 +60,23 @@ export const draftReply = generator({
 });
 ```
 
-`loadPromptFile` reads the file when your code loads it and throws if the file is unreadable, has bad frontmatter or lacks a `<system>` section. The generator takes the file's `<user>` section and frontmatter values too. A field you write next to `prompt` wins over the file's.
+`loadPromptFile` reads the file when your code loads it and throws if the file is unreadable, has bad frontmatter or lacks a `<system>` section. The generator takes the file's `<user>` section and frontmatter values too. A field you write next to `prompt` wins over the file's. Frontmatter `model` does nothing: the model stays the one set in TypeScript. Leave `name` out of the file too. With `prompt:` your `name` wins, but if you spread `...definePromptFile(pf)` after the generator's `name`, the file's `name` overwrites it, and items carry that name.
 
-`loadPromptFile` needs Node. In a browser bundle, import the raw text and call `parsePromptFile`; the reference covers that path.
+`loadPromptFile` needs Node; the reference covers browser bundles.
 
 ## Step 4: Check the rendered prompt
 
-Run `fsdev dev` and send a message. Open the `draft-reply` block in the DevTool. Its detail shows the rendered Prompt, and a Template Source section shows the raw `.md` text beside it. Look for stray `${...}` and for empty values.
+Run `fsdev dev`, send a message, and open the `draft-reply` block in the DevTool. It shows the rendered Prompt and the raw `.md` under Template Source. Look for stray `${...}` and empty values.
+
+## Who can change the prompt
+
+A prompt file is source code. Only someone who changes it in your repository, through code review, can edit it. The model, the customer and the generator's run cannot, and nothing in the framework writes it.
+
+The file is read when `loadPromptFile` runs, which for a module-level call is when the module is imported. Editing it while the server runs changes nothing until the module loads again. The edit ships with the code.
 
 ## Share a fragment between prompts
 
-A partial is another `.md` file that a prompt pulls in. Every other `.md` file in the same directory as the prompt file loads as a partial with no setup. Put the lines every support prompt repeats in `src/flows/support/blocks/house-style.md`, beside `draft-reply.prompt.md`:
+A partial is another `.md` file a prompt pulls in. Every other `.md` file beside the prompt file loads as one. Put lines every support prompt repeats in `src/flows/support/blocks/house-style.md`, beside `draft-reply.prompt.md`:
 
 ```liquid title="src/flows/support/blocks/house-style.md"
 Write in plain sentences. Never promise a refund date.
@@ -100,7 +106,13 @@ export const loadPrompt = createPromptLoader(path.join(flowDir, "blocks"), {
 });
 ```
 
-`draftReply` then calls `loadPrompt("draft-reply.prompt.md")`. `resolveBaseDir` takes the first candidate that exists and contains the `expect` path. The first candidate works under vitest, tsx and `fsdev run`. The `process.cwd()` one covers Next.js, where `import.meta.url` is a virtual path. Keep both if your app is bundled.
+`draftReply` then calls `loadPrompt("draft-reply.prompt.md")`. `resolveBaseDir` takes the first candidate containing the `expect` path. Under Next.js `import.meta.url` is a virtual path, so the `process.cwd()` candidate covers it.
+
+## Render a resource from a template
+
+A resource's content can render from a Markdown template against one variable, `state`, the resource's own state. There is no `input`, `ctx`, session state or other resource, and no model call. A missing state field throws on read, so use `default`.
+
+`contentTemplate: { path, importerUrl: import.meta.url }` renders a file. It is app code: only developers edit it, and every session shares it. `contentTemplateRef: "<resource name>"` uses another resource's content as the template instead. It is re-read on every `readContent()`, so a `writeContent()` on it changes the next read. Set `writable: true` there; block code can write it, a client only if the resource declares `client` access. That resource lives in its own scope, so if it is `session`-scoped, one customer's edit does not touch another's summary. A resource takes one content source; `defineResource` throws at build time if you set two.
 
 ## Next
 

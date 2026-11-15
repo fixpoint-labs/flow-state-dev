@@ -105,7 +105,7 @@ check that, so a `plan` block whose output doesn't match `planOutputSchema` fail
 when the flow runs. `reduce` ignores what the drain hands it and reads the
 finished tasks through the board's capability.
 
-A task that fails is left out of `outputs`, and the run still completes. Tasks are
+A task that fails is left out of `outputs`, and the run completes anyway. Tasks are
 capped per board; the limits are in the [task board reference](../reference/task-board.md).
 
 ## 3. Use it in a flow
@@ -185,8 +185,12 @@ Because a board does the work, the pattern emits `task-change` and
 `task-board-meta` items on its own. Render them with the `TaskPlan` component,
 passing the board's name as `collectionId`. It reads the session's items by default.
 
-```tsx
-<TaskPlan collectionId="word-count-board" />
+```tsx title="src/app/word-count-progress.tsx"
+import { TaskPlan } from "@/components/flow-state/task-plan";
+
+export function WordCountProgress() {
+  return <TaskPlan collectionId="word-count-board" />;
+}
 ```
 
 The item types and the component's install steps are in the
@@ -195,6 +199,6 @@ The item types and the component's install steps are in the
 ## Related
 
 - [Tasks and boards](../concepts/tasks-and-boards.md): the seed, drain and read model a pattern packages.
-- [Patterns](../catalog/patterns/index.md): the built-in patterns. `parallelTasks` is the closest to this one, and `planAndExecute` uses a generator as its planner.
+- [Parallel tasks](../catalog/patterns/parallel-tasks.md): the built-in pattern closest to this one. [Plan and execute](../catalog/patterns/plan-and-execute.md) uses a generator as its planner.
 - [Task board reference](../reference/task-board.md): the `taskBoard` options.
 - [Task collections reference](../reference/task-collections.md): reading and writing a board's tasks.

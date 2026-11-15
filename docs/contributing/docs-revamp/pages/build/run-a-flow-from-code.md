@@ -1,146 +1,109 @@
 ---
 title: Run a flow from your own code
 type: recipe
-description: "Most flows run because something came in over HTTP: a user hit an endpoint, your Next.js route handed the request to `createFlowApiRouter`, and the runtime took it from there."
+description: "Call a flow's action from a cron job, queue worker or script with runAction."
 ---
 
 # Run a flow from your own code
 
-Most flows run because something came in over HTTP: a user hit an endpoint, your
-Next.js route handed the request to `createFlowApiRouter`, and the runtime took
-it from there. A *transport* is just that inbound edge — the thing that turns an
-outside request into a flow run.
+A nightly job needs to send a reply through the `support` flow. A worker runs one flow per queued message. A script reacts to a webhook your own code already received. None of these is an HTTP request, so none of them can call the flow through a client.
 
-But not every flow run starts with a request. A nightly cron wants to kick off a
-digest. A worker draining a queue wants to process each job through a flow. A
-custom integration reacts to an external event and runs a flow in-process. This
-code lives outside any transport, and it still needs a sanctioned way in.
+`runAction` runs a flow's action the same way an HTTP request does. You give it the flow, the action name, the input and who is running it, and it resolves with the result.
 
-That way is `runAction`, the same action-level entry point the HTTP layer calls
-under the hood. You hand it the flow, the action, an input, a resolved `userId`,
-and the stores; it runs the action to completion and returns the result. Two
-options on it make it ergonomic for non-HTTP callers: an `onItem` callback to
-observe items as they happen, and a `requestId` you can read back off the
-result.
+It runs actions, not blocks. To run a single block, use [`@flow-state-dev/testing`](../reference/api/testing.md). If you want a timer or a queue and not your own code, see [Background jobs with BullMQ](./background-jobs-bullmq.md).
 
-One rule governs the whole thing — execution is a flow-level concern. There is
-no block-level equivalent. If you want to exercise a single block, that is the
-job of [`@flow-state-dev/testing`](../testing/overview.md), not `runAction`.
+The example is the support desk from [Flows and actions](../concepts/flows-and-actions.md): a `support` flow with a `reply` action.
 
-## When to reach for it
+## 1. Get the flow, the stores and the runtime config
 
-- **Background jobs** — a scheduled task that runs a flow on a timer.
-- **Cron handlers** — the nightly digest, the weekly rollup.
-- **Queue consumers** — a worker that runs a flow per drained message.
-- **Custom integrations** — code reacting to an external event that wants a flow
-  run in-process, with no HTTP round-trip to your own server.
+`support` is the flow the server registers, the default export of `src/flows/support/flow.ts`. The stores hold sessions and requests, and `runtimeConfig` holds instance-level settings such as the model resolver. Take both from the app, so your script and your server see the same sessions.
 
-## When not to
+```ts title="scripts/send-reply.ts"
+import app from "../fsdev.config";
 
-Anything a user triggers should go through HTTP. `runAction` does not
-authenticate and it does not shape a response — it is a bare execution seam, not
-an endpoint.
-
-It also carries the same trust boundary as the HTTP layer: you supply a
-*resolved* `userId` — a user identity you have already verified belongs to the
-caller. `runAction` takes that identity at face value. Verifying it is your job.
-See [authentication](../server/authentication.md) for the full trust model.
-
-## Example
-
-```ts
-import { runAction, createFilesystemStores } from "@flow-state-dev/engine";
-import { digestFlow } from "./flows/digest";
-
-const stores = createFilesystemStores({
-  rootDir: ".flow-state",
-  developmentOnly: true
-});
-
-const result = await runAction({
-  flow: digestFlow,
-  actionName: "run",
-  input: { since: "2026-05-01" },
-  userId: "user_42", // already resolved + verified by your job
-  sessionId: "nightly-digest",
-  source: "manual", // recorded on the request; defaults to "http"
-  stores,
-  runtimeConfig: {}, // required; modelResolver, settings, logger, … all optional within it
-  onItem: (item) => console.log(item.type, item.id)
-});
-
-console.log("ran", result.requestId);
-if (result.error) throw result.error;
+const runtime = await app.getRuntime();
+// runtime.stores and runtime.runtimeConfig are what the server uses
 ```
 
-The `flow` you pass owns whatever the run creates: the session and the request
-are stamped with its id, and a later call through the HTTP server, the CLI or a
-worker re-enters them only through that same instance. The check runs the other
-way too. A `sessionId` that already belongs to another instance is refused with
-`FlowInstanceBindingMismatchError` before the action starts, with nothing
-written, even though no host is involved. There is no second runner that skips
-it.
+A script that is the whole app has no `fsdev.config.ts`. It builds its own with `createInMemoryStores()` from `@flow-state-dev/engine/host`, and passes `runtimeConfig: {}` if no block calls a model. Nothing in memory outlives the process. A flow with a generator block needs a `modelResolver` in `runtimeConfig`.
 
-You already hold `stores` — they are the same registry you built to construct
-your server. `runtimeConfig` carries instance-level config (a `modelResolver`,
-settings, a logger); without a `modelResolver` in it, a generator block fails at
-run time exactly as it would through the HTTP layer.
+## 2. Call runAction
 
-## The result, and fire-and-forget
+Pass the seven required options. `userId` and `orgId` are the user and organization the run belongs to. Nothing checks them, so pass ones your own code has verified. For single-organization development, use `DEFAULT_ORG_ID`.
 
-`runAction` resolves when the action reaches a terminal state. The
-`ExecutionResult` it returns carries the run's `output`, the `items` it
-produced, a `durationMs`, an `error` when the run failed, and the `requestId` —
-the id of the run, for correlating logs or attaching a stream.
+`sessionId` is optional, and it is the one real decision. Pass the same one on every call and the runs share one session, so the second `reply` sees the first one's count. Leave it out and each call gets a new session. A session belongs to one user, one organization and one flow. Reusing it from another user, organization or flow rejects before anything runs.
 
-`output` and `error` can both be set. When the action returns and a completion
-hook such as `onCompleted` then throws, the run fails with the hook's error, and
-`output` still holds what the action returned.
+Pass `onItem` to watch items as they arrive. It also receives transient items, which are never saved. An error thrown in `onItem` doesn't fail the run.
 
-The same `output` and `error` are saved to the request's record in your
-`stores`, as `result`, when the run ends. A client can read them later from [`fsd.sessions.requests`](/docs/api/client#sessionsrequestssessionid-options)
-without attaching a stream; pass `includeResultOutput: true` to get the output.
-The record keeps a JSON copy of the output, so a `Date` is stored as its ISO
-string. A value that doesn't survive a JSON round trip, such as a `BigInt`,
-`NaN` or a `Map`, isn't stored. Aborted and interrupted runs save no
-result.
+## 3. Check the result
 
-The output is saved for an action whose block is marked `transient` too:
-`transient` keeps the block's trace items out of storage, not the action's
-return value.
+A call that is wrong before the run starts rejects. That covers an unknown action, no organization, and someone else's session. A run that starts and fails resolves with `result.error` set. Input the action's schema refuses comes back as `validation_error`.
 
-To fire-and-forget, don't await: drop the `await` and let the run proceed. The
-run is durable either way — items and events persist to the `stores` you passed.
-One caveat: an un-awaited run that fails produces an unhandled promise
-rejection, so attach a `.catch` if a failure should be observed.
+Otherwise `result.output` holds what the action returned, and `result.items` holds the items the run produced, in order. Those include trace items, so filter to the types you want. [Items](../reference/items.md) lists them.
 
-If you want the `requestId` *before* the run finishes — to attach a live stream
-while it is still running — pass your own `requestId` in rather than reading it
-off the result:
+## 4. Start a run without waiting
 
-```ts
-const requestId = crypto.randomUUID();
-void runAction({ ...opts, requestId, stores }); // fire, don't await
-// A separate HTTP server over the same `stores` can now stream this run by
-// opening its GET-stream route for `requestId`.
+To keep the `requestId` before the run ends, pass your own. Drop the `await`. Items are saved to your stores either way, and a failed run resolves with `result.error` and does not reject. Attach a `.catch` for the calls that reject, and read the outcome from the request record.
+
+```ts title="scripts/enqueue-reply.ts"
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { runAction } from "@flow-state-dev/engine";
+import app from "../fsdev.config";
+import support from "../src/flows/support/flow";
+
+export async function enqueueReply(userId: string, message: string) {
+  const runtime = await app.getRuntime();
+  const requestId = crypto.randomUUID();
+  void runAction({
+    flow: support,
+    actionName: "reply",
+    input: { message },
+    userId,
+    orgId: DEFAULT_ORG_ID,
+    requestId,
+    stores: runtime.stores,
+    runtimeConfig: runtime.runtimeConfig,
+  }).catch((error) => console.error("reply was not started", error));
+  return requestId;
+}
+
+export async function replyStatus(requestId: string) {
+  const runtime = await app.getRuntime();
+  const record = await runtime.stores.request.get(requestId);
+  return record?.status;
+}
 ```
 
-Because the run persists against `requestId`, a separate HTTP server backed by
-the *same* stores can stream it live. The job starts the flow; a dashboard
-watches it.
+## The finished code
 
-### `onItem` mirrors the live stream
+```ts title="scripts/send-reply.ts"
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { runAction } from "@flow-state-dev/engine";
+import app from "../fsdev.config";
+import support from "../src/flows/support/flow";
 
-The optional `onItem` callback fires for every item as it is added, updated, and
-done — the same live fan-out that feeds connected SSE clients. That includes
-transient items (live-only items that are shown in real time but never
-persisted). If you compare `onItem` against the persisted item log afterward,
-the transient ones will be present in the former and absent from the latter,
-exactly as they are for an HTTP client. Don't re-filter them. Listener
-exceptions are isolated and never break the run.
+export async function sendReply(userId: string, message: string) {
+  const runtime = await app.getRuntime();
+  const result = await runAction({
+    flow: support,
+    actionName: "reply",
+    input: { message },
+    userId, // a userId your job has verified
+    orgId: DEFAULT_ORG_ID,
+    sessionId: `reply-${userId}`,
+    stores: runtime.stores,
+    runtimeConfig: runtime.runtimeConfig, // add a modelResolver if the flow has generators
+    onItem: (item, kind) => {
+      if (kind === "done" && item.type === "message") console.log("message", item.id);
+    },
+  });
+  if (result.error) throw result.error;
+  return result.output;
+}
+```
 
-:::note
-If you are calling `runAction` to chain flow A's output into flow B, you
-probably want a single flow with two actions instead. This path is for crossing
-the no-transport boundary, not for stitching flows together in application code.
-:::
+## Next
+
+- [Flows and actions](../concepts/flows-and-actions.md): what a flow, an action and a flow instance are.
+- [Flows reference](../reference/flows.md): lifecycle hooks, session binding, the request record and what `runAction` stores.
+- [Errors](../reference/errors.md): the codes `result.error` carries.

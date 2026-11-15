@@ -186,3 +186,10 @@ For the cold-read pass (written by another agent; these are the facts it can key
 - Moved off the page to Reference, linked only: the three-way model-key list and gateway limits, the generate-only refusal text, the `cascadingRouter` field-by-field description, the no-confidence trace verdict and the `routeWithoutConfidence` run, the activator's error and fallback behaviour and `skillQuestions`. The page keeps one sentence each for the default model, absent `confidence`, the no-confidence rule, and the activator's tiers and final pick.
 - The `ambiguous` block is described as one fallback block; the page no longer says it hands a case to a person (item 1).
 - Open: under `strict: true`, `utility.cascadingRouter` rejects evaluators with typed question maps (`ask` is typed `AnyEvaluatorBlock`, `cr:40`, whose `onCompleted` parameter is `Record<string, EvaluatorAnswer>`). The snippet passes under the example's tsconfig (`strict: false`). A core typing fix, not a page fix.
+
+## 11. Revise round 2
+
+- Line 148's claim (a branch with no `minConfidence` still goes to `ambiguous` when the model reports no confidence) confirmed: `crt:58-62` (BR-4) and `examples/guides/routing-with-evaluators/test/flow.test.ts:120-128`, `:132-145`.
+- Strict-mode limit now on the page (item 188 above): `ask` is typed `AnyEvaluatorBlock` (`cr:40`); under `strictFunctionTypes` an evaluator with typed questions fails TS2322. Verified by a type-check of the page's snippets; the example's tsconfig sets `strict: false`. The sibling-file import errors are expected: those blocks are separate files not shown.
+- Jev defined on first use as an evaluation model (answers fixed questions with typed answers).
+- "Edge" removed from the page; the page says branch and ticket.
