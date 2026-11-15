@@ -33,6 +33,7 @@ Skipped: K-39 is kept in the sitemap, and the page was already at `hygiene.md`.
 - After revise round 1, page sha256 7b23d0f138ac: exit 0.
 - After revise round 2, page sha256 8b5801ab877d: exit 0.
 - After revise round 3, page sha256 50b684ed1047: exit 0.
+- After the loop (review): Greptile review on the PR. frontmatter: the `description` held an unquoted `: `, which YAML refuses ("Nested mappings are not allowed in compact mappings", checked with the `yaml` package apps/docs uses). It is now quoted, with the text unchanged. No prose or example changed. Page sha256 667a9800e305.
 
 ## 5 · Fact check
 
@@ -42,6 +43,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 5: Permanent episodes get `stale: true` "after `permanentStaleDays` of silence" (default 180) (page line 14, line 45; row 5) Untrue: markStale measures age from the episode's `encodedAt`, not from any last-activity or last-recall time. A permanent episode is flagged once `now - encodedAt >= permanentStaleDays`, regardless of recent use. Nothing in the code measures silence. (/home/user/flow-state-dev/packages/memory/src/episodic-memory-helpers.ts:155-173) The row is recorded corrected.
 - Reference row 4: Persistent episodes are culled when "more than" `persistentTurns` / `persistentDays` have passed (page lines 40-43; row 4) Untrue: The comparison is inclusive (`>=`), so culling fires at exactly the threshold, not only after it. Turn age is also clamped to 0 when the episode's turn number is ahead of the current session turn (working memory's `currentTurn` resets each session), so the turn test alone never fires for episodes from a previous session. The days test still applies. (/home/user/flow-state-dev/packages/memory/src/episodic-memory-helpers.ts:123-136) The row is recorded corrected.
 - Reference row 14: Maintenance order is "consolidate → janitor → prune" (page line 170; row 14) Untrue: That order holds only for the default 'onConsolidation' schedule, where the janitor is a .tap() inside the consolidate sequencer, ahead of the separate prune sideChain. With 'onCapture' (or the episodic-only fallback) the janitor is added as a sideChain after consolidate and prune, so it runs last. It also does not run before prune on turns where consolidation does not trigger. (/home/user/flow-state-dev/packages/memory/src/memory-system-blocks.ts:1439-1441 and /home/user/flow-state-dev/packages/memory/src/memory-system-blocks.ts:1831-1851) The row is recorded corrected.
+- Re-run after the review edit: no claim changed; the frontmatter parses, and `description` reads back the same text.
 
 ## 6 · Depth pass
 

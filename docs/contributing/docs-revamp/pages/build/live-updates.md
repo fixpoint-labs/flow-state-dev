@@ -23,6 +23,8 @@ export const fsd = createClient({ userId: "devuser", baseUrl: "" });
 ## 2. Subscribe on the screen
 
 ```tsx title="src/app/RequestList.tsx"
+"use client";
+
 import { useEffect, useState } from "react";
 import { topic, type SessionRequestSummary } from "@flow-state-dev/client";
 import { useSubscription } from "@flow-state-dev/react";

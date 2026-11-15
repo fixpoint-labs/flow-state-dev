@@ -116,6 +116,8 @@ A model can search the same collection through `searchResources` when the collec
 `useResourceCollectionList` asks for one page at a time and appends the next on `loadMore`. The second argument, `"orders"`, is the collection's name: the same key you gave it under `resources`.
 
 ```tsx title="src/app/orders-panel.tsx"
+"use client";
+
 import { useSession, useResourceCollectionList } from "@flow-state-dev/react";
 import type { ClientDataOf } from "@flow-state-dev/core";
 import type { orders } from "../flows/support/resources/orders";

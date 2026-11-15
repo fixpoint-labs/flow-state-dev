@@ -33,12 +33,14 @@ Skipped: B-37 is kept in the sitemap, and the page was already at `serve-your-ow
 - After revise round 1, page sha256 8d18cba2b106: exit 0.
 - After revise round 2, page sha256 1e7ee9119436: exit 0.
 - After revise round 3, page sha256 9503d28d699f: exit 0.
+- After the loop (review): Greptile review on the PR. the hook-based `src/app/orders-panel.tsx` example now opens with `"use client";`, so a Next.js App Router page can import it as shown (hooks run only in a client component). This matches the other revamp pages' client examples (catalog/ui/index.md, catalog/workforce/screens.md). No other line changed. Page sha256 5b5cea5d5915.
 
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the page as it was kept, sha256 96e8b0eb8f36, and the 15 Reference row(s) pass 6 moved.
 
 No untrue claim found.
+- Re-run after the review edit: no claim changed; the directive adds no behaviour beyond marking the file a client component.
 
 ## 6 · Depth pass
 

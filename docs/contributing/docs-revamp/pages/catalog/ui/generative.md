@@ -1,7 +1,7 @@
 ---
 title: Generative UI
 type: catalog
-description: Let the model answer with a component: a tool that emits the shape and a renderer that draws it.
+description: "Let the model answer with a component: a tool that emits the shape and a renderer that draws it."
 ---
 
 # Generative UI

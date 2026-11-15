@@ -1,7 +1,7 @@
 ---
 title: Memory hygiene
 type: catalog
-description: Keep a long-lived store useful: old and stale memories lose out.
+description: "Keep a long-lived store useful: old and stale memories lose out."
 ---
 
 # Memory hygiene

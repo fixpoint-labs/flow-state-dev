@@ -72,6 +72,8 @@ export const chat = defineFlow({
 `useVoice` takes a session and the name of the action that receives the user's words. `buildInput` turns the transcript into that action's input.
 
 ```tsx title="src/app/chat/voice-chat.tsx"
+"use client";
+
 import { useSession, useVoice } from "@flow-state-dev/react";
 
 export function VoiceChat({ sessionId }: { sessionId: string }) {

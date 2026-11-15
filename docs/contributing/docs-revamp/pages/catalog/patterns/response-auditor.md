@@ -39,18 +39,22 @@ const draftReply = generator({
   user: (input: { message: string }) => input.message,
 });
 
+const auditReply = sequencer({ name: "audit-reply", inputSchema: z.unknown() })
+  .map((answer: unknown, ctx) => ({
+    userInput: (ctx.parent?.input as { message: string }).message,
+    response: String(answer),
+  }))
+  .step(audit);
+
 export const reply = sequencer({
   name: "reply",
   inputSchema: z.object({ message: z.string() }),
 })
   .step(draftReply)
-  .sideChain((answer, ctx) => {
-    const { message } = ctx.parent?.input as { message: string };
-    return { userInput: message, response: String(answer) };
-  }, audit);
+  .sideChain(auditReply);
 ```
 
-The function inside `.sideChain()` builds the auditor's input, `{ userInput, response }`, from the user's message and the generator's answer. Both must be strings.
+`auditReply` builds the auditor's input, `{ userInput, response }`, from the user's message and the generator's answer. Both must be strings. It runs inside `reply`, so `ctx.parent.input` is the message `reply` was called with. A function passed straight to `.sideChain()` can't read it that way: it gets `reply`'s own context, and when `reply` is the action's block, `ctx.parent` is undefined.
 
 ## What comes back
 

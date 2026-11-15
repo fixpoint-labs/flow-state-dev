@@ -1,7 +1,7 @@
 ---
 title: Memory
 type: catalog
-description: Give an agent something to hold onto between turns: four tiers, three of them optional, behind one capability.
+description: "Give an agent something to hold onto between turns: four tiers, three of them optional, behind one capability."
 ---
 
 # Memory
