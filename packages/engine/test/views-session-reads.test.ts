@@ -9,8 +9,9 @@
  * `request`; a session's identity its `run`; none hears `items`, which a
  * reply publishes once per stored chunk. And a view answers only the caller's
  * own sessions, as the HTTP list would: what the owner rule or the view's
- * admission refuses answers nothing and never names its topic; a `read` that
- * answers nothing is heard on the caller's own user topic alone.
+ * admission refuses answers nothing and never names its topic; a one-session
+ * `read`, `turns` or `history` that answers nothing is heard on the caller's
+ * own user topic alone.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -71,6 +72,18 @@ function app(): FlowInstance {
             const read = await host(ctx).read(input.id);
             if (read === undefined) return null;
             return input.withState === true ? { flowKind: read.flowKind, state: read.state } : { flowKind: read.flowKind };
+          }
+        })
+      }),
+      history: defineView({
+        scope: "user",
+        block: handler({
+          name: "history",
+          inputSchema: z.object({ id: z.string() }),
+          outputSchema: out,
+          execute: async (input, ctx) => {
+            const read = await host(ctx).history(input.id);
+            return read === undefined ? null : { turns: read.turns.length };
           }
         })
       }),
@@ -180,13 +193,24 @@ describe("sessions.turns in a view", () => {
     expect(answer.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["request"] }]);
   });
 
-  it("answers another user's session as a missing one, and records nothing for it", async () => {
+  it("answers another user's, a refused or a missing session as missing, heard on the caller's own user topic alone", async () => {
+    // As `read`: a session made later under the id publishes `run` on the
+    // caller's user topic, so a single-session view wakes; the id's own topic
+    // is never named.
     const stores = createInMemoryStores();
     const flow = app();
+    const own = [{ topic: { scope: "user" }, kinds: ["run"] }];
     await act(stores, flow, "bobs", "bob");
     const one = await view(stores, flow, "turns", { ids: ["bobs"] });
     expect(one.output).toBeUndefined();
-    expect(one.hears).toEqual([]);
+    expect(one.hears).toEqual(own);
+    const missing = await view(stores, flow, "turns", { ids: ["nobody"] });
+    expect(missing.output).toBeUndefined();
+    expect(missing.hears).toEqual(own);
+    await act(stores, flow, "refused");
+    const refused = await view(stores, flow, "turns", { ids: ["refused"] }, { admitSession: async () => false });
+    expect(refused.output).toBeUndefined();
+    expect(refused.hears).toEqual(own);
     await act(stores, flow, "mine");
     const many = await view(stores, flow, "turns", { ids: ["bobs", "mine"] });
     expect((many.output as Array<{ sessionId: string }>).map((turn) => turn.sessionId)).toEqual(["mine"]);
@@ -219,6 +243,24 @@ describe("sessions.turns in a view", () => {
     const flow = app();
     for (let at = 0; at < 52; at += 1) await act(stores, flow, "mine");
     expect((await view(stores, flow, "turns", { ids: ["mine"] })).output).toHaveLength(50);
+  });
+});
+
+describe("sessions.history in a user view", () => {
+  it("is heard on the session it answers, and on the caller's own user topic alone for one it doesn't", async () => {
+    const stores = createInMemoryStores();
+    const flow = app();
+    await act(stores, flow, "mine");
+    await act(stores, flow, "bobs", "bob");
+    const answered = await view(stores, flow, "history", { id: "mine" });
+    expect(answered.output).not.toBeNull();
+    expect(answered.topics).toEqual([{ scope: "session", id: "mine" }]);
+    const own = [{ topic: { scope: "user" }, kinds: ["run"] }];
+    for (const [id, extra] of [["bobs", {}], ["nobody", {}], ["mine", { admitSession: async () => false }]] as const) {
+      const answer = await view(stores, flow, "history", { id }, extra);
+      expect(answer.output, id).toBeNull();
+      expect(answer.hears, id).toEqual(own);
+    }
   });
 });
 
