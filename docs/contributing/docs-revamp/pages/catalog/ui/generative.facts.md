@@ -207,3 +207,7 @@ F5. Dashed outline on the run: the tool call and the emit happen within one run 
 
 - Page example uses `tools: generativeTools()` only, so it type-checks without an app-owned `webSearch`. `fsdev ui add info-card` writes `components/flow-state/generative/info-card.tsx` exporting `InfoCardRenderer` (fact 33; `packages/ui/registry/components/generative/info-card.tsx`); the override example's import depends on that file.
 - `.pick("link-card")` used on both sides so the example shows a narrowed set (pack has two shapes, fact 20).
+
+## Revise round 3 (pass 8)
+
+- Page now states: more than 8 facts throws and emits no card (facts 21, 22); a repeat call with the same key replaces, not merges, leaving one card (facts 24, 26); `keyFrom` on `emitInfoCardTool` changes the key (fact 28; `info-card.test.ts:48-62`). Example uses `emitInfoCardTool` from the tools entry (fact 29). The only test for this is `info-card.test.ts:64-78` (throws).

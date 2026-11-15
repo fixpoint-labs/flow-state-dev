@@ -6,32 +6,27 @@ description: "How to deploy a flow-state-dev Next.js application to Vercel."
 
 # Deploy to Vercel
 
-How to deploy a flow-state-dev Next.js application to Vercel. The `@flow-state-dev/vercel` package handles SSE headers, heartbeats, and runtime configuration so you don't have to.
+How to deploy a flow-state-dev Next.js application to Vercel. The `@flow-state-dev/vercel` package mounts the API on a Next.js route and keeps streamed responses from being buffered. Vercel functions lose their disk between invocations, so the recipe also moves your data to Postgres.
 
-If you haven't set up a Next.js project with the framework yet, start with the [Next.js Setup](/guides/nextjs-setup) guide first.
-
----
+If you haven't set up a Next.js project with the framework yet, start with the [Next.js setup guide](/guides/nextjs-setup).
 
 ## Prerequisites
 
-- A Next.js 14+ project with flow-state-dev integrated ([setup guide](/guides/nextjs-setup))
-- A [Vercel account](https://vercel.com)
-- The [Vercel CLI](https://vercel.com/docs/cli) (`npm i -g vercel`) — optional but useful for testing
-- A model key: a Vercel AI Gateway key (`AI_GATEWAY_API_KEY`), or a provider key such as `OPENAI_API_KEY`
+- A Next.js 15+ project with flow-state-dev set up
+- A [Vercel account](https://vercel.com), and optionally the [Vercel CLI](https://vercel.com/docs/cli)
+- A Postgres database, such as Neon
+- A model key: `AI_GATEWAY_API_KEY`, or a provider key such as `OPENAI_API_KEY`
 
----
-
-## 1. Install the adapter
+## 1. Install the packages
 
 ```bash
-pnpm add @flow-state-dev/vercel
+pnpm add @flow-state-dev/vercel @flow-state-dev/store-postgres
+pnpm add -D tsx
 ```
 
----
+## 2. Mount the API route
 
-## 2. Configure the API route
-
-Mount the `flowstate` handle (from step 4) with `createVercelNextHandler`. One catch-all route file is enough.
+Pass the `flowstate` handle from step 3 to `createVercelNextHandler`. Pass the handle itself, not `flowstate.getRouter()`; stores that connect asynchronously need it.
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";
@@ -39,20 +34,14 @@ import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
 
 export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 
-// Next.js reads these statically — must be literal declarations, not re-exports.
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 ```
 
-`createVercelNextHandler` takes care of:
-- Unwrapping Next.js 15's async params
-- Adding SSE headers (`Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`) to prevent Vercel's edge layer from buffering tokens
-- Injecting periodic heartbeat comments to keep long-lived connections alive
+Write the three config lines as literal `export const` declarations. Re-exports such as `export { runtime } from "..."` don't work, because Next.js reads them at build time. `dynamic` stops Next.js caching the stream routes. `maxDuration` is the longest a function may run, in seconds. Your Vercel plan's limit wins if it is lower.
 
-Pass the `flowstate` handle, not `flowstate.getRouter()`. The handler resolves the router lazily on the first request, which is how async store init works with no top-level await. `@flow-state-dev/vercel/next` requires Next.js 15+.
-
-Next.js `[...path]` catch-all requires at least one segment, so add a sibling route for the bare `/api/flows` path (the flow listing endpoint). Use `createVercelBareHandler` from `@flow-state-dev/vercel`, passing the same lazy router:
+A `[...path]` catch-all needs at least one segment, so the bare `/api/flows` listing endpoint needs its own route:
 
 ```ts title="app/api/flows/route.ts"
 import { flowstate } from "@/lib/flowstate";
@@ -61,103 +50,39 @@ import { createVercelBareHandler } from "@flow-state-dev/vercel";
 export const { GET, POST } = createVercelBareHandler(() => flowstate.getRouter());
 ```
 
-### Route config values
+On event-stream responses the adapter sets `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no`, so Vercel's proxy doesn't buffer tokens. The engine, not the adapter, sends the keep-alive pings that hold a stream open. See the [`@flow-state-dev/vercel` reference](/reference/api/vercel) for every export.
 
-Next.js reads `runtime`, `maxDuration`, and `dynamic` via static analysis at build time. They must be **literal `export const` declarations** in the route file — `export { runtime } from '...'` re-exports will not work.
-
-| Field | Recommended value | Purpose |
-|--------|---------|---------|
-| `runtime` | `"nodejs"` | Vercel runtime |
-| `maxDuration` | `300` | Max function execution time in seconds |
-| `dynamic` | `"force-dynamic"` | Prevents Next.js from caching SSE routes |
-
----
-
-## 3. Configure Next.js
-
-If your flow-state-dev packages are local workspace dependencies (monorepo), tell Next.js to transpile them:
-
-```js title="next.config.mjs"
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  transpilePackages: [
-    "@flow-state-dev/core",
-    "@flow-state-dev/client",
-    "@flow-state-dev/react",
-    "@flow-state-dev/engine",
-    "@flow-state-dev/vercel",
-  ],
-};
-
-export default nextConfig;
-```
-
-If you're consuming published packages from npm, you can skip `transpilePackages`.
-
----
-
-## 4. Choose a persistence store
-
-Vercel serverless functions run in ephemeral containers. The filesystem doesn't persist between invocations. This means:
-
-- **In-memory store**: works, but every cold start loses all data
-- **Filesystem store**: don't use it — writes succeed but data disappears on the next invocation
-- **SQLite store**: partially works for short-lived demos (the DB file is ephemeral), but don't rely on it
-
-For production on Vercel, use an external database like Postgres. `vercelPostgresStores()` from `@flow-state-dev/vercel/store` returns a store adapter tuned for Vercel and Neon: it bakes in the right pool options, swaps in Neon's WebSocket client for `.neon.tech` URLs, and skips schema init (you run migrations at build, see step 6).
-
-Describe the runtime in `lib/flowstate.ts`. Use a `stores` profile per environment, and select with `FSD_ENV` (step 5):
+## 3. Describe the runtime
 
 ```ts title="lib/flowstate.ts"
 import { after } from "next/server";
-import { openai } from "@ai-sdk/openai";
-import { createGateway } from "@ai-sdk/gateway";
-import { createModelResolver } from "@flow-state-dev/core/models";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import myFlow from "@/flows/my-flow/flow";
 
-// Pass explicit provider/gateway instances. The model resolver's dynamic
-// require() path doesn't work in bundled Next.js — static imports do. We pass
-// a pre-built resolver via `modelResolver` instead of the `models` shorthand.
-const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
-const modelResolver = createModelResolver({
-  providers: { openai },
-  gateways: gatewayApiKey
-    ? { vercel: createGateway({ apiKey: gatewayApiKey }) }
-    : undefined,
-});
-
 export const flowstate = createFlowState({
-  flows: { myFlow },
-  modelResolver,
+  flows: [myFlow],
+  models: { default: "openai/gpt-6-luna" },
   stores: {
     prod: { primary: vercelPostgresStores() },
     dev: { primary: inMemoryStores() },
   },
   defaultProfile: "dev",
-  // Disable a background Postgres query on startup that can exhaust the pool
-  // during serverless cold starts. Read the trade-off below before keeping it.
   detectInterruptedOnStartup: false,
-  // Keep the function alive for fire-and-forget action execution.
   onBackgroundWork: (promise) => after(() => promise),
 });
 ```
 
-**Key points:**
-- **Explicit provider/gateway instances**: Next.js bundles server code, breaking the model resolver's dynamic `require()` path. Pass a pre-built `modelResolver` with static provider imports instead of the `models` shorthand.
-- **`vercelPostgresStores()`**: backs the `primary` capability slot with Vercel/Neon-tuned Postgres. Connection string defaults to `FSD_DB_URL` then `DATABASE_URL`. Schema init is skipped (run migrations at build, see step 6).
-- **`stores` profiles + `FSD_ENV`**: declare a `prod` and a `dev` profile, then set `FSD_ENV=prod` on Vercel to select it. `NODE_ENV` is not consulted, so a production build can't silently point at production infrastructure.
-- **`detectInterruptedOnStartup: false`**: disables a background Postgres query on startup that can exhaust the pool during serverless cold starts. It costs something, so decide rather than copy it: that startup pass is what marks a request abandoned by a stopped process as `interrupted`, which is the status it can be resumed from. The periodic sweeper does not reliably cover for it on this target — its timer does not hold the function open and a serverless process is frozen between invocations, so it fires only when a warm process happens to be running as it comes due. If abandoned runs need to recover on their own, call `POST /api/flows/users/:userId/check-interrupted` from a scheduled route instead of relying on either automatic path.
-- **`onBackgroundWork` + `after()`**: keeps the serverless function alive for fire-and-forget action execution. Without this, Vercel kills the function after the response is sent. It's a `createFlowState` option, not a handler option, because the router is built inside `createFlowState`.
+- **`stores`** holds one profile per environment. `vercelPostgresStores()` reads `FSD_DB_URL`, then `DATABASE_URL`. Use it on Vercel. The in-memory store loses everything on each cold start, and filesystem or SQLite files vanish between invocations.
+- **`FSD_ENV`** picks the profile. `NODE_ENV` is not consulted. Without `FSD_ENV`, the runtime uses `defaultProfile`.
+- **`onBackgroundWork`** keeps the function alive after the response, so fire-and-forget actions finish. Set it on `createFlowState`, not on the route handler.
+- **`detectInterruptedOnStartup: false`** skips a startup query that can exhaust the connection pool on a cold start. With it off, a run abandoned by a stopped function is not marked `interrupted` on its own, so it can't be resumed. If you need that, call `POST /api/flows/users/:userId/check-interrupted` from a scheduled route.
 
-The `@flow-state-dev/vercel/store` (`vercelPostgresStores`) and `@flow-state-dev/vercel/next` (`createVercelNextHandler`) sub-exports are documented in the [`@flow-state-dev/vercel` README](https://github.com/flow-state-dev/flow-state-dev/tree/main/packages/vercel).
+Options are in the [runtime reference](/reference/runtime).
 
----
+## 4. Set environment variables
 
-## 5. Set environment variables
-
-In your Vercel project settings (Settings > Environment Variables), add:
+In your Vercel project, open Settings, Environment Variables, and add:
 
 ```
 AI_GATEWAY_API_KEY=...
@@ -165,194 +90,72 @@ FSD_DB_URL=postgresql://...
 FSD_ENV=prod
 ```
 
-`FSD_DB_URL` is preferred over `DATABASE_URL` to avoid collisions with other services. The store adapter checks both (`FSD_DB_URL` first).
+`FSD_DB_URL` wins over `DATABASE_URL`, which keeps the name from colliding with other services. Add any provider keys your flows use. Values in `.env.local` are not synced to Vercel, so set each one for the environments you deploy to (Production, Preview, Development). See the [environment reference](/reference/environment).
 
-`FSD_ENV` selects the `stores` profile. Set it to `prod` on Vercel so `vercelPostgresStores()` backs the runtime. Without it, the runtime falls back to `defaultProfile` (`dev`, in-memory).
+## 5. Create the schema at build time
 
-Or whichever provider keys and connection strings your flows need.
-
-For local testing with `vercel dev`, put the same model key in `.env.local`:
-
-```bash title=".env.local"
-AI_GATEWAY_API_KEY=...
-# or, for models addressed as openai/..., a provider key:
-# OPENAI_API_KEY=sk-...
-```
-
----
-
-## 6. Run schema migration as a build step
-
-`createPostgresStores` initializes the schema (~30 idempotent `CREATE TABLE/INDEX IF NOT EXISTS` statements + an advisory-lock acquisition) every time it's called — once per cold start on Vercel. Move that work into the build instead, then pass `skipSchemaInit: true` at runtime (already done in step 4).
-
-Add a one-shot migration script to your app:
+`vercelPostgresStores()` skips schema setup. Create the tables in the build, so cold starts don't pay for it.
 
 ```ts title="scripts/migrate.ts"
-import { createPostgresStores } from "@flow-state-dev/store-postgres";
+import { createPostgresStores } from "@flow-state-dev/store-postgres/host";
 
-const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
-if (!dbUrl) {
-  console.log("[migrate] No FSD_DB_URL/DATABASE_URL set — skipping.");
-  process.exit(0);
+async function main() {
+  const connectionString = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
+  if (!connectionString) {
+    console.log("[migrate] No database URL set, skipping.");
+    return;
+  }
+  const stores = await createPostgresStores({ connectionString });
+  await stores.close();
+  console.log("[migrate] Done.");
 }
 
-console.log("[migrate] Initializing Postgres schema…");
-const stores = await createPostgresStores({ connectionString: dbUrl });
-await stores.close();
-console.log("[migrate] Done.");
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
 ```
 
-Wire it into your build via `package.json`. The script needs to run via `tsx` (or another bundler-aware runner) — `@flow-state-dev/store-postgres` uses TypeScript's bundler module resolution and emits extensionless relative imports, which raw Node ESM can't resolve:
-
-```json
+```json title="package.json"
 {
   "scripts": {
     "vercel-build": "next build && tsx scripts/migrate.ts"
-  },
-  "devDependencies": {
-    "tsx": "^4.19.0"
   }
 }
 ```
 
-The script exits 0 when no DB URL is set, so preview deployments without a database wired up don't fail the build. On a real DB, migration failures fail the build — better to know at deploy time than at first request.
+Run it with `tsx`. Plain `node` can't load the package.
 
-**Make `FSD_DB_URL` available to builds:** in Vercel project settings, env vars are visibility-scoped per environment (production / preview / development) and per process (build / runtime). The migration script needs `FSD_DB_URL` available to **build**, not just runtime. Check the "Build" checkbox when adding the variable.
+Without a database URL the script exits cleanly, so previews with no database build normally. With one, a failed migration fails the build.
 
----
+Tick **Build** when you add `FSD_DB_URL`. Vercel scopes each variable to build, runtime, or both, and the script reads it at build time.
 
-## 7. Using the bash tool on Vercel
+## 6. Deploy
 
-If your flow uses `@flow-state-dev/tools/bash`, the bash tool needs to know how to find a sandbox runtime on Vercel. Two paths are supported.
+Run `vercel --prod`, or push to the repository Vercel is connected to. In a monorepo, set the project's Root Directory to your app's folder.
 
-### Default: in-memory `just-bash`
-
-Without any extra configuration, the kitchen-sink's `selectBashProvider()` falls back to `just-bash` on Vercel — a JavaScript reimplementation of bash with an in-memory virtual filesystem, around 70 commands, and optional Python/JS interpreters via WASM. Visitors hitting your demo can write files, read them back, and run commands in the same chat turn without any operator setup.
-
-Limits to be aware of:
-- The filesystem is in-memory and per-process. It does not survive across Vercel cold starts.
-- `curl` is allowlist-gated; arbitrary outbound HTTP is denied by default.
-- No real `pip install` / `npm install` against the network. Use Vercel Sandbox if your demo needs that.
-
-### Upgrading to Vercel Sandbox
-
-[`@vercel/sandbox`](https://vercel.com/docs/vercel-sandbox) provisions real Linux microVMs in `iad1`. To use it, configure one of the two credential paths the SDK supports:
-
-1. **OIDC Federation** (recommended for Vercel-hosted projects). Enable it under Project Settings → OIDC Token Generation. The SDK will fetch a per-request `x-vercel-oidc-token` header lazily on the first bash call. Because the token is not present in `process.env` at module init, the kitchen-sink can't auto-detect this case — set `BASH_PROVIDER=vercel` to opt in.
-2. **Static access token** — set `VERCEL_TOKEN` and `VERCEL_TEAM_ID` in your Vercel project's environment variables. (`VERCEL_PROJECT_ID` is a [Vercel system environment variable](https://vercel.com/docs/environment-variables/system-environment-variables) that's already injected on every deployment, so you don't need to add it yourself.) The kitchen-sink's `selectBashProvider()` checks all three together and auto-selects the Vercel provider when present; no `BASH_PROVIDER` opt-in needed.
-
-See the [Vercel Sandbox authentication docs](https://vercel.com/docs/vercel-sandbox/concepts/authentication) for setup details.
-
-### Cost notes for public demos
-
-Vercel Sandbox is billed at $0.128 per vCPU-hour (CPU-active), $0.0212 per GB-hour of provisioned memory, and $0.60 per million sandbox creations. Each visitor to a public demo with no auth wall potentially provisions one sandbox, so costs scale linearly with traffic. The Hobby tier allowance is 5 vCPU-hours, 5,000 creations, and 420 GB-hours of memory per month. Concurrency caps are 10 (Hobby) and 2,000 (Pro/Enterprise).
-
-For public demos without authentication, keep `just-bash` as the default. Reach for Vercel Sandbox when visitors are authenticated, when you need real package installs, or when you've added per-IP rate limiting upstream.
-
-### Forcing a provider
-
-The `BASH_PROVIDER` environment variable forces the kitchen-sink's selector:
-
-| Value | Effect |
-|--|--|
-| `vercel` | Vercel Sandbox. SDK fetches OIDC token lazily; errors surface clearly if credentials are missing. |
-| `just-bash` | In-memory virtual FS. Default fallback on Vercel without credentials. |
-| `local` | Real host shell. Only useful in environments with a writable filesystem. |
-| `moat` | MOAT container isolation. Requires the `moat` CLI on the host — not useful on Vercel. |
-
-When `BASH_PROVIDER` is unset, the selector auto-detects: Vercel Sandbox if the static-token credentials are present, otherwise `just-bash`.
-
-```bash title=".env.production (excerpt)"
-# Opt in to real Vercel Sandbox microVMs (requires OIDC enabled OR the token below).
-# BASH_PROVIDER=vercel
-
-# Static access token — auto-detect picks `vercel` when both are set.
-# (VERCEL_PROJECT_ID is auto-injected by Vercel, no need to set it here.)
-# VERCEL_TOKEN=...
-# VERCEL_TEAM_ID=team_...
-```
-
-When the adapter can't authenticate, you'll see an error in deploy logs and the chat UI naming the three remediation paths (enable OIDC, set the static triple, or fall back to `just-bash`). That message replaces the bare `Status code 400 is not ok` that older versions surfaced.
-
----
-
-## 8. Deploy
-
-**From the CLI:**
+## 7. Verify
 
 ```bash
-vercel --prod
-```
-
-**From Git:** Push to your connected repository. Vercel builds and deploys automatically.
-
-**Monorepo?** Set the root directory in your Vercel project settings to your app's subdirectory (e.g., `apps/my-app` or `examples/hello-chat`). Also set:
-- **Build Command:** `cd ../.. && pnpm install && pnpm --filter @flow-state-dev/example-hello-chat build && cd apps/my-app && tsx scripts/migrate.ts` (adjust the filter to your package name)
-- **Output Directory:** `.next`
-
----
-
-## 9. Verify
-
-```bash
-# 1. Check the API responds
 curl https://your-app.vercel.app/api/flows
 
-# 2. Run an action
-curl -X POST https://your-app.vercel.app/api/flows/hello-chat/actions/chat \
+curl -X POST https://your-app.vercel.app/api/flows/my-flow/actions/chat \
   -H "Content-Type: application/json" \
   -d '{"userId": "test", "input": {"message": "Hello"}}'
 
-# 3. Stream the response (use the requestId from step 2)
-curl -N https://your-app.vercel.app/api/flows/hello-chat/requests/REQUEST_ID/stream
+# Use the requestId from the response above
+curl -N https://your-app.vercel.app/api/flows/my-flow/requests/REQUEST_ID/stream
 ```
 
----
+## Limits
 
-## Serverless timeout limits
-
-Vercel serverless functions have execution time limits:
-
-| Plan | Timeout |
-|------|---------|
-| Hobby | 10 seconds |
-| Pro | 60 seconds |
-| Enterprise | 900 seconds |
-
-Set `export const maxDuration = 300` in the route file. If your Vercel plan's limit is lower, the plan limit takes precedence.
-
-**What this means in practice:**
-
-- Simple chat flows (single LLM call) usually complete in 5-15 seconds. Fine on any plan.
-- Multi-step agent flows with tool calls can take 30-120 seconds. Needs Pro or higher.
-- Long-running workflows (research agents, multi-model pipelines) may need a different platform entirely.
-
-If your flows consistently exceed the timeout, consider [Railway](/guides/deploying-to-railway) or [Docker](/guides/deploying-with-docker) instead.
-
----
+- A Vercel function has a maximum duration for your plan, see [Vercel's function limits](https://vercel.com/docs/functions/limitations). A flow that outruns it is cut off. For long-running flows, use [Railway](/guides/deploying-to-railway) or [Docker](/guides/deploying-with-docker).
+- The adapter marks the disk as ephemeral on Vercel, so an attachment upload to a blob store that keeps bytes on the host is refused with status 501.
+- The HTTP API adds no CORS headers. If your frontend is on another domain, add them in Next.js middleware.
 
 ## Troubleshooting
 
-### SSE stream arrives all at once
-
-If you're not using `@flow-state-dev/vercel`, make sure your route file exports `export const dynamic = "force-dynamic"`. The adapter handles this automatically.
-
-### "Module not found" for @flow-state-dev packages
-
-Add the packages to `transpilePackages` in `next.config.mjs`. This is needed for workspace dependencies in a monorepo.
-
-### Function timeout on Hobby plan
-
-Your flow takes longer than 10 seconds. Upgrade to Pro (60s limit) or switch to a container-based platform for long-running flows.
-
-### Cold start latency
-
-The first request after a period of inactivity takes longer because Vercel starts a new function instance. This is inherent to serverless. The framework initializes quickly (registry + model resolver), but the LLM call itself adds latency. Subsequent requests reuse the warm instance.
-
-### CORS errors from a different frontend
-
-If your frontend is on a different domain than the API, you'll need to add CORS headers. The framework doesn't add them by default. Handle this at the Next.js middleware level or by wrapping the handler response.
-
-### Environment variable not found
-
-Make sure the variable is set in the Vercel dashboard (not just in `.env.local`). Vercel doesn't automatically sync local env files. Also verify the variable is set for the correct environment (Production, Preview, or Development).
+- **The stream arrives all at once.** Check that the route file exports `dynamic = "force-dynamic"` and mounts the adapter's handler.
+- **"Module not found" for `@flow-state-dev` packages.** In a monorepo with local workspace packages, list them in `transpilePackages` in `next.config.mjs`.
+- **A variable is "not found".** It is set only in `.env.local`, or only for another environment. Set it in the Vercel dashboard for the environment you deploy to.
+- **The first request after idle is slow.** Vercel is starting a new function instance.

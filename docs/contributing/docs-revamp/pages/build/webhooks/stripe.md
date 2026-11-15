@@ -1,45 +1,48 @@
 ---
 title: Receive a Stripe webhook
 type: recipe
-description: "This guide wires Stripe's `invoice.paid` event to a flow action and tests it locally with the Stripe CLI."
+description: "Run a flow action when Stripe marks an invoice paid, with a verified signature, and test it locally with the Stripe CLI."
 ---
 
 # Receive a Stripe webhook
 
-This guide wires Stripe's `invoice.paid` event to a flow action and tests it
-locally with the Stripe CLI. By the end you'll have an endpoint Stripe can POST
-to, a verified signature, and an action that records the payment.
-
-**What we're building:** when Stripe marks an invoice paid, our `billing` flow
-runs a `recordPayment` action. Stripe signs every delivery; we verify it before
-doing anything. The action runs asynchronously, so Stripe gets its 2xx ack fast.
+When Stripe marks an invoice paid, you want to record it. Stripe signs every
+delivery, so the server checks the signature before anything runs. By the end
+you have an endpoint Stripe can POST to and a `billing` flow that records each
+payment. You test it locally with the Stripe CLI.
 
 ## 1. The flow declares routing
 
-The flow says which Stripe event runs which action. Nothing else — no secret,
-no signature code. Those imports come from `@flow-state-dev/core`.
+The flow says which Stripe event runs which block. The secret and the signature
+check go on the server, in step 2.
 
-```ts title="flows/billing.ts"
-import { defineFlow, defineWebhookBinding, sequencer, handler } from "@flow-state-dev/core";
+`recordPayment` is the block that does the work. `ledger` is your own helper
+that writes to your database.
+
+```ts title="src/flows/billing/blocks/record-payment.ts"
+import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
+import { ledger } from "../../../lib/ledger";
+
+export const recordPayment = handler({
+  name: "record-payment",
+  inputSchema: z.object({ invoiceId: z.string(), amountCents: z.number() }),
+  execute: async ({ invoiceId, amountCents }) => {
+    // Idempotent write keyed on invoiceId: Stripe delivers at-least-once.
+    await ledger.recordPayment(invoiceId, amountCents);
+  },
+});
+```
+
+```ts title="src/flows/billing/flow.ts"
+import { defineFlow, defineWebhookBinding } from "@flow-state-dev/core";
+import { recordPayment } from "./blocks/record-payment";
 
 interface StripeEvent {
   id: string;
   type: string;
   data: { object: { id: string; customer: string; amount_paid: number } };
 }
-
-const recordPayment = handler({
-  name: "record-payment",
-  inputSchema: z.object({ invoiceId: z.string(), amountCents: z.number() }),
-  execute: async ({ invoiceId, amountCents }) => {
-    // Idempotent write keyed on invoiceId — Stripe delivers at-least-once.
-    await ledger.recordPayment(invoiceId, amountCents);
-  },
-});
-
-const recordPaymentPipeline = sequencer({ name: "record-payment-pipeline" })
-  .tap(recordPayment);
 
 export const billingFlow = defineFlow({
   kind: "billing",
@@ -49,7 +52,7 @@ export const billingFlow = defineFlow({
     stripe: {
       on: {
         "invoice.paid": defineWebhookBinding<StripeEvent>({
-          block: recordPaymentPipeline,
+          block: recordPayment,
           input: (e) => ({
             invoiceId: e.payload.data.object.id,
             amountCents: e.payload.data.object.amount_paid,
@@ -62,27 +65,26 @@ export const billingFlow = defineFlow({
 });
 ```
 
-`requireUser: false` plus `defaultUserId: "system"` is the standard webhook auth
-shape: no end user, run as a system principal. Deriving `sessionId` from the
-customer id keeps each customer's payments in one session; drop it if you don't
-need continuity.
+`requireUser: false` with `defaultUserId: "system"` runs each delivery as a
+system user, since no signed-in user sends a webhook. `sessionId` keeps each
+customer's payments in one session; drop it if you don't need that.
 
-## 2. The host verifies and parses
+## 2. The server verifies and parses
 
-Verification and the Stripe-specific mechanics live on the adapter mount, keyed
-by the `stripe` provider name. Stripe carries the event type in the body
-(`payload.type`) and a stable delivery id (`payload.id`).
+The server checks the signature and reads the event type. You set both up on
+`createWebhookTransportAdapter`, under the same `stripe` name the flow used.
 
-```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+```ts title="src/lib/flowstate.ts"
 import {
+  createFlowState,
   createWebhookTransportAdapter,
+  inMemoryStores,
   stripeWebhookVerifier,
 } from "@flow-state-dev/engine";
-import { billingFlow } from "@/flows/billing";
+import { billingFlow } from "../flows/billing/flow";
 
 export const flowstate = createFlowState({
-  flows: { billing: billingFlow() },
+  flows: [billingFlow()],
   stores: { default: { primary: inMemoryStores() } },
   adapters: [
     createWebhookTransportAdapter({
@@ -98,52 +100,46 @@ export const flowstate = createFlowState({
 });
 ```
 
-```ts title="app/api/flows/[...path]/route.ts"
-import { flowstate } from "@/lib/flowstate";
+```ts title="src/app/api/flows/[...path]/route.ts"
+import { flowstate } from "../../../../lib/flowstate";
 import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
 
 export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 ```
 
-The endpoint is now live at `POST /api/flows/billing/webhooks/stripe`.
-`stripeWebhookVerifier` reads `Stripe-Signature`, signs `<timestamp>.<rawBody>`,
-and rejects deliveries older than five minutes. Wiring `deliveryId` puts
-Stripe's event id on `metadata.webhook.deliveryId` so your action can dedup.
+The endpoint is `POST /api/flows/billing/webhooks/stripe`.
+`stripeWebhookVerifier` checks the `Stripe-Signature` header against your secret
+and rejects deliveries older than five minutes.
+
+`deliveryId` puts Stripe's event id on `metadata.webhook.deliveryId`. Use it if
+your block has no natural key like `invoiceId` to dedup on.
 
 ## 3. Test it locally
 
-The Stripe CLI forwards live events to your local server and signs them with a
-real secret, so you exercise the verification path end to end.
+The Stripe CLI forwards events to your local server and signs them with a real
+secret, so you exercise the verification path end to end.
 
 ```bash
 # Forward Stripe events to your local endpoint. Prints a signing secret.
 stripe listen --forward-to localhost:3000/api/flows/billing/webhooks/stripe
 ```
 
-`stripe listen` prints a `whsec_...` secret. Put it in your environment so the
-verifier matches:
+`stripe listen` prints a `whsec_...` secret. Put it in your environment, then
+start your server, so the verifier matches:
 
 ```bash
 export STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
-Then trigger a `invoice.paid` event from another terminal:
+Then trigger an `invoice.paid` event from another terminal:
 
 ```bash
-stripe trigger invoice.payment_succeeded
+stripe trigger invoice.paid
 ```
 
-You should see the CLI report a `200`/`202` back from your endpoint, and your
-`recordPayment` action run in the server logs (or the DevTool request list, with
-a `webhook` badge). A 401 means the secret doesn't match what `stripe listen`
-printed; a 404 means the provider name or flow kind in the URL is off.
+The CLI reports a `202` from your endpoint, and your `recordPayment` block runs
+in the server logs.
 
-## What you have
-
-- A verified Stripe endpoint at `POST /api/flows/billing/webhooks/stripe`.
-- `invoice.paid` deliveries routed to `recordPayment`, keyed per customer.
-- Fast 2xx acks — the action runs after the response, well inside Stripe's
-  retry budget.
-
-For the full surface — `route` for dynamic mapping, the `when` predicate,
-idempotency details — see the [webhook receivers reference](/docs/server/webhooks).
+The [webhook receivers reference](/docs/server/webhooks) covers the other
+response codes, `route` for dynamic mapping, the `when` predicate and
+idempotency.

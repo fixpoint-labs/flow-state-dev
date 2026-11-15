@@ -156,3 +156,9 @@ Cite for rows 3 and 4: `uv:181-190` (the hook reads batch parts with audio and s
 - No ElevenLabs anywhere; per-flow override and composite providers are one sentence each with a Reference link.
 - `OPENAI_API_KEY` is mentioned in the server paragraph; the separate "Environment variables" section is cut. Reference R-15 row still needed.
 - Moved to `../reference/voice.md` (R-43), which does not exist yet: both provider settings and status codes, `voice.tts` option table, sentence rule, error event levels, head-of-line ordering, timeout detail, `useVoice` return table (including `isAvailable`, `Promise<void>` start/stop), transcription endpoint forms and model resolution, `OutputAudioContent`, `VoiceProvider` fields, composite abilities.
+
+## Revise round 2 (type-check fixes)
+
+- `defineFlow(...)` returns a flow type; calling it returns the `FlowInstance` that `createFlowState({ flows })` takes. `ks/flows/chat-agent/flow.ts:35,134` (`const chatAgentFlow = defineFlow({...}); const flow = chatAgentFlow();`). The page's `chat` is `defineFlow({...})()`.
+- The flow's one block is now shown: `src/flows/chat/blocks/reply.ts`, a `generator` with `name`, `model`, `prompt`, `user`, the shape in `docs/contributing/docs-revamp/pages/catalog/patterns/response-auditor.md:35-40`. It streams the text the voice pipeline reads (section 2).
+- The custom provider no longer imports a client: `speakStream` reads a `fetch` response body with `getReader()` and yields `{ kind: "audio", bytes, mediaType }`. Chunk type is `Uint8Array`.

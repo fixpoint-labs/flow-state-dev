@@ -37,11 +37,22 @@ Without a provider, a flow that asks for audio skips it and its text streams as 
 
 ## Turn on audio for a flow
 
-Add `voice.tts` to the flow. The flow's blocks have no voice code in them.
+Add `voice.tts` to the flow.
+
+```ts title="src/flows/chat/blocks/reply.ts"
+import { generator } from "@flow-state-dev/core";
+
+export const reply = generator({
+  name: "reply",
+  model: "openai/gpt-6-luna",
+  prompt: "You are a friendly assistant. Keep answers short.",
+  user: (input: { message: string }) => input.message,
+});
+```
 
 ```ts title="src/flows/chat/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
-import { replySequencer } from "./blocks/reply-sequencer";
+import { reply } from "./blocks/reply";
 
 export const chat = defineFlow({
   kind: "chat",
@@ -49,12 +60,12 @@ export const chat = defineFlow({
     tts: { voice: "alloy" },
   },
   actions: {
-    run: { block: replySequencer },
+    run: { block: reply },
   },
-});
+})();
 ```
 
-`replySequencer` is the flow's block, in its own file beside the flow. `tts` takes an optional `model`, `voice` and `speed`, and each falls back to the provider's default. A flow with no `voice` gets no audio. A flow can also set its own `voice.provider`, which replaces the server's provider for that flow's speech output; transcription always uses the server's. Both are on the [reference](../reference/voice.md).
+`defineFlow` returns a flow type. Calling it gives the instance that `createFlowState` takes. `reply` is the flow's only block and has no voice code in it. `tts` takes an optional `model`, `voice` and `speed`, and each falls back to the provider's default. A flow with no `voice` gets no audio. A flow can also set its own `voice.provider`, which replaces the server's provider for that flow's speech output; transcription always uses the server's. Both are on the [reference](../reference/voice.md).
 
 ## Speak to it from React
 
@@ -105,7 +116,6 @@ A provider declares what it can do in `abilities` and implements the matching me
 
 ```ts title="src/lib/my-voice-provider.ts"
 import type { VoiceProvider } from "@flow-state-dev/core";
-import { myApi } from "./my-tts-client";
 
 export const myVoiceProvider: VoiceProvider = {
   id: "my-tts:1",
@@ -113,14 +123,22 @@ export const myVoiceProvider: VoiceProvider = {
   abilities: { speak: false, speakStream: true, transcribe: false, listVoices: false },
   defaultModels: { speak: "my-model" },
   async *speakStream({ text, voice, signal }) {
-    for await (const bytes of myApi.stream(text, { voice, signal })) {
-      yield { kind: "audio", bytes, mediaType: "audio/mp3" };
+    const res = await fetch("https://tts.example.com/stream", {
+      method: "POST",
+      body: JSON.stringify({ text, voice }),
+      signal,
+    });
+    const reader = res.body!.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      yield { kind: "audio", bytes: value, mediaType: "audio/mpeg" };
     }
   },
 };
 ```
 
-`myApi` is your own client for the speech service. The framework reads `abilities`, so `speakStream: true` gets the streaming path and `speak: true` alone gets whole sentences. On failure, throw `VoiceError` with a typed `kind`, and stop producing audio when `signal` aborts. To speak with one provider and transcribe with another, wrap them with `createCompositeVoiceProvider({ speak, transcribe })`. The [reference](../reference/voice.md) has the `VoiceProvider` fields.
+The framework reads `abilities`, so `speakStream: true` gets the streaming path and `speak: true` alone gets whole sentences. On failure, throw `VoiceError` with a typed `kind`, and stop producing audio when `signal` aborts. To speak with one provider and transcribe with another, wrap them with `createCompositeVoiceProvider({ speak, transcribe })`. The [reference](../reference/voice.md) has the `VoiceProvider` fields.
 
 ## Next
 

@@ -80,3 +80,12 @@ The page stores data (the SQLite file), so the four questions follow.
 - Config path or `serve()` entry? Facts 5 to 7 and 9 give both. `fsdev serve` is the shorter Dockerfile (no `src/server.ts`, `CMD ["fsdev", "serve"]`) but needs `fsdev` in production dependencies and a config the CLI can import without a build (fact 6, **[verify]**). Run `fsdev serve` once on a copy of the app before choosing.
 - `HEALTHCHECK` (fact 3) and `CMD` signal forwarding (fact 13) are unrun.
 - Whether the page names `docker compose`: not on the three-step plan.
+
+## Revise round 1: facts the page now states
+
+28. **The page runs `fsdev serve`; the hand-written bridge, compose, nginx, Caddy and checklist are gone.** Reverse-proxy directives, store limits and environment variables are Reference links (`reference/http-api`, `reference/stores`, `reference/environment`). **[page]**
+29. **No system SQLite library is needed.** `better-sqlite3` is the only SQLite dependency (`packages/store-sqlite/package.json:65-68`); the page installs nothing with `apt-get`. **[page]**
+30. **`GET /api/flows` returns `{ "flows": [ { id, kind, cardinality, requireUser, actions, actionSchemas } ] }`**, an object, not a bare array (`packages/engine/src/routes/http-handlers.ts:520-533`). The page shows `{"flows":[...]}`. Supersedes the **[verify]** in fact 24. **[page]**
+31. **`node:22-slim` ships no `curl`, so the page has no `HEALTHCHECK`** (fact 3) and says to probe `/healthz` from outside or install curl. **[page]**
+32. **A missing provider key does not stop startup.** The model resolver throws `No provider available for "<provider>"` when a call is resolved (`packages/core/src/models/createModelResolver.ts:1222-1231`). Startup stops for `Refusing to bind` (fact 11), a port in use, or missing flow sources. **[page]**
+33. **`createFlowState({ onError })` receives `(error, context)`**; the page's config no longer uses it. **[cut]**

@@ -277,3 +277,21 @@ C6. The guide's example file paths (`flows/billing.ts`, `lib/flowstate.ts`) do n
 - `reference/webhooks` (sitemap): detail rows for `when`, `acknowledge`, `parse`, `createWebhookVerifier`,
   idempotency, concurrency `skipped`, session-create refusal, org rules.
 - C-17 (sitemap): serving flows. Current page: `docs/contributing/docs-revamp/pages/concepts/serving-flows.md`.
+
+## Resolved in the page (revise round 1)
+
+- C1 applied: `flows: [billingFlow()]`. `defineFlow` returns a callable; a singleton is served at its `kind`
+  (setup.md:196-200; createFlowState.ts:372-377).
+- C2 applied: `ledger` is imported from `src/lib/ledger` and described as the reader's own helper.
+- C3/C4 applied: the binding's `block` is the handler directly; no sequencer.
+- C5 applied: the page says the CLI reports a `202` (routes.ts:273-278).
+- C6 applied: files are `src/flows/billing/blocks/record-payment.ts`, `src/flows/billing/flow.ts`,
+  `src/lib/flowstate.ts`, `src/app/api/flows/[...path]/route.ts`.
+- Fact 60: the page triggers `invoice.paid` directly; it no longer claims `invoice.payment_succeeded`
+  also sends it.
+- `createFlowState`, `inMemoryStores`, `createWebhookTransportAdapter` and `stripeWebhookVerifier` all come
+  from `@flow-state-dev/engine` (index.ts:18, 25, 44, 51), imported in one statement.
+- Moved to the reference page (page links it, states none of it): response codes 401/404, the signing recipe
+  (`<timestamp>.<rawBody>`), the provider-field table, and caller-identity detail. The page keeps the
+  five-minute rejection, the `deliveryId` location (fact 31), and one clause each on `requireUser: false`
+  and `sessionId` (facts 45, 50, 51).

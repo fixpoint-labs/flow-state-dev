@@ -1,404 +1,114 @@
 ---
 title: Deploy with Docker
 type: recipe
-description: "How to containerize and self-host a flow-state-dev application."
+description: "How to containerize a Flow State app, keep its SQLite data on a Docker volume, and run it behind a reverse proxy."
 ---
 
 # Deploy with Docker
 
-How to containerize and self-host a flow-state-dev application. This covers a production Dockerfile, SQLite persistence with volumes, and nginx reverse proxy configuration for SSE streaming.
-
----
+You'll build a production image that starts the app with `fsdev serve`, keep the SQLite file on a Docker volume, and check that data survives a restart.
 
 ## Prerequisites
 
-- A flow-state-dev Node.js application (standalone server, not Next.js — see [Railway guide](/guides/deploying-to-railway) for the server setup pattern)
-- [Docker](https://docs.docker.com/get-docker/) installed
-- Basic familiarity with Docker and reverse proxies
+- A Flow State app with an `fsdev.config.ts` and at least one flow, on Node.js 22 or later. The [Railway recipe](./railway.md#1-put-the-stores-in-fsdevconfigts) shows the config.
+- [Docker](https://docs.docker.com/get-docker/) installed.
+- One LLM provider API key.
 
----
+## 1. Put the SQLite file on `/data`
 
-## 1. Dockerfile
+`fsdev.config.ts` default-exports the result of `createFlowState`. Point the `primary` store, the store every scope uses unless you name another, at a file in a folder you will mount as a volume.
 
-A multi-stage build keeps the final image small. The first stage installs dependencies and compiles TypeScript. The second stage copies only what's needed to run.
+```ts title="fsdev.config.ts"
+import { createFlowState } from "@flow-state-dev/engine";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
+import support from "./src/flows/support/flow";
+
+export default createFlowState({
+  flows: [support],
+  stores: { default: { primary: sqliteStores({ filename: "/data/flowstate.db" }) } },
+});
+```
+
+`support` is a flow defined in its own file. `flows` is a list, not an object. The folder in `filename` must exist before the store opens, and the Dockerfile below creates it. The file itself is created on first use.
+
+## 2. Write the Dockerfile
+
+`fsdev serve` loads `fsdev.config.ts` from the working directory and starts the server, so the image needs your config, your sources and production dependencies. Add `@flow-state-dev/fsdev` and `@flow-state-dev/store-sqlite` to `dependencies`, not `devDependencies`.
 
 ```dockerfile title="Dockerfile"
-# --- Build stage ---
-FROM node:22-slim AS builder
+FROM node:22-slim
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
+RUN corepack enable
 WORKDIR /app
 
-# Install dependencies first (layer caching)
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
-
-# Copy source and build
-COPY tsconfig.json ./
-COPY src/ ./src/
-RUN pnpm build
-
-# --- Production stage ---
-FROM node:22-slim AS runner
-
-# better-sqlite3 needs these at runtime if used
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsqlite3-0 \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
-WORKDIR /app
-
-# Copy only production dependencies
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 
-# Copy compiled output
-COPY --from=builder /app/dist ./dist
+COPY fsdev.config.ts tsconfig.json ./
+COPY src/ ./src/
 
-# Create data directory for persistence
 RUN mkdir -p /data
 
 ENV NODE_ENV=production
-ENV PORT=3000
-
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
-
-CMD ["node", "dist/server.js"]
+CMD ["node_modules/.bin/fsdev", "serve"]
 ```
 
-If you're not using the SQLite store, you can remove the `libsqlite3-0` install.
+`fsdev serve` binds `0.0.0.0` and `$PORT`, which defaults to `3000`. It serves the flow API at `/api/flows` and a health check at `/healthz`. On `SIGTERM` it stops accepting connections, finishes in-flight requests and closes the store. The `CMD` is in exec form so Docker's signal reaches it.
 
----
+Install dependencies inside the image. `better-sqlite3`, the SQLite driver, is a native module, and a `node_modules` folder copied from macOS will not load in a Linux container. Add `node_modules` to `.dockerignore`. If your package manager blocks build scripts (pnpm 10 does by default), allow `better-sqlite3`.
 
-## 2. The server entry point
-
-Use the same standalone server pattern from the [Railway guide](/guides/deploying-to-railway). Here's the version configured for Docker with SQLite persistence on a volume:
-
-```ts title="src/server.ts"
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createFlowState, decodePathSegments } from "@flow-state-dev/engine";
-import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import myFlow from "./flows/my-flow/flow.js";
-
-const port = parseInt(process.env.PORT ?? "3000", 10);
-
-// SQLite on a Docker volume — survives container restarts and image updates.
-// `primary` is the catch-all state slot.
-const flowstate = createFlowState({
-  flows: { myFlow },
-  models: { default: "openai/gpt-6-luna" },
-  stores: { default: { primary: sqliteStores({ filename: "/data/flows.db" }) } },
-  onError: (error, context) => {
-    console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
-  },
-});
-
-// Resolve the router once. getRouter() opens the SQLite connection lazily.
-const router = await flowstate.getRouter();
-
-const server = createServer(async (req, res) => {
-  const url = req.url ?? "/";
-
-  if (url.startsWith("/api/flows")) {
-    await handleFlowRequest(req, res, url);
-    return;
-  }
-
-  if (url === "/health") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok" }));
-    return;
-  }
-
-  res.writeHead(404);
-  res.end("Not found");
-});
-
-server.listen(port, "0.0.0.0", () => {
-  console.log(`Server running on port ${port}`);
-});
-
-process.on("SIGTERM", () => {
-  console.log("SIGTERM received, shutting down...");
-  server.close(() => process.exit(0));
-});
-
-// handleFlowRequest — same bridge function as the Railway guide
-// See: /guides/deploying-to-railway#1-create-a-standalone-server
-async function handleFlowRequest(
-  req: IncomingMessage,
-  res: ServerResponse,
-  url: string,
-): Promise<void> {
-  const method = (req.method ?? "GET").toUpperCase();
-  const pathAfterPrefix = url.replace(/^\/api\/flows\/?/, "");
-  const [pathPart] = pathAfterPrefix.split("?", 2);
-  // The router takes decoded segments, one decode each, as Next hands them.
-  const pathSegments = decodePathSegments(pathPart);
-
-  let body: string | undefined;
-  if (method === "POST" || method === "PATCH") {
-    body = await new Promise<string>((resolve, reject) => {
-      const chunks: Buffer[] = [];
-      req.on("data", (chunk: Buffer) => chunks.push(chunk));
-      req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-      req.on("error", reject);
-    });
-  }
-
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (value !== undefined) {
-      headers.set(key, Array.isArray(value) ? value.join(", ") : value);
-    }
-  }
-
-  const webRequest = new Request(`http://localhost${url}`, {
-    method,
-    headers,
-    body,
-  });
-
-  const handler = router[method as keyof typeof router];
-  if (!handler) {
-    res.writeHead(405, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Method not allowed" }));
-    return;
-  }
-
-  const webResponse = await handler(webRequest, { params: { path: pathSegments } });
-  res.writeHead(webResponse.status, Object.fromEntries(webResponse.headers.entries()));
-
-  const contentType = webResponse.headers.get("content-type") ?? "";
-  if (contentType.includes("text/event-stream") && webResponse.body) {
-    res.flushHeaders();
-    const reader = webResponse.body.getReader();
-    const decoder = new TextDecoder();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        res.write(decoder.decode(value, { stream: true }));
-      }
-      const final = decoder.decode();
-      if (final) res.write(final);
-    } catch {
-      // Client disconnect
-    } finally {
-      res.end();
-    }
-    return;
-  }
-
-  res.end(await webResponse.text());
-}
-```
-
----
+`fsdev serve` refuses to bind a network address when a flow has no `authentication.resolvePrincipal`, because the server would trust any `userId` a caller sends. Configure authentication on your flows. To run without it, change the `CMD` to `["node_modules/.bin/fsdev", "serve", "--allow-unauthenticated"]`.
 
 ## 3. Build and run
 
 ```bash
-# Build the image
-docker build -t my-flow-app .
+docker build -t support-app .
 
-# Run with a persistent volume and API key
 docker run -d \
-  --name flow-app \
+  --name support-app \
   -p 3000:3000 \
-  -v flow-data:/data \
+  -v support-data:/data \
   -e OPENAI_API_KEY=sk-... \
-  my-flow-app
+  support-app
 ```
 
-The `-v flow-data:/data` creates a named Docker volume. Your SQLite database at `/data/flows.db` persists across container restarts and image updates.
+`-v support-data:/data` creates a named Docker volume and mounts it where the config writes the database. Pass keys with `-e`; do not copy a `.env.local` into the image.
 
-**Verify it's running:**
+## 4. Check it
 
 ```bash
-curl http://localhost:3000/health
+docker logs support-app
+# Server running at http://0.0.0.0:3000
+# API:    http://0.0.0.0:3000/api/flows
+# Config: /app/fsdev.config.ts
+
+curl http://localhost:3000/healthz
 # {"status":"ok"}
 
 curl http://localhost:3000/api/flows
-# [{"kind":"my-flow", ...}]
+# {"flows":[...]}
 ```
 
----
+`/healthz` returns `200` once the stores are open and `503` while they open. An orchestrator should probe that path and wait through the `503`. The `node:22-slim` image has no `curl`, so probe from outside the container or install it in the image.
 
-## 4. Docker Compose
+To check persistence, create a session through the API, then run `docker restart support-app` and request the same session. The session is there. Remove the container and start a new one with the same `-v`, and the data is there too. Without the volume, the file lives on the container's own disk and goes with it.
 
-For a more reproducible setup:
+## 5. Put a reverse proxy in front
 
-```yaml title="docker-compose.yml"
-services:
-  app:
-    build: .
-    ports:
-      - "3000:3000"
-    volumes:
-      - flow-data:/data
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - NODE_ENV=production
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
+A proxy that terminates TLS must not buffer or cache responses under `/api/flows/`, or streams arrive all at once at the end. It must also keep idle connections open longer than your longest run. The directives for nginx and Caddy are in the [HTTP API reference](../../reference/http-api.md).
 
-volumes:
-  flow-data:
-```
+## Run one container
 
-```bash
-# Start
-docker compose up -d
-
-# View logs
-docker compose logs -f app
-
-# Stop
-docker compose down
-```
-
----
-
-## 5. nginx reverse proxy
-
-If you're putting nginx in front of the application (for TLS termination, multiple services, etc.), you need to disable response buffering for SSE to work. Without this, nginx collects the entire response before forwarding it, which defeats real-time streaming.
-
-```nginx title="nginx.conf"
-upstream flow_app {
-    server app:3000;
-}
-
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    # For SSL, add listen 443 ssl and certificate config here
-
-    location /api/flows/ {
-        proxy_pass http://flow_app;
-        proxy_http_version 1.1;
-
-        # Required for SSE streaming
-        proxy_buffering off;
-        proxy_cache off;
-
-        # Prevent nginx from closing idle SSE connections
-        proxy_read_timeout 86400s;
-        proxy_send_timeout 86400s;
-
-        # Pass through headers
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # Tell downstream proxies not to buffer
-        add_header X-Accel-Buffering no;
-    }
-
-    # Non-API routes (if serving a frontend from the same domain)
-    location / {
-        proxy_pass http://flow_app;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-The critical directives:
-- `proxy_buffering off` — disables nginx's response buffering
-- `proxy_cache off` — prevents caching of SSE responses
-- `proxy_read_timeout 86400s` — keeps the connection open for long-running streams (24 hours)
-- `X-Accel-Buffering no` — tells any upstream proxy not to buffer either
-
-**With Docker Compose:**
-
-```yaml title="docker-compose.yml (with nginx)"
-services:
-  app:
-    build: .
-    volumes:
-      - flow-data:/data
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - NODE_ENV=production
-    restart: unless-stopped
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - app
-    restart: unless-stopped
-
-volumes:
-  flow-data:
-```
-
----
-
-## 6. Caddy alternative
-
-If you prefer Caddy over nginx, the config is simpler. Caddy handles TLS automatically and doesn't buffer by default:
-
-```text title="Caddyfile"
-your-domain.com {
-    reverse_proxy app:3000 {
-        flush_interval -1
-    }
-}
-```
-
-`flush_interval -1` disables response buffering. Caddy's default behavior already handles most SSE cases, but setting this explicitly prevents issues.
-
----
-
-## Production checklist
-
-- [ ] **Health check endpoint** — `/health` returns 200. Docker and orchestrators use this to restart unhealthy containers.
-- [ ] **Graceful shutdown** — Handle `SIGTERM` to close the server cleanly. Docker sends `SIGTERM` before `SIGKILL` on stop.
-- [ ] **Persistent volume** — Mount a volume for the SQLite database or filesystem store data.
-- [ ] **Environment variables** — Never bake API keys into the image. Pass them at runtime via `-e` or `docker-compose.yml`.
-- [ ] **Reverse proxy** — Disable buffering for `/api/flows/` routes if using nginx.
-- [ ] **Logging** — The `onError` callback in the router options logs API errors. Consider also logging to a file or log aggregator.
-- [ ] **Resource limits** — Set memory and CPU limits in Docker Compose or your orchestrator to prevent runaway LLM calls from consuming all resources.
-
----
+SQLite allows one writer, so one container per volume. Replicas pointing at the same file fail with `database is locked`. For more than one, use the Postgres store. See [Stores](../../reference/stores.md).
 
 ## Troubleshooting
 
-### SSE stream buffers behind nginx
+**The container exits immediately.** Read `docker logs support-app`. The usual cause is `Refusing to bind 0.0.0.0`: a flow has no authentication. See step 2. A port already in use or flows missing from the copied `src/` also stop startup.
 
-Check that `proxy_buffering off` is set in the nginx location block for `/api/flows/`. Also check that no upstream CDN or load balancer is buffering. The `X-Accel-Buffering: no` header should propagate the no-buffering signal.
+**A model call fails with `No provider available`.** The provider's API key is not set in the container. The server starts without it and fails on the first call that needs a model. Variables and the keys each provider reads are in [Environment variables](../../reference/environment.md).
 
-### better-sqlite3 fails to load
+**`better-sqlite3` fails to load.** It was installed on a different platform than it runs on. Install inside the image and keep `node_modules` out of the build context.
 
-The native module needs to be compiled for the same platform as the runtime. If you build on macOS but run in a Linux container, the binary won't work. The multi-stage Dockerfile handles this by installing dependencies inside the container. If you're copying `node_modules` from your host, don't — let Docker install them.
-
-### Container exits immediately
-
-Check the logs with `docker logs flow-app`. Common causes:
-- Missing environment variable (the model resolver fails if no API keys are set and a flow tries to use a model)
-- Port conflict (another process using port 3000)
-- Missing flow files in the built output (check your `tsconfig.json` paths)
-
-### SQLite "database is locked"
-
-SQLite supports one writer at a time. If you're running multiple container replicas pointing at the same database file, writes will fail. Use a single replica, or switch to an external database for multi-instance deployments.
+**Data is gone after `docker rm`.** The container ran without `-v`, or `filename` is not under the mounted folder. Check that both say `/data`.

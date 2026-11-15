@@ -89,6 +89,20 @@ Your own emit tool can be a sequencer that fetches data, validates it and then e
 
 That works because each emit carries a `key`. Within one request, the page shows only the latest item for a key. The pack keys an info card by `id` and a link card by `url`. Across requests, the same `id` or `url` makes a separate card. Items with no key are always shown.
 
+A second call with the same key replaces the first: the client shows the latest card, and the stored record keeps one entry per request and key, with the newest data. Nothing is merged, so the second call must carry every field you want to keep. If the model calls `emitInfoCard` twice with the same `id`, the user ends up with one card.
+
+To key some other way, pass `keyFrom` to the tool factory:
+
+```ts title="src/flows/trip-concierge/pack.ts"
+import { emitInfoCardTool } from "@flow-state-dev/ui/generative/tools";
+
+export const cardByTitle = emitInfoCardTool({ keyFrom: (input) => `card:${input.title}` });
+```
+
+## Bad input fails the call
+
+The tool validates the model's input against the shape's schema before it emits. An info card takes at most 8 facts. If the model sends eleven, the tool run throws and no card is emitted. Nothing is drawn.
+
 ## Use your own renderer
 
 `generativeRenderers()` returns lightweight defaults from `@flow-state-dev/ui`. They use plain Tailwind classes, so they work anywhere Tailwind is available. To own the markup, copy a renderer into your app:

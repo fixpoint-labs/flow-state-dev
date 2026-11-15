@@ -109,3 +109,10 @@ Legend: **[page]** the page states it. **[ref]** belongs on a Reference page; th
 - End-to-end streaming through a real Function URL: validated outside CI (`lt:5-8,32-33`).
 - Whether a client disconnect stops the function (Q verify above).
 - Cost and memory sizing.
+
+## Revise round 1 (page state)
+
+- The handler example uses `postgresStores` from `@flow-state-dev/store-postgres` with `connectionString: process.env.DATABASE_URL`, `flows: [helloChat]`, and imports `./flows/hello-chat/flow.js`; the verify curls name `hello-chat` and action `chat` to match. Closes the two contradictions above.
+- The page no longer names Hono, `streamHandle`, `serve()` or "a built router" (Q1.2 and Q1.4 stay as facts for the Reference; the page says `app` is the `FlowState` `createFlowState` returns).
+- The "1-2s cold start" figure and the client-disconnect claim are off the page's own prose. The page only links the runtime reference for what a disconnect does (Q1 verify item above).
+- Endpoint table, auth resolver, request lifecycle and store-persistence detail live in the Reference (`/reference/runtime`, `/docs/server/authentication`, `/docs/persistence/overview`); the page keeps one sentence and a link each.

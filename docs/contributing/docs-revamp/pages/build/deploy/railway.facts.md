@@ -300,3 +300,7 @@ type-checked at pass 4. `examples/knowledge-base` reaches the server through `fs
   form (line 95 of the Docker guide). That page's own pass fixes it; this page does not.
 - OLD sits at `/guides/deploying-to-railway`; the NODE-README (:158) and CLI docs link to it. Cutover
   decides the new slug `build/deploy/railway`.
+
+## 11. Revise round 1
+
+The page now uses `fsdev serve` as the start command and `fsdev.config.ts` as the one example block; a short `serve()` entry file is shown as the alternative. The `http.createServer` bridge, the Express remark, the filesystem store, `decodePathSegments`, the scaling bullets and the `/health` curls are gone (section 9). Page claims and their cites: `/healthz` 200/503, SERVE:58 and serve.test.ts:165-185; `fsdev serve` exit code 3 on init failure, FSDEV-SERVE:164-178; guard and `--allow-unauthenticated`, GUARD:97-104, CLI:185; `serve()` does not run the guard, NODE-README:121-150; `sqliteStores` is the adapter, SQLITE-REG:95; one replica, SQLITE-README:71, 81. The SQLite single-writer limit is stated as one file per volume, not as a refusal, since the store runs WAL with a busy timeout (`packages/store-sqlite/src/schema.ts:4-5`). The `fsdev` in `dependencies` line is an install instruction, not a code claim.
