@@ -94,7 +94,7 @@ Sources: `apps/docs/docs/workforce/durable-hire.md` ("Who can reach a worker", "
 | An app fills a slot itself | `fill: { [harnesses.slots.harnesses]: [codexHarness(), cursorHarness()] }`. | `packages/engine/src/flowstate/types.ts:139-145`; `labs/teammates/host.mts:393-398` |
 | "That is how one developer's app becomes the base for another's" | No source states this. Drop the sentence, or keep only that a kit's slots are filled by kits that require it. | (none) |
 
-**Cut candidates.** Slot kinds (keyed, list), `.without`, `fill` and the ordering rules are Reference or
+**Cut candidates.** Slot shapes (keyed, list), `.without`, `fill` and the ordering rules are Reference or
 C-12. The page keeps: a kit is one line, it brings flows, files and views, it may leave slots, and
 `requires` is how a kit says whose slots it fills. Slot stacking is one sentence and a link to C-12
 (owner note in the sitemap entry).
@@ -108,7 +108,7 @@ C-12. The page keeps: a kit is one line, it brings flows, files and views, it ma
 | The flow streams results back as it produces them | Items stream with lifecycle added, content.delta, done and a sequence number; a client can resume from a cursor. | `apps/docs/docs/fundamentals/overview.md:42`; `apps/docs/docs/intro.md:81` |
 | ...and keeps typed state between calls | State has four scopes (request, session, user, org); only the fields a scope's `client` config exposes reach the browser. | `apps/docs/docs/intro.md:58-69,78`; `apps/docs/docs/fundamentals/overview.md:30-38` |
 | Flows hold actions, views, state, resources (figure) | `defineFlow` options include `actions`, `views`, `session`/`user`/`org` state and `resources`. | `packages/core/src/types/flow.ts:607-624` (`views`, `session`, `request`, `user`, `org`); `apps/docs/docs/intro.md:14-38` |
-| Five block kinds | `BlockKind = "handler" \| "generator" \| "evaluator" \| "sequencer" \| "router"`. | `packages/core/src/types/block.ts:43`; `apps/docs/docs/intro.md:42-52`; `apps/docs/docs/fundamentals/overview.md:12-22` |
+| Five block types | The five are `handler`, `generator`, `evaluator`, `sequencer` and `router`. | `packages/core/src/types/block.ts:43`; `apps/docs/docs/intro.md:42-52`; `apps/docs/docs/fundamentals/overview.md:12-22` |
 | Generator: calls a model | "LLM calls. The framework manages prompt assembly, tool loops, streaming, and structured output." | `apps/docs/docs/fundamentals/overview.md:16`; `apps/docs/docs/intro.md:48` |
 | Handler: runs your code | "Deterministic compute: validate, transform, mutate state, implement a tool." | `apps/docs/docs/intro.md:50` |
 | Sequencer: chains blocks into steps | "Chains blocks: steps, parallel work, loops, rescue. A sequencer is itself a block." | `apps/docs/docs/intro.md:51`; `apps/docs/docs/sequencers/overview.md` ("Sequencers are blocks") |
@@ -206,7 +206,7 @@ behaviour with a source. Keep each to a short paragraph on the page.
 | --- | --- | --- |
 | A flow is a self-contained unit you register | "A flow is the top-level unit: the thing you register with the server and clients connect to. It ties together your blocks, actions, state, resources, and client data into a single, deployable definition." It is "the complete specification of an AI-powered feature: what actions users can trigger, what state is tracked, and what data is exposed to the frontend". | `apps/docs/docs/fundamentals/flows.md:10-12` |
 | A flow has an address of its own | A flow has a `kind`, "Unique identifier, becomes the URL path": `/api/flows/<kind>/...`, and `fsdev run <kind>`. | `apps/docs/docs/fundamentals/flows.md:23`; `packages/core/src/types/flow.ts:497-499` |
-| A flow has its own data | State and resources are declared per flow; a session is owned by one flow instance, and naming it through another is refused with 409 `wrong-instance-session`. | `apps/docs/docs/fundamentals/flows.md:77` (figure description); `packages/core/src/types/flow.ts:688-689` |
+| A flow has its own data | State and resources are declared per flow; a session is owned by one flow, and naming it through another is refused with 409 `wrong-instance-session`. | `apps/docs/docs/fundamentals/flows.md:77` (figure description); `packages/core/src/types/flow.ts:688-689` |
 | Definition is like a class, a registered flow an instance | `defineFlow()` returns a FlowType, a factory; calling it creates a FlowInstance, "the thing you actually register". A flow is a singleton by default (instance id = `kind`); a `collection` flow can have several named, configured copies. | `apps/docs/docs/fundamentals/flows.md:65-95`; `packages/core/src/types/flow.ts:495-510` |
 | What a flow does inside is open | The reference flow is an action running a block pipeline; flows also take webhooks, schedules and an MCP entry point, so they are not only chat. | `packages/core/src/types/flow.ts:644,652,661`; `apps/docs/docs/fundamentals/flows.md:77` (figure description) |
 | Everything is a block | "Every piece of logic is exactly one of five kinds"; "All blocks share the same typed contract: input in, output out. Any block composes with any other." A sequencer "is itself a block"; "A tool call can be a handler, a sequencer, or a router. There is no separate 'agent' primitive." | `apps/docs/docs/fundamentals/overview.md:12-22`; `apps/docs/docs/intro.md:42-56`; `packages/core/src/types/block.ts:43` |

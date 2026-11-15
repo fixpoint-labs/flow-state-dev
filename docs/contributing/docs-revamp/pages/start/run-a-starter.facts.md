@@ -176,7 +176,7 @@ The four questions (owner, who can see it, where stored, how many) for each stor
 - A page edit of a worker that comes from a file makes the user's own copy under the same id. Reset brings the file's version back. `labs/teammates/src/adapter.ts:524-531`, the goal `a-standard-teammate-takes-your-edits` (legs a-d). Another user keeps the file's version. [ref/link to C-22]
 
 **Tasks (board rows).**
-- Task rows live in the conversation that filed them, in the same store. `tr:267` ("Task lines | the conversation board's rows"). [cut for this page; C-24 owns them]
+- Tasks live in the conversation that filed them, in the same store. `tr:267` ("Task lines | the conversation board's rows"). [cut for this page; C-24 owns them]
 
 **Two more SQLite files and a runs folder.**
 - Clock routines and GitHub polls tick from two more SQLite files beside the store (`teammates-clock.sqlite`, `teammates-poll.sqlite`). `th:345-346`, `tr:194-195`. A coding run's worktree goes under `.fsdev/teammates-runs/`. `tr:214`. [ref `reference/environment`]
