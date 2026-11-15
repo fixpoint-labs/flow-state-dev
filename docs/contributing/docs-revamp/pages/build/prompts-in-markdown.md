@@ -6,116 +6,83 @@ description: "Move a generator's system prompt into a separate Markdown file and
 
 # Keep prompts in Markdown files
 
-A generator's system prompt is prose the model reads. When that prose is short, an inline TypeScript string is the right home. When it grows past a screen or two, gets templated with lots of `${...}` interpolation, or gets copied across several generators, the TypeScript file starts working against you. The prompt is the thing you want to read and edit, and it is buried in string concatenation.
+A generator is a block that calls a model, and its prompt is the prose the model reads. While that prose is short, an inline string is the right home. When it runs past a screen, fills with `${...}` interpolation, or gets copied across generators, the prompt is buried in TypeScript quoting.
 
-You can move the prompt into a separate `.md` file and load it back into the generator. This guide walks through the migration. Nothing forces you to do it: inline prompts keep working exactly as before. Migrate the prompts that have outgrown the inline form, and leave the rest alone.
+You can move it into a `.md` file and load it back. Inline prompts and file prompts work side by side, so move only the prompts that have outgrown a string. Skip a three-line instruction; it gains nothing from a file.
 
-For the full format and API, see the [Prompts as Markdown reference](/docs/advanced/generator-prompts-markdown).
+This page moves the `draftReply` generator of the support desk onto a prompt file. For every option and error, see the [Markdown templates reference](../reference/markdown-templates.md).
 
-## Pick a prompt to extract
+## Step 1: Move the prose into a `.md` file
 
-Good candidates:
+Create the file beside the block, named `<block>.prompt.md`. The prose goes in a `<system>` section, which every prompt file needs. A `<user>` section is optional and holds a fixed user message for each turn. Frontmatter, the YAML between `---` fences, is optional too.
 
-- Long prose. A 100-line system prompt is a document, not a string literal.
-- Shared fragments. If two generators paste the same preamble, that preamble wants to be a partial (a reusable template fragment).
-- Prompts you review on their own. Pulling them out of TypeScript makes diffs about the prose, not the quoting.
-
-Skip the short ones. A three-line instruction gains nothing from a file.
-
-## Step 1 — Move the prose into a `.md` file
-
-Create a file next to the generator, conventionally `<name>.prompt.md`. Put the system prose inside a `<system>` section. Frontmatter (the YAML metadata between `---` fences) is optional; add a `description` if it helps readers.
-
-```liquid
+```liquid title="src/flows/support/blocks/draft-reply.prompt.md"
 ---
-description: Fundamentals analyst — synthesizes a thesis from financials
+description: Answers a customer support message
 ---
 <system>
-Identity: fundamentalsAnalyst — Fundamentals Analyst.
-Synthesize a thesis from the financial data provided.
+You answer customer support messages. Be brief and specific.
 </system>
 
 <user>
-Synthesize the thesis from the data provided above. Return the JSON object only.
+Customer message:
+{{ input }}
 </user>
 ```
 
-The `<user>` section is optional. Use it for the current-turn user message when it is fixed prose.
+Text outside the sections is ignored. The model, the schemas, the tools and the context stay in TypeScript; the file holds prose only.
 
-## Step 2 — Identify interpolated values
+## Step 2: Replace interpolations with Liquid
 
-Find every value the old TypeScript prompt computed or interpolated, and rewrite it in LiquidJS. The template can read three variables: `input` (the generator's typed input), `ctx` (the block context, with `ctx.session.state`, `ctx.resources.<name>`, and so on), and `config` (the resolved generator config).
+The body is a Liquid template, not a JavaScript template literal. Write `{{ input }}` where the old prompt wrote `${input}`. The template reads `input` (what the generator was called with), `ctx` (the block context, such as `ctx.session.state`) and `config` (the resolved generator settings).
 
-So `${input.ticker}` becomes `{{ input.ticker }}`, and `${ctx.session.state.date}` becomes `{{ ctx.session.state.date }}`.
-
-:::warning Liquid uses `{{ }}`, not `${ }`
-The body is a Liquid template, not a JavaScript template literal. If you write `${input.ticker}` out of habit, Liquid does not interpret it. It renders the literal characters `${input.ticker}` straight into the prompt the model sees. Use `{{ input.ticker }}`.
+:::warning
+`${input}` is not interpreted. It reaches the model as the literal characters `${input}`.
 :::
 
-Strict-variable checking is on, so a reference to something that does not exist throws at render time instead of quietly producing an empty string. For genuinely optional values, supply a fallback: `{{ input.note | default: "" }}`.
+A variable that does not exist throws when the prompt renders. For an optional value, write `{{ input.note | default: "" }}`. To render a list or a table without flattening it in TypeScript, use a built-in filter such as `{{ input.items | fsd_table }}`. The [reference](../reference/markdown-templates.md) lists the variables, the filters and the sections that differ.
 
-To render a typed object, list, or table without flattening it in TypeScript first, use the built-in `fsd_keyValues` / `fsd_list` / `fsd_table` / `fsd_json` filters — for example `{{ input.holdings | fsd_table }}`. See [Built-in filters](/docs/advanced/generator-prompts-markdown#built-in-filters).
+## Step 3: Load it into the generator
 
-## Step 3 — Wire it back into the generator
+Pass the loaded file to the `prompt` slot. The `<user>` section replaces the old `user` line, so that line goes.
 
-Load the file and spread it into the generator. `definePromptFile` fills the `prompt`, `user`, `caching`, `maxTokens`, and `temperature` fields from the file.
-
-```ts
+```ts title="src/flows/support/blocks/draft-reply.ts"
 import { generator } from "@flow-state-dev/core";
-import { definePromptFile } from "@flow-state-dev/core/prompt-file";
 import { loadPromptFile } from "@flow-state-dev/engine/prompt-file";
+import { z } from "zod";
 
-const pf = loadPromptFile("./fundamentals.prompt.md", import.meta.url);
-
-export const fundamentalsGenerator = generator({
-  name: "fundamentals-analyst-generator",
+export const draftReply = generator({
+  name: "draft-reply",
   model: "openai/gpt-6-luna",
-  context: {
-    data: (input) => asDataBlock(input),
-    valuation: (input) => formatValuation(computeValuation(input)),
-  },
-  ...definePromptFile(pf),
-  outputSchema: thesisOutputSchema,
+  prompt: loadPromptFile("./draft-reply.prompt.md", import.meta.url),
+  inputSchema: z.string(),
+  itemVisibility: { client: true, history: true },
 });
 ```
 
-If you aren't overriding the prompt, you can skip the spread and pass the `PromptFile` straight to the `prompt` slot — `prompt: pf`. It expands the same fields, and explicit sibling fields still win. Use whichever reads better.
+`loadPromptFile` reads the file when your code loads it and throws if the file is unreadable, has bad frontmatter or lacks a `<system>` section. The generator takes the file's `<user>` section and frontmatter values too. A field you write next to `prompt` wins over the file's.
 
-Two things to watch:
+Do not put `name` in the frontmatter when you spread the file with `...definePromptFile(pf)` from `@flow-state-dev/core/prompt-file`. The spread would overwrite the generator's own name. The `prompt:` form above keeps yours.
 
-- **Spread precedence.** Anything written after `...definePromptFile(pf)` overrides what the spread set. That is the lever for keeping an inline override if you need one. The same precedence holds when you pass the `PromptFile` directly.
-- **The frontmatter `name` footgun.** If the `.md` frontmatter sets `name`, it flows through `definePromptFile`. Spread after the generator's own `name`, it overwrites it. Leave `name` out of frontmatter unless you mean for the file to name the block.
+`loadPromptFile` needs Node. In a browser bundle, import the raw text and call `parsePromptFile`; the reference covers that path.
 
-In the browser, `loadPromptFile` is not available, since it reads the file system. Import the raw text instead (Vite exposes file contents with the `?raw` suffix) and hand it to `parsePromptFile` with an explicit `partials` map. The reference page covers this path.
+## Step 4: Check the rendered prompt
 
-## Step 4 — Confirm in the DevTool
+Run `fsdev dev` and send a message. Open the `draft-reply` block in the DevTool. Its detail shows the rendered Prompt, and a Template Source section shows the raw `.md` text beside it. Look for stray `${...}` and for empty values.
 
-Run the flow and open the block-trace inspector for the generator. It shows a "Template Source" section with the raw `.md` text next to the rendered "Prompt". Check that the rendered prompt is what you expected: interpolations filled, no stray `${...}`, no missing values. The side-by-side view is the fastest way to catch a templating mistake.
+## Share a fragment between prompts
 
-## Worked example: the trading-desk analysts
+A partial is another `.md` file that a prompt pulls in. Put the lines every support prompt repeats in `src/flows/support/blocks/_partials/house-style.md`:
 
-The trading-desk example shows the migration on real prompts. Each Phase 1 analyst used to carry its full system prompt as an inline string in `prompts.ts`, and every one of them repeated the same output-schema preamble: "Your output schema is enforced by the framework. Return a single JSON object…".
-
-After the migration, each analyst's prompt lives in its own file under `agents/analysts/prompts/`, and the repeated preamble lives once as a partial.
-
-A partial is just another `.md` file. In Node, `loadPromptFile` auto-registers sibling `.md` files in the prompt's directory as partials, named by filename. The shared preamble sits in a `_partials` directory and gets pulled in with `{% render 'shared-output-preamble' %}`:
-
-```liquid
-<system>
-{% render 'phase1-analyst-preamble' %}
-
-Identity: fundamentalsAnalyst — Fundamentals Analyst.
-Synthesize a thesis from the financial data provided.
-
-{% render 'shared-output-preamble' %}
-</system>
+```liquid title="src/flows/support/blocks/_partials/house-style.md"
+Write in plain sentences. Never promise a refund date.
 ```
 
-`{% render %}` runs the partial in an isolated scope, so the partial cannot accidentally read or clobber the caller's variables. That is the safer default. There is also `{% include %}`, which shares the caller's scope; reach for it only when you specifically need that.
+In the prompt, add `{% render 'house-style' %}` inside `<system>`. The name is the file name without `.md`. `render` runs the partial in its own scope, so it cannot read the caller's variables. A missing partial fails when the file loads.
 
-The example builds its loader once with `createPromptLoader` and exports it as `loadPrompt`, pointing every `{% render %}` at the shared `_partials` directory so each call site is just a filename. The base directory comes from `resolveBaseDir`, which tries candidates in order and takes the first that exists and contains the probe path:
+Sibling `.md` files register as partials on their own. To keep them in a `_partials` directory, build one loader for the flow:
 
-```ts
+```ts title="src/flows/support/prompts.ts"
 import path from "node:path";
 import {
   createPromptLoader,
@@ -123,34 +90,20 @@ import {
   resolveBaseDir,
 } from "@flow-state-dev/engine/prompt-file";
 
-const APP_ROOT = resolveBaseDir(
-  [moduleDir(import.meta.url, "../../../.."), process.cwd()],
-  { expect: "src/flows/analysis" },
+const flowDir = resolveBaseDir(
+  [moduleDir(import.meta.url), path.resolve(process.cwd(), "src/flows/support")],
+  { expect: "flow.ts" },
 );
-const loadPrompt = createPromptLoader(path.join(APP_ROOT, "src/flows/analysis"), {
-  partialsDir: path.join(APP_ROOT, "src/flows/analysis/prompts/_partials"),
+
+export const loadPrompt = createPromptLoader(path.join(flowDir, "blocks"), {
+  partialsDir: path.join(flowDir, "blocks/_partials"),
 });
 ```
 
-Each candidate covers a different runtime. The module-relative one (`moduleDir(import.meta.url, ...)`) wins under vitest, tsx, and `fsdev run`, no matter what directory the process started in. The `process.cwd()` one carries Next.js dev and build, where the bundler rewrites `import.meta.url` to a virtual path but cwd is pinned to the app package. If your app bundles prompts, you'll want the same two-candidate shape — anchoring on cwd alone works under the bundler and then breaks the moment anything imports the flow from somewhere else.
+`draftReply` then calls `loadPrompt("draft-reply.prompt.md")`. `resolveBaseDir` takes the first candidate that exists and contains the `expect` path. The first candidate works under vitest, tsx and `fsdev run`. The `process.cwd()` one covers Next.js, where `import.meta.url` is a virtual path. Keep both if your app is bundled.
 
-### Reaching for context override
+## Next
 
-The analyst prompts above are default mode: the rendered `<system>` fills the system half, and the framework appends the aggregated XML context after it, exactly as it does for an inline prompt.
-
-Sometimes the default ordering of that context does not match how you want the model to read it. A risk-consolidation prompt, for instance, might want to promote one input above the rest and drop the others. That is what the `<context>` section is for. Adding it suppresses the framework's default append and lets the template position the context itself, reading the aggregated map through `config.context`:
-
-```liquid
-<system>
-You are the risk consolidator. Weigh the inputs below and decide.
-</system>
-
-<context>
-{% if config.context.risk_assessment %}
-<priority>{{ config.context.risk_assessment }}</priority>
-{% endif %}
-{{ config.context.thesis | default: "" }}
-</context>
-```
-
-Here the template emphasizes the risk assessment, gates it on presence, and silently drops any aggregated key it does not name. You still declare the context entries on the generator's `context:` slot; the template only reorders and prunes the computed result. See [Generator context](/docs/advanced/generator-context) for how that aggregated map is built.
+- [Markdown templates](../reference/markdown-templates.md) for every variable, filter, section, loader option and error.
+- [Generators and tools](../concepts/generators-and-tools.md) for the `context` slot a `<context>` section reorders.
+- [Debug a run](./debug-a-run.md) for reading a block's trace.

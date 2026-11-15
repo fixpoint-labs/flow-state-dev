@@ -76,9 +76,7 @@ Replace `FSDEV_SCHEDULER_SECRET_VALUE` with the value of the
 the secret means updating the schedule.
 
 The body carries the scheduled time as `nominalFireTime`, which EventBridge
-fills in for each run. The endpoint treats each `nominalFireTime` as one
-run, which is how a retry of the same run is recognised as a repeat. The
-command sets the flexible time window to `OFF`, so each call goes out at
+fills in for each run. The command sets the flexible time window to `OFF`, so each call goes out at
 the scheduled time.
 
 ## Retries and the dead-letter queue
@@ -102,9 +100,9 @@ its result. See [Errors](../reference/errors.md).
 ## Time zones
 
 `--schedule-expression-timezone` is the zone AWS evaluates the cron in. Set
-the schedule's `timezone` on the flow to the same zone. The flow evaluates
-its `cron` in that zone to match the time AWS sends, and a mismatch is
-refused as above. See [Schedules](../reference/schedules.md).
+the schedule's `timezone` on the flow to the same zone. If the zones differ,
+the endpoint refuses each fire with `400 not_a_scheduled_time`, as in step 1.
+See [Schedules](../reference/schedules.md).
 
 ## What it won't do
 

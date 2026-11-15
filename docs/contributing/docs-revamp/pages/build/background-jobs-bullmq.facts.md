@@ -157,3 +157,16 @@ For pass 2; each answer is on this sheet.
 5. Edge: no worker is running at all. What happens to the request? (It waits `in_progress`; unclaimed past `queuedGraceMs`, ten minutes by default, it is marked `interrupted`; section 4.)
 6. Edge: `buildReport` throws a network error on the first attempt. What does the browser see? (The stream stays open through the retries, numbered in sequence; on the last failed attempt the request ends `failed`; section 4.)
 7. Which `mode` do the web container and the worker container use? (`dispatch-only` and `worker-only`; the default `colocated` does both; section 3.)
+
+## 11. Revise round 1: what the page states and what moved
+
+The page is now four steps (install and Redis, give the app a queue, call the action, worker processes) at about 480 words. Corrections folded in:
+
+- `flows` is an array (`flows: [support]`), `fsdev.config.ts` default-exports the `FlowState`, examples use the app layout (`eng/flowstate/types.ts:124`). The `lib/flowstate.ts` path is gone. Kitchen-sink wiring is in `apps/kitchen-sink/fsdev.config.ts:81-98,225-229`, not `lib/flowstate.ts`, and the page no longer cites it.
+- `backoff` passed to `retry` replaces the default backoff whole, so omitting `jitter` there means no jitter (`bmq/retry.ts:9-21`: `{ ...DEFAULTS, ...config }` merges one level). The page shows no retry example; the option table moved to Reference. Any Reference row must say the per-field defaults apply only when `backoff` is omitted.
+- Unknown flows are `UnrecoverableError` (`bmq/worker.ts:329`); no unknown-action path was found, so the page says nothing about unknown actions. The page does not state which failures skip retries (Reference, R-22).
+- The page does not claim Vercel's `after()`: nothing in `packages/vercel/src` runs it (`types.ts:37` only mentions it in a doc comment). It states the serverless limit from section 8 instead.
+- `fsdev serve` calls `ready()` (section 0, item 4), so the page says the two boot lines are for any other start.
+- `QUEUE_MODE` is the page's own variable name; no code reads it.
+
+Moved to Reference (the page links `reference/background-work`, `reference/stores`, `reference/concurrency`, `reference/schedules`), none stated on the page: connection forms, `prefix`, `keyPrefix`; retry table and `<queue>-dlq`; which failures skip retries; `enqueueAction` fields and the instance rule for `flowKind`; draining a queue before a flow becomes a collection and the worker-first rollout (Upgrading page); the 404 for an unknown request id and the unclaimed-request behaviour; HMR dispose; `Last-Event-ID` details; low-level factories; static schedules, `createScheduleDispatchWorker`, `createBullmqScheduleIndex`; kitchen-sink `REDIS_URL` and `FSD_BULLMQ_DISPATCH`; Bull Board.

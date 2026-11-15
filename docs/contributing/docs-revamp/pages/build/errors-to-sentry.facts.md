@@ -112,3 +112,8 @@ The event carries `userId`, `sessionId`, `orgId` and `details`; the page does no
 - Moved to Reference (R-22, `reference/errors`): errorCapture fires for every block failure including ones a rescue or retry later recovers, and each retried attempt fires its own event; what `transient`, `error.retryable` and `attempt` mean; the `final` event (when it is sent, `scope: "request"`, names the leaf, never sent for a healed failure, sent for a setup failure); that forwarding both per-block and `final` reports one failure twice. The page links R-22 for each and the adapter comment is a pointer.
 - Cut "That is the whole integration" and the DevTool "still ... as before" sentence; the DevTool is introduced as the browser inspector `fsdev dev` opens. Fact 5 stays: "The request does not wait for your callback."
 - The sheet's earlier choice to forward `final` only (facts 14, 20) is not taken: the page keeps the block-event adapter (with the `level` split) and shows `final` only as a one-line change.
+
+## Revise round 2 changes
+
+- Added a field-to-place list under the adapter (facts 18, 19): `requestId` finds the run (shared by block events and `final`, shown by the DevTool and `fsdev run`), `userId` as `user: { id }`, `sessionId` and `blockInstanceId` in `extra`, low-cardinality values in `tags`.
+- Wire-it-in paragraph now states what a throwing or unreachable callback does (facts 5, 8, 27) and the freeze-after-response loss with a flush-in-your-deploy pointer (fact 25, unverified `onBackgroundWork` coverage still not claimed).
