@@ -151,8 +151,8 @@ describe("historySummary on the engine", () => {
     const closes = system.match(/<\s*\/\s*earlier-conversation/gi) ?? [];
     expect(closes).toHaveLength(1);
     expect(system.indexOf(injected)).toBeLessThan(system.indexOf("</earlier-conversation>"));
-    const row = await stores.resourceState.get("session", "s", "historySummary");
-    const stored = (row?.state as { summary: string }).summary;
+    const resource = await stores.resourceState.get("session", "s", "historySummary");
+    const stored = (resource?.state as { summary: string }).summary;
     expect(stored.length).toBeLessThanOrEqual(8_000);
     expect(stored).toMatch(/\[earlier summary truncated\]$/);
   });
