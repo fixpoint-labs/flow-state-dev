@@ -10,14 +10,16 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
 import { REPO_ROOT, runGoal, sleep } from "../../lib/index.mts";
 import type { SessionStateSnapshotResponse } from "@flow-state-dev/client";
-import { harnessTurnRecordSchema } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_IGNORED, harnessTurnRecordSchema } from "@flow-state-dev/harness-manager";
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createClient } from "@flow-state-dev/client";
 import { createFlowState, createInProcessFetch, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { act, FOLD_MARGIN, foldFillersPassed, planted, servedUntilStopped, skillFiles, turnChecksOf } from "../closure.mts";
+import { act, coderRepository, FOLD_MARGIN, foldFillersPassed, gitRepository, planted, servedUntilStopped, settledRunChecks, skillFiles, turnChecksOf } from "../closure.mts";
 import { draw } from "../fixtures.mts";
 import { teammatesServe } from "../teammates/serve.mts";
 import { APP_MODELS, serveOnHaiku, claudeCodeSettings, closureModel, HAIKU, HAIKU_CONFIG, HAIKU_ID, haikuResolver, servedModel } from "../model.mts";
@@ -123,6 +125,16 @@ const cases: [string, Graded, boolean][] = [
   ["coder · claims a check that never ran", gradeCoder(turn({ reply: "I ran `pnpm lint` and it passed.", checks: checksFrom([ran("pnpm test", 0)]) })), false],
   ["coder · says pass, it failed", gradeCoder(turn({ reply: "I ran `pnpm test` and it passed.", checks: checksFrom([ran("pnpm test", 1)]) })), false],
   ["coder · says pass, it timed out (exit 0)", gradeCoder(turn({ reply: "I ran `pnpm test` and it passed.", checks: checksFrom([ran("pnpm test", 0, { timedOut: true })]) })), false],
+  // A compound span is graded by its command parts (FIX-2502 D3): plumbing around a recorded check passes, an unrecorded part fails.
+  ["coder · a recorded check, then `; echo` of its exit code", gradeCoder(turn({ reply: 'I ran `node check.mjs; echo "exit code: $?"` and it passed (exit code: 0).', checks: checksFrom([ran("node check.mjs", 0)]) })), true],
+  ["coder · a recorded check with `2>&1`", gradeCoder(turn({ reply: "I ran `node check.mjs 2>&1` and it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), true],
+  ["coder · a recorded check piped to `tail`", gradeCoder(turn({ reply: "I ran `pnpm test | tail -20` and it passed.", checks: checksFrom([ran("pnpm test", 0)]) })), true],
+  ["coder · a separator inside quotes does not split", gradeCoder(turn({ reply: 'I ran `node check.mjs; echo "done && pnpm lint"` and it passed.', checks: checksFrom([ran("node check.mjs", 0)]) })), true],
+  ["coder · a recorded check, then `&&` a command that never ran", gradeCoder(turn({ reply: "I ran `node check.mjs && pnpm lint`; both passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), false],
+  ["coder · a recorded check, then `||` a command that never ran", gradeCoder(turn({ reply: "I ran `node check.mjs || pnpm lint` and it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), false],
+  ["coder · an unquoted separator after `echo` still splits", gradeCoder(turn({ reply: "I ran `node check.mjs; echo done && pnpm lint` and it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), false],
+  ["coder · a bare program name in prose is not a command", gradeCoder(turn({ reply: "I can't execute `node` myself, so the coding run ran `node check.mjs` and it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), true],
+  ["coder · a compound whose only command never ran",gradeCoder(turn({ reply: 'I ran `pnpm lint; echo "exit code: $?"` and it passed.', checks: checksFrom([ran("pnpm test", 0)]) })), false],
 
   [
     "knowledge · cites a page it fetched",
@@ -337,6 +349,74 @@ async function recoversBeforePlanting(): Promise<string | undefined> {
 }
 const recovery = await recoversBeforePlanting();
 
+/**
+ * The coder ask's repository, as the Claude Code-style, Teammates and Shift
+ * Manager drivers build it, put to the check a harness-manager run makes
+ * before it starts: a repository that does not ignore `.fsdev/` is refused,
+ * so every coder run in it would be. The control is the same files without
+ * the ignore line, which must be refused, or the check proves nothing.
+ */
+async function coderRepositoryUsable(): Promise<string | undefined> {
+  const dir = mkdtempSync(join(tmpdir(), "closure-coder-repo-"));
+  try {
+    const host = localWorkspaceHost({ root: join(dir, "host"), remotes: { allow: ["file"] }, source: () => ({ kind: "repo", repo: dir }) });
+    const check = (repo: string) => host.checkRepository!(`file://${repo}`, { ignored: ASK_MARKER_IGNORED });
+    const built = await check(coderRepository(join(dir, "repo"), coderDraw, APP_MODELS));
+    const unignored = await check(gitRepository(join(dir, "unignored"), { ...coderDraw.files, [coderDraw.coder.file]: coderDraw.coder.script }));
+    const problems: string[] = [];
+    if (!built.usable) problems.push(`the drivers' repository is refused: ${built.problem}`);
+    if (unignored.usable) problems.push("control: a repository that does not ignore .fsdev/ was accepted");
+    return problems.length === 0 ? undefined : problems.join("; ");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+const coderRepo = await coderRepositoryUsable();
+
+/**
+ * The coder ask reads the run record only once the coding run the worker
+ * filed has settled: the worker can end its turn as soon as it files the
+ * task, before the run writes its record. Each case is a store the way
+ * harness-manager writes it (`runs/**` rows of `resource_state`), changed on a
+ * timer while the read waits. Graded through `gradeCoder` with a true report.
+ */
+async function coderReadsTheSettledRun(): Promise<[string, Graded, boolean][]> {
+  const dir = mkdtempSync(join(tmpdir(), "closure-settle-"));
+  const store = (name: string) => {
+    const file = join(dir, `${name}.sqlite`);
+    const db = new DatabaseSync(file);
+    db.exec("CREATE TABLE resource_state (resource_key TEXT PRIMARY KEY, state TEXT NOT NULL)");
+    const write = (record: Record<string, unknown>) =>
+      db.prepare("INSERT OR REPLACE INTO resource_state VALUES ('runs/task-1', ?)").run(JSON.stringify({ taskId: "task-1", updatedAt: Date.now(), ...record }));
+    return { file, write, close: () => db.close() };
+  };
+  const report = "The coding run ran `node check.mjs` and it passed.";
+  const graded = async (file: string, timeoutMs: number) => gradeCoder(turn({ reply: report, ...(await settledRunChecks(file, timeoutMs, 50)) }));
+  try {
+    // The race: the turn has ended, the run is still going, and its checks land later.
+    const late = store("late");
+    late.write({ outcome: "running" });
+    const landed = sleep(300).then(() => late.write({ outcome: "succeeded", checks: [ran("node check.mjs", 0)] }));
+    const settledLate = await graded(late.file, 5_000);
+    // Checks recorded, but the run never settles (a question left waiting): its own reason, not a read of a run in flight.
+    const stuck = store("stuck");
+    stuck.write({ outcome: "running", checks: [ran("node check.mjs", 0)] });
+    const neverSettled = await graded(stuck.file, 400);
+    // No coding run at all.
+    const none = await graded(join(dir, "none.sqlite"), 200);
+    await landed;
+    for (const s of [late, stuck]) s.close();
+    return [
+      ["coder · the run settles after the turn ends: its checks are read", settledLate, true],
+      ["coder · a run that never settles fails on that, not on its checks", neverSettled.some((line) => line.includes("did not settle")) ? neverSettled : [], false],
+      ["coder · no coding run recorded fails as unsettled", none.some((line) => line.includes("did not settle")) ? none : [], false],
+    ];
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+cases.push(...(await coderReadsTheSettledRun()));
+
 /** Running, and not a zombie: a killed process whose parent has gone stays in /proc until something reaps it. */
 function running(pid: number): boolean {
   try {
@@ -406,11 +486,12 @@ await runGoal((failures, tell) => {
   if (recovery !== undefined) failures.push(`planting after a killed run: ${recovery}`);
   if (signalled !== undefined) failures.push(`a signal mid-run: ${signalled}`);
   if (failedStart !== undefined) failures.push(`a start that throws after serving: ${failedStart}`);
+  if (coderRepo !== undefined) failures.push(`the coder ask's repository: ${coderRepo}`);
   for (const [name, graded, shouldPass] of tell.over("grader cases", cases)) {
     if (shouldPass && graded.length > 0) failures.push(`${name}: should pass, got ${graded.join("; ")}`);
     if (!shouldPass && graded.length === 0) failures.push(`${name}: a hollow turn passed`);
   }
   for (const [name, got, want] of tell.over("verdict rules", rules)) if (got !== want) failures.push(`${name}: got ${got}`);
   for (const [name, got, want] of tell.over("model switch rules", modelRules)) if (got !== want) failures.push(`${name}: got ${got}`);
-  return { failures, evidence: `${cases.length} grader cases (${cases.filter((c) => !c[2]).length} hollow, each refused), ${rules.length} verdict rules, ${modelRules.length} model switch rules, planting after a killed run, a signal mid-run, and a start that throws after serving` };
+  return { failures, evidence: `${cases.length} grader cases (${cases.filter((c) => !c[2]).length} hollow, each refused), ${rules.length} verdict rules, ${modelRules.length} model switch rules, planting after a killed run, a signal mid-run, a start that throws after serving, and the coder ask's repository accepted by a run's check` };
 });
