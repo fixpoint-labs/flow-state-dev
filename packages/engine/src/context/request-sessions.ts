@@ -151,6 +151,16 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     if (typeof sessionId !== "string" || sessionId.length === 0) return undefined;
     return admitted(await sessions.get(resolveSessionStorageKey(sessionId, identity.tenantId)));
   };
+  /**
+   * A one-session verb that answered nothing is heard as the caller's list is,
+   * on their own user topic, so a session made later under the id wakes the
+   * view; never on the id's own topic, which may be someone else's. A refusal
+   * and a missing session alike.
+   */
+  const unanswered = (): undefined => {
+    inputs.observe?.list();
+    return undefined;
+  };
 
   /** A session's state cut to the fields its owning flow declares readonly, defaults filled. */
   const readonlyStateOf = (record: SessionRecord): Readonly<Record<string, unknown>> => {
@@ -193,7 +203,8 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     const records = await Promise.all(ids.map((id) => owned(id)));
     const read = ids.flatMap((id, at) => (records[at] === undefined ? [] : [{ id, record: records[at]! }]));
     for (const entry of read) inputs.observe?.turns(entry.id);
-    if (read.length === 0 || inputs.requests === undefined) return one && read.length === 0 ? undefined : [];
+    if (one && read.length === 0) return unanswered();
+    if (read.length === 0 || inputs.requests === undefined) return [];
     const per = bounded(query?.limit, SESSION_TURNS_MAX);
     if (per === 0) return [];
     const statuses = query?.status;
@@ -224,13 +235,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
   return {
     async read(sessionId: string): Promise<PeerSessionView | undefined> {
       const record = await owned(sessionId);
-      if (record === undefined) {
-        // Heard as the caller's list is, on their own user topic, so a session
-        // made later under the id wakes the view; never on this id's topic,
-        // which may be someone else's. A refusal and a missing session alike.
-        inputs.observe?.list();
-        return undefined;
-      }
+      if (record === undefined) return unanswered();
       inputs.observe?.identity(sessionId);
       const state = readonlyStateOf(record);
       const view = {
@@ -301,7 +306,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       const reads = inputs.history;
       if (reads === undefined) return undefined;
       const record = await owned(sessionId);
-      if (record === undefined) return undefined;
+      if (record === undefined) return unanswered();
       inputs.observe?.history(sessionId);
       const limit = query?.limit ?? { turns: SESSION_HISTORY_DEFAULT_TURNS };
       // Bounded at the store: a count of turns reads that many, a token limit
