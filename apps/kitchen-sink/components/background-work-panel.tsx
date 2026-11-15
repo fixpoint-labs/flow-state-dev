@@ -134,10 +134,9 @@ export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPane
     childSessions.length > 0 ||
     items.some(
       (item) =>
-        item.type === "component" &&
-        (item as { component?: string }).component === "task-board-meta" &&
-        (item as { data?: { collectionId?: string } }).data?.collectionId ===
-          "background-work",
+        item.type === "data" &&
+        item.dataType === "task-board-meta" &&
+        item.value.collectionId === "background-work",
     );
 
   const wasStreaming = useRef(isStreaming);

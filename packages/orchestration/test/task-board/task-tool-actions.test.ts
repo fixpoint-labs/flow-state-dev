@@ -270,7 +270,7 @@ describe("taskToolActions — refusals are values, and the caller can read them"
       const requests = (await h.runtime.stores.request.list({ sessionId: "s_ops", withItems: true })) as Array<{
         id: string;
         actionName: string;
-        items?: Array<{ type: string; blockInstanceId?: string; output?: unknown; component?: string }>;
+        items?: Array<{ type: string; blockInstanceId?: string; output?: unknown; dataType?: string }>;
       }>;
       // The list is newest-updated first, and the two updates can tie, so
       // pick the refused request by its id rather than by position.
@@ -278,7 +278,7 @@ describe("taskToolActions — refusals are values, and the caller can read them"
       expect(last?.actionName).toBe(`updateTask_${h.id}`);
       const root = last?.items?.find((item) => item.type === "block_trace" && item.blockInstanceId?.endsWith(":root:0"));
       expect(root?.output).toEqual({ kind: "inline", value: refused.output });
-      expect(last?.items?.some((item) => item.component === "task-change")).toBe(false);
+      expect(last?.items?.some((item) => item.type === "data" && item.dataType === "task-change")).toBe(false);
     } finally {
       await h.dispose();
     }

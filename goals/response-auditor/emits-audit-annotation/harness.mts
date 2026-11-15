@@ -10,7 +10,7 @@
  * Vercel AI Gateway. The response text is a fixture rather than
  * generator-produced, so the only stochastic step is the real analyzer's
  * judgment call — that judgment, and whether it causes `responseAuditor` to
- * emit an `audit-annotation` component item, is exactly what FIX-847 added.
+ * emit an `audit-annotation` data item, is exactly what FIX-847 added.
  * Reports observations on a single `__GOAL__<json>` line; run.mts owns the
  * assertions and retries (analyzer judgment is inherently probabilistic).
  */
@@ -72,15 +72,15 @@ async function main(): Promise<void> {
   );
 
   const card = audit.items.find(
-    (i: { type?: string; component?: string }) =>
-      i.type === "component" && (i as { component?: string }).component === "audit-annotation",
+    (i: { type?: string; dataType?: string }) =>
+      i.type === "data" && (i as { dataType?: string }).dataType === "audit-annotation",
   );
 
   const result = {
     auditorError: audit.error === null ? null : String(audit.error),
     cardEmitted: card !== undefined,
     surfaced: card
-      ? ((card as { data?: { surfacedResults?: unknown[] } }).data?.surfacedResults ?? []).length
+      ? ((card as { value?: { surfacedResults?: unknown[] } }).value?.surfacedResults ?? []).length
       : 0,
     overallScore:
       (audit.output as { overallScore?: number } | undefined)?.overallScore ?? null,

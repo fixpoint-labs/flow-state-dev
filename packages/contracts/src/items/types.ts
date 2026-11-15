@@ -29,8 +29,8 @@ export type ItemProvenance = {
 export type OutputItemBase = {
   /**
    * Stable identity for the item. Most items mint a fresh random ID per
-   * emission; keyed component items are an exception (see
-   * {@link ComponentItem.key}).
+   * emission; keyed data items are an exception (see
+   * {@link DataItem.key}).
    */
   id: string;
   type: string;
@@ -39,7 +39,7 @@ export type OutputItemBase = {
    * When true, the item is delivered to live SSE consumers but never
    * persisted to the session log or replayed on history reload.
    *
-   * Composes orthogonally with {@link ComponentItem.key}: see the "keyed
+   * Composes orthogonally with {@link DataItem.key}: see the "keyed
    * snapshot" pattern in `apps/docs/docs/streaming/emitting-items.md` for
    * the full transient × key matrix.
    */
@@ -491,17 +491,31 @@ export type ReasoningItem = OutputItemBase & {
   summary: Content[];
 };
 
-export type ComponentItem = OutputItemBase & {
-  type: "component";
-  component: string;
-  data: Record<string, unknown>;
+/**
+ * Structured content at this point in the conversation, emitted with
+ * `ctx.emit.data(dataType, value)`. The one item kind for it: code reads a
+ * data item back by `dataType` (a routing decision, a task change), and a
+ * client draws one only when it registers a renderer for its `dataType`
+ * (generative UI such as a link card is a dataType that ships with one). A
+ * data item with no renderer is still on the stream and in the session, and
+ * draws nothing.
+ *
+ * Reaches the client and not model history by default; `itemVisibility`
+ * overrides that (see `resolveItemVisibility`).
+ */
+export type DataItem = OutputItemBase & {
+  type: "data";
+  /** What kind of record this is, e.g. `"task-change"`. Readers match on it. */
+  dataType: string;
+  /** The record. Replaced wholesale, never merged, on a keyed re-emission. */
+  value: Record<string, unknown>;
   /**
    * Caller-provided stable identity for deduplication.
    *
    * Combined with `transient: false`, this expresses the **keyed snapshot**
    * pattern — one logical entity whose latest state replays on reload.
    * Keyed emissions upsert: the item ID is derived from `key`, the persisted
-   * record holds one entry per `(requestId, key)`, and `data` is replaced
+   * record holds one entry per `(requestId, key)`, and `value` is replaced
    * (not merged) on each emission. The SSE event log still appends per
    * emission. See `apps/docs/docs/streaming/emitting-items.md`.
    */
@@ -807,7 +821,7 @@ export type OutputItem =
   | MessageItem
   | ReasoningItem
   | ToolOutputItem
-  | ComponentItem
+  | DataItem
   | ContainerItem
   | SourceItem
   | StatusItem

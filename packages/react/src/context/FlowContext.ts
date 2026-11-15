@@ -93,6 +93,10 @@ function mergeRenderers(
     container: {
       ...parent.container,
       ...child.container
+    },
+    data: {
+      ...parent.data,
+      ...child.data
     }
   };
 }

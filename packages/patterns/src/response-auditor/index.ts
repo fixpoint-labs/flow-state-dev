@@ -123,7 +123,7 @@ function createApplyThreshold(threshold: number) {
 }
 
 /**
- * Emits the surfaced audit results as an `audit-annotation` component item so a
+ * Emits the surfaced audit results as an `audit-annotation` data record so a
  * registered renderer (the `@flow-state-dev/ui` audit card, wired into
  * `chatAssistantRenderers`) can display them. Side-effect only: it forwards the
  * threshold output unchanged (composed via `.tapIf`).
@@ -138,7 +138,7 @@ const emitAuditAnnotation = handler({
   // (debate's equivalent emit tap uses the same z.any() convention).
   inputSchema: z.any(),
   execute: (input, ctx) => {
-    ctx.emit.component("audit-annotation", input as Record<string, unknown>);
+    ctx.emit.data("audit-annotation", input as Record<string, unknown>, { itemVisibility: { client: true, history: false } });
   },
 });
 
@@ -206,7 +206,7 @@ export function responseAuditor(config: ResponseAuditorConfig) {
   // 4. map filters out nulls from failed analyzers
   // 5. aggregateResults computes overall score
   // 6. applyThreshold filters to surfaced results
-  // 7. emit an audit-annotation component item when anything surfaced
+  // 7. emit an audit-annotation data record when anything surfaced
 
   return sequencer({
     name: "response-auditor",

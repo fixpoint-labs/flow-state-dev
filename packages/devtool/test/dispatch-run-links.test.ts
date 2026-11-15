@@ -56,14 +56,14 @@ function taskChange(options: {
 }): TaskStreamItem {
   return {
     id: `item_${options.requestId}`,
-    type: "component",
+    type: "data",
     status: "completed",
     requestId: options.requestId,
     itemIndex: 0,
     provenance: { blockName: "board", blockInstanceId: "b:0", phase: "main" },
     ts: options.ts,
-    component: "task-change",
-    data: {
+    dataType: "task-change",
+    value: {
       collectionId: "issues",
       taskId: "task-a",
       kind: "assignee_changed",

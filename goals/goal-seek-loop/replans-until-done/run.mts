@@ -18,7 +18,7 @@
  * of budget.
  *
  * The graded signal is the loop's own terminal observability item
- * (`goal-seek-loop-termination`), read for `data.reason` and `data.iterations`
+ * (`goal-seek-loop-termination`), read for `value.reason` and `value.iterations`
  * exactly as goal.md prescribes — never board-meta.
  *
  * Run: pnpm tsx goals/goal-seek-loop/replans-until-done/run.mts
@@ -35,7 +35,7 @@ import {
   type TaskBoardHandle,
   type Verdict,
 } from "@flow-state-dev/orchestration/task-board";
-import { GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE } from "@flow-state-dev/orchestration/internal";
+import { GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE } from "@flow-state-dev/orchestration/internal";
 import type { TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { z } from "zod";
@@ -76,18 +76,18 @@ interface Termination {
 
 /**
  * Read the termination item from an emitted item stream. Same access the
- * primitive's own suite uses: the LAST `goal-seek-loop-termination` component,
- * read off `data`. Deliberately not board-meta (goal.md).
+ * primitive's own suite uses: the LAST `goal-seek-loop-termination` data item,
+ * read off `value`. Deliberately not board-meta (goal.md).
  */
 function readTermination(items: readonly unknown[]): Termination | undefined {
   const item = [...items]
     .reverse()
     .find(
       (i) =>
-        (i as { type?: string }).type === "component" &&
-        (i as { component?: string }).component === GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
-    ) as { data?: Termination } | undefined;
-  return item?.data;
+        (i as { type?: string }).type === "data" &&
+        (i as { dataType?: string }).dataType === GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE,
+    ) as { value?: Termination } | undefined;
+  return item?.value;
 }
 
 /** Render the settled board for the judge — one line per task with its result. */
@@ -272,8 +272,8 @@ async function runLoopOnce(attempt: number): Promise<Observation> {
   // `iterations >= 2` alone would also be satisfied by a `continue` verdict
   // re-draining a settled board with no new tasks, which is not a replan.
   const taskIds = new Set<string>();
-  for (const item of res.items as { type?: string; data?: { task?: { id?: string } } }[]) {
-    if (item.type === "component" && item.data?.task?.id) taskIds.add(item.data.task.id);
+  for (const item of res.items as { type?: string; value?: { task?: { id?: string } } }[]) {
+    if (item.type === "data" && item.value?.task?.id) taskIds.add(item.value.task.id);
   }
 
   return { termination: readTermination(res.items), finalTaskCount: taskIds.size };
@@ -287,7 +287,7 @@ async function runLoopOnce(attempt: number): Promise<Observation> {
  * The primitive arm above proves the loop converges in isolation; this proves
  * the re-expression did not break the pattern built on it. Asserts the run
  * completed, that it actually went through the task-board substrate (the
- * `task-change` / `task-board-meta` components only that substrate emits), and
+ * `task-change` / `task-board-meta` data items only that substrate emits), and
  * that a substantive answer came back.
  *
  * The pattern is built from its public subpath with the defaults a consumer
@@ -323,10 +323,10 @@ async function runPlanAndExecuteArm(): Promise<string[]> {
   if (res.error) return [`plan-and-execute arm: run did not complete: ${res.error.message}`];
 
   const failures: string[] = [];
-  const planItems = (res.items as { type?: string; component?: string }[]).filter(
+  const planItems = (res.items as { type?: string; dataType?: string }[]).filter(
     (i) =>
-      i.type === "component" &&
-      (i.component === "task-change" || i.component === "task-board-meta"),
+      i.type === "data" &&
+      (i.dataType === "task-change" || i.dataType === "task-board-meta"),
   );
   if (planItems.length === 0) {
     failures.push(

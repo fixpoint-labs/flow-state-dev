@@ -104,7 +104,7 @@ export async function readSessionItems(client: Client, sessionId: string): Promi
   return { items: items.sort(compareItemOrder), truncated: true };
 }
 
-/** Pages of components {@link readTaskClaims} reads at most. */
+/** Pages of data items {@link readTaskClaims} reads at most. */
 const CLAIM_PAGES = 50;
 
 /**
@@ -116,10 +116,9 @@ const CLAIM_PAGES = 50;
 export async function readTaskClaims(client: Pick<Client, "sessions">, sessionId: string, collectionId: string): Promise<OutputItem[]> {
   const claims: OutputItem[] = [];
   for (let offset = 0, page = 0; page < CLAIM_PAGES; page += 1) {
-    const state = await client.sessions.state(sessionId, { includeItems: true, itemTypes: ["component"], offset, limit: ITEM_PAGE });
+    const state = await client.sessions.state(sessionId, { includeItems: true, itemTypes: ["data"], offset, limit: ITEM_PAGE });
     for (const item of state.items ?? []) {
-      const data = (item as { component?: string; data?: { collectionId?: string } }).data;
-      if ((item as { component?: string }).component === "task-change" && data?.collectionId === collectionId) claims.push(item);
+      if (item.type === "data" && item.dataType === "task-change" && item.value.collectionId === collectionId) claims.push(item);
     }
     if (state.pagination?.hasMore !== true) break;
     offset = state.pagination.nextOffset ?? offset + ITEM_PAGE;

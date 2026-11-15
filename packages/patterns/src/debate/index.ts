@@ -341,15 +341,15 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       sequencerStateSchema: debateStateSchema,
       execute: (_input, ctx) => {
         const state = ctx.sequencer!.state;
-        ctx.emit.component("debate-turn-pending", {
-          round: state.round,
-          agentName,
-          stance,
-        });
+        ctx.emit.data(
+          "debate-turn-pending",
+          { round: state.round, agentName, stance },
+          { itemVisibility: { client: true, history: false } },
+        );
       },
     });
 
-  // Emit the judge's verdict as a renderable component item right after
+  // Emit the judge's verdict as a renderable data record right after
   // the judge runs, so the closing card streams into the debate
   // container before the synthesizer (if any) projects to a final shape.
   const emitVerdictTap = handler({
@@ -357,14 +357,14 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     inputSchema: z.any(),
     execute: (input, ctx) => {
       const verdict = input as DebateVerdict;
-      ctx.emit.component(
+      ctx.emit.data(
         "debate-verdict",
         {
           verdict: verdict.verdict,
           winner: verdict.winner,
           reasoning: verdict.reasoning,
         },
-        { key: "verdict" },
+        { key: "verdict", itemVisibility: { client: true, history: false } },
       );
     },
   });
@@ -549,8 +549,9 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
 
       // Renderable snapshot of the moderator's decision. The renderer
       // shows this as the opener of the round.
-      ctx.emit.component("debate-decision", decision, {
+      ctx.emit.data("debate-decision", decision, {
         key: `decision-${state.round}`,
+        itemVisibility: { client: true, history: false },
       });
     },
   });

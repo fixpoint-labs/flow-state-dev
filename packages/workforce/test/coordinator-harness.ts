@@ -382,15 +382,15 @@ export function bootHost(options: HostOptions = {}) {
   const sessionState = async (sessionId: string) =>
     ((await (await state.getRuntime()).stores.session.get(sessionId))?.state ?? {}) as Record<string, any>;
 
-  /** A session's component items of `component`, and its messages, oldest first. */
+  /** A session's coordinator-route data records, and its messages, oldest first. */
   const items = async (sessionId: string) => {
     const requests = await (await state.getRuntime()).stores.request.list({ sessionId, withItems: true });
     const all = requests
       .sort((a, b) => a.createdAt - b.createdAt)
       .flatMap((request) => (request as unknown as { items?: any[] }).items ?? []);
     const records = all
-      .filter((item) => item.type === "component" && item.component === COORDINATOR_ROUTE)
-      .map((item) => item.data);
+      .filter((item) => item.type === "data" && item.dataType === COORDINATOR_ROUTE)
+      .map((item) => item.value);
     const messages = all
       .filter((item) => item.type === "message")
       .map((item) => ({ agentName: item.agentName as string | undefined, text: textOf(item) }));

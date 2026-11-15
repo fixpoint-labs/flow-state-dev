@@ -36,7 +36,7 @@ export function extractTaskItems(
 
 /**
  * Per-task buckets for `collectionId`. Each item that is not a substrate
- * component is attributed to exactly one task by its emit-time `taskId` —
+ * record is attributed to exactly one task by its emit-time `taskId` —
  * never duplicated across tasks.
  */
 export function extractTaskItemWindows(

@@ -60,7 +60,7 @@ import {
   taskBoard,
   taskWorkerInputSchema,
 } from "@flow-state-dev/orchestration/task-board";
-import { TASK_BOARD_META_COMPONENT_TYPE } from "@flow-state-dev/orchestration/internal";
+import { TASK_BOARD_META_DATA_TYPE } from "@flow-state-dev/orchestration/internal";
 import type { TaskSessionPolicy } from "@flow-state-dev/core/types";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
@@ -273,7 +273,7 @@ async function lapseTheLease(
 /**
  * The board's own completion item, read off the parent's emitted items.
  *
- * `task-board-meta` is a transient component item, so it never reaches the
+ * `task-board-meta` is a transient data item, so it never reaches the
  * persisted log — the run's live item list is the only place it exists, which is
  * exactly where a consumer subscribing to the stream would see it.
  */
@@ -281,9 +281,9 @@ function boardMeta(items: readonly RuntimeItem[]):
   | { status: string; terminationReason: string; counts: Record<string, number> }
   | undefined {
   for (let i = items.length - 1; i >= 0; i -= 1) {
-    const item = items[i] as { type?: string; component?: string; data?: unknown };
-    if (item.type === "component" && item.component === TASK_BOARD_META_COMPONENT_TYPE) {
-      const data = item.data as {
+    const item = items[i] as { type?: string; dataType?: string; value?: unknown };
+    if (item.type === "data" && item.dataType === TASK_BOARD_META_DATA_TYPE) {
+      const data = item.value as {
         status?: string;
         terminationReason?: string;
         counts?: Record<string, number>;

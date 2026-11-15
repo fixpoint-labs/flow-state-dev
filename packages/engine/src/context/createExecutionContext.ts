@@ -35,9 +35,9 @@ import {
 import type {
   ItemVisibility,
   BlockTraceItem,
-  ComponentItem,
   ContainerItem,
   Content,
+  DataItem,
   FileContent,
   ItemProvenance,
   MessageItem,
@@ -67,7 +67,7 @@ import {
   buildBlockInstanceId,
   ROOT_BLOCK_PATH
 } from "@flow-state-dev/core/internal";
-import type { BlockContext, BlockOutputHint, EmitMessageOptions, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockOutputHint, EmitDataOptions, EmitMessageOptions, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import { attachBuiltInHost } from "./built-in-host";
 import {
@@ -364,43 +364,29 @@ function createEmitMessage(
   };
 }
 
-type EmitComponentOptions = {
-  key?: string;
-  itemVisibility?: ItemVisibility;
-  agentName?: string;
-  transient?: boolean;
-};
-
-// FIX-963.
 /**
- * Build the `ComponentItem` both component emitters send. Shared so the
- * fire-and-forget emitter and the awaited one cannot drift on item
- * shape, index reservation, or keying — only on how they treat the emitter
- * promises.
+ * Build the `DataItem` both data emitters send. Shared so the
+ * fire-and-forget emitter and the awaited one cannot drift on item shape,
+ * index reservation, or keying — only on how they treat the emitter promises.
+ *
+ * Persisted by default; a `key` makes it a keyed snapshot (one entry per
+ * `(requestId, key)`, `value` replaced). Unlike every other emitter, an
+ * enclosing generator's `itemVisibility` is NOT inherited: the item takes
+ * this call's `itemVisibility`, or the data default (client, not history).
  */
-function buildComponentItem(
+function buildDataItem(
   emCtx: EmissionContext,
-  component: string,
-  data: Record<string, unknown>,
-  options?: EmitComponentOptions,
-): ComponentItem {
+  dataType: string,
+  value: Record<string, unknown>,
+  options?: EmitDataOptions,
+): DataItem {
   const itemIndex = emCtx.nextItemIndex();
-  // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
-  // Default non-transient; the block's `transient` flag governs only the
-  // auto-emitted block_trace item. Per-call
-  // `{ transient: true }` is the explicit opt-in (e.g. live-only progress
-  // with dedup).
-  // FIX-491: when a `key` is supplied, derive a deterministic item ID from
-  // the key so subsequent emissions upsert in place — `itemsById` collapses
-  // to one entry per `(requestId, key)`. The SSE event log still appends
-  // an `item.added` + `item.done` event per emission; clients reconcile by
-  // item ID and overwrite. `data` is replaced wholesale, never merged.
   return {
     id:
       options?.key !== undefined
-        ? `item_component_keyed:${options.key}`
-        : `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-    type: "component",
+        ? `item_data_keyed:${options.key}`
+        : `item_data_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+    type: "data",
     status: "completed",
     transient: options?.transient === true ? true : undefined,
     requestId: emCtx.requestId,
@@ -409,27 +395,19 @@ function buildComponentItem(
     ts: Date.now(),
     ownedBy: emCtx.ownedBy,
     taskId: emCtx.taskId,
-    itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
+    ...(options?.itemVisibility !== undefined ? { itemVisibility: options.itemVisibility } : {}),
     agentName: options?.agentName ?? emCtx.agentName,
-    component,
-    data,
+    dataType,
+    value,
     ...(options?.key !== undefined ? { key: options.key } : {}),
   };
 }
 
-function createEmitComponent(
+function createEmitData(
   emCtx: EmissionContext
-): (
-  component: string,
-  data: Record<string, unknown>,
-  options?: EmitComponentOptions,
-) => void {
-  return function emitComponent(
-    component: string,
-    data: Record<string, unknown>,
-    options?: EmitComponentOptions,
-  ): void {
-    const item = buildComponentItem(emCtx, component, data, options);
+): (dataType: string, value: Record<string, unknown>, options?: EmitDataOptions) => void {
+  return function emitData(dataType, value, options): void {
+    const item = buildDataItem(emCtx, dataType, value, options);
     void emCtx.response.emitItemAdded(item);
     void emCtx.response.emitItemDone(item);
   };
@@ -437,28 +415,20 @@ function createEmitComponent(
 
 // FIX-963.
 /**
- * The awaited component emitter behind `ctx._emitComponentAwaited`.
+ * The awaited data emitter behind `ctx._emitDataAwaited`.
  *
- * Identical to {@link createEmitComponent} except that it settles on the
- * emission instead of discarding it: the returned promise resolves once the
- * item has been added and completed, and **rejects** if either step does. No
+ * Identical to {@link createEmitData} except that it settles on the emission
+ * instead of discarding it: the returned promise resolves once the item has
+ * been added and completed, and **rejects** if either step does. No
  * `.catch()` — a caller reaches for this emitter precisely because it needs a
  * failed emission to be loud, and swallowing here would hand it the silence it
  * was trying to avoid.
  */
-function createEmitComponentAwaited(
+function createEmitDataAwaited(
   emCtx: EmissionContext
-): (
-  component: string,
-  data: Record<string, unknown>,
-  options?: EmitComponentOptions,
-) => Promise<void> {
-  return async function emitComponentAwaited(
-    component: string,
-    data: Record<string, unknown>,
-    options?: EmitComponentOptions,
-  ): Promise<void> {
-    const item = buildComponentItem(emCtx, component, data, options);
+): (dataType: string, value: Record<string, unknown>, options?: EmitDataOptions) => Promise<void> {
+  return async function emitDataAwaited(dataType, value, options): Promise<void> {
+    const item = buildDataItem(emCtx, dataType, value, options);
     await emCtx.response.emitItemAdded(item);
     await emCtx.response.emitItemDone(item);
   };
@@ -467,7 +437,7 @@ function createEmitComponentAwaited(
 /**
  * The awaited message emitter behind `ctx._emitMessageAwaited`: as
  * {@link createEmitMessage}, but it settles on the emission and rejects if
- * either step does, as {@link createEmitComponentAwaited} does for components.
+ * either step does, as {@link createEmitDataAwaited} does for data items.
  */
 function createEmitMessageAwaited(
   emCtx: EmissionContext
@@ -527,7 +497,7 @@ function createEmitStatus(
     const itemIndex = emCtx.nextItemIndex();
     // FIX-478: status defaults to transient (live-only; statuses are
     // naturally ephemeral). Per-call `{ transient: false }` opts out for
-    // symmetry with emitMessage / emitComponent. `false` produces a
+    // symmetry with emitMessage / emitData. `false` produces a
     // persisted item; `undefined` keeps the field absent.
     const item: StatusItem = {
       id: `item_status_${itemIndex}_${Math.random().toString(16).slice(2)}`,
@@ -3570,7 +3540,7 @@ export async function createExecutionContext<
   };
   responseRef.current = response;
 
-  // Emission context used by emitMessage/emitComponent/emitStatus.
+  // Emission context used by emitMessage/emitData/emitStatus.
   // Duck-type the response: if it has emitItemAdded/emitItemDone, use those;
   // otherwise fall back to the generic emit() method via a thin adapter.
 
@@ -4639,7 +4609,7 @@ export async function createExecutionContext<
         // Each scope starts with no identity. Generators that declare
         // `itemVisibility` stamp it directly on the items they emit; other
         // blocks inherit nothing — they emit structural items (status,
-        // component, container) whose visibility comes from the type
+        // data, container) whose visibility comes from the type
         // defaults in `resolveItemVisibility()`.
         const childEmCtx: EmissionContext = {
           requestId: requestRef.current.id,
@@ -4961,7 +4931,7 @@ export async function createExecutionContext<
     // `_withExecutionScope` on child scopes) so trace items carry the
     // firing block's identity.
     const emitMessageImpl = createEmitMessage(activeEmCtx);
-    const emitComponentImpl = createEmitComponent(activeEmCtx);
+    const emitDataImpl = createEmitData(activeEmCtx);
     const emitStatusImpl = createEmitStatus(activeEmCtx, statusSlot);
     const traceEmitters = buildTraceEmitters(
       activeEmCtx,
@@ -4976,7 +4946,7 @@ export async function createExecutionContext<
     );
     context.emit = {
       message: emitMessageImpl,
-      component: emitComponentImpl,
+      data: emitDataImpl,
       status: emitStatusImpl,
       trace: traceEmitters,
     };
@@ -4985,10 +4955,10 @@ export async function createExecutionContext<
     // round so a tool's `activeStatusMessage` does not linger past the
     // tool's lifetime.
     context._peekStatus = (): string => statusSlot.message;
-    // FIX-963: the awaited component emitter. Deliberately NOT on `ctx.emit`
-    // — `emit.component` stays `void`, and a caller that needs delivery to be
+    // FIX-963: the awaited data emitter. Deliberately NOT on `ctx.emit` —
+    // `emit.data` stays `void`, and a caller that needs delivery to be
     // observable asks for it by name.
-    context._emitComponentAwaited = createEmitComponentAwaited(activeEmCtx);
+    context._emitDataAwaited = createEmitDataAwaited(activeEmCtx);
     context._emitMessageAwaited = createEmitMessageAwaited(activeEmCtx);
     // The barrier after an awaited emission: its item is in the request store.
     context._flushItems = () => stores.request.flushItems(activeEmCtx.requestId);

@@ -151,7 +151,7 @@ function reader(app: App) {
         .map((item) => ({ author: item.agentName as string, text: textOf(item) })),
     /** The conversation's routing records, oldest first. */
     recordsIn: async (conversation: string) =>
-      (await itemsOf(conversation)).filter((item) => item.type === "component" && item.component === "coordinator-route").map((item) => item.data),
+      (await itemsOf(conversation)).filter((item) => item.type === "data" && item.dataType === "coordinator-route").map((item) => item.value),
     /** The messages of each of a delegate's conversations under this one. */
     conversationsOf: async (delegate: string, conversation: string): Promise<Message[][]> => {
       const listed = await call(

@@ -32,7 +32,7 @@ const LEDGER = "ending-tasks";
 
 function ctxFor(): BlockContext {
   return {
-    emit: { component: () => undefined },
+    emit: { data: () => undefined },
     session: { identity: { type: "session", id: "s_1", userId: "alice" } },
     request: { identity: { type: "request", id: "r_1" } },
   } as unknown as BlockContext;

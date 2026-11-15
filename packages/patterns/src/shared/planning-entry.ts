@@ -28,7 +28,7 @@ import {
 import {
   type TaskContextSupply,
 } from "@flow-state-dev/orchestration/task-board";
-import { TASK_BOARD_META_COMPONENT_TYPE } from "@flow-state-dev/orchestration/internal";
+import { TASK_BOARD_META_DATA_TYPE } from "@flow-state-dev/orchestration/internal";
 
 export interface PlanningEntryStateShape {
   goal?: string;
@@ -369,10 +369,10 @@ export function createPlanningEntry<
     name: `${name}-meta-planning`,
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
-      ctx.emit.component(
-        TASK_BOARD_META_COMPONENT_TYPE,
+      ctx.emit.data(
+        TASK_BOARD_META_DATA_TYPE,
         { collectionId, status: "planning" },
-        { key: collectionId },
+        { key: collectionId, itemVisibility: { client: true, history: false } },
       );
     },
   });

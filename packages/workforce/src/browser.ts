@@ -76,7 +76,7 @@ export {
 export { COORDINATOR_JUDGMENT, COORDINATOR_FLOW, COORDINATOR_ROUTE } from "./coordinator/coordinator-keys";
 /** The Error Reporter's flow: an app finds the worker a user tells about a problem by it. */
 export { ERROR_REPORTER_FLOW } from "./error-reporter/keys";
-export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_COMPONENT } from "./messages/keys";
+export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_DATA_TYPE } from "./messages/keys";
 export { SCHEDULES_PATTERN } from "./schedules/keys";
 export { LIST_ROUTINES_ACTION, ROUTINE_VERBS } from "./routines/keys";
 export { routinesView } from "./routines/routines-view-ref";

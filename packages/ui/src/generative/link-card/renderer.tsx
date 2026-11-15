@@ -1,9 +1,9 @@
 /**
- * `<LinkCardRenderer />` — default renderer for the `link-card` component shape.
+ * `<LinkCardRenderer />` — default renderer for the `link-card` data item.
  * Plain Tailwind classnames; safe to runtime-import from
  * `@flow-state-dev/ui/generative/renderers`.
  */
-import type { ComponentItem } from "@flow-state-dev/contracts";
+import type { DataItem } from "@flow-state-dev/contracts";
 import type { LinkCardData } from "./schema";
 
 function safeHostname(url: string): string {
@@ -14,8 +14,8 @@ function safeHostname(url: string): string {
   }
 }
 
-export function LinkCardRenderer({ item }: { item: ComponentItem }) {
-  const data = item.data as LinkCardData;
+export function LinkCardRenderer({ item }: { item: DataItem }) {
+  const data = item.value as LinkCardData;
   const host = safeHostname(data.url);
   return (
     <a

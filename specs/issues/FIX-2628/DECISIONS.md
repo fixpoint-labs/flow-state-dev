@@ -71,14 +71,15 @@ It comes down to the sibling's approval: the screens are the same, so reopening 
 ## Decided, not asked
 
 - **The session's repository is written by the server when the session opens** ([amended
-  2026-11-15](#how-it-got-here): a workforce session field, carried down each hand-over), from a
-  repository in the host's list, and is read-only after. A task session finds it through its
+  2026-11-15](#how-it-got-here): a workforce session field, carried down each hand-over), and
+  is read-only after. *Superseded in part, [2026-11-15](#how-it-got-here):* it need not be in the
+  host's list; an unlisted one must pass the host's `checkRepository`. A task session finds it through its
   filer (`filingSessionId`, set by the board's hand-over). Never from a task's input, the
   request body or a header (BP-031). The **convergence point** is the app's run source: every
   coding run and every source read asks it, and it refuses a repository the host no longer
   lists, with the host's reason. The field's carrier is FIX-2627's `sessionFields` option on
   workforce.
-- **Old sessions keep their repository** ([open in the implementation, 2026-11-15](#how-it-got-here)). A session opened on a project before this lands is
+- ~~**Old sessions keep their repository**~~ *Superseded [2026-11-15](#how-it-got-here): no read-once, under the standing no-legacy decision.* A session opened on a project before this lands is
   read once: its project's repository, if the host lists it (BP-030). Otherwise it shows no
   repository and asks. The read goes when the adapter's last caller does.
 - **Pins and dismissals move into the app kit, as they are.** FIX-2624 made them user
@@ -166,3 +167,21 @@ fresh agent: this dispatch has no sub-agent tool. One finding folded: the storag
   `projectSourceCapability` stays until its words leave with the adapter.
   The read-once of a session opened on a project before this landed is not built: such a session
   has no repository, and its runs are refused `no-repository` (raised with the owner under BP-030).
+- **Amended 2026-11-15, owner decisions after the first two implementation PRs:**
+  - **Fork B: the adapter waits for FIX-2725.** Measured on the lab after the repository move,
+    about 1,100 of `src/adapter.ts`'s 1,622 lines feed the three views FIX-2725 defers (worker
+    sessions ~220, session turns ~500, the coding board ~350, their row types ~150), not the ~140
+    the fork was asked on. Deleting now would move most of the file and keep `test/fake-lab.ts`,
+    so it would miss this spec's own "no adapter, no fake" bar. The deletion, the move onto the
+    app kit's hooks and the inventory test land after FIX-2725 ships its views; FIX-2628 is
+    blocked by FIX-2725 until then.
+  - **Unregistered repositories stay open.** A session may bind a `file://` repository the host
+    doesn't list, as the picker allows today: the run source clones it, after the host's
+    `checkRepository` (the check a project's create asks) finds it usable, and refuses it
+    `repository-unusable` otherwise. A listed repository runs in a worktree without the check.
+    This replaces the line above that a session opens "from a repository in the host's list"
+    and that the run source refuses one "the host no longer lists": only an unusable repository
+    is refused.
+  - **No read-once for old sessions**, under the standing no-legacy decision. The "Old sessions
+    keep their repository" line above is superseded: a session opened on a project before this
+    landed has no repository, and its runs are refused `no-repository`.

@@ -45,19 +45,10 @@ export function testItems(items: readonly RuntimeItem[]) {
         }
       );
     },
-    components(componentName?: string): Array<Extract<OutputItem, { type: "component" }>> {
+    data(dataType?: string): Array<Extract<OutputItem, { type: "data" }>> {
       return allItems.filter(
-        (item): item is Extract<OutputItem, { type: "component" }> => {
-          if (item.type !== "component") {
-            return false;
-          }
-
-          if (componentName === undefined) {
-            return true;
-          }
-
-          return item.component === componentName;
-        }
+        (item): item is Extract<OutputItem, { type: "data" }> =>
+          item.type === "data" && (dataType === undefined || item.dataType === dataType)
       );
     },
     sideChain(): RuntimeItem[] {

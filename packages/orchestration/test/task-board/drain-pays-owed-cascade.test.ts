@@ -35,9 +35,9 @@ type MetaData = { counts?: { pending?: number; cancelled?: number }; termination
 
 /** The data on the board's last completion item. */
 function lastMeta(items: readonly unknown[]): MetaData | undefined {
-  type MetaItem = { type?: string; component?: string; data?: unknown };
-  const metas = (items as MetaItem[]).filter((i) => i.type === "component" && i.component === "task-board-meta");
-  return metas.at(-1)?.data as MetaData | undefined;
+  type MetaItem = { type?: string; dataType?: string; value?: unknown };
+  const metas = (items as MetaItem[]).filter((i) => i.type === "data" && i.dataType === "task-board-meta");
+  return metas.at(-1)?.value as MetaData | undefined;
 }
 
 type Backing = "state" | "resource";

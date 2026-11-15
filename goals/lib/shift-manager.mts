@@ -369,6 +369,8 @@ export type StoredItem = {
   message?: string;
   status?: string;
   data?: unknown;
+  dataType?: string;
+  value?: unknown;
   content?: unknown;
   output?: unknown;
   error?: { message?: string };
