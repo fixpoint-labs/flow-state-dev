@@ -89,7 +89,7 @@ export const webSearch = tools.search({
 });
 ```
 
-Perplexity and Perplexity Sonar take an include list or an exclude list, not both. When you set both, only the include list is sent and `excludeDomains` is dropped, so an excluded subdomain of an included domain (`blog.arxiv.org` under `arxiv.org`) can still appear in results. The [Tools reference](../../reference/tools.md) has the details per provider.
+Perplexity and Perplexity Sonar take an include list or an exclude list, not both. When you set both, only the include list is sent and `excludeDomains` is dropped, so an excluded subdomain of an included domain (`blog.arxiv.org` under `arxiv.org`) can appear in results. The [Tools reference](../../reference/tools.md) has the details per provider.
 
 ## Which provider runs
 
@@ -163,7 +163,7 @@ export const groundedResearcher = generator({
 });
 ```
 
-The two share no configuration. `tier` applies only to `tools.search`, and `searchDepth` takes `"low"`, `"medium"` or `"high"` on the generator, not `"basic"` or `"advanced"`. Use `tools.search` when you need a specific provider or want to move between providers. Use the generator's `search` for the model provider's built-in grounding with minimal setup. See [Web search](/docs/fundamentals/blocks#web-search) for the generator's fields.
+The two share no configuration. `tier` applies only to `tools.search`, and `searchDepth` takes `"low"`, `"medium"` or `"high"` on the generator, not `"basic"` or `"advanced"`. Use `tools.search` when you need a specific provider or want to move between providers. Use the generator's `search` for the model provider's built-in grounding with minimal setup. See the [Generators reference](../../reference/generators.md) for the generator's fields.
 
 ## Next steps
 

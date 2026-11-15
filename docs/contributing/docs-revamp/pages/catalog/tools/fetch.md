@@ -72,7 +72,7 @@ import { builtinFetch } from "@flow-state-dev/tools";
 export const readDirect = builtinFetch();
 ```
 
-`firecrawlFetch` throws when it runs if it finds no key. `builtinFetch` fetches the page itself and never sends it to a hosted provider. The [Tools reference](../../reference/tools.md) has the rest of each constructor's behavior.
+Naming a provider, with `provider` or its constructor, turns off the fallback. If the model calls `tools.fetch({ provider: "firecrawl" })` on a host with no Firecrawl key, the call throws a plain `Error`: `Fetch provider "firecrawl" requested but no API key found. Set FIRECRAWL_API_KEY or pass it via config.keys.firecrawl`. It is not a `FlowError` and has no `details` or `retryable`, unlike a failed page fetch. Without `@mendable/firecrawl-js` installed, Firecrawl throws an error naming the package to install. `builtinFetch` fetches the page itself and never sends it to a hosted provider. The [Tools reference](../../reference/tools.md) has the rest of each constructor's behavior.
 
 ## What comes back
 
@@ -124,7 +124,7 @@ A failed fetch throws a `FlowError`. It never comes back as a result. The error'
 | Connection reset, DNS failure or timeout | `errorType: "network"` or `"timeout"`, with the original error as `cause` | Yes |
 | Private or non-HTTP address (built-in provider) | `errorType: "blocked"` | No |
 
-The built-in provider fetches public addresses only, so an intranet page needs your own handler. Redirects, retries and the remaining error shapes are in the [Tools reference](../../reference/tools.md).
+The built-in provider fetches public addresses only. Before any request is sent, it refuses loopback, private and link-local addresses, cloud metadata such as `169.254.169.254` included, and `localhost`. It checks every redirect the same way, so a public page that redirects to `127.0.0.1` is refused and nothing reaches that address. Firecrawl and Jina skip this check, because the vendor fetches the page. To read an intranet page on purpose, use your own handler. Redirects, retries and the remaining error shapes are in the [Tools reference](../../reference/tools.md).
 
 To branch on a failure, read `details` where you catch the error:
 
@@ -138,6 +138,50 @@ export function isPageGone(error: unknown): boolean {
 ```
 
 See [Errors](../../reference/errors.md) for the full error contract and how a block consumes `details`.
+
+## Limit what it reads
+
+Fetch reads whatever URL the model passes it, whether or not it came from a search result, and returns the whole page into the model's context. To keep the model on one site, put the tool behind a router that checks the host and answers anything else with a refusal the model reads, so nothing is requested:
+
+```ts title="src/flows/research/tools/fetch-docs-page.ts"
+import { handler, router } from "@flow-state-dev/core";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { fetchInputSchema, fetchResultSchema, tools } from "@flow-state-dev/tools";
+import { z, type ZodTypeAny } from "zod";
+
+const DOCS_HOST = "docs.example.com";
+const refusalSchema = z.object({ refused: z.string() });
+type Route = BlockDefinition<typeof fetchInputSchema, ZodTypeAny>;
+
+function isDocsUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return (url.protocol === "https:" || url.protocol === "http:") && url.hostname === DOCS_HOST;
+  } catch {
+    return false;
+  }
+}
+
+const readPage: Route = tools.fetch().as({ name: "fetch-docs-page" });
+
+const refuse: Route = handler({
+  name: "fetch-refused",
+  inputSchema: fetchInputSchema,
+  outputSchema: refusalSchema,
+  execute: (input) => ({ refused: `Not fetched: ${input.url} is not on ${DOCS_HOST}.` }),
+});
+
+export const fetchDocsPage = router<typeof fetchInputSchema, ZodTypeAny>({
+  name: "fetch",
+  description: `Fetch a page of ${DOCS_HOST} as markdown. Any other site is refused.`,
+  inputSchema: fetchInputSchema,
+  outputSchema: z.union([fetchResultSchema, refusalSchema]),
+  routes: [readPage, refuse],
+  execute: (input) => (isDocsUrl(input.url) ? readPage : refuse),
+});
+```
+
+Give `fetchDocsPage` to the generator in place of `tools.fetch()`.
 
 ## Next steps
 

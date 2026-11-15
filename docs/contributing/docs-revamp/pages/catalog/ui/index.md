@@ -20,7 +20,7 @@ Upgrades are not automatic. When a new version of a component is released, re-ad
 
 Registry components never name a colour directly. They use tokens, CSS variables with names that say what the colour is for: `background`, `foreground`, `muted-foreground`, `destructive` and so on. Change a token in your stylesheet and every component that reads it follows, with no edit to the files you copied in.
 
-Status has its own tokens: `success`, `warning`, `info`, `attention` and `destructive`. `warning` and `attention` are separate so an app can make "waiting on you" stand out without every warning looking like a request. The first component you add that uses one also adds the `tokens` registry item, which writes defaults for all of them, light and dark, into your stylesheet. To restyle, set the tokens you want under `:root` and `.dark`; your values win over the defaults.
+Status has its own tokens: `success`, `warning`, `info`, `attention` and `destructive`. Use `attention` for something waiting on the user, and `warning` for everything else. The first component you add that uses one also adds the `tokens` registry item, which writes defaults for all of them, light and dark, into your stylesheet. To restyle, set the tokens you want under `:root` and `.dark`; your values win over the defaults.
 
 Token names, what each is for, the default values and the override rule are in the [Reference](../../reference/ui-components.md).
 
@@ -36,9 +36,9 @@ See [Common components](./common-components) for the full list.
 
 ### Flow-aware components
 
-Components that consume `@flow-state-dev/core` item types directly. Most read from `FlowProvider` or `@flow-state-dev/react` hooks, so render them inside a flow.
+Components that consume `@flow-state-dev/core` item types directly. Most read from `FlowProvider`, the React provider from `@flow-state-dev/react` that connects its children to one flow, or from that package's hooks, so render them under a `FlowProvider`.
 
-Examples: `RequestGroup`, `TaskPlan`, `Approval`, `Sandbox`, `JSXPreview`. The `chat-assistant` registry item installs `chatAssistantRenderers`, a ready-made map from the standard item types to components like these. It leaves out sources, covered below.
+Examples: `RequestGroup`, `TaskPlan`, `Approval`, `Sandbox`, `JSXPreview`. The `chat-assistant` registry item installs `chatAssistantRenderers`, a ready-made map from the standard item types to components like these.
 
 See [Flow-aware components](./flow-aware-components).
 
@@ -81,4 +81,20 @@ export function Chat({ userId, sessionId }: { userId: string; sessionId: string 
 }
 ```
 
-`chatAssistantRenderers` does not draw sources, so `SourcesGroup` sits beside it. To override or silence one entry, spread the existing map first so the other entries stay. The map's contents and the override rule are in the [Reference](../../reference/ui-components.md).
+`chatAssistantRenderers` does not draw sources, the URLs a model cites when it uses its provider's built-in web search, so `SourcesGroup` sits beside it.
+
+The map is yours to change, and `false` means "don't draw this". Replacing a keyed group such as `component` outright drops its other entries, so spread the existing group first:
+
+```tsx title="src/app/chat/renderers.ts"
+import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
+
+// Every default renderer except the task-board card.
+export const renderers = {
+  ...chatAssistantRenderers,
+  component: { ...chatAssistantRenderers.component, "task-board-meta": false },
+};
+```
+
+Writing `component: { "task-board-meta": false }` alone would also drop the audit annotations.
+
+Not every component needs the wiring. One that takes a typed item as a prop, such as `<ModelBadge model={item.model} />`, renders anywhere. `Approval`, `TaskPlan` and the other components that look at the rest of the session read its items from `SessionItemsProvider`. Outside one they see an empty list, so an approval's receipt does not show on reload. Wrap the item list in `SessionItemsProvider` when you use them. The map's contents and the override rule are in the [Reference](../../reference/ui-components.md).

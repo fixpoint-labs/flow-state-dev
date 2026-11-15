@@ -20,7 +20,7 @@ A tool is a handler block a generator can call. The generator shows the model th
 | `createBashCapability()` | Run bash commands in a sandbox; files from your resource collections are copied in and changes are copied back | Needs the optional `just-bash` package |
 | `createMcpCapability()` | Expose the tools of MCP servers | Needs the optional `@ai-sdk/mcp` package |
 
-Search, fetch and crawl go in a generator's `tools` array. Bash and MCP attach through `uses`; see [Bash](/docs/tools/bash) and [MCP](/docs/tools/mcp).
+Search, fetch and crawl go in a generator's `tools` array. Bash and MCP attach through `uses`; see [Bash](./bash.md) and [MCP](./mcp.md).
 
 ## Install it
 
@@ -28,7 +28,7 @@ Search, fetch and crawl go in a generator's `tools` array. Bash and MCP attach t
 npm install @flow-state-dev/tools
 ```
 
-Each provider's client library is an optional peer package, installed only when you use that provider. The [Search](/docs/tools/search), [Fetch](/docs/tools/fetch) and [Crawl](/docs/tools/crawl) pages list them.
+Each provider's client library is an optional peer package, installed only when you use that provider. The [Search](./search.md), [Fetch](./fetch.md) and [Crawl](./crawl.md) pages list them.
 
 ## Give tools to a generator
 
@@ -62,18 +62,16 @@ To pick one yourself, call that provider's factory. A forced provider ignores th
 
 ```ts title="src/flows/research/tools/providers.ts"
 import { tavilySearch, firecrawlFetch } from "@flow-state-dev/tools";
-import { tavilyKey } from "../secrets"; // your own secrets-store lookup
-
-// Always Tavily, with a key from your secrets store.
-export const search = tavilySearch({ keys: { tavily: tavilyKey } });
+// Always Tavily, with a key passed in code instead of read from the environment.
+export const search = tavilySearch({ keys: { tavily: "tvly-..." } });
 
 // Same idea for fetch.
 export const firecrawl = firecrawlFetch({ keys: { firecrawl: "fc-..." } });
 ```
 
-Passing `keys` to `tools.search()` does not force a provider; the order above still applies. Tavily, Exa and Firecrawl each need their client library installed, such as `npm install @tavily/core`. Without it, running the tool fails with "Install @tavily/core to use the Tavily search provider".
+Passing `keys` to `tools.search()` does not force a provider; the order above applies. Tavily, Exa and Firecrawl each need their client library installed, such as `npm install @tavily/core`. Without it, running the tool fails with "Install @tavily/core to use the Tavily search provider".
 
-The [Search](/docs/tools/search), [Fetch](/docs/tools/fetch) and [Crawl](/docs/tools/crawl) pages list every provider, its key variable and its factory.
+The [Search](./search.md), [Fetch](./fetch.md) and [Crawl](./crawl.md) pages list every provider, its key variable and its factory.
 
 ## Cache a tool's results
 
@@ -96,7 +94,7 @@ export const exchangeRate = handler({
 });
 ```
 
-Caching applies when the block is a tool in a generator's `tools` slot and a tool cache is installed: add `createToolCacheCapability()` from `@flow-state-dev/core` to the generator's `uses`. A [task board](/docs/orchestration/task-board) installs one for you when a worker's tool declares `cacheable`. Anywhere else, `cacheable` has no effect.
+Caching applies when the block is a tool in a generator's `tools` slot and a tool cache is installed: add `createToolCacheCapability()` from `@flow-state-dev/core` to the generator's `uses`. A [task board](../../concepts/tasks-and-boards.md) installs one for you when a worker's tool declares `cacheable`. Anywhere else, `cacheable` has no effect.
 
 Scope is `run` (default), `request`, or `session`. `session` reuses results across every request in the session; `request` reuses them within one request. `run` is one task board run, and on a generator you wired yourself it behaves like `request`. Errors are never cached: if `execute` throws, the next call runs the block again.
 
@@ -104,8 +102,8 @@ Don't mark a tool cacheable if it changes state, depends on time or randomness i
 
 ## Next steps
 
-- [Search tool](/docs/tools/search): multi-provider web search
-- [Fetch tool](/docs/tools/fetch) and [Crawl tool](/docs/tools/crawl): read one page or a whole site
-- [Bash tool](/docs/tools/bash): sandboxed commands over your resource collections
-- [MCP tools](/docs/tools/mcp): give an MCP server's tools to a generator
-- [Coding agents](/docs/tools/coding-agents): run Claude Code, Codex or Cursor as a block
+- [Search tool](./search.md): multi-provider web search
+- [Fetch tool](./fetch.md) and [Crawl tool](./crawl.md): read one page or a whole site
+- [Bash tool](./bash.md): sandboxed commands over your resource collections
+- [MCP tools](./mcp.md): give an MCP server's tools to a generator
+- [Coding agents](../harnesses/index.md): run Claude Code, Codex or Cursor as a block

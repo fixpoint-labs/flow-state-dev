@@ -12,8 +12,8 @@ expecting a fast 2xx back. By the end you have an endpoint Slack can POST to and
 a `slack` flow that ingests each message. The server answers Slack's one-time
 URL check and rejects any request whose signature doesn't verify.
 
-The Events API is one-directional. There is no reply channel, so use it to
-ingest Slack activity, not to hold a conversation.
+Slack ignores the body of your response, so a reply has to go out separately
+through Slack's Web API. This page covers receiving only.
 
 ## 1. The flow declares routing
 
@@ -21,12 +21,18 @@ The flow says which Slack event runs which block. The secret, the signature
 check and the URL check go on the server, in step 2.
 
 `saveMessage` is your own helper that writes to your database; this stub stands
-in for it.
+in for it. It takes Slack's `event_id` so the write can be made idempotent.
 
 ```ts title="src/lib/inbox.ts"
 export const inbox = {
-  async saveMessage(channel: string, user: string, text: string): Promise<void> {
-    // Replace with a write to your database.
+  async saveMessage(
+    eventId: string | undefined,
+    channel: string,
+    user: string,
+    text: string,
+  ): Promise<void> {
+    // Replace with a write to your database that does nothing if `eventId`
+    // was already saved.
   },
 };
 ```
@@ -38,9 +44,14 @@ import { inbox } from "../../../lib/inbox";
 
 export const ingestMessage = handler({
   name: "ingest-message",
-  inputSchema: z.object({ text: z.string(), user: z.string(), channel: z.string() }),
-  execute: async ({ text, user, channel }) => {
-    await inbox.saveMessage(channel, user, text);
+  inputSchema: z.object({
+    eventId: z.string().optional(),
+    text: z.string(),
+    user: z.string(),
+    channel: z.string(),
+  }),
+  execute: async ({ eventId, text, user, channel }) => {
+    await inbox.saveMessage(eventId, channel, user, text);
   },
 });
 ```
@@ -75,6 +86,7 @@ export const slackFlow = defineFlow({
           // Skip events that carry no `user`.
           when: (e) => e.payload.event.user !== undefined,
           input: (e) => ({
+            eventId: e.deliveryId,
             text: e.payload.event.text ?? "",
             user: e.payload.event.user ?? "",
             channel: e.payload.event.channel,
@@ -170,10 +182,10 @@ The endpoint is `POST /api/flows/slack/webhooks/slack`. In your Slack app's
 Events the flow has no binding for, such as a `reaction_added`, are
 acknowledged and dropped, so subscribing to more than you bind is safe.
 
-`deliveryId` puts Slack's `event_id` on `metadata.webhook.deliveryId` of the
-delivery's request. Slack retries a delivery it thinks was missed, and the
-framework does not deduplicate, so a block with side effects should key its
-write on that id.
+The `deliveryId` hook in step 2 hands Slack's `event_id` to the binding as
+`e.deliveryId`, and `input` passes it on as `eventId`. Slack retries a delivery
+it thinks was missed, and the framework does not deduplicate, so `saveMessage`
+should do nothing when it has already seen that id.
 
 The [webhook receivers reference](/docs/server/webhooks) covers the response
 codes, timing, the `when` predicate and idempotency.

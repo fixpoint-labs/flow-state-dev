@@ -105,6 +105,8 @@ The three values are SHA-256 hashes of content, not the content. Read them for w
 
 Two runs touching different files both land. When two runs write the same entry in the same collection at once, the second gets `contested`. Runs are checked against each other only when their mounts pass the same `collectionId` over the same rows; different ids are never compared. The check covers runs in one server process only. Each outcome kind, how a refusal is scoped and how to pass your own `claims` registry are in the [Tools reference](../../reference/tools.md).
 
+`flush` rejects in one case on purpose: `PlaceUnreadableError` ("the workspace could not be listed: ..."). The place could not be listed, so nothing was read, written or deleted, and you can catch it and carry on. Any other rejection, such as a failed collection read, write or delete, means work did not reach the store. Don't swallow those.
+
 ## Writing one file at a time
 
 When a tool call writes one named file, use `put` instead of `flush`. It decides that one path.
@@ -127,7 +129,7 @@ export async function saveNote(projection: Projection, content: string) {
 
 `createHostPlace(root)` projects into a real directory. `createMemoryPlace()` keeps files in memory for tests, and adds `snapshot()`, `remove(path)` and `breakListing()`, which makes `list` throw so you can test a place that can't be read.
 
-A place only holds files; it doesn't run commands. You can write your own with `read`, `write` and `list`. A `list` that can't read the place must throw rather than return an empty array, because a flush acts on an empty listing by deleting. The [Tools reference](../../reference/tools.md) has the interface and what each shipped place refuses.
+A place only holds files; it doesn't run commands. You can write your own with `read`, `write` and `list`. A `list` that can't read the place must throw rather than return an empty array. An empty array says the place is readable and empty, and the flush then deletes every entry the projection owns. The [Tools reference](../../reference/tools.md) has the interface and what each shipped place refuses.
 
 ## Pull requests on a branch
 

@@ -33,7 +33,7 @@ Memory is built from tiers. Each has its own scope and lifecycle, and you can mi
 | Semantic | follows episodic | Consolidated facts the agent has decided are worth keeping |
 | Digest | follows semantic | Summarized rollups across many sessions |
 
-Working is always present. Episodic, semantic, and digest are opt-in via config. Semantic needs episodic, and digest needs semantic. A chat that only needs the last few turns can use working memory alone.
+Working is always present. Episodic, semantic, and digest are opt-in via config. Semantic needs episodic, and digest needs semantic: `digest: true` without `semantic: true` throws when the capability is built. A chat that only needs the last few turns can use working memory alone.
 
 Memory also tidies itself. With semantic or episodic configured, a periodic [hygiene pass](./hygiene) ranks stale facts below reinforced ones and evicts old episodes. It is on by default; `hygiene: false` turns it off.
 
@@ -91,14 +91,22 @@ This flow only reads. It gets a per-turn `<memory>` block and a recall tool the 
 
 The memory resources come with `uses: [mem]`, so the flow does not list them.
 
+## Whose memory it is
+
+By default memory belongs to the user. Episodic, semantic and digest are stored at each user's id, so one customer's conversation never sees another customer's facts. A user's memory is shared by every flow they use, unless the flow sets `isolateUserState: true` or the tier sets `flowIsolation`. With `scope: "org"` the stored tiers belong to the organization instead. Working memory belongs to the session.
+
+No memory resource is visible to a client, so a browser cannot read it directly. The agent reaches memory through the `<memory>` block and the recall tool.
+
+Memory lives in the server's configured store. The default store is in-memory, so a restart loses everything the agent remembered. Use a persistent store, such as SQLite, Postgres or the filesystem store, to keep it.
+
 `system()` gives you the same generator surface plus the capture pipeline that writes new observations back into the tiers. Swap `createMemoryCapability(...)` for `system(...)`, and `uses: [mem]` for `uses: [mem.capability]`. The [memory reference](../../reference/memory) has the side-by-side.
 
 ## How it integrates
 
 A capability is the framework's way of bundling resources, context, and tools so a block can pick up everything it needs with a single `uses:` entry. Memory's capability (`mem` from `createMemoryCapability`, or `mem.capability` from `system()`) contributes:
 
-- A context formatter that produces the `<memory>` section the generator reads each turn.
-- The `memory/recall` tool the model can invoke to search semantic facts and past episodes on demand.
+- A context formatter that produces the `<memory>` section the generator reads each turn. By default it carries the digest and the working-memory entries, and leaves facts and episodes out.
+- The `memory/recall` tool the model can invoke to search semantic facts and past episodes on demand. It does not search working memory.
 - Typed `ctx.cap.*` helpers so handlers can read and write memory without manually reaching into resources.
 
 To use only part of it, or to use working memory alone, see the [memory reference](../../reference/memory) for presets and per-tier capabilities.

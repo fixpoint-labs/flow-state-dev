@@ -1,5 +1,7 @@
 # Facts: Receive Slack events (B-14, recipe, 650 words)
 
+Revision 2: the page no longer says "no reply channel" (Slack ignores the response body; replies go through Slack's Web API, out of scope), and `input` passes `e.deliveryId` as `eventId` into `ingestMessage` and the `saveMessage` stub, which keys its write on it (rows 24-25). Route order confirmed: `eventType` runs before `acknowledge`, and a non-null acknowledge returns before routing (routes.ts:87-136).
+
 Revision 1: the page now declares `ingestMessage` (a handler, `src/flows/slack/blocks/ingest-message.ts`), uses the `src/` layout, `flows: [slackFlow()]`, makes `channel` required in `SlackEventCallback`, and states `when` as "skips events that carry no `user`" with no loop-protection claim (C5). Signing string, header names, the five-minute window, the `acknowledge` throw/null cases, the 202 body and the 3-second budget are deliberately left to the reference page (rows 8, 10, 16-18, 41-42); the page keeps the guarantee only. The page states the handshake in one short paragraph after the step-2 code.
 
 Pass 1 fact sheet. Cites only: the existing guide (`apps/docs/guides/webhooks-slack-events.md`, the
