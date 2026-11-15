@@ -128,3 +128,10 @@ The benchmark stores nothing durable by itself. Each cell runs the subject's seq
 - **Moved to Reference (page links, does not state).** `comparePatterns` and `runBenchmark` signatures, `baselineSubject`, `baselineModels` and `--baseline-model`, `--model`, report top-level fields and `totalCostUsd` / `budgetExceeded`, the `table` / `markdown` / `json` formats beyond the one flag shown, the credibility formula. The page states the credibility rule in one sentence (fact 18).
 - **Page-stated numbers.** The example's 18 cells is 3 subjects x 2 tasks x 3 runs (fact 38). `--max-cost` stops new cells, prints a partial scorecard and exits 1 (fact 34). Judge warning goes to stderr (fact 13). The sample table values are illustrative, not output from a run.
 - **Cut.** The package-boundary reason for the registry-first argument, the "published rubric" and "honest" framing, and the free-tier opt-in rationale are not on the page.
+
+## Revision round 2
+
+- **Unit names.** A run is one subject on one task, once; the page counts 18 runs (3 x 2 x 3, fact 38) and keeps "cell" only for a scorecard table box (fact 41). Facts 34 and 19 say "cell" for the run unit in source terms; the page's word is "run".
+- **Provider keys** are named for the task model and the judge model (fact 29).
+- **Self-preference** is explained on the page: a judge tends to score its own model's output higher (fact 13).
+- **Shared worker** is stated as observable behavior: where a pattern needs a worker, every pattern gets the same one, same model and prompt (fact 8).

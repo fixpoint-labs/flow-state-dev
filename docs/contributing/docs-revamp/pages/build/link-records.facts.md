@@ -124,3 +124,12 @@ The page is about a stored part, the `edges` array.
 - Recipe: one task, task-shaped title, numbered steps (declare an edge, add one, follow it), the finished code, 500 words of prose. Three code blocks, each titled with a path. The existing page is about 640 words of prose before cutting, so the cut is from `pg:76-82` ("When to reach for this") and the edge-shape table's last rows.
 - "Edge" is introduced in the opening in plain words ("a typed link from one thing to another") before the API name. "Node" is defined where first used. "Supersede" is explained in the step where it appears: end an edge without deleting it.
 - `glossary.mjs` was not read for this sheet; the caller's pass 4 checks retired terms.
+
+## After revise round 1
+
+- The page now carries four titled blocks (the resource, `linkDuplicate`, `findRelated`, `unlinkDuplicate`) in the support-desk app. All four were type-checked together under the kitchen-sink tsconfig (scratch folder removed); `edges!` is taken once per block, as correction 1 requires.
+- `nodeRef` lowercases the key (`ed:16-19`), so `nodeRef("ticker","NVDA")` and `ticker:nvda` are the same node. The earlier ticker example was consistent. The new page builds every id with `nodeRef` and says it lowercases.
+- `shortestPath` returns `null` when no chain is found within `depth` (default 2, clamped to 6), and `[]` when `from === to` (`tr:16`, `tr:82-86`, `tr:156-192`). The page states the default and the `null` case, and tells the reader to pass a larger `depth`. The clamp and the `[]` case are R-08.
+- Moved to R-08 (`reference/resources`), linked and not stated beyond one clause: edge storage in the resource's own state; the `edges` option's defaults and the `maxEdges` cull order beyond one sentence; the state-shape injection and the `z.object` requirement; the `createdAt` field and the edge-shape detail; read/write timing detail; the full operations table (`supersede` no-op on an absent id, `all` taking only `{ at }`, `pruneDangling` count); traversal option defaults and the depth clamp; sizing guidance beyond "hundreds to low thousands".
+- Cut, not moved: breadth-first and in-memory description, "first consumer", "as before".
+- Links: `../catalog/memory/relations.md`, `./collections.md`, `../reference/resources.md`. The R-08 and collections pages do not exist yet in the revamp tree.

@@ -1,399 +1,111 @@
 ---
-title: Expose flows as an MCP server
+title: Expose a flow as an MCP server
 type: recipe
-description: "`@flow-state-dev/mcp` exposes any flow as a Model Context Protocol server."
+description: "Let Claude Desktop, Cursor or any other MCP client list a flow's actions as tools and call them."
 ---
 
-# Expose flows as an MCP server
+# Expose a flow as an MCP server
 
-`@flow-state-dev/mcp` exposes any flow as a Model Context Protocol
-server. With one config flag on the flow and one line in the router
-setup, an MCP client like Claude Desktop or Cursor can connect to your
-flow, list its actions as tools, and call them — running through the
-same runtime that powers your web UI.
+MCP, the Model Context Protocol, is how clients such as Claude Desktop and Cursor use tools that live outside them. A flow can be one of those tools. The client lists the flow's actions as tools, and each call runs the action exactly as an HTTP request would.
 
-MCP — Model Context Protocol — is the spec MCP clients use to talk to
-external tool servers. Claude Desktop, Cursor, and an increasing number
-of agentic IDEs speak it. The transport is HTTP-based (Streamable HTTP),
-which is why the adapter mounts onto the same router as the HTTP
-transport.
+This recipe exposes the `support` flow with one tool, `look_up_order`, behind a secret token. Each flow is its own MCP server, and the flow chooses to be one.
 
-## Install
+## 1. Install the adapter
 
 ```bash
 pnpm add @flow-state-dev/mcp
 ```
 
-## Mounting the adapter
+## 2. Mount it
 
-The MCP adapter is just another entry in `adapters` on
-[`createFlowState`](./setup.md), the canonical setup entrypoint:
+The MCP adapter goes in the `adapters` list of [`createFlowState`](../concepts/serving-flows.md).
 
-```ts title="lib/flowstate.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+```ts title="fsdev.config.ts"
+import { createFlowState } from "@flow-state-dev/engine";
 import { createMcpTransportAdapter } from "@flow-state-dev/mcp";
+import support from "./src/flows/support/flow";
 
-export const flowstate = createFlowState({
-  flows: { billing: billingFlow },
-  stores: { default: { primary: inMemoryStores() } },
+export default createFlowState({
+  flows: [support],
   adapters: [createMcpTransportAdapter()],
 });
 ```
 
-Turn the handle into route handlers with a platform handler — the MCP
-webhooks mount under the same router:
+The endpoint is `POST /api/flows/support/mcp`, under the same prefix as the rest of the flow API. If your app already serves flows, as in [Add to an existing app](../start/add-to-an-existing-app.md), or runs under `fsdev serve`, nothing else needs mounting. [MCP server](../reference/mcp-server.md) lists the adapter's settings, including a separate URL prefix for MCP.
 
-```ts title="app/api/flows/[...path]/route.ts"
-import { flowstate } from "@/lib/flowstate";
-import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+## 3. Opt the flow in and pick its tools
 
-export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
-```
-
-The MCP adapter mounts at `POST /api/flows/:kind/mcp`. `GET` and
-`DELETE` on that path return 405. Existing HTTP routes are unchanged.
-
-To serve these endpoints in production without the DevTool, `fsdev serve` stands
-up the flow API and MCP routes from a committed `fsdev.config.*`. See the
-[CLI API](/docs/api/cli).
-
-### Dedicated MCP prefix
-
-Use a dedicated prefix when the shared `/api/flows/:kind/mcp` URL exposes more
-of your application's internal route structure than you want MCP operators to
-configure:
-
-```ts title="lib/flowstate.ts"
-export const flowstate = createFlowState({
-  flows: { billing: billingFlow },
-  stores: { default: { primary: inMemoryStores() } },
-  adapters: [createMcpTransportAdapter({ dedicatedBasePath: true })],
-});
-```
-
-Dedicated mode defaults to `/mcp`, so the endpoint becomes
-`POST /mcp/billing`. You can instead pass an explicit prefix, such as
-`basePath: "/integrations/mcp"`. The ordinary HTTP action routes remain under
-`/api/flows`, and the adapter mounts only the dedicated layout rather than
-keeping the default URL as an alias. A root-only dedicated base is rejected so
-the adapter cannot claim unrelated single-segment routes.
-
-The hosting framework must also send `/mcp/*` requests to the Flow State
-handler. `serve()` from `@flow-state-dev/node` (and `fsdev serve`, which wraps
-it) mount dedicated adapter paths automatically, so a self-hosted Node process
-needs no extra wiring. In a Next.js app, add a matching
-`app/mcp/[...path]/route.ts` route that exports the same platform handlers; a
-handler mounted only at `app/api/flows/[...path]/route.ts` never receives
-`/mcp/*`.
-
-## Opting a flow into MCP
-
-A flow opts in via `mcp.enabled`. Every action you want exposed needs a
-`description` — that text becomes the LLM-facing tool description and
-is what the model reads when it decides whether to call the tool. The
-framework refuses to register the flow if any exposed action is missing
-one.
-
-```ts
-import { defineFlow, handler } from "@flow-state-dev/core";
+```ts title="src/flows/support/flow.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
 import { z } from "zod";
+import { exportTickets } from "./blocks/export-tickets";
+import { lookUpOrder } from "./blocks/look-up-order";
 
-defineFlow({
-  kind: "billing",
+export const supportFlow = defineFlow({
+  kind: "support",
   mcp: { enabled: true },
   authentication: {
-    resolvePrincipal: async (ctx) => {
-      // Verify whatever credential the MCP client sent and return the
-      // user it binds to.
-      const token = ctx.request?.headers.get("authorization")?.slice(7);
-      if (!token) return null;
-      return { userId: await lookupUser(token) };
-    }
+    requireUser: true,
+    resolvePrincipal: createBearerSecretPrincipalResolver({
+      secret: process.env.SUPPORT_MCP_SECRET ?? "",
+      principal: { userId: "support-agent", orgId: "acme" },
+    }),
   },
   actions: {
-    recordPayment: {
+    lookUpOrder: {
+      block: lookUpOrder,
       inputSchema: z.object({
-        invoiceId: z.string(),
-        amount: z.number().describe("USD cents")
-      }),
-      block: handler({
-        name: "record-payment",
-        execute: ({ invoiceId, amount }) => {
-          /* ... */
-          return { ok: true };
-        }
+        orderId: z.string().describe("Order id, such as order_1042"),
       }),
       description:
-        "Record a customer payment against an open invoice. Use when " +
-        "a payment has cleared and the ledger needs updating. " +
-        "`amount` is USD cents."
+        "Look up one order by id. Returns its status and total in USD cents. " +
+        "Read-only. Use it before answering a customer about an order.",
     },
-    privateInternal: {
-      inputSchema: z.object({}),
-      block: somePrivateBlock,
-      mcp: { enabled: false } // not exposed to MCP
-    }
-  }
-});
-```
-
-Connect Claude Desktop to:
-
-```
-http://localhost:3000/api/flows/billing/mcp
-```
-
-`tools/list` returns one tool — `record_payment`. Calling it runs the
-action and stamps `RequestRecord.source = "mcp"`, which surfaces in the
-DevTool with a purple MCP badge so you can tell the request apart from
-a chat-UI call.
-
-## Tool names
-
-Action keys are converted to MCP tool names with a deterministic
-`decamelize`:
-
-| Action key | Tool name |
-| --- | --- |
-| `recordPayment` | `record_payment` |
-| `URLParser` | `url_parser` |
-| `getHTTPSProxy` | `get_https_proxy` |
-| `event-queue` | `event-queue` |
-
-If two actions resolve to the same tool name, the framework throws at
-flow registration. (MCP clients cache their tool list by name, so a
-runtime collision would silently break tool calls.)
-
-To override the auto-derived name on a single action:
-
-```ts
-recordPayment: {
-  inputSchema,
-  block,
-  description: "...",
-  mcp: { name: "log-payment" }
-}
-```
-
-The override goes through the same collision check.
-
-## Writing good tool descriptions
-
-The `description` is what the LLM reads when it decides whether to
-call a tool. Treat it like prompt copy, not API documentation. The
-fields that matter:
-
-1. **What the tool does** in plain language.
-2. **When to use it** versus its siblings.
-3. **Preconditions and side effects** — does it write to a database,
-   send a notification, fail if the resource is in some state?
-4. **What each argument means**, including units, format, and
-   constraints. Zod's `.describe()` on individual fields is helpful
-   here — it shows up on the JSON Schema attached to the tool.
-
-A description like `"Record a payment"` is useless. A description that
-tells the model when this tool is the right one and what `amount: 4200`
-actually means earns the call.
-
-## Authentication
-
-MCP requests go through the same `authentication.resolvePrincipal` hook
-as HTTP requests. The hook receives `ctx.source === "mcp"` and the raw
-`Request` so it can read the `Authorization` header or whatever
-credential the MCP client sent.
-
-```ts
-authentication: {
-  resolvePrincipal: async (ctx) => {
-    if (ctx.source === "mcp") {
-      const token = extractBearerToken(ctx.request?.headers.get("authorization"));
-      if (!token) return null;
-      const grant = await credentialGrants.find({ token });
-      return grant === null ? null : { userId: grant.userId };
-    }
-    // HTTP and other transports go through your usual session resolver.
-    return defaultBodyUserIdResolver(ctx);
-  }
-}
-```
-
-Per the MCP spec, tokens must be in the `Authorization` header — the
-adapter does not honor query-string credentials.
-
-If `resolvePrincipal` returns `null` and the flow requires a user, the
-adapter responds with HTTP 401 and `WWW-Authenticate: Bearer realm="MCP"`,
-plus a JSON-RPC error with code `-32001`. Throwing
-`PrincipalResolutionError` produces the same shape and lets you set the
-status explicitly.
-
-See [Authentication](./authentication) for the full hook contract.
-
-## Per-user endpoints
-
-A common host pattern is per-user MCP endpoints: each user installs a
-URL with their own token in their Claude Desktop config, and the host's
-credential-grants table maps the token back to a `userId`. The
-framework does not run this for you — that table is in your database —
-but `extractBearerToken` and `createHs256JwtVerifier` from
-`@flow-state-dev/engine` are usable inside `resolvePrincipal` to keep
-the verification short.
-
-## Installation-level values from the URL
-
-Sometimes a value should be fixed per installation rather than supplied
-by the model on each call. The common case is a provenance tag: you want
-to know which client a capture came from — Claude Desktop, a mobile app,
-a shared web endpoint — without trusting the model to fill it in.
-
-`forwardQueryParams` takes an allowlist of query-string params. When a
-request URL carries one, its value is merged into the `tools/call`
-input under the same key:
-
-```ts
-createMcpTransportAdapter({ forwardQueryParams: ["source"] });
-```
-
-Each installation then points at its own tagged URL:
-
-```
-https://app.example.com/api/flows/knowledge/mcp?source=claude-desktop
-```
-
-A `log_activity` tool whose input schema has a `source` field now
-receives `source: "claude-desktop"` on every call from that
-installation, regardless of what the model passed.
-
-The forwarded value is **authoritative** — it overrides a same-named
-argument in the tool call. That is the point: this is a value the model
-should not be able to override. Listing a param name is your explicit
-opt-in that it becomes endpoint-controlled. A forwarded param only lands
-if the target action's input schema accepts it; otherwise the normal
-validation boundary strips or rejects it, exactly like any other input
-key. Only `tools/call` is affected, and the default is to forward
-nothing.
-
-This is **not** an authentication mechanism. Credentials belong in the
-`Authorization` header (see [Authentication](#authentication)) — the
-adapter deliberately ignores query-string tokens. `forwardQueryParams`
-is for non-secret, installation-scoped metadata like a source tag, not
-for anything that grants access.
-
-## Deriving a session id per tool call
-
-MCP is sessionless: by default every `tools/call` runs in a fresh flow
-session, so there is no built-in way to say "these calls belong together."
-The [sessionless-MCP SEP](https://modelcontextprotocol.io/seps/2567-sessionless-mcp)
-recommends that a server wanting session semantics expose session creation as
-its own tool. The per-action `mcp.session` directive is how you do that: it
-lets one action mint a flow session id, and another reuse it.
-
-It has two forms.
-
-A **template string** mints a fresh id. The first `*` is replaced with a random
-token; with no `*` the token is appended. Use it to hand the caller a reusable
-id whose prefix names the concept:
-
-```ts
-actions: {
-  createConversation: {
-    block: createConversation,   // returns the new session id to the caller
-    description: "Open a conversation, then log activity under it.",
-    mcp: { session: "conv_*" },  // this call dispatches under conv_1784…_a1b2
+    exportTickets: {
+      block: exportTickets,
+      description: "Write every open ticket to a CSV file.",
+      mcp: { enabled: false },
+    },
   },
-}
-```
-
-**`{ fromInput: <field> }`** reads the string at `input.<field>` and uses it as
-the session id, so calls passing the same value land in one session:
-
-```ts
-actions: {
-  logActivity: {
-    block: logActivity,
-    description: "Log activity into the conversation named by conversationId.",
-    mcp: { session: { fromInput: "conversationId" } },
-  },
-}
-```
-
-A client calls `createConversation` once, gets back a `conv_…` id, then passes it
-as `conversationId` on every later `logActivity`. Those calls all run under the
-same flow session, so whatever an action writes to session state (or the
-session's request history) is shared across them.
-
-This is a **flow** session id, not the protocol `Mcp-Session-Id`. No
-`Mcp-Session-Id` header is issued and the client needs no MCP session
-machinery; the id only selects which flow session state and history a call
-sees. See [State & Scopes](../fundamentals/state-and-scopes#session-the-primary-scope)
-for what a session holds.
-
-With `{ fromInput }` the id is model-supplied, so treat it as a grouping key
-only, never an auth or routing decision. The principal still comes from your
-[`resolvePrincipal`](#authentication), and the framework's session user-binding
-check rejects a call whose caller identity does not match the stored session's
-owner — so an action cannot run against another principal's session state.
-
-Two caveats worth knowing before you use `{ fromInput }` beyond a single
-trusted principal:
-
-- **Single-principal until session keys are namespaced.** The id is used as a
-  bare flow session key. In a multi-user flow without distinct tenant prefixes,
-  a caller could pass another user's known id; the user-binding check blocks the
-  run, but a pre-dispatch metadata write (the session's auto-resume pointer) is
-  only tenant-guarded today, not user-guarded. Namespace caller-supplied session
-  keys by principal before exposing `{ fromInput }` to mutually-distrusting
-  users.
-- **The key is written before your schema validates.** The adapter derives the
-  session id and dispatches — persisting a session record keyed by that raw
-  value — *before* the action's input schema runs. So an oversized `fromInput`
-  value writes an oversized-keyed session even though the call is then rejected.
-  Bound the field's length in the action's input schema (the adapter does not
-  bound it for you).
-
-If the field is missing or empty, the call falls back to a fresh ephemeral
-session and the action's own input schema decides whether that is an error.
-
-## Origin enforcement
-
-Browser-originated requests are rejected with 403 unless the `Origin`
-header matches the request URL's origin. Override via:
-
-```ts
-createMcpTransportAdapter({
-  allowedOrigins: ["https://app.example.com"]
 });
+
+export default supportFlow();
 ```
 
-Or `allowedOrigins: "*"` for local development. Claude Desktop, Cursor,
-and most non-browser MCP clients don't send `Origin` and aren't
-affected.
+`lookUpOrder` and `exportTickets` are blocks, each in its own file beside the flow.
 
-## v1 limitations
+A flow without `mcp: { enabled: true }` answers every tool request with a `-32601` error. With it, every action in `actions` is a tool unless it sets `mcp: { enabled: false }`, as `exportTickets` does. A client that calls an opted-out action by name gets the same `-32601`.
 
-The current release covers the critical path for production use, with a
-few intentional cuts:
+Action keys become snake_case tool names, so `lookUpOrder` is `look_up_order`. To choose another name, set `mcp: { name: "find-order" }` on the action. If two actions resolve to one name, the first `tools/list` or `tools/call` fails with an error naming both.
 
-- **Stateless by default.** Every `tools/call` runs in a fresh flow
-  session unless the action opts in with `mcp.session` (see
-  [Deriving a session id per tool call](#deriving-a-session-id-per-tool-call)).
-  No `Mcp-Session-Id` is ever issued — grouping is a flow session id the
-  caller learns and reuses, not a protocol session. This is the right
-  default for serverless deployments and most agentic use cases.
-- **Single text tool result.** Tool calls return one text content
-  block — either the action's terminal output (JSON-stringified if
-  non-string) or the most recent message item from the action's
-  stream. No `notifications/progress`, no `outputSchema` /
-  `structuredContent`.
-- **`resources/list` is empty.** The framework's resource model has
-  no flow-bound scope yet, so MCP `resources/list` returns the empty
-  list and `resources/read` rejects with `-32002`. The hook is wired
-  through and will surface entries once a flow scope lands.
-- **No bundled OAuth.** Authentication is whatever your
-  `resolvePrincipal` returns.
+Every exposed action needs a `description`, its own or its block's. The flow refuses to register and names the action when neither exists. The model reads this text to decide whether to call the tool, so write it like a prompt: what the tool does, when to use it, what it changes, and what each argument means. `.describe()` on a Zod field carries into the tool's input schema.
 
-## Watching MCP requests in the DevTool
+## 4. Connect a client
 
-MCP-originated requests render with a purple `MCP` badge in the
-request list. Open one and the trace, items, and state look identical
-to an HTTP request — same panels, same observability, same replay
-controls. The transport is the only difference.
+Point the client at your server's URL, `https://app.example.com/api/flows/support/mcp`, and give it the token as an `Authorization: Bearer` header. To check it before you configure a client:
+
+```bash
+curl -X POST https://app.example.com/api/flows/support/mcp \
+  -H "Authorization: Bearer $SUPPORT_MCP_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+The result lists one tool, `look_up_order`, with its description and input schema. A `tools/call` for it returns one text block: the action's output, as text. A failed run returns the error message with `isError: true`.
+
+Each call is a new session, so calls do not share state. The request appears in the DevTool with an MCP badge, next to requests from your own UI.
+
+## 5. Decide who the caller is
+
+An MCP request goes through the flow's `resolvePrincipal`, the same hook HTTP requests use. It receives the raw `Request` and `ctx.source === "mcp"`, and it returns the user and organization the call runs as. Send credentials in the `Authorization` header. The adapter does not read tokens from the URL.
+
+`createBearerSecretPrincipalResolver` accepts one secret and maps it to one fixed user, which suits a server for a single person or team. It throws when the secret is empty, so a missing environment variable stops startup instead of leaving the endpoint open. A request with no `Authorization` header is refused, and a wrong token is a 401.
+
+For a different user per client, write your own resolver. Read the token, look up its owner, and return `{ userId, orgId }`. Both are required, and a resolver that returns no organization is refused. `extractBearerToken` and `createHs256JwtVerifier` from `@flow-state-dev/engine` shorten the verification. To refuse a caller, throw `PrincipalResolutionError`: the client gets a JSON-RPC `-32001` error and a 401 by default. The [authentication reference](../reference/authentication.md) has the resolver contract.
+
+## Next
+
+- [MCP server](../reference/mcp-server.md) lists the adapter's settings, how actions map to tool names, the error codes, grouping calls into one session, and what the adapter does not do.
+- [Auth and tenancy](../concepts/auth-and-tenancy.md) covers users, organizations and how a session stays inside them.
+- [Serving flows](../concepts/serving-flows.md) covers the other ways a flow is reached.

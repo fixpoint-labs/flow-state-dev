@@ -1,205 +1,113 @@
 ---
 title: Search a collection
 type: recipe
-description: "Resources are addressable by key, and a collection can list instances under a prefix."
+description: "Find notes in a collection by path, exact text or ranked keywords, from a flow action or from a model."
 ---
 
 # Search a collection
 
-Resources are addressable by key, and a collection can list instances under a prefix. That covers "give me `concepts/react`" and "give me everything under `concepts/`". It does not cover "find the concept whose body mentions `useEffect`" or "which concepts are about hooks". The first is a text search, covered below. The second is a question about meaning, and the cheapest way to answer it is to ask once, when the content is written, and keep the answer. That's [facets](#find-by-facets).
+A collection can list its notes under a prefix, which answers "everything under `ticketNotes/`". It can't answer "which note mentions a refund". Three search blocks can: one matches paths, one matches lines of text, and one ranks notes by keyword. This recipe searches the support desk's ticket notes with them, from a flow action and then from a model.
 
-`resourceSearchTools()` returns three handler blocks that close the text half of that gap — the same Glob/Grep/Search split you know from a coding agent, but over resources:
+Search is lexical. It counts where your words literally appear and knows nothing about meaning or synonyms. For fuzzy recall, use [memory](../catalog/memory/index.md) or a retrieval layer. For fixed questions about each record, such as its topic or status, use [facets](./find-by-facets.md).
 
-- **`globResources`** finds resources by path pattern.
-- **`grepResourceContent`** finds lines in resource content by regex or substring.
-- **`searchResources`** ranks resources by lexical relevance to a query.
+## 1. Mark the collection readable
 
-"Lexical" here means exact word and substring matching — counting where your terms literally appear. It does not understand meaning or synonyms. For fuzzy, meaning-aware recall, reach for [memory](/docs/memory/overview) or a retrieval layer instead.
+The tools search the body of every note in a collection that sets `llmReadable: true`. A collection that doesn't opt in is invisible to all three, glob included. State fields aren't searched: a note's `author` is found only if the body says it.
 
-```ts
-import { generator, resourceSearchTools } from "@flow-state-dev/core";
+```ts title="src/flows/support/resources/ticket-notes.ts"
+import { defineResourceCollection } from "@flow-state-dev/core";
+import { z } from "zod";
 
-const search = resourceSearchTools();
-
-const librarian = generator({
-  name: "librarian",
-  model: "openai/gpt-6-luna",
-  prompt: "Answer using the knowledge base. Find relevant concepts before answering.",
-  tools: [search.globResources, search.grepResourceContent, search.searchResources],
+export const ticketNotes = defineResourceCollection({
+  pattern: "ticketNotes/**",
+  scope: "session",
+  llmReadable: true,
+  stateSchema: z.object({ author: z.string(), pinned: z.boolean().default(false) }),
 });
 ```
 
-All three span both static resources and `defineResourceCollection` instances — a collection instance is itself a resource, so you don't choose between them. A collection's instances are searchable once the collection opts in with `llmReadable` (see [Collections — LLM access](/docs/resources/collections#llm-access)).
+## 2. Query from a flow
 
-On a [projected collection](/docs/resources/projected-collections), `searchResources` sends the query to the collection's `search` hook. `globResources` and `grepResourceContent` skip them.
+`resourceSearchTools()` returns the three blocks. Call it once, in a file of its own.
 
-Each result is the resource's scope-qualified uri (for example `session/concepts/react`) — the same handle [`readResourceContentTool`](/docs/resources/overview#llm-access-patterns) accepts, so a search result feeds straight into a read. Glob patterns and the grep/search `prefix` match the within-scope path (you write `concepts/**`, not `session/concepts/**`); only the results carry the scope.
+```ts title="src/flows/support/tools/search.ts"
+import { resourceSearchTools } from "@flow-state-dev/core";
 
-## Glob by path — `globResources`
+export const search = resourceSearchTools();
+```
 
-Match resource paths against a glob pattern. This is the deterministic "I know roughly where it is" tool. It reads no content, so it's cheap.
+Mount them as actions. Declare the collection on the flow, because the tools search only what the flow or a block declares.
+
+```ts title="src/flows/support/flow.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import { ticketNotes } from "./resources/ticket-notes";
+import { search } from "./tools/search";
+
+export default defineFlow({
+  kind: "support",
+  requireUser: true,
+  resources: { notes: ticketNotes },
+  actions: {
+    findNotes: { block: search.searchResources },
+    grepNotes: { block: search.grepResourceContent },
+    globNotes: { block: search.globResources },
+  },
+})();
+```
+
+Each action takes its block's input and returns a list:
 
 ```text
-concepts/**        →  concepts/react, concepts/react/hooks, …    (any depth)
-concepts/*         →  concepts/react                             (one level, not concepts/react/hooks)
-concepts/*hooks*   →  concepts/react-hooks                       (within-segment substring; a prefix can't express this)
+findNotes  { "query": "refund card", "prefix": "ticketNotes" }
+           → { "results": [{ "uri": "session/ticketNotes/T-1042", "score": 3, "snippet": "Card refunded twice" }] }
+grepNotes  { "pattern": "refund|chargeback" }
+           → { "matches": [{ "uri": "session/ticketNotes/T-1042", "line": 2, "snippet": "Card refunded twice" }] }
+globNotes  { "pattern": "ticketNotes/T-10*" }
+           → { "uris": ["session/ticketNotes/T-1042"] }
 ```
 
-With no pattern (`null`), `globResources` returns every resource uri the agent can read, sorted. It's a superset of a prefix listing: `globResources("concepts/**")` covers what a prefix list of `concepts` would, plus the patterns prefixes can't reach. Results are bounded by `limit` (default 100).
+Glob matches paths and reads no content. Grep finds the lines matching a regular expression, or a literal string when the pattern isn't valid regex. Search splits the query into words, counts how often they appear in each note, and lists the notes with the most occurrences first. A word matches inside longer words, so `use` finds "user". Notes with no match are dropped.
 
-Glob reads no content, but a path is still something you may not want an agent to see, so it applies the same `llmReadable` gate as the other two. A collection that hasn't opted in is skipped before it is read, so nothing is loaded to work out that it was off limits.
+Every result's `uri` includes the scope. `readResourceContentTool()` accepts that uri, so a result feeds straight into a read. The [resources reference](../reference/resources.md) lists each tool's options, defaults and result shapes.
 
-## Grep content — `grepResourceContent`
+Search returns only notes from the scope the run resolves to. `ticketNotes` is session-scoped, so a search sees the current session's notes. A user-scoped collection returns that user's notes inside the current organization, and an org-scoped one returns the organization's. The caller comes from the request. The model can't pass a user id to see someone else's notes. On a [projected collection](./serve-your-own-data.md), your own `search` hook decides which rows come back.
 
-Search content bodies for a pattern, line by line. Returns each match as `{ uri, line, snippet }`, with 1-based line numbers.
+## 3. Give search to a model
 
-```ts
-// pattern: "useEffect"
-// → [{ uri: "org/concepts/react", line: 2, snippet: "the useEffect hook runs after render" }]
+Put the blocks in a generator's `tools`, and declare the collection on the generator. A hit carries a short snippet, so add `readResourceContentTool()` for the model to read a whole note.
+
+```ts title="src/flows/support/blocks/draft-reply.ts"
+import { generator, readResourceContentTool } from "@flow-state-dev/core";
+import { ticketNotes } from "../resources/ticket-notes";
+import { search } from "../tools/search";
+
+export const draftReply = generator({
+  name: "draft-reply",
+  model: "openai/gpt-6-luna",
+  prompt: "Answer the customer. Search the ticket notes for earlier context before you reply.",
+  tools: [
+    search.globResources,
+    search.grepResourceContent,
+    search.searchResources,
+    readResourceContentTool(),
+  ],
+  resources: { notes: ticketNotes },
+});
 ```
 
-The pattern is treated as a regular expression. If it isn't valid regex, it's matched as a literal substring instead, so `a(` searches for the text `a(` rather than erroring. Scope the search with `prefix` (a path prefix), and cap output with `maxResults` (default 50).
+If the collection is declared nowhere the model can reach, it isn't searched, and nothing errors.
 
-## Ranked search — `searchResources`
+## Choosing a tool
 
-When you have keywords rather than an exact string, `searchResources` scores each resource by how often your terms appear in its content and returns the top matches as `{ uri, score, snippet }`, highest score first.
+- **Glob** when you can describe the path, such as `ticketNotes/T-10*`.
+- **Grep** when you need an exact string or pattern and the matching lines.
+- **Search** when you have keywords and want the most relevant notes first.
+- **Facets** when the question is about meaning and you can fix the questions ahead of time.
 
-```ts
-// query: "react hooks"
-// → [{ uri: "org/concepts/react-hooks", score: 5, snippet: "..." }, ...]
-```
+Every call reads every readable note body. That suits a bounded set of notes, not a large corpus.
 
-Resources that don't match at all are dropped. Scope with `prefix` and cap with `limit` (default 10).
+## Next
 
-## Limits of the text tools
-
-All three tools see only resources marked `llmReadable`, the same gate as [`readResourceContentTool`](/docs/resources/overview#llm-access-patterns). A resource the LLM can't read won't appear in any of their results. Grep and search match the *rendered* content, the same text `readResourceContentTool` returns, so a resource whose body is a state-driven template is found by the words it renders to, not by its template source.
-
-Search and grep are lexical. They're a good fit for curated, bounded content where answers live in the words on the page. They are not a substitute for semantic retrieval over a large, uncurated corpus. Use [memory](/docs/memory/overview) or a retrieval layer for that.
-
-`grepResourceContent` treats its pattern as a regular expression, falling back to a literal match when the pattern isn't valid regex. It runs line by line over trusted resource content and does not sandbox the pattern, so a pathological regex can be slow. Isolate the call before pointing it at attacker-controlled patterns.
-
-## Find by facets
-
-Some searches aren't about words. "Open billing tickets" should find the ticket that says "my card was billed again for a plan I already paid for", which never says "open" and never says "billing". A model can answer that, but asking it on every search is slow and costs a call per lookup.
-
-Facets move the question to write time. When a document's body is written, an [evaluator](/docs/fundamentals/blocks#evaluator) answers a few fixed questions about it (which topic, what status) and the answers are stored on the document. Searching is then a filter over stored answers. No model runs.
-
-`defineFacetedCollection` defines a collection that does this for you. You bring the fields you'd store anyway and an evaluator that asks your questions. You get back the collection, a search block and a reindex block.
-
-Start with the questions. The search filters on choice questions: each `choice`'s option keys are the values a search can ask for.
-
-```ts
-export const ticketQuestions = {
-  topic: choice("What is this support ticket about?", TOPICS), // billing | outage | other
-  status: choice("Is the customer's problem still open?", STATUSES), // open | closed
-};
-```
-
-Then define the collection around the evaluator, and register what it returns on the flow:
-
-```ts
-export function ticketsFlow(triage: TicketEvaluator) {
-  const tickets = defineFacetedCollection({
-    name: "tickets",
-    pattern: "tickets/*",
-    scope: "user",
-    stateSchema: z.object({ title: z.string() }), // facets and indexedAs are added
-    evaluator: triage,
-  });
-
-  const write = handler({
-    // … input and output schemas
-    resources: { tickets: tickets.collection },
-    // … creates the ticket and calls ref.writeContent(input.body)
-  });
-
-  return defineFlow({
-    kind: "index-time-facets",
-    requireUser: true,
-    resources: tickets.resources,
-    actions: {
-      write: { block: write },
-      search: { block: tickets.search },
-      reindex: { block: tickets.reindex },
-    },
-  })();
-}
-```
-
-The flow takes the evaluator as a parameter. Build it where you configure the app, so the model is named in one place:
-
-```ts
-const triage = evaluator({ name: "ticket-facets", model: "typesafe-ai/jev", questions: ticketQuestions });
-```
-
-`defineFacetedCollection` never picks a model. It reads the questions off the evaluator, so they have to be a fixed object rather than a function. The evaluator gets the document's body as its input.
-
-`name` is the key the collection is registered under, and your own blocks declare it under the same key, as the write action does with `resources: { tickets: tickets.collection }`. Pass `tickets.resources` to `defineFlow` so the collection is registered under `name` however you use the search. It also carries any resources your evaluator declares, so they're available when the evaluator runs. Don't put another entry under `tickets` in the flow's own `resources`: it replaces the collection, and nothing gets indexed.
-
-If nothing is registered under `name`, or a different collection is, the first body write fails with an error that names `resources`. The body is already saved by then; only the turn fails.
-
-`defineFacetedCollection` throws, naming the problem, when given:
-
-- a key pattern with parameters, such as `[topic]/observations`. Use a wildcard pattern like `tickets/*`.
-- `writable: false`.
-- `client.content.create` or `client.content.update`.
-- your own `reactTo.contentUpdated`. `created`, `stateUpdated` and `deleted` are yours.
-- a `stateSchema` that isn't a `z.object()`, or that already has `facets` or `indexedAs`.
-- a question with the id `minConfidence`.
-- a value that isn't an evaluator block, or an evaluator whose questions are a function.
-- an evaluator whose input schema rejects a string. Adapt the body with `connectInput`.
-- an evaluator that declares `flowConfigSchema`, a resource under `name`, or a single resource (not a collection) with `prefetchMode: "lazy"`.
-
-The [companion example](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/index-time-facets) has the whole setup, with tests on the mock evaluation model.
-
-### What it does on every write
-
-Every body write inside a flow turn indexes the same way, whether it comes from an action, a tool, or an agent writing content. The collection keeps two fields beside yours. `facets` holds the answers, keyed by question id, and `indexedAs` records which write they belong to.
-
-- **It clears the old facets first.** The body is saved before indexing starts. If classifying the new body fails, the document has no facets, so it matches no facet search.
-- **It classifies on a [side chain](/docs/sequencers/composing-blocks#sidechain--fire-and-forget-background-tasks)**, background work that runs alongside the turn. A failed or refused call shows in the trace and doesn't fail the save; facets are in place when the turn ends.
-- **It stores only answers about the current body.** If the body is written again while the first classification is still running, the first answers are thrown away. On the memory, SQLite and Postgres stores that holds for any number of processes. On the filesystem store it holds within one process.
-
-Nothing retries. A document whose classification failed stays without facets until you reindex it.
-
-### Searching facets
-
-`tickets.search` takes one optional value per choice question and returns the matching keys. It filters the stored answers and runs no model:
-
-```ts
-// { "topic": "billing", "status": "open" } → { "keys": ["t1", "t7"] }
-```
-
-A document with no facets never matches. You can hand the same block to an agent as a tool, and the agent sees each question's options as the allowed values.
-
-Answers are stored exactly as the model gave them. [Jev](/docs/fundamentals/models#evaluation-models), an evaluation model you reach through Vercel's AI Gateway, also reports how sure it was. Most evaluation models don't. A plain search matches on the answer alone.
-
-When you only want answers the model was sure of, add `minConfidence`: `{ "topic": "billing", "minConfidence": 0.8 }`. It applies to the values you name. An answer with no confidence fails the check, so on a model that never reports confidence, a search with a minimum finds nothing.
-
-The search offers options for choice questions only. Answers to yes/no and scale questions are stored on each document's `facets`, where your own code can read them.
-
-On a [projected collection](/docs/resources/projected-collections), where your own database holds the rows, pass facet values in the `filter` of your list query instead. `defineFacetedCollection` doesn't build projected collections.
-
-### Reindexing
-
-Documents get facets when their body is written inside a flow turn. `tickets.reindex` covers the rest: documents that existed before you added facets, documents whose classification failed, and, with `{ "force": true }`, every document after you change the questions. It returns `{ "reindexed": [...], "failed": [...] }`: the keys it classified, and the keys whose classification failed. Failed documents keep no facets and aren't retried; run reindex again when the model is back.
-
-Clients can read and delete documents in a faceted collection, but can't create or edit their bodies. Write bodies through a flow action.
-
-If your text lives in state rather than the body, `defineFacetedCollection` doesn't fit. Bind `created` and `stateUpdated` yourself, with a `when` that checks the text fields changed.
-
-### Moving an existing collection over
-
-If you already store facets with your own `contentUpdated` reaction, in fields named `facets` and `indexedAs`, switching keeps them. Delete both fields from your `stateSchema`, since the collection adds them, and replace the collection definition with `defineFacetedCollection`. Existing documents are found as before, with no reindex.
-
-### Classifying the search instead
-
-You can run the same evaluator on a search string to turn "anything about refunds that's still open?" into facet values. That's a model call on every search, so keep it for the case where the caller can't pick values from a list. The companion example doesn't include it.
-
-## Choosing an approach
-
-- **Glob** when you can describe the path: `concepts/**`, `decisions/2026-*`. Deterministic, no content read.
-- **Grep** when you need an exact string or pattern inside the content, and you want the matching lines.
-- **Search** when you have keywords and want the most relevant resources ranked, not every literal hit.
-- **Facets** when the question is about meaning (topic, status, kind) and you can decide the questions ahead of time. The model runs once per write, not per search.
+- [Resources](../concepts/resources.md): what a collection is and what `llmReadable` means.
+- [Find records by facets](./find-by-facets.md): answer meaning questions at write time.
+- [Resources reference](../reference/resources.md): options and result shapes for each tool, and which tools reach a projected collection.

@@ -10,7 +10,7 @@ A coordination pattern is the wiring around your model calls: a supervisor that 
 
 The model, the tasks and the judge are the same for every subject, where a subject is a pattern or the baseline. The coordination shape is the only thing that varies. The harness asks whether the shape was the right call.
 
-Install `@flow-state-dev/testing` and `@flow-state-dev/patterns`. Real runs make paid model calls and need provider keys for both models in the environment.
+Install `@flow-state-dev/testing` and `@flow-state-dev/patterns`. Real runs make paid model calls and need provider keys in the environment for the task model and the judge model.
 
 ## 1. Write a task suite
 
@@ -66,7 +66,7 @@ export default defineBenchmark({
 pnpm fsdev benchmark ./benchmark.ts
 ```
 
-The example makes 3 subjects times 2 tasks times 3 runs, 18 cells, each with one judge call, and a pattern makes several model calls per cell. Set a ceiling while you iterate: `--max-cost 2` stops scheduling new cells once the estimate reaches $2, prints a partial scorecard and exits 1. `--runs 1` gives a cheap dry run. `--output scorecard.md --format markdown` writes the result to a file. Details are in the [CLI reference](../reference/cli.md).
+The example makes 3 subjects times 2 tasks times 3 runs, 18 runs (one subject on one task, once), each with one judge call, and a pattern makes several model calls per run. Set a ceiling while you iterate: `--max-cost 2` stops scheduling new runs once the estimate reaches $2, prints a partial scorecard and exits 1. `--runs 1` gives a cheap dry run. `--output scorecard.md --format markdown` writes the result to a file. Details are in the [CLI reference](../reference/cli.md).
 
 ## 3. Read the table
 
@@ -81,14 +81,14 @@ single-generator   0.690±0.052  0.640±0.066        0.665±0.060
 
 The second part ranks subjects by `overall` mean, with `Δ vs baseline`, `credible`, `success`, `$/task` and `score/$`. Read it in this order:
 
-1. `success` first. A subject that throws on a cell scores 0 for it, so a low mean can be failures, not quality.
+1. `success` first. A subject that throws on a run scores 0 for it, so a low mean can be failures, not quality.
 2. `Δ vs baseline` and `credible` on the overall row. A positive delta means the pattern beat the single call. `credible` is `yes` only when the gap is larger than about two standard errors and both sides ran at least twice. `no` means the gap may be noise, not that the pattern lost. More `runs` can turn a `no` into a `yes`.
 3. The category columns. A pattern can lose overall and win one category.
 4. `$/task` against the delta. A small gain at several times the baseline's cost may not pay.
 
-The judge sees only the task and the output, never which pattern produced it. Set `judgeModel` to a different model than `model`. If it is unset or equal, the CLI prints a warning to stderr about self-preference.
+The judge sees only the task and the output, never which pattern produced it. Set `judgeModel` to a different model than `model`. If it is unset or equal, the CLI prints a warning to stderr, because a judge tends to score its own model's output higher.
 
-The numbers describe your tasks on this model. They do not rank the patterns in general, and the shipped patterns share one worker, so they compare coordination, not each pattern's best-tuned roster.
+The numbers describe your tasks on this model. They do not rank the patterns in general, and where a pattern needs a worker to do the task itself, the default registry gives every pattern the same one (same model, same prompt), so the scorecard compares coordination, not each pattern tuned at its best.
 
 ## Next
 

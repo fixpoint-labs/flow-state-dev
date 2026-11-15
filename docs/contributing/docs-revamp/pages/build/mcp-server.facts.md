@@ -114,3 +114,36 @@ All **[ref]** rows above, collected: the `McpConfig` and `ActionMcpConfig` field
 - `m:161-162` ("throws at flow registration" for a name collision): see Step 2. `apps/docs/docs/server/mcp.md` is the only place found; the same sentence may live in `packages/mcp/README.md`. **[check at pass 3: `grep -n "collision\|registration" packages/mcp/README.md`.]**
 - `m:108` and `m:210`: resolvers returning `{ userId }` alone (correction 1).
 - `m:221-223`: `null` plus `requireUser` gives 401 (correction 2).
+
+## Revise round 1: what the page now states, and what moved to Reference
+
+The page was rewritten as five numbered steps (install, mount, opt in, connect, caller). Examples now use the `support` flow, `fsdev.config.ts` with `flows: [support]` (an array of flow instances, from `export default supportFlow()`), and `createBearerSecretPrincipalResolver` with `{ userId, orgId }`. Corrections taken from the fact check:
+
+- A duplicate tool name fails when the adapter resolves the flow's tools, on the first `tools/list` or `tools/call`, not at registration (`tc:69-97`; callers `ad:339`, `ad:384`). The `mcp.name` override goes through the same check and the charset check. Only the missing-description check runs at `defineFlow` (`df:1348-1368`).
+- The `latestRequestId` write is guarded by tenant, user and organization checks (`packages/engine/src/execution/runAction.ts:1583-1617`). No claim that it is "only tenant-guarded" is made anywhere.
+- "Any flow" is "a flow that sets `mcp.enabled`" (`ft:330-342`).
+- `createVercelNextHandler` exports `GET`, `POST`, `PATCH` and `DELETE` (`packages/vercel/src/handler.ts:114-136`); the page no longer shows the route file and links `start/add-to-an-existing-app` instead, whose `createNextHandler` route is the revamp's app.
+- The `tools/list` `curl` in step 4 was read from `ad:263-265` and not run; the page says what it returns in a sentence and prints no response body.
+
+Page links: `../concepts/serving-flows.md`, `../start/add-to-an-existing-app.md`, `../concepts/auth-and-tenancy.md`, `../reference/mcp-server.md` (R-34), `../reference/authentication.md` (R-20). The old `/docs/api/cli` link is gone with the `fsdev serve` sentence's detail; `fsdev serve` is named once and `reference/cli` (R-35) holds its port and host.
+
+Moved to Reference as rows and no longer page text. **R-34 (`reference/mcp-server`)**:
+
+- Endpoint: default path `POST /api/flows/:kind/mcp`; `GET` and `DELETE` return 405 with `Allow: POST`; existing HTTP routes are unchanged (`ad:162-171`).
+- Settings: `dedicatedBasePath` (default `/mcp`, endpoint `POST /mcp/<kind>`), `basePath` override, HTTP action routes stay under `/api/flows`, the default URL is not aliased, a root-only base is rejected with `TypeError` (`ad:82-94`, `ad:138-156`).
+- Hosting: `serve()` from `@flow-state-dev/node` and `fsdev serve` mount dedicated paths automatically; a Next.js app adds `app/mcp/[...path]/route.ts` exporting the same handlers.
+- Mapping: `mcp.enabled` on the flow and `mcp: { enabled: false }` per action; each exposed action needs a non-empty description (its own, else its block's) and registration throws naming the flow and action when neither exists.
+- Tool names: decamelize table (`recordPayment` to `record_payment`, `URLParser` to `url_parser`, `getHTTPSProxy` to `get_https_proxy`, `event-queue` kept) (`tc:31-40`).
+- Refusal: a duplicate tool name throws when the adapter resolves the flow's tools (`tools/list` or `tools/call`), not at registration; the `mcp.name` override goes through the same collision check and the name charset check `[A-Za-z0-9_.-]`, 1 to 128 characters (`tc:42-97`).
+- Caller identity: MCP uses `resolvePrincipal`; the hook receives `ctx.source === "mcp"` and the raw `Request`. Requests carry `RequestRecord.source = "mcp"`; the DevTool shows an MCP source chip and the same trace, items and state panels as an HTTP request (`ad:70`, `ad:413`; `e2e:87`).
+- Caller identity: credentials are read from the `Authorization` header only; query-string tokens are ignored.
+- Failure: a thrown `PrincipalResolutionError` gives JSON-RPC `-32001` with its own status (default 401), and `WWW-Authenticate: Bearer realm="MCP"` is sent only when that status is 401 (`ad:247-259`; `at:520-540`). What a bare `null` returns is the host's principal resolution, which refuses it.
+- Settings, `forwardQueryParams`: allowlist; the value is merged into `tools/call` input and overrides a same-named model argument; dropped or rejected if the action schema does not accept it; `tools/call` only; default none; not for credentials (`ad:103-120`, `ad:390-406`).
+- Settings, `mcp.session`: template-string form (first `*` replaced, else the token is appended) and `{ fromInput: <field> }`; a missing or empty field falls back to a fresh session; the id selects flow session state and history only and no `Mcp-Session-Id` is issued; the default is a fresh session per `tools/call` (`ad:481-507`; `at:734-780`).
+- Limits, `{ fromInput }`: the id is a bare session key, so namespace it per principal for mutually distrusting users (a call against another user's session is refused by the user and organization binding checks and answered as an unknown session, `ad:467-475`); the session record is written before the action's input schema runs, so bound the field's length in the schema.
+- Settings, `allowedOrigins`: default same-origin check answers 403; a list or `"*"` overrides it; clients that send no `Origin` are unaffected (`ad:95-102`, `ad:604-620`).
+- Limits: stateless per call unless `mcp.session`; one text content block (terminal output, a string as is and anything else JSON-stringified; otherwise the latest message item's text or block output; a failed run returns the error message with `isError: true`); no progress notifications, `outputSchema` or `structuredContent`; `resources/list` returns an empty list and `resources/read` rejects with `-32002`; no bundled OAuth.
+
+**R-20 (`reference/authentication`)**: session-consistency row. The stored session's owner must match the caller, so an action cannot run against another principal's session state; the principal still comes from `resolvePrincipal`.
+
+Stays on the page: the opt-in and opt-out, tool-name derivation in one sentence, the `mcp.name` override, the duplicate-name failure in one sentence, the description requirement and its registration failure, one text-block result, a fresh session per call, the MCP badge, `resolvePrincipal` with `ctx.source === "mcp"`, the `Authorization` header, `createBearerSecretPrincipalResolver` and its empty-secret throw, `{ userId, orgId }` required, `PrincipalResolutionError` giving `-32001` and 401.

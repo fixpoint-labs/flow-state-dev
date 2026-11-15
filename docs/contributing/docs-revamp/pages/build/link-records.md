@@ -1,83 +1,130 @@
 ---
 title: Link records with edges
 type: recipe
-description: "Most resource state is a bag of fields."
+description: "Store typed links between records in a resource and walk them: neighbors, paths, and links that change over time."
 ---
 
 # Link records with edges
 
-Most resource state is a bag of fields. Sometimes what you actually care about is how things connect: this ticker depends on that supplier, this person works at that company, this macro factor drives that sector. An **edge** is a typed link from one thing to another, and the edge graph lets you store those links and walk them.
+A support desk has tickets that duplicate each other and tickets that block each other. Resource state holds fields well and connections badly. An **edge** is a typed, directed link from one thing to another (`ticket:4821` duplicates `ticket:4790`), and a resource can store edges and walk them: what is near a ticket, and what chain connects two.
 
-Edges are opt-in. A resource that doesn't declare them behaves exactly as before. When you do declare them, the framework keeps an `edges` array inside the resource's own state (no new storage key, no separate database) and hands you an `.edges` API on the resource reference for adding and traversing them.
+Edges are opt-in. Declare them and the resource's state gains an `edges` array, stored with the rest of its state, plus an `.edges` API on the resource's handle for adding and walking them.
 
-## Turning it on
+## 1. Declare edges on a resource
 
-Pass `edges` to `defineResource`. `true` uses defaults; an object lets you set a relation vocabulary and a size cap.
+Pass `edges` to `defineResource`. `true` takes the defaults. An object sets a `vocabulary` of allowed relationship types and a `maxEdges` cap.
 
-```ts
+```ts title="src/flows/support/resources/ticket-links.ts"
 import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const research = defineResource({
-  ref: "research",
-  scope: "user",
-  stateSchema: z.object({ notes: z.array(z.string()).default([]) }),
-  default: { notes: [] },
-  writable: true,
-  edges: true, // or: { vocabulary: ["drives", "depends_on"], maxEdges: 500 }
+export const ticketLinks = defineResource({
+  ref: "ticketLinks",
+  scope: "org",
+  stateSchema: z.object({}),
+  default: {},
+  edges: { vocabulary: ["duplicates", "blocks"], maxEdges: 500 },
 });
 ```
 
-The framework adds an `edges: Edge[]` field to the resource's state for you. You don't declare it in `stateSchema`.
+You don't declare the `edges` field in `stateSchema`. The scope is `org` because a ticket's links are the same for everyone on the desk.
 
-## The edge shape
+An edge has a `from` and a `to`, each a string id you choose, and a `type` naming the relationship in active voice. A **node** is one of those ids. Nodes aren't declared anywhere. A node exists because an edge names it, and the framework doesn't check that an id points at anything.
 
-An edge is directed (it goes `from` one node `to` another) and typed (the `type` names the relationship, written in active voice like `drives` or `works_at`). A **node** is just a string id. For links that point at another resource, the convention is `"namespace:key"` — the `nodeRef("ticker", "NVDA")` helper builds one and `parseNodeRef` splits it back.
+By convention an id reads `namespace:key`. The `nodeRef` helper builds one and lowercases the key, so `nodeRef("ticket", "T-4821")` is `ticket:t-4821`. Build every id with it, or none.
+
+## 2. Add an edge
+
+```ts title="src/flows/support/blocks/link-duplicate.ts"
+import { handler } from "@flow-state-dev/core";
+import { nodeRef } from "@flow-state-dev/core/graph";
+import { z } from "zod";
+import { ticketLinks } from "../resources/ticket-links";
+
+export const linkDuplicate = handler({
+  name: "link-duplicate",
+  inputSchema: z.object({ ticketId: z.string(), duplicateOf: z.string() }),
+  resources: { ticketLinks },
+  execute: async (input, ctx) => {
+    const links = ctx.resources.ticketLinks.edges!;
+    const edge = await links.add({
+      from: nodeRef("ticket", input.ticketId),
+      to: nodeRef("ticket", input.duplicateOf),
+      type: "duplicates",
+    });
+    return { edgeId: edge.id };
+  },
+});
+```
+
+`add` returns the stored edge. The framework assigns its `id`. `edges` is optional on the handle's type, so take it once with `!` into a local, as above.
 
 | Field | Meaning |
-|-------|---------|
-| `id` | Stable id, assigned on `add`. |
-| `from` / `to` | The two node ids the edge connects. |
-| `type` | The relationship, active voice. |
-| `confidence` | How sure we are, `[0, 1]`. Defaults to `1`. |
-| `validFrom` / `validUntil` | When the edge was true. `validUntil: null` means still true. |
-| `source` | Provenance ids (where the edge came from). |
+| --- | --- |
+| `confidence` | How confident the link is, from 0 to 1. Defaults to `1`. |
+| `validFrom`, `validUntil` | When the link was true. `validUntil: null` means the link is open-ended. |
+| `source` | Ids of where the link came from. Defaults to `[]`. |
 
-## Adding and traversing
+`add` throws on a type outside the `vocabulary`. Past `maxEdges`, the oldest ended edges go first, then the least confident. Adding the same link twice stores two edges. An edge write is a state write, so it saves with the rest of the resource's state.
 
-The `.edges` API lives on the resource reference. Reads are synchronous over the in-state array; writes go through the resource's normal state persistence.
+## 3. Follow the links
 
-```ts
-const ref = ctx.resources.research;
+Reads return right away. Writes are async.
 
-await ref.edges.add({ from: "ticker:nvda", to: "ticker:tsmc", type: "depends_on" });
-await ref.edges.add({ from: "ticker:tsmc", to: "country:taiwan", type: "located_in" });
+```ts title="src/flows/support/blocks/find-related.ts"
+import { handler } from "@flow-state-dev/core";
+import { nodeRef } from "@flow-state-dev/core/graph";
+import { z } from "zod";
+import { ticketLinks } from "../resources/ticket-links";
 
-// Everything within 2 hops of NVDA:
-const around = ref.edges.egoGraph("ticker:nvda", { depth: 2 });
+export const findRelated = handler({
+  name: "find-related",
+  inputSchema: z.object({ ticketId: z.string(), otherId: z.string() }),
+  resources: { ticketLinks },
+  execute: async (input, ctx) => {
+    const links = ctx.resources.ticketLinks.edges!;
+    const ticket = nodeRef("ticket", input.ticketId);
 
-// The chain connecting two nodes (null if there isn't one):
-const path = ref.edges.shortestPath("ticker:nvda", "country:taiwan");
-// → [nvda depends_on tsmc, tsmc located_in taiwan]
+    // Every ticket within two hops, and the links between them.
+    const around = links.egoGraph(ticket, { depth: 2 });
+
+    // The chain of links to another ticket, or null.
+    const chain = links.shortestPath(ticket, nodeRef("ticket", input.otherId));
+
+    return { around, chain };
+  },
+});
 ```
 
-The full API: `add`, `supersede`, `remove`, `all`, `neighbors`, `egoGraph`, `shortestPath`, and `pruneDangling` (drop edges whose endpoints no longer exist). Traversals take `{ depth, direction, relationTypes, at }` and are depth-bounded and cycle-safe, so a graph with loops won't run away.
+`neighbors` returns the edges touching a node, `egoGraph` returns `{ nodes, edges }`, and `shortestPath` returns the ordered edges from one node to another. Traversals ignore ended edges unless you pass `at`.
 
-## Edges that change over time
+Traversals walk a link in both directions. Pass `direction: "out"` to follow only what a ticket points at. `shortestPath` searches two hops by default and returns `null` when no chain fits within `depth`, so pass a larger `depth` for longer chains.
 
-Facts go stale. Someone leaves a company; a supplier relationship ends. Rather than delete the old edge, `supersede` stamps it with a `validUntil` and you add the new one. The old edge stays on record, so you can still ask what was true at a past moment.
+## 4. Change a link
 
-```ts
-await ref.edges.supersede(oldEdgeId);           // closes it as of now
-await ref.edges.add({ from: "alice", to: "acme-2", type: "works_at" });
+When a link stops being true, `supersede` ends it and keeps the record.
 
-ref.edges.all({ at: new Date().toISOString() }); // only currently-valid edges
+```ts title="src/flows/support/blocks/unlink-duplicate.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { ticketLinks } from "../resources/ticket-links";
+
+export const unlinkDuplicate = handler({
+  name: "unlink-duplicate",
+  inputSchema: z.object({ edgeId: z.string() }),
+  resources: { ticketLinks },
+  execute: async (input, ctx) => {
+    const links = ctx.resources.ticketLinks.edges!;
+    await links.supersede(input.edgeId);
+    return { current: links.all({ at: new Date().toISOString() }).length };
+  },
+});
 ```
 
-## When to reach for this
+`all()` with no argument returns every stored edge, ended ones included. `all({ at })` returns the edges that were true at that moment. `remove(edgeId)` deletes an edge outright, and `pruneDangling(nodes)` deletes the edges whose endpoints aren't in the list you pass.
 
-Edges earn their place when the question is about connections: "what links X to Y", "what's near X", multi-hop paths. They are stored in memory and walked with plain breadth-first traversal, which is fast for hundreds or low thousands of edges per resource. This is not a graph database. If you need millions of edges or query-planner-grade path matching, push the data into a real store; the edge graph is for the relational structure that rides alongside ordinary resource state.
+## Limits
 
-The first framework consumer of this primitive is [memory relations](../memory/relations), which extracts typed edges between the people, companies, and topics an agent learns about.
+Edges are not a graph database. They suit hundreds to low thousands of edges in one resource, and they can't be followed across resources. For millions of edges or complex path queries, use a real graph store.
 
-See also [Collections](./collections) for the other way to hold many related instances in resource state.
+[Memory relations](../catalog/memory/relations.md) is built on edges: it extracts typed links between the people, companies, and topics an agent learns about. [Collections](./collections.md) can declare edges per instance. The [Resources reference](../reference/resources.md) lists the options, every operation and the traversal rules.
