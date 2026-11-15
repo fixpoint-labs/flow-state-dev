@@ -165,8 +165,8 @@ function migrateCounts<T extends { held?: number }>(counts: T | undefined): T | 
   return foldCount(counts, LEGACY_HELD_STATUS, "held");
 }
 
-export const TASK_CHANGE_DATA_TYPE = "task-change";
-export const TASK_BOARD_META_DATA_TYPE = "task-board-meta";
+const TASK_CHANGE_DATA_TYPE = "task-change";
+const TASK_BOARD_META_DATA_TYPE = "task-board-meta";
 
 // ---------------------------------------------------------------------------
 // Section ordering
