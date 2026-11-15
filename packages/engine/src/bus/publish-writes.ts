@@ -50,6 +50,7 @@ import type { BusTopic, ChangeBus, ChangeNotice } from "./types";
 import { unionNoticeIds, type ChangeKind } from "@flow-state-dev/core/internal";
 import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry } from "../stores/types";
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
+import { legacyComponentItemReads } from "../stores/legacy-component-items";
 
 type Wrapping = {
   /** Raw store → its one wrapper. */
@@ -105,7 +106,10 @@ export function withChangeBus<T extends StoreRegistry>(stores: T): T & { bus: Ch
   const bus = stores.bus ?? busOf(stores.request) ?? busOf(stores.session) ?? createInMemoryBus();
   const identities = new Identities(stores.session, stores.request);
   const session = wrap(stores.session, bus, () => sessionWrites(stores.session, bus, identities));
-  const request = wrap(stores.request, bus, () => requestWrites(stores.request, bus, identities));
+  // Not a write: the one read migration rides on this wrapper because every
+  // entry applies it, once per store, so stored `component` items read back
+  // as data items on every path (legacy-component-items.ts).
+  const request = wrap(stores.request, bus, () => requestWrites(stores.request, bus, identities), legacyComponentItemReads);
   if (stores.bus === bus && session === stores.session && request === stores.request) {
     return stores as T & { bus: ChangeBus };
   }
@@ -363,13 +367,15 @@ class Identities {
 
 type AnyMethod = (...args: any[]) => any;
 type Writes = Record<string, AnyMethod>;
+/** A store read, built over the store's method, whose result it passes through. */
+type Reads = Record<string, (original: AnyMethod) => AnyMethod>;
 
 /**
  * `store`'s one wrapper, publishing to `bus`: made on the first call from
  * `writes`, the methods it replaces; every other property reads through to
  * the store.
  */
-function wrap<S extends object>(store: S, bus: ChangeBus, writes: () => Writes): S {
+function wrap<S extends object>(store: S, bus: ChangeBus, writes: () => Writes, reads: Reads = {}): S {
   const known = WRAPPING.buses.has(store) ? store : (WRAPPING.wrappers.get(store) as S | undefined);
   if (known !== undefined) {
     if (WRAPPING.buses.get(known) !== bus) {
@@ -388,11 +394,21 @@ function wrap<S extends object>(store: S, bus: ChangeBus, writes: () => Writes):
   // it would be what the wrapper's own calls, and calling that back would
   // never end.
   const assigned: Record<string, unknown> = {};
+  // A read is the store's method as it is now, its result passed through:
+  // left on the store, so a spy or a method assigned there still runs, and one
+  // that calls the read it replaced, taken earlier, does not call itself.
+  const readsOf = new WeakMap<AnyMethod, AnyMethod>();
+  const isRead = (key: string | symbol): key is string =>
+    typeof key === "string" && Object.prototype.hasOwnProperty.call(reads, key);
   const wrapper = new Proxy(store, {
     get(target, key) {
       if (isReplaced(key)) return Object.prototype.hasOwnProperty.call(assigned, key) ? assigned[key] : replaced[key];
       const value = Reflect.get(target, key, target) as unknown;
-      return typeof value === "function" ? (value as AnyMethod).bind(target) : value;
+      if (typeof value !== "function") return value;
+      if (!isRead(key)) return (value as AnyMethod).bind(target);
+      let read = readsOf.get(value as AnyMethod);
+      if (read === undefined) readsOf.set(value as AnyMethod, (read = reads[key]!((value as AnyMethod).bind(target))));
+      return read;
     },
     set(target, key, value) {
       if (!isReplaced(key)) return Reflect.set(target, key, value, target);

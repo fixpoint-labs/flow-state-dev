@@ -22,8 +22,8 @@ type RoutedSpecialistsData = {
 
 /**
  * Container renderer for the routedSpecialists pattern. The pattern
- * sequencer emits a single keyed "routedSpecialists" component item inside
- * a "routedSpecialists" container. This renderer reads that child component
+ * sequencer emits a single keyed "routedSpecialists" data item inside
+ * a "routedSpecialists" container. This renderer reads that data record
  * to display the shared workspace state.
  *
  * Register via:

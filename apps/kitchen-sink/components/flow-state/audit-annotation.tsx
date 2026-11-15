@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangleIcon,
@@ -87,8 +87,8 @@ function highestSeverity(results: AnalyzerResult[]): "info" | "warning" | "criti
  * annotation details, and optional supplementary data (counter-arguments,
  * sycophancy scores, etc.).
  */
-export function AuditAnnotation({ item }: { item: ComponentItem }) {
-  const data = item.data as AuditAnnotationData;
+export function AuditAnnotation({ item }: { item: DataItem }) {
+  const data = item.value as AuditAnnotationData;
 
   if (!data?.surfacedResults || data.surfacedResults.length === 0) {
     return null;

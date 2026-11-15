@@ -17,6 +17,9 @@
  *   inherit visibility from `item.itemVisibility`. Absent
  *   `itemVisibility` falls back to `{ client: true, history: true }` —
  *   keeps handler emits like `ctx.emit.message("hi")` ergonomic.
+ * - `data` items use `item.itemVisibility` when present and otherwise
+ *   resolve like structural types: `{ client: true, history: false }`.
+ *   Whether a client draws one is up to its renderer registry.
  * - All other (structural) types resolve to `{ client: true, history: false }`.
  */
 import type { RuntimeItem } from "./internal";
@@ -45,6 +48,8 @@ export function resolveItemVisibility(item: RuntimeItem): ItemVisibility {
   if (CONVERSATIONAL_TYPES.has(item.type)) {
     return item.itemVisibility ?? CONVERSATIONAL_DEFAULT;
   }
+
+  if (item.type === "data") return item.itemVisibility ?? STRUCTURAL_DEFAULT;
 
   return STRUCTURAL_DEFAULT;
 }

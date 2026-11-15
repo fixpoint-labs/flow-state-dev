@@ -7,7 +7,7 @@
 import { createElement, Fragment, type ComponentType, type ReactNode } from "react";
 import type {
   ToolOutputItem,
-  ComponentItem,
+  DataItem,
   ContainerItem,
   OutputItem,
   ReasoningItem,
@@ -31,7 +31,7 @@ export type ActivityItem = ToolOutputItem | ReasoningItem;
 export type ItemsRendererProps = {
   items: OutputItem[];
   /**
-   * When true (default), component items that carry a stable `key` are
+   * When true (default), component and data items that carry a stable `key` are
    * deduplicated: only the latest snapshot per key is rendered, replacing
    * earlier ones in-place. Set to false to render all snapshots.
    */
@@ -92,25 +92,25 @@ export type BuildItemRenderStreamOptions = {
 };
 
 /**
- * For component items with a stable `key`, keep only the latest snapshot per key.
+ * For data items with a stable `key`, keep only the latest snapshot per key.
  * Items without a key are always included.
  */
-function deduplicateComponentItems(items: OutputItem[]): OutputItem[] {
+function deduplicateKeyedItems(items: OutputItem[]): OutputItem[] {
+  const keyOf = (item: OutputItem): string | undefined => {
+    if (item.type !== "data") return undefined;
+    const k = (item as DataItem).key;
+    // Scope deduplication to the request: same key in different requests
+    // are independent items (each request's plan is preserved).
+    return k === undefined ? undefined : `${item.requestId}:${k}`;
+  };
   const latestIndex = new Map<string, number>();
   items.forEach((item, i) => {
-    const k = (item as ComponentItem).key;
-    if (item.type === "component" && k !== undefined) {
-      // Scope deduplication to the request: same key in different requests
-      // are independent items (each request's plan is preserved).
-      latestIndex.set(`${item.requestId}:${k}`, i);
-    }
+    const k = keyOf(item);
+    if (k !== undefined) latestIndex.set(k, i);
   });
   return items.filter((item, i) => {
-    const k = (item as ComponentItem).key;
-    if (item.type === "component" && k !== undefined) {
-      return latestIndex.get(`${item.requestId}:${k}`) === i;
-    }
-    return true;
+    const k = keyOf(item);
+    return k === undefined || latestIndex.get(k) === i;
   });
 }
 
@@ -152,7 +152,7 @@ function buildSuppressedOwners(
  * the user-facing response, not internal container state.
  */
 const CONTAINER_MANAGED_TYPES = new Set([
-  "component",
+  "data",
   "tool_output",
 ]);
 
@@ -176,7 +176,7 @@ export function buildItemRenderStream(
 ): ItemRenderSegment[] {
   const { deduplicateByKey = true, showSubAgents = false, groupToolCalls = false } = options;
 
-  const deduplicated = deduplicateByKey ? deduplicateComponentItems(items) : items;
+  const deduplicated = deduplicateByKey ? deduplicateKeyedItems(items) : items;
   const visibleByAgent = showSubAgents
     ? deduplicated
     : deduplicated.filter((item) => {

@@ -5,7 +5,7 @@
  * coordinator answered itself (`answeredItself`) routed nothing, so it gets
  * no note.
  */
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 import { workerLabel } from "../lib/derive";
 
 type RoutedDelegate = { worker: string; target?: string; outcome: "delivered" | "skipped" | "failed"; reason?: string };
@@ -20,8 +20,8 @@ const HOW: Record<string, string> = {
   unplaced: "nobody",
 };
 
-export function CoordinatorRoute({ item }: { item: ComponentItem }) {
-  const data = (item.data ?? {}) as RouteRecord;
+export function CoordinatorRoute({ item }: { item: DataItem }) {
+  const data = item.value as RouteRecord;
   const delegates = data.delegates ?? [];
   const delivered = delegates.filter((d) => d.outcome === "delivered").map((d) => workerLabel(d.worker));
   const missed = delegates.filter((d) => d.outcome !== "delivered");

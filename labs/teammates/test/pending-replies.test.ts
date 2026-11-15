@@ -19,7 +19,7 @@ const answer = (id: string, ts: number, text: string) =>
   ({ id, type: "message", role: "assistant", status: "completed", requestId: `req_${id}`, itemIndex: 1, ts, content: [{ type: "output_text", text }] });
 /** A reply landing in the thread: the received line the worker reads it through. */
 const received = (id: string, ts: number, messageId: string) =>
-  ({ id, type: "component", component: "workforce:received", status: "completed", requestId: `req_${id}`, itemIndex: 0, ts, agentName: RESEARCHER, data: { id: messageId, from: RESEARCHER, text: "Nov 12" } });
+  ({ id, type: "data", dataType: "workforce:received", status: "completed", requestId: `req_${id}`, itemIndex: 0, ts, agentName: RESEARCHER, value: { id: messageId, from: RESEARCHER, text: "Nov 12" } });
 const reply = (id: string, at: number): LabTalk => ({ id, from: RESEARCHER, to: LEAD, text: "Nov 12", at, inReplyTo: "msg_question" });
 
 describe("pending replies in a thread's window", () => {

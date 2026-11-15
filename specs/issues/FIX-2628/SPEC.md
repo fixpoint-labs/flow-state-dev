@@ -77,8 +77,10 @@ The host, and one pane:
 + await openSession({ worker: mode.worker, repository: repository.id });       // the app kit's flow writes it, server-side
 ```
 
-`repositoryOfRun` is the app's run source: the run's session's repository, or its filer's,
-looked up in the host's list (FIX-2593). The names are the implementer's; the rule is
+`repositoryOfRun` is the app's run source: the run's own session's repository (a hand-over
+carries it down). A repository in the host's list (FIX-2593) runs in a worktree; any other
+`file://` one runs in a clone once the host's `checkRepository` finds it usable
+([amended 2026-11-15](DECISIONS.md#how-it-got-here)). The names are the implementer's; the rule is
 [D1](DECISIONS.md#d1)'s.
 
 **Docs:** no `apps/docs` page and no changeset: a private lab. The lab's README is rewritten in
@@ -92,8 +94,9 @@ flowchart LR
   O["open a session · app kit flow"] --> F["server writes the session's repository"]
   F --> T["lead files a task · board hands it over"]
   T --> Q["app run source · session, else its filer"]
-  Q --> L["host's registered repository · worktree"]
-  Q -.->|"not registered"| X["run refused with the host's reason"]
+  Q -->|"listed"| L["host's registered repository · worktree"]
+  Q -->|"unlisted file://, checkRepository usable"| C["clone"]
+  Q -.->|"unusable, or no repository"| X["run refused: repository-unusable / no-repository"]
 ```
 
 A screen reads; a run finds its repository from the session that opened it or filed it.
@@ -139,7 +142,7 @@ A screen reads; a run finds its repository from the session that opened it or fi
 |---|---|
 | **FIX-2627** | **Moves the lab's host onto kits, and the lab's own files out of `workforce/flows/`** in the PR that turns on workforce's claim pass, unchanged, into the lab's `flows:` · the harness kit's `workspace` takes an app `source`, and the coding worker flow needs no workforce project (`needsProject`, `projectChecks`, `projectWorkspaceCapability` are config, not built in) · `sourceReadCapability`, for a non-coding worker that asks the host's source with no project resources (today's `projectSourceCapability`'s job) · an app's server-written session field on the agent and coordinator flows, through workforce's `sessionFields` option · the views this lab reads: worker sessions, turns, the coding board (with the harness before a run reports, the 42 lines), a run's work, readiness |
 | **FIX-2594 / FIX-2592** | Own the word in the UI, Settings and the dialog. Which issue moves the storage is [Q1](DECISIONS.md#q1) |
-| **FIX-2593** | The host's list is the one list; a session whose repository was removed gets the host's refusal at run start |
+| **FIX-2593** | The host's list is the one list of registered repositories (worktrees); an unlisted `file://` repository runs in a clone if the host's `checkRepository` finds it usable, and is refused at run start otherwise ([amended 2026-11-15](DECISIONS.md#how-it-got-here)) |
 | **FIX-2629** | Leg a reads this issue's inventory script and `works-in-its-repository`. This issue owns that one inventory, including FIX-2629 D1's two content rules and the app-types list |
 
 ## Sign off
@@ -159,4 +162,4 @@ come back. If wrong: a second run source every app on repositories copies.
 recommend FIX-2628.
 
 Feature · `labs/claude-code-style`, `goals/claude-code-style-lab` · M · epic
-[FIX-2618](../../epics/FIX-2618/SPEC.md) stage 2 · blocked by FIX-2627 · [Linear](https://linear.app/fixpoint-labs/issue/FIX-2628)
+[FIX-2618](../../epics/FIX-2618/SPEC.md) stage 2 · blocked by FIX-2725 (the adapter's deletion, [amended 2026-11-15](DECISIONS.md#how-it-got-here)) · [Linear](https://linear.app/fixpoint-labs/issue/FIX-2628)

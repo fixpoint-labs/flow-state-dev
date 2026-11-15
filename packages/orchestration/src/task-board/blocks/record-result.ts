@@ -347,7 +347,7 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
   return handler({
     name,
     // Substrate-internal write-back; user-visible task lifecycle flows
-    // through the `task-change` ComponentItem `collection.complete` emits.
+    // through the `task-change` data item `collection.complete` emits.
     transient: true,
     inputSchema: z.unknown(),
     sequencerStateSchema: taskBoardWorkerBodyStateSchema,

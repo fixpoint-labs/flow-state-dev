@@ -476,8 +476,8 @@ function ItemTypeDetail({ item }: { item: DevtoolItem }) {
       return <ErrorDetail item={item} />;
     case "reasoning":
       return <ReasoningDetail item={item} />;
-    case "component":
-      return <ComponentDetail item={item} />;
+    case "data":
+      return <DataDetail item={item} />;
     case "container":
       return <ContainerDetail item={item} />;
     case "state_change":
@@ -568,13 +568,14 @@ function ReasoningDetail({ item }: { item: DevtoolItem & { type: "reasoning" } }
   );
 }
 
-function ComponentDetail({ item }: { item: DevtoolItem & { type: "component" } }) {
+function DataDetail({ item }: { item: DevtoolItem & { type: "data" } }) {
   return (
     <div className="space-y-2">
-      <MetadataRow label="Component" value={item.component} mono />
-      {Object.keys(item.data).length > 0 && (
-        <CollapsibleSection title="Data" defaultOpen>
-          <JsonViewer data={item.data} />
+      <MetadataRow label="Data type" value={item.dataType} mono />
+      {item.key !== undefined && <MetadataRow label="Key" value={item.key} mono />}
+      {Object.keys(item.value).length > 0 && (
+        <CollapsibleSection title="Value" defaultOpen>
+          <JsonViewer data={item.value} />
         </CollapsibleSection>
       )}
     </div>

@@ -99,7 +99,7 @@ async function itemsOf(h: BoardHost, sessionId: string): Promise<any[]> {
 
 /** The received-message items a session holds: the client-only component a received message is drawn by. */
 async function receivedIn(h: BoardHost, sessionId: string): Promise<Record<string, unknown>[]> {
-  return (await itemsOf(h, sessionId)).filter((item) => item.type === "component" && item.component === "workforce:received").map((item) => item.data);
+  return (await itemsOf(h, sessionId)).filter((item) => item.type === "data" && item.dataType === "workforce:received").map((item) => item.value);
 }
 
 /** Every tool output item a session holds, oldest first. */
@@ -131,7 +131,7 @@ describe("a worker messages another worker", () => {
       // Its own item: the sender, the id and the text, drawn by the client only.
       expect(await receivedIn(h, lead!.id)).toEqual([{ id: rows[0]!.id, from: "otto", text: "What is the codename?", budget: 5 }]);
       const items = await itemsOf(h, lead!.id);
-      expect(items.find((item) => item.type === "component")?.itemVisibility).toEqual({ client: true, history: false });
+      expect(items.find((item) => item.type === "data" && item.dataType === "workforce:received")?.itemVisibility).toEqual({ client: true, history: false });
       // The line the model reads, in history only.
       const line = items.find((item) => item.type === "message" && item.agentName === "otto");
       expect(line?.itemVisibility).toEqual({ client: false, history: true });

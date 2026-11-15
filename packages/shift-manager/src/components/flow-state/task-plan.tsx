@@ -3,7 +3,7 @@
 /**
  * `<TaskPlan />` — generalized renderer for any TaskCollection.
  *
- * Subscribes to two component item types:
+ * Subscribes to two data item types:
  *   - `task-change` — per-task lifecycle, latest-wins per `${collectionId}/${taskId}`.
  *   - `task-board-meta` — board-level aggregate state, latest-wins per `${collectionId}`.
  *
@@ -195,7 +195,7 @@ export type TaskPlanProps = {
 
 /**
  * Section-grouped renderer for a TaskCollection. Reads `task-change` and
- * `task-board-meta` component items from the session item stream, latest-wins
+ * `task-board-meta` data items from the session item stream, latest-wins
  * per task, and groups by status.
  */
 export function TaskPlan({

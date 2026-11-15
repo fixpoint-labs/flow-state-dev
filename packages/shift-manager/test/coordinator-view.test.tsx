@@ -11,7 +11,7 @@
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 import { DelegatesPanel } from "../src/components/DelegatesPanel";
 import { CoordinatorRoute } from "../src/components/CoordinatorRoute";
 import { shiftManagerRenderers } from "../src/components/ToolLine";
@@ -147,10 +147,10 @@ describe("the delegates panel (BR-33)", () => {
 });
 
 describe("a routing record (BR-29)", () => {
-  const record = (data: Record<string, unknown>) => ({ type: "component", component: "coordinator-route", data }) as unknown as ComponentItem;
+  const record = (value: Record<string, unknown>) => ({ type: "data", dataType: "coordinator-route", value }) as unknown as DataItem;
 
   it("is drawn by its own renderer, as a note apart from the lines", () => {
-    expect(shiftManagerRenderers.component?.["coordinator-route"]).toBe(CoordinatorRoute);
+    expect(shiftManagerRenderers.data?.["coordinator-route"]).toBe(CoordinatorRoute);
     render(
       <CoordinatorRoute
         item={record({

@@ -10,7 +10,7 @@
  * row before anything lands (`delivery.ts`), so a copy sent again,
  * at any distance, wakes the recipient once, and a copy that finds the taker
  * ended without delivering takes over. Then the message lands as two items: a line the model reads
- * in its history, and a client-only `workforce:received` component carrying
+ * in its history, and a client-only `workforce:received` data record carrying
  * the sender, the id and the message it answers, for an app to draw, and the
  * row is marked `delivered`. The
  * session's hop count and chain become the message's, and the flow's turn,
@@ -61,7 +61,7 @@ import {
 import type { WorkerMessageResourceState } from "./log-row";
 import { sendOwedReply, wantsReply, oweReply, type NoAnswerReason } from "./owed-replies";
 import { carriesPass, markDelivered, storedEmitters, takeMessage } from "./delivery";
-import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "./keys";
+import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_DATA_TYPE, SEND_MESSAGE_TOOL } from "./keys";
 import { messageLimitsOf } from "./message-limits";
 import { MAX_MESSAGE_CHARS, messageChainsOf, workerMessagesResources } from "./message-log";
 import { answerExternalWait, queueBehindUser } from "./queue";
@@ -211,8 +211,8 @@ export function messageReceivedEntry(options: {
       // draws lands here: no turn of this session runs on it.
       if (await answerExternalWait(ctx, row)) {
         const emit = storedEmitters(ctx);
-        await emit.component(
-          RECEIVED_MESSAGE_COMPONENT,
+        await emit.data(
+          RECEIVED_MESSAGE_DATA_TYPE,
           { id: row.id, from: row.from, text: row.text, ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }), budget: 0 },
           { agentName: row.from, itemVisibility: { client: true, history: false } }
         );
@@ -242,8 +242,8 @@ export function messageReceivedEntry(options: {
       // A `user` line: the sender's words, which the recipient's model must
       // not read as something it already said.
       await emit.message(`From ${row.from}: ${row.text}`, { role: "user", agentName: row.from, itemVisibility: { client: false, history: true } });
-      await emit.component(
-        RECEIVED_MESSAGE_COMPONENT,
+      await emit.data(
+        RECEIVED_MESSAGE_DATA_TYPE,
         {
           id: row.id,
           from: row.from,

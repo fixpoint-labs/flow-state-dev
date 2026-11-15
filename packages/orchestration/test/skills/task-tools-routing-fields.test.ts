@@ -14,7 +14,7 @@ import { createFakeSequencerState } from "../helpers";
 
 const ctx = {
   _blockIdentity: { blockName: "createTask", blockInstanceId: "req_1:root/step[0]/tool[createTask][0%3Ac1]:0" },
-  emit: { component: () => undefined },
+  emit: { data: () => undefined },
   session: { identity: { type: "session", id: "s_1", userId: "alice" }, state: {} },
   request: { identity: { type: "request", id: "req_1" }, state: {} },
   runOnce: async <T>(_key: string, fn: () => Promise<T>): Promise<T> => fn()

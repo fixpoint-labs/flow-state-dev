@@ -4,13 +4,13 @@
  * One-call helper that builds a `TaskCollectionRef` against one of two
  * backings — atomic state (`"state"`: a state ref you pass, or the request
  * when you pass none) or a resource collection (`"resource"`) — and adapts
- * the substrate's `onChange` callback to the framework's component-item
- * stream via `ctx.emit.component`.
+ * the substrate's `onChange` callback to the framework's data-item
+ * stream via `ctx.emit.data`.
  *
- * Each lifecycle transition emits a `task-change` component item keyed by
+ * Each lifecycle transition emits a `task-change` data item keyed by
  * `${collectionId}/${taskId}`. The `key` ensures latest-wins replacement
  * per task in the client UI — `<Plan />` and the devtool subscribe to
- * these items, filter by `data.collectionId`, and render the board.
+ * these items, filter by `value.collectionId`, and render the board.
  */
 import type { JsonObject } from "@flow-state-dev/core";
 import { requestHostOf, publishBoardChange, publishBoardInsert, recordBoardRead } from "@flow-state-dev/core/internal";
@@ -32,8 +32,8 @@ import { createDelivery } from "../notice/delivery";
 import type { TaskCapOptions } from "./task-caps";
 import type { FilingStamp } from "./internal";
 
-/** Component-item type emitted on every task lifecycle transition. */
-export const TASK_CHANGE_COMPONENT_TYPE = "task-change";
+/** Data-item type emitted on every task lifecycle transition. */
+export const TASK_CHANGE_DATA_TYPE = "task-change";
 
 /** Common options shared by both backings. */
 interface CommonOptions {
@@ -42,12 +42,10 @@ interface CommonOptions {
   now?: () => number;
   // FIX-918.
   /**
-   * Visibility stamped on the `task-change` component items emitted on every
-   * lifecycle transition. Omit for the default (client + history).
-   * A board that runs *inside* a tool-wrapped drain passes
-   * `{ client: true, history: false }` so its O(tasks × transitions) change
-   * stream still drives the live `<Plan />` UI but never re-enters the calling
-   * generator's LLM history.
+   * Visibility stamped on the `task-change` data items emitted on every
+   * lifecycle transition. Omit for the default, `{ client: true, history:
+   * false }`: the change stream drives the live `<Plan />` UI and never enters
+   * a model's history.
    */
   changeVisibility?: ItemVisibility;
 }
@@ -185,8 +183,8 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     if (event.kind === "added" && options.backing === "resource") {
       publishBoardInsert(options.ctx, { board: options.collectionId, taskId: event.task.id, ledger: options.collection });
     }
-    options.ctx.emit.component(
-      TASK_CHANGE_COMPONENT_TYPE,
+    options.ctx.emit.data(
+      TASK_CHANGE_DATA_TYPE,
       {
         collectionId: event.collectionId,
         taskId: event.taskId,
@@ -198,9 +196,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       },
       {
         key: `${event.collectionId}/${event.taskId}`,
-        ...(options.changeVisibility !== undefined
-          ? { itemVisibility: options.changeVisibility }
-          : {}),
+        itemVisibility: options.changeVisibility ?? { client: true, history: false },
       }
     );
   };

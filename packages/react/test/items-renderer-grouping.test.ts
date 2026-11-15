@@ -3,16 +3,16 @@
  *
  * Regression guard for FIX-384: the grouping path must run AFTER dedup,
  * sub-agent filter, and container-owned suppression — otherwise supervisor /
- * blackboard streams leak sub-agent items and raw JSON for container-owned
- * components into the main conversation.
+ * blackboard streams leak sub-agent items and container-owned data items
+ * into the main conversation.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import type {
   ToolOutputItem,
-  ComponentItem,
   ContainerItem,
+  DataItem,
   MessageItem,
   OutputItem,
   ReasoningItem
@@ -66,17 +66,17 @@ function reasoningItem(id: string, overrides: Partial<ReasoningItem> = {}): Reas
   };
 }
 
-function componentItem(id: string, component: string, overrides: Partial<ComponentItem> = {}): ComponentItem {
+function dataItem(id: string, dataType: string, overrides: Partial<DataItem> = {}): DataItem {
   return {
     id,
-    type: "component",
+    type: "data",
     status: "completed",
     requestId: "req",
     itemIndex: 0,
     ts: 0,
     provenance: { blockName: "gen", blockInstanceId: "b1", phase: "main" },
-    component,
-    data: {},
+    dataType,
+    value: {},
     ...overrides,
   };
 }
@@ -236,11 +236,11 @@ describe("buildItemRenderStream — filters apply before grouping (regression fo
     }
   });
 
-  it("suppresses container-owned component items so raw JSON doesn't leak into the stream", () => {
+  it("suppresses container-owned data items so the container alone draws them", () => {
     const containerBlockId = "plan-block-1";
     const items: OutputItem[] = [
       containerItem("c1", containerBlockId, "plan"),
-      componentItem("pt1", "plan-task", { ownedBy: containerBlockId }),
+      dataItem("pt1", "plan-task", { ownedBy: containerBlockId }),
       messageItem("m1"),
     ];
     const renderers: RendererRegistry = {
@@ -267,10 +267,10 @@ describe("buildItemRenderStream — filters apply before grouping (regression fo
     expect(stream).toHaveLength(2);
   });
 
-  it("deduplicates keyed component items before rendering", () => {
+  it("deduplicates keyed data items before rendering", () => {
     const items: OutputItem[] = [
-      componentItem("c1", "plan-view", { key: "plan", data: { v: 1 } }),
-      componentItem("c2", "plan-view", { key: "plan", data: { v: 2 } }),
+      dataItem("c1", "plan-view", { key: "plan", value: { v: 1 } }),
+      dataItem("c2", "plan-view", { key: "plan", value: { v: 2 } }),
     ];
     const stream = buildItemRenderStream(items, undefined);
     expect(stream).toHaveLength(1);

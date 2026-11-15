@@ -22,6 +22,7 @@ import type {
 import type {
   Content,
   FileContent,
+  DataItem,
   ItemVisibility,
   MessageItem,
   OutputItem,
@@ -40,12 +41,14 @@ import { budgetHistoryFiles } from "./history-files";
 
 /**
  * Set of item types that enter LLM context.
- * `tool_output` is the dedicated tool-result type.
+ * `tool_output` is the dedicated tool-result type. A `data` item enters only
+ * when its emitter opted it into history (`resolveItemVisibility`).
  */
 export const LLM_AUDIENCE_TYPES = new Set([
   "message",
   "reasoning",
-  "tool_output"
+  "tool_output",
+  "data"
 ]);
 
 // FIX-1772.
@@ -157,6 +160,14 @@ export function itemToLLMMessages(item: RuntimeItem, allItems: readonly RuntimeI
       buildAssistantToolCallMessage([{ ...call, input }]),
       buildToolResultMessage(call, { type: "text", value: resultText })
     ];
+  }
+
+  if (item.type === "data") {
+    // A record its emitter opted into history: one assistant line naming the
+    // record's type, then its value as JSON. Assistant, as a handler-emitted
+    // message is: the flow recorded it, nobody said it to the flow.
+    const data = item as DataItem;
+    return [{ role: "assistant", content: `[${data.dataType}] ${JSON.stringify(data.value)}` }];
   }
 
   return [];

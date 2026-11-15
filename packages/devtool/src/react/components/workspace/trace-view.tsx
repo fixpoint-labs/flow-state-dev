@@ -730,8 +730,8 @@ function getItemPreview(item: DevtoolItem): string {
         .join("");
       return rText.slice(0, 60) + (rText.length > 60 ? "..." : "");
     }
-    case "component":
-      return item.component;
+    case "data":
+      return item.dataType;
     case "container":
       return item.blockName + (item.label ? ` (${item.label})` : "");
     case "state_change":

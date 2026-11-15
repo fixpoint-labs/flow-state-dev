@@ -155,7 +155,7 @@ describe("followSessionItems", () => {
 
   it("still attributes a task's newest steps when its claim is older than the window, through the claims read on their own", async () => {
     // The board claimed t1 first; 260 of its steps follow, so the newest 200 hold no claim.
-    const claim = { id: "tc1", type: "component", component: "task-change", status: "completed", requestId: "req_board", itemIndex: 0, ts: 1, data: { collectionId: "tasks/c1", taskId: "t1", kind: "claimed" } };
+    const claim = { id: "tc1", type: "data", dataType: "task-change", status: "completed", requestId: "req_board", itemIndex: 0, ts: 1, value: { collectionId: "tasks/c1", taskId: "t1", kind: "claimed" } };
     const steps = Array.from({ length: 260 }, (_, i) => ({ ...message(`m${i}`, `step ${i}`, 10 + i), taskId: "t1" }));
     const h = host([claim, ...steps]);
     const reads: SessionItems[] = [];

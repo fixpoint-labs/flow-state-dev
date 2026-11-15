@@ -1,19 +1,19 @@
 /**
  * Pure data-extraction helpers for the `<TaskPlan />` component.
  *
- * The substrate emits two component item types per task collection:
+ * The substrate emits two data item types per task collection:
  *
  *   - `task-change`: per-task lifecycle events keyed by
- *     `${collectionId}/${taskId}`. `data` carries
+ *     `${collectionId}/${taskId}`. `value` carries
  *     `{ collectionId, taskId, kind, task, prevStatus? }`.
  *   - `task-board-meta`: board-level aggregate state keyed by
- *     `${collectionId}`. `data` carries `{ collectionId, status, counts? }`
+ *     `${collectionId}`. `value` carries `{ collectionId, status, counts? }`
  *     where `status` is open-ended (substrate emits `"active" | "completed"`;
  *     pattern wrappers extend with strings like `"planning"`, `"replanning"`,
  *     `"reviewing"`).
  *
- * The renderer subscribes to all items, filters by component type and
- * `data.collectionId`, and resolves to the latest emission per `key`.
+ * The renderer subscribes to all items, filters by data type and
+ * `value.collectionId`, and resolves to the latest emission per `key`.
  *
  * Latest-wins is consumer-side only — the server stores every emission as a
  * distinct item id, so we reverse-scan and keep the first hit per key.
@@ -21,7 +21,7 @@
  * Lives as a `.ts` file (not `.tsx`) so it's typechecked and testable
  * independent of the JSX wrapper. No React imports here.
  */
-import type { OutputItem, ComponentItem } from "@flow-state-dev/core/items";
+import type { OutputItem, DataItem } from "@flow-state-dev/core/items";
 import {
   attributeItemsToTasks,
   collectAttributedItemIds,
@@ -131,7 +131,7 @@ export type TaskPlanState = {
 };
 
 // ---------------------------------------------------------------------------
-// Component item type strings — duplicated from substrate to keep the registry
+// Data item type strings — duplicated from substrate to keep the registry
 // component free of `@flow-state-dev/orchestration` / `@flow-state-dev/patterns`
 // imports at runtime.
 // ---------------------------------------------------------------------------
@@ -165,8 +165,8 @@ function migrateCounts<T extends { held?: number }>(counts: T | undefined): T | 
   return foldCount(counts, LEGACY_HELD_STATUS, "held");
 }
 
-export const TASK_CHANGE_COMPONENT = "task-change";
-export const TASK_BOARD_META_COMPONENT = "task-board-meta";
+export const TASK_CHANGE_DATA_TYPE = "task-change";
+export const TASK_BOARD_META_DATA_TYPE = "task-board-meta";
 
 // ---------------------------------------------------------------------------
 // Section ordering
@@ -214,9 +214,9 @@ export function findLatestCollectionRequestId(
 ): string | undefined {
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i]!;
-    if (!isComponentItem(item)) continue;
-    if (item.component !== TASK_CHANGE_COMPONENT) continue;
-    const data = item.data as TaskChangeData;
+    if (!isDataItem(item)) continue;
+    if (item.dataType !== TASK_CHANGE_DATA_TYPE) continue;
+    const data = item.value as TaskChangeData;
     if (data.collectionId !== collectionId) continue;
     return item.requestId;
   }
@@ -266,15 +266,15 @@ export function collectTaskOwnedItemIds(
 ): Set<string> {
   const boards = new Set<string>();
   for (const item of items) {
-    if (!isComponentItem(item) || item.component !== TASK_BOARD_META_COMPONENT) continue;
-    const collectionId = (item.data as TaskBoardMetaData).collectionId;
+    if (!isDataItem(item) || item.dataType !== TASK_BOARD_META_DATA_TYPE) continue;
+    const collectionId = (item.value as TaskBoardMetaData).collectionId;
     if (collectionId !== undefined) boards.add(collectionId);
   }
   if (boards.size === 0) return new Set();
   const planned = new Set<string>();
   for (const item of items) {
-    if (!isComponentItem(item) || item.component !== TASK_CHANGE_COMPONENT) continue;
-    const data = item.data as TaskChangeData;
+    if (!isDataItem(item) || item.dataType !== TASK_CHANGE_DATA_TYPE) continue;
+    const data = item.value as TaskChangeData;
     if (data.collectionId !== undefined && boards.has(data.collectionId) && data.taskId !== undefined) {
       planned.add(data.taskId);
     }
@@ -328,8 +328,8 @@ type TaskBoardMetaData = {
   counts?: BoardCounts;
 };
 
-function isComponentItem(item: OutputItem): item is ComponentItem {
-  return item.type === "component";
+function isDataItem(item: OutputItem): item is DataItem {
+  return item.type === "data";
 }
 
 /**
@@ -352,10 +352,10 @@ export function extractTaskPlanState(
 
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i]!;
-    if (!isComponentItem(item)) continue;
+    if (!isDataItem(item)) continue;
 
-    if (item.component === TASK_CHANGE_COMPONENT) {
-      const data = item.data as TaskChangeData;
+    if (item.dataType === TASK_CHANGE_DATA_TYPE) {
+      const data = item.value as TaskChangeData;
       if (data.collectionId !== collectionId) continue;
       if (data.taskId === undefined || data.task === undefined) continue;
       if (tasks.has(data.taskId)) continue; // first match in reverse = latest
@@ -367,8 +367,8 @@ export function extractTaskPlanState(
       continue;
     }
 
-    if (item.component === TASK_BOARD_META_COMPONENT && !boardMetaResolved) {
-      const data = item.data as TaskBoardMetaData;
+    if (item.dataType === TASK_BOARD_META_DATA_TYPE && !boardMetaResolved) {
+      const data = item.value as TaskBoardMetaData;
       if (data.collectionId !== collectionId) continue;
       boardMeta = {
         status: data.status,
@@ -508,7 +508,7 @@ export function groupTasksByAssignee(
 
 /**
  * Scans an item array for every distinct `collectionId` referenced by a
- * `task-change` or `task-board-meta` component item. Used by the DevTool
+ * `task-change` or `task-board-meta` data item. Used by the DevTool
  * task-collections panel to enumerate boards in the active session without
  * any pattern-specific knowledge.
  */
@@ -517,14 +517,14 @@ export function discoverCollections(
 ): string[] {
   const ids = new Set<string>();
   for (const item of items) {
-    if (!isComponentItem(item)) continue;
+    if (!isDataItem(item)) continue;
     if (
-      item.component !== TASK_CHANGE_COMPONENT &&
-      item.component !== TASK_BOARD_META_COMPONENT
+      item.dataType !== TASK_CHANGE_DATA_TYPE &&
+      item.dataType !== TASK_BOARD_META_DATA_TYPE
     ) {
       continue;
     }
-    const data = item.data as { collectionId?: string };
+    const data = item.value as { collectionId?: string };
     if (typeof data.collectionId === "string" && data.collectionId.length > 0) {
       ids.add(data.collectionId);
     }

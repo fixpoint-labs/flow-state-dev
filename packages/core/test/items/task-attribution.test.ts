@@ -10,7 +10,7 @@
  * pass scoped to one collection ignores another collection's tasks.
  */
 import { describe, expect, it } from "vitest";
-import type { ComponentItem, MessageItem, OutputItem, SourceItem } from "../../src/items";
+import type { DataItem, MessageItem, OutputItem, SourceItem } from "../../src/items";
 import {
   attributeItemsToTasks,
   itemsForTask,
@@ -28,17 +28,17 @@ function taskChange(args: {
   taskId: string;
   kind: "added" | "claimed" | "completed" | "errored" | "cancelled" | "retried";
   ts: number;
-}): ComponentItem {
+}): DataItem {
   return {
-    id: nextId("item_component"),
-    type: "component",
+    id: nextId("item_data"),
+    type: "data",
     status: "completed",
     requestId: "req_1",
     itemIndex: 0,
     provenance: { blockName: "task-board", blockInstanceId: "task-board#1", phase: "main" },
     ts: args.ts,
-    component: "task-change",
-    data: { collectionId: args.collectionId, taskId: args.taskId, kind: args.kind },
+    dataType: "task-change",
+    value: { collectionId: args.collectionId, taskId: args.taskId, kind: args.kind },
   };
 }
 
@@ -191,16 +191,16 @@ describe("attributeItemsToTasks / itemsForTask / collectAttributedItemIds", () =
     expect(owned).toEqual(new Set([m1.id, s1.id, m2.id]));
   });
 
-  describe("substrate components are never a worker's output", () => {
+  describe("substrate records are never a worker's output", () => {
     // FIX-963. A recorder-failure entry says the BOARD could not record a
     // result; it is stamped with the task it was recording, so without an
     // exclusion a reader asking "what did this worker produce?" is handed the
     // substrate's own trouble as though the worker had emitted it — and the
     // worker may well have succeeded.
-    function recorderFailure(args: { taskId: string; ts: number }): ComponentItem {
+    function recorderFailure(args: { taskId: string; ts: number }): DataItem {
       return {
-        id: nextId("item_component"),
-        type: "component",
+        id: nextId("item_data"),
+        type: "data",
         status: "completed",
         requestId: "req_1",
         itemIndex: 0,
@@ -211,8 +211,8 @@ describe("attributeItemsToTasks / itemsForTask / collectAttributedItemIds", () =
         },
         ts: args.ts,
         taskId: args.taskId,
-        component: "task-board-recorder-failure",
-        data: {
+        dataType: "task-board-recorder-failure",
+        value: {
           collectionId: "a",
           taskId: args.taskId,
           recorder: "complete",
@@ -222,12 +222,12 @@ describe("attributeItemsToTasks / itemsForTask / collectAttributedItemIds", () =
       };
     }
 
-    function boardMeta(args: { taskId: string; ts: number }): ComponentItem {
+    function boardMeta(args: { taskId: string; ts: number }): DataItem {
       return {
         ...recorderFailure(args),
-        id: nextId("item_component"),
-        component: "task-board-meta",
-        data: { collectionId: "a" },
+        id: nextId("item_data"),
+        dataType: "task-board-meta",
+        value: { collectionId: "a" },
       };
     }
 
@@ -260,7 +260,7 @@ describe("attributeItemsToTasks / itemsForTask / collectAttributedItemIds", () =
       expect(
         bucket.some(
           (i) =>
-            (i as ComponentItem).component === "task-board-recorder-failure"
+            (i as DataItem).dataType === "task-board-recorder-failure"
         )
       ).toBe(false);
     });

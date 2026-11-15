@@ -3,7 +3,7 @@
  *
  * Centralizing init/transition logic here keeps the two backings in
  * lockstep on default values, claim eligibility, and the post-mutation
- * task shape that ends up on the emitted `task-change` component item.
+ * task shape that ends up on the emitted `task-change` data item.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { ticketNamesTask } from "../claim-ticket";

@@ -130,7 +130,7 @@ async function logRows(h: BoardHost) {
 async function receivedIn(h: BoardHost, sessionId: string, id: string) {
   return (await h.requestsOf(sessionId))
     .flatMap((request) => (request as unknown as { items?: any[] }).items ?? [])
-    .filter((item) => item.type === "component" && item.component === "workforce:received" && item.data?.id === id);
+    .filter((item) => item.type === "data" && item.dataType === "workforce:received" && item.value?.id === id);
 }
 
 async function toolOutputs(h: BoardHost, sessionId: string) {

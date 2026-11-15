@@ -63,7 +63,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../src/components/Conversation";
 import { flowUploader } from "../src/lib/files";
-import { RECEIVED_MESSAGE_COMPONENT, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
+import { RECEIVED_MESSAGE_DATA_TYPE, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 
 // The reviewer's conversation: the session at its derived address, where a worker's message lands too.
 const s1 = await deriveWorkerSessionId({ userId: "u_1", orgId: "org_1", flow: "agent", criteria: { worker: "eng.reviewer" } });
@@ -193,10 +193,10 @@ describe("what a view of its own draws", () => {
     const received = {
       id: "m",
       requestId: "r",
-      type: "component",
-      component: RECEIVED_MESSAGE_COMPONENT,
+      type: "data",
+      dataType: RECEIVED_MESSAGE_DATA_TYPE,
       ts: Date.UTC(2026, 9, 7, 17, 33),
-      data: { id: "msg_1", from: "eng.author", text: "the codename?", inReplyTo: "msg_0" },
+      value: { id: "msg_1", from: "eng.author", text: "the codename?", inReplyTo: "msg_0" },
     };
     read.mockResolvedValue({ items: [received, item("a", "BLUE-HERON")], truncated: false });
     drawn([session(s1)]);

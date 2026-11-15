@@ -19,8 +19,8 @@
  * This asserts on the real, exported `chatAssistantRenderers` registry
  * object at the exact keys `resolveRenderer` reads at render time
  * (`packages/react/src/registry/block-renderers.ts`: a `container` item
- * resolves via `renderers.container?.[item.component]`, a `component` item
- * via `renderers.component?.[item.component]`) — not a synthetic registry,
+ * resolves via `renderers.container?.[item.component]`, a `data` item via
+ * `renderers.data?.[item.dataType]`) — not a synthetic registry,
  * and not a type-level assertion.
  */
 import { describe, expect, it } from "vitest";
@@ -35,7 +35,7 @@ describe("chat-assistant renderer dispatch (FIX-1477 S9 Bugbot fix)", () => {
     expect(chatAssistantRenderers.container?.routedSpecialists).toBe(RoutedSpecialists);
   });
 
-  it("does not leave routedSpecialists registered under the component map (that item type never arrives)", () => {
+  it("does not leave routedSpecialists registered under the suspension renderer map", () => {
     expect(chatAssistantRenderers.component?.routedSpecialists).toBeUndefined();
   });
 });
