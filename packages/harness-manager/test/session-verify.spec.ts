@@ -128,7 +128,8 @@ describe("a session's checks at the end of a turn", () => {
   /**
    * One turn on a fresh session whose directory appears only when provisioned, with a harness
    * that asks its cwd feed for where it works, as a real harness does. How many times the turn
-   * provisioned the workspace, and the prompt the harness was handed.
+   * provisioned the workspace (in all, and before the harness asked for its directory), and the
+   * prompt the harness was handed.
    */
   async function freshTurn(sessionId: string, commands: string[] | ((context: { cwd: string }) => string[])) {
     const root = mkdtempSync(join(tmpdir(), "session-verify-fresh-"));
@@ -146,11 +147,13 @@ describe("a session's checks at the end of a turn", () => {
     };
     const prompts: string[] = [];
     const cwds: string[] = [];
+    let provisionedBeforeHarness: number | null = null;
     const harness = (feeds: { cwd: (ctx: never) => Promise<string> }) =>
       handler({
         name: "stub-harness",
         inputSchema: z.object({ prompt: z.string() }),
         execute: async (input: { prompt: string }, ctx: unknown) => {
+          provisionedBeforeHarness = provisioned;
           cwds.push(await feeds.cwd(ctx as never));
           prompts.push(input.prompt);
           return { source: "stub/test", status: "completed", sessionId: null, url: null, dispatchedAt: 0, outcome: "failed", finalMessage: null };
@@ -174,7 +177,7 @@ describe("a session's checks at the end of a turn", () => {
       runtimeConfig: {},
     } as never);
     rmSync(root, { recursive: true, force: true });
-    return { provisioned, prompts, cwds, wt };
+    return { provisioned, provisionedBeforeHarness, prompts, cwds, wt };
   }
 
   it("names checks a resolver reads from the session's directory on a fresh session's first turn, setting it up once", async () => {
@@ -189,6 +192,8 @@ describe("a session's checks at the end of a turn", () => {
   it("names a fixed list without setting up the workspace for the brief", async () => {
     const turn = await freshTurn("s-fresh-list", ["node green.mjs"]);
     expect(turn.prompts[0]).toContain("- `node green.mjs`");
+    // Writing a fixed list into the brief needs no directory, so nothing is set up until the harness asks.
+    expect(turn.provisionedBeforeHarness).toBe(0);
     expect(turn.provisioned).toBe(1);
   });
 
