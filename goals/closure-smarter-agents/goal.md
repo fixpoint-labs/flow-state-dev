@@ -68,9 +68,10 @@ the asked worker's `WORKER.md` for the run (Kitchen Sink: each specialist the de
 At the wrap they set nothing. The fitting skill is a fixture
 (its marker is held out) and is planted on every pass. Everything planted is journaled and put
 back after the run, and by the next run if the machine killed this one (`closure.mts` →
-`planted`). A project's checks (the Claude Code-style lab's and Shift Manager's project row,
-Teammates' `TEAMMATES_CHECKS`, Kitchen Sink's `KITCHEN_SINK_HARNESS_CHECKS`) are the project's
-data, a fixture on every pass.
+`planted`). The checks a coding run passes (the Claude Code-style lab's `CLAUDE_CODE_STYLE_CHECKS`,
+Shift Manager's project row, Teammates' `TEAMMATES_CHECKS`, Kitchen Sink's
+`KITCHEN_SINK_HARNESS_CHECKS`) are the app's or the project's data, a fixture on every pass.
+The control's older Claude Code-style tree reads them off its project row instead.
 
 **Sweep** (`verdict/run.mts`): no app's `WORKER.md` carries date or "done" guidance of its own
 (epic ER-3). Reported on every pass; a failure at the wrap.

@@ -162,6 +162,7 @@ fresh agent: this dispatch has no sub-agent tool. One finding folded: the storag
   is settled by the order the work took: the lab's sessions bind to a repository here, while the
   picker still lists workforce projects until FIX-2594's dialog lands; the open writes the picked
   project's repository on the session, and the run never reads the project. The lab runs no
-  project checks, and `projectSourceCapability` stays until its words leave with the adapter.
+  project checks; its checks are the host's (`CLAUDE_CODE_STYLE_CHECKS`, as Teammates' are), and
+  `projectSourceCapability` stays until its words leave with the adapter.
   The read-once of a session opened on a project before this landed is not built: such a session
   has no repository, and its runs are refused `no-repository` (raised with the owner under BP-030).

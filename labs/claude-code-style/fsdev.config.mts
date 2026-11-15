@@ -31,9 +31,14 @@
  * before the server takes it as interrupted (default one minute), so a goal can
  * read a dead run's row before the board takes it back.
  *
+ * A coding run that changed files is done only when the host's checks pass:
+ * `CLAUDE_CODE_STYLE_CHECKS`, `;`-separated commands such as `pnpm typecheck;
+ * pnpm test`, each one command with no shell (a shell operator stops the lab
+ * at start). Unset, none. A project's own `checks` are not read.
  * `CLAUDE_CODE_STYLE_SETUP`, one command such as `pnpm install --frozen-lockfile`,
- * runs in each fresh worktree before its run starts; it runs with no shell,
- * and a command that needs one stops the lab at start. Unset, nothing runs.
+ * runs in each fresh worktree before its run starts, so the checks find what they
+ * need; it runs with no shell, and a command that needs one stops the lab at
+ * start. Unset, nothing runs.
  *
  * A session asked to follow a GitHub pull request reads GitHub with
  * `GITHUB_TOKEN`, or what `gh auth token` answers at start, for
@@ -44,7 +49,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { delimiter, resolve } from "node:path";
 import { checkoutCommandProblem, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
-import { openLab, operatorGitHubToken } from "./host.mts";
+import { checkCommands, openLab, operatorGitHubToken } from "./host.mts";
 
 const data = resolve(process.env.CLAUDE_CODE_STYLE_DATA ?? ".fsdev/claude-code-style");
 mkdirSync(data, { recursive: true });
@@ -75,6 +80,8 @@ const { flowState } = await openLab({
   // The repositories a run works in a worktree of, by their real paths.
   repositories: (process.env.CLAUDE_CODE_STYLE_REPOSITORIES ?? startedIn()).split(delimiter).filter((path) => path !== "" && existsSync(path)).map((path) => realpathSync(path)),
   ...(setup === undefined ? {} : { setup }),
+  // The commands a coding run that changed files must pass in its worktree, `;`-separated.
+  checks: checkCommands(process.env.CLAUDE_CODE_STYLE_CHECKS),
   ...(process.env.CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS === undefined ? {} : { staleThresholdMs: Number(process.env.CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS) }),
   // `GOAL_CONTROL=no-repository-check` leaves the project repository check off, for the goal check's control.
   checkRepository: process.env.GOAL_CONTROL !== "no-repository-check",

@@ -58,7 +58,7 @@ import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
 import { githubSubscriptionProvider, projectSourceCapability } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import Database from "better-sqlite3";
-import { localWorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { checkoutCommandProblem, localWorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { defineProjectsFlow, PROJECTS_FLOW } from "./flows/projects.mts";
 import { REPOSITORY_FIELD, sessionFields } from "./flows/session-repository.mts";
 
@@ -80,6 +80,8 @@ export interface LabOptions {
   repositories: readonly string[];
   /** A command each fresh worktree runs before its run starts. Absent: none. */
   setup?: WorkspaceSetup;
+  /** The commands a coding run that changed files must pass in its worktree ({@link checkCommands}). Absent: none. */
+  checks?: readonly string[];
   /** With the scripted coder: how long a silent request waits before the server takes it as interrupted. Absent: one minute. */
   staleThresholdMs?: number;
   /** False leaves the project repository check off: the goal check's control. Default true. */
@@ -134,12 +136,32 @@ function operatorGitHub(operator: string, token: string | undefined, apiUrl: str
   };
 }
 
+/**
+ * The checks `CLAUDE_CODE_STYLE_CHECKS` names, `;`-separated: `pnpm typecheck; pnpm test`.
+ * Each is one command with no shell, so a `;` can only separate two of them.
+ * `undefined` when unset or blank.
+ *
+ * @throws When a command can't be split into words, or uses a shell operator.
+ */
+export function checkCommands(value: string | undefined): string[] | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  const commands = value.split(";").map((command) => command.trim()).filter((command) => command !== "");
+  for (const command of commands) {
+    const problem = checkoutCommandProblem(command);
+    if (problem !== undefined) throw new Error(`CLAUDE_CODE_STYLE_CHECKS: ${problem}`);
+  }
+  return commands;
+}
+
 /** A schedule index in a SQLite file of its own: the index has one table, and one index ticks one flow. */
 function scheduleIndexAt(filename: string) {
   const db = new Database(filename);
   initializeSchema(db);
   return createSQLiteScheduleIndex(db);
 }
+
+/** How long a coding run's checks may take together. */
+const CHECKS_TIMEOUT_MS = 10 * 60_000;
 
 /** The lab's host. */
 export async function openLab(options: LabOptions): Promise<{ flowState: ReturnType<typeof createFlowState> }> {
@@ -178,6 +200,8 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
       ? undefined
       : (repository: string) => workspace.checkRepository!(listed(repository) ?? repository, { ignored: ASK_MARKER_IGNORED });
   const projects = defineProjectsFlow({ checkRepository })({ id: PROJECTS_FLOW }) as { id: string };
+  // The operator's checks, run in a run's worktree once it changed files. Not a project's: the lab runs none.
+  const checks = { commands: [...(options.checks ?? [])], timeoutMs: CHECKS_TIMEOUT_MS };
   const goalFlows = options.goalFlows === undefined ? [] : ((await import(pathToFileURL(options.goalFlows).href)).default as { id: string }[]);
 
   // Set, every harness a worker names is harness-manager's scripted coder under its own id: a step
@@ -212,8 +236,8 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
         github: { provider: github, poll: true },
         sessionFields,
       }),
-      // A task works in its session's repository, through the host's run source.
-      harnesses({ workspace, logReadiness: true }),
+      // A task works in its session's repository, through the host's run source, and the operator's checks pass first.
+      harnesses({ workspace, checks, logReadiness: true }),
       scripted === undefined
         ? claude
         : claude.without(harnesses.slots.harnesses, "claude-code").without(harnesses.slots.harnesses, "claude-code-plan"),
@@ -229,7 +253,7 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
     adapters: [createScheduledTransportAdapter()],
     durable: true,
     // A shutdown waits for a coding run still going, its checks and judge included, rather than the engine's 30 s default.
-    dispatchDrainTimeoutMs: codingDrainBudgetMs({}),
+    dispatchDrainTimeoutMs: codingDrainBudgetMs({ checks }),
     ...(scripted !== undefined && options.staleThresholdMs !== undefined ? { staleSweepThresholdMs: options.staleThresholdMs } : {}),
     resolvePrincipal: () => ({ userId: options.userId, orgId: "claude-code-style-lab" }),
     devtool: { userId: options.userId },

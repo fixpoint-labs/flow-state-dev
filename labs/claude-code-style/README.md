@@ -147,8 +147,12 @@ that repository under the data folder, on a branch of its own that you'll find i
 branch and files don't change. A repository not in `CLAUDE_CODE_STYLE_REPOSITORIES` gets a clone
 under the data folder instead. Before a run settles, a judge (harness-manager's `goalJudge`) reads
 its answer and commits against the task's goal: it can send the run back, ask you a question, or
-let it through, and threads mode shows its verdict on the coding thread's card. The lab runs no
-project checks: a project's `checks` are not read.
+let it through, and threads mode shows its verdict on the coding thread's card. A run that changed files
+is done only when the host's checks pass: the commands `CLAUDE_CODE_STYLE_CHECKS` names
+(`;`-separated, each one command with no shell; none by default) run in the run's worktree after
+the harness finishes, and a red one sends the run back with the command's output in its next
+brief. A run that changed no files, such as one that answers a question, skips them. A project's
+own `checks` are not read.
 
 Every task card shows the model its run uses and a token count that rises while the run works,
 and the harness tag names the harness the run reported. Finished rows keep the final total, and a

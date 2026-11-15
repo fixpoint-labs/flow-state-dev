@@ -43,15 +43,17 @@ const driver: AppDriver = {
       cwd: p.root,
       args: ["--config", join(lab(p.root), "fsdev.config.mts")],
       logTo: join(scratch, "server.log"),
-      env: { CLAUDE_CODE_STYLE_DATA: data, CLAUDE_CODE_STYLE_USER: USER },
+      // The host's checks are the operator's data, as Teammates' working folder's are: a fixture, not a switch.
+      env: { CLAUDE_CODE_STYLE_DATA: data, CLAUDE_CODE_STYLE_USER: USER, CLAUDE_CODE_STYLE_CHECKS: d.coder.check },
       model: p.model,
     });
     const fsd = clientFor(served.origin, USER);
     const workforce = createWorkforceClient(fsd);
     const projectId = "closure";
     const projects = (await fsd.flow("projects").createSession()).id;
-    // The project's checks are project data the coder's run reads, like its repository: a fixture, not a switch.
-    await act(fsd, "projects", projects, "createProject", { id: projectId, title: "Closure", visibility: "private", repository: `file://${repo}`, checks: [d.coder.check] });
+    // An older tree (the control's commit) reads its checks off the project instead of the host.
+    const projectChecks = p.root === REPO_ROOT ? {} : { checks: [d.coder.check] };
+    await act(fsd, "projects", projects, "createProject", { id: projectId, title: "Closure", visibility: "private", repository: `file://${repo}`, ...projectChecks });
     const project = { visibility: "private" as const, id: projectId };
     /** A fresh session of `worker`, set to the project and opened on its repository, as the lab's open does. */
     const sessionOf = async (worker: string) => {
