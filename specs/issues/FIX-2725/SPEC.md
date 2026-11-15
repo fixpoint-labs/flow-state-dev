@@ -21,7 +21,8 @@ to delete its adapter.
 
 **A screen shows a user's sessions with a worker, a session's turns and a session's coding board
 by watching three views the kits install, current within a second of each change with no poll,
-showing only the caller's own sessions, so an app writes none of that assembly.**
+showing only the caller's own sessions, so an app writes none of that assembly. A fourth view,
+recorded work, is a task's detail on the coding worker flow.**
 
 | Is it the right goal? | |
 |---|---|
@@ -47,7 +48,7 @@ never reads the recorder.
 |---|---|
 | **Goal check** | `goals/views/screens-read-sessions-live/` (new), built on `goals/views/a-screen-watches-a-view/` and `goals/realtime/app-views-read-on-notice/` (serve host, poll off, scratch-patch controls) · model `n/a`, scripted harness · run by the implementer at completion · verdict on the implementation PR |
 | **Signal** | `a:equals-store`: after each step, each of the three answers equals a fresh read of the store (sessions with their running state and default, turns and their status, board rows with holds, harness, review and error), within 1 s, poll off. `b:quiet`: during one reply of 40 streamed chunks, the session list, the turns view and the board each run at most 3 times. `c:own-only`: bob's call with alice's session id answers nothing of hers and names no topic of hers. `d:no-actions`: no view run starts a request |
-| **Input** | Two workers, one on the agent flow and one coding worker with `harness: codex`. A second session opened from another tab. A session's work project changed. A first task filed on an empty board. A task that fails once, then is retried. An app whose `agent` entry is its own flow must pass `a` too |
+| **Input** | Two workers, one on the agent flow and one coding worker with `harness: codex`. A second session opened from another tab. A session's work project changed. A first task filed on an empty board. A task that settles, whose `onTaskSettled` turn shows as running. A task that fails once, then is retried. An app whose `agent` entry is its own flow must pass `a` too |
 | **Anti-game** | Don't assert on the recorder, the hearing list or a view's unit test. Keep the poll off: a timer hides a missed notice |
 | **Control that must fail** | `GOAL_CONTROL=unrecorded-session-reads`: `list` and `turns` record nothing, so a new session never reaches the list; FAILS `a:equals-store`. `GOAL_CONTROL=admit-by-input`: the reads skip the owner rule; FAILS `c:own-only`. Today's `main` has no views to watch |
 
@@ -100,7 +101,7 @@ flowchart LR
 
 | Adapter area (FIX-2628's count) | Replaced by |
 |---|---|
-| Worker sessions, ~220: `watchSessions`, `rowOf`, `runningTurns`, `firstLineOf`, `waitingCountFor` | workforce's **worker sessions** view: per row the id, title, worker, last change, whether its latest turn runs, the session's fields, `isDefault` (default first, then latest), and the tasks waiting on the user by id and attempt, so the app takes away its own dismissals. Which sessions count is `listWorkerSessions`' rule. The first-line fallback is [Q2](DECISIONS.md#q2) |
+| Worker sessions, ~220: `watchSessions`, `rowOf`, `runningTurns`, `firstLineOf`, `waitingCountFor` | workforce's **worker sessions** view: per row the id, title, worker, last change, whether a turn runs in it, the session's fields, `isDefault` (default first, then latest), and the tasks waiting on the user by id and attempt, so the app takes away its own dismissals. Which sessions count is `listWorkerSessions`' rule. The first-line fallback is [Q2](DECISIONS.md#q2) |
 | Session turns, ~500: `watchThread`'s request reads, stopping, retry, and `watchTaskWork`'s work | workforce's **session turns** view (each turn's status, times, source and error); the words stay on `sessionFeed` and the in-flight call on the request stream; `entriesOf` and `withStopped` move unchanged, as FIX-2628 says; the plan and pull requests come from the **recorded work** view |
 | Coding board, ~350: `boardOf`, `harnessOf`, `tasksAndTopicsOf`, `holdsOf`, `watchTasks`, outputs, errors, review answers' lookup | harness-manager's **coding board** view: the task-list rows plus each one's open holds and where their answers go, its harness, review, landing and error, and its pull requests by number. Answering stays the Inbox client's `answerOne` and the board's actions |
 | Row types, ~150 | The views' output types |
@@ -143,7 +144,7 @@ flowchart LR
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met), at that size:** three live views, own sessions
+**[The goal](#the-goal-and-how-well-know-its-met), at that size:** three screens on live views (a fourth, recorded work, is a task's detail), own sessions
 only, no poll, and nothing left for an app to assemble. If wrong: views that exist but still leave
 the lab its adapter.
 

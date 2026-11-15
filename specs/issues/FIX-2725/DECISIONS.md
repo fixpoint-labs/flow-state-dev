@@ -32,7 +32,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Keeping the session list a client call an app assembles (`listWorkerSessions`, `fsd.sessions.requests`) · or one read of a whole session, heard on every kind of change |
 | **Because** | A view has no HTTP client, and its value is that the engine knows what it read (FIX-2623 D1). The read already exists for one session (`sessions.read`, `history`) with one owner rule: same user, tenant and org, else `undefined`, so it is not an existence oracle (BP-031). Listing and turns are the two reads missing. A session's only recorded read today, `ViewDependencies.session`, hears `items` too, so a board that read each run session's flow that way would re-run once per streamed chunk |
-| **Locks in** | `RequestSessions` gains `list` (the caller's top-level sessions, filtered at the store by flow and readonly fields, newest first, at most 100 with a `more` flag, each row with its flow, lineage id, updated time and its latest request's action and status) and `turns` (a session's requests: id, action, status, times, source, error code and message; at most 50; no words). `read` also answers the lineage id. A session's flow and lineage never change, so reading them records nothing; `read` records only when its `state` is read, heard as `run` and `state`. `list` is heard as `run` on the caller's user topic; `turns` as `request` on that session's topic. Nothing is recorded for a session the read doesn't answer. User and session views may use these reads; org views refuse them |
+| **Locks in** | `RequestSessions` gains `list` (the caller's top-level sessions, filtered at the store by flow and readonly fields, newest first, at most 100 with a `more` flag, each row with its flow, lineage id and updated time) and `turns` (the requests of one session, or of up to 100 at once, filtered at the store by status and action: id, session, action, status, times, source, error code and message; at most 50 a session; no words). `read` also answers the lineage id. A session's flow and lineage never change, so reading them records nothing; `read` records only when its `state` is read, heard as `run` and `state`. `list` is heard as `run` on the caller's user topic; `turns` as `request` on each session's topic it names. Nothing is recorded for a session the read doesn't answer. User and session views may use these reads; org views refuse them |
 
 ![D1, what a view may read of the caller's sessions. Chosen: list them and read their turns, admitted by the server and heard on the kinds that change them. Instead of: the client's list call. It comes down to who assembles: with the client call every app keeps the per-row reads and its own subscription; with the view the engine records and hears them. Price: two more reads on a public host type. Tie: who may read a session is the same owner rule either way. Locks in list and turns on RequestSessions. Flips if a session list must show other users' sessions](figures/d1-session-reads.svg)
 
@@ -89,9 +89,8 @@ It comes down to the cost on every list: the fallback reads a message per untitl
   `createViewDependencies`, never the raw recorder; `views-dependency-matrix.test.ts` gains a row
   per read, and one for a board read of a named conversation with no entries.
 - **What never changes records nothing.** A session's flow and lineage id; `read`'s `state` getter
-  records, as `recordSessionReads` records a session handle's. The lineage id stays in server
-  code: it reaches a view only to compute a partition (`filingSessionIdOf` digests it) and never
-  enters an answer.
+  records, as `recordSessionReads` records a session handle's. The lineage id is server-only:
+  it feeds `filingSessionIdOf`, which digests it into a partition, and is never in a view's answer.
 - **Heard on what changes it.** `list` on the user topic as `run`. Membership changes are full
   session writes, which publish it; a one-key `patchState` (a work project set, `work-project.ts`)
   publishes nothing there until its request settles, and the request's write then does. `turns`
@@ -113,9 +112,13 @@ It comes down to the cost on every list: the fallback reads a message per untitl
 - **Worker sessions** (workforce, roster flow, keyed by session id): input a worker; rows as the
   [map](SPEC.md#what-replaces-each-part-of-the-adapter) says, `isDefault` and the default first,
   leaving out a task's, a delegate's, a workstream lead's and a project coordinator's session.
-  "A turn runs" is the row's latest request, a door action, in progress.
-- **Session turns** (workforce, roster flow, keyed by request id): a turn is a request of a door
-  action or a task-settled turn, as workforce names them.
+  "A turn runs" is any in-progress request on the session whose action is a turn action, read in
+  one `turns` call across the listed sessions, so a newer request of another action (a work
+  project set, standing rules) never hides a running reply. Waiting tasks are read only for the
+  sessions the list answers (at most 100).
+- **Session turns** (workforce, roster flow, keyed by request id): a turn is a request whose action
+  is `RESPOND_ACTION` (the door) or `TASK_SETTLED_ENTRY` (a settled task's turn), the constants
+  imported, not copied; both views read this one set.
 - **The words stay on the stream.** A view runs whole per notice and a reply publishes `items` per
   stored chunk, so no view carries a thread's words; a screen joins `sessionFeed` and the turns
   view, as FIX-2628 already keeps the transcript on its session address.
@@ -139,7 +142,8 @@ It comes down to the cost on every list: the fallback reads a message per untitl
 | Alternative | Why not |
 |---|---|
 | `turns` as an option on `history` | `history` is the one rule a model's history window reads (settled turns, with words); a screen's every-turn status would fork that rule |
-| "A turn runs" from one `turns` read per row | A read per listed session on every run; the list row carries its latest request instead |
+| "A turn runs" from one `turns` read per row | A read per listed session on every run; one batched read across them instead |
+| "A turn runs" from the latest request's status | A newer request of another action (a work project set) hides a running reply, and `onTaskSettled` is no door action (Codex on #5290) |
 | The worker sessions view counts what waits on the user, dismissals included | Dismissals are the lab's own resource; the view answers ids and attempts, the app subtracts |
 | Pull-request links read by the board from each run session | A user view can't read another flow's session resource without a new read; recorded work already runs where they live |
 | A peer read of another session's resources | No screen needs it once links come from recorded work |
@@ -168,7 +172,7 @@ before it was folded.
 | Finding | Changes the approach? | Disposition |
 |---|---|---|
 | The board would read each run session's flow and the conversation's lineage through the one recorded session read, which hears `items`, so it re-runs per chunk; `PeerSessionView` has no lineage id | Yes | Folded into D1: identity unrecorded, lineage id answered |
-| A worker-session row can't be built from `list` and `turns` alone: running state needs a read per row, the first-line fallback needs messages | Yes | Folded: rows carry the latest request; the fallback is Q2 |
+| A worker-session row can't be built from `list` and `turns` alone: running state needs a read per row, the first-line fallback needs messages | Yes | Folded: running state from one batched `turns` read; the fallback is Q2 |
 | An empty board in a user view hears nothing, so a first filing never wakes the board | Yes | Folded into D2 and the FIX-2625 row (*Extends*); a matrix row |
 | `listWorkerSessions`' membership rule and the route's state-filter guard are private and would be copied | Yes, the Adds | Folded: each moves to one shared place |
 | `listWorkerSessions` has other callers (a teammates goal, a docs page, the lab README, docs-revamp facts), `isDefault` and no row cap | Yes, scope | The view carries `isDefault` and the order; this issue removes the call and moves the teammates goal (no-legacy); the docs page joins the docs line |
@@ -194,7 +198,8 @@ Recorded for the implementer, from the passes on #5290:
   session stream.
 - **Review round 1** — three passes found the board would re-run per chunk through the one
   recorded session read, an empty board heard nothing, and a list row needed more than two reads.
-  A session's identity now records nothing, list rows carry their latest request, and the board
+  A session's identity now records nothing, a list row's running state comes from one batched
+  `turns` read over the turn actions (Codex, on the first try's latest-request rule), and the board
   read names its conversation. Who removes `listWorkerSessions` was decided under the standing
   no-legacy decision: this issue. The words-on-the-stream card became an engineering call, so the
   two owner questions fit the sign-off.
