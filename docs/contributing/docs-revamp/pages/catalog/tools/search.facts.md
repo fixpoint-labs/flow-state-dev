@@ -241,4 +241,8 @@ Evidence: `S/index.ts:38-58` (the whole `execute`), `S/resolver.ts:71-76` (keys 
 ## Revise round 2 additions
 
 - F55. Only Serper and Brave have no depth parameter; Parallel maps `fast` to `basic` and `balanced`/`deep` to `advanced` (F25). The page's tier section now says so, so "each provider maps it" became "providers with a depth setting map it". The Parallel limit moved from "Which provider runs" to the tier section.
+## Revise round 3 additions
+
+- F57. The page's domain-filters section now says `includeDomains` is an allowlist, `excludeDomains` a denylist, both config only so the model cannot set or change them (F29), and that with Perplexity or Sonar an include list drops `excludeDomains`, so an excluded subdomain of an included domain (`blog.arxiv.org`) can still appear (F31). "Which provider runs" gains a worked example: `PERPLEXITY_API_KEY` plus `BRAVE_SEARCH_API_KEY` with `tier: "deep"` runs Perplexity, which is first in order and supports deep while Brave serves only fast and balanced (F7, F11, F12).
+
 - F56. Generator `searchDepth` is `"low" | "medium" | "high"` (`packages/core/src/types/model.ts:31`); the page names the values in its last section.

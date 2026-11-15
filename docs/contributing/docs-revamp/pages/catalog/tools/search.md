@@ -78,7 +78,7 @@ On Exa, `"advanced"` returns each page's full text in `content`. On Parallel, it
 
 ## Domain filters
 
-Restrict results to some domains, or exclude others. Every provider applies them.
+`includeDomains` is an allowlist: results come only from those domains. `excludeDomains` is a denylist. Only config sets them, so the model cannot set or change them from inside a tool call. Every provider applies them.
 
 ```ts title="src/flows/research/tools/web-search.ts"
 import { tools } from "@flow-state-dev/tools";
@@ -89,13 +89,15 @@ export const webSearch = tools.search({
 });
 ```
 
-Perplexity and Perplexity Sonar take an include list or an exclude list, not both. When you set both, only the include list applies. The [Tools reference](../../reference/tools.md) has the details per provider.
+Perplexity and Perplexity Sonar take an include list or an exclude list, not both. When you set both, only the include list is sent and `excludeDomains` is dropped, so an excluded subdomain of an included domain (`blog.arxiv.org` under `arxiv.org`) can still appear in results. The [Tools reference](../../reference/tools.md) has the details per provider.
 
 ## Which provider runs
 
 When you don't set `provider`, the tool uses the first provider that has a key, in this order: Parallel, Tavily, Exa, Perplexity, Serper, Brave, Perplexity Sonar.
 
 The choice also depends on `tier`. With `tier: "deep"`, a keyed Serper or Brave is skipped for any other keyed provider, since neither has a depth setting. `fast` and `balanced` never change the choice. If no keyed provider can serve the tier, the first keyed provider in the order runs and ignores the tier.
+
+For example, with `PERPLEXITY_API_KEY` and `BRAVE_SEARCH_API_KEY` both set and `tier: "deep"`, Perplexity runs. It comes before Brave in the order, and Brave serves only `fast` and `balanced`.
 
 ## Provider-native modes
 

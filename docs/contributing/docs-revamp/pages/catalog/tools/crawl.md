@@ -53,7 +53,7 @@ export const apiDocsCrawler = generator({
 });
 ```
 
-Patterns are globs matched against the URL path, and an exclude pattern wins over an include. The built-in crawler checks them before it fetches a page, and that includes the root URL. An include list that does not match the root's path returns no pages, so start the crawl at a URL under the include path. Firecrawl receives the same strings as its include and exclude paths and does its own matching, so globs may not carry over. The Tools reference has the glob rules.
+Patterns are globs matched against the URL path only, not the host or query string, and an exclude pattern wins over an include. A pattern must match the whole path: `/docs/**` matches `/docs/api/ref` but not `/docs` itself, because it needs the slash. The built-in crawler checks patterns before it fetches a page, and that includes the root URL. An include list that does not match the root's path returns no pages, so start the crawl at a URL under the include path. Firecrawl receives the same strings as its include and exclude paths and does its own matching, so globs may not carry over. The Tools reference has the glob rules.
 
 ## Combine it with search and fetch
 
@@ -85,10 +85,12 @@ It reads the HTML the server sends and follows same-origin links, one request pe
 - **JavaScript-rendered pages**: it returns whatever the server sends as HTML.
 - **Authentication**: it sends no cookies and keeps no session.
 - **robots.txt**: not read. The crawler ignores it.
-- **Other origins**: links to another host, port or subdomain are not followed.
+- **Other origins**: links to another host, port, scheme or subdomain are not followed. `https://blog.site.com/...` is not followed from `https://site.com`.
+- **Non-web links**: only `http` and `https` links are followed, so `mailto:` is skipped. A `#fragment` is dropped before the link is checked, so `/docs#intro` is the page `/docs`, which is then tested against your patterns like any other path.
+- **Local and private hosts**: it refuses `localhost` and any host that resolves to a private address, before it connects. Pointing it at `http://localhost:3000/docs` makes no request and returns `pages: []` with no error. Firecrawl is not blocked by that check, but it runs on the vendor's service, not on your network, so it cannot reach your localhost either. Test against a deployed or public copy of the site.
 - **Non-HTML responses**: PDFs and images are skipped.
 
-A page that fails to load is skipped and the crawl continues. That includes the root URL: a root that fails gives `pages: []`, not an error. An invalid URL string throws, and so does any Firecrawl failure.
+A page that fails to load is skipped and the crawl continues. That includes the root URL: a root that fails, or one that is refused as above, gives `pages: []`, not an error. An invalid URL string throws, and so does any Firecrawl failure.
 
 ## Next
 

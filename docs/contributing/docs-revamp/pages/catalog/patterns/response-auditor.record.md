@@ -37,6 +37,7 @@ Skipped: K-27 is kept in the sitemap, and the page was already at `response-audi
 - After revise round 1, page sha256 72553d90d3fd: exit 0.
 - After revise round 2, page sha256 41df3e64a713: exit 0.
 - After revise round 3, page sha256 d06dd532d71e: exit 0.
+- After the loop (review): pass 9 failure gap closed in two sentences: a thrown analyzer (a timed-out model call) leaves the auditor running, with no entry in `results` and no share of `overallScore`; a returned bad shape such as `score: 2` or an annotation with no `label` fails the whole auditor when the results are collected, and in a side chain the user's answer arrives regardless. The existing DevTool-trace and `outputSchema: AnalyzerResultSchema` sentences cover the rest of the key. Page sha256 f503bd046d9b: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
@@ -44,6 +45,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 - Each analyzer is wrapped in a mini-sequencer with `.rescue()`, so individual failures don't crash the auditor. Untrue: There is no wrapper sub-sequencer. Each analyzer block gets a block-level `.rescue()` with a fallback handler that returns null. The code comment says 'No wrapper sub-sequencer needed'. (/home/user/flow-state-dev/packages/patterns/src/response-auditor/index.ts:193-199)
 - threshold is described as 'only surface results above this score' (config comment line 27) and 'score above threshold' (line 97). Untrue: The filter is `r.shouldSurface || r.score >= threshold`, so a score equal to the threshold surfaces. 'At or above' is correct, as in row 1. (/home/user/flow-state-dev/packages/patterns/src/response-auditor/index.ts:110-112)
+- Re-run after the review edit: thrown analyzer rescued to null and filtered (packages/patterns/src/response-auditor/index.ts:197-199, 225; packages/patterns/test/response-auditor.test.ts:220-240); results validated at collection by `aggregateResults`' `z.array(AnalyzerResultSchema)` (index.ts:74), score bounded 0..1 (schemas.ts:20) and `label` required (schemas.ts:9), so `score: 2` fails the auditor (fact 2.5, run); side-chain failures do not abort the pipeline (apps/docs/docs/advanced/sequencer-side-chains.md:11-13, 63-66).
 
 ## 6 · Depth pass
 

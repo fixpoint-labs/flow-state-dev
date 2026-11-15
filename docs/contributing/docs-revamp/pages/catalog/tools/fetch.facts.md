@@ -226,3 +226,9 @@ Evidence: `F/index.ts:26-32` (the whole `execute`), `F/resolver.ts:342-353` (key
 9. "Follows redirects automatically (standard fetch behavior)": for built-in it is a hand-rolled
    5-hop loop with a per-hop address check (F26, F30); Jina and Firecrawl redirect behavior is the
    vendor's.
+
+## Revisions (pass 8, round 2)
+
+- Verified: a 403 carries `retryable: false` (`T/errors.test.ts:70-92`), so the table row stands; `FlowError.details` is `Record<string, unknown>` (`packages/core/src/errors/flow-error.ts:41`), so `error.details?.httpStatus === 404` type-checks.
+- The page's `builtinFetch()` example is named `readDirect`; F15 wording "never calls an outside service" is about the page content only. The page says the built-in provider fetches the page itself and never sends it to a hosted provider; it does make a network request to the target site.
+- The page links the error contract to `reference/errors` (R-22).

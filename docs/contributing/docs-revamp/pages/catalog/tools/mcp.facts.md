@@ -270,3 +270,16 @@ All per-server metadata is optional; a server with none still works. `M/types.ts
 5. The existing page's example `ctx.session.state.mcpDisabledTools ?? []` is typed `any` through
    `CapabilityPresetCtx<any>` (`packages/core/src/capability/types.ts:53`); it compiles, but the
    field is the app's own and must be declared in the generator's session state for it to be real.
+
+## Revise round 1 (what the page now states)
+
+- F21: the example is now `mcp__linear__list_issues({ query: "login" })`; the selection-quality
+  ranking is dropped. The page says only that an example is shown word for word.
+- F30: the page says a request's state "can carry" `mcp.disabledServers` and `mcp.disabledTools`,
+  and does not say how a caller sets it (no HTTP route found). Unchanged open question.
+- F10: the SSE migration remark is cut; the page says use `"http"` unless the provider only offers SSE.
+- F14: one link to `../workforce/projects.md` with no anchor (that page has no "Tools a project's
+  coding work gets" heading). `callTool`'s signature is left to Reference R-42.
+- F20, F22-F25, F26a, F29, F37-F46: moved to R-42 (`reference/tools`, `../../reference/tools.md`):
+  metadata rendering and defaults, `enrichDescriptions`, `formatGuidance`, manager methods.
+- Added: only tools are used, not prompts or resources (L7).

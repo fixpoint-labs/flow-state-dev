@@ -58,15 +58,21 @@ All options are optional. Pass `readPage` to a generator's `tools` list in place
 
 To lock a block to one provider, use its constructor. Each takes the same config as `tools.fetch` minus `provider`.
 
-```ts title="src/flows/research/tools/read-page.ts"
-import { builtinFetch, firecrawlFetch, jinaFetch } from "@flow-state-dev/tools";
+```ts title="src/flows/research/tools/read-with-firecrawl.ts"
+import { firecrawlFetch } from "@flow-state-dev/tools";
 
 export const readWithFirecrawl = firecrawlFetch({ keys: { firecrawl: "fc-key-here" } });
-export const readWithJina = jinaFetch();
-export const readOffline = builtinFetch();
 ```
 
-`firecrawlFetch` throws when it runs if it finds no key. `builtinFetch` never calls an outside service. The [Tools reference](../../reference/tools.md) has the rest of each constructor's behavior.
+`jinaFetch()` works the same way and, named explicitly, runs without a key. Each constructor goes in its own file.
+
+```ts title="src/flows/research/tools/read-direct.ts"
+import { builtinFetch } from "@flow-state-dev/tools";
+
+export const readDirect = builtinFetch();
+```
+
+`firecrawlFetch` throws when it runs if it finds no key. `builtinFetch` fetches the page itself and never sends it to a hosted provider. The [Tools reference](../../reference/tools.md) has the rest of each constructor's behavior.
 
 ## What comes back
 
@@ -125,13 +131,13 @@ To branch on a failure, read `details` where you catch the error:
 ```ts title="src/lib/fetch-errors.ts"
 import { FlowError } from "@flow-state-dev/core";
 
-/** True when the page is gone for good, so retrying or fetching it again is pointless. */
+/** True when the page is gone for good, so retrying is pointless. */
 export function isPageGone(error: unknown): boolean {
   return error instanceof FlowError && error.details?.httpStatus === 404;
 }
 ```
 
-See [Error handling](/docs/advanced/error-handling) for the full error contract and how a block consumes `details`.
+See [Errors](../../reference/errors.md) for the full error contract and how a block consumes `details`.
 
 ## Next steps
 

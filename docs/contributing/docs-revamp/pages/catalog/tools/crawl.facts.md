@@ -274,3 +274,9 @@ or `process.env`).
   string throws (`C/providers/builtin.ts:14`, `new URL(rootUrl)`), and Firecrawl SDK errors
   propagate (F28). The "Firecrawl timeout" row is cut: no observable timeout behaviour in the code.
 - F48. The page does not claim anti-bot handling for Firecrawl (F38: not shown by code); it says only that Firecrawl can wait for JavaScript (F17).
+
+## Revise round 2: what the page now states
+
+- F49. Patterns match the path only and need the whole path to match; `/docs/**` does not match `/docs` (F22, F23). Stated on the page as a one-line gotcha, with the full glob rules still in Reference.
+- F50. Followed links: same origin only (scheme, host, port; a subdomain is another origin), http(s) only, fragment dropped before the pattern check (F16, F18, F19, F24). Worked case: with `/docs/**` and exclude `/docs/changelog/**`, only `/docs/api/ref` of the five links is followed.
+- F51. `localhost` and private hosts are refused before connecting; the built-in result is `pages: []` with no error. Firecrawl is not blocked by the check but cannot reach your network (F26, F28, F37).

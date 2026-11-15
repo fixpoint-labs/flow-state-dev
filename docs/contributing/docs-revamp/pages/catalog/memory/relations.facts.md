@@ -118,7 +118,7 @@ The research-agent scenario the existing page uses is a trading lab with NVDA, a
 
 Runnable snippets that type-check against the exported surface:
 
-- `system({ model: "openai/gpt-6-luna", episodic: true, semantic: { relations: { vocabulary: [...] } } })`. `working` is optional. `test/relations.spec.ts` "system() wiring" calls `system` with `working: true, episodic: true, semantic: { relations: true }`; `README.md:105-110`.
+- `system({ model: "openai/gpt-6-luna", episodic: true, semantic: { relations: { vocabulary: [...] } } })`. `working` is required by `MemorySystemConfig` (pass `true`); the example sets it. `test/relations.spec.ts` "system() wiring" calls `system` with `working: true, episodic: true, semantic: { relations: true }`; `README.md:105-110`.
 - `generator({ uses: [mem] })` installs `memory/recall` and, with relations on, `memory/connect`. `test/capabilities.test.ts:785-795`.
 - In a handler: `ctx.cap.memory.relate("nvda", "taiwan")` returns edges or `null`. `src/memory-capability.ts:300-305`.
 
@@ -126,3 +126,12 @@ Runnable snippets that type-check against the exported surface:
 
 - L1. E2 defaults (5 episodes, on eviction true) come from the README and the type docs; the constant `DEFAULT_CONSOLIDATION_CONFIG` is in `src/memory-system.ts`. The page should link to the semantic tier's page for the schedule rather than state numbers.
 - L2. The existing page writes `married_to`; tests and the prompt use `married to` (space). Use the spaced form.
+
+## M. Page revision notes (revise round 1)
+
+- M1. The page states the recall expansion as edges only, up to 10, depth 2 (F7). It does not say facts are pulled in.
+- M2. The page says case and spacing variants merge and different names do not (A1, J2). It does not claim alias resolution.
+- M3. The page says superseded edges stay stored, connection tools skip them (F6), and `maxEdges` culls closed edges first (A4). It does not promise history is kept without limit. Recall expansion may still surface a closed edge (F6); the page does not promise otherwise.
+- M4. Cost: one consolidation call (E1, G1), a longer prompt and output. The page keeps only the when-to-reach-for-it line. "No second round-trip" is cut as mechanism.
+- M5. Moved to the memory reference (R-37), page links and does not state: option list and defaults (C1, C3); edge record fields (D); endpoint rules incl. janitor prune only when `createImplicitEntities` is false (E5, I1, I2); superseded-edge culling order (A4); handler helper signatures (F9); limits and cost (G, J).
+- M6. Example sets `working: true` because `MemorySystemConfig.working` is required by the type; the K section note that `working` is optional is wrong for the type. Code wins.
