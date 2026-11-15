@@ -165,5 +165,5 @@ You can also replace the `judge` with a block that takes `{ question }`, reads t
 
 - [Round Robin](./round-robin.md) for a synthesized deliverable shaped by panel feedback rather than a winner.
 - [Routed Specialists](./routed-specialists.md) for when the next speaker depends on context but the output is not a verdict.
-- [Patterns overview](./overview.md).
+- [Patterns overview](./index.md).
 - [Patterns reference](../../reference/patterns.md) for config fields, the output shape, the moderator's validation and the override contracts.

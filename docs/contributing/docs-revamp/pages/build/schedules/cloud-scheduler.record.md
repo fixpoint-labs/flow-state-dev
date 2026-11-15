@@ -33,6 +33,7 @@ Skipped: B-16 is kept in the sitemap, and the page was already at `cloud-schedul
 - After revise round 1, page sha256 6746362b4575: exit 1. Failed: type-check of TypeScript examples.
 - After revise round 2, page sha256 4cd120565418: exit 0.
 - After revise round 3, page sha256 dba8478b98ec: exit 0.
+- After the loop (review): link pass. Repointed links that led to old-site pages or to pages outside the sitemap: `../reference/` to `../../reference/`; `/docs/server/scheduled` to `../../reference/schedules.md`. Every link on the page now resolves to a sitemap page. No prose or example changed. Page sha256 675f332c3453.
 
 ## 5 · Fact check
 
@@ -43,6 +44,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - The `schedules.static` example uses `monthly-invoices: { cron: "0 0 1 * *", action: "generateMonthlyInvoices" }`: an unquoted hyphenated key, and an `action` name pointing at `actions: { /* ... */ }`. Untrue: `monthly-invoices:` is not valid TypeScript, so the key must be quoted. A schedule declares its handler inline as `block` (any block); there is no `action` field naming an entry in `flow.actions`. `validateScheduleConfig` throws if `block` is missing, and the envelope's `action` is only `schedule.block.name`. The package README shows `"monthly-invoices": { cron, block: generateMonthlyInvoices }`. (packages/core/src/types/schedules.ts:124-146, 346-351; packages/scheduled/src/routes.ts:261-264; packages/scheduled/README.md:83-86)
 - Reference row 5: Row 5: a scheduled run's input otherwise comes from the schedule definition and the flow's user/org scope state. Untrue: The input comes only from the schedule's `input` (a static value, or a function that receives `{ scheduleId, cron, nominalFireTime, principal, flowKind, origin }`), or `{}` if unset. Scope state is not an input source; the action can read it itself. (packages/scheduled/src/routes.ts:238-250; packages/core/src/types/schedules.ts:107-119) The row is recorded corrected.
 - Limitations: compute per-fire input "from the scheduled time (`nominalFireTime` on the input function's context) and any state in the flow's user/org scope". Untrue: The input function's context holds `nominalFireTime` but no scope state. The state is read inside the action, not by the input function. (packages/core/src/types/schedules.ts:107-119; packages/scheduled/src/routes.ts:240-249)
+- Re-run after the review edit: the edit changed link targets only, so no claim changed. Each new target is a sitemap entry (specs/epics/FIX-2696/SITEMAP/*.md) that covers what the link text names.
 
 ## 6 · Depth pass
 

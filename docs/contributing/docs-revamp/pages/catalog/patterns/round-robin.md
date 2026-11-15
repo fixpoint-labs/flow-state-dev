@@ -173,5 +173,5 @@ Keep `terminateWhen` pure and total. A predicate that throws fails the run with 
 - [Debate](./debate.md) for when you want who-won-and-why and a moderator that picks the next speaker. Choose Round Robin for fixed order and a written-up deliverable.
 - [Routed Specialists](./routed-specialists.md) for when the next speaker depends on context.
 - [Supervisor](./supervisor.md) for per-task review with retry.
-- [Patterns overview](./overview.md).
+- [Patterns overview](./index.md).
 - [Patterns reference](../../reference/patterns.md) for config fields, output shape and defaults.

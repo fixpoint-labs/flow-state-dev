@@ -33,6 +33,7 @@ Skipped: B-33 is kept in the sitemap, and the page was already at `benchmark-pat
 - After revise round 1, page sha256 b26b8f194f4a: exit 0.
 - After revise round 2, page sha256 10402df9e435: exit 0.
 - After revise round 3, page sha256 486a0e857e41: exit 0.
+- After the loop (review): link pass. Repointed links that led to old-site pages or to pages outside the sitemap: `../reference/testing.md` to `../concepts/testing.md`. Every link on the page now resolves to a sitemap page. No prose or example changed. Page sha256 07e637ea588c.
 
 ## 5 · Fact check
 
@@ -42,6 +43,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 1: Row 1: BenchmarkTask fields: id, category (reasoning, multi-step-research, critique-revision, tool-use), prompt, rubric Untrue: The fourth built-in category is `planning`, not `tool-use`. The task also has optional `expected` and `metadata` fields. (/home/user/flow-state-dev/packages/testing/src/benchmark/contract.ts:23-49) The row is recorded corrected.
 - Imports: `defineBenchmark` from `@flow-state-dev/testing`, `comparePatterns` from `@flow-state-dev/testing`, `defaultBenchmarkRegistry` from `@flow-state-dev/patterns`, and `BenchmarkTask` type from `@flow-state-dev/core`. Untrue: The testing package root does not export the benchmark harness. It lives on the `@flow-state-dev/testing/benchmark` subpath, which also exports the `BenchmarkTask` type. `defaultBenchmarkRegistry` is on `@flow-state-dev/patterns/benchmark`. The patterns root index has no benchmark export. Core has no `BenchmarkTask`. (/home/user/flow-state-dev/packages/testing/src/index.ts:82; /home/user/flow-state-dev/packages/testing/src/benchmark/index.ts:4-156; /home/user/flow-state-dev/packages/patterns/package.json:63; /home/user/flow-state-dev/packages/patterns/src/benchmark/registry.ts:33)
 - Each scorecard cell is `mean±stddev` of the judge score across repetitions, and 'The stddev is the spread across repetitions'. Untrue: Each stat aggregates every cell for the (subject, category) pair, so it pools tasks and runs. The stddev is the population standard deviation over all those cells, not just the repeat runs of one task. Errored cells count as score 0. (/home/user/flow-state-dev/packages/testing/src/benchmark/report.ts:62-76 (aggregate), 46-54 (meanStddev))
+- Re-run after the review edit: the edit changed link targets only, so no claim changed. Each new target is a sitemap entry (specs/epics/FIX-2696/SITEMAP/*.md) that covers what the link text names.
 
 ## 6 · Depth pass
 

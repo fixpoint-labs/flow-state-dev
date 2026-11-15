@@ -198,5 +198,5 @@ The blocks the auditor is built from, `captureContext`, `aggregateResults` and `
 
 - [Parallel Tasks](./parallel-tasks.md): fan-out for independent tasks
 - [Supervisor](./supervisor.md): fan-out with a quality review on each result
-- [Patterns overview](./overview.md): which pattern to use when
+- [Patterns overview](./index.md): which pattern to use when
 - [Patterns reference](../../reference/patterns.md): every option, field and export

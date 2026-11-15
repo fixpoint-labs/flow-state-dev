@@ -144,7 +144,7 @@ A specialist that throws does not stop the run. The pass is recorded as failed, 
 
 Each pass emits a status line naming the specialist it invoked. After each pass the pattern also emits a `routedSpecialists` component item, carrying the workspace state, the iteration number, the current specialist and whether the run is done. Register a container renderer under `routedSpecialists` to show it: `renderers={{ container: { routedSpecialists: ResearchProgress } }}`.
 
-Each pass that picked a specialist is also recorded as a task, a unit of work from the orchestration package (see [Task Board](../orchestration/task-board.md)). The [patterns reference](../../reference/patterns.md) says where those records live and how to read them.
+Each pass that picked a specialist is also recorded as a task, a unit of work from the orchestration package (see [Task Board](../../concepts/tasks-and-boards.md)). The [patterns reference](../../reference/patterns.md) says where those records live and how to read them.
 
 ## What it won't do
 
@@ -154,6 +154,6 @@ Each pass that picked a specialist is also recorded as a task, a unit of work fr
 
 - [Round Robin](./round-robin.md) for a fixed roster in declared order.
 - [Event Actors](./event-actors.md) for actors that react to entry topics in parallel.
-- [Task Board](../orchestration/task-board.md) for concurrent drain over a task collection with dependency gating.
+- [Task Board](../../concepts/tasks-and-boards.md) for concurrent drain over a task collection with dependency gating.
 - [Supervisor](./supervisor.md) for plan, execute, review, replan.
 - [Patterns reference](../../reference/patterns.md) for config fields, output shape, the run's block sequence and where its records live.

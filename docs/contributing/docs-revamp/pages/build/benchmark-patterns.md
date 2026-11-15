@@ -94,5 +94,5 @@ The numbers describe your tasks on this model. They do not rank the patterns in 
 
 - [Patterns](../catalog/patterns/index.md): what each pattern in the registry does.
 - [Write your own pattern](./write-a-pattern.md): add a pattern the default registry does not have, then benchmark it as a subject.
-- [Testing reference](../reference/testing.md): `comparePatterns`, `runBenchmark`, the report fields and every option.
+- [Testing reference](../concepts/testing.md): `comparePatterns`, `runBenchmark`, the report fields and every option.
 - [CLI reference](../reference/cli.md): every `fsdev benchmark` flag, including `--model` with an OpenRouter id and `--baseline-model` for cross-model baselines.

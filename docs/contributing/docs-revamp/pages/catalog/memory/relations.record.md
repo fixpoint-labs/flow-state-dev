@@ -33,6 +33,7 @@ Skipped: K-37 is kept in the sitemap, and the page was already at `relations.md`
 - After revise round 1, page sha256 a0976cd93e6c: exit 0.
 - After revise round 2, page sha256 eadeae558382: exit 0.
 - After revise round 3, page sha256 234defb07626: exit 0.
+- After the loop (review): link pass. Repointed links that led to old-site pages or to pages outside the sitemap: `../resources/edges` to `../../build/link-records.md`. Every link on the page now resolves to a sitemap page. No prose or example changed. Page sha256 b89104c48e7d.
 
 ## 5 · Fact check
 
@@ -44,6 +45,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - If a relationship changes, the old edge is superseded and the new one added, so the history stays intact. Untrue: History is not guaranteed. When maxEdges overflows, the framework culls superseded edges first, oldest first, then lowest-confidence active edges. (/home/user/flow-state-dev/packages/core/src/graph/resource-edges.ts:70-109)
 - Reference row 3: Edge endpoints rules: endpoints resolve to known subjects; the same-entity guarantee; when hygiene culls a fact's subject, edges left dangling are pruned. Untrue: Endpoints are canonicalized by trim and lowercase only, then matched against known fact subjects. Dangling edges are pruned only when createImplicitEntities is false, because the janitor skips the prune when it is true. (/home/user/flow-state-dev/packages/memory/src/janitor-blocks.ts:105-123; /home/user/flow-state-dev/packages/memory/src/internal/helpers.ts:16-18; /home/user/flow-state-dev/packages/memory/src/memory-system-blocks.ts:241-250) The row is recorded corrected.
 - Reference row 4: Superseded edges: history is kept (the guarantee the page may keep as one sentence). Untrue: Superseded edges are kept until maxEdges overflow, where they are culled before any active edge. (/home/user/flow-state-dev/packages/core/src/graph/resource-edges.ts:70-109) The row is recorded corrected.
+- Re-run after the review edit: the edit changed link targets only, so no claim changed. Each new target is a sitemap entry (specs/epics/FIX-2696/SITEMAP/*.md) that covers what the link text names.
 
 ## 6 · Depth pass
 

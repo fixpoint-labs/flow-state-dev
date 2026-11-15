@@ -33,6 +33,7 @@ Skipped: K-34 is kept in the sitemap, and the page was already at `bash.md`.
 - After revise round 1, page sha256 6af4e39eae5d: exit 0.
 - After revise round 2, page sha256 c09d091285bb: exit 0.
 - After revise round 3, page sha256 b681cd6d7e20: exit 0.
+- After the loop (review): link pass. Repointed links that led to old-site pages or to pages outside the sitemap: `/guides/deploying-to-vercel#7-using-the-bash-tool-on-vercel` to `../../build/deploy/vercel.md`; `/docs/skills/overview` to `../skills.md`. Every link on the page now resolves to a sitemap page. No prose or example changed. Page sha256 287b4f4f55d9.
 
 ## 5 · Fact check
 
@@ -44,6 +45,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 14: MOAT containers persist between commands; without a teardown step every flow request leaks one, so `cleanupBlock` is "**required** for the MOAT provider" (and `persist: true` is an opt-in set with a stable `runName`). Untrue: Under the bash capability and blocks, a MOAT provider gets a per-session `runName` and `persist: true` by default unless `persist: false` is set. With persist on, `cleanupBlock` does not stop the container and a flow request does not leak a new one. The bash blocks stop a persisting container themselves once no command has used it for 30 minutes. `cleanupBlock` is optional for every provider. It releases the registry entry, stops a local sandbox's background jobs, and stops a MOAT container only when `persist: false`. (/home/user/flow-state-dev/packages/tools/src/bash/blocks.ts:216, 594-611, 727-743, 1151-1196; /home/user/flow-state-dev/packages/tools/src/bash/capability.ts:206-221; /home/user/flow-state-dev/packages/tools/src/bash/adapters/moat.ts:1186) The row is recorded corrected.
 - Reference row 15: "Skip `persist` in production. Each request should start clean there"; persistence is set up by choosing a stable `runName` and `persist: true`. Untrue: The bash blocks default MOAT to `persist: true` with a per-session run name derived from tenant and session. A session reuses its container across requests unless `persist: false` is passed. The `persist` default of `false` applies only to the raw MOAT adapter and `createBashTool`. (/home/user/flow-state-dev/packages/tools/src/bash/blocks.ts:594-611; /home/user/flow-state-dev/packages/tools/src/bash/adapters/moat.ts:1489) The row is recorded corrected.
 - Reference row 11: MOAT container cold start "adds a few seconds" / "the few-seconds cold start" / "Cold-starting a MOAT container takes a few seconds". Untrue: The source puts a cold boot at roughly 10-30 seconds. The status message the block shows says a first run can take 30-60 seconds while the image builds. (/home/user/flow-state-dev/packages/tools/src/bash/blocks.ts:594-598, 840-843) The row is recorded corrected.
+- Re-run after the review edit: the edit changed link targets only, so no claim changed. Each new target is a sitemap entry (specs/epics/FIX-2696/SITEMAP/*.md) that covers what the link text names.
 
 ## 6 · Depth pass
 

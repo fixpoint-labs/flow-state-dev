@@ -143,4 +143,4 @@ As a step in another sequencer, `parallelTasks` needs the step before it to outp
 - [Supervisor](./supervisor.md): the same fan-out with a quality review on each result
 - [Plan and Execute](./plan-and-execute.md): sub-tasks that run in dependency order
 - [GoalSeekLoop](./goal-seek-loop.md): the same plan, run and combine steps, repeated until a goal is met
-- [Patterns overview](./overview.md): which pattern to use when
+- [Patterns overview](./index.md): which pattern to use when

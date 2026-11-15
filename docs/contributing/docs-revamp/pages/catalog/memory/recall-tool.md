@@ -84,4 +84,4 @@ The two surfaces complement each other, and most flows want both.
 
 When relations are enabled, a companion `memory/connect` tool answers connection questions ("what links X to Y") by traversing the edge graph, and recall can return relation edges as results.
 
-See the [memory reference](../../reference/memory) for toggling each surface, [Hygiene](./hygiene) for how stored facts age, and [Tools](../tools/overview) for how tool blocks work in general.
+See the [memory reference](../../reference/memory) for toggling each surface, [Hygiene](./hygiene) for how stored facts age, and [Tools](../tools/index.md) for how tool blocks work in general.

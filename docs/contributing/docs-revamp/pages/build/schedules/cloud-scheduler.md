@@ -15,7 +15,7 @@ This recipe makes it run `monthly-invoices`, a schedule on the `billing`
 flow, on the first of each month. It assumes the scheduled adapter is
 mounted: `createScheduledTransportAdapter()` from
 `@flow-state-dev/scheduled`, which adds the dispatch endpoint. If not,
-start with [Scheduled actions](/docs/server/scheduled).
+start with [Scheduled actions](../../reference/schedules.md).
 
 ## 1. Declare the schedule on the flow
 
@@ -131,7 +131,7 @@ Cloud Scheduler retries a run that gets a non-2xx answer, following the
 `--max-retry-attempts` and backoff flags on the job. A retry never runs the
 block twice: each scheduled time fires at most once, and a repeat answers
 `200 { status: "duplicate" }`. What a retry does once the next scheduled
-time has come is in [Schedules](../reference/schedules.md).
+time has come is in [Schedules](../../reference/schedules.md).
 
 A wrong token is refused with `401 { error: "unauthorized", message:
 "Invalid scheduler secret." }` and nothing runs. So when you rotate
@@ -142,7 +142,7 @@ way. A missing header gets a `401` as well, because the flow sets
 
 If the block fails after the `202`, Cloud Scheduler does not retry. Look up
 the request by its `requestId`, as in step 3: its `status` is `errored` and
-the error is in its result. See [Errors](../reference/errors.md).
+the error is in its result. See [Errors](../../reference/errors.md).
 
 ## Use OIDC instead of a shared secret
 
@@ -164,13 +164,13 @@ yourself in the flow's `resolvePrincipal`: verify the token, then return a
 principal with a `userId` and `orgId`, or throw a
 `PrincipalResolutionError` with status 401 to refuse. Set the audience to
 whatever value your resolver checks. See
-[Authentication and tenancy](../reference/authentication.md).
+[Authentication and tenancy](../../reference/authentication.md).
 
 ## What it won't do
 
 - Change the block's input per fire. The job's request is fixed, so the
   input comes from the schedule's `input`, a value or a function. See
-  [Schedules](../reference/schedules.md).
+  [Schedules](../../reference/schedules.md).
 - Alert you or park failed runs. Dead-letter handling and alerting are
   Cloud Scheduler settings on the job. The framework's own failure signal
   is a request with `status: "errored"`, read by `requestId` as in step 3.

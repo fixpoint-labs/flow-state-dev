@@ -134,7 +134,7 @@ A place only holds files; it doesn't run commands. You can write your own with `
 ## Pull requests on a branch
 
 A coding session records the pull requests its tool calls open (see
-[Pull requests a session opened](./coding-agents.md#pull-requests-a-session-opened)).
+[Pull requests a session opened](../../reference/harness-runs.md)).
 A pull request opened some other way, by a raw API call or a tool the recorder
 doesn't recognise, is on the checkout's branch all the same. `recordBranchPullRequests`
 asks GitHub which pull requests that branch has and adds them to the session's
@@ -169,4 +169,4 @@ It asks GitHub through the signed-in `gh` on the machine, so it works for GitHub
 ## Next
 
 - [Tools reference](../../reference/tools.md): mount options, every flush outcome, refusal scope, places and the pull request lookup.
-- [Coding agents](./coding-agents.md): how a coding session records the pull requests it opens.
+- [Coding harnesses](../../concepts/coding-harnesses.md): how a coding session records the pull requests it opens.

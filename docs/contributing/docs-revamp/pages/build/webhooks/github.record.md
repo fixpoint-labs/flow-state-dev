@@ -33,6 +33,7 @@ Skipped: B-13 is kept in the sitemap, and the page was already at `github.md`.
 - After revise round 1, page sha256 229eb739e825: exit 0.
 - After revise round 2, page sha256 34ed3a5e7411: exit 1. Failed: type-check of the 4 TypeScript examples, each written to its titled path under apps/kitchen-sink/.docs-tc-B-13 (src/flows/repo/blocks/review-pull-request.ts, src/flows/repo/flow.ts, src/lib/flowstate.ts, src/app/api/flows/[...path]/route.ts), tsc --noEmit extending the kitchen-sink tsconfig against the workspace packages.
 - After revise round 3, page sha256 d8fd1cd21587: exit 0.
+- After the loop (review): link pass. Repointed links that led to old-site pages or to pages outside the sitemap: `/docs/server/webhooks` to `../../reference/webhooks.md`. Every link on the page now resolves to a sitemap page. No prose or example changed. Page sha256 88492d469cdc.
 
 ## 5 · Fact check
 
@@ -43,6 +44,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Page line 108-109: GitHub's `X-GitHub-Delivery` id flows onto `metadata.webhook` "for deduplication". Untrue: The id is recorded on the dispatch envelope's `metadata.webhook.deliveryId` and on the event as provenance. The binding (`on`) route does no deduplication with it. The adapter docs call it 'provenance / downstream dedup'. Only a service route relies on delivery ids to land a repeat once. Dedup on this recipe is the handler's job. (packages/engine/src/transports/webhook/routes.ts:98-108,163-169; packages/engine/src/transports/webhook/createWebhookTransportAdapter.ts:45-46)
 - Reference row 4: Row 4: the delivery id is read by `deliveryId(payload, headers)`, recorded on `metadata.webhook`, and "used for deduplication". Untrue: `deliveryId(payload, headers)` returns `string | undefined`. The adapter puts it on the inbound event as `event.deliveryId` and on the dispatch metadata as `metadata.webhook.deliveryId` for provenance and downstream dedup. A throwing extractor is logged and the id omitted. The `on` route performs no dedup itself. (packages/engine/src/transports/webhook/createWebhookTransportAdapter.ts:45-46; packages/engine/src/transports/webhook/routes.ts:98-108,163-169) The row is recorded corrected.
 - Reference row 5: Row 5: the sender gets a 202 once the event is accepted (stated as the only success response). Untrue: 202 is also returned for an event that matches no binding or whose `when` is false, with body `{status:"ignored", provider, eventType}`. An accepted event returns 202 `{status:"accepted", provider, eventType, requestId}` only after the dispatch is durably recorded. A concurrency refusal is acked as skipped, and a non-durable record returns 503 `dispatch_not_durable`. (packages/engine/src/transports/webhook/routes.ts:144-147,255-278) The row is recorded corrected.
+- Re-run after the review edit: the edit changed link targets only, so no claim changed. Each new target is a sitemap entry (specs/epics/FIX-2696/SITEMAP/*.md) that covers what the link text names.
 
 ## 6 · Depth pass
 

@@ -124,7 +124,7 @@ export const bashCap = createBashCapability({
 });
 ```
 
-For credentials and cost, see the [Deploying to Vercel guide](/guides/deploying-to-vercel#7-using-the-bash-tool-on-vercel).
+For credentials and cost, see the [Deploying to Vercel guide](../../build/deploy/vercel.md).
 
 ## What gets saved
 
@@ -153,4 +153,4 @@ To release a sandbox when a request ends, wire `bashCap.cleanupBlock` into the f
 - [Tools reference](../../reference/tools.md): every provider and its options, mounting rules, the sync steps, MOAT setup and the error table.
 - [Resources reference](../../reference/resources.md): what a collection needs to be mountable.
 - [Workspace](./workspace.md): the package bash uses to copy files in and out.
-- [Skills](/docs/skills/overview): skill bundle files are reachable in bash when the skills collection is installed.
+- [Skills](../skills.md): skill bundle files are reachable in bash when the skills collection is installed.

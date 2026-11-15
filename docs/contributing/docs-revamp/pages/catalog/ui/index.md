@@ -32,7 +32,7 @@ Components fall into groups by how much they depend on Flow State.
 
 Generic chat and content components: `Conversation`, `Message`, `PromptInput`, `CodeBlock`, `Reasoning`, `Tool`. Most take plain props, or one item (a single message, tool call or other entry in a session) to draw, and need no provider. Use them anywhere, including outside a flow.
 
-See [Common components](./common-components) for the full list.
+See [Common components](../../reference/ui-components.md) for the full list.
 
 ### Flow-aware components
 
@@ -40,7 +40,7 @@ Components that consume `@flow-state-dev/core` item types directly. Most read fr
 
 Examples: `RequestGroup`, `TaskPlan`, `Approval`, `Sandbox`, `JSXPreview`. The `chat-assistant` registry item installs `chatAssistantRenderers`, a ready-made map from the standard item types to components like these.
 
-See [Flow-aware components](./flow-aware-components).
+See [Flow-aware components](../../reference/ui-components.md).
 
 ### Generative UI
 

@@ -33,6 +33,7 @@ Skipped: K-23 is kept in the sitemap, and the page was already at `debate.md`.
 - After revise round 1, page sha256 1eae51864bed: exit 0.
 - After revise round 2, page sha256 cf071e55c0c0: exit 0.
 - After revise round 3, page sha256 07b08f9117f5: exit 0.
+- After the loop (review): link pass. Repointed links that led to old-site pages or to pages outside the sitemap: `./overview.md` to `./index.md`. Every link on the page now resolves to a sitemap page. No prose or example changed. Page sha256 0abaef061ce0.
 
 ## 5 · Fact check
 
@@ -43,6 +44,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - The `moderatorDecisions` entries in the DebateRawOutput block are `{ round, nextSpeakers, newAngle, done }`. Untrue: Each entry also has `briefing: string | null`. The schema is `{ round, nextSpeakers, briefing, newAngle, done }`. (packages/patterns/src/debate/schemas.ts:67-73 (debateModeratorDecisionSchema), 119-121)
 - The moderated example is labelled "non-deterministic dispatch in rounds 2+". Untrue: The moderator opens every round, including round 1. The code runs it right after incrementRound on every iteration, and the default prompt opens round 1 with a briefing. (packages/patterns/src/debate/index.ts:20-28, 520-530)
 - Round Robin is the "chassis Debate is built on". Untrue: Debate does not import or compose Round Robin. It builds its own sequencer, and the synthesizer only "mirrors" the round-robin one in a comment. (packages/patterns/src/debate/index.ts:42-67 (imports); packages/patterns/src/debate/blocks/default-synthesizer.ts:4)
+- Re-run after the review edit: the edit changed link targets only, so no claim changed. Each new target is a sitemap entry (specs/epics/FIX-2696/SITEMAP/*.md) that covers what the link text names.
 
 ## 6 · Depth pass
 

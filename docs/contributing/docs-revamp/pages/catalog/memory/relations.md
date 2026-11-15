@@ -8,7 +8,7 @@ description: Store connections between things, for questions about how they rela
 
 Semantic memory stores facts about a subject: "the user prefers dark mode", "Moni is his wife". That works well for personalization. It works less well when the value lives in the connections between things, which is the shape of research and analysis work: a ticker depends on a supplier, a supplier sits in a country, a macro factor drives a sector.
 
-The relations layer adds typed links between entities on top of semantic facts. A **relation** is a directed, typed edge, the same primitive described in [Resource Edges](../resources/edges). It's opt-in. Leave it off and memory stores facts only.
+The relations layer adds typed links between entities on top of semantic facts. A **relation** is a directed, typed edge, the same primitive described in [Resource Edges](../../build/link-records.md). It's opt-in. Leave it off and memory stores facts only.
 
 ## Turning it on
 
@@ -68,4 +68,4 @@ Recall scans the stored edges in process for names in the query and may add up t
 
 Off, it costs nothing: no edges field, no prompt text, no tool. For pure chat personalization, leave it off. Use relations when your agent answers questions about how things connect: research, analysis, anything shaped like a dependency map. The [memory reference](../../reference/memory) has the limits.
 
-See [Resource Edges](../resources/edges) for the underlying primitive, [Recall tool](./recall-tool) for the search surface, and [Hygiene](./hygiene) for how memory is pruned over time.
+See [Resource Edges](../../build/link-records.md) for the underlying primitive, [Recall tool](./recall-tool) for the search surface, and [Hygiene](./hygiene) for how memory is pruned over time.

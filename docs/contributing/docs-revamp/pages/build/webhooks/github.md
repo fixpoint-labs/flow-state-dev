@@ -175,5 +175,5 @@ A failed delivery tells you what to fix:
 - **404 `flow_not_found`:** the flow id in the URL is wrong. **404
   `webhook_not_found`:** the last URL segment isn't `github`.
 
-The [webhook receivers reference](/docs/server/webhooks) covers every response
+The [webhook receivers reference](../../reference/webhooks.md) covers every response
 code.

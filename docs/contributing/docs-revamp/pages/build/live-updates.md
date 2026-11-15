@@ -76,13 +76,13 @@ Narrowing the topic does the same with less code: `topic.session(id, { resource:
 
 ## 4. Run it on any host
 
-The code is the same on every host. On `serve()` from `@flow-state-dev/node`, which `fsdev dev` and `fsdev serve` use, the client holds one WebSocket and the server pushes. On Vercel, Next.js or `createServerApp` alone there is no push, and the read runs every `pollIntervalMs`. Leave `pollIntervalMs` out on one of those and the screen never changes after its first read. The [server reference](../reference/server.md) has the full table.
+The code is the same on every host. On `serve()` from `@flow-state-dev/node`, which `fsdev dev` and `fsdev serve` use, the client holds one WebSocket and the server pushes. On Vercel, Next.js or `createServerApp` alone there is no push, and the read runs every `pollIntervalMs`. Leave `pollIntervalMs` out on one of those and the screen never changes after its first read. The [HTTP API reference](../reference/http-api.md) has the full table.
 
 If your app runs as one process, the default stores work. If several processes write your stores (several servers on one SQLite file, or `fsdev run` writing the file `fsdev dev` serves), use a store set that shares changes across processes, such as Postgres. Otherwise an open screen hears another process's changes only at its next read, which on a host with no push and no `pollIntervalMs` may never come. See [stores](../reference/stores.md).
 
 ## 5. Check who hears what
 
-Each topic is checked when the connection opens, with the same check the matching read uses. A topic the caller may not read is dropped, the same as a session that doesn't exist, and the screen never hears from it. Credentials come from the client's `fetcher`, a bearer token or a cookie. If someone loses access while their tab is open, their reads are refused at once. The open connection keeps sending notices until it reconnects, but a notice carries no data. The [server reference](../reference/server.md) has the rules.
+Each topic is checked when the connection opens, with the same check the matching read uses. A topic the caller may not read is dropped, the same as a session that doesn't exist, and the screen never hears from it. Credentials come from the client's `fetcher`, a bearer token or a cookie. If someone loses access while their tab is open, their reads are refused at once. The open connection keeps sending notices until it reconnects, but a notice carries no data. The [HTTP API reference](../reference/http-api.md) has the rules.
 
 ## When not to use this
 

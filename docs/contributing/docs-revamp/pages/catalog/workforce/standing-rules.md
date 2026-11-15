@@ -39,9 +39,9 @@ If the rules can't be read, say the store is down, the turn runs without them an
 
 ## Whose rules they are
 
-Rules belong to one worker and one user. A note you give a coordinator doesn't reach your other workers, and two people using the same worker each have their own list. A [fork](./durable-hire.md) starts with no rules, because it gets its own id. So does a worker you move to a different flow: its rules stay behind on the old one.
+Rules belong to one worker and one user. A note you give a coordinator doesn't reach your other workers, and two people using the same worker each have their own list. A [fork](./index.md) starts with no rules, because it gets its own id. So does a worker you move to a different flow: its rules stay behind on the old one.
 
-Rules aren't memory. [Memory](../memory/overview.md), once you add it, is shared by all of a user's workers and comes back when a search finds it. A rule comes back on every turn, for one worker.
+Rules aren't memory. [Memory](../memory/index.md), once you add it, is shared by all of a user's workers and comes back when a search finds it. A rule comes back on every turn, for one worker.
 
 A worker keeps up to 20 one-line rules. When the list is full, an add is refused, nothing is saved, and you see this, with the worker asking which rule to merge or drop:
 
@@ -57,7 +57,7 @@ Say the team wants eng-lead to always answer in French. If every user of the wor
 
 ## Editing them yourself
 
-An app reads and edits a user's rules through the workforce client's `standingRules(workerId, input)`. The worker's [inventory row](./inventory.md#what-each-row-holds) says `rules: true` when `standingRules` works for that worker.
+An app reads and edits a user's rules through the workforce client's `standingRules(workerId, input)`. The worker's [inventory row](../../reference/workforce.md) says `rules: true` when `standingRules` works for that worker.
 
 ```ts title="src/lib/rename-rule.ts"
 import { createClient } from "@flow-state-dev/client";
@@ -86,7 +86,7 @@ Every write passes the `version` it read, and a change or remove also passes the
 
 ## Related pages
 
-- [The built-in worker](./built-in-worker.md): what a worker on `agent` keeps, and the tools it has.
+- [The built-in worker](./index.md): what a worker on `agent` keeps, and the tools it has.
 - [Coordinators](./coordinators.md): workers that hand work to delegates, and keep rules the same way.
-- [The Shift Coordinator](./shift-coordinator.md): an org-level coordinator you can coach with rules.
+- [The Shift Coordinator](../starters/shift-manager.md): an org-level coordinator you can coach with rules.
 - [The workforce reference](../../reference/workforce.md): the rule tools, limits, refusals and the client call.

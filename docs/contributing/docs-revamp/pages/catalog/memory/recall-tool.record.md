@@ -33,6 +33,7 @@ Skipped: K-38 is kept in the sitemap, and the page was already at `recall-tool.m
 - After revise round 1, page sha256 9c4ba71a8a4d: exit 0.
 - After revise round 2, page sha256 0b52a438c705: exit 0.
 - After revise round 3, page sha256 c48e1cfc24fe: exit 0.
+- After the loop (review): link pass. Repointed links that led to old-site pages or to pages outside the sitemap: `../tools/overview` to `../tools/index.md`. Every link on the page now resolves to a sitemap page. No prose or example changed. Page sha256 bb6153efe364.
 
 ## 5 · Fact check
 
@@ -45,6 +46,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Page line 34: 'the recall tool's description still says it searches "semantic facts + past episodes". The description string doesn't currently adapt to the configured tiers.' Untrue: The description never says that, as the Row 5 entry shows. The real effect is that the tool is installed and finds nothing. (docs/contributing/docs-revamp/pages/catalog/memory/recall-tool.md:34; packages/memory/src/tools/types.ts:216-220)
 - Reference row 3: Candidates are semantic facts and recent episodes, and the result is ranked. Untrue: Episode candidates are the top 30 by intrinsic score (significance x recency decay), not simply the most recent. Exact-phrase matches from episodes below the cap can be added (up to 5). Relation edges can also be added as candidates when the relations tier is on. The final order comes from the LLM filter's `selectedIds`, not a numeric ranking, and `limit` is clamped to 1-20. (packages/memory/src/tools/strategies/llm-filter-strategy.ts:53-59,239-279,289-294; packages/memory/src/tools/recall-tool.ts:102) The row is recorded corrected.
 - Reference row 6: `mem.recall()` ranks by effective confidence; with `hygiene: false` it uses raw `fact.confidence`. Untrue: Decay is applied only when hygiene has `confidenceDecay` set, so turning that one setting off also gives raw confidence, not only `hygiene: false`. The rank multiplies the confidence by a reinforcement factor (0.5 + 0.5 x min(1, reinforcementCount/10)). The result also includes working memory and episodes, deduplicated. (packages/memory/src/internal/recall.ts:55-64,164-173) The row is recorded corrected.
+- Re-run after the review edit: the edit changed link targets only, so no claim changed. Each new target is a sitemap entry (specs/epics/FIX-2696/SITEMAP/*.md) that covers what the link text names.
 
 ## 6 · Depth pass
 

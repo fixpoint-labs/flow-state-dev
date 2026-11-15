@@ -129,4 +129,4 @@ export const unlinkDuplicate = handler({
 
 Edges are not a graph database. They suit hundreds to low thousands of edges in one resource, and they can't be followed across resources. For millions of edges or complex path queries, use a real graph store.
 
-[Memory relations](../catalog/memory/relations.md) is built on edges: it extracts typed links between the people, companies, and topics an agent learns about. [Collections](./collections.md) can declare edges per instance. The [Resources reference](../reference/resources.md) lists the options, every operation and the traversal rules.
+[Memory relations](../catalog/memory/relations.md) is built on edges: it extracts typed links between the people, companies, and topics an agent learns about. [Collections](../concepts/resources.md) can declare edges per instance. The [Resources reference](../reference/resources.md) lists the options, every operation and the traversal rules.

@@ -111,7 +111,7 @@ A capability is the framework's way of bundling resources, context, and tools so
 
 To use only part of it, or to use working memory alone, see the [memory reference](../../reference/memory) for presets and per-tier capabilities.
 
-For the broader picture of how `uses` wires resources, context, and tools into a block, see [Capabilities](../fundamentals/capabilities).
+For the broader picture of how `uses` wires resources, context, and tools into a block, see [Capabilities](../../concepts/capabilities.md).
 
 ## Further reading
 
@@ -119,5 +119,5 @@ For the broader picture of how `uses` wires resources, context, and tools into a
 - [Hygiene](./hygiene): how stale facts and old episodes age out.
 - [Relations](./relations): the opt-in layer that stores typed connections between entities, for connection and multi-hop recall.
 - [Recall tool](./recall-tool): the agent-invocable search surface, plus custom strategies.
-- [Resources](../resources/overview): how memory persistence is scoped.
-- [The built-in worker](../workforce/built-in-worker#giving-workers-memory): the recipe for attaching memory to a roster of workers, including giving each worker its own.
+- [Resources](../../concepts/resources.md): how memory persistence is scoped.
+- [The built-in worker](../workforce/index.md): the recipe for attaching memory to a roster of workers, including giving each worker its own.
