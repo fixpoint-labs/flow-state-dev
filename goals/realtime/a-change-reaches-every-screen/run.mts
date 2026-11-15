@@ -274,7 +274,8 @@ const isBusTraffic = (s: Statement) => /^\s*(UN)?LISTEN\s+fsd_bus/i.test(s.text)
 type Shown = { at: number; plan: string; seats: string[]; replies: string[] };
 type Sent = { at: number; method: string; url: string; status?: number; body?: string };
 type Frame = { at: number; socket: number; frame: { type: string; crosses?: boolean; topic?: { scope: string; id?: string }; kind?: string } };
-type Minted = { at: number; topics: Array<{ scope: string; id?: string }>; status: number };
+/** `ok`: the mint answered as its contract says, HTTP 200 with a ticket, a path and the topics it granted. */
+type Minted = { at: number; topics: Array<{ scope: string; id?: string }>; status: number; ok: boolean };
 
 type Screen = {
   name: string;
@@ -378,8 +379,15 @@ async function watchPage(page: Page, name: string, observe: string): Promise<Scr
       const at = Date.now();
       void response
         .json()
-        .then((body: { topics?: Minted["topics"] }) => screen.minted.push({ at, topics: body.topics ?? [], status: response.status() }))
-        .catch(() => screen.minted.push({ at, topics: [], status: response.status() }));
+        .then((body: { topics?: Minted["topics"]; ticket?: unknown; path?: unknown }) =>
+          screen.minted.push({
+            at,
+            topics: body.topics ?? [],
+            status: response.status(),
+            ok: response.status() === 200 && typeof body.ticket === "string" && typeof body.path === "string" && Array.isArray(body.topics)
+          })
+        )
+        .catch(() => screen.minted.push({ at, topics: [], status: response.status(), ok: false }));
     }
   });
   let sockets = 0;
@@ -598,8 +606,9 @@ async function legsACD(
     const cAShown = tell.over("c:refused · C's renders of A's session page", cA.shown);
     const cAHeard = cA.frames.filter((f) => f.frame.type === "notice" && f.frame.topic?.id === sA);
     // Only the hand-made ask counts: the page's own load already names sA in its URLs.
-    const asked = cA.sent.some((s) => s.method === "POST" && isMintOrSocket(s) && s.body?.includes(sA) === true && s.status !== undefined);
-    if (!asked) failures.push("c:refused: C's page never got an answer to a mint asking for A's session, so a refusal can't be read");
+    // A broken mint (500, malformed body) is not a refusal: require one answered to contract.
+    const asked = cA.sent.some((s) => s.method === "POST" && isMintOrSocket(s) && s.body?.includes(sA) === true && s.status === 200) && cMints.some((m) => m.ok);
+    if (!asked) failures.push("c:refused: C's page never got a valid mint answer to its ask for A's session, so a refusal can't be read");
     if (granted.length > 0) failures.push(`c:refused: the mint granted C A's session topic ${granted.length} times`);
     if (cAHeard.length > 0) failures.push(`c:refused: C's socket heard ${cAHeard.length} notices on A's session`);
     if (cAShown.some(ofA)) failures.push(`c:refused: C's page showed A's ${allValues(cAShown.find(ofA)!).join(", ")}`);
@@ -608,6 +617,11 @@ async function legsACD(
     // c:other-org-silent · C's own org board reads nothing and shows no change while A patches org 1.
     const cOwnShownBefore = cOwn.shown.filter((r) => r.at < writesFrom);
     tell.over("c:other-org-silent · C's own board rendered before the writes", cOwnShownBefore);
+    // Silence only counts from a live board: it read its org and its socket is subscribed.
+    const cOwnRead = cOwn.sent.some((s) => s.at < writesFrom && isRead(s) && s.status === 200);
+    const cOwnCrossed = crossedAt(cOwn);
+    if (!cOwnRead) failures.push("c:other-org-silent: C's own board never got a successful read before A wrote, so its silence can't be read");
+    if (cOwnCrossed === undefined || cOwnCrossed >= writesFrom) failures.push("c:other-org-silent: C's own board's socket never said crosses: true before A wrote, so its silence can't be read");
     const cOwnReads = tell.over("c:other-org-silent · C's own board's reads while A wrote", cOwn.sent.filter((s) => s.at >= writesFrom && s.at < writesTo && isRead(s)), { emptyIs: "the claim: 0 reads" });
     const cOwnChanged = cOwn.shown.filter((r) => r.at >= writesFrom && r.at < writesTo);
     if (cOwnReads.length !== 0) failures.push(`c:other-org-silent: C's own board sent ${cOwnReads.length} reads while A patched org 1`);
@@ -619,9 +633,9 @@ async function legsACD(
     await p2.peer.stop();
     const restartedAt = Date.now();
     p2 = await startApp(checkout, db, "p2", port2, pages);
-    const reconnected = await until(() => cA.opens.some((o) => o > restartedAt) && cA.minted.some((m) => m.at > restartedAt), 20_000);
+    const reconnected = await until(() => cA.opens.some((o) => o > restartedAt) && cA.minted.some((m) => m.at > restartedAt && m.ok), 20_000);
     const reMints = tell.over("c:reconnect-refused · C's mints after the restart", cA.minted.filter((m) => m.at > restartedAt));
-    if (!reconnected) failures.push("c:reconnect-refused: C's socket never reconnected and re-minted within 20 s of process 2's restart");
+    if (!reconnected) failures.push("c:reconnect-refused: C's socket never reconnected and got a valid re-mint within 20 s of process 2's restart");
     const reGranted = reMints.filter((m) => m.topics.some((t) => t.scope === "session" && t.id === sA));
     if (reGranted.length > 0) failures.push(`c:reconnect-refused: the re-mint granted C A's session topic`);
     const lastReply = `reply-${RUN_STAMP.slice(-6)}-after-restart`;
