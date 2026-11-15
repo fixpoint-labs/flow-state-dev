@@ -28,7 +28,7 @@ import { TURN_ACTIONS } from "./turn-actions";
 
 // FIX-2725 Q2.
 /** What a session with no title yet shows. */
-export const UNTITLED_SESSION = "Untitled";
+const UNTITLED_SESSION = "Untitled";
 
 /** The most sessions the worker sessions view lists: `sessions.list`'s bound. */
 const LISTED_MAX = 100;
