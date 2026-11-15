@@ -6,114 +6,79 @@ description: Components for chat and agent screens, copied into your project so 
 
 # UI
 
-`@flow-state-dev/ui` — A first-party component library for chat, agent, and generative-UI patterns, distributed via a [shadcn-compatible custom registry](https://ui.shadcn.com/docs/registry). Components are copied into your project, so you own and edit them like any other source file.
+`@flow-state-dev/ui` is a component library for chat, agent and generative-UI screens, distributed through a [shadcn-compatible custom registry](https://ui.shadcn.com/docs/registry). Components are copied into your project, so you own and edit them like any other source file.
 
 ## How distribution works
 
-Components ship through a registry, not as runtime imports. When you add a component, the registry copies a self-contained `.tsx` file into `components/flow-state/` in your project. From that point on it is your source code — restyle it, fork it, or replace pieces freely. There is no `import { Message } from "@flow-state-dev/ui"` to worry about.
+Components are not runtime imports. When you add one, the registry copies a self-contained `.tsx` file into `components/flow-state/` in your project, along with the other registry items it needs. From then on it is your source code: restyle it, fork it, or replace pieces freely. There is no `import { Message } from "@flow-state-dev/ui"`.
 
-The trade-off: upgrades are not automatic. When the canonical source changes, you re-add the component to pick up the new version, then replay your local edits.
+Install with `pnpm fsdev ui add message`, and see what is available with `pnpm fsdev ui list`. The [Reference](../../reference/ui-components.md) has the install commands, including the direct shadcn URL.
 
-```bash
-# Via the fsdev CLI (recommended)
-pnpm fsdev ui add message
-pnpm fsdev ui add conversation prompt-input
-
-# Or via shadcn directly
-npx shadcn@latest add https://ui.flow-state.dev/r/message.json
-
-# List what's available
-pnpm fsdev ui list
-```
+Upgrades are not automatic. When a new version of a component is released, re-add it, then replay your local edits.
 
 ## Colours and theming
 
 Registry components never name a colour directly. They use tokens, CSS variables with names that say what the colour is for: `background`, `foreground`, `muted-foreground`, `destructive` and so on. Change a token in your stylesheet and every component that reads it follows, with no edit to the files you copied in.
 
-Status gets its own tokens:
+Status has its own tokens: `success`, `warning`, `info`, `attention` and `destructive`. `warning` and `attention` are separate so an app can make "waiting on you" stand out without every warning looking like a request. The first component you add that uses one also adds the `tokens` item, which writes defaults for all of them, light and dark, into your stylesheet. To restyle, set the tokens you want under `:root` and `.dark`; your values win over the defaults.
 
-| Token | Used for |
-|---|---|
-| `success` | done, approved, a passing result |
-| `warning` | something is off but nobody is being asked: a blocked task, a stuck request |
-| `info` | running, in progress, informational |
-| `attention` | a person must act: a tool call waiting for approval, a task waiting on a review |
-| `destructive` | failed, rejected, an error |
-
-Each has a `-foreground` partner for text on a filled background. `warning` and `attention` are separate tokens, so an app can make "waiting on you" stand out without every warning looking like a request.
-
-Defaults come with the components. The first `fsdev ui add` of a component that uses a status token also adds the `tokens` item, which writes every token, light and dark, into your stylesheet. The defaults are plain: green, amber, blue, yellow and red.
-
-```bash
-pnpm fsdev ui add tool task-plan   # also adds tokens
-```
-
-The defaults sit in a base layer, so your own values win wherever you declare them. To restyle, set the tokens you want to change:
-
-```css
-:root {
-  --attention: <your highlight colour>;
-  --attention-foreground: <text on it>;
-  --warning: <your warning colour>;
-}
-.dark {
-  --attention: <your highlight colour, dark>;
-}
-```
-
-**Upgrading copies from before the status tokens existed.** Re-add the components you use, then run `fsdev ui add tokens` once. A component copied in fresh against a stylesheet without the tokens renders its status parts with no colour, not an error.
+Token names, what each is for, the default values and the override rule are in the [Reference](../../reference/ui-components.md).
 
 ## What's in the box
 
-Three categories, separated by how tightly they couple to Flow State.
+Components fall into groups by how much they depend on Flow State.
 
 ### Common components
 
-Generic chat and content primitives. They take primitive props (`role`, `content`, `isStreaming`) and have no runtime dependency on `@flow-state-dev/*`. Use them anywhere — even outside a flow.
-
-Examples: `Message`, `Conversation`, `PromptInput`, `CodeBlock`, `Reasoning`, `Tool`.
+Generic chat and content building blocks: `Conversation`, `Message`, `PromptInput`, `CodeBlock`, `Reasoning`, `Tool`. Most take plain props, or one item to draw, and need no provider. Use them anywhere, including outside a flow.
 
 See [Common components](./common-components) for the full list.
 
 ### Flow-aware components
 
-Components that consume `@flow-state-dev/core` item types directly — no adapter layer. They subscribe to session item streams, render typed `OutputItem` shapes, or wire into the renderer registry on `FlowProvider`. Most of them only make sense inside a flow.
+Components that consume `@flow-state-dev/core` item types directly. Some read the session's items through a provider, some read `FlowProvider`'s renderer map, and some call `@flow-state-dev/react` hooks, so most of them only make sense inside a flow.
 
-Examples: `ChatAssistant` (the bundled renderer registry), `RequestGroup`, `TaskPlan`, `Artifact`, `Sandbox`, `JSXPreview`.
+Examples: `RequestGroup`, `TaskPlan`, `Approval`, `Sandbox`, `JSXPreview`. The `chat-assistant` item installs `chatAssistantRenderers`, a ready-made map from every standard item type to one of these components.
 
 See [Flow-aware components](./flow-aware-components).
 
 ### Generative UI
 
-A separate runtime-importable surface at `@flow-state-dev/ui/generative`. Each generative shape ships as a bundle of (Zod schema, React renderer, `emit*` tool block) so a generator can pick a rendering shape per turn and the data contract stays single-sourced across both surfaces.
-
-This is the one part of the package you import at runtime. The renderers are still installable through the registry for project-owned variants.
+Each generative shape is a Zod schema, a React renderer and an `emit*` tool block. Give the tool to a generator and the renderer to `FlowProvider`, and a generator can pick a card per turn: both use the same name and schema. This is the one part of the package you import at runtime.
 
 See [Generative UI](./generative).
 
-## Framework integration
+## Using them with a flow
 
-The flow-aware components accept Flow State item types as props directly — no mapping step. That's the difference between a `Message` you can drop into any React app (primitive props) and the framework rendering pipeline (`OutputItem`-shaped props).
+Flow-aware components take Flow State item types as props. Pass `chatAssistantRenderers` to `FlowProvider` and the default components draw each item type:
 
-The `chat-assistant` component bundles a pre-wired renderer registry that maps every standard item type to its default component:
+```tsx title="src/app/chat/chat.tsx"
+"use client";
 
-```tsx
+import { FlowProvider, ItemsRenderer, useSession } from "@flow-state-dev/react";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
+import { Conversation, ConversationContent } from "@/components/flow-state/conversation";
+import { SourcesGroup } from "@/components/flow-state/sources";
 
-<FlowProvider flowKind="my-flow" userId={userId} renderers={chatAssistantRenderers}>
-  <Conversation>
-    <ItemsRenderer items={session.items} />
-    <SourcesGroup items={session.items} />
-  </Conversation>
-</FlowProvider>
+function Items({ sessionId }: { sessionId: string }) {
+  const session = useSession(sessionId, { items: true });
+  return (
+    <Conversation>
+      <ConversationContent>
+        <ItemsRenderer items={session.items} />
+        <SourcesGroup items={session.items} />
+      </ConversationContent>
+    </Conversation>
+  );
+}
+
+export function Chat({ userId, sessionId }: { userId: string; sessionId: string }) {
+  return (
+    <FlowProvider flowKind="my-flow" userId={userId} renderers={chatAssistantRenderers}>
+      <Items sessionId={sessionId} />
+    </FlowProvider>
+  );
+}
 ```
 
-You can override individual entries (`{ ...chatAssistantRenderers, component: { ...chatAssistantRenderers.component, "task-board-meta": false } }`) or replace the whole map. Spread the existing `component` map first so the other keyed renderers stay.
-
-## Architecture
-
-Common components are framework-agnostic. Flow-aware components are typed against Flow State items. Generative UI is the only runtime-imported surface — bundles travel as a unit so a generator's tool list and a `FlowProvider`'s renderer map share the same names and schemas.
-
-All components are fully customizable once installed. The registry distributes a starting point; the source in your repo is the contract.
-
-Contributors writing or modifying components should also read [Writing UI Stories](/guides/writing-ui-stories) — registry components have Storybook stories for visual review, hosted at [storybook.flow-state.dev](https://storybook.flow-state.dev) with per-PR preview URLs.
+`chatAssistantRenderers` does not draw sources, so `SourcesGroup` sits beside it. To override or silence one entry, spread the existing map first so the other entries stay. The map's contents and the override rule are in the [Reference](../../reference/ui-components.md).

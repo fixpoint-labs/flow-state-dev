@@ -35,7 +35,7 @@ Abbreviations: `rj` = `packages/ui/registry.json` · `rc` = `packages/ui/registr
 
 - Upgrades are not automatic. To pick up a new version, re-add the component, then replay local edits (`ov:13`). **[page]** (answers "what do I lose by owning it")
 - Kitchen Sink is the in-repo example of a project that owns copies: `apps/kitchen-sink/components/flow-state/` holds them and `pnpm registry:refresh` recopies them from the registry (`apps/kitchen-sink/package.json:9`; `apps/kitchen-sink/CLAUDE.md:173-180`). The drift comparison names a copy that differs by one byte, a registry file never installed, and a file with no registry source (`packages/ui/test/registry-drift.test.ts:25-50`). **[ref]** (a contributor workflow; a user's copies are theirs to change)
-- Copies made before the status tokens existed: re-add the components you use, then `fsdev ui add tokens` once. A fresh copy against a stylesheet without the tokens renders status parts with no colour, not an error (`ov:62`). **[page]** (one sentence, under Theming)
+- Copies made before the status tokens existed: re-add the components you use, then `fsdev ui add tokens` once; a stylesheet without the tokens renders status parts with no colour, not an error (`ov:62`). **[ref]** (an upgrade row, not page prose; the page states only "re-add, then replay local edits". A fresh `fsdev ui add` of a status component also adds `tokens`, so the no-colour case arises only for an older copy or a stylesheet whose tokens were removed.)
 
 ## 2. What is in the box
 
@@ -106,3 +106,12 @@ The page stores nothing at runtime. The one thing that outlives a request is the
 - Generative UI schemas, `emit*` tools, the two runtime subpaths: `apps/docs/docs/ui/generative.md`.
 - Storybook (`pnpm --filter @flow-state-dev/ui storybook`, port 6006; hosted `storybook.flow-state.dev`) and "Adding New Components" (`rd:200-219`; `ov:117`): contributor material, not this page.
 - The `fsdev ui` flags and exit codes: `apps/docs/docs/api/cli.md:282-291`.
+
+## 9. Revision round 1: what the page now carries
+
+- The page states the install command inline (`fsdev ui add message`, `fsdev ui list`) and links Reference for the shadcn URL form and `<component...>` usage. **[ref]** the bash block.
+- Status tokens are named in one sentence (`success`, `warning`, `info`, `attention`, `destructive`), with the `warning` vs `attention` distinction; the table, `-foreground` partners, default colours and the base-layer override rule are **[ref]**.
+- Generative UI: the page states only that each shape is a Zod schema, renderer and `emit*` tool block sharing one schema, and links the Generative UI page. It names no import path: the real exports are `@flow-state-dev/ui/generative/tools` and `@flow-state-dev/ui/generative/renderers` (`pk:5-14`); `@flow-state-dev/ui/generative` is not an export. **[ref]**
+- `chatAssistantRenderers`: the page shows one use example (compiled against kitchen-sink: `FlowProvider`, `ItemsRenderer`, `useSession` from `@flow-state-dev/react`; `Conversation`, `ConversationContent` from `.../conversation`; `SourcesGroup` from `.../sources`) and says sources are not drawn by the map (`rc/chat-assistant.tsx:54`). The map's contents and the override rule are **[ref]**.
+- Common components: described as "most take plain props, or one item to draw, and need no provider" (flags 1 and 2); the page no longer claims "no dependency on `@flow-state-dev/*`" or `role`/`content`/`isStreaming` props.
+- Architecture section and the contributor Storybook pointer are cut (contributor material, section 8).

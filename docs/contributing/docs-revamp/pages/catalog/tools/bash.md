@@ -22,6 +22,14 @@ A resource collection is a set of stored files under a path pattern such as `art
 
 The capability installs no collections. It mounts the ones the generator already has, so attach it beside whatever declares them.
 
+## What the default sandbox can do
+
+`createBashCapability()` with no options uses the `just-bash` provider. It is an in-process emulator of bash with 60+ built-in commands, not a real shell. Files live in memory and no real processes start, so `npm install` fails: nothing can be installed. There is no network either, so `curl https://example.com` fails until you allow hosts with `network.allowedUrls`, or everything with `network.dangerouslyAllowFullInternetAccess`.
+
+Install the optional `just-bash` package to use it. Without the package, every command except `find` fails with exit code 1.
+
+To run the host's real binaries (`npm`, `python`, `gcc`), switch to the `local` provider, covered below. It is a real `/bin/bash` on the server host, run as the server's user, and it is not an isolation boundary. For untrusted commands use `moat` (a container) or `vercel` (a remote sandbox).
+
 ## Use it
 
 The example is an agent that drafts reports. The `artifacts` collection holds the files it writes.
@@ -67,8 +75,6 @@ Bash finds every collection on the generator and mounts it at its pattern prefix
 
 Files under `node_modules/` or `.git/` inside a mount are never saved.
 
-`createBashCapability()` with no arguments uses the `just-bash` provider, an in-memory bash emulator. Install the optional `just-bash` package to use it. Without the package, every command except `find` fails with exit code 1.
-
 ## Choose what gets mounted
 
 By default every collection on the generator is mounted and writable. Pass `collections` to mount only some, and use the object form for a read-only mount. A `bash` command's edits to a read-only mount stay in the sandbox and are never saved; `bash-write-file` refuses them. Say the generator also holds a `references` collection that the agent should read but not change:
@@ -87,7 +93,7 @@ export const bashCap = createBashCapability({
 
 Each provider runs commands somewhere different. The capability works the same on all of them.
 
-- `just-bash`, the default, is in memory. Use it for tests and light analysis.
+- `just-bash`, the default, is an in-memory emulator with no network unless allowed. Use it for tests and light analysis.
 - `local` runs a real `/bin/bash` on the server host, so `npm`, `python` and `gcc` are available. Use it in development.
 - `vercel` runs in a Vercel Sandbox.
 - `moat` runs in a container on the same machine and injects credentials on outbound requests, so commands never see API keys. It needs the separate `moat` CLI installed on the host.

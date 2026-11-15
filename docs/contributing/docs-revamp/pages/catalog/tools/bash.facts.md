@@ -425,3 +425,7 @@ discovery reading `ctx.resources` (`B/blocks.ts:515-570`); not run through `fsde
   keeps the other writer's version; `warnUnsettled` names the path. The page says so in those terms.
 - F22: the page states the orphan warning only for the workspace root, matching the scan depth.
 - F42: `cwd` is glossed on the page as one fixed directory in place of a scoped one.
+
+## Revise round 3
+
+- Pass 9 miss (what the default sandbox reaches): the page now answers in a "What the default sandbox can do" section right after the tool table, before the example. Facts: F8, F9, F31 (emulator, 60+ commands, memory, no processes, no installs, no network unless `network.allowedUrls` or `dangerouslyAllowFullInternetAccess`), F32 (`local` real `/bin/bash`, server's user, not isolation), F35/F36 (`moat`, `vercel`). The claim that `local` can reach the network stays unstated, still UNVERIFIED (F32).
