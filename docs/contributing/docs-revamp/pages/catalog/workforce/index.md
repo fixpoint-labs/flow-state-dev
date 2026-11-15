@@ -10,11 +10,19 @@ import AWorkersTurn from "./figures/a-workers-turn.svg";
 
 # Workforce
 
-Workforce gives your app a team of named agents, called workers. Each worker is a Markdown file in your repo: a name, a job and the instructions for doing it. Every user gets their own copy of each worker, with their own conversations, and can hire, edit and fire workers of their own while the app runs.
+Once an app has more than one agent, the same questions come up every time. Where does each one's brief live? Is the user talking to their own copy or everyone's? Which agents may hand work to which? What does a screen show about them? Workforce answers them for you.
 
-Workers you ship are files. A worker a user hires or edits is that user's data: it changes while the app runs, and nobody else sees it. One built-in agent runs every worker, unless its file names another flow to run on. A flow is one self-contained part of your backend, registered with the server for clients to call.
+It gives your app a team of named agents, called workers. A team is a [folder of Markdown files](./the-workforce-folder.md) in your repo: each worker gets a name, a job and the instructions for doing it. Every user gets their own copy of each worker, with their own conversations, and can hire, edit and fire workers of their own while the app runs. A flow is one self-contained part of your backend, registered with the server for clients to call. One built-in flow, `agent`, runs every worker unless the worker's file names a different flow. [Workers](../../concepts/workers.md) explains what a single worker is.
 
-Workforce is a kit: a feature an app installs with one config line. [Workers](../../concepts/workers.md) explains the idea. This page is what the kit adds to your app.
+Workforce is a kit: a feature an app installs with one config line. The rest of Flow State's agent features build on it: the `harnesses` kit requires it, and each starter in this catalog is an app on top of it. What it unlocks, each on a page of its own:
+
+- **One worker in front of a team.** A [coordinator](./coordinators.md) takes each message and hands it to the delegate that should answer.
+- **Work handed down.** A worker [files tasks](./delegating-work.md) for its delegates, each worked in a session of its own, and hears how each ended.
+- **Workers that talk.** A worker [messages another](./messaging.md) on the same user's roster, then goes on with its turn or waits for the reply.
+- **Shared projects.** In a [project](./projects.md), users see where each other's work stands, and every conversation stays private.
+- **Bug reports.** The [Error Reporter](./error-reporter.md) turns a failure that doesn't recover into one report, previewed before it is filed.
+- **Screens.** [Components](./screens.md) draw a roster and its task boards.
+- **Coding agents as workers.** Claude Code, Codex and Cursor run as workers through the [harnesses](../harnesses/index.md) kit, which adds a coding worker to your team.
 
 <Figure svg={WhatThisInstalls} caption="What the workforce kit installs" description={"Three columns. On the left, your app's workforce folder: teams/support/workers/billing, with its WORKER.md highlighted as the part you write, then a blocks folder and org/workers. Arrows lead from the folder to two flows the kit serves: agent, which runs every worker whose file names no flow, and workforce-roster, which hires, forks, edits, fires and resets. Arrows lead from each flow to the views it answers: listTasks_tasks from agent, and roster, workerUsage, workstreamReport and routines from workforce-roster. A band below lists three slots the kit opens for other kits: workerFlows, uses and flows. Two notes say the folder is read once at start-up, and that another kit adds a kind of worker by filling workerFlows."} />
 
@@ -32,8 +40,6 @@ With a folder holding one worker, the app serves exactly two flows: `agent` and 
 ```bash title="Terminal"
 pnpm add @flow-state-dev/workforce
 ```
-
-{/* cutover: the install line is derived from the package name; reconcile with the install lines the catalog index defers. */}
 
 ```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
@@ -54,7 +60,7 @@ A worker file that names no flow runs on `agent`. Each turn runs as the worker i
 
 <Figure svg={AWorkersTurn} caption="What goes into one turn of a worker" description={"On the left, four boxes with arrows into one dashed box on the right. The boxes are the brief, the tools, memory and the conversation. Memory and the conversation are hatched because they outlive the request. The dashed box is one turn of support.billing, which is one model call of at most 50 steps by default. Two notes say memory is off until the app adds it, and that the model sees the last 50 turns of this conversation and none from another."} />
 
-**Tools.** A worker has no tools unless its file grants them, and a `tools:` line is the whole of what it can call. A worker's own tool is a block in its `blocks/` folder, named in `tools:`.
+**Tools.** A worker has no tools of its own unless its file grants them, and a `tools:` line is the whole of what the file grants. The framework's control tools stay available whatever the line says: `sendMessage` on every turn, the standing-rule tools on a turn the user started, and the task tools while the worker has a delegate that takes tasks. A worker's own tool is a block in its `blocks/` folder, named in `tools:`.
 
 ```md title="workforce/teams/support/workers/billing/WORKER.md"
 ---

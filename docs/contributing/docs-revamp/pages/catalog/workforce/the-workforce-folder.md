@@ -11,14 +11,14 @@ import FolderTree from "./figures/the-folder-tree.svg";
 
 A team of workers is files in one folder, `workforce/`: the workers, the instructions and documents they read, the capabilities and tools they can use, the packages they hold. A worker is a named agent a user talks to. The app reads the folder when it starts, except the text of documents in `references/`, which each request reads from the file.
 
-Where a file sits decides who gets it. A document in a team's folder reaches that team's workers, and one in the `org/` folder reaches every worker on every team. You hand a worker something by putting the file where that worker can see it, with no registration and no config line. A team is then a folder you review in a pull request and deploy with the app.
+Where a file sits decides who gets it. A reference or skill in a team's folder reaches that team's workers, and one in the `org/` folder reaches every worker on every team. You hand a worker something by putting the file where that worker can see it, with no registration and no config line. A team is then a folder you review in a pull request and deploy with the app.
 
 <Figure svg={FolderTree} caption="Each folder under workforce/ and what it becomes" description={"Two columns of eight rows each. On the left, inside one box labelled workforce, in your repo, eight paths: teams/support/workers/lead/WORKER.md, which is highlighted as where you start, then teams/support/TEAM.md, teams/support/references/, teams/support/resources/, teams/support/packages/, teams/support/skills/, flows/workers/ and blocks/, and org/. An arrow labelled becomes runs from each path to a box on the right, in the app. The boxes read: a worker, support.lead; instructions every support worker is told; read-only documents, read from the file; documents workers write, and capabilities; instructions and tools a worker holds; skills every support worker holds; worker flows, and tools any worker may name; workers, documents, skills and packages for every team."} />
 
 ## What you get
 
 - **A worker is a folder.** Add `teams/support/workers/lead/` with a `WORKER.md`, restart, and `support.lead` exists.
-- **Placement is the access rule.** A document or skill reaches every worker at the level it sits on, and nobody else. A package sits at the same levels, and where it sits decides who may hold it. To reach more workers, move the file up the tree.
+- **Placement is the access rule for references and skills.** A reference or skill reaches every worker at the level it sits on, and nobody else. A writable document in `resources/` is different: every worker has it unless its file's `resources:` line narrows the list, wherever the document sits, and what a worker saves is one copy for the whole organization. A package sits at the same levels, and where it sits decides who may hold it. To reach more workers, move the file up the tree.
 - **A misplaced file stops the app.** The error names its path.
 - **No wiring.** Workers, documents and packages need no line in your app's code. A code file needs `fsdev gen`, whose module the config passes to the kit once.
 
