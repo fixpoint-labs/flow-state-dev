@@ -1302,8 +1302,15 @@ const EXEMPTIONS = [
   {
     id: "chat-thread",
     terms: ["thread"],
-    strip: /\bchat[ -]threads?\b|\bthread:\s*\{|`thread`/gi,
-    why: "a chat thread in the UI, and a coding harness's own `thread` option, not a mailbox's",
+    strip: /\bchat[ -]threads?\b|\bthread:\s*\{/gi,
+    why: "a chat thread in the UI, and a coding harness's own `thread:` option, not a mailbox's",
+  },
+  {
+    id: "codex-thread-option",
+    terms: ["thread"],
+    where: (path) => path.startsWith("docs/contributing/docs-revamp/pages/catalog/harnesses/codex."),
+    strip: /`thread`/g,
+    why: "the Codex block's own `thread` option, named in code font on the revamp's Codex page",
   },
   {
     id: "claude-code-threads",
