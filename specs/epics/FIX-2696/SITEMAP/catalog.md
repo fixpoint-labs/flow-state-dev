@@ -318,14 +318,14 @@ All eight: FIX-2703. Sources: `patterns/parallelTasks`, `patterns/supervisor`, `
 Each: `catalog/tools/<name>` · catalog · kit template without slots. Provider and option tables →
 `reference/tools`.
 
-| Id | Page | Words | Job | Cold-read questions | Figures | Examples | Source verdict |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| K-30 | Search | 600 | Web search across providers behind one interface | Which provider is used when you name none? · How do you restrict domains? · What comes back? | None | `search` in `tools`; a domain filter | Keep |
-| K-31 | Fetch | 500 | One page as clean Markdown | What happens with no provider key? · What comes back on a failed fetch? · How does it pair with search? | None | `fetch` in `tools` | Keep |
-| K-32 | Crawl | 600 | Follow links from a root URL and return each page | How do you bound a crawl? · Which URLs are followed? · When should you use a provider instead of the built-in crawler? | None | `crawl` with a pattern | Keep |
-| K-33 | MCP tools | 500 | Connect an MCP server and give its tools to a generator | How do you turn one tool off for a turn? · What helps the model pick the right tool? · Where is the server configured? | None | An MCP server in `tools` | Keep |
-| K-34 | Bash | 1,100 | Run shell commands in a sandbox whose files persist | Where do files written by a command go after the request? · What can the sandbox reach? · Which line gives a generator the tool? | *Sandbox and store*: the sandbox for one run, the files kept. Marks: dashed outline on the sandbox, hatching on the stored files, arrow (`SYNCS`) | `createBashCapability` in `uses` | Keep, trim |
-| K-35 | Workspace | 1,000 | Move files between stored collections and the place an agent works | Two runs change one file: what happens? · What does the flush report say? · When do you reach for this over Bash? | *Stored files, working files*: two columns and the sync between. Marks: hatching, arrow, red on a conflict | Projecting a collection to disk; writing one file | Keep, trim |
+| Id | Page | Slug | Words | Job | Cold-read questions | Figures | Examples | Source verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| K-30 | Search | `catalog/tools/search` | 600 | Web search across providers behind one interface | Which provider is used when you name none? · How do you restrict domains? · What comes back? | None | `search` in `tools`; a domain filter | Keep |
+| K-31 | Fetch | `catalog/tools/fetch` | 500 | One page as clean Markdown | What happens with no provider key? · What comes back on a failed fetch? · How does it pair with search? | None | `fetch` in `tools` | Keep |
+| K-32 | Crawl | `catalog/tools/crawl` | 600 | Follow links from a root URL and return each page | How do you bound a crawl? · Which URLs are followed? · When should you use a provider instead of the built-in crawler? | None | `crawl` with a pattern | Keep |
+| K-33 | MCP tools | `catalog/tools/mcp` | 500 | Connect an MCP server and give its tools to a generator | How do you turn one tool off for a turn? · What helps the model pick the right tool? · Where is the server configured? | None | An MCP server in `tools` | Keep |
+| K-34 | Bash | `catalog/tools/bash` | 1,100 | Run shell commands in a sandbox whose files persist | Where do files written by a command go after the request? · What can the sandbox reach? · Which line gives a generator the tool? | *Sandbox and store*: the sandbox for one run, the files kept. Marks: dashed outline on the sandbox, hatching on the stored files, arrow (`SYNCS`) | `createBashCapability` in `uses` | Keep, trim |
+| K-35 | Workspace | `catalog/tools/workspace` | 1,000 | Move files between stored collections and the place an agent works | Two runs change one file: what happens? · What does the flush report say? · When do you reach for this over Bash? | *Stored files, working files*: two columns and the sync between. Marks: hatching, arrow, red on a conflict | Projecting a collection to disk; writing one file | Keep, trim |
 
 All six: FIX-2703. Sources: `tools/search`, `tools/fetch`, `tools/crawl`, `tools/mcp`, `tools/bash`, `tools/workspace`.
 
