@@ -2,11 +2,12 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-Three decisions are the sign-off. The owner already decided that these three screens become
-views and wait for this issue ([FIX-2627](../FIX-2627/DECISIONS.md#decided-during-implementation),
-2026-11-13; [FIX-2628 Fork B](../FIX-2628/DECISIONS.md#how-it-got-here), 2026-11-15). What is left
-is what a view may read of the caller's sessions, where a view that crosses kits lives, and how
-much of a thread a view carries.
+Two decisions are the sign-off, and two questions are open. The owner already decided that these
+three screens become views and wait for this issue
+([FIX-2627](../FIX-2627/DECISIONS.md#decided-during-implementation), 2026-11-13;
+[FIX-2628 Fork B](../FIX-2628/DECISIONS.md#how-it-got-here), 2026-11-15). What is left is what a
+view may read of the caller's sessions, where a view that crosses kits lives, which issue removes
+the old list call, and what an untitled session shows.
 
 ## The tree
 
@@ -19,8 +20,8 @@ flowchart TD
   D2 -.->|"rejected · misses an app's own agent flow"| X3["a workforce views slot"]
   D2 -.->|"rejected · a second way a view is installed"| X4["capabilities carry views"]
   D2 -.->|"rejected · the address stops naming the owner"| X5["a session view served through another flow"]
-  I --> D3["D3 · turns view answers turn state, words stay on the stream"]
-  D3 -.->|"rejected · re-runs per chunk"| X6["a view of the whole thread"]
+  I --> Q1["Q1 · open · which issue removes listWorkerSessions"]
+  I --> Q2["Q2 · open · what an untitled session shows"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -31,10 +32,10 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Keeping the session list a client call an app assembles (`listWorkerSessions`, `fsd.sessions.requests`) · or one read of a whole session, heard on every kind of change |
-| **Because** | A view has no HTTP client, and its value is that the engine knows what it read (FIX-2623 D1). The read already exists for one session (`sessions.read`, `history`) with one owner rule: same user, tenant and org, else `undefined`, so it is not an existence oracle (BP-031). Listing and turns are the two reads missing. Hearing every kind of a session would wake the list once per streamed chunk, which is why the adapter today hears `request`, `board` and `resource` and never `items` |
-| **Locks in** | `RequestSessions` gains `list` (the caller's top-level sessions, filtered at the store by flow and readonly fields, newest first, at most 100) and `turns` (a session's requests: id, action, status, times, source, error code and message; at most 50; no words). Both keep the owner rule and answer an unknown session as absent. In a view, `list` is heard on the caller's user topic as `run`; `turns` on that session's topic as `request` and `run`. User and session views may use all four reads; org views refuse them. A session id in a view's input only selects among what the caller may already read |
+| **Because** | A view has no HTTP client, and its value is that the engine knows what it read (FIX-2623 D1). The read already exists for one session (`sessions.read`, `history`) with one owner rule: same user, tenant and org, else `undefined`, so it is not an existence oracle (BP-031). Listing and turns are the two reads missing. A session's only recorded read today, `ViewDependencies.session`, hears `items` too, so a board that read each run session's flow that way would re-run once per streamed chunk |
+| **Locks in** | `RequestSessions` gains `list` (the caller's top-level sessions, filtered at the store by flow and readonly fields, newest first, at most 100 with a `more` flag, each row with its flow, lineage id, updated time and its latest request's action and status) and `turns` (a session's requests: id, action, status, times, source, error code and message; at most 50; no words). `read` also answers the lineage id. A session's flow and lineage never change, so reading them records nothing; `read` records only when its `state` is read, heard as `run` and `state`. `list` is heard as `run` on the caller's user topic; `turns` as `request` on that session's topic. Nothing is recorded for a session the read doesn't answer. User and session views may use these reads; org views refuse them |
 
-![D1, what a view may read of the caller's sessions. Chosen: list them and read their turns, admitted by the server and heard on the kinds that change them. Instead of: the client's list call. It comes down to who assembles: with the client call every app keeps the adapter's per-row reads and its own subscription; with the view the engine records and hears them. Price: two reads on a public host type, and the user topic wakes the list on every turn of any of the caller's sessions. Tie: who may read a session is the same owner rule either way. Locks in list and turns on RequestSessions. Flips if a session list must show sessions of other users](figures/d1-session-reads.svg)
+![D1, what a view may read of the caller's sessions. Chosen: list them and read their turns, admitted by the server and heard on the kinds that change them. Instead of: the client's list call. It comes down to who assembles: with the client call every app keeps the per-row reads and its own subscription; with the view the engine records and hears them. Price: two more reads on a public host type. Tie: who may read a session is the same owner rule either way. Locks in list and turns on RequestSessions. Flips if a session list must show other users' sessions](figures/d1-session-reads.svg)
 
 It comes down to who assembles: with the client call, every app keeps the per-row reads.
 
@@ -48,7 +49,7 @@ a team). Then a list belongs on an org view with its own read check, not on the 
 |---|---|
 | **Instead of** | A workforce `views` slot the harness kit fills, merged into the agent and coordinator flows (the issue's example) · capabilities that carry `views`, installed where `uses` lists them · a session view served for a session whose flow is another's, relaxing `assertSessionAdmitted` |
 | **Because** | Everything the coding board reads is the caller's own: the conversation ledger is user-scoped "so a task session on another flow reads and settles the row" (`ledger.ts`), and the session reads are D1's. So the view can run on the harness kit's `harnesses` flow, given the conversation's id. A slot reaches only the flows workforce builds: an app whose `agent` entry is its own flow (the kit allows it) would lose the board. Capability views would be a second way a view is installed, through blocks. A relaxed admit check would make a session view's address stop naming the flow that owns it |
-| **Locks in** | The worker sessions and session turns views are user views on workforce's roster flow; the coding board is a user view on the harness kit's `harnesses` flow; recorded work is a session view on the coding worker flow, which the harness kit builds. Each takes a session id in its input. A board read of a named conversation's partition records that conversation where the running session would be, so FIX-2625's board notices and partial answers hold. No slot or capability carries views |
+| **Locks in** | The worker sessions and session turns views are user views on workforce's roster flow; the coding board is a user view on the `harnesses` flow; recorded work is a session view on the coding worker flow, which the harness kit builds. Each takes a session id in its input, which selects among what the caller may already read and never admits. The board reaches the partition by `conversationLedgerAt` and `filingSessionIdOf` over the admitted read, and its read records the named conversation where a running session would be, so FIX-2625's board notices and partial answers hold, on an empty board too. No slot or capability carries views |
 
 ![D2, where a view that reads across kits lives. Chosen: at user scope on its own kit's flow. Instead of: a workforce views slot. It comes down to an app's own agent flow: the slot reaches only flows workforce builds, so an app that replaces agent loses the board, while a user view reads the user's ledger from any flow. Price: the screen addresses the board on another flow and passes the session id. Tie: who may read is the server's owner rule either way. Locks in each view's address. Flips if a cross-kit view needs a session resource of another flow's session](figures/d2-own-flow.svg)
 
@@ -58,21 +59,46 @@ It comes down to an app's own agent flow: a slot never reaches it, a user view d
 session on another kit's flow. The board's pull-request links are such a case, and stay on the
 recorded work view, where the run session is the coding flow's own.
 
-<a name="d3"></a>
-## D3 · The turns view answers each turn's state; the words stay on the stream
+## Open
 
-| | |
-|---|---|
-| **Instead of** | A view of the whole thread: entries, words and tool calls |
-| **Because** | A view runs whole per notice, and a reply publishes `items` per stored chunk, so a thread view would re-run per chunk for every watcher. The session stream already resumes by sequence number and the lab already draws from it ([FIX-2628](../FIX-2628/SPEC.md#what-stays-as-it-is): the transcript keeps its session address). What the adapter adds by hand is the turns' state: running, stopped, failed and retryable |
-| **Locks in** | A screen reads a thread from two sources: `sessionFeed` for items and the turns view for state. The words never enter a view's answer (BP-042) |
+<a name="q1"></a>
+### Q1 · Which issue removes `listWorkerSessions`?
 
-![D3, how much of a thread a view carries. Chosen: each turn's state, with the words left on the stream. Instead of: a view of the whole thread. It comes down to the chunk rate: a whole-thread view re-runs once per stored chunk for every watcher, while the turns view runs on a turn's start and end. Price: a screen joins two sources. Tie: resume after a disconnect works either way. Locks in two sources for a thread. Flips if items stop publishing per chunk](figures/d3-words-on-stream.svg)
+- **In plain terms.** The workforce client call that lists a user's conversations with a worker.
+  Today the lab, a teammates goal (`stops-and-re-runs-a-task-from-its-popup`, which uses
+  `isDefault`), the docs page *Workers on disk* and the lab README use it. The view replaces it for
+  screens, with the same rows, the default first.
+- **The trade-off.** Removing it here moves the teammates goal onto the view and changes one docs
+  section at release. Leaving it ships two public ways to list a worker's sessions, and removing
+  the call later breaks app code that started using it in between.
+- **My recommendation:** remove it here. The teammates goal is a real second caller and proves
+  the view on a second app.
+- **What would change my mind:** teammates' screens moving onto the views in a near epic; then
+  the goal moves with them.
+- **If wrong:** small either way: a goal moved a little early, or one release with two ways.
 
-It comes down to the chunk rate: a whole-thread view re-runs per stored chunk.
+![Q1, open: which issue removes listWorkerSessions. Recommended: this issue, moving the teammates goal onto the view. Or: a later issue. It comes down to a second caller: moving the teammates goal proves the view twice, while leaving the call ships two ways to list. Price: one goal and one docs section more here. Tie: the lab moves in FIX-2628 either way. Flips if teammates' screens move to the views soon](figures/open-remove-list-call.svg)
 
-**What would change my mind:** items that publish once per turn, not per chunk. Then one thread
-view costs a few runs a turn and saves the join.
+It comes down to a second caller: leaving the call ships two ways to list a worker's sessions.
+
+<a name="q2"></a>
+### Q2 · What does the sidebar show for a session before its title is generated?
+
+- **In plain terms.** Today a new session shows the first line of its first message until the
+  title model writes a title, seconds later. That line lives in the session's messages, which the
+  list view would have to read for every untitled row on every run.
+- **The trade-off.** "Untitled" until the title lands costs nothing on the list, but a new session
+  reads "Untitled" for a few seconds, and stays so where titling failed. The alternative: the
+  server writes the first line onto the session at its first send, as a field the list carries:
+  one write per first send and a field kept for good.
+- **My recommendation:** "Untitled", and drop the first-line fallback.
+- **What would change my mind:** titles that often fail or take long to land. Then the server
+  writes the first line.
+- **If wrong:** cosmetic, and reversible by adding the field later.
+
+![Q2, open: what the sidebar shows before a title lands. Recommended: Untitled until the title lands. Or: a first line the server writes at the first send. It comes down to cost on every list: the fallback needs a message read per untitled row, or a new field. Price: a few seconds of Untitled, and Untitled where titling failed. Tie: a titled session reads the same. Flips if titles often fail or lag](figures/open-untitled.svg)
+
+It comes down to the cost on every list: the fallback reads a message per untitled row.
 
 ## Decided, not asked
 
@@ -82,53 +108,59 @@ view costs a few runs a turn and saves the join.
   (the dispatch seam's `resolveExistingSession`): `read`, `history`, `list` and `turns`, in a
   view or an action. Every read a view makes of a session records through
   `createViewDependencies`, never the raw recorder; `views-dependency-matrix.test.ts` gains a row
-  per read.
-- **Heard on what changes it.** `list` on the user topic as `run`, which every session write and
-  every non-delta request write publishes; `turns` as `request` and `run` on the session's topic.
-  Neither hears `items`. The user topic spans the caller's orgs: a notice from another org reads
-  the list again and finds the same rows.
+  per read, and one for a board read of a named conversation with no entries.
+- **What never changes records nothing.** A session's flow and lineage id; `read`'s `state` getter
+  records, as `recordSessionReads` records a session handle's. The lineage id stays in server
+  code: it reaches a view only to compute a partition (`filingSessionIdOf` digests it) and never
+  enters an answer.
+- **Heard on what changes it.** `list` on the user topic as `run`. Membership changes are full
+  session writes, which publish it; a one-key `patchState` (a work project set, `work-project.ts`)
+  publishes nothing there until its request settles, and the request's write then does. `turns`
+  hears `request` only: a session's state deltas and its child sessions' writes publish `run`, and
+  the lab's thread hears `request` alone today. Neither hears `items`. The user topic spans the
+  caller's orgs: a notice from another org reads the list again and finds the same rows.
 - **Bounded** (BP-042): `list` at most 100 rows a call with a `more` flag; `turns` at most 50; no
   words, no state beyond the readonly fields `read` already crosses.
 - **No action runs in a view.** The board reads each task's harness from its worker's `harness:`
   setting until its run reports one (FIX-2627), never by running `harness` in a run session;
-  review and landing come from the row's output, read server-side and cut to those two fields
-  (BP-015).
+  review, landing and error come from the row, read server-side and cut to those fields (BP-015).
+- **One copy of each rule.** `listWorkerSessions`' membership rule (`carriesOnly`, `WORKER_ONLY`,
+  `byRecent`, the default first) moves to `derive-session-id.ts` beside `CRITERIA_STATE_KEYS`, and
+  the client's `findWorkerSession` and the view import it. The route's readonly-field guard
+  (`resolveStateFilter`) becomes one helper the route and `list` call.
 
 ### The views
 
 - **Worker sessions** (workforce, roster flow, keyed by session id): input a worker; rows as the
-  [map](SPEC.md#what-replaces-each-part-of-the-adapter) says. Which sessions count is
-  `listWorkerSessions`' rule today (top-level, on the worker's current flow, no task, delegate,
-  lead or coordinator session). It opts in to partial answers on board notices
-  ([FIX-2625 D1](../FIX-2625/DECISIONS.md#d1)) only if measured worth it.
+  [map](SPEC.md#what-replaces-each-part-of-the-adapter) says, `isDefault` and the default first,
+  leaving out a task's, a delegate's, a workstream lead's and a project coordinator's session.
+  "A turn runs" is the row's latest request, a door action, in progress.
 - **Session turns** (workforce, roster flow, keyed by request id): a turn is a request of a door
   action or a task-settled turn, as workforce names them.
-- **Coding board** (harness-manager, `harnesses` flow, keyed by task id): the board's own list
-  code (`taskListEntriesFor`) and the Inbox rule (`inboxItems`), on the conversation's partition,
-  which the server reaches from the admitted read, never from input. Partial answers as FIX-2627
-  set them. The installation it needs for a worker's settings comes through workforce's `flows`
-  slot, as any flow built on it.
+- **The words stay on the stream.** A view runs whole per notice and a reply publishes `items` per
+  stored chunk, so no view carries a thread's words; a screen joins `sessionFeed` and the turns
+  view, as FIX-2628 already keeps the transcript on its session address.
+- **Coding board** (harness-manager, `harnesses` flow, keyed by task id): the board's own list code
+  (`taskListEntriesFor`) and the Inbox rule (`inboxItems`); its block declares
+  `conversationLedgerResources`. Partial answers as FIX-2627 set them. Pull requests appear by
+  number on the card; their links come from the recorded work view in a task's detail, with no
+  watch per card.
 - **Recorded work** (harness-manager, coding worker flow, session view): the plan and the pull
-  requests (number, link, title) `readRecordedWork` reads today, beside `changes`.
-- **`findWorkerSession` stays:** it derives the one session a write goes to; `listWorkerSessions`
-  goes, with no alias (BP-034).
+  requests (number, link, title), beside `changes`.
+- **`findWorkerSession` stays:** it derives the one session a write goes to.
 - **Names:** `list`, `turns`, and the views' names are new public names; none is a word the
-  glossary retires. The implementation PR adds the four views to the glossary's *View* entry's
-  examples only if it lists examples. **Changeset:** `minor` for `core`, `engine`, `workforce`,
-  `harness-manager`, `client` (the workforce client's removal).
+  glossary retires. **Changeset:** `minor` for `core`, `engine`, `workforce`, `harness-manager`,
+  `client`.
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
 | `turns` as an option on `history` | `history` is the one rule a model's history window reads (settled turns, with words); a screen's every-turn status would fork that rule |
+| "A turn runs" from one `turns` read per row | A read per listed session on every run; the list row carries its latest request instead |
 | The worker sessions view counts what waits on the user, dismissals included | Dismissals are the lab's own resource; the view answers ids and attempts, the app subtracts |
-| Pull-request links read by the board from each run session | A user view can't read another flow's session resource without a new read; the recorded work view already runs where they live |
+| Pull-request links read by the board from each run session | A user view can't read another flow's session resource without a new read; recorded work already runs where they live |
 | A peer read of another session's resources | No screen needs it once links come from recorded work |
-
-## Open
-
-None.
 
 ## Settled
 
@@ -137,32 +169,40 @@ None.
   `RequestSessions.read` answers only the running principal's sessions (`request-host.ts:349`);
   in a user or org view `guardViewRequestHost` refuses both reads (`view-reads.ts`). No POC: each is
   a direct read of the code, and D2 rests on the first.
-- **The user topic hears `run` on session and request writes.** `publish-writes.ts`'s table (lines
-  28 to 33): every write but a delta publishes `run` on the owner's user topic. D1's list hearing
-  rests on it.
+- **The user topic hears `run` on session and request writes, never on a state delta.**
+  `publish-writes.ts`'s table (lines 28 to 33). D1's list hearing rests on it.
+- **An empty board in a user view hears nothing today.** `get-or-create.ts` takes its running
+  session from `ctx.session` (none in a user view), and `ViewDependencies.board` returns with no
+  sessions. Hence D2's named conversation.
 - **No factual-base checker.** The adapter counts are FIX-2628's measured ones, quoted, not
   re-derived; nothing else is counted.
 
 ## Analysis
 
-2026-11-15 · watermark `d3381d6f8` · **Right approach, one fold.** The author's own pass: this
-worker had no sub-agent to dispatch, so the independent pass is the PR's review.
+2026-11-15 · three independent passes on #5290 (Gitar's among them), at `ef4d26e70` · **Right
+approach; the mechanism under it had four holes, folded.** Each claim below was checked in code
+before it was folded.
 
-1. **Reuse** — both reads extend `RequestSessions` under its owner rule; the hearing rules extend
-   `createViewDependencies`; the board view composes the task-list view's code and the Inbox rule.
-2. **Prior art** — Firebase and Supabase realtime let a client list its own rows by a query the
-   server scopes to the caller; none streams a transcript through the same query.
-3. **Other shapes** — a slot, capability views, a relaxed admit check, a thread view: the tree.
-4. **New factors** — the user-scoped ledger makes D2 possible; FIX-2625's board notices keep it
-   narrow.
-5. **Necessity** — the owner deferred the views here and FIX-2628 waits on them.
-6. **Ergonomics** — a screen passes a session id to a view on another flow; FIX-2628's hooks hide it.
-7. **Concerns** — the list wakes on every turn of every session the caller has; bounded by 100 rows.
+| Finding | Changes the approach? | Disposition |
+|---|---|---|
+| The board would read each run session's flow and the conversation's lineage through the one recorded session read, which hears `items`, so it re-runs per chunk; `PeerSessionView` has no lineage id | Yes | Folded into D1: identity unrecorded, lineage id answered |
+| A worker-session row can't be built from `list` and `turns` alone: running state needs a read per row, the first-line fallback needs messages | Yes | Folded: rows carry the latest request; the fallback is Q2 |
+| An empty board in a user view hears nothing, so a first filing never wakes the board | Yes | Folded into D2 and the FIX-2625 row (*Extends*); a matrix row |
+| `listWorkerSessions`' membership rule and the route's state-filter guard are private and would be copied | Yes, the Adds | Folded: each moves to one shared place |
+| `listWorkerSessions` has other callers (a teammates goal, a docs page, the lab README, docs-revamp facts), `isDefault` and no row cap | Yes, scope | The view carries `isDefault` and the order; removal is Q1; the docs page joins the docs line |
+| `turns` should hear `request` only; a one-key `patchState` reaches the user topic only when its request settles; record only a found session; the board's `error`; the flows-slot route to the installation; the shared recorded-work mapping; the goal's base | No | Implementer notes, placed in the rows above and in *Notes from review* |
 
-| Finding | Objective | Changes the approach? | Disposition |
-|---|---|---|---|
-| The issue's example, a workforce `views` slot, misses an app's own `agent` flow, and the board's data is user-scoped anyway | 3 | Yes | Folded into D2 |
-| `turns` might be a flag on `history` (question 7) | 1 | No | Considered and dropped |
+## Notes from review
+
+Recorded for the implementer, from the passes on #5290:
+
+- The `harnesses` flow is built in the harness kit's `install` (`harnesses-kit.ts:109-116`). To
+  reach the installation for `harness:` it is built through workforce's `flows` slot, and the
+  readiness view moves with it.
+- Recorded work extends `readRecordedWork` (`recorded-work.ts:86`) and `readSessionPullRequests`
+  (`pull-request-wait.ts:79`) onto one shared mapping; `landedOf` moves from the lab into
+  harness-manager.
+- `b:quiet` measures the turns view too; `a:equals-store`'s input includes a work-project change.
 
 ## How it got here
 
@@ -170,3 +210,8 @@ worker had no sub-agent to dispatch, so the independent pass is the PR's review.
   is user-scoped, so the coding board runs on the harness kit's own flow and no slot is built;
   extended `RequestSessions` with `list` and `turns` under its owner rule; left the words on the
   session stream.
+- **Review round 1** — three passes found the board would re-run per chunk through the one
+  recorded session read, an empty board heard nothing, and a list row needed more than two reads.
+  A session's identity now records nothing, list rows carry their latest request, and the board
+  read names its conversation. The words-on-the-stream card became an engineering call, so the
+  two owner questions fit the sign-off.

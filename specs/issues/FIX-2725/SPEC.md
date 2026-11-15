@@ -7,10 +7,10 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **opens the lab's sidebar** | Sees sessions an app assembled: one list call per worker, then four reads per row, then a subscription it keeps by hand, and a poll every 3 s | Sees one view's answer. It changes when a session opens or a turn starts or ends, and never once per streamed word |
-| **watches a session's turns** (running, stopped, failed) | Gets them from an app that re-reads the session's requests on every notice | Gets them from one view; the words still stream as they do today ([D3](DECISIONS.md#d3)) |
-| **watches a coding board** | Gets rows an app built from the board, each task's holds, a `harness` action run in another session, `getTask` per task and a pull-request read per run | Gets the rows from one view the harness kit serves. The app asks nothing per row |
-| **builds a screen on workforce** | Writes the ~1,100 adapter lines claude-code-style has, or calls `listWorkerSessions` and assembles the rest | Watches three views with `useView`, and the session list call is gone |
-| **asks for someone else's session** | Is refused by the session routes | Is refused the same way: a view reads only the caller's own sessions, decided by the server ([D1](DECISIONS.md#d1)) |
+| **watches a session's turns** (running, stopped, failed) | Gets them from an app that re-reads the session's requests on every notice | Gets them from one view; the words still stream as they do today |
+| **watches a coding board** | Gets rows an app built from the board, each task's holds, a `harness` action run in another session, `getTask` per task and a pull-request read per run | Gets the rows from one view the harness kit serves, including the first task filed on an empty board |
+| **builds a screen on workforce** | Writes the ~1,100 adapter lines claude-code-style has, or calls `listWorkerSessions` and assembles the rest | Watches three views with `useView` |
+| **asks for someone else's session** | Is refused by the session routes | Is refused the same way, and learns no topic of theirs: the server decides which sessions a view reads ([D1](DECISIONS.md#d1)) |
 
 [FIX-2627](../FIX-2627/DECISIONS.md#decided-during-implementation) deferred these three views
 here: a view could not list sessions or read a session's requests, and a kit could not add a view
@@ -27,8 +27,8 @@ showing only the caller's own sessions, so an app writes none of that assembly.*
 |---|---|
 | **The real need** | The issue: "designs a recorded, read-only session read for views … then builds the three screens on it. It also decides how a kit puts a view into flows another kit builds." FIX-2628 (owner, Fork B): "about 1,100 of `src/adapter.ts`'s 1,622 lines feed the three views" |
 | **Smaller, and rejected** | "The engine reads; the views come later." Nothing an app deletes. Or "the views answer, but are polled." The lab already polls; a view that never wakes is the same screen |
-| **Bigger, and not this issue's** | Deleting the lab's adapter ([FIX-2628](../FIX-2628/SPEC.md)). Moving teammates and Shift Manager onto the views (their epics). A view of what an app adds to a row, such as the lab's dismissals |
-| **Not done if** | An area of the adapter has no view to replace it ([the map](#what-replaces-each-part-of-the-adapter)) · a view answers a session the caller may not run in · a screen stays current only by a poll · the session list or the board re-runs once per streamed chunk · a view runs an action in another session · `listWorkerSessions` survives |
+| **Bigger, and not this issue's** | Deleting the lab's adapter ([FIX-2628](../FIX-2628/SPEC.md)). Moving teammates' and Shift Manager's screens onto the views (their epics). A view of what an app adds to a row, such as the lab's dismissals |
+| **Not done if** | An area of the adapter has no view to replace it ([the map](#what-replaces-each-part-of-the-adapter)) · a view answers, or names a topic of, a session the caller may not run in · a screen stays current only by a poll · a view re-runs once per streamed chunk · the first task filed on an empty board never reaches the board · a view runs an action in another session |
 
 ```mermaid
 flowchart LR
@@ -45,11 +45,11 @@ never reads the recorder.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/views/screens-read-sessions-live/` (new), shaped like `goals/realtime/app-views-read-on-notice/` · model `n/a`, scripted harness · real `serve()` host with push · run by the implementer at completion · verdict on the implementation PR |
-| **Signal** | `a:equals-store`: after each step, each of the three answers equals what a fresh read of the store says (sessions and their running state, turns and their status, board rows with holds, harness and review), within 1 s, poll off. `b:quiet`: during one reply of 40 streamed chunks, the session list and the board each run at most 3 times. `c:own-only`: bob's call with alice's session id answers nothing of hers and names no topic of hers. `d:no-actions`: no view run starts a request |
-| **Input** | Two workers, one on the agent flow and one coding worker with `harness: codex`. A second session opened from another tab. A task that fails once, then is retried. An app whose `agent` entry is its own flow must pass `a` too |
+| **Goal check** | `goals/views/screens-read-sessions-live/` (new), built on `goals/views/a-screen-watches-a-view/` and `goals/realtime/app-views-read-on-notice/` (serve host, poll off, scratch-patch controls) · model `n/a`, scripted harness · run by the implementer at completion · verdict on the implementation PR |
+| **Signal** | `a:equals-store`: after each step, each of the three answers equals a fresh read of the store (sessions with their running state and default, turns and their status, board rows with holds, harness, review and error), within 1 s, poll off. `b:quiet`: during one reply of 40 streamed chunks, the session list, the turns view and the board each run at most 3 times. `c:own-only`: bob's call with alice's session id answers nothing of hers and names no topic of hers. `d:no-actions`: no view run starts a request |
+| **Input** | Two workers, one on the agent flow and one coding worker with `harness: codex`. A second session opened from another tab. A session's work project changed. A first task filed on an empty board. A task that fails once, then is retried. An app whose `agent` entry is its own flow must pass `a` too |
 | **Anti-game** | Don't assert on the recorder, the hearing list or a view's unit test. Keep the poll off: a timer hides a missed notice |
-| **Control that must fail** | `GOAL_CONTROL=unrecorded-session-reads`: the two new reads record nothing, so a new session never reaches the list; FAILS `a:equals-store`. `GOAL_CONTROL=admit-by-input`: the reads skip the owner check; FAILS `c:own-only`. Today's `main` has no views to watch |
+| **Control that must fail** | `GOAL_CONTROL=unrecorded-session-reads`: `list` and `turns` record nothing, so a new session never reaches the list; FAILS `a:equals-store`. `GOAL_CONTROL=admit-by-input`: the reads skip the owner rule; FAILS `c:own-only`. Today's `main` has no views to watch |
 
 ## What changes
 
@@ -62,7 +62,7 @@ only watches.
   // a view's block, in any kit (D1)
   execute: async (input, ctx) => {
 +   const host = requireRequestHost(ctx);
-+   const rows = await host.sessions!.list({ flowKind: "agent", fields: { workerId: input.worker }, limit: 50 });
++   const rows = await host.sessions!.list({ flowKind: "agent", fields: { workerId: input.worker }, limit: 100 });
 +   const turns = await host.sessions!.turns(input.sessionId, { limit: 50 });  // status, never the words
   }
 
@@ -76,19 +76,21 @@ only watches.
 Names past `list`, `turns` and the four views' names are the implementer's.
 
 **Docs:** at release, the Views page gains "reading your sessions" (what a view may read of the
-caller's sessions, and when it hears a change); the workforce and harness-manager READMEs list
-their new views, and the workforce README drops `listWorkerSessions`. No new page. Contributor
-docs in the implementation PR: `flows-and-actions.md`'s view section, `state-and-scopes.md`'s
-paragraph on reading another session, and the `view` row of `mechanisms.yaml`.
+caller's sessions, and when it hears a change); `docs/workforce/workers-on-disk.md`'s "all their
+conversations" section moves from `listWorkerSessions` to the view; the workforce and
+harness-manager READMEs list their new views. No new page. Contributor docs in the implementation
+PR: `flows-and-actions.md`'s view section, `state-and-scopes.md`'s paragraph on reading another
+session, the `view` row of `mechanisms.yaml`, the lab README's sessions row, and the docs-revamp
+facts files that name `listWorkerSessions`.
 
 ## How a change reaches the screen
 
 ```mermaid
 flowchart LR
-  W["a session or request write"] --> N["notices it already publishes · user topic run · session topic request and run"]
-  V["a view run"] --> R["sessions.list · sessions.turns · board read of a named conversation"]
+  W["a session or request write"] --> N["notices it already publishes · user topic run · session topic request"]
+  V["a view run"] --> R["sessions.list · sessions.turns · a read's state · a board read of a named conversation"]
   R --> O{"the caller's own? same user, tenant and org"}
-  O -->|"no"| U["nothing, as an unknown session"]
+  O -->|"no"| U["nothing, and nothing recorded"]
   O -->|"yes"| H["recorded · hears only the kinds that change it"]
   N --> L["client.live · reads the view again"]
   H --> L
@@ -98,11 +100,11 @@ flowchart LR
 
 | Adapter area (FIX-2628's count) | Replaced by |
 |---|---|
-| Worker sessions, ~220: `watchSessions`, `rowOf`, `runningTurns`, `firstLineOf`, `waitingCountFor` | workforce's **worker sessions** view: per row the id, title (else the first line), worker, last change, whether a turn runs, the session's fields, and the tasks waiting on the user by id and attempt, so the app takes away its own dismissals |
-| Session turns, ~500: `watchThread`'s request reads, stopping, retry, and `watchTaskWork`'s work | workforce's **session turns** view (each turn's status, times, source and error); the words stay on `sessionFeed` and the in-flight call on the request stream ([D3](DECISIONS.md#d3)); `entriesOf` and `withStopped` move unchanged, as FIX-2628 says; the plan and pull requests come from the **recorded work** view |
-| Coding board, ~350: `boardOf`, `harnessOf`, `tasksAndTopicsOf`, `holdsOf`, `watchTasks`, outputs, errors, review answers' lookup | harness-manager's **coding board** view: the task-list rows plus each one's open holds and where their answers go, its harness, review and landing, and its pull requests by number. Answering stays the Inbox client's `answerOne` and the board's actions |
+| Worker sessions, ~220: `watchSessions`, `rowOf`, `runningTurns`, `firstLineOf`, `waitingCountFor` | workforce's **worker sessions** view: per row the id, title, worker, last change, whether its latest turn runs, the session's fields, `isDefault` (default first, then latest), and the tasks waiting on the user by id and attempt, so the app takes away its own dismissals. Which sessions count is `listWorkerSessions`' rule. The first-line fallback is [Q2](DECISIONS.md#q2) |
+| Session turns, ~500: `watchThread`'s request reads, stopping, retry, and `watchTaskWork`'s work | workforce's **session turns** view (each turn's status, times, source and error); the words stay on `sessionFeed` and the in-flight call on the request stream; `entriesOf` and `withStopped` move unchanged, as FIX-2628 says; the plan and pull requests come from the **recorded work** view |
+| Coding board, ~350: `boardOf`, `harnessOf`, `tasksAndTopicsOf`, `holdsOf`, `watchTasks`, outputs, errors, review answers' lookup | harness-manager's **coding board** view: the task-list rows plus each one's open holds and where their answers go, its harness, review, landing and error, and its pull requests by number. Answering stays the Inbox client's `answerOne` and the board's actions |
 | Row types, ~150 | The views' output types |
-| `createWorkforceClient`'s `listWorkerSessions` | Removed. `findWorkerSession` stays: it finds the one session a write goes to, not a screen's list |
+| `createWorkforceClient`'s `listWorkerSessions` | Removed, by this issue or another ([Q1](DECISIONS.md#q1)). `findWorkerSession` stays: it finds the one session a write goes to |
 
 ## What stays as it is
 
@@ -115,26 +117,27 @@ flowchart LR
 
 | Already here | What this does with it |
 |---|---|
-| **The job: let a running block read the caller's other sessions.** Mechanism `view` (`view-reads.ts` `createViewDependencies`), and `RequestSessions.read` / `history` (`request-host.ts:349`, FIX-2160 D2, FIX-2173). Searched `sessions.list`, `listWorkerSessions`, `requests(`, `PeerSessionView`, `history(` across `packages/` | **Extends** `RequestSessions` with `list` and `turns`, through its one owner rule. This is the third and fourth read there; none lists |
-| The HTTP session list (`SessionListOptions`: flow, user, tenant, org, parentage, readonly fields, limit) and request list | **Reused** below the new reads: the same store filters, at the source (BP-033) |
+| **The job: let a running block read the caller's other sessions.** Mechanism `view` (`view-reads.ts` `createViewDependencies`), and `RequestSessions.read` / `history` (`request-host.ts:349`, FIX-2160 D2, FIX-2173). Searched `sessions.list`, `listWorkerSessions`, `requests(`, `PeerSessionView`, `history(` across `packages/` | **Extends** `RequestSessions` with `list` and `turns`, through its one owner rule. `read` gains the lineage id and records only when its `state` is read. None lists today |
+| The HTTP session list: the store's filters (flow, user, tenant, org, parentage, fields) and the route's readonly-field guard (`session-routes.ts` `resolveStateFilter`) | **Reused** below `list`: the same store filters (BP-033), and the guard moves to one helper both call |
+| `listWorkerSessions`' membership rule (`workers/client.ts`: `carriesOnly`, `WORKER_ONLY`, `byRecent`, default first), shared with `findWorkerSession` | **Moved** beside `CRITERIA_STATE_KEYS` in `derive-session-id.ts`; the client and the view import it |
 | [FIX-2623](../FIX-2623/DECISIONS.md#d1): reads recorded, not declared; peer reads refused in user and org views | **Amended:** user views may read the caller's sessions. Org views still refuse |
-| [FIX-2625 D3](../FIX-2625/DECISIONS.md#d3): a board read is heard on its board notices | **Kept:** a board read of a named conversation records that conversation where a running session would be |
+| [FIX-2625 D3](../FIX-2625/DECISIONS.md#d3): a board read is heard on its board notices, through the running session and the filers | **Extends:** in a user view there is no running session, and an empty board names no filer, so nothing is heard. `getOrCreateTaskCollection` takes the admitted conversation's id in the running session's place |
 | [FIX-2627](../FIX-2627/DECISIONS.md#decided-not-asked)'s coding board "served by a package that depends on both", and its deferral | **Built**, on the harness kit's own flow, not a `views` slot ([D2](DECISIONS.md#d2)) |
-| The conversation ledger, user-scoped "so a task session on another flow reads and settles the row" (`conversation-board/ledger.ts`) | **Builds on:** why the board can be served from any flow |
+| The conversation ledger, user-scoped "so a task session on another flow reads and settles the row" (`conversation-board/ledger.ts`), reached by `conversationLedgerAt` and `filingSessionIdOf` | **Builds on:** why the board can be served from any flow |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | `sessions.list`, `sessions.turns` | `sessions.history`; the HTTP lists | **Extends** `RequestSessions`. `history` is what a model reads (settled turns, with words); a screen needs every turn's status and no words |
-| Two hearing rules | `createViewDependencies` | **Extends** the one surface; a row each in `views-dependency-matrix.test.ts` |
-| Worker sessions and session turns views | The roster view, `listWorkerSessions` | **Composed** on the roster flow; the client call goes |
+| Hearing rules for the new reads and an unrecorded identity | `createViewDependencies`; `recordSessionReads`' record-on-get | **Extends** the one surface; a row each in `views-dependency-matrix.test.ts`, the named-conversation board read included |
+| Worker sessions and session turns views | The roster view, `listWorkerSessions` | **Composed** on the roster flow, on the moved membership rule |
 | Coding board view | The board's task-list view, `inboxItems` | **Composed:** the same list code and Inbox rule, run on the server |
-| Recorded work view | `readRecordedWork`; the `changes` view | **Composed** beside `changes` on the coding worker flow; the browser reader stays for teammates and Shift Manager |
+| Recorded work view | `readRecordedWork`, `readSessionPullRequests`; the `changes` view | **Composed** beside `changes`, on one mapping the two readers share, not a third |
 
 | The debt | |
 |---|---|
-| **Removes** | `listWorkerSessions`; the reason FIX-2628 keeps ~1,100 adapter lines; the peer-read refusal in user views |
-| **Adds** | Two reads and four views, permanent by design. Sessions are listed two ways, the HTTP list and the view read: permanent by design, one store filter under both, as an action and a view share one board read |
-| **Leaves** | Teammates and Shift Manager keep `readRecordedWork` and their own assembly (their epics). `sessions.read` in a session view still hears every chunk of the session it reads; narrowing it is the implementer's, under D1's rule |
+| **Removes** | `listWorkerSessions` ([Q1](DECISIONS.md#q1)); the reason FIX-2628 keeps ~1,100 adapter lines; the peer-read refusal in user views; the private copies of the membership rule and the state-filter guard |
+| **Adds** | Two reads and four views, permanent by design. Sessions are listed two ways, the HTTP list and `list`: permanent by design, one filter and one guard under both |
+| **Leaves** | Teammates' and Shift Manager's screens keep `readRecordedWork` and their own assembly (their epics) |
 
 **Net: down.** Each app stops assembling sessions; the framework gains reads it already half had.
 
@@ -144,20 +147,21 @@ flowchart LR
 only, no poll, and nothing left for an app to assemble. If wrong: views that exist but still leave
 the lab its adapter.
 
-**[The debt](#whats-already-here-and-the-debt), net down:** the adapter's reason and a client call
-go; two reads and four views come. If wrong: a second session list that drifts from the first.
+**[The debt](#whats-already-here-and-the-debt), net down:** the adapter's reason, a client call and
+two private rules go; two reads and four views come. If wrong: a second session list that drifts
+from the first.
 
 1. **[D2](DECISIONS.md#d2) · No kit adds a view to another kit's flows: a view that reads across
    them runs at user scope on its own kit's flow.** The one to weigh. If wrong: a later view that
    needs another flow's session resources has no home.
 2. **[D1](DECISIONS.md#d1) · A view may list the caller's sessions and read their turns; the
-   server decides which, and it hears only the changes that alter them.** If wrong: a session
-   list that wakes on every word, or one a caller can point at someone else's.
-3. **[D3](DECISIONS.md#d3) · The turns view answers each turn's state; the words stay on the
-   stream.** If wrong: two paths to a thread an app must stitch.
+   server decides which, and it hears only the changes that alter them.** If wrong: a list that
+   wakes on every word, or one a caller can point at someone else's.
 
-**Open: none.**
+**Open: 2.** [Q1](DECISIONS.md#q1) · which issue removes `listWorkerSessions`: I recommend this one.
+[Q2](DECISIONS.md#q2) · what the sidebar shows before a title is generated: I recommend
+"Untitled", dropping the first-line fallback.
 
-Feature · `core`, `engine`, `workforce`, `harness-manager`, `client` · M (two reads, two hearing
-rules, four views, one client call removed) · after FIX-2625, FIX-2627, FIX-2734 (merged) · blocks
-FIX-2628 · [Linear](https://linear.app/fixpoint-labs/issue/FIX-2725)
+Feature · `core`, `engine`, `workforce`, `harness-manager`, `client` · M (two reads, the hearing
+rules, four views, two rules moved, one client call removed) · after FIX-2625, FIX-2627, FIX-2734
+(merged) · blocks FIX-2628 · [Linear](https://linear.app/fixpoint-labs/issue/FIX-2725)
