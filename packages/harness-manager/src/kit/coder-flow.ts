@@ -60,6 +60,8 @@ import { harnessSessionDoor, harnessTalkTurn } from "../session-door";
 import { taskIssueSegment } from "../workspace";
 
 import { CODER_FLOW } from "../coder-flow-name";
+import { RECORDED_WORK_VIEW } from "../coding-board-ref";
+import { recordedWorkView } from "../recorded-work-view";
 
 export { CODER_FLOW };
 
@@ -258,6 +260,8 @@ export function coderWorkerFlow(
           review: z.boolean().optional(),
         }),
         session: installation.session(),
+        // FIX-2725: a run's plan and pull requests, read in its own session.
+        views: { [RECORDED_WORK_VIEW]: recordedWorkView() },
         resources: { ...installation.resources, ...workerMessagesResources },
         actions: {
           respond: { ...anyDoor, block: byHarness(`${CODER_FLOW}-door`, anyDoor.inputSchema, (b) => b.door.block, false) },

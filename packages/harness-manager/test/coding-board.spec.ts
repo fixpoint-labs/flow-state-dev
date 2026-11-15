@@ -1,0 +1,115 @@
+// FIX-2725 D2.
+/**
+ * The coding board view: a conversation's coding board, served at user scope
+ * on the harness kit's `harnesses` flow, read through the router as a client
+ * reads it.
+ *
+ * Why it matters: a screen draws a conversation's coding tasks from this one
+ * answer, with no action run in another session and no read per card. Each
+ * task's harness is its worker's `harness:` setting until its run reports
+ * one; a failed task carries why; another user's conversation answers
+ * nothing; and the board is heard on the conversation's board notices, an
+ * empty board included, so the first task filed reaches the screen.
+ */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { workforce } from "@flow-state-dev/workforce/kit";
+import type { Harness } from "../src/harness";
+import { scriptedHarness } from "../src/scripted-harness";
+import { harnesses } from "../src/kit";
+
+const states: FlowState[] = [];
+const dirs: string[] = [];
+afterEach(async () => {
+  for (const state of states.splice(0)) await state.dispose().catch(() => undefined);
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+const worker = (name: string, extra: string) => `---\nname: ${name}\ndescription: ${name}.\n${extra}---\nYou are ${name}.`;
+
+function team(): string {
+  const dir = mkdtempSync(join(tmpdir(), "fsd-coding-board-"));
+  dirs.push(dir);
+  const files = {
+    "teams/core/workers/lead/WORKER.md": worker("Lead", "delegates:\n  - core.codex\n"),
+    "teams/core/workers/codex/WORKER.md": worker("Codex", "flow: coder\nharness: codex\n"),
+  };
+  for (const [file, body] of Object.entries(files)) {
+    mkdirSync(join(dir, file, ".."), { recursive: true });
+    writeFileSync(join(dir, file), body);
+  }
+  return dir;
+}
+
+const harness: Harness = { id: "codex", label: "Codex", agent: scriptedHarness({ stepEveryMs: 1 }).slot, readiness: async () => ({ ready: true }), pass: [] };
+const workspace = localWorkspaceHost({ root: join(tmpdir(), "fsd-coding-board-runs"), remotes: { allow: [] }, source: () => ({ kind: "repo", repo: tmpdir() }) });
+
+async function boot() {
+  const state = createFlowState({
+    kits: [harnesses({ workspace }), workforce({ directory: team() })],
+    fill: { [harnesses.slots.harnesses]: [harness] },
+    stores: { default: { primary: inMemoryStores() } },
+  });
+  states.push(state);
+  await state.ready();
+  const router = await state.getRouter();
+  const post = async (path: string[], body: unknown) => {
+    const res = await router.POST(
+      new Request(`http://localhost/api/flows/${path.join("/")}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      { params: { path } },
+    );
+    return { status: res.status, body: (await res.json()) as any };
+  };
+  const board = async (userId: string, sessionId: string) => {
+    const answer = await post(["harnesses", "views", "codingBoard"], { userId, input: { sessionId } });
+    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+    return answer.body as { output: any[]; hears: Array<{ topic: Record<string, unknown>; kinds: string[] }> };
+  };
+  const stores = (await state.getRuntime()).stores;
+  return { post, board, stores };
+}
+
+describe("the recorded work view", () => {
+  it("answers a run's pull requests, read in its own session, and none of another run's", async () => {
+    const { post, stores } = await boot();
+    const created = await post(["coder", "sessions"], { userId: "alice", state: { workerId: "core.codex" } });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const session = created.body.session.id as string;
+    const opened = (requestId: string, number: number) => ({ url: `https://example.test/pr/${number}`, number, title: `PR ${number}`, requestId, firstSeenAt: number, host: null, repository: null, state: null, branch: null, source: "tool" });
+    await stores.resourceState.set("session", session, "observed-pull-requests/a", opened("req_1", 7) as never, "any");
+    await stores.resourceState.set("session", session, "observed-pull-requests/b", opened("req_2", 9) as never, "any");
+    const answer = await post(["coder", session, "views", "recordedWork"], { userId: "alice", input: { requestId: "req_1" } });
+    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+    expect(answer.body.output).toEqual({ plan: null, pullRequests: [{ number: 7, url: "https://example.test/pr/7", title: "PR 7" }] });
+  });
+});
+
+describe("the coding board view", () => {
+  it("answers a conversation's coding tasks with the worker's harness, and nothing of another user's", async () => {
+    const { post, board, stores } = await boot();
+    const created = await post(["agent", "sessions"], { userId: "alice", state: { workerId: "core.lead" } });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const conversation = created.body.session.id as string;
+
+    // Empty, and heard on the conversation's board notices.
+    const empty = await board("alice", conversation);
+    expect(empty.output).toEqual([]);
+    expect(empty.hears).toContainEqual({ topic: { scope: "session", id: conversation, resource: "tasks" }, kinds: ["board"] });
+
+    const filed = await post(["agent", conversation, "actions", "createTask_tasks"], { userId: "alice", input: { goal: "Fix the build", assignee: "core.codex", held: true } });
+    expect(filed.status, JSON.stringify(filed.body)).toBe(202);
+    for (let i = 0; i < 100 && (await stores.request.get(filed.body.request.id))?.status === "in_progress"; i += 1) await new Promise((r) => setTimeout(r, 10));
+
+    const [task] = (await board("alice", conversation)).output;
+    expect(task).toMatchObject({ goal: "Fix the build", assignee: "core.codex", harness: "codex", review: null, landed: null, error: null, pullRequests: [], asks: [] });
+
+    // Bob asking for alice's conversation: nothing, and no topic of hers.
+    const bobs = await board("bob", conversation);
+    expect(bobs.output).toEqual([]);
+    expect(bobs.hears.map((hearing) => hearing.topic)).not.toContainEqual(expect.objectContaining({ id: conversation }));
+  });
+});

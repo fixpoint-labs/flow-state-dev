@@ -1,0 +1,80 @@
+// FIX-2725.
+/**
+ * Recorded work as a session view on the coding worker flow: the plan a run's
+ * harness recorded and the pull requests it opened, read in the run's own
+ * session, where they live. A task's detail watches it with `useView`; the
+ * coding board shows only each task's pull request numbers, so no card
+ * watches a run session of its own.
+ *
+ * The same mapping `readRecordedWork` uses (`planStepsOf`,
+ * `openedPullRequestsOf`); the view reads the recorded collections through
+ * its block's resources, so a write to either is heard.
+ */
+import { defineView, handler } from "@flow-state-dev/core";
+import {
+  OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
+  OBSERVED_PULL_REQUESTS,
+  observedPlanCollection,
+  observedPlanListCollection,
+  observedPullRequestsCollection,
+  planKeySegment,
+  readPlanTarget,
+} from "@flow-state-dev/core/harness";
+import { z } from "zod";
+import { openedPullRequestsOf, planStepsOf, type RecordedEntry } from "./recorded-work";
+
+/** The most rows of each kind the view answers, as the browser reader reads a page. */
+const RECORDED_MAX = 200;
+
+const recordedWorkSchema = z.object({
+  /** The run's plan steps; `null` while it records none. */
+  plan: z.array(z.object({ id: z.string(), title: z.string(), status: z.string().nullable() })).nullable(),
+  /** The pull requests the run opened, oldest first. */
+  pullRequests: z.array(z.object({ number: z.number().nullable(), url: z.string(), title: z.string().nullable() })),
+});
+
+type Stored = { path: string; state: unknown };
+type Listing = { list(prefix?: string): Promise<Stored[]> };
+
+/** `stored`, keyed under its collection as a client reads it. */
+const entriesOf = (collection: string, stored: readonly Stored[]): RecordedEntry[] =>
+  stored.slice(0, RECORDED_MAX).map((ref) => ({ topic: ref.path.startsWith(`${collection}/`) ? ref.path.slice(collection.length + 1) : ref.path, data: ref.state }));
+
+/**
+ * The recorded work view: input `{ requestId }`, a run of this session; answers
+ * its plan and the pull requests it opened. Install it in the coding worker
+ * flow's `views` as `recordedWork`.
+ */
+export function recordedWorkView() {
+  return defineView({
+    scope: "session",
+    block: handler({
+      name: "harness-manager-recorded-work",
+      inputSchema: z.object({ requestId: z.string().min(1) }),
+      outputSchema: recordedWorkSchema,
+      resources: {
+        [OBSERVED_PLAN]: observedPlanCollection,
+        [OBSERVED_PLAN_LIST]: observedPlanListCollection,
+        [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection,
+      },
+      execute: async (input, ctx) => {
+        const resources = ctx.resources as unknown as Record<string, Listing>;
+        const markers = entriesOf(OBSERVED_PLAN_LIST, await resources[OBSERVED_PLAN_LIST]!.list(`${planKeySegment(input.requestId)}/`));
+        const target = readPlanTarget(
+          input.requestId,
+          markers.map((marker) => ({ topic: marker.topic, conversation: (marker.data as { conversation?: string | null } | undefined)?.conversation })),
+        );
+        const planPrefix = target.resourcesPrefix.slice(OBSERVED_PLAN.length + 1);
+        const [plan, opened] = await Promise.all([resources[OBSERVED_PLAN]!.list(planPrefix), resources[OBSERVED_PULL_REQUESTS]!.list()]);
+        return {
+          plan: plan.length === 0 ? null : planStepsOf(entriesOf(OBSERVED_PLAN, plan)),
+          pullRequests: openedPullRequestsOf(entriesOf(OBSERVED_PULL_REQUESTS, opened), input.requestId).map(({ number, url, title }) => ({ number, url, title })),
+        };
+      },
+    }),
+  });
+}
+
+/** The recorded work view, as {@link recordedWorkView} builds it. Import as a type in client code. */
+export type RecordedWorkView = ReturnType<typeof recordedWorkView>;

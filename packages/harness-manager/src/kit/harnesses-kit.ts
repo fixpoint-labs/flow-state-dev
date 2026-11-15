@@ -13,15 +13,19 @@
  * - which harnesses can run here, to `uses`, so a worker files coding work
  *   only on a ready one.
  *
- * It serves one flow of its own, `harnesses`, whose `readiness` view has one
- * row per harness filled, read with no session; `{ refresh: true }` checks
- * them again. With `logReadiness`, it checks them at start and logs a table.
+ * It serves one flow of its own, `harnesses`, through workforce's `flows` slot,
+ * whose `readiness` view has one entry per harness filled, read with no
+ * session; `{ refresh: true }` checks them again. Its `codingBoard` view is a
+ * conversation's coding board, at user scope (`codingBoardViewRef`). With `logReadiness`, it checks them at start and logs a table.
  *
  * Only this subpath imports workforce: the package root never does.
  */
 import { defineFlow, defineKit, slot } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { workforce } from "@flow-state-dev/workforce/kit";
+import type { WorkerInstallation } from "@flow-state-dev/workforce";
+import { codingBoardView } from "./coding-board";
+import { CODING_BOARD_VIEW, HARNESSES_FLOW } from "../coding-board-ref";
 import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { harnessSchema, type Harness } from "../harness";
@@ -34,8 +38,7 @@ import {
 } from "../readiness";
 import { CODER_FLOW, coderWorkerFlow, type CoderFlowOptions } from "./coder-flow";
 
-/** The flow the kit serves its views on. */
-export const HARNESSES_FLOW = "harnesses";
+export { HARNESSES_FLOW };
 
 /** The harness kit's config: where runs work, and the coding worker flow's policy. */
 export type HarnessesConfig = CoderFlowOptions & {
@@ -104,15 +107,23 @@ export const harnesses = defineKit({
     return {
       [workforce.slots.workerFlows]: { [CODER_FLOW]: coderWorkerFlow(config, filled, (id) => readiness.refusal(id)) },
       [workforce.slots.uses]: [harnessReadinessCapability(readiness)],
+      // FIX-2725 D2: built on workforce's installation, so the coding board
+      // reads the roster for a task's `harness:`.
+      [workforce.slots.flows]: {
+        [HARNESSES_FLOW]: (installation: WorkerInstallation) => [
+          defineFlow({
+            kind: HARNESSES_FLOW,
+            views: {
+              readiness: harnessReadinessView(readiness),
+              [CODING_BOARD_VIEW]: codingBoardView(installation, config.defaultHarness),
+            },
+          } as never)({ id: HARNESSES_FLOW } as never) as unknown as FlowInstance,
+        ],
+      },
     };
   },
   install: ({ config, slots }) => {
-    const readiness = readinessOf(slots.harnesses);
-    if (config.logReadiness === true) void readiness.read().then((entries) => console.log(formatHarnessReadiness(entries)));
-    const flow = defineFlow({
-      kind: HARNESSES_FLOW,
-      views: { readiness: harnessReadinessView(readiness) },
-    } as never)({ id: HARNESSES_FLOW } as never) as unknown as FlowInstance;
-    return { flows: [flow] };
+    if (config.logReadiness === true) void readinessOf(slots.harnesses).read().then((entries) => console.log(formatHarnessReadiness(entries)));
+    return { flows: [] };
   },
 });

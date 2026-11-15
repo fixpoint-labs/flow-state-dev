@@ -117,11 +117,7 @@ export async function readRecordedWork(client: RecordedWorkClient, run: Recorded
         ? null
         : {
             truncated: plan.truncated,
-            rows: plan.items.map((item) => ({
-              id: rest(item.topic),
-              title: typeof field(item.clientData, "title") === "string" ? (field(item.clientData, "title") as string) : rest(item.topic),
-              status: typeof field(item.clientData, "status") === "string" ? (field(item.clientData, "status") as string) : null,
-            })),
+            rows: planStepsOf(plan.items.map((item) => ({ topic: item.topic, data: item.clientData }))),
           },
     files:
       files === null
@@ -143,21 +139,45 @@ export async function readRecordedWork(client: RecordedWorkClient, run: Recorded
         ? null
         : {
             truncated: pullRequests.truncated,
-            rows: pullRequests.items
-              .filter((item) => field(item.clientData, "requestId") === run.requestId && text(item.clientData, "url") !== null)
-              .sort((a, b) => Number(field(a.clientData, "firstSeenAt") ?? 0) - Number(field(b.clientData, "firstSeenAt") ?? 0))
-              .map((item) => {
-                const source = field(item.clientData, "source");
-                const number = field(item.clientData, "number");
-                return {
-                  url: text(item.clientData, "url")!,
-                  repository: text(item.clientData, "repository"),
-                  number: typeof number === "number" ? number : null,
-                  title: text(item.clientData, "title"),
-                  state: text(item.clientData, "state"),
-                  source: source === "tool" || source === "branch" ? source : null,
-                };
-              }),
+            rows: openedPullRequestsOf(pullRequests.items.map((item) => ({ topic: item.topic, data: item.clientData })), run.requestId),
           },
   };
+}
+
+// FIX-2725: the one mapping the browser reader above and the recorded work
+// view (`recorded-work-view.ts`) share.
+/** One recorded row: its key under its collection, and its fields. */
+export type RecordedEntry = { topic: string; data: unknown };
+
+const fieldOf = (data: unknown, key: string) => (data as Record<string, unknown> | undefined)?.[key];
+const textOf = (data: unknown, key: string) => (typeof fieldOf(data, key) === "string" ? (fieldOf(data, key) as string) : null);
+/** The key segments after `<request>/<invocation>/`, or a plan's `conversation/<id>/`. */
+const restOf = (topic: string) => topic.split("/").slice(2).join("/");
+
+/** A run's plan steps, from its recorded plan rows. */
+export function planStepsOf(entries: readonly RecordedEntry[]): PlanStep[] {
+  return entries.map((entry) => ({
+    id: restOf(entry.topic),
+    title: textOf(entry.data, "title") ?? restOf(entry.topic),
+    status: textOf(entry.data, "status"),
+  }));
+}
+
+/** The pull requests run `requestId` opened, oldest first, from the session's recorded rows. */
+export function openedPullRequestsOf(entries: readonly RecordedEntry[], requestId: string): OpenedPullRequest[] {
+  return entries
+    .filter((entry) => fieldOf(entry.data, "requestId") === requestId && textOf(entry.data, "url") !== null)
+    .sort((a, b) => Number(fieldOf(a.data, "firstSeenAt") ?? 0) - Number(fieldOf(b.data, "firstSeenAt") ?? 0))
+    .map((entry) => {
+      const source = fieldOf(entry.data, "source");
+      const number = fieldOf(entry.data, "number");
+      return {
+        url: textOf(entry.data, "url")!,
+        repository: textOf(entry.data, "repository"),
+        number: typeof number === "number" ? number : null,
+        title: textOf(entry.data, "title"),
+        state: textOf(entry.data, "state"),
+        source: source === "tool" || source === "branch" ? source : null,
+      };
+    });
 }
