@@ -22,9 +22,10 @@
  *   `runGoal`.
  */
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createClient, type SessionStateSnapshotResponse } from "@flow-state-dev/client";
 import type { MessageItem, OutputItem, SuspensionItem, ToolOutputItem } from "@flow-state-dev/core/items";
@@ -215,9 +216,19 @@ export function clientFor(origin: string, userId: string, bearer?: string): Fsd 
  * Where {@link planted} keeps what it must put back, until it has: a run the
  * machine killed mid-way (no `finally`, no signal) leaves the app's tree
  * planted, and the next run puts it back from here before it plants anything.
- * One journal per app, so the four scripts can run side by side.
+ * One journal per app and tree ({@link plantKey}), so the four scripts, and a
+ * pass on one tree beside a pass on another, can run side by side.
  */
 const journalFile = (key: string) => join(tmpdir(), `fsd-goal-closure-planted-${key}.json`);
+
+/**
+ * The journal key for one app's run on the tree at `root`: the app and a hash of the tree's path, so a
+ * pass on this checkout and a control on another commit's tree, run side by side, never read each
+ * other's journal as a killed run's and put the other's tree back mid-run.
+ */
+export function plantKey(app: string, root: string): string {
+  return `${app}-${createHash("sha256").update(resolve(root)).digest("hex").slice(0, 12)}`;
+}
 
 type Journal = { before: Record<string, string | null>; made: string[] };
 
@@ -238,14 +249,17 @@ function restoreFrom(file: string, journal: Journal): void {
  * error). The served tree is this checkout or a scratch tree; either way it
  * leaves as it came. What is to be put back is journaled first, so a run
  * killed before its `finally` is undone by the next one, before `plant`
- * reads the tree.
+ * reads the tree. A journal left under `legacyKey` (the per-app key used before
+ * the key named the tree) is put back first in the same way.
  */
-export async function planted<T>(key: string, plant: () => Record<string, string>, fn: () => Promise<T>): Promise<T> {
+export async function planted<T>(key: string, plant: () => Record<string, string>, fn: () => Promise<T>, legacyKey?: string): Promise<T> {
   const file = journalFile(key);
-  // Put back what a killed run left first: `plant` reads the tree it planted into.
-  if (existsSync(file)) {
-    console.error(`putting back what a killed run left planted (${file})`);
-    restoreFrom(file, JSON.parse(readFileSync(file, "utf8")) as Journal);
+  // Put back what a killed run left first: `plant` reads the tree it planted into. `legacyKey` is the
+  // journal's key from before it was keyed per tree (the app alone), read once so its tree is put back too.
+  for (const left of legacyKey === undefined ? [file] : [journalFile(legacyKey), file]) {
+    if (!existsSync(left)) continue;
+    console.error(`putting back what a killed run left planted (${left})`);
+    restoreFrom(left, JSON.parse(readFileSync(left, "utf8")) as Journal);
   }
   const files = plant();
   const journal: Journal = { before: {}, made: [] };
@@ -651,7 +665,7 @@ export async function runClosure(driver: AppDriver): Promise<void> {
     for (let n = 1; n <= runs; n += 1) {
       const d = draw();
       const scratch = goalTmpDir(`closure-${driver.app}-${p.pass}-${n}`);
-      await planted(driver.app, () => driver.plant(d, p, scratch), async () => {
+      await planted(plantKey(driver.app, p.root), () => driver.plant(d, p, scratch), async () => {
         // Its server is stopped by `planted`, however this ends.
         const run = await driver.start(d, p, scratch);
         for (const ask of asks) {
@@ -664,7 +678,7 @@ export async function runClosure(driver: AppDriver): Promise<void> {
           notes.push(`${ask} run ${n}: ${graded.length === 0 ? "pass" : "FAIL"}`);
           console.error(`[${driver.app} ${ask} run ${n}] ${graded.length === 0 ? "pass" : graded.join("; ")}\n  reply: ${JSON.stringify(turn.reply.slice(0, 400))}\n  tools: ${turn.tools.map((t) => t.name).join(", ")}`);
         }
-      });
+      }, driver.app);
     }
     tell.over("asks graded", asks.flatMap((ask) => sheet[ask]?.[driver.app] ?? []));
     // A run of a subset (`GOAL_ASKS`) replaces only the asks it graded in the pass's sheet.
