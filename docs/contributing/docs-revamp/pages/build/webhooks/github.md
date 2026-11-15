@@ -7,9 +7,9 @@ description: "Run a block in a flow when a GitHub pull request opens, with a ver
 # Receive a GitHub webhook
 
 When someone opens a pull request on your repository, you want it reviewed.
-GitHub signs every delivery, so the server checks the signature before anything
-runs. By the end you have an endpoint GitHub can POST to and a `repo` flow that
-runs a review block for each opened pull request.
+GitHub signs every delivery, and the server checks the signature before anything
+runs. By the end, GitHub can POST to an endpoint and a `repo` flow runs a review
+block for each opened pull request.
 
 GitHub sends every webhook for a repository to one URL, with the event type
 (`pull_request`, `push`) in the `X-GitHub-Event` header. The sub-event
@@ -18,11 +18,9 @@ the header, and a `when` predicate on the binding narrows to `opened`.
 
 ## 1. The flow declares routing
 
-The flow says which GitHub event runs which block. The secret and the signature
-check go on the server, in step 2.
-
-`reviewPullRequest` is the block that does the work. `reviews` is your own
-helper that starts a review.
+The flow says which GitHub event runs which block. The secret and signature
+check go on the server, in step 2. `reviews` is your own helper that starts a
+review.
 
 ```ts title="src/flows/repo/blocks/review-pull-request.ts"
 import { handler } from "@flow-state-dev/core";
@@ -97,8 +95,8 @@ profile's session store, so `inMemoryStores()` loses them on restart. Without
 
 ## 2. The server verifies and reads the header
 
-You set up the signature check and the header lookup on
-`createWebhookTransportAdapter`, under the same `github` name the flow used.
+`createWebhookTransportAdapter` holds the signature check and the header
+lookup, under the same `github` name.
 
 ```ts title="src/lib/flowstate.ts"
 import {
@@ -136,12 +134,11 @@ export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 
 The endpoint is `POST /api/flows/repo/webhooks/github`.
 `githubWebhookVerifier` checks the `X-Hub-Signature-256` header against the raw
-body and your secret. A delivery that fails the check gets a 401 and nothing
-runs.
+body and your secret. A failed check gets a 401 and nothing runs.
 
-`deliveryId` puts GitHub's `X-GitHub-Delivery` id on `metadata.webhook.deliveryId`
-as a record of where the run came from. The framework does not deduplicate on
-it, which is why the block above keys its write on the repo and PR number.
+`deliveryId` records GitHub's `X-GitHub-Delivery` id on
+`metadata.webhook.deliveryId`. The framework does not deduplicate on it, so the
+block above keys its write on the repo and PR number.
 
 ## 3. Register the webhook on GitHub
 
@@ -150,8 +147,8 @@ In the repository (or organization) settings, add a webhook:
 - **Payload URL:** `https://your-app.example.com/api/flows/repo/webhooks/github`
 - **Content type:** `application/json`
 - **Secret:** the same value as `GITHUB_WEBHOOK_SECRET`
-- **Events:** select "Pull requests". Or select "Send me everything" and let
-  `when` filter; an event with no binding is acknowledged and ignored.
+- **Events:** "Pull requests". An event with no binding is acknowledged and
+  ignored, so selecting more is safe.
 
 ## 4. Check it worked
 
@@ -167,7 +164,7 @@ A failed delivery tells you what to fix:
 - **400 `invalid_payload`:** the body isn't JSON. Set Content type to
   `application/json`.
 - **404 `flow_not_found`:** the flow id in the URL is wrong. **404
-  `webhook_not_found`:** the last segment isn't `github`.
+  `webhook_not_found`:** the last URL segment isn't `github`.
 
-The [webhook receivers reference](/docs/server/webhooks) covers the other
-response codes, the delivery id, and the `when` predicate in full.
+The [webhook receivers reference](/docs/server/webhooks) covers every response
+code.

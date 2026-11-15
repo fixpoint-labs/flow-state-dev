@@ -271,3 +271,14 @@ R5. Verification wording: the verifier "checks" `X-Hub-Signature-256` against th
     page, linked as `/docs/server/webhooks` as the Stripe page links it.
 R6. Page states "an event with no binding is acknowledged and ignored" (row 30) and that a
     delivery the server accepts gets a 202 (row 32).
+
+## Revision 2 (state of the page after pass 8, round 2)
+
+R7. Session paragraph (rows 12, 39): PR 42 and 43 on `acme/api` give `acme/api#42` and
+    `acme/api#43`; first delivery creates, later reuse, simultaneous first deliveries adopt;
+    owner `github-bot`; stored in the `stores` profile's session store, `inMemoryStores()` does not
+    survive a restart; no `sessionId` gives a fresh ephemeral session per delivery.
+R8. A step 4 "Check it worked" holds the success shape (row 32), the Recent Deliveries tab (row 35)
+    and the failure codes (rows 29, 34): 401 `invalid_signature`, 400 `invalid_payload`, 404
+    `flow_not_found`, 404 `webhook_not_found`. Errors after dispatch surface in DevTool (row 32).
+R9. The link to the reference now says it covers every response code (rows 31-33 live there).
