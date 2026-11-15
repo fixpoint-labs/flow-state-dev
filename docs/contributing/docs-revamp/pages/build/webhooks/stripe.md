@@ -56,7 +56,14 @@ interface StripeEvent {
 export const billingFlow = defineFlow({
   kind: "billing",
   actions: {}, // no caller-facing actions: webhooks are the only way in
-  authentication: { defaultUserId: "system", requireUser: false },
+  authentication: {
+    // Only deliveries that passed the signature check get an identity.
+    // Every other request, such as a read of these sessions, gets a 401.
+    resolvePrincipal: ({ source }) =>
+      source === "webhook" ? { orgId: "acme" } : null,
+    defaultUserId: "system",
+    requireUser: false,
+  },
   webhooks: {
     stripe: {
       on: {
@@ -74,14 +81,16 @@ export const billingFlow = defineFlow({
 });
 ```
 
-`requireUser: false` with `defaultUserId: "system"` runs each delivery as a
-system user, since no signed-in user sends a webhook. `sessionId` keeps each
-customer's payments in one session; drop it if you don't need that.
+`resolvePrincipal` decides who a request runs as. It runs after the signature
+check, so `source === "webhook"` means the delivery is genuine. It returns your
+organization's id (`acme` here), and `defaultUserId` names the user, since no
+signed-in user sends a webhook. Any other request gets `null`, which the server
+answers with a 401. Without a resolver, anyone who can reach the server could
+list these sessions and read each request's input, the invoice id and amount.
 
-Don't add a `userId` field to what `input` returns, for example to give each
-Stripe customer their own user. With no principal resolver configured, the
-framework reads the run's user from that object, so a payload field there lets
-whoever sent the payload name the user. Group by customer with `sessionId`.
+`sessionId` keeps each customer's payments in one session; drop it if you
+don't need that. Your app shows payments by reading your own database, which
+the block writes.
 
 ## 2. The server verifies and parses
 
@@ -90,6 +99,7 @@ delivery id. You set all three on `createWebhookTransportAdapter`, under the
 same `stripe` name the flow used.
 
 ```ts title="src/lib/flowstate.ts"
+import { after } from "next/server";
 import {
   createFlowState,
   createWebhookTransportAdapter,
@@ -101,6 +111,8 @@ import { billingFlow } from "../flows/billing/flow";
 export const flowstate = createFlowState({
   flows: [billingFlow()],
   stores: { default: { primary: inMemoryStores() } },
+  // Keep the function alive until the block finishes. The 202 goes out first.
+  onBackgroundWork: (work) => after(() => work),
   adapters: [
     createWebhookTransportAdapter({
       providers: {
@@ -131,6 +143,12 @@ created. A forged delivery gets a 401, and nothing runs.
 `deliveryId` records Stripe's event id with each delivery. Stripe delivers at
 least once and the framework does not deduplicate, so a redelivered event runs
 your block again. Keying the write on `invoiceId` makes that harmless.
+
+The server answers before the block finishes, and Vercel can freeze the
+function once the answer is sent. `onBackgroundWork` hands each run to Next's
+`after()`, which keeps the function alive until the run ends. Without it, a
+delivery can get its `202` and never finish, and Stripe has no reason
+to send it again.
 
 What a delivery gets back:
 

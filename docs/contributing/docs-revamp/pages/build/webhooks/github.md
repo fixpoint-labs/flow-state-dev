@@ -66,7 +66,14 @@ interface PullRequestEvent {
 export const repoFlow = defineFlow({
   kind: "repo",
   actions: {}, // no caller-facing actions: webhooks are the only way in
-  authentication: { defaultUserId: "github-bot", requireUser: false },
+  authentication: {
+    // Only deliveries that passed the signature check get an identity.
+    // Every other request, such as a read of these sessions, gets a 401.
+    resolvePrincipal: ({ source }) =>
+      source === "webhook" ? { orgId: "acme" } : null,
+    defaultUserId: "github-bot",
+    requireUser: false,
+  },
   webhooks: {
     github: {
       on: {
@@ -92,8 +99,14 @@ export const repoFlow = defineFlow({
 The `on` key is `pull_request`, the value of `X-GitHub-Event`. It is never
 `pull_request.opened`, because `opened` is the body's `action` and `when`
 handles it. A closed or synchronized pull request fails the predicate, and the
-delivery is acknowledged and ignored. `requireUser: false` with a `defaultUserId`
-runs each delivery as a bot user, since no signed-in user sends a webhook.
+delivery is acknowledged and ignored.
+
+`resolvePrincipal` decides who a request runs as. It runs after the signature
+check, so `source === "webhook"` means the delivery is genuine. It returns your
+organization's id (`acme` here), and `defaultUserId` names the user, since no
+signed-in user sends a webhook. Any other request gets `null`, which the server
+answers with a 401. Without a resolver, anyone who can reach the server could
+list these sessions and read each request's input, the repo, title and URL.
 
 `sessionId` gives each pull request its own session. PRs 42 and 43 on `acme/api`
 make two sessions, `acme/api#42` and `acme/api#43`. The first delivery for a key
@@ -108,6 +121,7 @@ profile's session store, so `inMemoryStores()` loses them on restart. Without
 lookup, under the same `github` name.
 
 ```ts title="src/lib/flowstate.ts"
+import { after } from "next/server";
 import {
   createFlowState,
   createWebhookTransportAdapter,
@@ -119,6 +133,8 @@ import { repoFlow } from "../flows/repo/flow";
 export const flowstate = createFlowState({
   flows: [repoFlow()],
   stores: { default: { primary: inMemoryStores() } },
+  // Keep the function alive until the block finishes. The 202 goes out first.
+  onBackgroundWork: (work) => after(() => work),
   adapters: [
     createWebhookTransportAdapter({
       providers: {
@@ -149,6 +165,12 @@ body and your secret. A failed check gets a 401 and nothing runs.
 `metadata.webhook.deliveryId`. The framework does not deduplicate on it, so the
 block above keys its write on the repo and PR number.
 
+The server answers before the block finishes, and Vercel can freeze the
+function once the answer is sent. `onBackgroundWork` hands each run to Next's
+`after()`, which keeps the function alive until the run ends. Without it, a
+delivery can get its `202` and never finish, and GitHub has no reason
+to send it again.
+
 ## 3. Register the webhook on GitHub
 
 In the repository (or organization) settings, add a webhook:
@@ -164,7 +186,8 @@ In the repository (or organization) settings, add a webhook:
 Open a pull request, then open the webhook's "Recent Deliveries" tab on GitHub.
 It shows each request and response, and can redeliver a payload. Success is
 `202 { status: "accepted", provider, eventType, requestId }`, sent before the
-block finishes. Errors inside the block appear in DevTool, not in the response.
+block finishes. An error inside the block is recorded on the request that
+`requestId` names, not in the response.
 
 A failed delivery tells you what to fix:
 
