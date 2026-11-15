@@ -330,6 +330,40 @@ describe("a view hears a change through every read path, at every scope", () => 
     expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
   });
 
+  it("request host read × user, of a session that was deleted and is made again", async () => {
+    // A view that watched a conversation and saw it deleted must still wake
+    // when it is made again: a read that answers nothing is heard on the
+    // caller's own user topic, where every session write publishes `run`, and
+    // never on the missing session's topic, which it can't check is theirs.
+    const bus = createInMemoryBus();
+    const stores = { ...createInMemoryStores(), bus };
+    await seed(stores, "root");
+    await seed(stores, "a", "root");
+    await seed(stores, "c");
+    const published = withChangeBus(stores);
+    const run = () => runView({ flow, viewName: "host_session", input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores });
+    expect((await run()).output).toEqual({ v: "lin_matrix" });
+    const old = (await stores.session.get("c"))!;
+    await published.session.delete("c");
+    await tick();
+    const before = await run();
+    expect(before.output).toEqual({ v: "absent" });
+    expect(before.topics).not.toContainEqual({ scope: "session", id: "c" });
+    const heard: ChangeNotice[] = [];
+    for (const t of before.topics) {
+      const busTopic: BusTopic =
+        t.scope === "session" ? { scope: "session", id: t.id, tenantId: "" } : { scope: t.scope, id: t.scope === "user" ? "u_1" : DEFAULT_ORG_ID, tenantId: "" };
+      bus.subscribe(busTopic, (notice) => heard.push(notice));
+    }
+    await published.session.set("c", { ...old, version: 0, lineageId: "lin_2" }, "absent");
+    await tick();
+    await tick();
+    const after = await run();
+    expect(after.output).toEqual({ v: "lin_2" });
+    expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+    expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
+  });
+
   it("request host list × user", async () => {
     // A first run in a new session makes it, on the caller's user topic.
     const { before, after, heard } = await cell("host_list", "say", "c", false);

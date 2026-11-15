@@ -294,7 +294,8 @@ export class UnrecordedReadError extends Error {
 /**
  * What a view's session reads record, read by read: the request host's
  * `sessions` verbs call it where they answer a session (`request-sessions.ts`),
- * so a session the owner rule or the view's admission refuses records nothing.
+ * so a session the owner rule or the view's admission refuses never has its
+ * topic named. A `read` that answers nothing records the caller's list.
  */
 export type SessionReadObserver = {
   /** `read` answered the session: its flow and lineage. */
@@ -305,7 +306,7 @@ export type SessionReadObserver = {
   history(sessionId: string): void;
   /** `turns` answered the session. */
   turns(sessionId: string): void;
-  /** `list` ran. */
+  /** `list` ran, or `read` answered nothing: the caller's sessions, as a whole. */
   list(): void;
 };
 
