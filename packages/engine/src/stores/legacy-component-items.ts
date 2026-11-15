@@ -15,7 +15,7 @@ import type { RequestRecord, RequestStore, StoreRegistry } from "./types";
 const MIGRATING = new WeakSet<object>();
 
 /** A stored `component` item as a `data` item; any other item unchanged. */
-export function migrateLegacyComponentItem(item: RuntimeItem): RuntimeItem {
+function migrateLegacyComponentItem(item: RuntimeItem): RuntimeItem {
   const raw = item as unknown as { type: string; component?: unknown; data?: unknown };
   if (raw.type !== "component") return item;
   const { component, data, ...rest } = raw;

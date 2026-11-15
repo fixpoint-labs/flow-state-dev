@@ -20,10 +20,10 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { DevtoolItem } from "./item-types";
 
 /** Data-item type emitted on every per-task lifecycle event. */
-export const TASK_CHANGE_DATA_TYPE = "task-change";
+const TASK_CHANGE_DATA_TYPE = "task-change";
 
 /** Data-item type emitted at board start / end. */
-export const TASK_BOARD_META_DATA_TYPE = "task-board-meta";
+const TASK_BOARD_META_DATA_TYPE = "task-board-meta";
 
 /**
  * Canonical task status set from the substrate. Open-ended at the consumer
