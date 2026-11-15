@@ -12,4 +12,4 @@ export { followSession, type FollowSessionOptions } from "./session-client/follo
 export { mayReplaceItem, readSessionHistory, type ReadSessionHistoryOptions } from "./session-client/session-history";
 export { liveRead } from "./live/live-read";
 export { canonicalViewInput, viewWatchIdentity, watchView, type ViewWatchClient, type ViewWatcher, type WatchViewOptions } from "./view/view";
-export { mayHold, storageRootsOf } from "./live/paths";
+export { storageRootsOf } from "./live/paths";

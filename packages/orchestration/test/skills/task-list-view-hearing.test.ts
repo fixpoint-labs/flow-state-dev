@@ -15,16 +15,16 @@
  *   writes do.
  *
  * Run through the real engine (`runAction`, `runView`) on an in-memory bus.
- * Whether a notice reaches the screen is decided by the client's rule for an
- * answer's `hears`, restated in {@link admits}.
+ * Whether a notice reaches the screen is decided by the client's own rule for
+ * an answer's `hears` (`hearsNotice`).
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
-import type { BlockContext, FlowInstance, ViewHearing } from "@flow-state-dev/core/types";
+import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
 import { runAction } from "@flow-state-dev/engine";
 import { createInMemoryBus, createInMemoryStores, type ChangeNotice, type SessionRecord } from "@flow-state-dev/engine/host";
 import { runView } from "@flow-state-dev/engine/internal";
-import { mayHold } from "@flow-state-dev/client/internal";
+import { hearsNotice } from "@flow-state-dev/contracts/types/view-hearing";
 import { z } from "zod";
 import { defineTaskCollection, getOrCreateTaskCollection, resolveResourceCollection } from "../../src/tasks";
 import { taskToolViews } from "../../src/skills/views/task-list-view";
@@ -69,23 +69,6 @@ function boardFlow(ledger: Ledger): FlowInstance {
     },
     views: taskToolViews(BOARD, async (ctx) => desk(ctx))
   })() as unknown as FlowInstance;
-}
-
-/**
- * The client's rule for whether a notice wakes an answer (`hearsNotice` in
- * the client's view module): a hearing whose topic covers the notice's lists
- * its kind, and a resource notice's path falls under the hearing's roots.
- */
-function admits(hears: readonly ViewHearing[], notice: ChangeNotice): boolean {
-  return hears.some((hearing) => {
-    const { topic } = hearing;
-    if (topic.scope !== notice.topic.scope) return false;
-    if (topic.scope === "session" && topic.id !== notice.topic.id) return false;
-    if (topic.resource !== undefined && topic.resource !== notice.topic.resource) return false;
-    if (!hearing.kinds.includes(notice.kind)) return false;
-    const path = notice.topic.resource;
-    return notice.kind !== "resource" || path === undefined || mayHold(path, hearing.paths);
-  });
 }
 
 async function boot(ledger: Ledger, lineage: { root: Who; member: Who } | undefined = undefined) {
@@ -141,7 +124,8 @@ describe("an org board's task-list view, watched by a member who didn't file its
 
     const answer = await view(bob);
     expect((answer.output as Array<{ id: string }>).map((task) => task.id).sort()).toEqual(["t1", "t2"]);
-    expect(JSON.stringify(answer.topics)).not.toContain(alice.session);
+    const sessions = [...answer.topics, ...answer.hears.map((hearing) => hearing.topic)].filter((topic) => topic.scope === "session");
+    expect(sessions.filter((topic) => topic.id !== bob.session)).toEqual([]);
     expect(JSON.stringify(answer.hears)).not.toContain(alice.session);
   });
 
@@ -152,7 +136,7 @@ describe("an org board's task-list view, watched by a member who didn't file its
     const answer = await view(bob);
 
     const heard = await heardDuring(bob, () => act(alice, "hold", "t1"));
-    expect(heard.some((notice) => admits(answer.hears, notice))).toBe(true);
+    expect(heard.some((notice) => hearsNotice(answer.hears, notice))).toBe(true);
   });
 });
 
@@ -167,7 +151,7 @@ describe("a board's task-list view hears a filing from a session its answer neve
       expect(answer.output).toEqual([]);
 
       const heard = await heardDuring(alice, () => act(writers[scope], "file", "w1"));
-      expect(heard.filter((notice) => admits(answer.hears, notice)).map((notice) => notice.kind)).toContain("board");
+      expect(heard.filter((notice) => hearsNotice(answer.hears, notice)).map((notice) => notice.kind)).toContain("board");
     });
   }
 });
@@ -181,7 +165,7 @@ describe("a session board shared to its lineage", () => {
     expect(answer.output).toEqual([]);
 
     const heard = await heardDuring(alice, () => act(member, "file", "w1"));
-    expect(heard.filter((notice) => admits(answer.hears, notice)).map((notice) => notice.kind)).toContain("board");
+    expect(heard.filter((notice) => hearsNotice(answer.hears, notice)).map((notice) => notice.kind)).toContain("board");
     // And the row it hears of is on the board when the view reads again.
     expect(((await view(alice)).output as Array<{ id: string }>).map((task) => task.id)).toEqual(["w1"]);
   });

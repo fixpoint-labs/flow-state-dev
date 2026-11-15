@@ -5,7 +5,7 @@
  *
  * 1. **Filter.** A notice is heard when the caller's `hear` says so and, for
  *    a `resource` notice that names a path, when the path may belong under
- *    one of the caller's `paths` (the path rule, `paths.ts`). A connect, a
+ *    one of the caller's `paths` (the path rule, `mayHold`). A connect, a
  *    reconnect, a tick (`null`) and a `resync` are always heard. The filter
  *    runs before the merge, so a notice nobody hears never turns a waiting
  *    read into a read of everything.
@@ -28,7 +28,7 @@ import { wireTopicKey, type WireNotice, type WireTopic } from "@flow-state-dev/c
 import { backoffDelay } from "../internal/backoff";
 import type { SubscribeOptions, Subscription } from "../subscribe/push-hub";
 import { coalesce } from "./coalesce";
-import { mayHold } from "./paths";
+import { mayHold } from "@flow-state-dev/contracts/types/view-hearing";
 
 /** The pace a live read reads at wherever push can miss a change, unless told otherwise. */
 const LIVE_POLL_MS = 3_000;

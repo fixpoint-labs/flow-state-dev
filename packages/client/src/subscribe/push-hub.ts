@@ -35,6 +35,7 @@ import {
   type WireTopic
 } from "@flow-state-dev/contracts";
 import { noticeIdsOf } from "@flow-state-dev/contracts/types/push-delivery";
+import { covers } from "@flow-state-dev/contracts/types/view-hearing";
 import { BACKOFF_INITIAL_MS, backoffDelay } from "../internal/backoff";
 import type { Transport } from "../internal/http";
 import type { FlowCapabilities } from "../types";
@@ -115,13 +116,6 @@ function readServerFrame(value: unknown): PushServerFrame | undefined {
   const { ids, ...notice } = frame;
   const named = noticeIdsOf(ids);
   return (named !== undefined ? { ...notice, ids: named } : notice) as PushServerFrame;
-}
-
-/** Whether `subscribed` covers a notice under `heard`. */
-export function covers(subscribed: WireTopic, heard: WireTopic): boolean {
-  if (subscribed.scope !== heard.scope) return false;
-  if (subscribed.scope === "session" && heard.scope === "session" && subscribed.id !== heard.id) return false;
-  return subscribed.resource === undefined || subscribed.resource === heard.resource;
 }
 
 /** The hub one client holds. */

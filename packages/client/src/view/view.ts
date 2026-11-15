@@ -20,9 +20,9 @@
  */
 import { wireTopicKey, type WireNotice, type WireTopic } from "@flow-state-dev/contracts";
 import type { ViewDefinition, ViewHearing, ViewInput, ViewOutput } from "@flow-state-dev/core/types";
-import { covers, type SubscribeOptions, type Subscription } from "../subscribe/push-hub";
+import type { SubscribeOptions, Subscription } from "../subscribe/push-hub";
 import { liveRead, type LiveRead } from "../live/live-read";
-import { mayHold } from "../live/paths";
+import { hearsNotice } from "@flow-state-dev/contracts/types/view-hearing";
 
 /** A view by flow address and name, typed by the view. Holds no block: safe in a browser bundle. */
 export type ViewRef<TView extends ViewDefinition = ViewDefinition> = {
@@ -182,23 +182,6 @@ function bringsNewEntry(held: NonNullable<Shared["held"]>, result: ViewResult): 
   const holds = new Set(held.keys);
   const removed = new Set(result.partial?.removed ?? []);
   return result.keys!.some((key) => !holds.has(key) && !removed.has(key));
-}
-
-// FIX-2625.
-/**
- * Whether `notice` may change what an answer's run read: a hearing whose topic
- * covers it lists its kind, and a `resource` notice's path falls under the
- * hearing's roots (`mayHold`, the client's one path rule). Every notice, for
- * an answer that names no hearing.
- */
-function hearsNotice(hears: readonly ViewHearing[] | undefined, notice: WireNotice): boolean {
-  if (hears === undefined) return true;
-  return hears.some(
-    (hearing) =>
-      covers(hearing.topic, notice.topic) &&
-      hearing.kinds.includes(notice.kind) &&
-      (notice.kind !== "resource" || notice.topic.resource === undefined || mayHold(notice.topic.resource, hearing.paths))
-  );
 }
 
 // FIX-2625.

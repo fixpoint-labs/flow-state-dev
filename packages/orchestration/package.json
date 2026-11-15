@@ -96,6 +96,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@flow-state-dev/contracts": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
