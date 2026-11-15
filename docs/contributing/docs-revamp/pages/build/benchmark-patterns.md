@@ -66,11 +66,11 @@ export default defineBenchmark({
 pnpm fsdev benchmark ./benchmark.ts
 ```
 
-The example makes 3 subjects times 2 tasks times 3 runs, 18 runs (one subject on one task, once), each with one judge call, and a pattern makes several model calls per run. Set a ceiling while you iterate: `--max-cost 2` stops scheduling new runs once the estimate reaches $2, prints a partial scorecard and exits 1. `--runs 1` gives a cheap dry run. `--output scorecard.md --format markdown` writes the result to a file. Details are in the [CLI reference](../reference/cli.md).
+A run is one subject on one task, once. The example makes 3 subjects x 2 tasks x 3 runs = 18 runs. Each run adds one judge call, and a pattern run makes several model calls of its own. Set a ceiling while you iterate: `--max-cost 2` stops scheduling new runs once the estimate reaches $2, prints a partial scorecard and exits 1. `--runs 1` gives a cheap dry run. `--output scorecard.md --format markdown` writes the result to a file. Details are in the [CLI reference](../reference/cli.md).
 
 ## 3. Read the table
 
-The scorecard has two parts. The first has a row per subject and a column per category plus `overall`. Each cell is `mean±stddev` of the judge's score from 0 to 1, pooled over every task and run in that cell. A wide stddev mixes task difficulty with run-to-run noise.
+The scorecard has two parts. The first has a row per subject and a column per category plus `overall`. Each cell is `mean±stddev` of the judge's score from 0 to 1, pooled over every task and run in that cell. Because a cell pools different tasks, a wide stddev can come from tasks of uneven difficulty, not only from run-to-run noise.
 
 ```text
 subject            reasoning    critique-revision  overall
@@ -88,7 +88,7 @@ The second part ranks subjects by `overall` mean, with `Δ vs baseline`, `credib
 
 The judge sees only the task and the output, never which pattern produced it. Set `judgeModel` to a different model than `model`. If it is unset or equal, the CLI prints a warning to stderr, because a judge tends to score its own model's output higher.
 
-The numbers describe your tasks on this model. They do not rank the patterns in general, and where a pattern needs a worker to do the task itself, the default registry gives every pattern the same one (same model, same prompt), so the scorecard compares coordination, not each pattern tuned at its best.
+The numbers describe your tasks on this model. They do not rank the patterns in general. In the default registry, every pattern that hands the task to an inner generator gets the same one, with the same model and the same prompt. The scorecard compares coordination shapes, not each pattern tuned to its best.
 
 ## Next
 

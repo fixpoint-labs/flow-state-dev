@@ -133,3 +133,11 @@ The page is about a stored part, the `edges` array.
 - Moved to R-08 (`reference/resources`), linked and not stated beyond one clause: edge storage in the resource's own state; the `edges` option's defaults and the `maxEdges` cull order beyond one sentence; the state-shape injection and the `z.object` requirement; the `createdAt` field and the edge-shape detail; read/write timing detail; the full operations table (`supersede` no-op on an absent id, `all` taking only `{ at }`, `pruneDangling` count); traversal option defaults and the depth clamp; sizing guidance beyond "hundreds to low thousands".
 - Cut, not moved: breadth-first and in-memory description, "first consumer", "as before".
 - Links: `../catalog/memory/relations.md`, `./collections.md`, `../reference/resources.md`. The R-08 and collections pages do not exist yet in the revamp tree.
+
+## After revise round 2
+
+- Verified `supersede` then `all({ at: now })`: `activeAt` keeps an edge only while `validUntil > at` (`tr:30-42`), and `supersede` stamps `validUntil` at or before any later `at`, so the ended edge is excluded even within the same millisecond. The example's count is correct.
+- Verified `shortestPath` and `egoGraph` share one default depth of 2 (`tr:82-86`); the explicit `depth: 2` on `egoGraph` restates the default.
+- `maxEdges` cull is a deletion from the stored array, on the `add` that crosses the cap: ended edges first, oldest first, then lowest confidence (`re:117-174`, `re:213-220`).
+- The `confidence`/`validFrom`/`source` fields are optional `add` inputs and also stored on the edge (`re:81-89`, `re:202-212`).
+- `nodeRef("ticket","T-4821")` is `ticket:t-4821`, so a hand-written `ticket:T-4821` is a different node (`ed:16-19`).

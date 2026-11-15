@@ -31,7 +31,7 @@ You don't declare the `edges` field in `stateSchema`. The scope is `org` because
 
 An edge has a `from` and a `to`, each a string id you choose, and a `type` naming the relationship in active voice. A **node** is one of those ids. Nodes aren't declared anywhere. A node exists because an edge names it, and the framework doesn't check that an id points at anything.
 
-By convention an id reads `namespace:key`. The `nodeRef` helper builds one and lowercases the key, so `nodeRef("ticket", "T-4821")` is `ticket:t-4821`. Build every id with it, or none.
+By convention an id reads `namespace:key`. The `nodeRef` helper builds one and lowercases the key, so `nodeRef("ticket", "T-4821")` is `ticket:t-4821`. Build every id with it, or none: `ticket:T-4821` and `ticket:t-4821` are different nodes, so mixing the two splits one ticket's links across both.
 
 ## 2. Add an edge
 
@@ -59,13 +59,15 @@ export const linkDuplicate = handler({
 
 `add` returns the stored edge. The framework assigns its `id`. `edges` is optional on the handle's type, so take it once with `!` into a local, as above.
 
+`add` also takes these optional fields, and the stored edge carries them:
+
 | Field | Meaning |
 | --- | --- |
 | `confidence` | How confident the link is, from 0 to 1. Defaults to `1`. |
 | `validFrom`, `validUntil` | When the link was true. `validUntil: null` means the link is open-ended. |
 | `source` | Ids of where the link came from. Defaults to `[]`. |
 
-`add` throws on a type outside the `vocabulary`. Past `maxEdges`, the oldest ended edges go first, then the least confident. Adding the same link twice stores two edges. An edge write is a state write, so it saves with the rest of the resource's state.
+`add` throws on a type outside the `vocabulary`. When an `add` would pass `maxEdges`, the framework deletes ended edges first, oldest first, then the least confident. Adding the same link twice stores two edges.
 
 ## 3. Follow the links
 

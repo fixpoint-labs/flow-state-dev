@@ -135,3 +135,9 @@ The benchmark stores nothing durable by itself. Each cell runs the subject's seq
 - **Provider keys** are named for the task model and the judge model (fact 29).
 - **Self-preference** is explained on the page: a judge tends to score its own model's output higher (fact 13).
 - **Shared worker** is stated as observable behavior: where a pattern needs a worker, every pattern gets the same one, same model and prompt (fact 8).
+
+## Revision round 3
+
+- **Shared generator.** The page no longer says "worker". It says every pattern that hands the task to an inner generator gets the same one, same model and prompt, so the scorecard compares coordination shapes (fact 8).
+- **Run count.** The page defines a run first (one subject on one task, once), then 3 x 2 x 3 = 18 runs, one judge call per run, several model calls per pattern run (fact 38).
+- **stddev.** The page says a cell pools different tasks, so a wide stddev can come from uneven task difficulty, not only run-to-run noise (fact 5).

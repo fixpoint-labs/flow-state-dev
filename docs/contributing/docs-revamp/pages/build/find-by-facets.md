@@ -15,7 +15,7 @@ Facets move the question to write time. When a ticket's body is written, an [eva
 Each `choice` question lists its options as keys with a description. The search filters on choice questions, and the option keys are the values a search can ask for.
 
 ```ts title="src/flows/tickets/facets.ts"
-import { choice } from "@flow-state-dev/core";
+import { choice, type EvaluatorQuestions } from "@flow-state-dev/core";
 
 const TOPICS = {
   billing: "Payments, charges, refunds and invoices",
@@ -28,13 +28,13 @@ const STATUSES = {
   closed: "The problem is resolved",
 } as const;
 
-export const ticketQuestions = {
+export const ticketQuestions: EvaluatorQuestions = {
   topic: choice("What is this support ticket about?", TOPICS),
   status: choice("Is the customer's problem open?", STATUSES),
 };
 ```
 
-Answers to yes/no and scale questions are stored too, where your own code can read them. A search can't filter on them.
+The `EvaluatorQuestions` type keeps the evaluator in step 2 assignable under `strict`. Answers to yes/no and scale questions are stored too, where your own code can read them. A search can't filter on them.
 
 ## 2. Define the collection
 
@@ -119,7 +119,7 @@ search  { "topic": "billing", "status": "open" }
 
 A ticket with no facets never matches. You can give `tickets.search` to an agent as a tool, and the agent sees each question's options as the allowed values.
 
-Classification runs on a side chain, in the background of the turn. If it fails, the save still succeeds and the ticket has no facets until you reindex it. Facets always describe the current body: if a body is rewritten while an earlier classification runs, the earlier answers are discarded.
+Classification runs on a side chain, in the background of the turn. If it fails, the save succeeds and the ticket has no facets until you reindex it. Facets always describe the current body: if a body is rewritten while an earlier classification runs, the earlier answers are discarded.
 
 ## 4. Reindex
 
