@@ -29,7 +29,7 @@ the three recipes must agree on them.
 
 ## Task and outcome
 
-1. Task: have EventBridge Scheduler POST a flow's dispatch endpoint on a cron, so the static schedule
+1. **[superseded by A1-A12, review edit: an EventBridge rule and API destination make the POST, not Scheduler]** Task: have EventBridge Scheduler POST a flow's dispatch endpoint on a cron, so the static schedule
    `monthly-invoices` on the `billing` flow runs its block on the 1st of each month. The framework does
    not run the schedule; the host's scheduler POSTs the endpoint. **[page]**
    [st:142-146 ("the framework does not run the schedule; the host's scheduler does"); ad:1-8;
@@ -94,7 +94,8 @@ the three recipes must agree on them.
       [ad:14-20, 41-44; ref:247-252, 289-293]
     - **Header**: `Authorization: Bearer <FSDEV_SCHEDULER_SECRET value>`; `Content-Type: application/json`.
       [bs:28-45; ref:289-292, 306-312]
-    - **Body**: `{"nominalFireTime":"<aws.scheduler.scheduled-time>"}`. The endpoint reads one field
+    - **Body**: `{"nominalFireTime": "<event time>"}`, built by the target's input transformer from
+      `$.time` (A7). The endpoint reads one field
       from the body, `nominalFireTime` (a string), and `idempotencyKey` only to refuse it. Any other
       field is ignored. [rt:407-423; ref:253-259]
 14. **[superseded by A7, A8]** The body is built from the scheduled event's `time` by an input
@@ -106,7 +107,7 @@ the three recipes must agree on them.
     fixed `nominalFireTime` would get `200 { status: "duplicate", reason: "stale" }` once the time is more
     than one period behind, run nothing and log a warning; the recipe's placeholder avoids this and the
     alternative is to send no body (B-16 fact 22). [stm:123-129; rt:212-222; opt:172-189; ref:397-401]
-17. Without a body the endpoint counts a fire against the latest scheduled time already due (or one
+17. **[superseded by A7: the page sends a body through an input transformer; omitting `Input` no longer applies]** Without a body the endpoint counts a fire against the latest scheduled time already due (or one
     due within five seconds). EventBridge could omit `Input`; the recipe keeps it so a retry carries the
     time it is for. [stm:86-93; rt:407-409; ref:261-262, 386-389]
 
@@ -164,7 +165,7 @@ the three recipes must agree on them.
     true: the dispatch response is unchanged, and the error is on the request's `RequestRecord`.
     [ref:279-284]. AWS not retrying a 2xx is **[external]**. A failed action is therefore never
     redriven by EventBridge, and never reaches the dead-letter queue.
-32. Dead-letter queue: failures past the retry budget land in the configured SQS queue "with the
+32. **[superseded by A10: what a DLQ message holds under an input transformer is not documented; the page makes no payload claim]** Dead-letter queue: failures past the retry budget land in the configured SQS queue "with the
     original event payload" so the host can alert or replay. **[external]** [eb:78-80]. The framework
     does not read the queue. Replaying a queued event POSTs the same `nominalFireTime`, so it runs only
     if that time has not fired and no later time has (fact 28, 30). [stm:190-198 (`claimScheduledTime`:
