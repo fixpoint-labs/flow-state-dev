@@ -22,7 +22,7 @@
 import { join } from "node:path";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { LAB_USERS } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { act, askWorker, clientFor, coderRepository, heldSkills, runChecks, runClosure, serveFsdev, skillFiles, type AppDriver } from "../closure.mts";
+import { act, askWorker, clientFor, coderRepository, heldSkills, runClosure, serveFsdev, settledRunChecks, skillFiles, type AppDriver } from "../closure.mts";
 
 const OWNER = LAB_USERS.owner;
 // Organization-level workers carry no team prefix.
@@ -73,7 +73,7 @@ const driver: AppDriver = {
             line: `${d.lines.coder} The work is in the shared project "${projectId}".`,
             budgetMs: 30 * 60_000,
           });
-          return { ...turn, checks: runChecks(store) };
+          return { ...turn, ...(await settledRunChecks(store)) };
         },
       },
     };

@@ -23,7 +23,7 @@
  */
 import { join } from "node:path";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { act, askAfterFold, askWorker, clientFor, coderRepository, heldSkills, runChecks, runClosure, serveFsdev, skillFiles, type AppDriver } from "../closure.mts";
+import { act, askAfterFold, askWorker, clientFor, coderRepository, heldSkills, runClosure, serveFsdev, settledRunChecks, skillFiles, type AppDriver } from "../closure.mts";
 
 const USER = "u_closure";
 const MAIN = "desk.main";
@@ -67,7 +67,7 @@ const driver: AppDriver = {
         skill: async (d) => ({ ...(await main(d.lines.skill)), held: await heldSkills(tree(p.root), MAIN) }),
         multiFile: (d) => main(d.lines.multiFile),
         knowledge: async (d) => askWorker(fsd, { user: USER, worker: RESEARCHER, sessionId: await sessionOf(RESEARCHER), line: d.lines.knowledge }),
-        coder: async (d) => ({ ...(await main(d.lines.coder, 30 * 60_000)), checks: runChecks(join(data, "lab.db")) }),
+        coder: async (d) => ({ ...(await main(d.lines.coder, 30 * 60_000)), ...(await settledRunChecks(join(data, "lab.db"))) }),
         fold: (d) => askAfterFold(fsd, { user: USER, worker: MAIN, d }),
       },
     };

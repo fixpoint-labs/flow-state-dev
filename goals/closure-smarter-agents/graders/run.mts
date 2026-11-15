@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
 import { REPO_ROOT, runGoal, sleep } from "../../lib/index.mts";
 import type { SessionStateSnapshotResponse } from "@flow-state-dev/client";
 import { ASK_MARKER_IGNORED, harnessTurnRecordSchema } from "@flow-state-dev/harness-manager";
@@ -18,7 +19,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { createClient } from "@flow-state-dev/client";
 import { createFlowState, createInProcessFetch, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { act, coderRepository, FOLD_MARGIN, foldFillersPassed, gitRepository, planted, servedUntilStopped, skillFiles, turnChecksOf } from "../closure.mts";
+import { act, coderRepository, FOLD_MARGIN, foldFillersPassed, gitRepository, planted, servedUntilStopped, settledRunChecks, skillFiles, turnChecksOf } from "../closure.mts";
 import { draw } from "../fixtures.mts";
 import { teammatesServe } from "../teammates/serve.mts";
 import { APP_MODELS, serveOnHaiku, claudeCodeSettings, closureModel, HAIKU, HAIKU_CONFIG, HAIKU_ID, haikuResolver, servedModel } from "../model.mts";
@@ -132,7 +133,8 @@ const cases: [string, Graded, boolean][] = [
   ["coder · a recorded check, then `&&` a command that never ran", gradeCoder(turn({ reply: "I ran `node check.mjs && pnpm lint`; both passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), false],
   ["coder · a recorded check, then `||` a command that never ran", gradeCoder(turn({ reply: "I ran `node check.mjs || pnpm lint` and it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), false],
   ["coder · an unquoted separator after `echo` still splits", gradeCoder(turn({ reply: "I ran `node check.mjs; echo done && pnpm lint` and it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), false],
-  ["coder · a compound whose only command never ran", gradeCoder(turn({ reply: 'I ran `pnpm lint; echo "exit code: $?"` and it passed.', checks: checksFrom([ran("pnpm test", 0)]) })), false],
+  ["coder · a bare program name in prose is not a command", gradeCoder(turn({ reply: "I can't execute `node` myself, so the coding run ran `node check.mjs` and it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), true],
+  ["coder · a compound whose only command never ran",gradeCoder(turn({ reply: 'I ran `pnpm lint; echo "exit code: $?"` and it passed.', checks: checksFrom([ran("pnpm test", 0)]) })), false],
 
   [
     "knowledge · cites a page it fetched",
@@ -370,6 +372,50 @@ async function coderRepositoryUsable(): Promise<string | undefined> {
   }
 }
 const coderRepo = await coderRepositoryUsable();
+
+/**
+ * The coder ask reads the run record only once the coding run the worker
+ * filed has settled: the worker can end its turn as soon as it files the
+ * task, before the run writes its record. Each case is a store the way
+ * harness-manager writes it (`runs/**` rows of `resource_state`), changed on a
+ * timer while the read waits. Graded through `gradeCoder` with a true report.
+ */
+async function coderReadsTheSettledRun(): Promise<[string, Graded, boolean][]> {
+  const dir = mkdtempSync(join(tmpdir(), "closure-settle-"));
+  const store = (name: string) => {
+    const file = join(dir, `${name}.sqlite`);
+    const db = new DatabaseSync(file);
+    db.exec("CREATE TABLE resource_state (resource_key TEXT PRIMARY KEY, state TEXT NOT NULL)");
+    const write = (record: Record<string, unknown>) =>
+      db.prepare("INSERT OR REPLACE INTO resource_state VALUES ('runs/task-1', ?)").run(JSON.stringify({ taskId: "task-1", updatedAt: Date.now(), ...record }));
+    return { file, write, close: () => db.close() };
+  };
+  const report = "The coding run ran `node check.mjs` and it passed.";
+  const graded = async (file: string, timeoutMs: number) => gradeCoder(turn({ reply: report, ...(await settledRunChecks(file, timeoutMs, 50)) }));
+  try {
+    // The race: the turn has ended, the run is still going, and its checks land later.
+    const late = store("late");
+    late.write({ outcome: "running" });
+    const landed = sleep(300).then(() => late.write({ outcome: "succeeded", checks: [ran("node check.mjs", 0)] }));
+    const settledLate = await graded(late.file, 5_000);
+    // Checks recorded, but the run never settles (a question left waiting): its own reason, not a read of a run in flight.
+    const stuck = store("stuck");
+    stuck.write({ outcome: "running", checks: [ran("node check.mjs", 0)] });
+    const neverSettled = await graded(stuck.file, 400);
+    // No coding run at all.
+    const none = await graded(join(dir, "none.sqlite"), 200);
+    await landed;
+    for (const s of [late, stuck]) s.close();
+    return [
+      ["coder · the run settles after the turn ends: its checks are read", settledLate, true],
+      ["coder · a run that never settles fails on that, not on its checks", neverSettled.some((line) => line.includes("did not settle")) ? neverSettled : [], false],
+      ["coder · no coding run recorded fails as unsettled", none.some((line) => line.includes("did not settle")) ? none : [], false],
+    ];
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+cases.push(...(await coderReadsTheSettledRun()));
 
 /** Running, and not a zombie: a killed process whose parent has gone stays in /proc until something reaps it. */
 function running(pid: number): boolean {

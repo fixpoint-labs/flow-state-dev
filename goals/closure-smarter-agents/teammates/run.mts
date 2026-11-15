@@ -17,7 +17,7 @@
  *       GOAL_ASKS=date,sizing (a subset) · GOAL_RUNS · GOAL_FOLD_TURNS_MAX
  */
 import { join } from "node:path";
-import { askAfterFold, askWorker, clientFor, coderRepository, heldSkills, runChecks, runClosure, serveFsdev, skillFiles, type AppDriver } from "../closure.mts";
+import { askAfterFold, askWorker, clientFor, coderRepository, heldSkills, runClosure, serveFsdev, settledRunChecks, skillFiles, type AppDriver } from "../closure.mts";
 import { storeFile, teammatesServe, tree, USER } from "./serve.mts";
 
 const LEAD = "teammates.chief-of-staff";
@@ -42,7 +42,7 @@ const driver: AppDriver = {
         knowledge: (d) => askWorker(fsd, { user: USER, worker: RESEARCHER, line: d.lines.knowledge }),
         coder: async (d) => {
           const turn = await lead(`${d.lines.coder} Hand it to Claude Code.`, 30 * 60_000);
-          return { ...turn, checks: runChecks(store) };
+          return { ...turn, ...(await settledRunChecks(store)) };
         },
         fold: (d) => askAfterFold(fsd, { user: USER, worker: LEAD, d }),
       },

@@ -14,8 +14,8 @@
  * - {@link askWorker}: one line to a worker's conversation over the public
  *   client, waited until every conversation of the person's goes quiet, and
  *   recorded as a {@link Turn}: the reply, the tool calls, the clock.
- * - {@link runChecks}, {@link turnChecks}: the checks record a coder grader reads
- *   beside a reply (a run record's, or a harness session turn's); the fold
+ * - {@link settledRunChecks}, {@link turnChecks}: the checks record a coder grader reads
+ *   beside a reply (a settled run record's, or a harness session turn's); the fold
  *   is read by `goals/lib/history.mts`'s `foldOf`, as `history-window` reads it.
  * - {@link runClosure}: the loop every app runs: 3 runs, each ask its app
  *   counts in, graded, written to the pass's sheet, and reported through
@@ -29,7 +29,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createClient, type SessionStateSnapshotResponse } from "@flow-state-dev/client";
 import type { MessageItem, OutputItem, SuspensionItem, ToolOutputItem } from "@flow-state-dev/core/items";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { harnessSessionStateSchema, runRecordStateSchema } from "@flow-state-dev/harness-manager";
+import { harnessSessionStateSchema, runRecordStateSchema, type RunRecordState } from "@flow-state-dev/harness-manager";
 import { foldOf, goalTmpDir, sessionWindow, intentFreeEnv, onClosed, readTree, REPO_ROOT, refuseIfAnswering, runGoal, sleep, stopProcessGroup, type SessionReads } from "../lib/index.mts";
 import {
   ASKS,
@@ -470,24 +470,48 @@ export function turnOf(items: readonly OutputItem[], askedAt: Date, answeredAt: 
 }
 
 /**
- * The checks the latest coding run recorded, read off the app's SQLite store
- * after the run: harness-manager's run record (`runs/**`, which no client
- * route reads by design), normalized by {@link checksFrom}. `null` when no
- * run recorded any.
+ * Every coding run's record in the app's SQLite store: harness-manager's run
+ * record (`runs/**`, which no client route reads by design), each row through
+ * harness-manager's own schema, so a row that is not one fails loudly. Oldest
+ * update first. None when the store does not exist yet.
  */
-export function runChecks(dbFile: string): Turn["checks"] {
-  if (!existsSync(dbFile)) return null;
+function runRecords(dbFile: string): RunRecordState[] {
+  if (!existsSync(dbFile)) return [];
   const db = new DatabaseSync(dbFile, { readOnly: true });
   try {
     const rows = db.prepare("SELECT state FROM resource_state WHERE resource_key LIKE 'runs/%'").all() as { state: string }[];
-    // Each row through harness-manager's own run-record schema: a row that is not one fails loudly.
-    const records = rows
-      .map((row) => runRecordStateSchema.parse(JSON.parse(row.state)))
-      .filter((record) => record.checks !== null)
-      .sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
-    return records.length === 0 ? null : checksFrom(records.at(-1)!.checks);
+    return rows.map((row) => runRecordStateSchema.parse(JSON.parse(row.state))).sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
   } finally {
     db.close();
+  }
+}
+
+/** The checks the latest coding run that recorded any holds, normalized by {@link checksFrom}. `null` when none did. */
+function runChecks(records: RunRecordState[]): Turn["checks"] {
+  const recorded = records.filter((record) => record.checks !== null);
+  return recorded.length === 0 ? null : checksFrom(recorded.at(-1)!.checks);
+}
+
+/** How long a coder ask waits, after the worker's turn ends, for the coding run it filed to settle. */
+export const CODER_SETTLE_MS = 20 * 60_000;
+
+/**
+ * The checks of the coding run a coder ask filed, read once that run has
+ * settled: the store holds a run record and every record's `outcome` is
+ * `succeeded` or `failed`. A worker can end its turn as soon as it files the
+ * task, before the run has written anything, so a read at the end of the turn
+ * races the run. Each run of the closure has its own store, so every record
+ * in it is this ask's. Past `timeoutMs`, `unsettled` says so, and the coder
+ * ask fails on that rather than on a record still being written.
+ */
+export async function settledRunChecks(dbFile: string, timeoutMs = CODER_SETTLE_MS, pollMs = 5_000): Promise<Pick<Turn, "checks" | "unsettled">> {
+  for (const until = Date.now() + timeoutMs; ; await sleep(pollMs)) {
+    const records = runRecords(dbFile);
+    if (records.length > 0 && records.every((record) => record.outcome === "succeeded" || record.outcome === "failed")) return { checks: runChecks(records) };
+    if (Date.now() >= until) {
+      const seen = records.length === 0 ? "no run was recorded" : `outcomes: ${records.map((record) => record.outcome ?? "none").join(", ")}`;
+      return { unsettled: `the coding run did not settle within ${Math.round(timeoutMs / 1000)}s (${seen})` };
+    }
   }
 }
 

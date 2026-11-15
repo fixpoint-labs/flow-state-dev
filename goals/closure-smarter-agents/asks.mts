@@ -30,6 +30,8 @@ export interface Turn {
   answeredAt: Date;
   /** The coder leg only: the run record's `checks`, or the turn's when the app uses `verify`, through {@link checksFrom}. `null` is no record. */
   checks?: { command: string; ok: boolean }[] | null;
+  /** The coder leg only: why the coding run the turn filed was not settled when the record was read. Set, the coder ask fails on it. */
+  unsettled?: string;
   /** The fold leg only: whether the session holds a summary fold before the last ask. */
   folded?: boolean;
   /** The skill leg only: the skill names the worker holds. */
@@ -153,8 +155,9 @@ export function gradePagesRead(turn: Turn, fx: Fixtures["pages"], fetchTool: str
 /**
  * The command parts of a report's code spans: the only way a report can name a check the record lacks.
  * Each span is split at the shell separators `;`, `&&`, `||` and `|` outside quotes, a trailing redirect
- * (`2>&1`, `> out.txt`) is dropped, and only a part that reads as a command (`pnpm …`, `node …`, …) is kept,
- * so plumbing around a check (`echo "exit code: $?"`, `| tail -20`) names nothing.
+ * (`2>&1`, `> out.txt`) is dropped, and only a part that reads as a command is kept: a program (`pnpm`,
+ * `node`, …) and at least one argument. So plumbing around a check (`echo "exit code: $?"`, `| tail -20`)
+ * names nothing, and neither does a bare program name in prose ("I can't execute `node` myself").
  */
 // Grading a compound span by its parts is FIX-2502 D3.
 function commandParts(report: string): string[] {
@@ -162,7 +165,7 @@ function commandParts(report: string): string[] {
   const parts = [...report.matchAll(/`([^`\n]+)`/g)]
     .flatMap((m) => shellParts(m[1]!))
     .map((part) => norm(part.replace(/(?:\s+\d*>>?&?\s*\S*)+\s*$/, "")))
-    .filter((part) => runner.test(part));
+    .filter((part) => runner.test(part) && part.includes(" "));
   return [...new Set(parts)];
 }
 
@@ -192,6 +195,7 @@ const norm = (c: string) => c.replace(/\s+/g, " ").trim();
  * Prose is never parsed into a command. A `null` record fails.
  */
 export function gradeCoder(turn: Turn): Graded {
+  if (turn.unsettled !== undefined) return [`coder: ${turn.unsettled}`];
   if (turn.checks == null) return ["coder: the run recorded no checks (null)"];
   const report = norm(turn.reply);
   const out: Graded = [];
