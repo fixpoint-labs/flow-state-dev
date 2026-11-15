@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 390">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="24" width="212" height="236"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="42" y="46">YOUR BROWSER</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="62" width="184" height="52"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="86">The starter's pages</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="103">at localhost:4200</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="42" y="124" width="184" height="52"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="54" y="148">A conversation</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="54" y="165">the answer streams in</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="350" y="24" width="212" height="236"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="364" y="46">THE APP'S SERVER PROCESS</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="364" y="62" width="184" height="52"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="376" y="86">The pages</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="376" y="103">served from the same port</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="364" y="124" width="184" height="52"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="376" y="148">/api/flows</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="376" y="165">where the page calls</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="364" y="186" width="184" height="52"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="376" y="210">The workers</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="376" y="227">Chief of Staff and more</text>
+<rect fill="url(#hatch)" x="672" y="24" width="212" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="672" y1="34.5" x2="884" y2="34.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="672" y="24" width="212" height="236"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="686" y="56">YOUR STORE</text>
+<rect class="hl" fill="#e8f551" x="686" y="68" width="184" height="64"/>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="686" y="68" width="184" height="64"/>
+<text class="c on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="698" y="94">Your conversation</text>
+<text class="sub on-hl" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="698" y="114">with Chief of Staff</text>
+<rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="686" y="144" width="184" height="52"/>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="698" y="168">One per worker</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="698" y="185">kept the same way</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="686" y="232">.fsdev/teammates.sqlite</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="240" y1="150" x2="348" y2="150" marker-end="url(#ah)"/>
+<rect class="ground" fill="#f0ece1" x="282.7" y="142.5" width="24.6" height="15"/><text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" x="295" y="154" text-anchor="middle">01</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="562" y1="100" x2="670" y2="100" marker-end="url(#ah)"/>
+<rect class="ground" fill="#f0ece1" x="604.7" y="92.5" width="24.6" height="15"/><text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" x="617" y="104" text-anchor="middle">02</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="286" x2="920" y2="286"/>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="312">01</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="312">The page calls the app's server. An answer streams back as the worker writes it.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="337">02</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="337">The server saves each conversation to a SQLite file, so a restart keeps it.</text>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="364" x2="54" y2="364" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="368">CALLS · STREAMS BACK · SAVES</text>
+<rect fill="url(#hatch)" x="304" y="358" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="304" y="358" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="338" y="368">OUTLIVES THE REQUEST</text>
+<rect class="hl" fill="#e8f551" x="520" y="358" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="554" y="368">YOUR CONVERSATION, KEPT</text>
+</g>
+</svg>
