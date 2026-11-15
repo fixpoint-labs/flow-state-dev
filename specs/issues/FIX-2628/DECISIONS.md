@@ -71,14 +71,15 @@ It comes down to the sibling's approval: the screens are the same, so reopening 
 ## Decided, not asked
 
 - **The session's repository is written by the server when the session opens** ([amended
-  2026-11-15](#how-it-got-here): a workforce session field, carried down each hand-over), from a
-  repository in the host's list, and is read-only after. A task session finds it through its
+  2026-11-15](#how-it-got-here): a workforce session field, carried down each hand-over), and
+  is read-only after. *Superseded in part, [2026-11-15](#how-it-got-here):* it need not be in the
+  host's list; an unlisted one must pass the host's `checkRepository`. A task session finds it through its
   filer (`filingSessionId`, set by the board's hand-over). Never from a task's input, the
   request body or a header (BP-031). The **convergence point** is the app's run source: every
   coding run and every source read asks it, and it refuses a repository the host no longer
   lists, with the host's reason. The field's carrier is FIX-2627's `sessionFields` option on
   workforce.
-- **Old sessions keep their repository** ([open in the implementation, 2026-11-15](#how-it-got-here)). A session opened on a project before this lands is
+- ~~**Old sessions keep their repository**~~ *Superseded [2026-11-15](#how-it-got-here): no read-once, under the standing no-legacy decision.* A session opened on a project before this lands is
   read once: its project's repository, if the host lists it (BP-030). Otherwise it shows no
   repository and asks. The read goes when the adapter's last caller does.
 - **Pins and dismissals move into the app kit, as they are.** FIX-2624 made them user
