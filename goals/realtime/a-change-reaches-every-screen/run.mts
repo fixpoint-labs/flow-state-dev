@@ -272,10 +272,10 @@ const isBusTraffic = (s: Statement) => /^\s*(UN)?LISTEN\s+fsd_bus/i.test(s.text)
 // ---------------------------------------------------------------------------
 
 type Shown = { at: number; plan: string; seats: string[]; replies: string[] };
-type Sent = { at: number; method: string; url: string; status?: number; body?: string };
+type Sent = { at: number; method: string; url: string; status?: number };
 type Frame = { at: number; socket: number; frame: { type: string; crosses?: boolean; topic?: { scope: string; id?: string }; kind?: string } };
 /** `ok`: the mint answered as its contract says, HTTP 200 with a ticket, a path and the topics it granted. */
-type Minted = { at: number; topics: Array<{ scope: string; id?: string }>; status: number; ok: boolean };
+type Minted = { at: number; topics: Array<{ scope: string; id?: string }>; status: number; ok: boolean; asked?: string };
 
 type Screen = {
   name: string;
@@ -366,7 +366,7 @@ async function watchPage(page: Page, name: string, observe: string): Promise<Scr
   await page.addInitScript(observe);
   page.on("request", (request) => {
     if (!isApi(request.url())) return;
-    const sent: Sent = { at: Date.now(), method: request.method(), url: request.url(), body: request.postData() ?? undefined };
+    const sent: Sent = { at: Date.now(), method: request.method(), url: request.url() };
     screen.sent.push(sent);
     void request.response().then((response) => void (sent.status = response?.status()), () => undefined);
     if (isAction(sent)) screen.actions.push({ at: sent.at, action: new URL(sent.url).pathname.split("/").pop()! });
@@ -377,6 +377,7 @@ async function watchPage(page: Page, name: string, observe: string): Promise<Scr
     const path = new URL(request.url()).pathname;
     if (request.method() === "POST" && /\/users\/[^/]+\/stream$/.test(path)) {
       const at = Date.now();
+      const asked = request.postData() ?? undefined;
       void response
         .json()
         .then((body: { topics?: Minted["topics"]; ticket?: unknown; path?: unknown }) =>
@@ -384,10 +385,11 @@ async function watchPage(page: Page, name: string, observe: string): Promise<Scr
             at,
             topics: body.topics ?? [],
             status: response.status(),
+            asked,
             ok: response.status() === 200 && typeof body.ticket === "string" && typeof body.path === "string" && Array.isArray(body.topics)
           })
         )
-        .catch(() => screen.minted.push({ at, topics: [], status: response.status(), ok: false }));
+        .catch(() => screen.minted.push({ at, topics: [], status: response.status(), ok: false, asked }));
     }
   });
   let sockets = 0;
@@ -607,7 +609,8 @@ async function legsACD(
     const cAHeard = cA.frames.filter((f) => f.frame.type === "notice" && f.frame.topic?.id === sA);
     // Only the hand-made ask counts: the page's own load already names sA in its URLs.
     // A broken mint (500, malformed body) is not a refusal: require one answered to contract.
-    const asked = cA.sent.some((s) => s.method === "POST" && isMintOrSocket(s) && s.body?.includes(sA) === true && s.status === 200) && cMints.some((m) => m.ok);
+    const asksForA = (m: Minted) => m.ok && m.asked?.includes(sA) === true;
+    const asked = cMints.some(asksForA);
     if (!asked) failures.push("c:refused: C's page never got a valid mint answer to its ask for A's session, so a refusal can't be read");
     if (granted.length > 0) failures.push(`c:refused: the mint granted C A's session topic ${granted.length} times`);
     if (cAHeard.length > 0) failures.push(`c:refused: C's socket heard ${cAHeard.length} notices on A's session`);
@@ -633,7 +636,7 @@ async function legsACD(
     await p2.peer.stop();
     const restartedAt = Date.now();
     p2 = await startApp(checkout, db, "p2", port2, pages);
-    const reconnected = await until(() => cA.opens.some((o) => o > restartedAt) && cA.minted.some((m) => m.at > restartedAt && m.ok), 20_000);
+    const reconnected = await until(() => cA.opens.some((o) => o > restartedAt) && cA.minted.some((m) => m.at > restartedAt && asksForA(m)), 20_000);
     const reMints = tell.over("c:reconnect-refused · C's mints after the restart", cA.minted.filter((m) => m.at > restartedAt));
     if (!reconnected) failures.push("c:reconnect-refused: C's socket never reconnected and got a valid re-mint within 20 s of process 2's restart");
     const reGranted = reMints.filter((m) => m.topics.some((t) => t.scope === "session" && t.id === sA));
