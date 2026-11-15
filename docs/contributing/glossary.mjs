@@ -1315,7 +1315,8 @@ const EXEMPTIONS = [
   {
     id: "claude-code-style-worker-ids",
     terms: ["thread"],
-    where: (path) => path.startsWith("docs/contributing/docs-revamp/pages/"),
+    where: (path) =>
+      /^docs\/contributing\/docs-revamp\/pages\/catalog\/(starters\/claude-code-style|workforce\/(delegating-work|coordinators))\./.test(path),
     strip: /\bdesk\.thread(?:-coder(?:-[a-z]+)?)?\b|`thread-coder(?:-[a-z]+)?`/g,
     why: "the Claude Code-style lab's worker ids (`desk.thread`, `desk.thread-coder`), quoted as the lab ships them; the lab names its threads mode after Claude Code's",
   },

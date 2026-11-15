@@ -147,11 +147,17 @@ export async function reshuffle(userId: string) {
 
 ### Make your own flow a delegate
 
-A worker on the built-in `agent` flow, and another coordinator, takes a coordinator's tasks with no setup. A worker flow of your own does once it declares the `contributor` role and its `work` task entry is built with `workerTaskEntry`. If the flow is missing either one, the app does not start.
+A worker on the built-in `agent` flow, and another coordinator, takes a coordinator's tasks with no setup. A worker flow of your own does once it declares the `contributor` role and its `work` task entry is built with `workerTaskEntry`. Like every worker flow, it also needs an `onMessageReceived` entry, built with `messageReceivedEntry`, so other workers can message it. If the flow is missing any of the three, the app does not start.
 
 ```ts title="src/flows/refunds/flow.ts"
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { workerConfigSchema, workerFlow, workerTaskEntry } from "@flow-state-dev/workforce";
+import {
+  messageReceivedEntry,
+  promptedMessageTurn,
+  workerConfigSchema,
+  workerFlow,
+  workerTaskEntry,
+} from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 const inputSchema = z.object({ message: z.string() });
@@ -171,6 +177,15 @@ export const refunds = workerFlow(
       resources: { ...installation.resources },
       actions: { respond: { inputSchema, block: turn, userMessage: (input) => input.message } },
       task: { actions: { work: workerTaskEntry({ name: "refunds-task", turn }) } },
+      internal: {
+        actions: {
+          onMessageReceived: messageReceivedEntry({
+            installation,
+            flowKind: "refunds",
+            turn: promptedMessageTurn(turn),
+          }),
+        },
+      },
     }),
   { roles: ["contributor"] },
 );

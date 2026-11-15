@@ -249,7 +249,7 @@ The page's one app is `help-desk` (the pilots' cast; `docs/contributing/user-doc
 
 ## 10. Words to use and not use
 
-- Say **worker flow** for the flow a worker runs on, never "type". Say **worker**, never "worker". Say **roster** for the workers one user has, standard ones included. Say **standard worker** and **fork** as the glossary defines them. `docs/contributing/glossary.mjs:484-524`.
+- Say **worker flow** for the flow a worker runs on, never "type". Say **worker** for one configured agent a user talks to. Say **roster** for the workers one user has, standard ones included. Say **standard worker** and **fork** as the glossary defines them. `docs/contributing/glossary.mjs:484-524`.
 - `agent` is the built-in worker flow's name. Say "the built-in agent" for the flow and "a worker" for a configured one; do not call the flow "the agent worker" in prose that also says "worker".
 - Do not say "installation", `hireWorkforce`, `createWorkerInstallation` or `readDeclaredRoster` as the way to install workforce: under the kit no app calls them (goal `g3:4`).
 - Do not describe how the kit's folder reader, claim pass or hire step is built; only what a caller sees.
@@ -291,3 +291,11 @@ Edge cases for the questions' second half (a failure, a second user, an edit):
 - A user's own workers are per (user, organization): a user in two organizations has a separate roster in each. `wr:12-14`; `packages/workforce/src/workers/worker-row.ts:12-13`. The page states it in one sentence under the stored-parts table. **[page]**
 - `discover` costs tokens only when called, beyond its own tool definition. **[page]**
 - `createWorkforceCapability` goes in `agent.uses`, the same door as memory (`wk:52`, `aw:338`). **[page]**
+
+## 11. Added after the loop: facts for the opening
+
+- The harnesses kit requires workforce and fills its `workerFlows` slot with the `coder` flow. `packages/harness-manager/src/kit/harnesses-kit.ts:9-12,88-105`. **[checked]**
+- Every starter in the catalog installs the workforce kit: `catalog/starters/claude-code-style.md:52,65`, `catalog/starters/teammates.md:102,115`; Shift Manager is worked over a workforce app (`packages/shift-manager/test/workforce.test.ts`). **[checked]**
+- The error reporter "turns a failure that stayed failed, or a problem a user describes, into one reproducible bug report, previewed to the operator in Inbox". `packages/workforce/src/error-reporter/index.ts:3-6`. **[checked]**
+- `Roster`, `BoardColumns`, `BoardList` and `WorkerDetail` come from `@flow-state-dev/workforce/react`. `packages/workforce/src/react/index.ts:11-30`. **[checked]**
+- A `tools:` line does not fence control tools: `sendMessage` (`messages/message-tool.ts:122-123,163`), standing-rule tools on a user turn (`standing-rules/rules-capability.ts:136`), the conversation board's task tools while a delegate takes tasks (`conversation-board/board.ts:1961`). **[checked]**

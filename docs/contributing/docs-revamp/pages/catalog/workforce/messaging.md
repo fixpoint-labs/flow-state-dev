@@ -92,7 +92,7 @@ None.
 
 A slot is an opening a kit leaves for other kits. Messaging uses one, the workforce kit's `workerFlows`, where an app adds worker flows beside `agent`. A flow you add there receives messages through an `onMessageReceived` action, built by the `messageReceivedEntry` function from `@flow-state-dev/workforce`. The startup refusal for one that cannot is in the [Reference](../../reference/worker-messaging.md).
 
-Messaging serves two views: the message log, which an app's screens read, and the `workforce:received` entry. The entry's fields, and the log row's, are in the [Reference](../../reference/worker-messaging.md).
+Messaging keeps the message log, a resource collection an app's screens read, and adds a `workforce:received` item to the receiving session's conversation. The item's fields, and the log's, are in the [Reference](../../reference/worker-messaging.md).
 
 ## Change it
 
