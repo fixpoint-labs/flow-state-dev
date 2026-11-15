@@ -818,8 +818,10 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   );
   const sessionFeeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse, attachedHeads);
   // One working directory per turn, by request id: the turn's brief and its harness both ask
-  // for it, and the workspace is set up once (a setup command runs once). A failed setup is
-  // not kept, and the entry goes when the turn lets its worktree go.
+  // for it, and the workspace is set up once (a setup command runs once). A request for the
+  // directory that is rejected isn't kept, so the next ask tries again. A setup command that
+  // fails still hands the directory back, so it is kept for the turn and retried on the next
+  // turn, not within this one. The entry goes when the turn lets its worktree go.
   const turnCwds = new Map<string, Promise<string>>();
   const feeds: HarnessSessionFeeds = {
     ...sessionFeeds,
@@ -1140,16 +1142,18 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
             const harnessCtx = ctx as unknown as HarnessCallbackContext;
             const state = harnessCtx.session.state as HarnessSessionState;
             let prompt = input.prompt;
-            if (specOptions !== undefined && state.issue !== undefined && state.binding?.confirmed == null) {
-              const cwd = await feeds.cwd(harnessCtx);
-              prompt = `${await readIssueSpecSection(cwd, state.issue, specOptions)}\n\n## The request\n\n${prompt}`;
+            const specDue = specOptions !== undefined && state.issue !== undefined && state.binding?.confirmed == null;
+            const checksRead = typeof checksInBrief?.commands === "function";
+            // The turn's own directory, set up first on a fresh session and the same one the harness
+            // gets. Asked for once, and only when the spec or a resolver reads it: a fixed list needs none.
+            const turnCwd = specDue || checksRead ? await feeds.cwd(harnessCtx) : "";
+            if (specOptions !== undefined && state.issue !== undefined && specDue) {
+              prompt = `${await readIssueSpecSection(turnCwd, state.issue, specOptions)}\n\n## The request\n\n${prompt}`;
             }
             if (checksInBrief !== undefined) {
-              // A resolver reads where the session works, so it is handed the turn's own directory, set up
-              // first on a fresh session; the harness gets the same one. A fixed list needs none.
               const commands =
                 typeof checksInBrief.commands === "function"
-                  ? await checksInBrief.commands({ place: workPlaceOf(options.kind, harnessCtx), cwd: await feeds.cwd(harnessCtx) })
+                  ? await checksInBrief.commands({ place: workPlaceOf(options.kind, harnessCtx), cwd: turnCwd })
                   : checksInBrief.commands;
               const section = commandChecksBriefSection(commands, false);
               if (section !== undefined) prompt = `${prompt}\n\n${section}`;
