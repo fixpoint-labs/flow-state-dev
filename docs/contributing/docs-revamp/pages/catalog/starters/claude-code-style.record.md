@@ -43,6 +43,8 @@ Written by `docs-writer` (sonnet), 1050 words. Scenario: The reader's own reposi
 
 - After the loop: the two open pass-7 findings are applied: "The block is a trimmed copy" is now "The config below is trimmed for copying", and the Codex coder sentence is split so the chip contrast reads on its own.
 
+- After the loop (review): the coder-worker change now presents `desk.coder-codex` as the lab's own file (it ships with `main`'s `delegates` already listing it, fact sheet flag 3), and the steps apply to a coder for a harness you add.
+
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 753c97766cba, and the 12 Reference row(s) pass 6 moved.

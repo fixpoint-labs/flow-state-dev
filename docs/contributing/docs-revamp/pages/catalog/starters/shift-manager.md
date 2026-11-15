@@ -24,9 +24,9 @@ npm install @flow-state-dev/shift-manager
 npx shift-manager --config ./fsdev.config.mts
 ```
 
-It prints its address and opens it. The pages ship prebuilt, so there is nothing to compile. The [CLI reference](../reference/cli.md) has the default address and port, which Node version it needs, how it finds a config when you leave out `--config`, and `--dev`, which restarts the Lab when you save a file.
+It prints its address and opens it. The pages ship prebuilt, so there is nothing to compile. The [CLI reference](../../reference/cli.md) has the default address and port, which Node version it needs, how it finds a config when you leave out `--config`, and `--dev`, which restarts the Lab when you save a file.
 
-Shift Manager builds nothing for the Lab, so the config has to default-export a server that is already set up: a `FlowState` with a store, a list of the organization's workers that the server reads when it starts (its *inventory*), and the user Shift Manager acts as, whose asks and sessions it shows. The [runtime reference](../reference/runtime.md) says what each one needs.
+Shift Manager builds nothing for the Lab, so the config has to default-export a server that is already set up: a `FlowState` with a store, a list of the organization's workers that the server reads when it starts (its *inventory*), and the user Shift Manager acts as, whose asks and sessions it shows. The [runtime reference](../../reference/runtime.md) says what each one needs.
 
 ## What you see
 
@@ -38,7 +38,7 @@ Shift Manager is research software. Several screens are placeholders that say wh
 
 **Projects** are shared with your organization or private to you. Each has a Stream tab for talking to its coordinator, a Workstreams tab, a Board of your own workstreams' tasks, and a Brief. [Projects](../workforce/projects.md) covers what a project is.
 
-Roster, Messages, Routines, Usage and Settings sit beside these in the sidebar. A summary reading *as of 14:02* is not live; how and when the screens refresh is in the [Workforce reference](../reference/workforce.md).
+Roster, Messages, Routines, Usage and Settings sit beside these in the sidebar. A summary reading *as of 14:02* is not live; how and when the screens refresh is in the [Workforce reference](../../reference/workforce.md).
 
 ## The Shift Coordinator
 
@@ -60,7 +60,7 @@ The Shift Coordinator is an ordinary worker your files declare. Shift Manager tr
 - **Shift Manager finds it by name.** It opens on it, and shows it as "Shift Coordinator" wherever it names a worker.
 - **The summary above it is Shift Manager's own.** It counts the asks waiting and the runs going, and each ask has the same Approve and Reject as Inbox. Answering one there clears it from Inbox.
 
-Shift Manager gives it no tools of its own. A worker can hire and fire only if its own file names `hire` and `fire`; what they do, and how a fire waits for your approval, is in the [Workforce reference](../reference/workforce.md).
+Shift Manager gives it no tools of its own. A worker can hire and fire only if its own file names `hire` and `fire`; what they do, and how a fire waits for your approval, is in the [Workforce reference](../../reference/workforce.md).
 
 You have one conversation with it, and your first line opens it. It answers you directly. To have it hand work to other workers, give it the coordinator flow; see [Coordinators](../workforce/coordinators.md).
 
@@ -70,14 +70,14 @@ A project's coding runs (workers that edit code in their own copy of a repositor
 
 Paste a key to set it, paste another to replace it, or clear it. The page never shows a key back, so keep your own copy. A run you ask for uses your key. The run can call the server's tools but never sees the key.
 
-A project also has to name the server before its runs get it, and a run says in its session when you have no key. A key is stored as you wrote it, so [where it lives](../reference/stores.md) decides who can read it.
+A project also has to name the server before its runs get it, and a run says in its session when you have no key. A key is stored as you wrote it, so [where it lives](../../reference/stores.md) decides who can read it.
 
-If Settings lists no servers, the Lab's host may not serve the key endpoints; the [HTTP API reference](../reference/http-api.md) says which hosts do.
+If Settings lists no servers, the Lab's host may not serve the key endpoints; the [HTTP API reference](../../reference/http-api.md) says which hosts do.
 
 ## Next
 
 - [Coordinators](../workforce/coordinators.md): hand a conversation's work to other workers.
 - [Projects](../workforce/projects.md): workstreams, project coordinators and the servers a project names.
-- [Workforce reference](../reference/workforce.md): what Shift Manager reads from a Lab, what it shows when something is missing, and how a project names an MCP server.
-- [Harness runs reference](../reference/harness-runs.md): which coding agents get a project's servers, and what Settings holds besides MCP keys.
+- [Workforce reference](../../reference/workforce.md): what Shift Manager reads from a Lab, what it shows when something is missing, and how a project names an MCP server.
+- [Harness runs reference](../../reference/harness-runs.md): which coding agents get a project's servers, and why a coding agent's own sign-in is set on the machine, not in Settings.
 - [Standing rules](../workforce/standing-rules.md): the notes the Shift Coordinator keeps for you.

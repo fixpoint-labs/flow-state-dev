@@ -94,7 +94,7 @@ Then make a project in the picker: a name, and the repository as `file:///home/y
 
 **Change the main worker's brief.** It is `workforce/teams/desk/workers/main/WORKER.md`: frontmatter, then the brief as the body. The brief tells the worker to open each reply with a line saying what it will do, to do its own part in full and hand the long pieces to background tasks, to read the project's files itself, and to send code changes to `desk.coder`. Edit those sentences. The [WORKER.md reference](../../reference/worker-md.md) lists the frontmatter settings, including `flow` and `delegates`.
 
-**Add a coder worker for one harness.** A worker can run on any harness the config fills. The config above fills Codex, so a coder that always uses Codex is one more worker file and needs no new flow. The *Coder* chip changes the coder for one message; this worker always uses Codex:
+**Add a coder worker for one harness.** A worker can run on any harness the config fills, and needs no new flow. The lab already has one coder per filled harness: `desk.coder-codex` is this file, and the main worker's `delegates` lists it. The *Coder* chip changes the coder for one message; a worker like this always uses its harness:
 
 ```md title="workforce/teams/desk/workers/coder-codex/WORKER.md"
 ---
@@ -104,7 +104,7 @@ harness: codex
 ---
 ```
 
-Add `desk.coder-codex` to the main worker's `delegates`, tell the brief when to use it, and sign Codex in on the machine; the [Environment reference](../../reference/environment.md) names the credential. The *Coder* chip's choices are a constant in the app's own source, so a harness of your own also needs an entry in `CODER_CHOICES` in `src/components/Composer.tsx`.
+A coder for a harness you add has the same shape, with its own `harness:` line. Add its id to the main worker's `delegates`, tell the brief when to use it, and sign its agent in on the machine; the [Environment reference](../../reference/environment.md) names the credential. The *Coder* chip's choices are a constant in the app's own source, so a harness of your own also needs an entry in `CODER_CHOICES` in `src/components/Composer.tsx`.
 
 ## What it won't do
 
