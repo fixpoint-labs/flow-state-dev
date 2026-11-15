@@ -95,7 +95,7 @@ export const workerMessageStateShape = { ...messageHopStateShape, ...messageDeli
 const SCREEN_FILING_ACTION = "createTask_tasks";
 
 /** {@link workerMessageStateShape}'s fields, for a flow's `session.serverOwned`. */
-export const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = Object.keys(workerMessageStateShape);
+const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = Object.keys(workerMessageStateShape);
 
 /**
  * The session-state fields this factory's delegate list and board write, and only

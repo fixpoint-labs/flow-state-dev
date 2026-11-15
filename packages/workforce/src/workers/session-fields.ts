@@ -41,8 +41,11 @@ export function withSessionFields(session: SessionConfig, fields: SessionFields 
   if (taken.length > 0) {
     throw new Error(`workforce: session field ${taken.map((name) => `"${name}"`).join(", ")} is one workforce keeps on the session. Name it otherwise.`);
   }
-  // Optional on the session: it is born without one, and the server writes it after.
-  const declared = Object.fromEntries(names.map((name) => [name, fields![name]!.optional()]));
+  // Optional on the session: it is born without one, and the server writes it after. Declared as
+  // any value, not the field's schema: what is stored is already that schema's output, parsed once
+  // where the server writes it (`setSessionFieldsAction`), and a hand-over copies it as is. Parsing
+  // it again at each birth would run a `.transform` twice, or refuse a value whose type it changed.
+  const declared = Object.fromEntries(names.map((name) => [name, z.unknown()]));
   return {
     ...session,
     stateSchema: z.object({ ...schema.shape, ...declared }) as never,
@@ -107,7 +110,15 @@ export function setSessionFieldsAction(fields: SessionFields) {
           if (!parsed.success) refuse(`"${name}": ${parsed.error.issues.map((issue) => issue.message).join("; ")}.`);
           written[name] = parsed.data;
         }
-        await ctx.session.patchState(written);
+        // The absence check and the write are one versioned write, rerun on a conflict against the
+        // stored state: of two opens that race, the second finds the first's value and is refused.
+        const already = (current: Readonly<Record<string, unknown>>) => names.find((name) => current[name] !== undefined);
+        let taken: string | undefined;
+        await ctx.session.atomicState(((current: Readonly<Record<string, unknown>>) => {
+          taken = already(current);
+          return taken === undefined ? written : {};
+        }) as never);
+        if (taken !== undefined) refuse(`"${taken}" is set when the session opens, and it already has one.`);
         return { fields: written };
       },
     }),
