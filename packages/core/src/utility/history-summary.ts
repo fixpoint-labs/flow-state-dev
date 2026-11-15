@@ -92,9 +92,12 @@ function capSummary(summary: string, limit = MAX_READING_CHARS): string {
  */
 function storedSummary(summary: string, keyPoints: string[] | undefined): string {
   if (keyPoints === undefined || keyPoints.length === 0) return capSummary(summary);
-  const budget = MAX_READING_CHARS - TRUNCATED_MARKER.length - KEY_POINTS_HEADER.length;
   const lines = keyPoints.map((point) => `- ${point}`);
   let block = lines.join("\n");
+  // Whole when it fits: space for a marker is held back only once something is cut.
+  const whole = `${summary}${KEY_POINTS_HEADER}${block}`;
+  if (whole.length <= MAX_READING_CHARS) return whole;
+  const budget = MAX_READING_CHARS - TRUNCATED_MARKER.length - KEY_POINTS_HEADER.length;
   if (block.length > budget) {
     const kept: string[] = [];
     let used = KEY_POINTS_CUT.length;
@@ -120,6 +123,7 @@ const WRAPPER_TAG = /<(\s*\/?\s*earlier-conversation)/gi;
  * stored since is within the cap and reads whole, key points included.
  */
 function wrapSummary(summary: string): string {
+  // A no-op for a summary capped when stored; it caps one stored before writes were capped.
   return `<earlier-conversation>\n${capSummary(summary).replace(WRAPPER_TAG, "&lt;$1")}\n</earlier-conversation>`;
 }
 

@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler } from "../src/blocks/handler";
+import { MAX_READING_CHARS } from "../src/utility/consult-session-history";
 import { historySummary } from "../src/utility/history-summary";
 
 const summarize = handler({
@@ -68,13 +69,13 @@ describe("historySummary context wrapper", () => {
   it("caps a summary that has grown past the reading cap, with a truncation marker", () => {
     const rendered = render("x".repeat(50_000))!;
     const body = inside(rendered);
-    expect(body.length).toBeLessThanOrEqual(8_000);
+    expect(body.length).toBeLessThanOrEqual(MAX_READING_CHARS);
     expect(body).toMatch(/\[earlier summary truncated\]$/);
     expect(body.startsWith("x".repeat(100))).toBe(true);
   });
 
   it("does not mark a summary right at the cap as truncated", () => {
-    const summary = "y".repeat(8_000);
+    const summary = "y".repeat(MAX_READING_CHARS);
     expect(inside(render(summary)!)).toBe(summary);
   });
 });

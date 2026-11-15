@@ -201,6 +201,20 @@ describe("historySummary on the engine", () => {
     expect(kept).toEqual(keyPoints.slice(0, kept.length).map((point) => `- ${point}`));
   });
 
+  it("stores a summary and key points that fit the cap whole, with no space held back for a marker", async () => {
+    // Empty prose and one key point: 7,976 characters in all, under the cap.
+    const point = "k".repeat(7_960);
+    const { stored } = await storedAfterFold("", [point]);
+    expect(stored).toBe(`\n\nKey points:\n- ${point}`);
+  });
+
+  it("stores a summary and key points that come to exactly the cap whole", async () => {
+    // "OK", the key points header and one key point: 8,000 characters exactly.
+    const point = "x".repeat(7_982);
+    const { stored } = await storedAfterFold("OK", [point]);
+    expect(stored).toBe(`OK\n\nKey points:\n- ${point}`);
+  });
+
   it("stores a summary and key points under the cap exactly as before", async () => {
     const { stored } = await storedAfterFold("The user planned a launch.", ["Launch date: 3 May", "Codename: Blue Heron"]);
     expect(stored).toBe("The user planned a launch.\n\nKey points:\n- Launch date: 3 May\n- Codename: Blue Heron");
