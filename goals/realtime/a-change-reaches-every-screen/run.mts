@@ -979,11 +979,20 @@ async function journeyJ3(
   const { tree, db, browser, pages } = env;
   const redis = await startRedis();
   const queue = { FSD_REDIS_URL: redis.url };
-  const p1 = await startApp(tree, db, "j3-p1", await freePort(), pages, { ...queue, FSD_WORKER_MODE: "dispatch-only" });
-  const worker = await startApp(tree, db, "j3-worker", 0, pages, { ...queue, FSD_WORKER_MODE: "worker-only" });
-  const p2 = await startApp(tree, db, "j3-p2", await freePort(), pages);
-  const context = await userContext(browser, "tok-a");
+  // Each process is stopped in `finally`, whichever later start fails.
+  const started: AppProcess[] = [];
+  const contexts: BrowserContext[] = [];
+  const start = async (...args: Parameters<typeof startApp>) => {
+    const app = await startApp(...args);
+    started.push(app);
+    return app;
+  };
   try {
+    const p1 = await start(tree, db, "j3-p1", await freePort(), pages, { ...queue, FSD_WORKER_MODE: "dispatch-only" });
+    await start(tree, db, "j3-worker", 0, pages, { ...queue, FSD_WORKER_MODE: "worker-only" });
+    const p2 = await start(tree, db, "j3-p2", await freePort(), pages);
+    const context = await userContext(browser, "tok-a");
+    contexts.push(context);
     const sA = await newSession(p1.origin, "user-a", "tok-a");
     const a = await openScreen(context, "A on p1 (dispatch-only)", p1.origin, "user-a", sA);
     const view = await openScreen(context, "A's session view on p2", p2.origin, "user-a", sA);
@@ -1027,8 +1036,8 @@ async function journeyJ3(
       note(`j3: idle ${IDLE_MS / 1000} s, p2 logged ${named.length} statements naming the session`);
     }
   } finally {
-    await context.close().catch(() => {});
-    await Promise.all([p1.peer.stop(), worker.peer.stop(), p2.peer.stop()]);
+    for (const context of contexts) await context.close().catch(() => {});
+    await Promise.all(started.map((app) => app.peer.stop()));
     await redis.stop();
   }
 }
@@ -1114,15 +1123,19 @@ await runGoal(async (failures, tell) => {
   const pages = join(SCRATCH, `pages-${CONTROL || "main"}`);
   await buildPage(checkout, pages);
   const db = await startPostgres({ slug: "every-screen", settings: { log_statement: "all", log_line_prefix: "'%n|%a|'" } });
-  evidence.push(`postgres: ${db.source}`);
-  const browser = await launchChromium();
+  let browser: Browser | undefined;
   try {
+    evidence.push(`postgres: ${db.source}`);
+    browser = await launchChromium();
     if (SCENES.has("a") || SCENES.has("c") || SCENES.has("d")) await legsACD({ failures, tell, evidence }, { checkout, db, browser, pages });
-    if (SCENES.has("j4")) await journeyJ4({ failures, tell, evidence }, { db, browser, pages });
+    // j4's server is this goal's next-server.mts on today's packages; the old checkout has no Next adapter dependency
+    // in goals/, so under main-before it would grade today's server against the old page. It does not run there.
+    if (SCENES.has("j4") && CONTROL === "main-before") evidence.push(`j4: not run under main-before (its server runs on today's packages only)`);
+    else if (SCENES.has("j4")) await journeyJ4({ failures, tell, evidence }, { db, browser, pages });
     if (SCENES.has("j3")) await journeyJ3({ failures, tell, evidence }, { tree: checkout, db, browser, pages });
     if (SCENES.has("b") || SCENES.has("j2")) await legB({ failures, tell, evidence }, { tree: checkout, db, browser, label: CONTROL || "main" });
   } finally {
-    await browser.close();
+    await browser?.close();
     await db.stop();
   }
   return { failures, evidence: evidence.join(" · ") };
