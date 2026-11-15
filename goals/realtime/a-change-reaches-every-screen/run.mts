@@ -272,7 +272,7 @@ const isBusTraffic = (s: Statement) => /^\s*(UN)?LISTEN\s+fsd_bus/i.test(s.text)
 // ---------------------------------------------------------------------------
 
 type Shown = { at: number; plan: string; seats: string[]; replies: string[] };
-type Sent = { at: number; method: string; url: string; status?: number };
+type Sent = { at: number; method: string; url: string; status?: number; body?: string };
 type Frame = { at: number; socket: number; frame: { type: string; crosses?: boolean; topic?: { scope: string; id?: string }; kind?: string } };
 type Minted = { at: number; topics: Array<{ scope: string; id?: string }>; status: number };
 
@@ -365,7 +365,7 @@ async function watchPage(page: Page, name: string, observe: string): Promise<Scr
   await page.addInitScript(observe);
   page.on("request", (request) => {
     if (!isApi(request.url())) return;
-    const sent: Sent = { at: Date.now(), method: request.method(), url: request.url() };
+    const sent: Sent = { at: Date.now(), method: request.method(), url: request.url(), body: request.postData() ?? undefined };
     screen.sent.push(sent);
     void request.response().then((response) => void (sent.status = response?.status()), () => undefined);
     if (isAction(sent)) screen.actions.push({ at: sent.at, action: new URL(sent.url).pathname.split("/").pop()! });
@@ -597,8 +597,9 @@ async function legsACD(
     const granted = cMints.filter((m) => m.topics.some((t) => t.scope === "session" && t.id === sA));
     const cAShown = tell.over("c:refused · C's renders of A's session page", cA.shown);
     const cAHeard = cA.frames.filter((f) => f.frame.type === "notice" && f.frame.topic?.id === sA);
-    const asked = cA.sent.some((s) => isMintOrSocket(s) || s.url.includes(sA));
-    if (!asked) failures.push("c:refused: C's page never asked for A's session, so a refusal can't be read");
+    // Only the hand-made ask counts: the page's own load already names sA in its URLs.
+    const asked = cA.sent.some((s) => s.method === "POST" && isMintOrSocket(s) && s.body?.includes(sA) === true && s.status !== undefined);
+    if (!asked) failures.push("c:refused: C's page never got an answer to a mint asking for A's session, so a refusal can't be read");
     if (granted.length > 0) failures.push(`c:refused: the mint granted C A's session topic ${granted.length} times`);
     if (cAHeard.length > 0) failures.push(`c:refused: C's socket heard ${cAHeard.length} notices on A's session`);
     if (cAShown.some(ofA)) failures.push(`c:refused: C's page showed A's ${allValues(cAShown.find(ofA)!).join(", ")}`);
