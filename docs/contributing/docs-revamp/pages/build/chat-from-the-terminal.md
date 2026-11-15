@@ -14,7 +14,7 @@ description: "`fsdev chat` opens a persistent terminal session over your flows."
 pnpm fsdev chat hello-chat chat
 ```
 
-The two arguments are a flow kind and an action, the same pair `fsdev run` takes. That flow becomes the **default target**: where your typed messages go. It finds your flows the way `fsdev run` does: from `fsdev.config.ts` in the current directory if there is one, otherwise from `src/flows/` and `flows/`. See [App Configuration](./configuration).
+The two arguments are a flow kind and an action, the same pair `fsdev run` takes. That flow becomes the **default target**: where your typed messages go. `fsdev chat` finds your flows the way `fsdev run` does: from `fsdev.config.ts` in the current directory if there is one, otherwise from `src/flows/` and `flows/`. See [App Configuration](./configuration).
 
 You can leave the target out:
 
@@ -48,13 +48,13 @@ A line like `/name args` (lowercase letters, digits and hyphens in the name) tha
 
 ## Sessions and state
 
-Each flow kind gets its own session within a run, so history and state don't bleed across a `/use` switch. Switch away and back and the first session resumes.
+Within one `fsdev chat` process, each flow kind gets its own session, so history and state don't bleed across a `/use` switch. Switch away and back and the first session resumes.
 
 With no `fsdev.config.ts`, history is saved to `.fsdev/data/fsdev.db`, the database the DevTool reads. With a config, chat uses your app's own stores, and a conversation survives restarting `fsdev chat` only if those stores persist. With no `stores` option, state lives in memory.
 
-When a turn stops for a user's answer, the session prints what it is waiting for and the stop's id. See [Human in the loop](./human-in-the-loop.md).
+When a turn stops for a user's answer, the session prints the question it is waiting on and that question's id. See [Human in the loop](./human-in-the-loop.md).
 
-Turns run as the user your app's resolver returns. The resolver is the function in your config that says which user a request runs as. With none, turns run as `devuser` in the development organization (`__fsd_default_org__`), which is also the DevTool's default user, so the session shows in its list. If a resolver refuses the terminal, that turn fails and the chat keeps going. `--org <id>` names the organization yourself and skips the resolver. See [Who a run is](./configuration.md#who-a-run-is).
+Turns run as the user your app's resolver returns. The resolver is the function in your config that says which user a request runs as. With none, turns run as `devuser` in the development organization (`__fsd_default_org__`), which is also the DevTool's default user, so the session shows in its list. If the resolver refuses the request, that turn fails and the chat keeps going. Pass `--org <id>` to set the organization directly; the resolver is skipped. See [Who a run is](./configuration.md#who-a-run-is).
 
 ### Resume yesterday's session
 
@@ -78,7 +78,7 @@ Inside a running chat, `/use <flow>` then `/session <id>` does the same. `/sessi
 
 ```text
 $ pnpm fsdev chat hello-chat chat
-Chatting with hello-chat · chat (session sess_a1b2c3).
+Chatting with hello-chat · chat (session sess_1760000000000_ab12cd).
 Type /help for commands, /exit to quit.
 ❯ My name is Ada.
 Nice to meet you, Ada. How can I help?
@@ -86,7 +86,7 @@ Nice to meet you, Ada. How can I help?
 Your name is Ada.
 ❯ /status
 Target:  hello-chat · chat
-Session: sess_a1b2c3
+Session: sess_1760000000000_ab12cd
 Turns:   2
 Org:     __fsd_default_org__ (user devuser, development-default)
 Source:  config (fsdev.config.ts)

@@ -64,13 +64,13 @@ export function RequestList({ sessionId }: { sessionId: string }) {
 
 `topic.session(id)` covers a session's requests, their items and the runs started under it. `topic.user()` and `topic.org()` cover the signed-in user and their organization, and take no id: the server uses the caller it signed in, so a screen can only hear its own.
 
-On the Node host, the read runs as soon as the change is saved, and it sees the change. A burst of changes runs the read once more after the one in flight, not once per change. You can pass a new topics array or a new function on every render without resubscribing.
+On a host that pushes (`serve()` from `@flow-state-dev/node`, see step 4), the read runs as soon as the change is saved, and it sees the change. A burst of changes runs the read once more after the one in flight, not once per change. You can pass a new topics array or a new function on every render without resubscribing.
 
 The hook subscribes through the `FlowProvider`'s client. If your app builds its own client with its own `fetcher`, pass it as `client` so the subscription signs in the way your reads do.
 
 ## 3. Ignore changes you don't show
 
-The read gets the notice that woke it, `{ topic, kind, origin? }`, or `null` after a connect, a reconnect or a timer tick. On a push host the connect runs it once with `null`, so the screen may read twice on mount: your effect's read, then that one. The example skips `"items"` notices because a reply streaming in sends many and the request list doesn't change with them. Read everything on `null` and on `"resync"`, which means the screen may have missed something. The other kinds are in the [client reference](../reference/client.md).
+The read gets the notice that woke it, `{ topic, kind, origin? }`, or `null` after a connect, a reconnect or a timer tick. On a host that pushes, connecting runs it once with `null`, so the screen may read twice on mount: your effect's read, then that one. The example skips `"items"` notices because a reply streaming in sends many and the request list doesn't change with them. Read everything on `null` and on `"resync"`, which means the screen may have missed something. The other kinds are in the [client reference](../reference/client.md).
 
 Narrowing the topic does the same with less code: `topic.session(id, { resource: "plan" })` only hears changes to that one resource, so a long reply never wakes it.
 
@@ -78,7 +78,7 @@ Narrowing the topic does the same with less code: `topic.session(id, { resource:
 
 The code is the same on every host. On `serve()` from `@flow-state-dev/node`, which `fsdev dev` and `fsdev serve` use, the client holds one WebSocket and the server pushes. On Vercel, Next.js or `createServerApp` alone there is no push, and the read runs every `pollIntervalMs`. Leave `pollIntervalMs` out on one of those and the screen never changes after its first read. The [server reference](../reference/server.md) has the full table.
 
-If your app runs as one process, the default works. If several processes write your stores (several servers on one SQLite file, or `fsdev run` writing the file `fsdev dev` serves), use a store set that shares changes across processes, such as Postgres. Otherwise an open screen hears another process's changes only at its next read, which on a host with no push and no `pollIntervalMs` may never come. See [stores](../reference/stores.md).
+If your app runs as one process, the default stores work. If several processes write your stores (several servers on one SQLite file, or `fsdev run` writing the file `fsdev dev` serves), use a store set that shares changes across processes, such as Postgres. Otherwise an open screen hears another process's changes only at its next read, which on a host with no push and no `pollIntervalMs` may never come. See [stores](../reference/stores.md).
 
 ## 5. Check who hears what
 

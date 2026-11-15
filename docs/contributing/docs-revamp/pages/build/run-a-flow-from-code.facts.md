@@ -113,3 +113,10 @@ A recipe stores no data itself, but each call writes records into `stores`, and 
 - **Imports (facts 1, 2).** The page imports `runAction` from `@flow-state-dev/engine`, `DEFAULT_ORG_ID` from `@flow-state-dev/core`, and names `createInMemoryStores` as coming from `@flow-state-dev/engine/host`. `createFilesystemStores` is not on the page.
 - **Moved to Reference (not on the page):** instance binding and `FlowInstanceBindingMismatchError`; `runtimeConfig` options; the hook-throws result (fact 30); request record `result` and its JSON copy rules (fact 29); `transient` blocks and stored output; `onItem` fan-out detail. The page keeps one sentence each for the session binding and `onItem` transient items. Target rows: `reference/flows` (R-05, R-12, R-22), `reference/sessions` (R-16), `reference/items` (R-06).
 - **Links.** `../reference/api/testing.md` is the testing page used by `your-first-flow.md`; `reference/flows`, `reference/items`, `reference/errors` are planned slugs; B-15 has no index page, so only B-19 is linked.
+
+## Revise round 2 corrections
+
+- **Required options named (fact 12).** The page lists the seven by name: `flow`, `actionName`, `input`, `userId`, `orgId`, `stores`, `runtimeConfig`. The finished code adds optional `sessionId` and `onItem`; the enqueue example adds optional `requestId`.
+- **`onItem` signature (fact 26).** The page gives `onItem(item, kind)` with `kind` one of `"added"`, `"updated"`, `"done"` (`eng/execution/types.ts:162-173`), and links Items for transient items. It still compares `onItem` only with what is stored, never with `result.items` (fact 27).
+- **Shared session (fact 16).** The page says the second `reply` sees the state the first left, not a count.
+- **Standalone script (fact 11).** "A standalone script with no `fsdev.config.ts`" replaces "a script that is the whole app".

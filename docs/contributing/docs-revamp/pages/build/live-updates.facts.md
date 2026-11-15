@@ -117,7 +117,7 @@ This page is about a notice and a read; it stores nothing. A notice carries no r
 The page was rewritten to the recipe shape (672 words, two titled blocks, five numbered steps). It carries the facts below, all sourced above; everything else is a Reference row.
 
 - **Example** (corrections 1, 3, 4): `src/lib/fsd.ts` makes the client; `src/app/RequestList.tsx` reads `fsd.sessions.requests(sessionId)` (`cl:463`), keeps the first read in an effect, and passes the hook's `signal` to the read (fact 19). Both blocks type-checked with `tsc` against the kitchen-sink tsconfig (scratch folder deleted). `fsd.flow(...).read` and `listTasks_tasks` are gone from the page.
-- **Timing** (fact 10, `wsg` `a:within-1s`): "On the Node host, the read runs as soon as the change is saved, and it sees the change." The page no longer says why (no timer, notice sent once readable); that mechanism is a Reference row.
+- **Timing** (fact 10, `wsg` `a:within-1s`): "On a host that pushes (`serve()` from `@flow-state-dev/node`, see step 4), the read runs as soon as the change is saved, and it sees the change." The page no longer says why (no timer, notice sent once readable); that mechanism is a Reference row.
 - **Client** (fact 20): "pass it as `client` so the subscription signs in the way your reads do". "Socket" is first used in step 4, after "the client holds one WebSocket".
 - **Several processes** (fact 33, 34): the page states only the decision: one process works by default; several processes writing the stores (several servers on one SQLite file, `fsdev run` against a running `fsdev dev`) need a store set that shares changes across processes, such as Postgres; otherwise an open screen hears another process's changes at its next read. The `bus` slot, the timer's behaviour on a crossing bus, `pushSecret`, `FSD_PUSH_SECRET` and `push: false` are Reference.
 - **Authorization** (facts 28 to 32): one paragraph; the per-topic rules for user and org topics, re-asking on each tick, the hour limit and the close codes are Reference.
@@ -135,7 +135,7 @@ The page was rewritten to the recipe shape (672 words, two titled blocks, five n
 
 ## Revise round 2 changes
 
-- **First read** (correction 3, fact 15; `ph:261-265`, `us:79`): the page now says the hook makes no read of its own on mount, and that on a push host the connect calls the read once with `null`, so a screen may read twice on mount (the effect's read, then the connect's). On a no-push host with no `pollIntervalMs` there is no second read. Checked against `push-hub.ts` `touched` and `noPush`.
+- **First read** (correction 3, fact 15; `ph:261-265`, `us:79`): the page now says the hook makes no read of its own on mount, and that on a host that pushes, connecting calls the read once with `null`, so a screen may read twice on mount (the effect's read, then the connection's). On a no-push host with no `pollIntervalMs` there is no second read. Checked against `push-hub.ts` `touched` and `noPush`.
 - **Topic** is defined where first used (opening), in "a name for what to listen to, such as one session".
 - **No timer, no push** (fact 16, 34): the several-process line now says the next read may never come on a host with no push and no `pollIntervalMs`, matching step 4.
 - **Wording**: "dropped, the same as a session that doesn't exist"; the open-connection clause no longer repeats "never what"; the `useSession` bullet names changes "to that state, whichever session or process makes them".

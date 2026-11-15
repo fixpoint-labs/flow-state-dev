@@ -25,15 +25,15 @@ const runtime = await app.getRuntime();
 // runtime.stores and runtime.runtimeConfig are what the server uses
 ```
 
-A script that is the whole app has no `fsdev.config.ts`. It builds its own with `createInMemoryStores()` from `@flow-state-dev/engine/host`, and passes `runtimeConfig: {}` if no block calls a model. Nothing in memory outlives the process. A flow with a generator block needs a `modelResolver` in `runtimeConfig`.
+A standalone script with no `fsdev.config.ts` builds its own with `createInMemoryStores()` from `@flow-state-dev/engine/host`, and passes `runtimeConfig: {}` if no block calls a model. Nothing in memory outlives the process. A flow with a generator block needs a `modelResolver` in `runtimeConfig`.
 
 ## 2. Call runAction
 
-Pass the seven required options. `userId` and `orgId` are the user and organization the run belongs to. Nothing checks them, so pass ones your own code has verified. For single-organization development, use `DEFAULT_ORG_ID`.
+`flow`, `actionName`, `input`, `userId`, `orgId`, `stores` and `runtimeConfig` are required. `userId` and `orgId` are the user and organization the run belongs to. Nothing checks them, so pass ones your own code has verified. For single-organization development, use `DEFAULT_ORG_ID`.
 
-`sessionId` is optional, and it is the one real decision. Pass the same one on every call and the runs share one session, so the second `reply` sees the first one's count. Leave it out and each call gets a new session. A session belongs to one user, one organization and one flow. Reusing it from another user, organization or flow rejects before anything runs.
+`sessionId` is optional. Pass the same one on every call and the runs share one session, so the second `reply` sees the state the first one left. Leave it out and each call gets a new session. A session belongs to one user, one organization and one flow. Reusing it from another user, organization or flow rejects before anything runs.
 
-Pass `onItem` to watch items as they arrive. It also receives transient items, which are never saved. An error thrown in `onItem` doesn't fail the run.
+Pass `onItem(item, kind)` to watch items as they arrive. It gets every item, and `kind` is `"added"`, `"updated"` or `"done"`, where the item is in its lifecycle. It also receives transient items, which are never saved; [Items](../reference/items.md) says which those are. An error thrown in `onItem` doesn't fail the run.
 
 ## 3. Check the result
 

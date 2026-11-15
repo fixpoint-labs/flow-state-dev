@@ -193,3 +193,10 @@ For the cold-read pass (written by another agent; these are the facts it can key
 - Strict-mode limit now on the page (item 188 above): `ask` is typed `AnyEvaluatorBlock` (`cr:40`); under `strictFunctionTypes` an evaluator with typed questions fails TS2322. Verified by a type-check of the page's snippets; the example's tsconfig sets `strict: false`. The sibling-file import errors are expected: those blocks are separate files not shown.
 - Jev defined on first use as an evaluation model (answers fixed questions with typed answers).
 - "Edge" removed from the page; the page says branch and ticket.
+
+## 12. Revise round 3
+
+- Strict-mode limit reworded: under `strict: true` the fix is to keep `strict` and add `strictFunctionTypes: false` (the type-check passed under `strict: true` with `strictFunctionTypes: false`); the example sets `strict: false`.
+- Dropped the sentence that a below-floor ticket lands on `review` from the run paragraph; the same fact stays in Step 2's opening paragraph (`gate:58`; `crt:51-55`).
+- Step 1 now says a no-confidence model sends every ticket to `ambiguous` in Step 2 (`gate:56`; `crt:57-67`).
+- Type-check finding on the four unshown sibling imports: accepted. The page says they are ordinary blocks in their own files, handlers returning a queue name.

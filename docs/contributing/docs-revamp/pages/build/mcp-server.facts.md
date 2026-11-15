@@ -111,6 +111,6 @@ All **[ref]** rows above, collected: the `McpConfig` and `ActionMcpConfig` field
 
 ## Existing-page claims the code does not support (fix on any neighbour that copies them)
 
-- `m:161-162` and `m:371-372` ("throws at flow registration" for a name collision): see Step 2. `apps/docs/docs/server/mcp.md` is the only place found; the same sentence may live in `packages/mcp/README.md`. **[check at pass 3: `grep -n "collision\|registration" packages/mcp/README.md`.]**
+- `m:161-162` ("throws at flow registration" for a name collision): see Step 2. `apps/docs/docs/server/mcp.md` is the only place found; the same sentence may live in `packages/mcp/README.md`. **[check at pass 3: `grep -n "collision\|registration" packages/mcp/README.md`.]**
 - `m:108` and `m:210`: resolvers returning `{ userId }` alone (correction 1).
 - `m:221-223`: `null` plus `requireUser` gives 401 (correction 2).

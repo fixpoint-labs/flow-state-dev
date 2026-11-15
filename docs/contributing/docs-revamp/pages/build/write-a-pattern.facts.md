@@ -124,3 +124,8 @@ A pattern that wraps `taskBoard` stores its tasks; the sheet answers for them. T
 - Moved to Reference rows, linked from the page: task limits and what the drain hands the next step (R-23 `reference/task-board`); collection reads and writes (R-24 `reference/task-collections`); the `task-change` and `task-board-meta` items (R-06 `reference/items`); the `TaskPlan` install command and import path (R-36 `reference/ui-components`).
 - The consumer's flow is `export default wordCountFlow();` (`wf:62`), as in the example. The run command is piped through `jq`; the last stdout line carries `output` (fact 2).
 - The `create-pattern` skill is not on the page (contributor tooling, see "Left out").
+
+## Revise round 2: what changed
+
+- The `reduce` handler's `execute` is annotated `Promise<unknown>`, so it matches its `z.unknown()` output schema and `.step(reduce)` type-checks. Re-checked in a scratch copy of `src/lib/plan-map-reduce.ts` against the kitchen-sink tsconfig: no errors; scratch folder deleted.
+- The config takes `plan` and `map` blocks and a `reduce` function (fact 21); the page now says so in step 3 and lists the config as a plain list with no count.

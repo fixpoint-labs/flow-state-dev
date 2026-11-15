@@ -62,7 +62,8 @@ with an OpenAI key, pass `openai.evaluationModel("gpt-6-luna")` instead. See
 text is refused when the block is built.
 
 Jev reports a `confidence` with its choice answers. OpenAI's evaluation model reports none, and
-the `confidence` key is then absent. Step 2 depends on that.
+the `confidence` key is then absent. A model with no confidence sends every ticket to
+`ambiguous` in Step 2.
 
 ## Step 2: route on the answers
 
@@ -139,17 +140,15 @@ file beside this one. In the example they're handlers that return a queue name l
 Branch keys are checked against the question's options, so a typo is a compile error. The router
 takes no model of its own; the evaluators carry it. Only the levels on the chosen path run.
 
-One limit: with `strict: true` in `tsconfig.json`, `ask` rejects an evaluator that has typed
-questions, with a `strictFunctionTypes` error. The example's tsconfig sets `strict: false`; set
-`strictFunctionTypes: false` to match.
+With `strict: true` in `tsconfig.json`, `ask` rejects an evaluator that has typed questions with
+a `strictFunctionTypes` error. Keep `strict` and add `strictFunctionTypes: false`. The example
+turns `strict` off entirely.
 
 Run it with a clear, urgent billing complaint and it lands on `urgentBilling`:
 
 ```bash
 pnpm fsdev run routing-with-evaluators route -i '{"message":"I was charged twice for March and need it reversed today"}'
 ```
-
-A ticket where the model's confidence falls below a branch's `minConfidence` lands on `review`.
 
 **On a model that reports no confidence, every ticket lands on `ambiguous`,** even on branches
 with no `minConfidence`. To branch on the bare answer from such a model, run an evaluator and follow

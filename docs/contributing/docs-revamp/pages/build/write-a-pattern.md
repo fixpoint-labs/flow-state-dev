@@ -21,7 +21,7 @@ It assumes you know what a board and its drain are; if not, read
 
 Every board pattern runs the same four steps in one sequencer: plan the work, seed
 the board with one task per item, drain it, reduce the finished tasks. The factory
-hides those steps, so a caller passes five things:
+hides those steps. A caller passes:
 
 - `name`: unique within the flow. It prefixes every block the pattern builds.
 - `inputSchema`: the schema of the input the pattern is mounted against.
@@ -86,7 +86,7 @@ export function planMapReduce<TResult>(
     inputSchema: z.unknown(),
     outputSchema: z.unknown(),
     uses: [board.capability],
-    execute: async (_input, ctx) => {
+    execute: async (_input, ctx): Promise<unknown> => {
       const done = await ctx.cap[board.capability.name].listTasks({ status: "completed" });
       return config.reduce(done.map((task) => task.output));
     },
@@ -110,7 +110,7 @@ capped per board; the limits are in the [task board reference](../reference/task
 
 ## 3. Use it in a flow
 
-A caller supplies the three blocks and mounts the result like any other block.
+A caller supplies the `plan` and `map` blocks and a `reduce` function, then mounts the result like any other block.
 Here `planDocuments` turns a list of documents into one item each, and `countWords`
 counts the words in one. Both are handlers, so the example needs no model key.
 
