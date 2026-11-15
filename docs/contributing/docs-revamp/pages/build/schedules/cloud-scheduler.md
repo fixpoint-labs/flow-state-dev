@@ -21,7 +21,25 @@ start with [Scheduled actions](/docs/server/scheduled).
 
 A schedule is an entry under `schedules.static`, keyed by the name that
 will appear in the job's URL. It carries a `cron` and the block to run.
-`generateMonthlyInvoices` is a block in its own file beside the flow.
+`generateMonthlyInvoices` is a block, a unit of work, that lives in its own
+file beside the flow:
+
+```ts title="src/flows/billing/blocks/generate-monthly-invoices.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+export const generateMonthlyInvoices = handler({
+  name: "generate-monthly-invoices",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ generated: z.number() }),
+  execute: async () => {
+    // Create the month's invoices here.
+    return { generated: 0 };
+  },
+});
+```
+
+The flow registers it as the schedule's handler:
 
 ```ts title="src/flows/billing/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
@@ -70,7 +88,7 @@ gcloud scheduler jobs create http monthly-invoices \
   --max-backoff=600s
 ```
 
-The job sends no body. Each fire runs the action for the most recent
+The job sends no body. Each fire runs the block for the most recent
 scheduled time that is due.
 
 Write the same cron in `--schedule` and in the flow, and the same zone in
@@ -90,18 +108,22 @@ curl -H "Authorization: Bearer ${FSDEV_SCHEDULER_SECRET}" \
 
 `monthly-invoices` should be in the list. A fire the flow accepts answers
 `202 { status: "accepted", scheduleId, origin: "static", requestId }`. That
-means the action started, not that it finished.
+means the block started, not that it finished. The `requestId` names the
+request, the record Flow State keeps of this run. Read it with
+`GET /api/flows/billing/requests/<requestId>/status`, using the same header.
+Add `?include_result_output=true` to see the block's output or error.
 
 ## Retries
 
 Cloud Scheduler retries a run that gets a non-2xx answer, following the
 `--max-retry-attempts` and backoff flags on the job. A retry never runs the
-action twice: each scheduled time fires at most once, and a repeat answers
+block twice: each scheduled time fires at most once, and a repeat answers
 `200 { status: "duplicate" }`. What a retry does once the next scheduled
 time has come is in [Schedules](../reference/schedules.md).
 
-If the action fails after the `202`, Cloud Scheduler does not retry.
-The error is recorded on the request. See [Errors](../reference/errors.md).
+If the block fails after the `202`, Cloud Scheduler does not retry. Look up
+the request by its `requestId`, as in step 3: its `status` is `errored` and
+the error is in its result. See [Errors](../reference/errors.md).
 
 ## Use OIDC instead of a shared secret
 
@@ -127,9 +149,9 @@ whatever value your resolver checks. See
 
 ## What it won't do
 
-- Change the action's input per fire. The job's request is fixed, so the
+- Change the block's input per fire. The job's request is fixed, so the
   input comes from the schedule's `input`, a value or a function. See
   [Schedules](../reference/schedules.md).
 - Alert you or park failed runs. Dead-letter handling and alerting are
   Cloud Scheduler settings on the job. The framework's own failure signal
-  is a request record with `status: "errored"`.
+  is a request with `status: "errored"`, read by `requestId` as in step 3.

@@ -312,3 +312,17 @@ Removed from the page as untrue or unsupported: "opaque metadata" for `timezone`
 (C5), `nominalFireTime` tied to the input function's scope state (C6, and the scope-state claim), the
 `onErrored` hook sentence (C7, fact 37 untested on the scheduled path), "JSON body" and the
 `Content-Type` header (no body is sent).
+
+## Page state after revise round 2
+
+- The page now shows the block file `src/flows/billing/blocks/generate-monthly-invoices.ts` (a
+  `handler` with `inputSchema: z.object({})`, which is what a schedule with no `input` passes, fact 52),
+  so the flow example type-checks. [scheduled/test/once-per-time.test.ts:29-36]
+- The page says "block" for what a schedule runs, never "action".
+- Reading the run: `GET /api/flows/<flowKind>/requests/<requestId>/status` returns a snapshot with
+  `status`; `?include_result_output=true` adds the stored result (output, error). The principal the
+  schedule runs as owns the request, so the dispatch bearer header reaches it. [engine/src/routes/request-status-routes.ts:29-92;
+  core/src/types/request.ts:17-55; apps/docs/docs/server/connection-resilience.md:30]
+- Links checked: `/docs/server/scheduled` is an existing page and the one the sibling recipes use;
+  `../reference/{schedules,errors,authentication}.md` are the plan slugs R-33, R-22, R-20.
+- The 202 body fields match scheduled/src/routes.ts:325-330.
