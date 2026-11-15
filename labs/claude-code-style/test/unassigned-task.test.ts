@@ -72,9 +72,9 @@ async function tasksAfterTurn(lab: LabAdapter, session: string, results: string[
   // Long enough for a filed task's dispatch to have claimed it, had anything claimed it.
   await waitFor(1_500);
   return new Promise((resolve) => {
-    const stop = lab.watchTasks(session, (rows) => {
+    const stop = lab.watchTasks(session, (tasks) => {
       stop();
-      resolve(rows);
+      resolve(tasks);
     });
   });
 }
@@ -83,9 +83,9 @@ describe("desk.main files a code change with no assignee", () => {
   it("is refused with the delegates it can name, and nothing waits on the board unowned", async () => {
     const { lab, session, results } = await bootLab();
     await lab.send(session, ASK);
-    const rows = await tasksAfterTurn(lab, session, results);
+    const tasks = await tasksAfterTurn(lab, session, results);
     // Without the refusal the task is filed and sits pending, unassigned, forever.
-    expect(rows.filter((task) => task.assignee === undefined)).toEqual([]);
+    expect(tasks.filter((task) => task.assignee === undefined)).toEqual([]);
     expect(results[0]).toContain("assignee_required");
     expect(results[0]).toContain("desk.coder");
   }, 60_000);
