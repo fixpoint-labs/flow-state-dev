@@ -6,47 +6,42 @@ description: Plan a task graph, work through it, and replan with what came back.
 
 # Plan and Execute
 
-Plan and Execute is a two-phase agentic architecture. In the planning phase, an LLM decomposes the goal into a dependency-ordered task graph. In the execution phase, it works through tasks one at a time — respecting dependencies, skipping the tasks that depend on a failure, and optionally replanning remaining tasks after each step.
+Some goals are a list where later items need earlier results. Research two competitors, then write the comparison. The comparison can't start until the research is in, and if one competitor's research fails, you want the comparison to say so rather than the run to stop. `planAndExecute` asks a model to break the goal into tasks, each naming the tasks it depends on. It works through them on a [task board](../../concepts/tasks-and-boards.md) (a stored list of tasks and the loop that works through it), in dependency order, and writes the final answer from what came back. It can also replan the remaining tasks as results arrive.
 
-Use it when:
-- Tasks depend on each other's results (A must complete before B starts)
-- You need step-by-step progress tracking with per-task status
-- You want adaptive replanning when earlier steps fail or need adjustment
+Reach for it when:
 
-If tasks are independent and can run in parallel, use [Parallel Tasks](./parallelTasks) or [Supervisor](./supervisor) instead.
+- tasks depend on each other's results,
+- you want to see each task's status as it runs,
+- the plan should be able to change when a step fails or turns up something new.
 
-## Block composition
+If the tasks are independent, use [Parallel Tasks](./parallel-tasks.md). If each result needs review before it counts, use [Supervisor](./supervisor.md).
 
-```
-goal
-  → captureAndPlan          (store goal, run planner, seed taskBoard collection)
-  → board.drain             (drain — workers process tasks until idle)   ←┐ loopBack target
-  → evaluator               (decide: continue | replan | complete)         │
-  → [replanner]             (only when replan + no inline tasks)            │
-  → [applyReplan]           (add new tasks to the collection)               │
-  → loopBack(when: decision !== "complete") ────────────────────────────────┘
-  → synthesize              (build plan output, then run synthesizer)
+## Install it
+
+```bash
+pnpm add @flow-state-dev/patterns
 ```
 
-Plan tasks live on a request-scoped `TaskCollection` so the same collection survives across multiple `board.drain` re-entries inside the replan loop. The outer sequencer state is minimal — `{ goal, status?, iteration }` — with the substrate's `task-change` and `task-board-meta` items as the source of truth for per-task progress.
+## Use it
 
-## Basic usage
+The examples belong to a `research` flow that compares competitors. The pattern needs only a name:
 
-```ts
+```ts title="src/flows/research/blocks/research.ts"
 import { planAndExecute } from "@flow-state-dev/patterns";
 
-const research = planAndExecute({
+export const research = planAndExecute({
   name: "research",
 });
 ```
 
-That's the minimal form. The default planner, executor, evaluator, and synthesizer all have reasonable defaults. Use it in a flow:
+`planAndExecute` returns a sequencer, so a flow uses it like any other block. Its input is `{ goal: string }`, the shape `planAndExecuteInputSchema` describes:
 
-```ts
+```ts title="src/flows/research/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
 import { z } from "zod";
+import { research } from "./blocks/research";
 
-const flow = defineFlow({
+export const researchFlow = defineFlow({
   kind: "research",
   requireUser: true,
   actions: {
@@ -56,374 +51,151 @@ const flow = defineFlow({
       userMessage: (input) => input.goal,
     },
   },
-  session: { stateSchema: z.object({}) },
+  session: {
+    stateSchema: z.object({}),
+  },
 });
 ```
 
-## Input schema
+Send it "Compare Acme and Globex for a procurement review." The planner might return three tasks: one research task per company, then a comparison that depends on both. The tasks run one at a time by default. Set `maxConcurrency` to run independent tasks side by side.
 
-```ts
-{ goal: string }
-```
+The plan lasts for one action run. Keep the answer if you need it afterwards.
 
-Exported as `planAndExecuteInputSchema`:
+## What comes back
 
-```ts
-import { planAndExecuteInputSchema } from "@flow-state-dev/patterns";
-```
+By default the result is text: a final answer written from every completed task, answering the goal in full. To get the task results themselves, pass `synthesizer: false`:
 
-## Task lifecycle
-
-Task status in the pattern's output:
-
-| Output status | Meaning | Substrate equivalent |
-|--------|---------|---------|
-| `pending` | Queued, waiting for dependencies | `pending` |
-| `in-progress` | Currently executing | `in_progress` |
-| `completed` | Finished successfully | `completed` |
-| `failed` | Threw an error or returned `{ success: false }` | `errored` |
-| `skipped` | Bypassed because a dependency failed | `cancelled` + `label: "skipped"` |
-
-Internally tasks are full substrate `Task` records — every transition emits a `task-change` component item on the stream so renderers see live state without polling. The `<TaskPlan />` renderer subscribes to `task-change` per task and `task-board-meta` for board-level progress; both items are emitted by the pattern out of the box.
-
-When a task errors, the task collection cancels every pending task whose deps include the failed one (transitively), so the evaluator never loops on tasks that can no longer run. A replanned task that depends on a task that has already failed is skipped the same way, along with any replanned task that depends on it, and the rest of the replan runs. A plan or a replan whose `deps` name a task that isn't on the board, or loop back on themselves, is refused when it is added, and the run fails.
-
-These statuses are intentionally different from Supervisor's quality-gate statuses (`needs-revision`, `escalated`) — they model a different lifecycle. Don't conflate them.
-
-## Step executor output
-
-The default executor returns:
-
-```ts
-{
-  summary: string;
-  success: boolean;
-  reason?: string;    // set if success is false
-  sources?: Array<{ title?: string; url: string }>;
-}
-```
-
-A result with `success: false` marks the task as failed (and triggers cascade-skip on dependents). Throwing from the executor has the same effect and is caught by a rescue handler.
-
-When you provide a custom `stepExecutor`, the executor receives:
-
-```ts
-{
-  stepId: string;
-  goal: string;
-  context?: string;  // per-task support text (see "Per-task context" below)
-  dependencyResults?: Record<string, unknown>; // keyed by dependency task ID
-}
-```
-
-`dependencyResults` contains the results of all completed tasks that the current task depends on, so you can build on prior work. `context` carries the per-task support text the planner (or the context enricher) attached to this task.
-
-## Per-task context
-
-A worker only ever sees its own task. By default the planner writes a short instruction into each task's `goal`, but the original request — the actual values, lists, and constraints a task needs — never reaches the worker unless the planner happens to copy them into that one string. At any real scale it doesn't. (Paste 25 subdomains and ask for info on each, and you get tasks like "research the listed subdomains" with no subdomains attached.)
-
-Each task carries a `context` field for exactly this: readable support text the worker renders into its prompt. There are three ways it gets filled, controlled by `taskContext`:
-
-```ts
-// Default. Copy the goal into every task that the planner left without
-// context. Free (no extra model call) and deterministic.
-planAndExecute({ name: "research", taskContext: "goal" });
-
-// Opt out — tasks get only the context the planner emitted, if any.
-planAndExecute({ name: "research", taskContext: false });
-
-// Custom enricher — run once over the whole plan to fill per-task context.
-// Receives { goal, tasks } and returns { tasks } with context filled.
-planAndExecute({ name: "research", taskContext: myEnricherBlock });
-```
-
-In the default `"goal"` mode a planner-emitted `context` always wins — only the gaps are filled. A custom `BlockDefinition` enricher instead receives the full plan (tasks include any planner context) and owns the contexts it returns; it isn't post-filtered, so preserve planner context in your block if you want that. The tradeoff: `"goal"` is simple but copies the same text into every task (more tokens, no extra call), while a `BlockDefinition` enricher can hand each task only the slice it needs — at the cost of one model call over the plan. The decomposer is also prompted to fill `context` with the concrete facts a task needs, so on a good plan the enricher has little left to do.
-
-Replan-added tasks get the same treatment: unless `taskContext` is `false`, a replanned task without context has the goal copied in on re-seed, so workers after a replan aren't blind to the request. (The replanner's own output schema stays `{ id, goal, deps }`; a custom enricher applies to the initial plan and the replan path falls back to the goal copy.)
-
-## Synthesizing the goal from conversation
-
-When a request depends on earlier conversation ("now do that for all of them"), the literal latest message is a poor goal to plan, replan, and synthesize against. `synthesizeGoal` rewrites it into a self-contained objective before planning:
-
-```ts
-planAndExecute({ name: "research", synthesizeGoal: true });
-```
-
-This runs a history-aware generator that resolves references against the conversation and preserves the concrete facts. The rewritten goal flows to the planner and into the pipeline state the replanner and synthesizer read, so all three reason about the same coherent objective. It's off by default (the input goal is used verbatim). Synthesis is an enhancement, not a correctness gate — if the model call fails, the run falls back to the original goal and continues. Pass a `BlockDefinition` instead of `true` to supply your own synthesizer (it must return `{ ...input, goal }`).
-
-## Config reference
-
-```ts
-planAndExecute({
-  name: string;
-
-  // Planning generator — produces initial task graph.
-  // Default: utility.decomposer() with { id, goal, deps?, priority? } output.
-  planner?: BlockDefinition;
-
-  // Executes each step.
-  // Receives { stepId, goal, dependencyResults? }.
-  // Default: a general step executor returning { summary, success, reason?, sources? }.
-  // `summary` holds the step's full result (reasoning, draft, plan, or research),
-  // matched to what the step needs; `sources` is populated only when the step
-  // actually used external lookups, and is empty for steps answered directly.
-  stepExecutor?: BlockDefinition;
-
-  // Evaluator — decides continue/replan/complete after each step.
-  // Default: createTaskEvaluator (no LLM call, uses pure task state logic).
-  evaluator?: BlockDefinition;
-
-  // Replanner — adjusts remaining tasks based on current results.
-  // Default: a generator with replan prompt.
-  replanner?: BlockDefinition;
-
-  // Max replanning iterations before forced completion. Default: 3.
-  maxIterations?: number;
-
-  // Enable LLM-based replanning. When false, uses a deterministic evaluator.
-  // Default: false.
-  enableReplanning?: boolean;
-
-  // Per-task retry budget stamped onto every seeded TaskInit. Default 1,
-  // meaning one attempt and no retries.
-  maxAttemptsPerTask?: number;
-
-  // Retries the whole board may authorize, across every task. Default 50.
-  // `null` for no bound, `0` to never retry. Binds only once
-  // `maxAttemptsPerTask` is raised above 1. See Task Board → Bounding the
-  // retries.
-  maxTotalRetries?: number | null;
-
-  // Worker pool size for the underlying taskBoard. Default 1 (sequential
-  // drain). Bump to fan out independent dep-free steps within a single
-  // drain.
-  maxConcurrency?: number;
-
-  // How each task's `context` is populated when the planner didn't supply
-  // one. "goal" (default): copy the goal into every gap-task. false: leave
-  // empty. BlockDefinition: run once over { goal, tasks } to fill per-task
-  // context. See "Per-task context".
-  taskContext?: "goal" | false | BlockDefinition;
-
-  // Synthesize a self-contained goal from conversation before planning.
-  // false (default): use the input goal verbatim. true: built-in
-  // history-aware synthesizer. BlockDefinition: custom synthesizer.
-  // See "Synthesizing the goal from conversation".
-  synthesizeGoal?: boolean | BlockDefinition;
-
-  // Final synthesis step. Receives the completed plan shape and produces
-  // the final result. Pass false to skip synthesis and return the raw plan.
-  // Default: a generator that integrates the step results into the complete
-  // final deliverable the goal asks for (solution, plan, critique, or report),
-  // citing sources only when the steps actually drew on them.
-  synthesizer?: BlockDefinition | false;
-
-  // Output schema for the synthesized result.
-  outputSchema?: ZodSchema;
-
-  // Model ID for default planner, executor, replanner, and synthesizer.
-  // Default: "openai/gpt-6-luna"
-  model?: string;
-
-  // Context slot applied to all default blocks.
-  context?: GeneratorSlot;
-
-  // Tools assigned to default blocks (executor, replanner, synthesizer).
-  tools?: GeneratorTool[] | ((ctx) => GeneratorTool[]);
-
-  // Web search — applied to default executor.
-  search?: boolean | GeneratorSearchConfig;
-
-  // Appended to the default executor's system prompt.
-  executionInstructions?: string;
-
-  // Appended to the default synthesizer's system prompt.
-  synthesizeInstructions?: string;
-
-  // Resources to declare on the default executor.
-  resources?: Record<string, any>;
-
-  // Visibility for the internal planner generator. Default: { client: true, history: false }.
-  // The default planner is a utility decomposer that does not currently
-  // accept itemVisibility; this knob applies when a custom `planner` is supplied.
-  plannerVisibility?: { client: boolean; history: boolean };
-
-  // Visibility for the internal step executor generator. Default: { client: true, history: false } —
-  // executor chatter stays out of the orchestrator's conversation history.
-  stepExecutorVisibility?: { client: boolean; history: boolean };
-
-  // Visibility for the final synthesizer generator. Default: { client: true, history: true } —
-  // synthesis is the user-facing answer for the plan.
-  synthesizerVisibility?: { client: boolean; history: boolean };
-});
-```
-
-## Exported schemas and types
-
-```ts
-import {
-  planAndExecute,
-  planAndExecuteInputSchema,
-  planAndExecuteStateSchema,
-  PlanSchema,
-  PlanTaskSchema,
-  iterationOutputSchema,
-} from "@flow-state-dev/patterns";
-
-import type {
-  PlanAndExecuteConfig,
-  PlanAndExecuteInput,
-  PlanAndExecuteState,
-  Plan,
-  PlanTask,
-  IterationOutput,
-} from "@flow-state-dev/patterns";
-```
-
-## Exported internal block factories
-
-These are exported so you can build custom plan-and-execute compositions on top of the substrate:
-
-```ts
-import {
-  evaluatePlanProgress,         // createEvaluateProgress — evaluator block factory
-  createTaskEvaluator,          // deterministic evaluator (no LLM)
-  createLLMEvaluator,           // LLM-based evaluator
-  createCaptureAndPlan,         // entry sequencer (set state, plan, seed collection)
-  createApplyReplan,            // adds replanner output to the collection
-  createSynthesize,             // builds the plan output + optional synthesizer
-  createBuildPlanOutput,        // just the substrate→plan-output translation
-  normalizeOutputStatus,        // substrate status → output status helper
-} from "@flow-state-dev/patterns";
-```
-
-Use these when you want the core task-tracking machinery but with custom orchestration around it.
-
-One thing to know if you wire `createApplyReplan` yourself: pass it the board's `capability`. With it, replanned tasks are written through the board's own collection and respect the bounds on how many tasks that board may hold. Without it, the block rebuilds the collection from the board name alone, which carries no bounds — so a replan can add tasks past a ceiling the board otherwise enforces. `planAndExecute` and the other bundled patterns pass it for you; this only applies to hand-wired use. See [bounding how much work a board takes on](../orchestration/task-board#bounding-how-much-work-a-board-takes-on).
-
-## Composability
-
-Plan and Execute is a sequencer, so it composes with other sequencer steps.
-
-### Sequential chaining
-
-Run two independent planning phases back to back:
-
-```ts
-import { sequencer } from "@flow-state-dev/core";
+```ts title="src/flows/research/blocks/research.ts"
 import { planAndExecute } from "@flow-state-dev/patterns";
-import { z } from "zod";
 
-const pipeline = sequencer({
-  name: "full-pipeline",
-  inputSchema: z.object({ goal: z.string() }),
-})
-  .step(planAndExecute({ name: "research", synthesizer: false }))
-  .map((plan) => ({
-    // transform research output into writing goal
-    goal: `Write a report based on: ${plan.tasks.map((t) => t.result?.summary).join("; ")}`,
-  }))
-  .step(planAndExecute({ name: "writing" }));
-```
-
-### Parallel goals
-
-Use `.forEach` to run independent goals in parallel, each with its own plan:
-
-```ts
-import { sequencer } from "@flow-state-dev/core";
-import { planAndExecute } from "@flow-state-dev/patterns";
-import { z } from "zod";
-
-const parallelResearch = sequencer({
-  name: "parallel-research",
-  inputSchema: z.object({ topics: z.array(z.string()) }),
-})
-  .map((input) => input.topics.map((topic) => ({ goal: topic })))
-  .forEach(planAndExecute({ name: "topic-research" }));
-```
-
-### Hierarchical nesting
-
-Use Supervisor as the `stepExecutor` for plans where each step needs quality review:
-
-```ts
-import { planAndExecute, supervisor } from "@flow-state-dev/patterns";
-
-const hierarchical = planAndExecute({
-  name: "complex-research",
-  stepExecutor: supervisor({
-    name: "step-supervisor",
-    worker: deepResearchWorker,
-    reviewCriteria: ["Comprehensive", "Well-sourced"],
-  }),
+export const research = planAndExecute({
+  name: "research",
   synthesizer: false,
 });
 ```
 
-## Custom synthesizer
+The result is then the plan:
 
-The default synthesizer integrates the step results into the final answer the goal asks for. Swap it out for domain-specific formatting:
+```text
+{
+  goal: "Compare Acme and Globex for a procurement review.",
+  status: "completed",
+  tasks: [
+    { id: "acme", goal: "Research Acme", status: "completed", result: { ... } },
+    { id: "globex", goal: "Research Globex", status: "failed", error: "No public pricing found" },
+    { id: "compare", goal: "Write the comparison", status: "skipped" },
+  ],
+  completedSteps: 1,
+  totalSteps: 3,
+}
+```
 
-```ts
+A task is `pending`, `in-progress`, `completed`, `failed` or `skipped`. The [patterns reference](../../reference/patterns.md) has the full shape. To shape the answer yourself, replace the synthesizer with a block of your own, shown below.
+
+## When a step fails
+
+A step fails when its executor throws, or returns `success: false`. Every pending task that depends on it, directly or through a chain, is skipped and never runs. Tasks that don't depend on it carry on. The run doesn't error: it finishes, and the plan lists which tasks failed and which were skipped.
+
+If every step fails, the default synthesizer runs anyway. It answers the goal from the model's own knowledge and doesn't mention the failed plan.
+
+To retry a failing task before it counts as failed, raise `maxAttemptsPerTask` (default 1, which means one attempt). The cascade rules and retry bounds are in the [task board reference](../../reference/task-board.md).
+
+## When does it replan?
+
+By default it doesn't. The run is one pass: plan, work every task, synthesize.
+
+Set `enableReplanning: true` and a model judges the plan after each pass through the board. A pass works through every task that can run, then the judge answers `continue`, `replan` or `complete`. On `replan`, a replanner returns new tasks, they join the same board, and the board runs again.
+
+```ts title="src/flows/research/blocks/research.ts"
 import { planAndExecute } from "@flow-state-dev/patterns";
+
+export const research = planAndExecute({
+  name: "research",
+  enableReplanning: true,
+  maxIterations: 3,
+});
+```
+
+`maxIterations` (default 3) caps the passes. At the cap the run completes with what it has. A custom `evaluator` or `replanner` block replaces either model call. Their shapes are in the [patterns reference](../../reference/patterns.md).
+
+## Where the goal comes from
+
+The goal is the `goal` string the action receives. The pattern doesn't read the chat for you. A follow-up such as "do that for all of them" is planned as that literal text.
+
+Set `synthesizeGoal: true` and a model first rewrites the request into a self-contained goal, using the last eight items of conversation history and keeping every concrete value. "Do that for all of them" becomes "Research asset info for a.com, b.com, c.com". The planner, replanner and synthesizer all work from the rewritten goal. If the rewrite fails, the run uses the original goal.
+
+## Your own step executor
+
+The step executor runs each task. The default is a generator that returns `{ summary, success, reason?, sources? }`. Any block works instead: a handler, a generator, a sequencer, or another pattern.
+
+```ts title="src/flows/research/blocks/research-step.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+export const researchStep = handler({
+  name: "research-step",
+  inputSchema: z.object({
+    stepId: z.string(),
+    goal: z.string(),
+    context: z.string().optional(),
+    dependencyResults: z.record(z.unknown()).optional(),
+  }),
+  outputSchema: z.object({
+    summary: z.string(),
+    success: z.boolean(),
+    reason: z.string().optional(),
+  }),
+  execute: async (input) => {
+    if (!input.context) {
+      return { summary: "", success: false, reason: "No request to work from" };
+    }
+    return { summary: `Findings for: ${input.goal}`, success: true };
+  },
+});
+```
+
+`dependencyResults` holds the output of each completed task this one depends on, keyed by task id. It's absent when the task has no dependencies. Returning `success: false` fails the task, and `reason` becomes its error.
+
+In `research.ts`, add `stepExecutor: researchStep` to the config.
+
+## What each task knows
+
+A task sees only itself and its dependencies. The original request, with its values and constraints, reaches a task through its `context` field. By default the pattern copies the goal into the `context` of every task the planner left without one. A `context` the planner wrote is kept.
+
+Set `taskContext: false` to leave tasks with only what the planner wrote. Pass a block to fill every task's `context` from the whole plan in one call, so each task gets only the slice it needs. A block runs on the first plan only. Replanned tasks get the goal copied in. The options are in the [patterns reference](../../reference/patterns.md).
+
+## Your own synthesizer
+
+The default answer is text. To get a structured one, pass a block that takes the plan and returns any shape:
+
+```ts title="src/flows/research/blocks/write-report.ts"
 import { generator } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const customSynthesizer = generator({
-  name: "report-writer",
-  model: "openai/gpt-6.1-sol",
+export const writeReport = generator({
+  name: "write-report",
+  model: "openai/gpt-6-luna",
   outputSchema: z.object({
     executiveSummary: z.string(),
     sections: z.array(z.object({ title: z.string(), content: z.string() })),
   }),
   prompt: "You are a report writer. Structure the research findings into a formal report.",
-  user: (plan) => JSON.stringify(plan),
-});
-
-const research = planAndExecute({
-  name: "research",
-  synthesizer: customSynthesizer,
+  user: (plan: { goal: string; tasks: unknown[] }) => JSON.stringify(plan),
 });
 ```
 
-Pass `synthesizer: false` to skip synthesis entirely and return the raw plan object. Useful when you're chaining plan-and-execute instances or doing your own post-processing.
+In `research.ts`, add `synthesizer: writeReport` to the config. Setting `outputSchema` on `planAndExecute` itself does not change the answer's shape.
 
-## Skipping synthesis
+## What it gets you
 
-```ts
-const research = planAndExecute({
-  name: "research",
-  synthesizer: false,
-  // Output shape:
-  // {
-  //   goal: string;
-  //   status: "planning" | "executing" | "replanning" | "completed" | "failed";
-  //   tasks: Array<{ id, goal, status, result?, error? }>;
-  //   completedSteps: number;
-  //   totalSteps: number;
-  // }
-});
-```
+- **Order is kept.** The comparison runs after the research it needs and receives each result.
+- **A failure costs one branch.** Tasks that depend on the failed one are skipped. The rest finish.
+- **The plan can change.** With replanning on, a surprising result can add tasks instead of ending the run.
+- **Progress is visible.** The pattern streams each task's status as it changes. Install the `TaskPlan` view with `fsdev ui add task-plan` and render `<TaskPlan collectionId="research" />` to show it live. The item shapes are in the [items reference](../../reference/items.md).
 
-## Sharing context across iterations
+## Next
 
-Each step in a plan runs as its own worker generator. By default that worker has no awareness of what previous steps already looked up or tried — only its declared `deps` and the materialized `dependencyResults` shape get plumbed through. For a plan whose later steps refine or build on earlier ones, that's often too narrow.
-
-Plan and Execute pins `flowPolicy.recentTrajectory({ n: 8 })` by default. Each step's worker sees the last eight tool observations the run produced, regardless of which task they came from, on its `priorWork` slot. The evaluator and replanner pick up the same trajectory, which is how they can reason about whether the plan is converging. Override with the `flowPolicy` config slot if you want a different selection (declared-deps-only for stricter isolation, `allCompleted` for an aggregating final pass). See the [Flow policy](../orchestration/flow-policy) guide for the full list of built-in policies and the cross-task tool-result memoization layer that pairs with them.
-
-## Stream items
-
-The pattern emits two component-item streams renderers can subscribe to:
-
-- `task-change` — one item per task transition, emitted by the substrate `TaskCollection`. Carries the post-mutation `Task` snapshot, minus the fields the substrate keeps server-side such as `claimedBy`, and is keyed `${collectionId}/${taskId}` so the latest change for a task replaces the previous one. The `<TaskPlan />` renderer groups rows by `data.taskId`.
-- `task-board-meta` — board-level status, keyed by `data.collectionId`. The substrate emits `active` and `completed`; this pattern adds `planning`, `replanning`, and `synthesizing` at the corresponding phase boundaries so the renderer can show a status header.
-
-## See also
-
-- [Task Board](../orchestration/task-board) — the substrate that powers Plan & Execute's task dispatch and replan re-entry
-- [GoalSeekLoop](../orchestration/goal-seek-loop) — the judge-gated loop primitive Plan & Execute is expressed on
-- [Parallel Tasks](./parallelTasks) — parallel execution, no dependencies, single pass
-- [Supervisor](./supervisor) — parallel execution with quality review loop
-- [Decomposer](./utility-blocks/core) — the default planner, including the `title`/`context` output fields
-- [Patterns Overview](./overview) — when to use which pattern
+- [Patterns reference](../../reference/patterns.md): every `planAndExecute` option, the exported schemas and the output shapes.
+- [Task board reference](../../reference/task-board.md): cascade rules, retry and task bounds, and the factories for building your own composition.
+- [Parallel Tasks](./parallel-tasks.md): the same board with no dependencies and a single pass.
+- [Supervisor](./supervisor.md): a reviewer on every result, with retries when it rejects.

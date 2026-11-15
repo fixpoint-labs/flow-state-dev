@@ -6,65 +6,62 @@ description: Split a goal once, run the pieces side by side, and combine what co
 
 # Parallel Tasks
 
-`parallelTasks` is a single-pass fan-out/fan-in pattern. It decomposes a goal into sub-tasks, runs a worker block for each concurrently (via `taskBoard`), and synthesizes the results. No review loop, no replanning — one pass.
+Some goals break into pieces that don't depend on each other: compare three competitors, review five files, summarize ten documents. `parallelTasks` splits the goal into sub-tasks, runs your worker on each at the same time on a [task board](../../concepts/tasks-and-boards.md) (a stored list of tasks and the loop that works through it), and combines the results. It makes one pass. There is no review and no replanning.
 
-Use it when:
-- You have a goal that decomposes into parallel, independent sub-tasks
-- You trust the worker to produce usable results without review
-- Speed matters and you can tolerate skipping failed sub-tasks
+Reach for it when:
 
-If you need results reviewed and revised before merging, use [Supervisor](./supervisor) instead.
+- the goal splits into independent pieces,
+- you trust the worker's output without review,
+- skipping a piece that fails is acceptable.
 
-## Block composition
+If each result needs review and revision before it counts, use [Supervisor](./supervisor.md). If tasks depend on each other, use [Plan and Execute](./plan-and-execute.md).
 
-```
-goal
-  → planner        (decompose into sub-tasks)
-  → seedTasks      (seed taskBoard collection)
-  → board.drain    (drain — run worker for each task concurrently)
-  → collectResults (gather completed task outputs)
-  → synthesizer    (merge/combine)
-```
+## Use it
 
-The planner is `utility.decomposer` by default. The synthesizer is `utility.combiner`. Both are swappable via config.
+The examples below belong to a `research` flow that compares competitors. The worker handles one sub-task. Here it returns a one-item array, so the default combiner can concatenate the results.
 
-## Basic usage
-
-```ts
-import { parallelTasks } from "@flow-state-dev/patterns";
+```ts title="src/flows/research/blocks/research-competitor.ts"
 import { handler } from "@flow-state-dev/core";
+import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { z } from "zod";
 
-const researchWorker = handler({
-  name: "research-task",
-  inputSchema: z.any(), // receives TaskWorkerInput: { taskId, goal, input, ... }
-  outputSchema: z.object({ summary: z.string() }),
-  execute: async (input) => {
-    // input.goal is the sub-task goal string
-    return { summary: `Findings for: ${input.goal}` };
-  },
+export const researchCompetitor = handler({
+  name: "research-competitor",
+  inputSchema: taskWorkerInputSchema,
+  outputSchema: z.array(z.object({ competitor: z.string(), summary: z.string() })),
+  execute: async (input) => [
+    { competitor: input.goal, summary: `Findings for: ${input.goal}` },
+  ],
 });
+```
 
-const researchBlock = parallelTasks({
+`input.goal` is the sub-task's text. The pattern block wraps the worker:
+
+```ts title="src/flows/research/blocks/research.ts"
+import { parallelTasks } from "@flow-state-dev/patterns";
+import { researchCompetitor } from "./research-competitor";
+
+export const research = parallelTasks({
   name: "research",
-  worker: researchWorker,
+  worker: researchCompetitor,
   maxConcurrency: 5,
 });
 ```
 
-`parallelTasks` returns a sequencer. Use it in a flow like any other block:
+`parallelTasks` returns a sequencer, so a flow uses it like any other block. Its input is `{ goal: string }`, the same shape `parallelTasksInputSchema` describes:
 
-```ts
+```ts title="src/flows/research/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
 import { z } from "zod";
+import { research } from "./blocks/research";
 
-const flow = defineFlow({
+export const researchFlow = defineFlow({
   kind: "research",
   requireUser: true,
   actions: {
     research: {
       inputSchema: z.object({ goal: z.string() }),
-      block: researchBlock,
+      block: research,
       userMessage: (input) => input.goal,
     },
   },
@@ -74,172 +71,76 @@ const flow = defineFlow({
 });
 ```
 
-## Config reference
+Besides `name`, only `worker` is required. `maxConcurrency` (default 3) sets how many sub-tasks run at once. Every other option is in the [patterns reference](../../reference/patterns.md).
 
-```ts
-parallelTasks({
-  name: string;
+## What comes back
 
-  // The worker block that processes each sub-task.
-  // Receives TaskWorkerInput: { taskId, goal, input, attempts, feedback, metadata }.
-  worker: BlockDefinition;
+The default combiner merges the workers' outputs without a model call and returns `{ combined, mergeNotes? }`. When every output is an array, as above, `combined` is them concatenated with duplicates removed:
 
-  // Max concurrent sub-tasks. Default: 3.
-  maxConcurrency?: number;
-
-  // Retries the whole board may authorize, across every sub-task. Default 50.
-  // `null` for no bound, `0` to never retry. A sub-task retries when the
-  // planner gives it a maxAttempts. See Task Board → Bounding the retries.
-  maxTotalRetries?: number | null;
-
-  // Override the planning step.
-  // Must accept { goal: string } and output { tasks: Array<{ goal: string }> }.
-  // Default: utility.decomposer()
-  planner?: BlockDefinition;
-
-  // Override the synthesis step. Receives unknown[] of completed task outputs.
-  // Default: utility.combiner()
-  synthesizer?: BlockDefinition;
-
-  // How to handle individual sub-task failures:
-  //   "skip" — exclude failed sub-tasks from synthesis (default)
-  //   "fail" — abort the entire coordination on any failure
-  onSubTaskError?: "skip" | "fail";
-
-  // Output schema for the synthesized result.
-  // Passed to the default combiner when no custom synthesizer is provided.
-  outputSchema?: ZodSchema;
-});
+```text
+{
+  combined: [
+    { competitor: "Acme", summary: "Findings for: Acme" },
+    { competitor: "Globex", summary: "Findings for: Globex" },
+  ],
+}
 ```
 
-## Input schema
+Workers that return plain objects get merged key by key instead, and `mergeNotes` records each conflict. If no sub-task completes, `combined` is an empty array. A custom synthesizer's output is the block's output as it is, with no `combined` wrapper.
 
-`parallelTasks` expects:
+## Your own planner
 
-```ts
-{ goal: string }
-```
+The default planner is a model call that splits the goal into sub-tasks. Replace it when the goal needs domain knowledge to split well. A planner takes `{ goal: string }` and returns `{ tasks: [{ goal: string }] }`:
 
-Exported as `parallelTasksInputSchema`:
-
-```ts
-import { parallelTasksInputSchema } from "@flow-state-dev/patterns";
-```
-
-## Exported API
-
-```ts
-import {
-  parallelTasks,
-  parallelTasksInputSchema,
-} from "@flow-state-dev/patterns";
-
-import type {
-  ParallelTasksConfig,
-  SubTaskErrorStrategy,  // "skip" | "fail"
-} from "@flow-state-dev/patterns";
-```
-
-## Custom planner
-
-The default planner is `utility.decomposer`. Swap it for a domain-specific one:
-
-```ts
-import { parallelTasks } from "@flow-state-dev/patterns";
+```ts title="src/flows/research/blocks/plan-competitors.ts"
 import { generator } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const domainPlanner = generator({
-  name: "domain-planner",
+export const planCompetitors = generator({
+  name: "plan-competitors",
+  model: "openai/gpt-6-luna",
   outputSchema: z.object({
     tasks: z.array(z.object({ goal: z.string() })),
   }),
-  prompt: "You are a planner specialized in software architecture reviews.",
-  user: (input) => input.goal,
-});
-
-const architectureBlock = parallelTasks({
-  name: "arch-review",
-  worker: reviewWorker,
-  planner: domainPlanner,
+  prompt: "Name each competitor in the request. Return one task per competitor.",
+  user: (input: { goal: string }) => input.goal,
 });
 ```
 
-## Custom synthesizer
+In `research.ts`, add `planner: planCompetitors` to the config. The [patterns reference](../../reference/patterns.md) has the full planner contract.
 
-By default, `utility.combiner` merges worker results deterministically (no LLM call). To synthesize results with an LLM, supply a `generator()` with a `user` projection over the completed worker outputs (the slot receives them as `unknown[]`):
+## Your own synthesizer
 
-```ts
-import { parallelTasks } from "@flow-state-dev/patterns";
+A synthesizer receives an array of the completed workers' outputs, and only those. It doesn't see the goal or which tasks failed. To combine with a model, pass a `generator`:
+
+```ts title="src/flows/research/blocks/write-comparison.ts"
 import { generator } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const reportBlock = parallelTasks({
-  name: "report",
-  worker: sectionWorker,
-  synthesizer: generator({
-    name: "report-synthesizer",
-    outputSchema: z.object({ report: z.string() }),
-    prompt: "Combine the section drafts into one coherent, non-redundant report.",
-    user: (results: unknown[]) => JSON.stringify(results, null, 2),
-  }),
+export const writeComparison = generator({
+  name: "write-comparison",
+  model: "openai/gpt-6-luna",
+  outputSchema: z.object({ report: z.string() }),
+  prompt: "Combine the competitor summaries into one comparison.",
+  user: (results: unknown[]) => JSON.stringify(results, null, 2),
 });
 ```
 
-## Error handling
+In `research.ts`, add `synthesizer: writeComparison` to the config.
 
-By default (`onSubTaskError: "skip"`), failed sub-tasks are excluded from the synthesis step. The block completes with whatever results succeeded. If all sub-tasks fail, the synthesizer receives an empty array.
+## When a sub-task fails
 
-With `onSubTaskError: "fail"`, any sub-task failure throws and aborts the entire coordination.
+By default a failed sub-task is left out and the rest carry on. The synthesizer gets the outputs that succeeded, and nothing in the result says which task was skipped. Set `onSubTaskError: "fail"` and the first failure fails the whole block instead, with no partial result.
 
-Use `"skip"` or `"fail"`. A config that sets `onSubTaskError: "retry"` keeps running: the block logs a warning when it is constructed and falls back to `"skip"`. Retries are configured separately, per sub-task rather than per block.
+A failed sub-task runs again only when the planner gives its task a `maxAttempts`. The error then reaches the worker as `feedback` on the next attempt. The default planner sets none, so by default a sub-task runs once. The retry bounds are in the [task board reference](../../reference/task-board.md), and the `onSubTaskError` values are in the [patterns reference](../../reference/patterns.md).
 
-### Retrying a failed sub-task
+## Use it inside a larger sequencer
 
-`onSubTaskError` decides what happens once a sub-task has run out of attempts. The retries themselves come from the task board underneath, and they are set per sub-task rather than per block.
-
-Give sub-tasks a retry budget by having a [custom planner](#custom-planner) put `maxAttempts` on each task it emits. When a sub-task that still has attempts left fails, the board re-queues it and hands the error back to the worker as `feedback`, so the next attempt can see what went wrong:
-
-```ts
-const retryingPlanner = generator({
-  name: "retrying-planner",
-  outputSchema: z.object({
-    tasks: z.array(z.object({ goal: z.string(), maxAttempts: z.number() })),
-  }),
-  prompt: "Break the goal into sub-tasks. Give each one maxAttempts: 3.",
-  user: (input) => input.goal,
-});
-
-const researchBlock = parallelTasks({
-  name: "research",
-  worker: researchWorker,
-  planner: retryingPlanner,
-  maxTotalRetries: 20,
-});
-```
-
-`maxTotalRetries` bounds how many retries the whole board may authorize across every sub-task. It defaults to 50, and `0` means each sub-task runs exactly once. Full semantics are in [Bounding the retries](../orchestration/task-board#bounding-the-retries).
-
-## Composability
-
-`parallelTasks` returns a sequencer, so it composes with other sequencer steps:
-
-```ts
-// Chain sequentially
-const pipeline = sequencer({ name: "full-pipeline", inputSchema })
-  .step(parallelTasks({ name: "research", worker: researchWorker }))
-  .step(parallelTasks({ name: "synthesis", worker: synthesisWorker }));
-
-// Use as a step inside another sequencer
-const outer = sequencer({ name: "outer", inputSchema })
-  .step(preprocess)
-  .step(parallelTasks({ name: "parallel-work", worker: taskWorker }))
-  .step(postprocess);
-```
+As a step in another sequencer, `parallelTasks` needs the step before it to output `{ goal: string }`. Give each instance its own `name`: two blocks with the same name in one request share one task list.
 
 ## See also
 
-- [Supervisor](./supervisor) — same fan-out model, adds a quality review loop
-- [Plan and Execute](./plan-and-execute) — sequential dependency-ordered execution
-- [GoalSeekLoop](../orchestration/goal-seek-loop) — the loop primitive Parallel Tasks is expressed on (as a single pass)
-- [Patterns Overview](./overview) — when to use which pattern
+- [Supervisor](./supervisor.md): the same fan-out with a quality review on each result
+- [Plan and Execute](./plan-and-execute.md): sub-tasks that run in dependency order
+- [GoalSeekLoop](./goal-seek-loop.md): the same plan, run and combine steps, repeated until a goal is met
+- [Patterns overview](./overview.md): which pattern to use when

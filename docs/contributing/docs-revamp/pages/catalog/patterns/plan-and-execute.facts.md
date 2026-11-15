@@ -24,12 +24,12 @@ Abbreviations:
 ## Flags against the page plan (read first)
 
 1. **Three config options are declared and documented but do nothing, or do not do what the old page says.** **[drift]**
-   - `outputSchema`: typed at `ix:144`, listed in the config block at `op:` ("Output schema for the synthesized result"), and described at `ix:143` as applying to the default synthesizer. Nothing reads `config.outputSchema` (grep of `ix` finds it only at `ix:144`). The default synthesizer's output schema is fixed `z.string()` (`ix:591`). The fixture passes `outputSchema: z.string()` (`fx:19`) and so does not exercise it. **The page must not offer `outputSchema` as a way to shape the final answer.** To get a structured final answer, pass a `synthesizer` block with its own `outputSchema` (shown in `op`'s "Custom synthesizer", a `generator` with `outputSchema`).
+   - `outputSchema`: typed at `ix:144`, listed in the config block at `op:219` ("Output schema for the synthesized result"), and described at `ix:143` as applying to the default synthesizer. Nothing reads `config.outputSchema` (grep of `ix` finds it only at `ix:144`). The default synthesizer's output schema is fixed `z.string()` (`ix:591`). The fixture passes `outputSchema: z.string()` (`fx:19`) and so does not exercise it. **The page must not offer `outputSchema` as a way to shape the final answer.** To get a structured final answer, pass a `synthesizer` block with its own `outputSchema` (shown in `op:362-388`, a `generator` with `outputSchema`).
    - `plannerVisibility`: typed at `ix:240`, documented as the default planner's visibility. The default planner is built at `ix:647-652` with no `itemVisibility`, and `config.plannerVisibility` is read nowhere. The old page already says the default planner "does not currently accept itemVisibility". **[ref]**, or omit.
    - Default executor model: the old page says every default block uses `"openai/gpt-6-luna"` (`op:223`). The default **executor** is `config.model ?? "intent/synthesize"` (`ix:346`). Planner, replanner, synthesizer and LLM evaluator default to `"openai/gpt-6-luna"` (`dc` decomposer default model; `ix:275`, `ix:571`, `ev:156`). The page should not say all defaults share one model.
 2. **No stored part of its own.** Plan and Execute declares no resource and no session or user state. Its tasks live on the request: the board is built with `collection: { collectionId: name }` (`ix:716`), which is the request-backed default (`packages/orchestration/src/task-board/index.ts:253-262`). See "Stored data" below; the four questions get one short answer, and the page should not imply tasks survive the action run.
 3. **Names of the sibling pages.** The old page links `./parallelTasks` (`op:14`), `./supervisor`, `../orchestration/task-board`, `../orchestration/goal-seek-loop`, `../orchestration/flow-policy`. The page plan's neighbours are catalog pages; link by their K-ids' slugs when settled. **[reconcile at cutover]**
-4. **Everything in the sitemap's "Keep; trim" instruction is a trim of `op`.** Mechanism that `op` carries and this page leaves to Reference: the block-composition ASCII (`op:25-36`), exported internal block factories (`op:`"Exported internal block factories"), stream item shapes, the full config block, the `createApplyReplan` capability warning, the status-translation table. See section 9 for what moves.
+4. **Everything in the sitemap's "Keep; trim" instruction is a trim of `op`.** Mechanism that `op` carries and this page leaves to Reference: the block-composition ASCII (`op:25-36`), exported internal block factories (`op:`op:281-301), stream item shapes, the full config block, the `createApplyReplan` capability warning, the status-translation table. See section 9 for what moves.
 
 ## 1. What it is, and when you reach for it
 
@@ -43,9 +43,9 @@ Abbreviations:
 
 ## 2. Basic use (the page's first example)
 
-- Minimal form: `planAndExecute({ name: "research" })`. `op:` "Basic usage"; defaults at `ix:610-616`. **[page]**
+- Minimal form: `planAndExecute({ name: "research" })`. `op:31-60`; defaults at `ix:610-616`. **[page]**
 - Mounted on a flow action whose input schema is `z.object({ goal: z.string() })`, with `userMessage: (input) => input.goal`. The fixture flow is the shape: a sequencer `.step(paeBlock)` inside an action with `userMessage: (input) => input.goal`. `fx:14-35`. **[page]** `defineFlow({ kind, requireUser: true, actions })` as in `fx:25-35`.
-- The old page's example action omits the sequencer and passes the block straight as `block: research`. The fixture wraps it in a `sequencer`. Both are valid blocks; use the plain form for the short example. `op:` "Basic usage", `fx:22-23`. **[page]**
+- The old page's example action omits the sequencer and passes the block straight as `block: research`. The fixture wraps it in a `sequencer`. Both are valid blocks; use the plain form for the short example. `op:31-60`, `fx:22-23`. **[page]**
 - Import path: `import { planAndExecute } from "@flow-state-dev/patterns"` (root, `op`) or `.../patterns/plan-and-execute` (`fx:11`). **[page]** use the root. Install: `pnpm add @flow-state-dev/patterns` (`rd:10`). **[page]**
 - The pattern's tests use `testBlock` with a deterministic planner (`createDeterministicPlanner`, `t:48-63`) and mock generators named `<name>-planner`, `<name>-executor`, `<name>-synthesizer`, `<name>-evaluate-llm`, `<name>-replanner`. `fx:5-8`, `ix:345`, `ix:569`, `ix:273`, `ev:154`. **[ref]** (naming for tests)
 
@@ -54,7 +54,7 @@ Abbreviations:
 - **By default it never replans.** `enableReplanning` defaults to `false` (`ix:613`). The default evaluator is a plain function with no model call: after each drain it adds 1 to a counter, completes when the counter reaches `maxIterations`, completes when no task is left that could run, otherwise says `continue`. `ev:107-139`. **[page]**
 - So with the defaults the run is single pass: plan, work every task, then synthesize. `ev:10-14`, `t:102-134`. **[page]**
 - **`enableReplanning: true`** swaps in a model evaluator that looks at the goal, the iteration count and each task's `id`, `goal`, `status`, `output`, `error` and `feedback`, and answers `continue`, `replan` or `complete` with a reason. `ev:146-192` (prompt `ev:159-166`, snapshot `ev:178-185`), `ev:227-308`, `ix:613`. **[page]**
-- The evaluator runs **after each pass through the board**, not after each task. The board works through everything that can run, then the evaluator judges. `ix:714-733` (board), `ix:810-826` (loop), `ev:2-8`. **[page]** Source for "pass, not per task": `ix:13-15` (judge sits after the drain) and `t:562-641` (one evaluator call per drain; three drains, three evaluator calls, three tasks run). Derived from those tests; the old page's "after each step" (`op:7`) and "decide after each step" (`op:` config comment) are loose. **[drift]**
+- The evaluator runs **after each pass through the board**, not after each task. The board works through everything that can run, then the evaluator judges. `ix:714-733` (board), `ix:810-826` (loop), `ev:2-8`. **[page]** Source for "pass, not per task": `ix:13-15` (judge sits after the drain) and `t:562-641` (one evaluator call per drain; three drains, three evaluator calls, three tasks run). Derived from those tests; the old page's "after each step" (`op:7`) and the config comment at `op:170` are loose. **[drift]**
 - On `replan`, the replanner runs and its new tasks are added to the same board, then the board is drained again. `ix:782-787`, `ix:788-808`, `t:562-641` (extra-1, extra-2 added; planner called once; worker ran for all three). **[page]**
 - The default replanner reads the goal and the plan state and returns only the **new** tasks to add, each with `id`, `goal`, `deps`; it is told not to repeat completed work. `ix:253-262`, `ix:283-299`. **[page]** (one clause)
 - An evaluator can skip the replanner by returning `tasks` with its `replan` decision; those tasks are added directly. `ix:782-787` (replanner only runs when `decision === "replan"` and no `tasks` array), `ix:802-806`, `t:677-736`. **[ref]**
@@ -95,7 +95,7 @@ Abbreviations:
 - `summary` is the step's full result, not a description; `sources` lists only web pages it actually used and stays empty for steps answered from the model's own knowledge. `ix:332-341`. **[page]**
 - A custom `stepExecutor` is any block. It receives `{ stepId, goal, context?, dependencyResults? }`: `stepId` is the task id, `goal` the task's goal, `context` the per-task support text, `dependencyResults` an object keyed by the ids of the tasks it depends on, each the output of that task. Present only when the task has dependencies. `ix:439-456`, `ix:347-352`, `t:1007-1034`. **[page]**
 - If the custom block returns an object with `success: false`, that fails the task, with `reason` as the error. `ix:458-478`, `t:392-435`. **[page]**
-- Any block works: a handler (`t:30-39`, `echoExecutor`), a generator, a sequencer, or another pattern. `op`'s "Hierarchical nesting" passes `supervisor({...})` as the `stepExecutor`. `op:344-360`. **[page]** one sentence; confirm `supervisor` import and `worker`/`reviewCriteria` config against the Supervisor page before printing it. **[reconcile]**
+- Any block works: a handler (`t:30-39`, `echoExecutor`), a generator, a sequencer, or another pattern. `op:344-360` passes `supervisor({...})` as the `stepExecutor`. `op:344-360`. **[page]** one sentence; confirm `supervisor` import and `worker`/`reviewCriteria` config against the Supervisor page before printing it. **[reconcile]**
 - `maxConcurrency` (default `1`) runs several independent steps at once within a pass. `ix:615`, `ix:723`. **[page]**
 - Each step's executor can see the last 8 tool observations from the run, from any task, so a later step can skip a search an earlier one ran. `ix:726-732`, `op:411`. **[page]** one sentence / **[ref]** (policy options live on the Flow policy page).
 - The task's `context` field: set by the planner when it knows what the step needs; otherwise the goal is copied in (`taskContext: "goal"`, default), `false` leaves it empty, or a block fills every task's context in one pass (receives `{ goal, tasks }`, returns `{ tasks }`). `ix:207`, `pe:228-238`, `t:1007-1112` (default; `false` leaves empty; custom block). **[page]** the default and `false`; **[ref]** the block form and its replan limit (a custom block applies to the first plan only; replanned tasks get the goal copy). `ar:50-60`, `ar:70-76`.
@@ -107,7 +107,7 @@ Abbreviations:
 - Its input is the plan so far: `{ goal, status?, tasks, completedSteps, totalSteps }`. `ix:576-590`, `sy:52-118`. **[page]** (what a custom synthesizer receives) / **[ref]**
 - Task rows in that input: `{ id, goal, status, result?, error? }`; statuses are `pending`, `in-progress`, `completed`, `failed`, `skipped`. `sy:62-70`, `sy:39-44`, `sc:27`. **[page]** the five names / **[ref]** how they map from the board's own statuses.
 - `synthesizer: false` skips the model call and returns the plan object. Use it when you want the task results themselves, or are chaining. `ix:674-677`, `sy:143`, `t:102-134`. **[page]**
-- A custom `synthesizer` is a block that takes the plan object; it may return any shape (its own `outputSchema`). `op`'s custom synthesizer example uses a `generator` with `outputSchema` and `user: (plan) => JSON.stringify(plan)`. `op:` "Custom synthesizer". **[page]** (this is the real way to get a structured answer; see Flag 1)
+- A custom `synthesizer` is a block that takes the plan object; it may return any shape (its own `outputSchema`). `op`'s custom synthesizer example uses a `generator` with `outputSchema` and `user: (plan) => JSON.stringify(plan)`. `op:362-388`. **[page]** (this is the real way to get a structured answer; see Flag 1)
 - `synthesizeInstructions` and `executionInstructions` append to the default synthesizer's and executor's prompts. `ix:233-235`, `ix:359`, `ix:592`. **[ref]**
 - Visibility defaults: executor output is on the stream but kept out of the conversation history (`{ client: true, history: false }`); the synthesizer's answer is on the stream and in history (`{ client: true, history: true }`). `ix:241-243`, `ix:379`, `ix:594`. **[page]** one sentence: the final answer is the one that joins the conversation.
 
@@ -127,9 +127,9 @@ Plan and Execute stores no data of its own beyond the plan. The only stored part
 
 Send to Reference (the pattern's Reference page or the config table), do not state on the K-22 page:
 
-- Full config block and every option's default (`op`'s "Config reference"); the page names about five options: `enableReplanning`, `maxIterations`, `stepExecutor`, `synthesizer`, `synthesizeGoal`, `taskContext`.
+- Full config block and every option's default (`op:152-250`); the page names about five options: `enableReplanning`, `maxIterations`, `stepExecutor`, `synthesizer`, `synthesizeGoal`, `taskContext`.
 - `Task lifecycle` status table with substrate equivalents (`op:78-85`, `sy:25-44`). The page names the five output statuses only if it needs them.
-- Exported schemas/types and "internal block factories" (`evaluatePlanProgress`, `createTaskEvaluator`, `createLLMEvaluator`, `createCaptureAndPlan`, `createApplyReplan`, `createSynthesize`, `createBuildPlanOutput`, `normalizeOutputStatus`) with the `createApplyReplan` capability warning. `ix:69-101`, `op:` "Exported internal block factories". Note the old page also lists `evaluatorVerdictSchema`, `replannerOutputSchema`, `executorOutputSchema`, `buildSynthesizerUserPrompt`, `SynthesizerPromptInput` as exports of `ix` (`ix:75`, `ix:254`, `ix:309`, `ix:502`); the old page omits these. Whether they are on the package root is a Reference question. **[ref]**
+- Exported schemas/types and "internal block factories" (`evaluatePlanProgress`, `createTaskEvaluator`, `createLLMEvaluator`, `createCaptureAndPlan`, `createApplyReplan`, `createSynthesize`, `createBuildPlanOutput`, `normalizeOutputStatus`) with the `createApplyReplan` capability warning. `ix:69-101`, `op:281-301`. Note the old page also lists `evaluatorVerdictSchema`, `replannerOutputSchema`, `executorOutputSchema`, `buildSynthesizerUserPrompt`, `SynthesizerPromptInput` as exports of `ix` (`ix:75`, `ix:254`, `ix:309`, `ix:502`); the old page omits these. Whether they are on the package root is a Reference question. **[ref]**
 - Composability recipes (sequential chain, `.forEach` over goals, nesting Supervisor): `op:300-360`. The sitemap's example list is "basic use; a custom step executor", so these are cut or linked.
 - Stream-item details (`task-change` keyed `${collectionId}/${taskId}`, `task-board-meta` statuses). `op:417-420`.
 - Flow policy / `recentTrajectory` (`ix:726-732`).
@@ -152,7 +152,7 @@ Every identifier in an example must be imported or declared there (`docs/contrib
 - Goal-seek loop (the judge-gated loop the pattern is written on) `apps/docs/docs/orchestration/goal-seek-loop.md`; `ix:10-20`. **[ref]** link only; the page does not explain the loop.
 - Flow policy `apps/docs/docs/orchestration/flow-policy.md`. **[ref]**
 - Parallel Tasks and Supervisor (`apps/docs/docs/patterns/parallel-tasks.md`, `supervisor.md`): the other board-backed patterns; "If tasks are independent, use Parallel Tasks". `op:14`, `rd:19`, `rd:36`. **[page]** one link each.
-- Decomposer, the default planner `apps/docs/docs/patterns/utility-blocks/core.md`. `op:` "See also". **[ref]**
+- Decomposer, the default planner `apps/docs/docs/patterns/utility-blocks/core.md`. `op:420-428`. **[ref]**
 
 ## Open items for the caller
 
@@ -160,3 +160,12 @@ Every identifier in an example must be imported or declared there (`docs/contrib
 - The old page says the evaluator decides "after each step" (`op:7`). The code decides after each pass through the board. The page says "pass".
 - Whether `task-change` history survives a reloaded client is **[gap]**.
 - Nothing in `examples/` or `labs/` uses `planAndExecute` itself (grep of `examples labs goals apps/kitchen-sink` finds only `examples/guides/custom-pattern/src/plan-map-reduce.ts`, which names it in a comment). The only runnable use is the fixture at `fx` and the tests. The page's example is therefore built from the fixture shape and the tests, and should be type-checked at pass 4.
+
+## Revise round 1 (facts the page now states or leaves out)
+
+- The page's example is two competitors (`acme`, `globex`) and a comparison task that depends on both; the first-pass flow, block and executor examples type-check against the package source. Task ids in the sample plan output are illustrative.
+- The custom executor receives `{ stepId, goal, context?, dependencyResults? }`: `ix:439-456` adapts `taskId`, `goal`, `context`, `deps` to that shape. The old config comment (`op:165`) omitting `context` is the stale one.
+- `outputSchema` is stated as having no effect on the answer's shape (Flag 1); `plannerVisibility` and every other config row are left to Reference.
+- Composability recipes, internal block factories, exported schema lists, status mapping, stream-item shapes and `flowPolicy` are not on the page; they are Reference rows (R-41, R-23, R-24, R-06).
+- Example model is `openai/gpt-6-luna`. Sibling links are `./parallel-tasks.md` and `./supervisor.md`.
+- The page links `../../reference/items.md` for the `TaskPlan` item shapes and `<TaskPlan collectionId="research" />` (`rd:312-319`).

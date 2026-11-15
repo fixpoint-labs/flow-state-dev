@@ -130,3 +130,12 @@ One scenario, carried through. Existing pages use "research" with a `research-ta
 - F15's 500/100 order: `index.ts:40` reads "Defaults 500/100" and the config docs name `maxTotalTasks` first; confirm which is which in `packages/orchestration/src/task-board/index.ts` before the numbers go on a Reference row.
 - F44's exactly-once wording: confirm on the Task Board page before stating it.
 - F27/F30: the sheet derives "no trace of a skip" and "no partial result under fail" from reading the pipeline; the tests assert only `result.error`. A cold-read question on either needs a runnable check (`fsdev run` with a failing worker) before the page states it as fact.
+
+## 16. Revise round 1
+
+- Page now carries, with sources above: the sequencer/one-pass claim (F1, F2, F35); the three examples built on `taskWorkerInputSchema` from `@flow-state-dev/orchestration/task-board` (F10, F51; exported at `packages/orchestration/src/task-board/index.ts:172`); output shape `{ combined, mergeNotes? }`, array concatenation, object key merge with `mergeNotes`, empty `combined: []` (F19, F20, F28); custom synthesizer output is the block's output unwrapped (F22); synthesizer sees only completed outputs (F21, F25); skip/fail behaviour and no trace of a skip (F26, F27, F30); retry only with planner `maxAttempts`, error returned as `feedback`, default planner sets none (F32, F33); same-`name` blocks share a list (F41); a step before it must output `{ goal }` (F45).
+- `generator` takes an optional `model` (`packages/core/src/blocks/generator.ts:599`); examples pass `openai/gpt-6-luna`.
+- Corrected: `outputSchema` does not reshape the default combiner's result. The combiner handler still returns `{ combined, mergeNotes? }` and `outputSchema` replaces the schema it is checked against (`combiner.ts:158`). The page no longer mentions it; R-41 row.
+- Moved to R-41 (page links `../../reference/patterns.md`): the whole option table, `TaskWorkerInput` fields, defaults for `maxTotalTasks`, `maxEnqueuedTasks`, `maxTotalRetries`, planner and synthesizer contracts, `onSubTaskError` values and the unsupported-`"retry"` warning (F31, `index.ts:113-120`), `parallelTasksInputSchema` and exported types.
+- Moved to R-23 (page links `../../reference/task-board.md`): retry semantics under `"skip"` and `"fail"`, `maxTotalRetries` (F32, F34).
+- Cut: the ASCII block composition (internals), the Config reference, Exported API and Composability code (F50, F45).

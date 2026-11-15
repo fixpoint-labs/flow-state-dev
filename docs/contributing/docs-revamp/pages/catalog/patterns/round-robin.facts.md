@@ -283,3 +283,17 @@ slots used in default-referee:51-93, which is the evidence it type-checks; the p
 - A shared `contributions` resource holds only the last run's transcript (init-contributions:30-34).
 - Output is not structured unless a synthesizer with `outputSchema` or a custom block makes it so;
   the default synthesizer returns a string (default-synthesizer:42).
+
+## Revise round 1
+
+- Page now carries no config table, output-shape block, termination-option list, exported-API list or pipeline step names: those are rows for R-41 (`reference/patterns.md`). Facts 9, 10, 14-15, 20, 38-41 and sections 3, 7 stay here as the source for those rows.
+- Fact 34 clarified on the page: no referee unless you pass one; `createReferee({ name, contributions })` is a ready-made one you pass as `referee`.
+- Page states: each turn is a task in DevTool's timeline assigned to the roster `name` (section 7, audit task collection); the transcript is cleared at the start of every run (fact 41).
+- Examples now carry paths, import what they use, and type-check against the package source. The referee example declares `editorialContributions` via `createRoundRobinContributions()` (fact 35).
+
+## Revise round 2
+
+- Fact 15 verified (shared/coerce.ts): an override returns a string or `{ text }`; any other value, structured results included, is stored as `String(value)` with a one-time warning. The page no longer says an override gives structured output into the transcript.
+- Fact 37 (custom blocks see only what they declare) now shown on the page: `legalReviewer` declares `editorialContributions`, and the pattern is passed the same resource via `contributions`.
+- Fact 40: `accessorKey` is a `roundRobin` option (and a `createReferee` option); a custom referee's own `resources` key is free. Page example added.
+- Section 7, audit task collection: DevTool shows the tasks on the Tasks tab (apps/docs/docs/devtool/overview.md, "Tasks tab"), not the timeline.

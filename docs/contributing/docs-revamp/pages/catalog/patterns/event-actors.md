@@ -6,141 +6,133 @@ description: Actors react to topics they watch; no controller.
 
 # Event Actors
 
-`eventActors` is a stigmergic multi-agent coordination pattern. Actors declare which entry topics they watch (`type:topic` glob patterns), and when a matching entry is emitted, every matching actor's body runs concurrently. There is no controller — coordination is emergent. Adding an actor requires zero changes to existing actors.
+Some work has no plan. A message arrives, and whoever cares about it should react. A support desk reads Slack messages, and one actor tags the urgent ones while another pages someone when an alert comes in. Nobody tells them in what order to go.
+
+`eventActors` is that setup. Each *actor* is a block plus a list of topic patterns it watches. When you emit an *entry*, an object shaped `{ type, topic, body }`, the entry is recorded in a shared log and every actor whose pattern matches it runs, up to `concurrency` at a time. You add an actor without touching the others.
 
 Use it when:
 
-- You have event-driven or continuous-monitoring problems
-- Agents react independently to shared state changes
-- You want decoupled coordination without a central orchestrator
-- New agents should be pluggable without modifying existing ones
+- agents react independently to the same stream of events,
+- you want no central orchestrator deciding who goes next,
+- new actors should plug in without changes to existing ones.
 
-If you need a controller that reads shared state and picks the next specialist iteratively, use [Routed Specialists](./routed-specialists) instead.
+If a controller should read shared state and pick the next specialist each pass, use [Routed Specialists](./routed-specialists.md). If the roster is known up front and runs once, use [Parallel Tasks](./parallel-tasks.md).
 
-## Block composition
+## Install it
 
-```
-emit(entry)
-  → appendEntry          (tap: write to workspace resource, produces no output)
-  → spawnInitialTasks    (one Task per matching actor, depth=1)
-  → taskBoard.drain      (concurrent drain — workers re-emit recursively)
+```bash
+pnpm add @flow-state-dev/patterns
 ```
 
-Each actor task drains through a wrapped sequencer:
+The pattern's names come from `@flow-state-dev/patterns`.
 
-```
-TaskWorkerInput
-  → stashTaskId          (record taskId so reEmit can read its depth)
-  → unwrapToEntry        (pass entry to user actor body)
-  → actor.block          (user code — any block kind)
-  → reEmitIfEnabled      (append output entries, spawn next-depth tasks)
-```
+## Use it
 
-The pattern composes the unified `taskBoard` substrate. Actor invocations live as `Task` records in a request-scoped `TaskCollection`; the entry log stays in a sibling writable session resource.
+The examples belong to a `feedback` flow on a support desk. An entry has a type, a topic and a body, and the topic is a dotted name. The schema below describes that shape. Both actors and the workspace use it.
 
-Actor handlers dispatched on the background queue survive transport teardown and abort only on explicit cancellation. See [Side Chains: Cancellation signals](../advanced/sequencer-side-chains.md#cancellation-signals--two-of-them).
-
-## Basic usage
-
-```ts
-import { createEventActorsWorkspace, actor, eventActors } from "@flow-state-dev/patterns/eventActors";
-import { handler } from "@flow-state-dev/core";
+```ts title="src/flows/feedback/blocks/entry-schema.ts"
 import { z } from "zod";
 
-const entrySchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("observation"), topic: z.string(), body: z.any() }),
-  z.object({ type: z.literal("event"), topic: z.string(), body: z.any() }),
-]);
-
-const rb = createEventActorsWorkspace({ name: "feedback", entries: entrySchema });
-
-const slackMonitor = actor({
-  name: "slack-monitor",
-  watch: ["observation:slack.*"],
-  block: handler({
-    name: "slack-handler",
-    inputSchema: z.any(),
-    outputSchema: z.any(),
-    execute: (entry) => ({ processed: true, body: entry.body }),
-  }),
+export const entrySchema = z.object({
+  type: z.string(),
+  topic: z.string(),
+  body: z.any(),
 });
+```
 
-const alertWatcher = actor({
-  name: "alert-watcher",
-  watch: ["event:alert.**"],
-  block: handler({
-    name: "alert-handler",
-    inputSchema: z.any(),
-    outputSchema: z.any(),
-    execute: (entry) => ({ alerted: true, body: entry.body }),
-  }),
-});
+The *workspace* is the log the entries are recorded in. `entries` describes the entry shape for people reading the code, and nothing validates an emitted entry against it.
 
-const feedback = eventActors({
+```ts title="src/flows/feedback/blocks/feedback-workspace.ts"
+import { createEventActorsWorkspace } from "@flow-state-dev/patterns";
+import { entrySchema } from "./entry-schema";
+
+export const feedbackWorkspace = createEventActorsWorkspace({
   name: "feedback",
-  workspace: rb,
-  actors: [slackMonitor, alertWatcher],
+  entries: entrySchema,
 });
 ```
 
-Use `feedback.emit` in any sequencer to write entries with automatic fan-out:
+Each actor's block receives the entry as its input. This one tags a Slack message, and hands back a new entry when the message sounds urgent. Nothing happens to that returned entry yet, so we come back to it below.
 
-```ts
-import { sequencer } from "@flow-state-dev/core";
+```ts title="src/flows/feedback/blocks/slack-monitor.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { entrySchema } from "./entry-schema";
 
-const pipeline = sequencer({ name: "main" })
-  .step(someProcessingBlock)
-  .step(feedback.emit);
-```
-
-## Config reference
-
-### `createEventActorsWorkspace(config)`
-
-Creates the entry-log resource.
-
-```ts
-createEventActorsWorkspace({
-  name: string;            // Workspace name
-  entries: ZodTypeAny;     // Documentation schema for entry shape
+export const slackMonitor = handler({
+  name: "slack-monitor",
+  inputSchema: entrySchema,
+  outputSchema: z.any(),
+  execute: (entry) => {
+    const text = String(entry.body?.text ?? "");
+    if (/crash|broken|urgent/i.test(text)) {
+      return { type: "event", topic: "alert.urgent", body: entry.body };
+    }
+    return { tagged: true };
+  },
 });
-// Returns: { workspace: DefinedResource }
 ```
 
-### `actor(config)`
+```ts title="src/flows/feedback/blocks/alert-watcher.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { entrySchema } from "./entry-schema";
 
-Creates an actor descriptor (a plain frozen value, not a class).
-
-```ts
-actor({
-  name: string;                // Unique actor name (= worker registry key)
-  watch: string[];             // Glob patterns over `${type}:${topic}`
-  block: BlockDefinition;      // Any block kind; receives the entry as input
+export const alertWatcher = handler({
+  name: "alert-watcher",
+  inputSchema: entrySchema,
+  outputSchema: z.any(),
+  execute: (entry) => ({ paged: true, topic: entry.topic }),
 });
-// Returns: Actor (frozen)
 ```
 
-### `eventActors(config)`
+`actor` pairs a block with the patterns it watches, and `eventActors` wires the actors to the workspace. The `name` of an actor must be unique in its `eventActors` call. It is shown as the assignee of the actor's run.
 
-Wires actors to a workspace. Returns the configured `emit` block.
+```ts title="src/flows/feedback/blocks/feedback.ts"
+import { actor, eventActors } from "@flow-state-dev/patterns";
+import { alertWatcher } from "./alert-watcher";
+import { feedbackWorkspace } from "./feedback-workspace";
+import { slackMonitor } from "./slack-monitor";
 
-```ts
-eventActors({
-  name: string;
-  workspace: { workspace: DefinedResource };  // from createEventActorsWorkspace()
-  actors: Actor[];
-  concurrency?: number;       // Default 4. Maximum concurrent workers in the underlying taskBoard.
-  reEmit?: boolean;           // Default false. When true, actor outputs that match the entry shape become new dispatched entries.
-  maxDepth?: number;          // Default 3. With reEmit, caps the recursive chain depth.
+export const feedback = eventActors({
+  name: "feedback",
+  workspace: feedbackWorkspace,
+  actors: [
+    actor({ name: "slack-monitor", watch: ["observation:slack.*"], block: slackMonitor }),
+    actor({ name: "alert-watcher", watch: ["event:alert.**"], block: alertWatcher }),
+  ],
 });
-// Returns: { emit, workspace, actors }
 ```
 
-The default `concurrency` of 4 aligns `eventActors` with peer patterns (`taskBoard`, `supervisor`, `parallelTasks`). Callers can pass a higher value explicitly; the underlying `taskBoard` worker now uses a `wakeOn` wake filter so transient workspace patches do not impose a per-worker scan cost on every emit. See [waitForCondition wake filtering](/docs/sequencers/wait-for-condition#wake-filtering).
+`feedback.emit` is a block that takes an entry. Use it as a flow's action block, or as a step in a sequencer after other work:
 
-## Topic matching
+```ts title="src/flows/feedback/flow.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import { z } from "zod";
+import { feedback } from "./blocks/feedback";
+import { entrySchema } from "./blocks/entry-schema";
 
-Patterns match against `${type}:${topic}` using glob syntax:
+export const feedbackFlow = defineFlow({
+  kind: "feedback",
+  requireUser: true,
+  actions: {
+    emit: {
+      inputSchema: entrySchema,
+      block: feedback.emit,
+      userMessage: (input) => `${input.type}:${input.topic}`,
+    },
+  },
+  session: {
+    stateSchema: z.object({}),
+  },
+});
+```
+
+Emitting `{ type: "observation", topic: "slack.message", body: { text: "Checkout is broken" } }` records the entry and runs `slack-monitor`. `alert-watcher` doesn't match, so it doesn't run. Putting `emit` in a flow adds the workspace to it. You declare nothing else.
+
+## Topic patterns
+
+A pattern is matched against `type:topic` as one string, for example `observation:slack.message`. The whole string must match.
 
 | Pattern | Matches | Doesn't match |
 | --- | --- | --- |
@@ -148,82 +140,31 @@ Patterns match against `${type}:${topic}` using glob syntax:
 | `observation:**` | `observation:slack.msg.edit` | `event:slack` |
 | `*:slack` | `observation:slack`, `event:slack` | `observation:slack.msg` |
 | `observation:slack.*` | `observation:slack.message` | `observation:slack.a.b` |
-| `**` | everything | — |
+| `**` | everything | nothing |
 
-`*` matches a single segment (between `:` or `.`). `**` matches any number of segments.
+`*` matches within one segment, where `:` and `.` separate segments. `**` matches any number of segments. An actor with several patterns runs once per entry, whichever of them match. Two actors that match the same entry run in either order.
 
-## reEmit
+## Run one actor from another
 
-When `reEmit: true`, an actor's body output is normalized via `normalizeToEntries`. Any entry-shaped objects (`{ type, topic, body }`) — or `{ entries: [...] }` wrappers — are appended to the workspace and dispatched to any matching actors as new `Task`s with `metadata.depth = current + 1`. The chain continues until `depth > maxDepth`.
+By default an actor's output is ignored. Set `reEmit: true` in `feedback.ts` and any `{ type, topic, body }` an actor returns, alone, in an array or as `{ entries: [...] }`, is recorded and goes to the actors that watch it. Anything else in the output is dropped.
 
-This is what makes the pattern reactive in the strongest sense: a single seed entry can cascade through multiple tiers of actors without explicit orchestration. The substrate's `taskBoard` is responsible for draining the cascade with bounded concurrency.
+With that set, the Slack message above runs `slack-monitor`, which returns an `event:alert.urgent` entry, and `alert-watcher` runs on it. A chain stops after `maxDepth` levels (default 3). Actors at that depth run and their output is recorded, but it goes no further.
 
-## Two-tier reactive/deliberative
+## When an actor fails
 
-The reactive vs. deliberative split is a user-land pattern, not a framework concept. Put a router at the top of an actor's body:
+A failing actor is recorded as failed and the rest carry on. One actor failing doesn't stop or change the other actors. A failed actor isn't retried.
 
-```ts
-const feedbackMonitor = actor({
-  name: "feedback_monitor",
-  watch: ["observation:slack.message"],
-  block: sequencer({ name: "monitor-pipeline" })
-    .step(router({
-      name: "classify",
-      routes: [cheapHandler, expensiveGenerator],
-      execute: (input) =>
-        /crash|broken|urgent/i.test(input.body?.text ?? "")
-          ? expensiveGenerator
-          : cheapHandler,
-    })),
-});
-```
+## Seeing it run
 
-## Failure isolation
+Each run of an actor is a task, with the actor's name as its assignee. The log is stored with the session, and a UI can read its `entries`. The log keeps one entry per type and topic: emitting a second entry with the same type and topic doesn't add it to the log.
 
-Each actor task drains through `taskBoard` with `onError: "skip"` (the default). A failing actor records a failed `Task`, unless its task was already settled by then — cancelled, or completed by the actor itself — in which case the settled status stands and no failure is recorded. Either way the rest of the chain continues. The substrate's CAS-safe claim ensures sibling actors are unaffected.
+## Change it
 
-## Substrate notes
-
-- Actor invocations are `Task` records in a request-scoped `TaskCollection` (`@flow-state-dev/orchestration`). They show up in `<Plan />` and the devtool with the actor name as `task.assignee`.
-- `task.metadata.depth` carries the reactive cascade depth. `task.metadata.type` and `task.metadata.topic` carry the matched entry.
-- The entry log is a sibling session resource (writable, with `client.data` projection so renderers see live entries).
-
-## Exported API
-
-```ts
-import {
-  createEventActorsWorkspace,
-  actor,
-  eventActors,
-} from "@flow-state-dev/patterns/eventActors";
-
-// Schemas (for remixing)
-import { eventActorsWorkspaceStateSchema } from "@flow-state-dev/patterns/eventActors";
-
-// Utilities
-import { matchTopic, compilePattern, normalizeToEntries } from "@flow-state-dev/patterns/eventActors";
-
-// Helper blocks (for remixing)
-import { createAppendEntry } from "@flow-state-dev/patterns/eventActors";
-```
-
-:::caution `createAppendEntry` must be composed with `.tap()`
-
-The block that `createAppendEntry` returns appends the entry to the workspace resource and emits its `rb-entry` component. It produces no output. Compose it with `.tap()`, which runs a block for its side effect and passes the untouched pipeline value through to the next step:
-
-```ts
-sequencer({ name: "my-emit", inputSchema: entrySchema })
-  .tap(createAppendEntry("my-emit", rb.workspace))   // entry is recorded, the entry flows on
-  .step(myCustomDispatch)
-```
-
-Composing it as `.step(...)` hands `undefined` to the next step, because `.step()` forwards the block's output and there is no output. Earlier releases echoed the entry back, so `.step()` appeared to work; that echo was removed because it duplicated the payload in the items log for no benefit.
-
-:::
+`concurrency` (default 4) is how many actors run at once. `maxDepth` and `reEmit` are above. Two more options bound how many tasks one `emit` can create. Their defaults, every option and the exports for building your own `emit` are in the [patterns reference](../../reference/patterns.md).
 
 ## See also
 
-- [Routed Specialists](./routed-specialists) — controller-driven sibling pattern.
-- [Task Board](../orchestration/task-board) — concurrent drain over a `TaskCollection` with dependency gating.
-- [Parallel Tasks](./parallelTasks) — single-pass fan-out when tasks are known upfront.
-- [Supervisor](./supervisor) — fan-out with review loop.
+- [Routed Specialists](./routed-specialists.md): a controller picks the next specialist
+- [Parallel Tasks](./parallel-tasks.md): fan-out when the tasks are known up front
+- [Supervisor](./supervisor.md): fan-out with a review on each result
+- [Task board](../../concepts/tasks-and-boards.md): the stored list of tasks the actors run on

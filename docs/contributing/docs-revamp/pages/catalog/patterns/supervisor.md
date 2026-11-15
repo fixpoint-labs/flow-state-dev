@@ -6,52 +6,26 @@ description: Fan out, review each result, and retry the ones rejected.
 
 # Supervisor
 
-The Supervisor is a fan-out pattern with a per-task quality review loop. It decomposes a goal into sub-tasks, dispatches workers concurrently, runs a reviewer on each individual worker output, and retries via a per-task budget when the reviewer rejects.
+Some work needs a second pair of eyes on every piece. Summarize forty support tickets, and you want each summary checked before it counts. `supervisor` splits a goal into tasks, runs your worker on each at the same time on a [task board](../../concepts/tasks-and-boards.md) (a stored list of tasks and the loop that works through it), has a reviewer judge each result, and sends rejected work back to the worker with the reviewer's feedback. When every task has settled, a synthesizer combines the approved results into one output.
 
-Use it when:
+Reach for it when:
 
-- Output quality matters and individual failures should be corrected, not skipped
-- Each task needs its own review — a worker output should be approved or revised before it counts as done
-- You want a retry budget that triggers on review rejection (not just on worker exceptions)
+- output quality matters and a bad result should be corrected, not skipped,
+- each result needs its own approval before it counts as done,
+- you want a retry budget that also covers review rejections.
 
-If you don't need review, use [Parallel Tasks](./parallelTasks) for concurrent execution. If tasks need strict dependency ordering, use [Plan and Execute](./plan-and-execute). The supervisor honors `deps` between tasks (dependent tasks wait until their prerequisites complete) but executes independent tasks concurrently within the worker pool.
+If you don't need review, use [Parallel Tasks](./parallel-tasks.md). If tasks must run in a strict order, use [Plan and Execute](./plan-and-execute.md).
 
-## Block composition
+## Use it
 
-```
-goal
-  → captureAndPlan            (store goal, run planner, seed taskBoard collection)
-  → board.drain               (drain — each worker runs the per-task review chain)
-  → labelFailedReviews        (.tap — label terminal errored tasks by failure category)
-  → synthesize                (build { goal, results } and run the synthesizer)
-```
+The examples belong to a `digest` flow that summarizes support tickets. The worker handles one task. It declares `feedback` on its input, because a worker only receives the fields its schema declares, and `feedback` is how a retry learns what the reviewer wanted changed.
 
-Each registered worker is wrapped at supervisor-construction time in a sequencer:
-
-```
-TaskWorkerInput
-  → stashTaskId (.tap — capture taskId / goal / attempts)
-  → worker               (the user's worker)
-  → stashWorkerOutput (.tap — capture worker output for applyVerdict)
-  → stampReviewEntered (.tap — set metadata.review.entered for terminal labelling)
-  → buildReviewerInput   (.map — { taskId, goal, attempts, workerOutput, criteria? })
-  → reviewerGenerator    (produces ReviewerVerdict)
-  → applyVerdict         (approve → flow workerOutput through; reject → throw)
-```
-
-When `applyVerdict` throws, the substrate's `recordError` catches it. If `attempts < maxAttempts`, the task re-pends with the verdict feedback as `task.feedback` so the next attempt can address it. When the budget exhausts, the task transitions to terminal `errored` and `labelFailedReviews` adds the `failed-review` label. There is a third outcome: if the task was already settled while the worker ran — supervisor cancels tasks programmatically, so this is a live case here rather than a hypothetical — the failure is not recorded at all, and the settled status stands.
-
-The reviewer composition is BP-011 conformant — the reviewer runs as a `.step(reviewer)` step in the worker's sequencer, not as a `block.run` call inside a handler.
-
-## Basic usage
-
-```ts
-import { supervisor } from "@flow-state-dev/patterns";
+```ts title="src/flows/digest/blocks/summarize-ticket.ts"
 import { generator } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const researchWorker = generator({
-  name: "research-task",
+export const summarizeTicket = generator({
+  name: "summarize-ticket",
   model: "openai/gpt-6-luna",
   inputSchema: z.object({
     taskId: z.string(),
@@ -59,230 +33,87 @@ const researchWorker = generator({
     feedback: z.string().optional(),
   }),
   outputSchema: z.object({ summary: z.string() }),
-  prompt: "You are a research assistant. Complete the task thoroughly.",
-  user: (input) => {
-    const base = `Task: ${input.goal}`;
-    return input.feedback ? `${base}\n\nPrior feedback: ${input.feedback}` : base;
-  },
+  prompt: "You summarize one support ticket in two sentences.",
+  user: (input) =>
+    input.feedback
+      ? `Ticket: ${input.goal}\n\nPrior feedback: ${input.feedback}`
+      : `Ticket: ${input.goal}`,
 });
+```
 
-const researchSupervisor = supervisor({
-  name: "research",
-  worker: researchWorker,
+The supervisor wraps it:
+
+```ts title="src/flows/digest/blocks/digest-tickets.ts"
+import { supervisor } from "@flow-state-dev/patterns";
+import { summarizeTicket } from "./summarize-ticket";
+
+export const digestTickets = supervisor({
+  name: "digest",
+  worker: summarizeTicket,
   reviewCriteria: [
-    "Sources are specific and relevant",
-    "Summary is substantive",
-    "Addresses the task goal directly",
+    "Names the customer's actual problem",
+    "Two sentences or fewer",
   ],
   maxAttemptsPerTask: 3,
   maxConcurrency: 4,
 });
 ```
 
-## Worker input shape
+`supervisor` returns a sequencer, so a flow uses it like any other block. Its input is `{ goal: string }`. A planner (by default, a generator the pattern builds) splits the goal into tasks. Each task goes to the worker, then to the reviewer, which approves the output or rejects it. Approved output is the task's result. `maxConcurrency` (default 3) sets how many tasks run at once.
 
-The worker receives the substrate's `TaskWorkerInput`:
+The default planner, reviewer and synthesizer use `model: "intent/synthesize"`, a model intent your app maps to a model. See [Models](../../reference/models.md).
 
-```ts
-{
-  taskId: string;
-  goal: string;
-  input?: unknown;          // task input — typically the planner's `context` field
-  attempts: number;          // 1 on first attempt, increments on retry
-  feedback?: string;         // verdict feedback from the prior attempt (if retrying)
-  metadata?: Record<string, unknown>;
-}
-```
+Besides `name`, you need `worker` or, to route tasks by assignee, a `workers` registry. The reviewer checks each worker's output separately. Every other option is in the [patterns reference](../../reference/patterns.md).
 
-On the first attempt, `feedback` is absent. On retry — after a reviewer rejection — it contains the verdict's feedback string so the worker can address it.
+## Write your own reviewer
 
-## Reviewer verdict shape
+The default reviewer is a generator that checks each output against `reviewCriteria`. To review differently, pass a block that takes a `ReviewerInput` and returns a `ReviewerVerdict`:
 
-The reviewer block receives a `ReviewerInput` and must return a `ReviewerVerdict`:
+```ts title="src/flows/digest/blocks/check-length.ts"
+import { handler } from "@flow-state-dev/core";
+import {
+  reviewerInputSchema,
+  reviewerVerdictSchema,
+} from "@flow-state-dev/patterns";
 
-```ts
-type ReviewerInput = {
-  taskId: string;
-  goal: string;
-  attempts: number;
-  workerOutput: unknown;
-  criteria?: string[];        // forwarded from `reviewCriteria`
-};
-
-type ReviewerVerdict = {
-  decision: "approve" | "reject" | "needs-revision";
-  feedback?: string;          // shown to the worker on retry; required on reject / needs-revision
-  criteria?: Record<string, unknown>;
-  reasoning?: string;
-};
-```
-
-`reject` and `needs-revision` are functionally identical for the retry path — both throw the verdict's `feedback` so the substrate re-pends. They're separated for prompt clarity (the reviewer can express "redo from scratch" vs "polish the existing output").
-
-Pass `reviewer: false` to disable per-task review — every worker output flows straight through to `collection.complete`.
-
-## Per-task retry budget
-
-`maxAttemptsPerTask` (default 3) bounds how many times a task can be re-attempted on review rejection. The substrate's `Task.maxAttempts` field is stamped at planning time:
-
-- Attempt 1 fails review → task re-pends with feedback, `attempts: 1`.
-- Attempt 2 fails review → task re-pends, `attempts: 2`.
-- Attempt 3 fails review → task transitions to terminal `errored`, `labelFailedReviews` adds `failed-review`.
-
-`maxAttemptsPerTask` bounds one task. `maxTotalRetries` (default 50) bounds the board: it counts retries across every task, and when it runs out the next task that fails settles as `errored` with an error naming the budget, rather than being re-attempted. Since a supervisor task retries by default, a large plan on a flaky day can reach it — a 25-task plan where every task fails twice spends exactly 50. Raise it, or pass `null`:
-
-```ts
-supervisor({
-  name: "research-team",
-  worker: analyst,
-  maxTotalRetries: 1_000,   // or null for no bound
-});
-```
-
-The board's completion item reports `terminationReason: "retry-budget-exhausted"` when the budget is what stopped it. Full semantics are in [Bounding the retries](../orchestration/task-board#bounding-the-retries).
-
-A worker that throws (rather than producing output the reviewer rejects) is also subject to the same budget — the substrate doesn't distinguish. After the drain, `labelFailedReviews` separates them by metadata:
-
-| Failure kind | Label |
-|---|---|
-| Reviewer rejected on the final attempt | `failed-review` |
-| Reviewer block itself threw | `reviewer-error` |
-| Worker threw before review could run | `worker-error` |
-
-## Task dependencies
-
-The planner can declare dependencies between tasks using `deps`:
-
-```ts
-{ tasks: [
-  { id: "gather", goal: "Collect raw data" },
-  { id: "analyze", goal: "Analyze data", deps: ["gather"] },
-  { id: "report", goal: "Write report", deps: ["analyze"] },
-]}
-```
-
-Tasks with unmet dependencies wait. When a task errors, every task that depends on it (transitively) is `cancelled` with the `skipped` label. The task collection does this itself, so the pattern has no step for it. A plan whose `deps` name a task that isn't in the plan, or loop back on themselves, is refused when the board is seeded, and the run fails.
-
-## Worker registry
-
-When different tasks need different workers, pass a registry instead of a single `worker`:
-
-```ts
-supervisor({
-  workers: {
-    "search-agent": searchWorker,
-    "writer-agent": writerWorker,
+export const checkLength = handler({
+  name: "check-length",
+  inputSchema: reviewerInputSchema,
+  outputSchema: reviewerVerdictSchema,
+  execute: (input) => {
+    const { summary } = input.workerOutput as { summary: string };
+    return summary.length <= 400
+      ? { decision: "approve" }
+      : { decision: "reject", feedback: "Cut it to under 400 characters." };
   },
 });
 ```
 
-The substrate routes each task to the worker matching `task.assignee`. Each registry entry is wrapped in its own reviewedWorker chain.
+Add `reviewer: checkLength` to the `supervisor` call. The reviewer sees the task's `goal`, `attempts`, `workerOutput` and your `reviewCriteria`. A verdict's `decision` is `approve`, `reject` or `needs-revision`, and `feedback` is required on the last two. The supervisor treats `reject` and `needs-revision` identically: same retry, same `failed-review` label, same counts. They differ only in what you tell a model reviewer, `needs-revision` for "close, fix these points". Pass `reviewer: false` to skip review, so every worker output counts as done.
 
-## Config reference
+## When a task is rejected
 
-```ts
-supervisor({
-  name: string;
+A rejected task goes back to `pending`, and the verdict's `feedback` reaches the worker's next run as `input.feedback`. `attempts` is 1 on the first run and 2 on the first retry. `maxAttemptsPerTask` (default 3) counts runs in all, so 3 means the first run plus two retries, and 1 means no retry. The worker never receives its earlier output, only the feedback, so a reviewer's feedback should say what to keep.
 
-  // One of `worker` or `workers` is required.
-  worker?: BlockDefinition;
-  workers?: Record<string, BlockDefinition>;
+When the budget is spent, the task ends `errored` with the `failed-review` label and the other tasks carry on. The synthesizer sees only the results of `completed` tasks. A worker that throws spends the same budget, and its error message becomes the next run's `feedback`.
 
-  // Strings forwarded into the reviewer's input.criteria.
-  reviewCriteria?: string[];
+A second limit, `maxTotalRetries` (default 50), caps retries across the whole board, so a large plan on a bad day can't retry without end. What happens when it runs out, the other failure labels and the task counts are in the [patterns reference](../../reference/patterns.md).
 
-  // Per-task retry budget for review rejection. Default 3.
-  maxAttemptsPerTask?: number;
+## Dependencies and the final output
 
-  // Retries the whole board may authorize, across every task. Default 50.
-  // `null` for no bound, `0` to never retry.
-  maxTotalRetries?: number | null;
+A planner can give a task `deps`, a list of other task ids it waits for. Independent tasks run side by side. If a task ends `errored`, the tasks that depend on it are cancelled with the `skipped` label. [Task collections](../../reference/task-collections.md) has the dependency rules.
 
-  // Task-count ceilings for the board: every task over its lifetime
-  // (default 500), and tasks waiting in `pending` when a new one is added
-  // (default 100). `null` for no bound. A plan that would cross either
-  // ceiling is refused whole, nothing is added, and the run fails.
-  maxTotalTasks?: number | null;
-  maxEnqueuedTasks?: number | null;
+The supervisor returns whatever the synthesizer produces: a string by default, or the shape you pass as the supervisor's `outputSchema` option. A custom `synthesizer` block receives `{ goal, results }`, where `results` holds the `output` of every `completed` task.
 
-  // Worker pool size. Default 3.
-  maxConcurrency?: number;
+A supervisor's tasks live for the request that called it. Nothing it plans survives a new request, so it is not a background queue. For a board that outlives a request, see [Task board](../../reference/task-board.md).
 
-  // Override the planning step. Default: `utility.decomposer()`.
-  planner?: BlockDefinition;
-
-  // How each task's `context` is filled when the planner didn't supply one.
-  // "goal" (default) copies the goal in, false leaves it empty. A
-  // BlockDefinition runs once per plan, after the planner. Receives
-  // `{ goal, tasks }` and returns `{ tasks }` with each task's `context` set.
-  taskContext?: "goal" | false | BlockDefinition;
-
-  // Rewrite the input goal into a self-contained one before planning, so
-  // "do that for all of them" names what "that" is. false (default) uses the
-  // input goal as-is. true runs a built-in generator that reads the session's
-  // recent message history. A BlockDefinition replaces it: receives the
-  // supervisor input `{ goal }` and returns `{ goal }`.
-  synthesizeGoal?: boolean | BlockDefinition;
-
-  // Override the reviewer. Pass `false` to disable per-task review.
-  reviewer?: BlockDefinition | false;
-
-  // Final synthesizer. Receives `{ goal, results }`.
-  synthesizer?: BlockDefinition;
-
-  // How to handle worker failures (forwarded to taskBoard.onError):
-  //   "skip" — capture error on the failing task, siblings continue (default).
-  //   "fail" — the failing worker propagates up, aborting the supervisor.
-  onSubTaskError?: "skip" | "fail";
-
-  outputSchema?: ZodSchema;
-  context?: GeneratorSlot;
-  history?: GeneratorHistoryConfig;
-  uses?: UsesSlot;
-  reviewerVisibility?: ItemVisibility;
-  synthesizerVisibility?: ItemVisibility;
-  instructions?: string | (input, ctx) => string;
-});
-```
-
-`onSubTaskError` is `"skip"` or `"fail"`. Bound retries with `maxAttemptsPerTask`.
-
-## Exported API
-
-```ts
-import {
-  supervisor,
-  supervisorInputSchema,
-  supervisorStateSchema,
-  reviewerVerdictSchema,
-  reviewerInputSchema,
-  plannerOutputSchema,
-  buildReviewedWorker,          // build a per-task review chain manually
-  createSupervisorCaptureAndPlan,
-  createSupervisorSynthesize,
-  createLabelFailedReviews,
-} from "@flow-state-dev/patterns";
-
-import type {
-  SupervisorConfig,
-  SupervisorState,
-  ReviewerVerdict,
-  ReviewerInput,
-  PlannerOutput,
-} from "@flow-state-dev/patterns";
-```
-
-## Output shape
-
-The supervisor's output is whatever the synthesizer produces — typically a string for the default synthesizer. With a custom synthesizer the shape follows the synthesizer's `outputSchema`.
-
-The synthesizer receives `{ goal: string, results: unknown[] }` where `results` is the array of `output` values from every `completed` task.
+Cost scales with attempts: N tasks that each take two attempts make 2N worker calls and 2N reviewer calls, plus one planner call and one synthesizer call.
 
 ## See also
 
-- [Task Board](../orchestration/task-board) — the substrate that powers Supervisor's worker dispatch
-- [Parallel Tasks](./parallelTasks) — fan-out without per-task review
-- [Round Robin](./round-robin) — fixed-roster turn-taking with a judge, no per-task retry
-- [Plan and Execute](./plan-and-execute) — sequential dependency-ordered execution with optional replanning
-- [GoalSeekLoop](../orchestration/goal-seek-loop) — the board-level judge loop Supervisor is deliberately *not* built on (its review is per-task, a different axis)
-- [Patterns Overview](./overview) — when to use which pattern
+- [Parallel Tasks](./parallel-tasks.md): fan-out without per-task review
+- [Plan and Execute](./plan-and-execute.md): sequential, dependency-ordered execution with replanning
+- [Round Robin](./round-robin.md): fixed-roster turn-taking with a judge, no per-task retry
+- [Goal-seek loop](./goal-seek-loop.md): judges the whole board's result instead of each task
+- [Task board](../../reference/task-board.md): the board the supervisor runs its tasks on
+- [Patterns reference](../../reference/patterns.md): every option, label and limit
