@@ -31,6 +31,11 @@ export interface CodingBriefParts {
   conventions?: string;
   /** The app's own terms, under where and how to work: what counts as done, how to ask. */
   terms?: readonly string[];
+  /**
+   * `false` leaves out the report of changes and checks: for a run whose last
+   * message is the answer a person reads, and which no check follows. Default: on.
+   */
+  report?: false;
 }
 
 /** The conventions line when the app hands none. The helper reads no file. */
@@ -103,9 +108,7 @@ export function codingBrief(run: PromptRunContext, parts: CodingBriefParts): str
           ...run.answers.map((answered) => `You asked: ${answered.question}\nThey answered: ${answered.answer}`),
           ``,
         ]),
-    `# Your report`,
-    ``,
-    REPORT,
+    ...(parts.report === false ? [] : [`# Your report`, ``, REPORT]),
     ...(run.feedback === undefined ? [] : [``, `# Why the last attempt stopped`, ``, run.feedback]),
   ].join("\n");
 }

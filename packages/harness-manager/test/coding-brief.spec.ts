@@ -47,6 +47,12 @@ describe("a coding run's brief", () => {
     expect(report).toMatch(/what you could not check, and why/);
   });
 
+  it("leaves the report out for a run whose last message is the answer a person reads", () => {
+    const brief = codingBrief(run, { report: false, terms: ["Answer in your last message."] });
+    expect(brief).not.toContain("# Your report");
+    expect(brief).not.toMatch(/each command you ran/);
+  });
+
   it("points at the repository's conventions unless the app hands its own", () => {
     expect(codingBrief(run, {})).toMatch(/AGENTS\.md or CLAUDE\.md/);
     const own = codingBrief(run, { conventions: "CONVENTIONS-TOKEN" });

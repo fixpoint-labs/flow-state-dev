@@ -42,7 +42,11 @@ export const commandCheckResultSchema = z.object({
 });
 export type CommandCheckResult = CheckoutCommandResult;
 
-/** The commands to run: a list, or a resolver the run's context is handed (`projectChecks()`). */
+/**
+ * The commands to run: a list, or a resolver the run's context is handed (`projectChecks()`).
+ * With `inBrief`, a resolver is also called when the brief is built, where `stopReport`,
+ * `answer` and `baseCommit` are `null`: it must not read them to leave a check out.
+ */
 export type CommandCheckCommands<TContext> =
   | readonly string[]
   | ((context: TContext) => readonly string[] | Promise<readonly string[]>);
@@ -64,7 +68,9 @@ export interface CommandCheckOptions<TContext = CompletionRunContext> {
    * after the agent and asking it to run them first and report each with its
    * result. Read from the same `commands`, so the brief names exactly what
    * runs. A resolver is then also handed the prompt's context, before the run:
-   * for `commandCheck`, the run's context with no report, answer or base yet.
+   * for `commandCheck`, the run's context with `stopReport`, `answer` and
+   * `baseCommit` all `null`. A resolver must not read them to leave a check
+   * out of the brief, or the brief names fewer checks than run.
    * Off by default: the prompt is the phase's own.
    */
   inBrief?: boolean;

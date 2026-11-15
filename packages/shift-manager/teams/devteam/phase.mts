@@ -349,6 +349,8 @@ export async function buildAnswerPrompt(run: PromptRunContext, options: AnswerPh
   // A project with no repository runs on its files (`workspace/`), which have no branch.
   return codingBrief(basename(run.workspacePath) === "workspace" ? { ...run, branch: "" } : run, {
     ...parts,
+    // No check follows an answer run, and its last message is what the user reads: no report of checks.
+    report: false,
     terms: [
       `Answer in your last message: it is what the user who asked reads. Commit only if the ` +
         `task asks for a change.`,
