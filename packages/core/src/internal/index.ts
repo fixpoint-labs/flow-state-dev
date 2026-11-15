@@ -38,7 +38,7 @@ export type {
   SessionHistoryQuery,
   SessionList,
   SessionListQuery,
-  SessionListRow,
+  ListedSession,
   SessionTurn,
   SessionTurnsQuery,
   PeerSessionView,

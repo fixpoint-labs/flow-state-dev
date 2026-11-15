@@ -38,7 +38,7 @@ import type {
   SessionHistoryQuery,
   SessionList,
   SessionListQuery,
-  SessionListRow,
+  ListedSession,
   SessionTurn,
   SessionTurnsQuery,
   PeerSessionView
@@ -275,7 +275,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
         ...(state !== undefined ? { state } : {}),
         limit: limit + 1
       });
-      const answered: SessionListRow[] = [];
+      const answered: ListedSession[] = [];
       for (const row of rows.slice(0, limit)) {
         // A write session is the server's, never a conversation (FIX-2624).
         if (isWriteRecord(row)) continue;

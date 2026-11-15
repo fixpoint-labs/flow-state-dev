@@ -330,7 +330,7 @@ export type SessionListQuery = {
 };
 
 /** One session as {@link RequestSessions.list} answers it: no items, no state but its readonly fields. */
-export type SessionListRow = {
+export type ListedSession = {
   readonly id: string;
   readonly flowKind: string;
   /** The flow instance that owns it; absent on a record written before instances had ids. */
@@ -348,7 +348,7 @@ export type SessionListRow = {
 
 /** The running principal's top-level sessions, newest first. */
 export type SessionList = {
-  readonly sessions: readonly SessionListRow[];
+  readonly sessions: readonly ListedSession[];
   /** Whether more sessions matched than the limit let through. */
   readonly more: boolean;
 };

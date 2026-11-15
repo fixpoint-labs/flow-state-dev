@@ -1,14 +1,14 @@
 // FIX-2725.
 /**
  * A user's sessions with a worker, and one session's turns, as views on the
- * roster flow at user scope: what a sidebar and a thread's status read, kept
+ * roster flow at user scope: what a sidebar and a conversation's status read, kept
  * live by the server with no poll and no assembly in the app.
  *
  * Both read the caller's sessions through the request host (`sessions.list`,
  * `sessions.turns`, `sessions.read`), so the engine answers only sessions the
  * caller may read and records what each read hears: the list on the user
  * topic's `run`, a session's turns on its `request`, never `items`, which a
- * reply publishes once per streamed chunk. The words of a thread stay on the
+ * reply publishes once per streamed chunk. The words of a conversation stay on the
  * session stream (`sessionFeed`).
  *
  * The client's handles are `workerSessionsViewRef` and `sessionTurnsViewRef`
@@ -76,9 +76,9 @@ export type WorkerSessionsView = ViewDefinition<BlockDefinition<typeof workerSes
 /** The session turns view, as {@link defineSessionTurnsView} builds it. Import as a type in client code. */
 export type SessionTurnsView = ViewDefinition<BlockDefinition<typeof sessionTurnsInputSchema, typeof sessionTurnsSchema>, "user">;
 /** One row of the worker sessions view. */
-export type WorkerSessionRow = z.infer<typeof workerSessionRowSchema>;
+export type ListedWorkerSession = z.infer<typeof workerSessionRowSchema>;
 /** One row of the session turns view. */
-export type SessionTurnRow = z.infer<typeof sessionTurnSchema>;
+export type ListedTurn = z.infer<typeof sessionTurnSchema>;
 
 /** The request host's session reads: a view on a host that can't read session records refuses by name. */
 function sessionsOf(ctx: BlockContext): RequestSessions {
@@ -89,11 +89,11 @@ function sessionsOf(ctx: BlockContext): RequestSessions {
 
 /**
  * The tasks of session `sessionId`'s board that wait on the user: a failed
- * one, and one with a hold open for a person (`inboxItems`' rule). Read from
+ * one, and one with a hold open for the user (`inboxItems`' rule). Read from
  * the conversation ledger at the session's partition, heard on its board
  * notices, the session named in the running one's place.
  */
-async function waitingOn(ctx: BlockContext, sessionId: string, lineageId: string): Promise<Array<z.infer<typeof waitingSchema>>> {
+async function waitingTasksOf(ctx: BlockContext, sessionId: string, lineageId: string): Promise<Array<z.infer<typeof waitingSchema>>> {
   const ledger = await conversationLedgerAt(ctx, await filingSessionIdOf({ identity: { id: sessionId }, lineageId }), { readFor: sessionId });
   const tasks = ledger?.list() ?? [];
   const held = new Set(
@@ -163,7 +163,7 @@ export function defineWorkerSessionsView(installation: WorkerInstallation): Work
             running: runningIn.has(session.id),
             fields: { ...session.state },
             isDefault,
-            waiting: await waitingOn(ctx, session.id, session.lineageId)
+            waiting: await waitingTasksOf(ctx, session.id, session.lineageId)
           }))
         );
       }
