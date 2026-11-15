@@ -499,7 +499,7 @@ describe("rounds (V5)", () => {
       { worker: "eng.em", outcome: "skipped", reason: "no other delegate answered in round 0" }
     ]);
     // Round 0 closed at its deadline, before the coder's late answer came in.
-    const roundOne = all.findIndex((item: any) => item.type === "component" && item.data?.round === 1);
+    const roundOne = all.findIndex((item: any) => item.type === "data" && item.value?.round === 1);
     const coderLine = all.findIndex((item: any) => item.type === "message" && item.agentName === "eng.coder");
     expect(roundOne).toBeGreaterThanOrEqual(0);
     expect(roundOne).toBeLessThan(coderLine);

@@ -140,6 +140,20 @@ export type EmitMessageOptions = {
   metadata?: Record<string, unknown>;
 };
 
+/** What `ctx.emit.data` takes beside the record's `dataType` and `value`. */
+export type EmitDataOptions = {
+  /** Stable identity for the keyed-snapshot pattern. See {@link DataItem.key}. */
+  key?: string;
+  /**
+   * Who the record reaches. Absent means nobody: neither the client nor
+   * model history. Not inherited from an enclosing generator.
+   */
+  itemVisibility?: ItemVisibility;
+  agentName?: string;
+  /** Defaults to `false` (persisted). */
+  transient?: boolean;
+};
+
 export interface ResponseEmitterHandle {
   emit(event: unknown): void | Promise<void>;
   /**
@@ -492,7 +506,10 @@ export interface BlockContext<
       ): void;
     };
     /**
-     * Emit a component item rendered by a registered UI component.
+     * Emit a component item: generative UI, a widget a registered UI
+     * component renders. A record of something that happened (a decision, a
+     * change, a received message) is not a component: emit it with
+     * {@link emit.data}.
      *
      * Defaults to `transient: false` (persisted) regardless of the producing
      * block's `transient` flag. Pass `{ transient: true }` to opt in to a
@@ -513,6 +530,25 @@ export interface BlockContext<
         agentName?: string;
         transient?: boolean;
       }
+    ) => void;
+    /**
+     * Emit a data item: a structured record of something that happened at
+     * this point in the conversation, for readers rather than for display.
+     *
+     * Defaults to `transient: false` (persisted). Visibility is opt-in: with
+     * no `itemVisibility` the item reaches neither the client nor model
+     * history, and an enclosing generator's visibility is not inherited. Pass
+     * `{ itemVisibility: { client: true, history: false } }` for a record a
+     * client reads.
+     *
+     * A stable `key` gives the keyed-snapshot (upsert) semantics components
+     * have: one entry per `(requestId, key)`, `value` replaced on each
+     * emission.
+     */
+    data: (
+      dataType: string,
+      value: Record<string, unknown>,
+      options?: EmitDataOptions
     ) => void;
     /**
      * Update the request-scoped status slot. Rendered by clients as a single
@@ -729,39 +765,32 @@ export interface BlockContext<
 
   // FIX-963.
   /**
-   * @internal Emit a component item and AWAIT its delivery.
+   * @internal Emit a data item and AWAIT its delivery.
    *
-   * `ctx.emit.component` returns `void` and discards both emitter promises, so
-   * a rejection there is unobservable — fine for the items it was built for
-   * (progress, snapshots, scaffolding), where losing one costs a render. It is
-   * not fine for an item whose entire purpose is to report that something
-   * failed: a report that can be dropped in silence is not a report, and a
-   * substrate emitting one would be reproducing the defect inside its own fix.
+   * `ctx.emit.data` returns `void` and discards both emitter promises, so a
+   * rejection there is unobservable — fine for a record whose loss costs a
+   * render. It is not fine for a record whose loss must fail the caller (a
+   * routing decision, a report that something failed): a report that can be
+   * dropped in silence is not a report.
    *
    * So this variant resolves only once the item has been added and completed,
    * and it **rejects rather than swallowing**. A caller that needs the emission
-   * to have happened awaits this one; everything else keeps using
-   * `ctx.emit.component`, which is unchanged.
+   * to have happened awaits this one; everything else uses `ctx.emit.data`.
    *
    * Absent in a hand-built context. A caller whose correctness depends on the
    * guarantee must treat absence as a failure rather than falling back to the
    * fire-and-forget emitter, which would silently give up exactly the property
    * it reached for this seam to get.
    */
-  _emitComponentAwaited?(
-    component: string,
-    data: Record<string, unknown>,
-    options?: {
-      key?: string;
-      itemVisibility?: ItemVisibility;
-      agentName?: string;
-      transient?: boolean;
-    }
+  _emitDataAwaited?(
+    dataType: string,
+    value: Record<string, unknown>,
+    options?: EmitDataOptions
   ): Promise<void>;
 
   /**
    * @internal Emit a message item and AWAIT its delivery: the message twin of
-   * {@link _emitComponentAwaited}, settling once the item has been added and
+   * {@link _emitDataAwaited}, settling once the item has been added and
    * completed and rejecting rather than swallowing. Absent in a hand-built
    * context; a caller that depends on it treats absence as a failure.
    * `role` defaults to `assistant`; `user` records input the flow received

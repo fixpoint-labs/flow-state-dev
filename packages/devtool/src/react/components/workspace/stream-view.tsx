@@ -61,6 +61,7 @@ const STREAM_TYPES = new Set([
   "tool_output",
   "error",
   "component",
+  "data",
   "container",
   "status",
   "source",

@@ -168,7 +168,7 @@ function writerOf(item: SessionItem, writers: LineWriters): string | undefined {
  *
  * @param history The turn's history, oldest first.
  * @param items The conversation's items, oldest first, as far back as `history`
- *   reaches: its messages, and its routing records (`coordinator-route` components).
+ *   reaches: its messages, and its routing records (`coordinator-route` data items).
  * @param coordinatorNames The `agentName`s the coordinator's own turn writes under.
  */
 export function coordinatorHistory(
@@ -211,16 +211,31 @@ export function coordinatorHistory(
 function routedPosts(items: readonly SessionItem[]): Map<string, string[]> {
   const routed = new Map<string, string[]>();
   for (const item of items) {
-    const record = (item.payload as { component?: unknown; data?: unknown } | null | undefined) ?? undefined;
-    if (item.type !== "component" || record?.component !== COORDINATOR_ROUTE) continue;
-    const data = record.data as { messageRequestId?: unknown; round?: unknown; by?: unknown; delegates?: unknown } | undefined;
-    if (data?.round !== 0 || data.by === "judgment" || data.by === "unplaced" || typeof data.messageRequestId !== "string") continue;
+    const data = routeRecordOf(item);
+    if (data === undefined) continue;
+    if (data.round !== 0 || data.by === "judgment" || data.by === "unplaced" || typeof data.messageRequestId !== "string") continue;
     const reached = (Array.isArray(data.delegates) ? data.delegates : [])
       .filter((d: { outcome?: unknown; worker?: unknown }) => d?.outcome === "delivered" && typeof d.worker === "string")
       .map((d: { worker: string }) => d.worker);
     if (reached.length > 0) routed.set(data.messageRequestId, reached);
   }
   return routed;
+}
+
+type RouteRecordShape = { messageRequestId?: unknown; round?: unknown; by?: unknown; delegates?: unknown };
+
+// BP-030: the one legacy reader of the component-shaped routing record.
+/**
+ * A `coordinator-route` record's value, or undefined for any other item. Reads
+ * the `data` item a decision is recorded as, and the `component` item a
+ * conversation stored before routing records were data items, so an older
+ * conversation's routed posts still read as handled.
+ */
+function routeRecordOf(item: SessionItem): RouteRecordShape | undefined {
+  const payload = (item.payload as { dataType?: unknown; value?: unknown; component?: unknown; data?: unknown } | null | undefined) ?? undefined;
+  if (item.type === "data" && payload?.dataType === COORDINATOR_ROUTE) return payload.value as RouteRecordShape | undefined;
+  if (item.type === "component" && payload?.component === COORDINATOR_ROUTE) return payload.data as RouteRecordShape | undefined;
+  return undefined;
 }
 
 /** The newest lines whose text fits {@link RECENT_CHARS}, the one that crosses it cut short. */

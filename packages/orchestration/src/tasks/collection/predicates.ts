@@ -11,13 +11,13 @@
  * workspace on every entry, the per-event scan cost compounds into
  * visible multi-second idle gaps between actor invocations.
  */
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { TaskChangeEvent } from "./change-event";
-import { TASK_CHANGE_COMPONENT_TYPE } from "./get-or-create";
+import { TASK_CHANGE_DATA_TYPE } from "./get-or-create";
 
 /**
- * Wake filter matching `task-change` component items for a specific
+ * Wake filter matching `task-change` data items for a specific
  * collection. Returns false for every other item type and for
  * `task-change` items targeting a different collection. Cheap: two
  * equality checks plus a single field read.
@@ -37,9 +37,9 @@ export function onTaskChangeFor(
   collectionId: string
 ): (item: RuntimeItem) => boolean {
   return (item) => {
-    if (item.type !== "component") return false;
-    const c = item as ComponentItem;
-    if (c.component !== TASK_CHANGE_COMPONENT_TYPE) return false;
-    return (c.data as unknown as TaskChangeEvent).collectionId === collectionId;
+    if (item.type !== "data") return false;
+    const d = item as DataItem;
+    if (d.dataType !== TASK_CHANGE_DATA_TYPE) return false;
+    return (d.value as unknown as TaskChangeEvent).collectionId === collectionId;
   };
 }

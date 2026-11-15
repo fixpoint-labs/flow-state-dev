@@ -29,8 +29,8 @@ export type ItemProvenance = {
 export type OutputItemBase = {
   /**
    * Stable identity for the item. Most items mint a fresh random ID per
-   * emission; keyed component items are an exception (see
-   * {@link ComponentItem.key}).
+   * emission; keyed component and data items are an exception (see
+   * {@link ComponentItem.key} and {@link DataItem.key}).
    */
   id: string;
   type: string;
@@ -509,6 +509,31 @@ export type ComponentItem = OutputItemBase & {
 };
 
 /**
+ * A structured record of something that happened at this point in the
+ * conversation, emitted with `ctx.emit.data(dataType, value)`. Not UI: a
+ * `component` item is generative UI, a widget a client renders; a `data` item
+ * is a fact a reader reads (a routing decision, a task change, a received
+ * message). A client may still choose to render one, as it renders messages,
+ * by registering a renderer for its `dataType`.
+ *
+ * Visibility is opt-in: with no `itemVisibility`, a data item reaches neither
+ * the client nor model history (see `resolveItemVisibility`).
+ */
+export type DataItem = OutputItemBase & {
+  type: "data";
+  /** What kind of record this is, e.g. `"task-change"`. Readers match on it. */
+  dataType: string;
+  /** The record. Replaced wholesale, never merged, on a keyed re-emission. */
+  value: Record<string, unknown>;
+  /**
+   * Caller-provided stable identity: the keyed-snapshot (upsert) semantics of
+   * {@link ComponentItem.key}. The item ID is derived from `key`, so the
+   * persisted record holds one entry per `(requestId, key)`.
+   */
+  key?: string;
+};
+
+/**
  * Visual grouping emitted by sequencers and routers that declare a `container`
  * config. Lifecycle: `item.added` with `status: "in_progress"` when the
  * sequencer scope opens; `item.updated` patching `status`, `completedAt`,
@@ -808,6 +833,7 @@ export type OutputItem =
   | ReasoningItem
   | ToolOutputItem
   | ComponentItem
+  | DataItem
   | ContainerItem
   | SourceItem
   | StatusItem

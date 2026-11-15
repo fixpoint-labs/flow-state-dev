@@ -219,9 +219,9 @@ async function fileRow(origin: string, goal: string): Promise<string> {
   for (let waited = 0; waited < 15_000; waited += 100) {
     const entry = (await listRequests(origin, "?include_items=true")).find((request) => request.id === requestId);
     const change = (entry?.items ?? []).find(
-      (item) => item?.type === "component" && item?.data?.task?.goal === goal && typeof item?.data?.task?.id === "string",
+      (item) => item?.type === "data" && item?.value?.task?.goal === goal && typeof item?.value?.task?.id === "string",
     );
-    if (entry?.status === "completed" && change !== undefined) return String(change.data.task.id);
+    if (entry?.status === "completed" && change !== undefined) return String(change.value.task.id);
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error(`the row "${goal}" was never filed`);

@@ -203,8 +203,8 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
       const items = await settledItems(lab, id);
       expect(routeCalls).toHaveLength(1);
       expect((model as any).judgmentSteps()).toBe(1);
-      const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
-      expect(record.data).toMatchObject({ by: "judgment", policy: "best-fit", delegates: [], fit: { reason } });
+      const [record] = items.filter((item) => item.type === "data" && item.dataType === "coordinator-route");
+      expect(record.value).toMatchObject({ by: "judgment", policy: "best-fit", delegates: [], fit: { reason } });
       expect(textOf(items.filter((item) => item.type === "message" && item.role === "assistant").at(-1) ?? {})).toBe("Handed on.");
     });
   }
@@ -257,8 +257,8 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     const items = await settledItems(lab, id);
     const answer = items.find((item) => item.type === "message" && item.agentName === "licenses");
     expect(answer).toBeDefined();
-    const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
-    expect(record.data).toMatchObject({ by: "judgment", delegates: [{ worker: "licenses", outcome: "delivered" }] });
+    const [record] = items.filter((item) => item.type === "data" && item.dataType === "coordinator-route");
+    expect(record.value).toMatchObject({ by: "judgment", delegates: [{ worker: "licenses", outcome: "delivered" }] });
     expect((await act(lab, id, "listDelegates", {})).output.delegates.map((d: { worker: string }) => d.worker)).toEqual([
       "eng.em",
       "eng.coder",
@@ -296,8 +296,8 @@ describe("the Shift Coordinator as a coordinator (S10)", () => {
     ]);
     expect((model as any).judgmentSteps()).toBe(0);
     expect(items.filter((item) => item.type === "message" && item.role === "assistant").map((item) => item.agentName)).toEqual(["eng.em"]);
-    const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
-    expect(record.data).toMatchObject({ by: "evaluated", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
+    const [record] = items.filter((item) => item.type === "data" && item.dataType === "coordinator-route");
+    expect(record.value).toMatchObject({ by: "evaluated", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
     // The coder's task, on the board of the EM session the post reached: feature work, naming the issue
     // and the phase, for the coder.
     const filed = Object.values(await stored(lab, "tasks/")).filter((row: any) => row.input?.harnessFeature?.issue === issue);

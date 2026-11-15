@@ -1,8 +1,8 @@
 "use client";
 
 import type {
-  ComponentItem,
   ContainerItem,
+  DataItem,
   MessageItem,
   OutputItem,
   ToolOutputItem,
@@ -151,10 +151,10 @@ export function Debate({ item }: { item: ContainerItem }) {
   const scopedItems = useMemo(() => {
     const hasOwned = ownedItems.some(
       (i) =>
-        i.type === "component" &&
-        ((i as ComponentItem).component === "debate-turn" ||
-          (i as ComponentItem).component === "debate-decision" ||
-          (i as ComponentItem).component === "debate-verdict"),
+        i.type === "data" &&
+        ((i as DataItem).dataType === "debate-turn" ||
+          (i as DataItem).dataType === "debate-decision" ||
+          (i as DataItem).dataType === "debate-verdict"),
     );
     if (hasOwned) return ownedItems;
     return allItems.filter(
@@ -225,10 +225,10 @@ export function Debate({ item }: { item: ContainerItem }) {
         }
         continue;
       }
-      if (i.type !== "component") continue;
-      const comp = i as ComponentItem;
-      const data = comp.data as Record<string, unknown>;
-      if (comp.component === "debate-turn") {
+      if (i.type !== "data") continue;
+      const comp = i as DataItem;
+      const data = comp.value;
+      if (comp.dataType === "debate-turn") {
         if (
           typeof data.round === "number" &&
           typeof data.agentName === "string" &&
@@ -246,7 +246,7 @@ export function Debate({ item }: { item: ContainerItem }) {
           // from an empty draft.
           liveDrafts.delete(data.agentName);
         }
-      } else if (comp.component === "debate-decision") {
+      } else if (comp.dataType === "debate-decision") {
         if (
           typeof data.round === "number" &&
           Array.isArray(data.nextSpeakers) &&
@@ -268,7 +268,7 @@ export function Debate({ item }: { item: ContainerItem }) {
             pending = [];
           }
         }
-      } else if (comp.component === "debate-turn-pending") {
+      } else if (comp.dataType === "debate-turn-pending") {
         if (
           typeof data.round === "number" &&
           typeof data.agentName === "string" &&
@@ -286,7 +286,7 @@ export function Debate({ item }: { item: ContainerItem }) {
           // into it until the committed turn clears it.
           liveDrafts.set(data.agentName, "");
         }
-      } else if (comp.component === "debate-verdict") {
+      } else if (comp.dataType === "debate-verdict") {
         if (
           typeof data.verdict === "string" &&
           typeof data.reasoning === "string"

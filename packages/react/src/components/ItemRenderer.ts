@@ -7,6 +7,9 @@
  * 2. Built-in fallback for message/status/error
  * 3. JSON `<pre>` for development visibility (all other unregistered types)
  *
+ * A `data` item with no registered renderer renders nothing: it is a record,
+ * not UI, so it never reaches the JSON fallback.
+ *
  * Non-client types (context, state_change, resource_change) return null.
  *
  * All custom renderers receive `{ item }` as their prop.
@@ -16,6 +19,7 @@ import type {
   ToolOutputItem,
   ComponentItem,
   ContainerItem,
+  DataItem,
   ErrorItem,
   MessageItem,
   OutputItem,
@@ -244,7 +248,9 @@ function renderItem(
       ? (item as ComponentItem).component
       : item.type === "container"
         ? (item as ContainerItem).component
-        : undefined;
+        : item.type === "data"
+          ? (item as DataItem).dataType
+          : undefined;
 
   const resolved = resolveRenderer(renderers, item.type, componentKey);
 
@@ -256,6 +262,12 @@ function renderItem(
   // 1. Custom renderer from registry.
   if (resolved !== undefined) {
     return createElement(resolved, { item });
+  }
+
+  // A data item is a record, not UI: with no renderer of its own it renders
+  // nothing, never the JSON dev fallback.
+  if (item.type === "data") {
+    return null;
   }
 
   // Component items whose key matches a registered container renderer are

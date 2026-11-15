@@ -20,7 +20,7 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { RECEIVED_MESSAGE_COMPONENT } from "@flow-state-dev/workforce/browser";
+import { RECEIVED_MESSAGE_DATA_TYPE } from "@flow-state-dev/workforce/browser";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
@@ -280,7 +280,7 @@ export function Conversation({
                   const item = segment.item;
                   const role = (item as { role?: string }).role ?? "";
                   // Another worker's message is drawn by the registry on every view, under its sender's name.
-                  const received = item.type === "component" && (item as { component?: string }).component === RECEIVED_MESSAGE_COMPONENT;
+                  const received = item.type === "data" && item.dataType === RECEIVED_MESSAGE_DATA_TYPE;
                   const own = received ? undefined : renderItem?.(item);
                   const sender = item.type === "message" && role === "assistant" ? senderOf(worker, item, known) : undefined;
                   return (

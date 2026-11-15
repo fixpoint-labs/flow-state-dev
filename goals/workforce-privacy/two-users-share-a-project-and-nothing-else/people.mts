@@ -153,8 +153,8 @@ export async function act(who: Connected, flowKind: string, sessionId: string, a
 /** The delegates a coordinator's routing record for post `messageRequestId` delivered it to, among a request's items. */
 function routedDelegates(items: readonly StoredItem[], messageRequestId: string): string[] {
   return items
-    .filter((i) => i.type === "component" && (i as { component?: unknown }).component === "coordinator-route")
-    .map((i) => i.data as { messageRequestId?: unknown; delegates?: Array<{ worker?: unknown; outcome?: unknown }> } | undefined)
+    .filter((i) => i.type === "data" && (i as { dataType?: unknown }).dataType === "coordinator-route")
+    .map((i) => i.value as { messageRequestId?: unknown; delegates?: Array<{ worker?: unknown; outcome?: unknown }> } | undefined)
     .filter((d) => d?.messageRequestId === messageRequestId)
     .flatMap((d) => (d?.delegates ?? []).filter((x) => x.outcome === "delivered").map((x) => String(x.worker)));
 }

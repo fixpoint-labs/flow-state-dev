@@ -37,12 +37,12 @@ async function drainReason(
     workers: worker,
   });
   const result = await testBlock(board.drain, { input: undefined });
-  type MetaItem = { type?: string; component?: string; data?: { status?: string; terminationReason?: string; counts?: Record<string, number> } };
+  type MetaItem = { type?: string; dataType?: string; value?: { status?: string; terminationReason?: string; counts?: Record<string, number> } };
   const meta = (result.items as MetaItem[]).filter(
-    (i) => i.type === "component" && i.component === "task-board-meta" && i.data?.status === "completed"
+    (i) => i.type === "data" && i.dataType === "task-board-meta" && i.value?.status === "completed"
   );
   expect(meta).toHaveLength(1);
-  return meta[0]!.data!;
+  return meta[0]!.value!;
 }
 
 /** A worker that settles every row it is handed, unless the row's goal says to ask or to fail. */
@@ -156,8 +156,8 @@ describe("the completion reason over stored rows", () => {
     });
     const result = await testBlock(block, { input: [{ shouldContinue: false, reason: "blocked" }] });
     expect(result.error).toBeNull();
-    type MetaItem = { type?: string; component?: string; data?: { terminationReason?: string } };
-    return (result.items as MetaItem[]).find((i) => i.type === "component" && i.component === "task-board-meta")?.data
+    type MetaItem = { type?: string; dataType?: string; value?: { terminationReason?: string } };
+    return (result.items as MetaItem[]).find((i) => i.type === "data" && i.dataType === "task-board-meta")?.value
       ?.terminationReason;
   }
 

@@ -41,7 +41,7 @@ export interface StateBackedOptions extends TaskCapOptions {
   stateKey?: string;
   /**
    * Optional callback fired after every successful task mutation. The
-   * `getOrCreateTaskCollection` factory wires this to `ctx.emit.component`
+   * `getOrCreateTaskCollection` factory wires this to `ctx.emit.data`
    * to publish lifecycle changes onto the framework item stream.
    */
   onChange?: (event: TaskChangeEvent) => void;

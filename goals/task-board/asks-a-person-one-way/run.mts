@@ -784,7 +784,7 @@ async function legH(run: Run): Promise<void> {
   const tookMs = Date.now() - started;
   const listed = await run.h.http.client.sessions.requests(session.id, { includeResultOutput: true, includeItems: true });
   const request = listed.find((r) => r.id === sent.id) as { result?: { output?: unknown; error?: unknown }; items?: Array<Record<string, any>> } | undefined;
-  const meta = (request?.items ?? []).filter((i) => i.component === "task-board-meta").at(-1)?.data as { status?: string; terminationReason?: string } | undefined;
+  const meta = (request?.items ?? []).filter((i) => i.type === "data" && i.dataType === "task-board-meta").at(-1)?.value as { status?: string; terminationReason?: string } | undefined;
   const rows = (request?.result?.output ?? []) as Array<{ id: string; status: string; attempts: number; lease: number | null; open: string[] }>;
   const h1 = rows.find((r) => r.id === "h1");
   if ((ended as { status: string }).status !== "completed" || meta?.status !== "completed" || meta.terminationReason !== "waiting-on-a-user" || tookMs > 10_000) {

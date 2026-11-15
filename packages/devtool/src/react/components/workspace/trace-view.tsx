@@ -732,6 +732,8 @@ function getItemPreview(item: DevtoolItem): string {
     }
     case "component":
       return item.component;
+    case "data":
+      return item.dataType;
     case "container":
       return item.blockName + (item.label ? ` (${item.label})` : "");
     case "state_change":

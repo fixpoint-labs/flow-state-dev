@@ -18,8 +18,8 @@ export const SEND_MESSAGE_TOOL = "sendMessage";
  */
 export const SENDS_MESSAGES_MARK = Symbol.for("@flow-state-dev/workforce/sends-messages");
 
-/** The client-only component a received message is drawn by. **Pinned**: an app's renderer is keyed by it. */
-export const RECEIVED_MESSAGE_COMPONENT = "workforce:received";
+/** The client-only data record a received message is drawn from. **Pinned**: an app's renderer is keyed by it. */
+export const RECEIVED_MESSAGE_DATA_TYPE = "workforce:received";
 
 // FIX-2240.
 /** Server-written session state: the messages a session sent that haven't landed or ended yet, with the request that sent each. */

@@ -60,6 +60,12 @@ export function testItems(items: readonly RuntimeItem[]) {
         }
       );
     },
+    data(dataType?: string): Array<Extract<OutputItem, { type: "data" }>> {
+      return allItems.filter(
+        (item): item is Extract<OutputItem, { type: "data" }> =>
+          item.type === "data" && (dataType === undefined || item.dataType === dataType)
+      );
+    },
     sideChain(): RuntimeItem[] {
       return allItems.filter((item) => item.provenance.phase === "sideChain");
     },

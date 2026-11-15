@@ -128,12 +128,12 @@ describe("a task's brief, which the board's list read leaves out", () => {
     const item = {
       id: "task-change:board/task_1",
       requestId: "req_1",
-      type: "component",
-      component: "task-change",
+      type: "data",
+      dataType: "task-change",
       ts: 1,
       itemIndex: 0,
       status: "completed",
-      data: { collectionId: "tasks", taskId: "task_1", kind: "added", task: stored },
+      value: { collectionId: "tasks", taskId: "task_1", kind: "added", task: stored },
     };
     let listed: Record<string, unknown> = { id: "task_1", title: stored.title, goal: stored.goal, assignee: stored.assignee, status: "in_progress", attempts: 1 };
     const subscriptions: Array<(notice: unknown) => void> = [];
@@ -174,12 +174,12 @@ describe("a task retried after its run ended", () => {
     const change = (task: Record<string, unknown>, at: number) => ({
       id: `task-change:board/task_1#${at}`,
       requestId: `req_${at}`,
-      type: "component",
-      component: "task-change",
+      type: "data",
+      dataType: "task-change",
       ts: at,
       itemIndex: 0,
       status: "completed",
-      data: { collectionId: "tasks", taskId: "task_1", kind: "updated", task },
+      value: { collectionId: "tasks", taskId: "task_1", kind: "updated", task },
     });
     const history: Record<string, unknown[]> = { wks_cos: [change(failed, 1)], run_1: [change(failed, 1)], run_2: [change(fixed, 2)] };
     const { output: _, error: __, ...fixedListed } = fixed;

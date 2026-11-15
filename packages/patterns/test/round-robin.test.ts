@@ -430,7 +430,7 @@ describe("round-robin", () => {
 
     expect(result.error).toBeNull();
     const taskChanges = result.items.filter(
-      (item) => item.type === "component" && (item as any).component === "task-change",
+      (item) => item.type === "data" && (item as any).dataType === "task-change",
     );
     expect(taskChanges.length).toBeGreaterThanOrEqual(4);
   });

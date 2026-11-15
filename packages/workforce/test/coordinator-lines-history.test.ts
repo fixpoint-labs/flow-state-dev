@@ -69,11 +69,11 @@ describe("the coordinator turn's history", () => {
     const post = (payload: string, requestId: string) => ({ ...message("user", payload), requestId }) as SessionItem;
     const record = (messageRequestId: string, by: string, workers: string[]) =>
       ({
-        type: "component",
+        type: "data",
         requestId: messageRequestId,
         payload: {
-          component: "coordinator-route",
-          data: { messageRequestId, round: 0, by, delegates: workers.map((worker) => ({ worker, outcome: "delivered" })) }
+          dataType: "coordinator-route",
+          value: { messageRequestId, round: 0, by, delegates: workers.map((worker) => ({ worker, outcome: "delivered" })) }
         }
       }) as unknown as SessionItem;
     const items = [post("file it", "r1"), record("r1", "evaluated", ["eng.em"]), post("everyone?", "r2"), record("r2", "everyone", ["a", "b"]), post("hire", "r3"), record("r3", "judgment", [])];
@@ -88,6 +88,20 @@ describe("the coordinator turn's history", () => {
       history[1],
       { role: "assistant", content: "Handed this message to a, b by its routing, with no turn of mine. Their answers land in this conversation under their names." },
       history[2]
+    ]);
+  });
+
+  it("reads a routing record an older conversation stored as a component item, so its routed post still reads as handled", () => {
+    const post = { ...message("user", "file it"), requestId: "r1" } as SessionItem;
+    const legacy = {
+      type: "component",
+      requestId: "r1",
+      payload: { component: "coordinator-route", data: { messageRequestId: "r1", round: 0, by: "evaluated", delegates: [{ worker: "eng.em", outcome: "delivered" }] } }
+    } as unknown as SessionItem;
+    const history = [{ role: "user" as const, content: "file it" }];
+    expect(coordinatorHistory(history, [post, legacy], NAMES)).toEqual([
+      history[0],
+      { role: "assistant", content: "Handed this message to eng.em by its routing, with no turn of mine. Its answer lands in this conversation under its name." }
     ]);
   });
 

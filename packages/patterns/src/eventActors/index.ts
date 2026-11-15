@@ -406,10 +406,10 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         for (const entry of toAppend) {
           const wsState = workspaceRef.state as EventActorsWorkspaceState;
           await workspaceRef.patchState({ entries: [...wsState.entries, entry] });
-          ctx.emit.component(
+          ctx.emit.data(
             "rb-entry",
             { type: entry.type, topic: entry.topic, body: entry.body },
-            { key: `entry-${wsState.entries.length}` }
+            { key: `entry-${wsState.entries.length}`, itemVisibility: { client: true, history: false } }
           );
         }
 

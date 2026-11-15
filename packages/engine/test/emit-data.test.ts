@@ -1,0 +1,155 @@
+/**
+ * `ctx.emit.data` / `ctx._emitDataAwaited`: the `data` item, a record of
+ * something that happened, as opposed to a `component` (generative UI).
+ *
+ * What these pin, and why each matters:
+ *  - the item carries `dataType` + `value` (not `data`, which would read
+ *    `item.data.data`);
+ *  - a keyed record upserts like a keyed component, so a snapshot record
+ *    (`task-change`) holds one entry per key, latest value;
+ *  - it is persisted by default — a record that vanished on reload would not
+ *    be a record;
+ *  - visibility is opt-in: an un-stamped record never reaches a client
+ *    snapshot or model history, and a stamped one does;
+ *  - the awaited emitter rejects when the emission fails, which is the whole
+ *    reason a routing decision or a failure report uses it.
+ */
+import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import type { DataItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
+import { z } from "zod";
+import { describe, expect, it } from "vitest";
+import { createExecutionContext, runAction } from "../src";
+import { createInMemoryStores, createResponseEmitter } from "../src/host";
+import { snapshotItemsOf } from "../src/routes/route-utils";
+import { itemToLLMMessages } from "../src/context/history";
+
+async function run(execute: (ctx: Parameters<Parameters<typeof handler>[0]["execute"]>[1]) => Promise<void> | void) {
+  const stores = createInMemoryStores();
+  const flow = defineFlow({
+    kind: "emit-data",
+    actions: {
+      run: handler({
+        name: "emit-data-block",
+        inputSchema: z.object({}),
+        outputSchema: z.null(),
+        execute: async (_input, ctx) => {
+          await execute(ctx);
+          return null;
+        }
+      })
+    }
+  })();
+  const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
+    flow,
+    actionName: "run",
+    input: {},
+    userId: "u",
+    sessionId: "s",
+    stores,
+    runtimeConfig: {}
+  });
+  const requestId = result.items[0]?.requestId ?? "";
+  const stored = ((await stores.request.get(requestId))?.items ?? []) as RuntimeItem[];
+  return { result, stored };
+}
+
+const dataItems = (items: readonly RuntimeItem[]) => items.filter((item): item is DataItem & RuntimeItem => item.type === "data");
+
+describe("ctx.emit.data", () => {
+  it("emits a persisted data item carrying dataType and value", async () => {
+    const { result, stored } = await run((ctx) => {
+      ctx.emit.data("routing", { to: "billing" });
+    });
+    expect(result.error).toBeUndefined();
+    const [item] = dataItems(stored);
+    expect(item).toMatchObject({ type: "data", dataType: "routing", value: { to: "billing" }, status: "completed" });
+    expect(item!.transient).toBeUndefined();
+    expect(dataItems(stored)).toHaveLength(1);
+    // No component was emitted for it: one mechanism, not two.
+    expect(stored.some((i) => i.type === "component")).toBe(false);
+  });
+
+  it("upserts on a key: one entry per key, the latest value replacing (not merging) the first", async () => {
+    const { stored } = await run((ctx) => {
+      ctx.emit.data("task-change", { a: 1, b: 2 }, { key: "k" });
+      ctx.emit.data("task-change", { a: 99 }, { key: "k" });
+      ctx.emit.data("task-change", { a: 3 }, { key: "other" });
+    });
+    const items = dataItems(stored);
+    expect(items).toHaveLength(2);
+    const keyed = items.find((i) => i.key === "k");
+    expect(keyed?.id).toBe("item_data_keyed:k");
+    expect(keyed?.value).toEqual({ a: 99 });
+  });
+
+  it("keeps two un-keyed records apart", async () => {
+    const { stored } = await run((ctx) => {
+      ctx.emit.data("turn", { n: 1 });
+      ctx.emit.data("turn", { n: 2 });
+    });
+    expect(dataItems(stored).map((i) => i.value)).toEqual([{ n: 1 }, { n: 2 }]);
+  });
+
+  it("is stream-only when asked: `transient: true` keeps it out of the stored record", async () => {
+    const { result, stored } = await run((ctx) => {
+      ctx.emit.data("progress", { at: 1 }, { transient: true });
+    });
+    expect(dataItems(result.items as RuntimeItem[])).toHaveLength(1);
+    expect(dataItems(stored)).toHaveLength(0);
+  });
+
+  it("reaches a client snapshot only when it opts in", async () => {
+    const { stored } = await run((ctx) => {
+      ctx.emit.data("private", { secret: true });
+      ctx.emit.data("shown", { ok: true }, { itemVisibility: { client: true, history: false } });
+    });
+    const snapshot = snapshotItemsOf(stored) as RuntimeItem[];
+    expect(dataItems(snapshot).map((i) => i.dataType)).toEqual(["shown"]);
+    // An explicit type filter is a reader asking for records by type, and sees both.
+    expect(dataItems(snapshotItemsOf(stored, new Set(["data"])) as RuntimeItem[])).toHaveLength(2);
+  });
+
+  it("reaches model history only when it opts in", async () => {
+    const { stored } = await run((ctx) => {
+      ctx.emit.data("hidden", { n: 1 });
+      ctx.emit.data("remembered", { n: 2 }, { itemVisibility: { client: false, history: true } });
+    });
+    const [hidden, remembered] = dataItems(stored);
+    expect(itemToLLMMessages(hidden!, stored)).toEqual([]);
+    expect(itemToLLMMessages(remembered!, stored)).toEqual([{ role: "assistant", content: '[remembered] {"n":2}' }]);
+  });
+});
+
+describe("ctx._emitDataAwaited", () => {
+  it("resolves once the record is emitted", async () => {
+    const { result, stored } = await run(async (ctx) => {
+      await ctx._emitDataAwaited!("route", { to: "a" }, { key: "r" });
+    });
+    expect(result.error).toBeUndefined();
+    expect(dataItems(stored)).toMatchObject([{ dataType: "route", value: { to: "a" }, key: "r" }]);
+  });
+
+  it("rejects when the emission fails, instead of swallowing it", async () => {
+    const flow = defineFlow({
+      kind: "emit-data-reject",
+      actions: { run: { inputSchema: z.object({}), block: handler({ name: "b", inputSchema: z.object({}), outputSchema: z.null(), execute: () => null }) } }
+    })();
+    const response = createResponseEmitter({ requestId: "req_reject", now: () => 1 });
+    const ctx = await createExecutionContext({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      requestId: "req_reject",
+      sessionId: "s",
+      userId: "u",
+      stores: createInMemoryStores(),
+      response
+    });
+    response.emitItemAdded = async () => {
+      throw new Error("store unavailable");
+    };
+    await expect(ctx._emitDataAwaited!("route", { to: "a" })).rejects.toThrow("store unavailable");
+  });
+});

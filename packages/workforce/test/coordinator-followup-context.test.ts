@@ -249,7 +249,7 @@ async function openDesk(routing: "best-fit" | "round-robin", options: DeskOption
 
   /** The routing records in Alice's conversation. */
   const records = async () =>
-    (await itemsOf(sessionId)).filter((item) => item.type === "component" && item.component === "coordinator-route").map((item) => item.data);
+    (await itemsOf(sessionId)).filter((item) => item.type === "data" && item.dataType === "coordinator-route").map((item) => item.value);
 
   /** The conversation's post rows, read from the store. */
   const postRows = async (): Promise<any[]> =>

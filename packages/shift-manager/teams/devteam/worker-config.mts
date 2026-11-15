@@ -41,8 +41,8 @@ export const INSPECT_ENTRY = "inspect";
  */
 export const ASK_ENTRY = "askToFile";
 
-/** The component item that entry puts its facts on, for a caller reading the stream. */
-export const WORKER_FACTS_COMPONENT = "devforce-worker-facts";
+/** The data item that entry puts its facts on, for a caller reading the stream. */
+export const WORKER_FACTS_DATA_TYPE = "devforce-worker-facts";
 
 /**
  * What a worker on either flow configures.
@@ -163,7 +163,7 @@ export function defineReadOwnFacts(workerOfTurn: WorkerOf) {
         skillNames: skills.map((skill) => skill.name),
         skillBodies: Object.fromEntries(skills.map((skill) => [skill.name, skill.skillMd])),
       };
-      ctx.emit.component(WORKER_FACTS_COMPONENT, facts, { transient: true });
+      ctx.emit.data(WORKER_FACTS_DATA_TYPE, facts, { transient: true, itemVisibility: { client: true, history: false } });
       return facts;
     },
   });

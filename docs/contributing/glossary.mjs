@@ -168,6 +168,12 @@ export const ENTRIES = [
     decision: "Owner, 2026-11-06",
     retires: [],
   },
+  {
+    term: "Data item",
+    means: "A stream item that records something that happened at a point in the conversation (`ctx.emit.data(dataType, value)`, `DataItem`): a routing decision, a task change, a received message. For readers, not display; it reaches a client or model history only when it opts in. A `component` item is generative UI only.",
+    decision: "Owner, 2026-11-14 (FIX-2738): the payload is `value`; `record`, `fact` and `payload` were rejected as names",
+    retires: [],
+  },
 
   // Dispatch, wait, ask and hand-off ----------------------------------------------------------
   {

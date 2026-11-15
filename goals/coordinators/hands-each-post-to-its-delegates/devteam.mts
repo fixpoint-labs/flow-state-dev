@@ -214,9 +214,9 @@ async function recordOf(
 /** The `coordinator-route` records for one post. */
 async function routingOf(who: Connected, sessionId: string, messageRequestId: string | null): Promise<Array<Record<string, any>>> {
   if (messageRequestId === null) return [];
-  return (await who.routes.items(sessionId, "component"))
-    .filter((i) => (i as { component?: string }).component === "coordinator-route")
-    .map((i) => i.data as Record<string, any>)
+  return (await who.routes.items(sessionId, "data"))
+    .filter((i) => (i as { dataType?: string }).dataType === "coordinator-route")
+    .map((i) => i.value as Record<string, any>)
     .filter((d) => d?.messageRequestId === messageRequestId);
 }
 

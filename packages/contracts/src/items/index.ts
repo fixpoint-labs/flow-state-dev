@@ -19,6 +19,7 @@ export type {
   ComponentItem,
   ContainerItem,
   ContinuationItem,
+  DataItem,
   ErrorItem,
   GeneratorStepItem,
   InvalidationItem,

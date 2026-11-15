@@ -49,7 +49,7 @@ const USER_ID = "u_recorder_failure";
 /** The user's cell in the default org, where every flow keeps their user data. */
 const USER_ID_CELL = `${USER_ID}:~org:${DEFAULT_ORG_ID}`;
 const ANNOUNCE_ERROR = "change announcement blew up";
-const RECORDER_FAILURE_COMPONENT = "task-board-recorder-failure";
+const RECORDER_FAILURE_DATA_TYPE = "task-board-recorder-failure";
 
 const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) });
 
@@ -209,15 +209,15 @@ async function dispatchAndRunChild(kind: string, onError: "skip" | "fail") {
 }
 
 function recorderFailureEntries(items: readonly unknown[]): Array<{
-  data: Record<string, unknown>;
+  value: Record<string, unknown>;
 }> {
   return items
     .filter(
       (i) =>
-        (i as { type?: string }).type === "component" &&
-        (i as { component?: string }).component === RECORDER_FAILURE_COMPONENT
+        (i as { type?: string }).type === "data" &&
+        (i as { dataType?: string }).dataType === RECORDER_FAILURE_DATA_TYPE
     )
-    .map((i) => i as { data: Record<string, unknown> });
+    .map((i) => i as { value: Record<string, unknown> });
 }
 
 describe("FIX-963: a recorder failure on a dispatched task fails the child run", () => {
@@ -242,17 +242,17 @@ describe("FIX-963: a recorder failure on a dispatched task fails the child run",
       // once on the stricter one.
       const entries = recorderFailureEntries(child.items);
       expect(entries).toHaveLength(1);
-      expect(entries[0]?.data).toMatchObject({
+      expect(entries[0]?.value).toMatchObject({
         taskId: "t1",
         recorder: "complete",
         verdict: "undetermined",
       });
       // Never the confident wrong answer. On a row with no nonce the board
       // genuinely does not know, and says so.
-      expect(entries[0]?.data.verdict).not.toBe("committed");
+      expect(entries[0]?.value.verdict).not.toBe("committed");
 
       // And the entry survives the run rather than living on a trace.
-      expect(entries[0]?.data).toMatchObject({ collectionId: `${kind}-ledger` });
+      expect(entries[0]?.value).toMatchObject({ collectionId: `${kind}-ledger` });
     }
   );
 

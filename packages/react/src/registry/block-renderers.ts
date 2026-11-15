@@ -2,7 +2,8 @@
  * Renderer registry types used by FlowProvider and item renderers.
  *
  * Renderers are keyed by item type. For `component` and `container` items,
- * a secondary lookup by `item.component` resolves a specific component.
+ * a secondary lookup by `item.component` resolves a specific component; for
+ * `data` items, a lookup by `item.dataType`.
  *
  * Any slot accepts `false` to explicitly suppress rendering (overrides
  * built-in fallbacks).
@@ -25,7 +26,7 @@ export type BlockComponentType = ComponentType<any>;
  * Canonical renderer registry shape.
  *
  * - Class-based item types (`message`, `reasoning`, etc.) are resolved directly.
- * - `component` and `container` use a secondary keyed map.
+ * - `component`, `container` and `data` use a secondary keyed map.
  * - Pass `false` to explicitly suppress rendering for a type.
  */
 export type RendererRegistry = {
@@ -44,10 +45,16 @@ export type RendererRegistry = {
   suspension?: BlockComponentType | false;
   component?: Record<string, BlockComponentType | false>;
   container?: Record<string, BlockComponentType | false>;
+  /**
+   * Renderers for `data` items, keyed by `dataType`. A data item is a record,
+   * not UI: one with no renderer here renders nothing.
+   */
+  data?: Record<string, BlockComponentType | false>;
 };
 
 /**
- * Resolves a renderer for a given item type and optional component key.
+ * Resolves a renderer for a given item type and optional component key (a
+ * `data` item's `dataType`).
  *
  * Returns:
  * - `BlockComponentType` — custom renderer to use
@@ -69,6 +76,10 @@ export function resolveRenderer(
 
   if (itemType === "container" && componentKey !== undefined) {
     return renderers.container?.[componentKey];
+  }
+
+  if (itemType === "data" && componentKey !== undefined) {
+    return renderers.data?.[componentKey];
   }
 
   return (renderers as Record<string, BlockComponentType | false | undefined>)[itemType];

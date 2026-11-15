@@ -162,7 +162,7 @@ describe("a coordinator's panel", () => {
       session({
         items: [
           line("1", "from the page"),
-          { id: "record", type: "component", component: "coordinator-route", data: { by: "evaluated" } },
+          { id: "record", type: "data", dataType: "coordinator-route", value: { by: "evaluated" } },
           line("2", "from a delegate", { agentName: "support.devices" }),
           { id: "noise", type: "message", role: "assistant", transient: true, content: [{ type: "text", text: "thinking" }] },
           line("3", "Nobody took this post: no delegate can be reached.", { role: "assistant" }),
@@ -212,7 +212,7 @@ describe("a coordinator's panel", () => {
 
   it("shows no lines and still posts, when the session holds no kept message", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
-    panel("coordinator", session({ items: [{ id: "x", type: "component", component: "coordinator-route", data: {} }], sendAction }));
+    panel("coordinator", session({ items: [{ id: "x", type: "data", dataType: "coordinator-route", value: {} }], sendAction }));
     expect(screen.queryAllByTestId("coordinator-line")).toHaveLength(0);
     await type("Post to this coordinator", "hello");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));

@@ -59,12 +59,12 @@ describe("a teammate's finished task reads its answer", () => {
     const copy = {
       id: "task-change:board/task_r#3",
       requestId: "req_3",
-      type: "component",
-      component: "task-change",
+      type: "data",
+      dataType: "task-change",
       ts: 3,
       itemIndex: 0,
       status: "completed",
-      data: { collectionId: "tasks", taskId: "task_r", kind: "metadata_changed", task: doneRow(REVIEW) },
+      value: { collectionId: "tasks", taskId: "task_r", kind: "metadata_changed", task: doneRow(REVIEW) },
     };
     const history: Record<string, unknown[]> = { wks_cos: [copy] };
     const client = {

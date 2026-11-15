@@ -888,7 +888,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     const folded = turn.historySummarized(ctx) ? await foldedRequestIds(ctx, { keepPending }) : new Set<string>();
     const items = [
       ...ctx.session.items.all({ itemTypes: ["message"], itemVisibility: { client: true, history: true } }),
-      ...ctx.session.items.all({ itemTypes: ["component"] })
+      // Routing records; `component` for a conversation stored before they were data items (`routeRecordOf`).
+      ...ctx.session.items.all({ itemTypes: ["data", "component"] })
     ];
     return coordinatorHistory(
       history,

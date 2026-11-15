@@ -23,8 +23,8 @@ import { supervisorInputSchema, supervisorStateSchema } from "../../src/supervis
 
 type TaskChangeItem = {
   type?: string;
-  component?: string;
-  data?: {
+  dataType?: string;
+  value?: {
     collectionId?: string;
     taskId?: string;
     kind?: string;
@@ -44,19 +44,19 @@ type TaskChangeItem = {
 
 type MetaItem = {
   type?: string;
-  component?: string;
-  data?: { collectionId?: string; status?: string };
+  dataType?: string;
+  value?: { collectionId?: string; status?: string };
 };
 
 function taskChanges(items: unknown[]): TaskChangeItem[] {
   return (items as TaskChangeItem[]).filter(
-    (i) => i.type === "component" && i.component === "task-change" && i.data?.kind === "added",
+    (i) => i.type === "data" && i.dataType === "task-change" && i.value?.kind === "added",
   );
 }
 
 function metaItems(items: unknown[]): MetaItem[] {
   return (items as MetaItem[]).filter(
-    (i) => i.type === "component" && i.component === "task-board-meta",
+    (i) => i.type === "data" && i.dataType === "task-board-meta",
   );
 }
 
@@ -90,7 +90,7 @@ describe("createSeedTasksFromPlan", () => {
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
     expect(changes).toHaveLength(2);
-    expect(changes.map((c) => c.data?.taskId)).toEqual(["step-1", "step-2"]);
+    expect(changes.map((c) => c.value?.taskId)).toEqual(["step-1", "step-2"]);
   });
 
   it("uses default 'task' prefix when idPrefix is omitted", async () => {
@@ -108,7 +108,7 @@ describe("createSeedTasksFromPlan", () => {
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
     expect(changes).toHaveLength(1);
-    expect(changes[0].data?.taskId).toBe("task-1");
+    expect(changes[0].value?.taskId).toBe("task-1");
   });
 
   it("maps planner t.context → task.context, not task.input (FIX-827 D1)", async () => {
@@ -127,8 +127,8 @@ describe("createSeedTasksFromPlan", () => {
     const changes = taskChanges(result.items);
     // `context` is first-class now — it lands on task.context and no longer
     // collapses into the generic typed `input` payload.
-    expect(changes[0]?.data?.task?.context).toBe("extra context");
-    expect(changes[0]?.data?.task?.input).toBeUndefined();
+    expect(changes[0]?.value?.task?.context).toBe("extra context");
+    expect(changes[0]?.value?.task?.input).toBeUndefined();
   });
 
   it("maps planner t.title → task.title (FIX-827)", async () => {
@@ -145,7 +145,7 @@ describe("createSeedTasksFromPlan", () => {
 
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
-    expect(changes[0]?.data?.task?.title).toBe("Short label");
+    expect(changes[0]?.value?.task?.title).toBe("Short label");
   });
 
   it("treats null title/context as absent (decomposer nullable shape)", async () => {
@@ -162,8 +162,8 @@ describe("createSeedTasksFromPlan", () => {
 
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
-    expect(changes[0]?.data?.task?.title).toBeUndefined();
-    expect(changes[0]?.data?.task?.context).toBeUndefined();
+    expect(changes[0]?.value?.task?.title).toBeUndefined();
+    expect(changes[0]?.value?.task?.context).toBeUndefined();
   });
 
   it("explicit t.input is preserved on task.input independent of context", async () => {
@@ -180,8 +180,8 @@ describe("createSeedTasksFromPlan", () => {
 
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
-    expect(changes[0]?.data?.task?.input).toBe("explicit");
-    expect(changes[0]?.data?.task?.context).toBe("support text");
+    expect(changes[0]?.value?.task?.input).toBe("explicit");
+    expect(changes[0]?.value?.task?.context).toBe("support text");
   });
 
   it("inputDefault='goal' always sets input to t.goal (parallelTasks compat)", async () => {
@@ -199,7 +199,7 @@ describe("createSeedTasksFromPlan", () => {
 
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
-    expect(changes[0]?.data?.task?.input).toBe("Research topic A");
+    expect(changes[0]?.value?.task?.input).toBe("Research topic A");
   });
 
   it("inputDefault='goal' takes priority over t.context (parallelTasks compat)", async () => {
@@ -217,7 +217,7 @@ describe("createSeedTasksFromPlan", () => {
 
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
-    expect(changes[0]?.data?.task?.input).toBe("Research topic A");
+    expect(changes[0]?.value?.task?.input).toBe("Research topic A");
   });
 
   it("inputDefault='goal' is overridden by explicit t.input", async () => {
@@ -235,7 +235,7 @@ describe("createSeedTasksFromPlan", () => {
 
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
-    expect(changes[0]?.data?.task?.input).toBe("custom");
+    expect(changes[0]?.value?.task?.input).toBe("custom");
   });
 
   it("stamps maxAttemptsPerTask on each task", async () => {
@@ -256,8 +256,8 @@ describe("createSeedTasksFromPlan", () => {
 
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
-    expect(changes[0]?.data?.task?.maxAttempts).toBe(3);
-    expect(changes[1]?.data?.task?.maxAttempts).toBe(5);
+    expect(changes[0]?.value?.task?.maxAttempts).toBe(3);
+    expect(changes[1]?.value?.task?.maxAttempts).toBe(5);
   });
 
   it("maps dependencies → deps", async () => {
@@ -277,7 +277,7 @@ describe("createSeedTasksFromPlan", () => {
 
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
-    expect(changes[1]?.data?.task?.deps).toEqual(["a"]);
+    expect(changes[1]?.value?.task?.deps).toEqual(["a"]);
   });
 
   it("forwards numeric priority only (string drops)", async () => {
@@ -297,8 +297,8 @@ describe("createSeedTasksFromPlan", () => {
 
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
-    expect(changes[0]?.data?.task?.priority).toBe(1);
-    expect(changes[1]?.data?.task?.priority).toBeUndefined();
+    expect(changes[0]?.value?.task?.priority).toBe(1);
+    expect(changes[1]?.value?.task?.priority).toBeUndefined();
   });
 
   it("forwards assignee when present", async () => {
@@ -315,7 +315,7 @@ describe("createSeedTasksFromPlan", () => {
 
     expect(result.error).toBeNull();
     const changes = taskChanges(result.items);
-    expect(changes[0]?.data?.task?.assignee).toBe("agent-a");
+    expect(changes[0]?.value?.task?.assignee).toBe("agent-a");
   });
 
   it("does not call createTasks for empty tasks array", async () => {
@@ -407,7 +407,7 @@ describe.each(schemaFamilies)(
       expect(result.error).toBeNull();
       const metas = metaItems(result.items);
       expect(metas.length).toBeGreaterThanOrEqual(1);
-      const planningMeta = metas.find((m) => m.data?.status === "planning");
+      const planningMeta = metas.find((m) => m.value?.status === "planning");
       expect(planningMeta).toBeDefined();
     });
 
@@ -433,8 +433,8 @@ describe.each(schemaFamilies)(
       expect(result.error).toBeNull();
       const changes = taskChanges(result.items);
       expect(changes).toHaveLength(2);
-      expect(changes[0]?.data?.taskId).toBe("t1");
-      expect(changes[1]?.data?.taskId).toBe("t2");
+      expect(changes[0]?.value?.taskId).toBe("t1");
+      expect(changes[1]?.value?.taskId).toBe("t2");
     });
 
     it("forwards idPrefix to seed (P&E 'step', supervisor default 'task')", async () => {
@@ -457,7 +457,7 @@ describe.each(schemaFamilies)(
       expect(result.error).toBeNull();
       const changes = taskChanges(result.items);
       expect(changes).toHaveLength(1);
-      expect(changes[0]?.data?.taskId).toBe("step-1");
+      expect(changes[0]?.value?.taskId).toBe("step-1");
     });
 
     it("completes without error (state transitions verified by pattern tests)", async () => {

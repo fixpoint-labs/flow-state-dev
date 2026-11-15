@@ -354,9 +354,9 @@ await runGoal(async (failures) => {
       const via = CONTROL === "board-flow" ? filerKind : owner;
       const stream = await call("GET", [via, "requests", link.requestId, "stream"]);
       const frames = stream.status === 200 ? sseFrames(stream.text) : [];
-      const items = frames.map((frame) => frame.item).filter((item) => item?.type === "component");
-      const changes = items.filter((item) => item.component === "task-change" && item.data?.taskId === f.taskId);
-      const marker = items.find((item) => item.component === MARKER_COMPONENT)?.data?.marker as string | undefined;
+      const items = frames.map((frame) => frame.item);
+      const changes = items.filter((item) => item?.type === "data" && item.dataType === "task-change" && item.value?.taskId === f.taskId);
+      const marker = items.find((item) => item?.type === "component" && item.component === MARKER_COMPONENT)?.data?.marker as string | undefined;
       const proof = proofOf(f.taskId, r!.attempts);
 
       if (f.worker.id === lone.id) {
@@ -373,7 +373,7 @@ await runGoal(async (failures) => {
         failures.push(`stream: ${f.taskId}'s run stream answered ${stream.status} through "${via}"`);
         continue;
       }
-      const last = changes.at(-1)?.data?.task as (Task & Record<string, unknown>) | undefined;
+      const last = changes.at(-1)?.value?.task as (Task & Record<string, unknown>) | undefined;
       judge("stream", f.taskId, last?.run, last?.attempts);
       if (last !== undefined && "claimedBy" in last) failures.push(`stream: ${f.taskId}'s change item carries claimedBy`);
     }

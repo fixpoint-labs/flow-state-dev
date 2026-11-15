@@ -17,6 +17,9 @@
  *   inherit visibility from `item.itemVisibility`. Absent
  *   `itemVisibility` falls back to `{ client: true, history: true }` —
  *   keeps handler emits like `ctx.emit.message("hi")` ergonomic.
+ * - `data` items (records, not UI) use `item.itemVisibility` when present
+ *   and otherwise reach nothing: `{ client: false, history: false }`. A
+ *   record goes to a client or a model only when its emitter opts it in.
  * - All other (structural) types resolve to `{ client: true, history: false }`.
  */
 import type { RuntimeItem } from "./internal";
@@ -35,6 +38,7 @@ const TRACE_TYPES = new Set<string>([
   "generator_step",
 ]);
 
+const DATA_DEFAULT: ItemVisibility = { client: false, history: false };
 const CONVERSATIONAL_DEFAULT: ItemVisibility = { client: true, history: true };
 const STRUCTURAL_DEFAULT: ItemVisibility = { client: true, history: false };
 const TRACE_DEFAULT: ItemVisibility = { client: false, history: false };
@@ -45,6 +49,8 @@ export function resolveItemVisibility(item: RuntimeItem): ItemVisibility {
   if (CONVERSATIONAL_TYPES.has(item.type)) {
     return item.itemVisibility ?? CONVERSATIONAL_DEFAULT;
   }
+
+  if (item.type === "data") return item.itemVisibility ?? DATA_DEFAULT;
 
   return STRUCTURAL_DEFAULT;
 }

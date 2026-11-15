@@ -82,7 +82,7 @@ export const HELPER_B = "helper-b";
 export const HERALD = "herald";
 /** A coordinator Alice hires that hands every line on in turn (`routing: round-robin`). */
 export const RR_LEAD = "rr-lead";
-/** The client item a received message lands as. */
+/** The data item a received message lands as. */
 const RECEIVED = "workforce:received";
 /** The DevTeam coordinators' model (the Shift Coordinator's file), for the round-robin hire. */
 const COORDINATOR_MODEL = "anthropic/claude-haiku-5-5";
@@ -183,10 +183,10 @@ export interface Received {
 
 /** Every received-message item in one session, in stored order. */
 export async function receivedIn(who: Connected, sessionId: string): Promise<Received[]> {
-  return (await who.routes.items(sessionId, "component"))
-    .filter((i) => (i as { component?: unknown }).component === RECEIVED)
+  return (await who.routes.items(sessionId, "data"))
+    .filter((i) => (i as { dataType?: unknown }).dataType === RECEIVED)
     .map((i) => {
-      const data = (i.data ?? {}) as Record<string, unknown>;
+      const data = (i.value ?? {}) as Record<string, unknown>;
       return {
         itemId: i.id,
         requestId: i.requestId,
