@@ -90,7 +90,7 @@ describe("the coding phase's checks on a changed run", () => {
 
   it("puts why the last attempt stopped in the next brief", async () => {
     const run = { task: { goal: "Fix the build." }, answers: [], feedback: "`node check.mjs` exited 3." } as unknown as PromptRunContext;
-    expect(await phase.buildPrompt(run)).toContain("Why the last attempt stopped:\n\n`node check.mjs` exited 3.");
+    expect(await phase.buildPrompt(run)).toContain("# Why the last attempt stopped\n\n`node check.mjs` exited 3.");
     expect(await phase.buildPrompt({ ...run, feedback: undefined } as PromptRunContext)).not.toContain("Why the last attempt stopped");
   });
 });

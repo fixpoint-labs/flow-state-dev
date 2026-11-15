@@ -184,17 +184,9 @@ export function claudeCodeHarness({ mcpTools, ...feeds }: HarnessFeeds): Harness
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob"],
     permissionMode: "acceptEdits",
-    // A string replaces Claude Code's preset (goals/claude-code-harness/it-keeps-its-own-plan).
-    systemPrompt: {
-      type: "preset",
-      preset: "claude_code",
-      append:
-        "You are working in a checkout the Lab placed you in for one task. " +
-        "Do what your instructions and your brief ask, and keep to that task. " +
-        "When the work is done, commit it with git: the task is finished only when its commit is there. " +
-        "End with a short report: what you changed, and what you checked (the commands or tests you ran and what they showed), " +
-        "or what you could not check and why.",
-    },
+    // A string replaces Claude Code's preset (goals/claude-code-harness/it-keeps-its-own-plan). The run's
+    // terms and the report it owes are in its brief (harness-manager's `codingBrief`), which every harness reads.
+    systemPrompt: { type: "preset", preset: "claude_code" },
   } as never) as unknown as HarnessBlock;
 }
 

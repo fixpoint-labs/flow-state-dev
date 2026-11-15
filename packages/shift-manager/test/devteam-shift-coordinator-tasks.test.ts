@@ -381,6 +381,8 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(run.prompt).toContain(goal);
     expect(run.prompt).toContain("# Your instructions");
     expect(run.prompt).toContain("Answer in your last message");
+    // No check follows an answer run, so its brief asks for no report of checks.
+    expect(run.prompt).not.toContain("# Your report");
     expect(run.prompt).not.toContain(marker);
     // Read-only, and done anyway: an answer, no commit, judged once.
     expect((await storedTask(lab, taskId))?.output).toMatchObject({

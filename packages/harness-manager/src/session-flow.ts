@@ -55,7 +55,9 @@
  * With `verify`, a turn the harness finished also runs the host's checks in
  * the session's working directory (`commandCheck`'s runner) and records them
  * on the turn. A red check is reported, never a failed turn: the person is
- * there, and the next turn is theirs.
+ * there, and the next turn is theirs. With `verify.inBrief`, every turn's
+ * prompt also ends with those commands, from the same list, so the agent can
+ * run them first and name each in its report.
  *
  * When the harness step ends, however it ended, the flow also records what
  * the turn spent on its record, inside the turn so it lands before the
@@ -147,6 +149,7 @@ import { z } from "zod";
 import {
   assertCommandCheckOptions,
   commandCheckResultSchema,
+  commandChecksBriefSection,
   runCommandChecks,
   type CommandCheckOptions,
 } from "./command-check";
@@ -1102,29 +1105,43 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       return { removed: true, branchDeleted };
     },
   });
-  // With `issueSpec` on, a session that names an issue opens each turn with
-  // its spec until the harness confirms a conversation, which then has it.
-  // Read from the session's own checkout, provisioned here the way the
-  // harness's `cwd` feed does (it hands the same directory back).
+  // The turn's brief, around the person's words. With `issueSpec` on, a
+  // session that names an issue opens each turn with its spec until the
+  // harness confirms a conversation, which then has it; read from the
+  // session's own checkout, provisioned here the way the harness's `cwd` feed
+  // does (it hands the same directory back). With `verify.inBrief`, every turn
+  // ends with the checks `verify` runs after it, from the same list.
   const specOptions = issueSpecOptions(options.issueSpec);
-  const withIssueSpec =
-    specOptions === undefined
+  const checksInBrief = options.verify?.inBrief === true ? options.verify : undefined;
+  const withBrief =
+    specOptions === undefined && checksInBrief === undefined
       ? undefined
       : handler({
-          name: "issue-spec-brief",
+          name: "turn-brief",
           inputSchema: z.object({ prompt: z.string().min(1) }),
           execute: async (input, ctx): Promise<{ prompt: string }> => {
             const harnessCtx = ctx as unknown as HarnessCallbackContext;
             const state = harnessCtx.session.state as HarnessSessionState;
-            if (state.issue === undefined || state.binding?.confirmed != null) return { prompt: input.prompt };
-            const cwd = await feeds.cwd(harnessCtx);
-            const section = await readIssueSpecSection(cwd, state.issue, specOptions);
-            return { prompt: `${section}\n\n## The request\n\n${input.prompt}` };
+            let prompt = input.prompt;
+            if (specOptions !== undefined && state.issue !== undefined && state.binding?.confirmed == null) {
+              const cwd = await feeds.cwd(harnessCtx);
+              prompt = `${await readIssueSpecSection(cwd, state.issue, specOptions)}\n\n## The request\n\n${prompt}`;
+            }
+            if (checksInBrief !== undefined) {
+              const place = workPlaceOf(options.kind, harnessCtx);
+              // Provisioned as the harness's own cwd feed does, so a fresh session's directory exists before a resolver reads it.
+              const cwd = await feeds.cwd(harnessCtx);
+              const commands =
+                typeof checksInBrief.commands === "function" ? await checksInBrief.commands({ place, cwd }) : checksInBrief.commands;
+              const section = commandChecksBriefSection(commands, false);
+              if (section !== undefined) prompt = `${prompt}\n\n${section}`;
+            }
+            return { prompt };
           },
         });
-  // The brief provisions the checkout, so a failure there is the turn's
+  // The brief can provision the checkout, so a failure there is the turn's
   // failure too, recorded the way the harness's own is.
-  const brief = withIssueSpec?.rescue([{ block: recordFailure }]);
+  const brief = withBrief?.rescue([{ block: recordFailure }]);
   // FIX-2519. The person's files, handed to the harness beside the prompt, in
   // reference form: the harness reads their bytes itself. A harness that
   // declares what it takes refuses any other type itself, by name, before its
@@ -1389,7 +1406,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
       agent: HarnessBlock;
       titleFromPrompt: ReturnType<typeof handler>;
       recordTurnFailure: (error: Error, ctx: BlockContext) => Promise<never>;
-      /** The issue-spec brief, run once ahead of the harness step (never on a loop back). */
+      /** The turn's brief (the issue spec, the checks), run once ahead of the harness step (never on a loop back). */
       brief?: ReturnType<ReturnType<typeof handler>["rescue"]>;
       /** The person's files onto the run's input, once ahead of the harness step: a loop back continues a conversation that has them. */
       turnFiles: ReturnType<ReturnType<typeof handler>["rescue"]>;
