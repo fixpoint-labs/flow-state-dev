@@ -26,8 +26,8 @@
  *
  * Controls (each runs this file again with a patch applied as it loads):
  *   GOAL_CONTROL=running-session  publish on the session that wrote: a's 1 s signal must FAIL.
- *   GOAL_CONTROL=whole-topic      the lab views subscribe the whole session topic: a's 0-reads must FAIL.
- *   GOAL_CONTROL=tasks-only       the merged read's views subscribe `tasks` alone: a's plan-step signal must FAIL.
+ *   GOAL_CONTROL=whole-topic      the lab views hear the whole session topic (no `hears`): a's 0-reads must FAIL.
+ *   GOAL_CONTROL=tasks-only       the lab views hear `tasks` alone (no plan topics): a's plan-step signal must FAIL.
  */
 import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
@@ -90,19 +90,27 @@ const PATCHES: Record<string, ModulePatch[]> = {
   "running-session": [
     {
       module: "packages/orchestration/src/tasks/collection/get-or-create.ts",
-      from: String.raw`event\.task\.filer\?\.sessionId \?\? legacyFiler\?\.\(event\.task\) \?\? runningSession`,
+      from: String.raw`task\.filer\?\.sessionId \?\? legacyFiler\?\.\(task\) \?\? runningSession`,
       to: "runningSession"
     }
   ],
-  // The lab views subscribe the conversation's whole topic.
+  // The lab views hear every notice under the conversation's whole topic: the view's answer's `hears` is dropped.
   "whole-topic": [
-    { module: TEAMMATES, from: String.raw`BOARD_LEDGERS\.map\(\(resource\) => topic\.session\(sessionId, \{ resource \}\)\)`, to: "[topic.session(sessionId)]" },
-    { module: CLAUDE_CODE_STYLE, from: String.raw`BOARD_LEDGERS\.map\(\(resource\) => topic\.session\(sessionId, \{ resource \}\)\)`, to: "[topic.session(sessionId)]" }
+    { module: TEAMMATES, from: String.raw`return \{ value, topics, \.\.\.\(hears === undefined \? \{\} : \{ hears \}\) \};`, to: "return { value, topics };" },
+    { module: CLAUDE_CODE_STYLE, from: String.raw`, \.\.\.\(answer\.hears === undefined \? \{\} : \{ hears: answer\.hears \}\) \};`, to: " };" }
   ],
-  // The merged read's views subscribe `tasks` alone.
+  // The merged read's views hear `tasks` alone: the plan's topics and hearings are dropped.
   "tasks-only": [
-    { module: TEAMMATES, from: String.raw`const BOARD_LEDGERS = \["tasks", "plan"\] as const;`, to: 'const BOARD_LEDGERS = ["tasks"] as const;' },
-    { module: CLAUDE_CODE_STYLE, from: String.raw`const BOARD_LEDGERS = \["tasks", "plan"\] as const;`, to: 'const BOARD_LEDGERS = ["tasks"] as const;' }
+    {
+      module: TEAMMATES,
+      from: String.raw`return \{ value, topics, \.\.\.\(hears === undefined \? \{\} : \{ hears \}\) \};`,
+      to: 'return { value, topics: topics.filter((t) => t.resource !== "plan"), ...(hears === undefined ? {} : { hears: hears.filter((h) => h.topic.resource !== "plan") }) };'
+    },
+    {
+      module: CLAUDE_CODE_STYLE,
+      from: String.raw`topics: answer\.topics, \.\.\.\(answer\.hears === undefined \? \{\} : \{ hears: answer\.hears \}\) \};`,
+      to: 'topics: answer.topics.filter((t) => t.resource !== "plan"), ...(answer.hears === undefined ? {} : { hears: answer.hears.filter((h) => h.topic.resource !== "plan") }) };'
+    }
   ]
 };
 

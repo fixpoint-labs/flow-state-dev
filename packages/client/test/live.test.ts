@@ -23,7 +23,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createClient, type SubscribeOptions, type WireNotice, type WireTopic } from "../src";
 import { liveRead } from "../src/live/live-read";
-import { mayHold } from "@flow-state-dev/contracts/types/view-hearing";
+import { mayHold, type ViewHearing } from "@flow-state-dev/contracts/types/view-hearing";
 import { storageRootsOf } from "../src/live/paths";
 import { NOTICE_MAX_IDS } from "@flow-state-dev/contracts/types/push-delivery";
 
@@ -397,6 +397,37 @@ describe("liveRead: the subscription it holds", () => {
     expect(sub.held).toHaveLength(3);
     expect(sub.open().map((entry) => entry.topics)).toEqual([[a, b, { scope: "user" }]]);
     expect(seen).toEqual(["one", "two"]);
+  });
+
+  it("hears only what the last result's hearings admit, so a view's answer read through it skips the rest of its topics", async () => {
+    // A board view's answer names the whole session topic, but hears only its board there: a reply
+    // streaming in the session (`items`) or a request moving must not read the board again.
+    const sub = fakeSubscribe();
+    const gate = gatedRead<{ value: string; topics: WireTopic[]; hears: ViewHearing[] }>();
+    liveRead(sub.subscribe, [], { topicsFromResult: true, read: gate.read });
+    const session: WireTopic = { scope: "session", id: "s" };
+    const board: WireTopic = { scope: "session", id: "s", resource: "tasks" };
+    const answer = { value: "rows", topics: [session, board], hears: [{ topic: session, kinds: ["state"] as const }, { topic: board, kinds: ["board"] as const }] } as never;
+    gate.calls[0]!.resolve(answer);
+    await flush();
+    gate.calls[1]!.resolve(answer);
+    await flush();
+    expect(gate.calls).toHaveLength(2);
+
+    sub.notify({ topic: session, kind: "items" });
+    sub.notify({ topic: session, kind: "request" });
+    await flush();
+    expect(gate.calls).toHaveLength(2);
+
+    sub.notify({ topic: board, kind: "board", ids: ["t1"] });
+    await flush();
+    expect(gate.calls).toHaveLength(3);
+    // A tick and a resync read whatever the hearings say.
+    gate.calls[2]!.resolve(answer);
+    await flush();
+    sub.notify({ topic: session, kind: "resync" });
+    await flush();
+    expect(gate.calls).toHaveLength(4);
   });
 });
 

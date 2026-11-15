@@ -46,7 +46,7 @@
  *
  * Every watch reads on a change, through the client's live read (`client.live`).
  */
-import { bindStoreToCallbacks, createClient, createRequestStreamStore, readEveryCollectionPage, sessionFeed, topic, type Client, type ClientFetch, type SessionConnectionStatus, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
+import { bindStoreToCallbacks, createClient, createRequestStreamStore, readEveryCollectionPage, sessionFeed, topic, type Client, type ClientFetch, type LiveResult, type SessionConnectionStatus, type SessionFeed, type WireNotice } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createInboxClient,
@@ -104,6 +104,9 @@ import { parseBlobRef } from "@flow-state-dev/core/attachments";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
+
+/** The topics a view's answer named, and what it hears under them: what a live read follows. */
+type Heard = Omit<LiveResult<unknown>, "value">;
 
 /** One row of the sessions list. */
 export interface LabSession {
@@ -935,9 +938,9 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
 
   /**
    * A session's tasks, as its board's task-list view answers them (a view, so a list stores no
-   * request), and the topics a change to them publishes on, from the view's answer.
+   * request), and the topics a change to them publishes on, with what the answer hears under them.
    */
-  const tasksAndTopicsOf = async (sessionId: string): Promise<{ tasks: Listed[]; topics: WireTopic[] }> => {
+  const tasksAndTopicsOf = async (sessionId: string): Promise<{ tasks: Listed[] } & Heard> => {
     const answer = await fsd.view(taskListViewRef(await flowOfSession(sessionId), TASKS_BOARD), {}, { sessionId });
     const listed = answer.value;
     let moved = false;
@@ -971,7 +974,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
       ...(typeof task.leaseUntil === "number" ? { leaseUntil: task.leaseUntil } : {}),
       view: taskView({ ...task, board: sessionId }),
     }));
-    return { tasks, topics: answer.topics };
+    return { tasks, topics: answer.topics, ...(answer.hears === undefined ? {} : { hears: answer.hears }) };
   };
   /** A session's tasks, as {@link tasksAndTopicsOf} reads them. */
   const tasksOf = async (sessionId: string): Promise<Listed[]> => (await tasksAndTopicsOf(sessionId)).tasks;
@@ -1005,10 +1008,10 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
 
   /**
    * A session's tasks, each with what its first open hold waits on you for: the one place a hold
-   * becomes a row's `openHold`. With the topics the board's view named.
+   * becomes a row's `openHold`. With the topics the board's view named, and what it hears under them.
    */
-  const listedWithWaitingOn = async (sessionId: string): Promise<{ tasks: Listed[]; topics: WireTopic[] }> => {
-    const { tasks: listed, topics } = await tasksAndTopicsOf(sessionId);
+  const listedWithWaitingOn = async (sessionId: string): Promise<{ tasks: Listed[] } & Heard> => {
+    const { tasks: listed, ...heard } = await tasksAndTopicsOf(sessionId);
     const holds = await holdsOf(sessionId, listed);
     const tasks = listed.map((task) => {
       const hold = holds.get(task.id)?.[0];
@@ -1016,7 +1019,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
         ? task
         : { ...task, openHold: { kind: hold.ask.kind === "confirm" ? "input" : hold.ask.kind, prompt: hold.ask.prompt } };
     });
-    return { tasks, topics };
+    return { tasks, ...heard };
   };
 
   /** The harness each coding worker runs through, asked once of a run session of it. */
@@ -1103,9 +1106,9 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
     inbox.board({ flowId: await flowOfSession(sessionId), sessionId, board: TASKS_BOARD });
 
   /** A session's board as the screen draws it: each row with what it waits on you for, its harness and its review. */
-  /** A session's board as its cards show it, and the topics the board's view named. */
+  /** A session's board as its cards show it, and the topics the board's view named, with what it hears under them. */
   const boardOf = async (sessionId: string) => {
-    const { tasks: listed, topics } = await listedWithWaitingOn(sessionId);
+    const { tasks: listed, ...heard } = await listedWithWaitingOn(sessionId);
     const rows = await Promise.all(
       listed.map(async (task): Promise<LabTask> => {
         const { runSessionId: _session, run: link, holds: _holds, leaseUntil, ...taskEntry } = task;
@@ -1130,7 +1133,7 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
         };
       }),
     );
-    return { value: rows, topics };
+    return { value: rows, ...heard };
   };
 
   /** The open hold a thread's task holds you on that asks for `asks` (a question, a review), or undefined. */

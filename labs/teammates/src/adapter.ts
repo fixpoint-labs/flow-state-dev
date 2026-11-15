@@ -1635,8 +1635,9 @@ export function createLabAdapter(client: Client = connect(), connection: LabConn
         topicsFromResult: true,
         read: async () => {
           const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
-          const { value, topics } = await client.view(taskListViewRef(flow, TASK_BOARD), {}, { sessionId });
-          return { value, topics };
+          // Its answer says what it hears under those topics, too: a reply streaming in the conversation reads nothing.
+          const { value, topics, hears } = await client.view(taskListViewRef(flow, TASK_BOARD), {}, { sessionId });
+          return { value, topics, ...(hears === undefined ? {} : { hears }) };
         },
         onValue: (tasks) => {
           if (stopped) return;

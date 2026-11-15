@@ -18,7 +18,10 @@
  * A read may also return the topics to hear next (`topicsFromResult`). When
  * that set changes (deduped and sorted, so an unchanged set never churns) the
  * live read closes its subscription, subscribes the new topics, and reads once
- * more, so a change between the two is not missed.
+ * more, so a change between the two is not missed. A result that also says
+ * what it hears under them (`hears`, a view's answer) filters each notice by
+ * it too (`hearsNotice`), so a topic named for one kind of change wakes no
+ * read on another.
  *
  * The internal entry, `liveRead`, takes the subscription function, so a
  * framework hook that holds only `subscribe` (React's `useSubscription`, its
@@ -28,7 +31,7 @@ import { wireTopicKey, type WireNotice, type WireTopic } from "@flow-state-dev/c
 import { backoffDelay } from "../internal/backoff";
 import type { SubscribeOptions, Subscription } from "../subscribe/push-hub";
 import { coalesce } from "./coalesce";
-import { mayHold } from "@flow-state-dev/contracts/types/view-hearing";
+import { hearsNotice, mayHold, type ViewHearing } from "@flow-state-dev/contracts/types/view-hearing";
 
 /** The pace a live read reads at wherever push can miss a change, unless told otherwise. */
 const LIVE_POLL_MS = 3_000;
@@ -40,8 +43,12 @@ const LIVE_POLL_MS = 3_000;
  */
 export type LivePaths = readonly string[] | ((scope: WireTopic["scope"]) => readonly string[] | undefined);
 
-/** What a read hands back when it also names the topics to hear next. */
-export type LiveResult<T> = { value: T; topics: readonly WireTopic[] };
+/**
+ * What a read hands back when it also names the topics to hear next, and,
+ * for a view's answer, which notices under them may change it (`hears`;
+ * absent: every one).
+ */
+export type LiveResult<T> = { value: T; topics: readonly WireTopic[]; hears?: readonly ViewHearing[] };
 
 type LiveReadBase<T> = {
   /** Called with each value read, only when it differs (by value) from the last one reported. */
@@ -111,10 +118,13 @@ export function liveRead<T>(
   /** What was last reported; cleared by a failure, so the next value that lands is reported. */
   let last: string | undefined;
   let reported = false;
+  /** What the last result hears (`LiveResult.hears`); `undefined` hears every notice. */
+  let resultHears: readonly ViewHearing[] | undefined;
 
   const heard = (notice: WireNotice): boolean => {
     if (notice.kind === "resync") return true;
     if (hear !== undefined && !hear(notice)) return false;
+    if (!hearsNotice(resultHears, notice)) return false;
     if (paths === undefined || notice.kind !== "resource") return true;
     const path = notice.topic.resource;
     return path === undefined || mayHold(path, typeof paths === "function" ? paths(notice.topic.scope) : paths);
@@ -162,7 +172,8 @@ export function liveRead<T>(
     }
     if (closed) return;
     if (options.topicsFromResult === true) {
-      const { value, topics: next } = result as LiveResult<T>;
+      const { value, topics: next, hears: nextHears } = result as LiveResult<T>;
+      resultHears = nextHears;
       landed(value);
       if (!closed && topicSetKey(next) !== currentKey) follow(next);
     } else {
@@ -181,11 +192,16 @@ export function liveRead<T>(
   let currentKey = topicSetKey(topics);
   let subscription = subscribeTo(topics);
 
-  /** Hear `next` instead, and read once it is held. */
+  /**
+   * Hear `next` instead, and read once it is held. The new subscription opens
+   * before the old one closes, so a client whose only subscription this is
+   * keeps its socket: closing first would drop the socket and connect a new one.
+   */
   const follow = (next: readonly WireTopic[]): void => {
-    subscription.close();
+    const previous = subscription;
     currentKey = topicSetKey(next);
     subscription = subscribeTo(next);
+    previous.close();
     reads.request(null);
   };
 

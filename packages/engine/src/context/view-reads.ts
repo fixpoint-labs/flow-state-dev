@@ -44,9 +44,13 @@ type ResourceRead = { resource: string; root: string };
  */
 type BoardReadRecord = { board: string; covers?: string };
 
-/** One read a view's run made: a scope's state, one of its resources by accessor, or a task board. */
+/**
+ * One read a view's run made: a scope's state, one of its resources by
+ * accessor, or a task board; for a session, also the session itself
+ * (`"session"`: its items, metadata, window, journal or record).
+ */
 export type RecordedRead =
-  | { scope: "session"; sessionId: string; what: "state" | ResourceRead | BoardReadRecord }
+  | { scope: "session"; sessionId: string; what: "state" | "session" | ResourceRead | BoardReadRecord }
   | { scope: "user" | "org"; what: "state" | ResourceRead | BoardReadRecord };
 
 /** A recorder for one run: what it read, and the topics that hear a change to it. */
@@ -64,15 +68,23 @@ const readKey = (read: RecordedRead): string =>
   [
     read.scope,
     read.scope === "session" ? read.sessionId : "",
-    read.what === "state" ? "state" : "board" in read.what ? `b:${read.what.board}:${read.what.covers ?? ""}` : `r:${read.what.resource}`
+    typeof read.what === "string" ? read.what : "board" in read.what ? `b:${read.what.board}:${read.what.covers ?? ""}` : `r:${read.what.resource}`
   ].join("\u0000");
 
-/** The kinds a state read hears: a session's every change but its resources and boards; a user's or org's state. */
+/**
+ * The kinds a state read hears: the scope's state, written only in a run,
+ * which publishes `state` once the write lands. On a session that leaves out
+ * what moves no state: a reply streaming in it (`items`, `request`), and its
+ * record's other writes (`run`: each request stamping itself the latest, a title).
+ */
 const STATE_KINDS: Record<RecordedRead["scope"], readonly ChangeKind[]> = {
-  session: ["items", "request", "run", "state"],
+  session: ["state"],
   user: ["state"],
   org: ["state"]
 };
+
+/** The kinds a read of the session itself hears: its every change but its resources and boards. */
+const SESSION_KINDS: readonly ChangeKind[] = ["items", "request", "run", "state"];
 
 /** What one run hears under one topic, built up read by read. */
 type Hearing = { topic: WireTopic; kinds: Set<ChangeKind>; paths: Set<string> };
@@ -81,7 +93,7 @@ type Hearing = { topic: WireTopic; kinds: Set<ChangeKind>; paths: Set<string> };
 function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
   const all = [...reads];
   const covered = new Set(
-    all.flatMap((read) => (read.what !== "state" && "board" in read.what && read.what.covers !== undefined ? [read.what.covers] : []))
+    all.flatMap((read) => (typeof read.what !== "string" && "board" in read.what && read.what.covers !== undefined ? [read.what.covers] : []))
   );
   const byTopic = new Map<string, Hearing>();
   const at = (topic: WireTopic): Hearing => {
@@ -94,6 +106,8 @@ function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
     const scopeTopic: WireTopic = read.scope === "session" ? { scope: "session", id: read.sessionId } : { scope: read.scope };
     if (read.what === "state") {
       for (const kind of STATE_KINDS[read.scope]) at(scopeTopic).kinds.add(kind);
+    } else if (read.what === "session") {
+      for (const kind of SESSION_KINDS) at(scopeTopic).kinds.add(kind);
     } else if ("board" in read.what) {
       at({ ...scopeTopic, resource: read.what.board }).kinds.add("board");
     } else if (!covered.has(read.what.resource)) {
@@ -146,6 +160,7 @@ export function createReadRecorder(): ReadRecorder {
  * a new read path is a new row there and calls in here.
  */
 export type ViewDependencies = {
+  /** A scope's state read: heard on its state's notices only. */
   state(scope: "session" | "user" | "org"): void;
   /**
    * A resource read, by name, and the storage it can reach: one key, or every
@@ -153,6 +168,7 @@ export type ViewDependencies = {
    * worked out here, from storage ownership, never from the handle that read it.
    */
   resource(scope: "session" | "user" | "org", name: string, reach: StorageReach): void;
+  /** A session itself read (its items, metadata, window, journal or record): heard on its every change. */
   session(sessionId: string): void;
   // FIX-2625.
   /**
@@ -196,7 +212,7 @@ export function createViewDependencies(
       if (scope === "session" && sharesLineage(reach)) record({ scope: "user", what });
     },
     session(id) {
-      record({ scope: "session", sessionId: id, what: "state" });
+      record({ scope: "session", sessionId: id, what: "session" });
     },
     board(board, scope, sessionIds, covers, reach) {
       if (scope === "org") {

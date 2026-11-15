@@ -56,7 +56,8 @@ describe("the board's list, run as a session view", () => {
         "user:workforceWorkers"
       ]);
       expect(answer.hears).toEqual([
-        { topic: { scope: "session", id: conv }, kinds: ["items", "request", "run", "state"] },
+        // The session's state only: a reply streaming in the conversation re-reads no board.
+        { topic: { scope: "session", id: conv }, kinds: ["state"] },
         { topic: { scope: "session", id: conv, resource: "plan" }, kinds: ["board"] },
         { topic: { scope: "session", id: conv, resource: "tasks" }, kinds: ["board"] },
         { topic: { scope: "user" }, kinds: ["resource"], paths: ["workforce/workers"] },

@@ -25,8 +25,9 @@ import type { WireNotice } from "./push-delivery";
  * it before this rule runs.
  *
  * - `state`, on a user or org topic: the scope's state was read.
+ * - `state`, on a session topic: the session's state was read.
  * - `items`, `request`, `run` and `state`, on a session topic: the session
- *   was read (its state, items, metadata or history).
+ *   itself was read (its items, metadata or history).
  * - `resource`, with `paths`: a resource was read, at its storage key or a
  *   collection's root.
  * - `board`, on a session topic narrowed to a board: a task board was read
