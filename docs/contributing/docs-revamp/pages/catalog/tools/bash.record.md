@@ -34,6 +34,7 @@ Skipped: K-34 is kept in the sitemap, and the page was already at `bash.md`.
 - After revise round 2, page sha256 c09d091285bb: exit 0.
 - After revise round 3, page sha256 b681cd6d7e20: exit 0.
 - After the loop (review): link pass. Repointed links that led to old-site pages or to pages outside the sitemap: `/guides/deploying-to-vercel#7-using-the-bash-tool-on-vercel` to `../../build/deploy/vercel.md`; `/docs/skills/overview` to `../skills.md`. Every link on the page now resolves to a sitemap page. No prose or example changed. Page sha256 287b4f4f55d9.
+- After the loop (review): Codex P2: the capability's default `createState` returns `updatedAt: Date.now()` (packages/tools/src/bash/capability.ts:215-218), which the projection spreads over its ISO `updatedAt` (packages/workspace/src/projection.ts:462-464), so the collection's `z.string()` schema refused every saved file. `bash.ts` now passes `createState: () => ({ updatedAt: new Date().toISOString() })`. Type-check in apps/kitchen-sink/zz-p2, deleted afterwards: only the planted error. 1320 words. Page sha256 5721fa2a57a7.
 
 ## 5 · Fact check
 
@@ -46,6 +47,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 15: "Skip `persist` in production. Each request should start clean there"; persistence is set up by choosing a stable `runName` and `persist: true`. Untrue: The bash blocks default MOAT to `persist: true` with a per-session run name derived from tenant and session. A session reuses its container across requests unless `persist: false` is passed. The `persist` default of `false` applies only to the raw MOAT adapter and `createBashTool`. (/home/user/flow-state-dev/packages/tools/src/bash/blocks.ts:594-611; /home/user/flow-state-dev/packages/tools/src/bash/adapters/moat.ts:1489) The row is recorded corrected.
 - Reference row 11: MOAT container cold start "adds a few seconds" / "the few-seconds cold start" / "Cold-starting a MOAT container takes a few seconds". Untrue: The source puts a cold boot at roughly 10-30 seconds. The status message the block shows says a first run can take 30-60 seconds while the image builds. (/home/user/flow-state-dev/packages/tools/src/bash/blocks.ts:594-598, 840-843) The row is recorded corrected.
 - Re-run after the review edit: the edit changed link targets only, so no claim changed. Each new target is a sitemap entry (specs/epics/FIX-2696/SITEMAP/*.md) that covers what the link text names.
+- Re-run after the review edit: projection merge `{ path, hash, updatedAt, ...extra }` (packages/workspace/src/projection.ts:462-464); default createState (packages/tools/src/bash/capability.ts:215-218); `FileEntryState.updatedAt: string` (packages/tools/src/bash/types.ts:66); state validated by `stateSchema.safeParse` (packages/engine/src/resources/normalize-resource-state.ts:58).
 
 ## 6 · Depth pass
 

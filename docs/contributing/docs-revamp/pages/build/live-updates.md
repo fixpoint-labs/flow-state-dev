@@ -25,17 +25,20 @@ export const fsd = createClient({ userId: "devuser", baseUrl: "" });
 ```tsx title="src/app/RequestList.tsx"
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { topic, type SessionRequestSummary } from "@flow-state-dev/client";
 import { useSubscription } from "@flow-state-dev/react";
 import { fsd } from "../lib/fsd";
 
 export function RequestList({ sessionId }: { sessionId: string }) {
   const [requests, setRequests] = useState<SessionRequestSummary[]>([]);
+  const latest = useRef(0);
 
   async function load(signal: AbortSignal) {
+    const read = ++latest.current;
     const rows = await fsd.sessions.requests(sessionId);
-    if (!signal.aborted) setRequests(rows);
+    // Only the read started last may set the list: an older one can finish later.
+    if (!signal.aborted && read === latest.current) setRequests(rows);
   }
 
   // The hook reads only once it connects or its timer ticks, so the first read is yours.
@@ -67,6 +70,10 @@ export function RequestList({ sessionId }: { sessionId: string }) {
 `topic.session(id)` covers a session's requests, their items and the runs started under it. `topic.user()` and `topic.org()` cover the signed-in user and their organization, and take no id: the server uses the caller it signed in, so a screen can only hear its own.
 
 On a host that pushes (`serve()` from `@flow-state-dev/node`, see step 4), the read runs as soon as the change is saved, and it sees the change. A burst of changes runs the read once more after the one in flight, not once per change. You can pass a new topics array or a new function on every render without resubscribing.
+
+Your effect's read and the hook's reads are not queued behind each other, so a
+slow first read can finish after a newer one. The `latest` counter keeps the
+list from going back to the older rows.
 
 The example passes `fsd` as `client`, so the subscription signs in the way your reads do. Without `client`, the hook uses the `FlowProvider`'s client, or, outside a provider, one for `devuser` on the page's origin.
 
