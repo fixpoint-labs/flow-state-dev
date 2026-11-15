@@ -6,9 +6,9 @@ description: Give an agent something to hold onto between turns: four tiers, thr
 
 # Memory
 
-`@flow-state-dev/memory` gives your agent something to hold onto between turns. Four tiers, three of them optional, and a capability you add to a generator with one line.
+`@flow-state-dev/memory` gives your agent something to hold onto between turns. Four tiers, three of them optional, and a capability (a bundle of context, tools and storage) you add to a generator (the block that calls the model) with one line.
 
-If you've ever watched an agent forget what the user told it two turns ago, you already know why this package exists. What the user said a moment ago. What they prefer in general. What happened last session. The memory system lets you compose those needs from four tiers: one always-on working tier and three you opt into. Pick what you need, leave the rest.
+If you've ever watched an agent forget what the user told it two turns ago, you already know why this package exists. What the user said a moment ago. What they prefer in general. What happened last session. The memory system lets you compose those needs from tiers. Pick what you need, leave the rest.
 
 ## Installation
 
@@ -46,7 +46,7 @@ Both entry points take the same tier configs and differ in what they wire up:
 - **`createMemoryCapability()`** builds the read side: the `<memory>` context block, the recall tool, and typed helpers. It does not build the capture pipeline, so nothing writes into memory on its own.
 - **`system()`** builds that same capability and adds the write side: auto-capture of observations from each turn, consolidation (turning episodes into lasting facts), prune (trimming old facts), and the hygiene pass.
 
-The decision is about writes. If your flow never feeds turns back into memory, for example a rewrite step, a summariser, or a personalisation read, reach for `createMemoryCapability`. If it captures what happened so memory grows over time, reach for `system()`.
+The decision is about writes. If your flow never feeds turns back into memory, for example a rewrite step, a summarizer, or a step that tailors a reply to stored preferences, reach for `createMemoryCapability`. If it captures what happened so memory grows over time, reach for `system()`.
 
 ## Quickest start
 
@@ -87,15 +87,15 @@ export const supportFlow = defineFlow({
 });
 ```
 
-That's enough to give the agent a per-turn `<memory>` summary and a recall tool it can call when the auto-injected context isn't enough. The memory resources come with `uses: [mem]`, so the flow does not list them.
+This flow only reads. It gets a per-turn `<memory>` block and a recall tool the agent can call when the injected context isn't enough, and nothing in the flow writes to either. Episodic and semantic memory are stored per user by default and shared across the flows that user touches, so they fill when a flow that runs `system()` captures turns for the same user. Until then the recall tool finds nothing. Working memory is per session, so another flow does not fill it.
 
-Nothing in this flow writes memory. Episodic and semantic memory are stored per user and shared across the flows that user touches, so they fill when a flow that runs `system()` captures turns for the same user. Until then the recall tool finds nothing.
+The memory resources come with `uses: [mem]`, so the flow does not list them.
 
 `system()` gives you the same generator surface plus the capture pipeline that writes new observations back into the tiers. Swap `createMemoryCapability(...)` for `system(...)`, and `uses: [mem]` for `uses: [mem.capability]`. The [memory reference](../../reference/memory) has the side-by-side.
 
 ## How it integrates
 
-A capability is FSD's way of bundling resources, context, and tools so a block can pick up everything it needs with a single `uses:` entry. Memory's capability (`mem` from `createMemoryCapability`, or `mem.capability` from `system()`) contributes:
+A capability is the framework's way of bundling resources, context, and tools so a block can pick up everything it needs with a single `uses:` entry. Memory's capability (`mem` from `createMemoryCapability`, or `mem.capability` from `system()`) contributes:
 
 - A context formatter that produces the `<memory>` section the generator reads each turn.
 - The `memory/recall` tool the model can invoke to search semantic facts and past episodes on demand.

@@ -74,7 +74,7 @@ export async function runResearch(projection: Projection, work: () => Promise<vo
 }
 ```
 
-A **mount** binds one collection to one prefix inside the place. After `hydrate`, the `artifacts` entry `notes.md` is a file at `/tmp/run-42/artifacts/notes.md`. After `flush`, the collection holds whatever the agent left there. The `reference` mount has `writable: false`, so the run can read it and `flush` never saves edits to it. `collectionId` names a collection durably, so two runs over the same rows recognize each other. `collectionIdFor` builds it from the block's context.
+A **mount** binds one collection to one prefix inside the place. After `hydrate`, the `artifacts` entry `notes.md` is a file at `/tmp/run-42/artifacts/notes.md`. After `flush`, the collection holds whatever the agent left there. The `reference` mount has `writable: false`, so the run can read it and `flush` never saves edits to it. `collectionId` is the string that says which stored rows a mount addresses. Two runs that pass the same one over the same rows get `contested` from `flush` when they write one entry at once; runs that pass different ones are never checked against each other. `collectionIdFor` builds it from the block's context.
 
 A projection deletes a collection entry only for a file it laid down or committed itself. `ownedPaths()` lists them. Mount nesting, `entryState` and the rest of the mount options are in the [Tools reference](../../reference/tools.md).
 
@@ -103,7 +103,7 @@ export function reportFlush(report: FlushReport) {
 
 The three values are SHA-256 hashes of content, not the content. `base` tells you whether the change is yours: if `theirs` differs from `base`, someone else wrote the path after your last commit.
 
-Two runs touching different files both land. Runs reaching for the same entry in the same collection refuse each other, and that holds within one server process only. Each outcome kind, how a refusal is scoped and how to pass your own `claims` registry are in the [Tools reference](../../reference/tools.md).
+Two runs touching different files both land. When two runs write the same entry in the same collection at once, the second gets `contested`. That check covers runs in one server process only. Each outcome kind, how a refusal is scoped and how to pass your own `claims` registry are in the [Tools reference](../../reference/tools.md).
 
 ## Writing one file at a time
 

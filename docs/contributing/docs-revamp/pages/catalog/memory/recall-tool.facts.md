@@ -160,3 +160,10 @@ The tool stores nothing of its own. It reads three stored parts, each owned by t
 - Strategy: `RetrievalStrategy` is an object `{ name, prepareBlock, filterBlock?, formatBlock? }`, not a handler (`ty:117-169`). It is set through `tool: { strategy }` on `system()` or `createMemoryCapability`, or `strategy` on `createRecallTool` (`ms:352-371`, `mc:248-256`, `rt:48-51`). `system()` has no top-level `strategy`. The page keeps one sentence and a link; the contract and the custom-strategy example are **[ref]** (the old example is removed; flag 1).
 - Moved to `reference/memory` (R-37) **[ref]**: argument bounds, candidate rules, 400-character default cap and `TRUNCATION_MARKER`, the working-only limit detail, `mem.recall()` ranking, the strategy contract. Moved to `reference/capabilities` (R-10) **[ref]**: a generator with its own `tools` list drops the capability's tools (`cap:146-160`).
 - Relations: with relations on, relation edges can appear as results with `source: 'relation'` (`ge:23-33`, `ty:50-62`).
+
+## 13. Revise round 2
+
+- Opener says the tool is one the model calls, and that `<memory>` is in context every turn (`mc:357-361`). `mem` is defined as the memory system created with `system()` before first use. Pointers split: turning the tool off (`cf:261`); `createMemoryCapability` `recall` preset.
+- Working-only: the action is "turn the tool off", which applies to both setups (`cf:261`, `mc:357-362`).
+- `llm-filter` gloss: a model call picks relevant candidates and returns IDs in order (`lf:326-336`, section 5 step 2).
+- `mem.recall()` weights facts by `effectiveConfidence` when hygiene's confidence decay is on; otherwise raw confidence (`src/internal/recall.ts:37-60`, `:158-162`).

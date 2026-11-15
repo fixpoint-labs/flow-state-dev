@@ -330,3 +330,8 @@ out of this page's job; see "Left out" below).
   projection also creates and writes paths it does not own; only deletion and overwrite need ownership
   (`S/projection.ts:368-377`, `:275-295`).
 - Examples type-check as `src/lib/*.ts` against the package source; free variables became parameters.
+
+## Revise round 2
+
+- `collectionId` sentence now states the observable effect: same id over the same rows means a simultaneous write to one entry is `contested` (W13, W24, W27, claims keyed by `collectionId` plus key, `S/claims.ts:47-49`); different ids are never arbitrated. The review's suggested `conflict` wording was not used: `conflict` comes from comparing hashes against the baseline (W18), not from `collectionId`.
+- Refusal sentence names the outcome (`contested`, W24) and keeps the in-process limit flat (W47).

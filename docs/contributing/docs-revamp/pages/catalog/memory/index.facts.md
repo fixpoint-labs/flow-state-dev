@@ -171,3 +171,8 @@ Whose memory is it (the plan's question 3): the user's, by default, and shared a
 - Dropped the "composed system, not a single store" contrast, the "real configuration" line and the opening "most agents need to remember" sentence; no fact changed.
 
 - Gloss: consolidation turns episodes into lasting facts (`ms:178-183`); prune trims facts once the count reaches the threshold (`ms:190-193`). **[page]**
+
+## 13. Revise round 3 changes
+
+- Read-only flow: the `<memory>` block and recall tool exist, nothing in the flow writes to them. Episodic and semantic are user scoped by default (org on request), shared across that user's flows, so another flow running `system()` fills them. Working memory is session scoped (`wm:54-59`); a different flow has a different session, so it is not filled from outside (`cap:71`: `add` is a handler or capture write). **[page]**
+- Glossed capability and generator at first use; dropped the repeated tier count; "FSD" replaced by "the framework".

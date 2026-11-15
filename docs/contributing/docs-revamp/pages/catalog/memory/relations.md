@@ -35,7 +35,9 @@ export const mem = system({
 
 Relations are extracted from conversations automatically, during the periodic consolidation pass that distills facts. Each edge connects two subjects (`user --married to--> moni`) and records how confident memory is and which episodes it came from.
 
-Edges attach to subjects memory already has a fact about. Case and spacing don't matter, so "NVDA" and "nvda" are one node, but "NVDA" and "Nvidia" are two. An edge that names an unknown subject is dropped unless you set `createImplicitEntities: true`. The [memory reference](../../reference/memory) has the full endpoint rules, including what happens to edges when [hygiene](./hygiene) removes a fact.
+Edges attach to subjects memory already has a fact about. Endpoints are trimmed and lowercased before they are matched, so "NVDA" and "nvda" are one node. There is no alias merging: "Nvidia" is a different subject string, so an edge to "Nvidia" does not join the "nvda" node.
+
+Say the model proposes `nvda depends on samsung`, and memory has no stored fact about Samsung. The edge is dropped with a console warning, and consolidation carries on. A bad edge never fails the pass. Set `createImplicitEntities: true` and the endpoint is kept as a new node instead. The [memory reference](../../reference/memory) has the full endpoint rules, including what happens to edges when [hygiene](./hygiene) removes a fact.
 
 Contradictions don't overwrite. Say memory holds `nvda depends on tsmc` and `tsmc located in taiwan`, and a later conversation says TSMC has moved its main fab out of Taiwan. Consolidation closes the old `located in` edge by giving it an end time, and adds the new one. Nothing is deleted, but the connection tools only walk edges that are active. Calling `memory/connect` for the path from `nvda` to `taiwan` afterwards returns no results (`totalMatched: 0`), not an error. The closed edge stays stored as history until `maxEdges` evicts it, or until [hygiene](./hygiene) prunes it because an endpoint's fact was removed. Recall's graph expansion does not filter closed edges, so a closed edge can appear there.
 

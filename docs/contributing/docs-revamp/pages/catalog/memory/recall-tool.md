@@ -6,13 +6,13 @@ description: What the model calls when the always-on memory view is not enough.
 
 # The recall tool
 
-`memory/recall` is the agent-invocable side of the memory system. The auto-injected `<memory>` context handles the always-on view. The recall tool is what the model reaches for when that view isn't enough and it wants to search for a past episode or semantic fact tied to what the user asked.
+`memory/recall` is a tool the model can call to search memory. Every turn, the model already gets a `<memory>` block in its context; it calls recall when that block isn't enough and it wants a past episode or semantic fact tied to what the user asked.
 
-The tool installs with `mem.capability` by default. The [memory reference](../../reference/memory) covers turning it off, the `recall` preset on `createMemoryCapability` for a flow without `system()`, and its options. A generator that lists its own `tools` does not receive the capability's tools, so add `mem.tool.recall()` to that list; the [capabilities reference](../../reference/capabilities) has the rule.
+`mem` below is the memory system you create with `system()`. The tool installs with `mem.capability` by default, and the [memory reference](../../reference/memory) covers turning it off. A flow built with `createMemoryCapability` instead of `system()` turns the tool on through that function's `recall` preset, also covered there. A generator that lists its own `tools` does not receive the capability's tools, so add `mem.tool.recall()` to that list; the [capabilities reference](../../reference/capabilities) has the rule.
 
 ## What the model sees
 
-The model sees a tool with a `query` argument, an optional `limit` and an optional `sinceTurn`. A call runs the configured retrieval strategy (default `llm-filter`) over semantic facts and recent episodes and returns a ranked list, capped at `limit`. It reads semantic facts and episodes, never working memory, so a flow that configures only the working tier gets an empty result from every call. In that setup, leave the recall preset off.
+The model sees a tool with a `query` argument, an optional `limit` and an optional `sinceTurn`. A call runs the retrieval strategy, the part that picks what comes back. The default, `llm-filter`, has a model choose the relevant semantic facts and episodes, and the tool returns them in that order, capped at `limit`. It reads semantic facts and episodes, never working memory, so a flow that configures only the working tier gets an empty result from every call. If you configure only the working tier, turn the tool off (see the memory reference).
 
 ```ts title="src/lib/memory.ts"
 import { system } from "@flow-state-dev/memory";
@@ -32,7 +32,7 @@ export const mem = system({
 
 ## Ranking and decay
 
-The default `llm-filter` strategy shows the model every semantic fact with its raw `confidence`, so a fact's age does not change what the tool returns. To weight by age in a custom strategy, call `effectiveConfidence(fact)`, exported from `@flow-state-dev/memory`. The programmatic `mem.recall()` helper, which handlers call directly, is a separate surface from the tool and ranks differently. See [Hygiene](./hygiene) for decay.
+The default `llm-filter` strategy shows the model every semantic fact with its raw `confidence`, so a fact's age does not change what the tool returns. To weight by age in a custom strategy, call `effectiveConfidence(fact)`, exported from `@flow-state-dev/memory`. The `mem.recall()` helper, which handlers call directly, is a separate surface: it can weight facts by age when hygiene's confidence decay is on. See [Hygiene](./hygiene) for decay.
 
 To use a different strategy, set `tool: { strategy }` on `system()` or `createMemoryCapability`. The strategy contract is in the memory reference.
 

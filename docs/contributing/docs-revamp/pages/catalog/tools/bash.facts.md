@@ -383,3 +383,33 @@ The answer is per provider. The page opens on the default and names the others.
   warning only.
 - Whether the local provider can reach the network (F32). A one-line `curl` through `fsdev run`.
 - What the model reads when a bash tool throws inside a generator (F49).
+
+## What the page states after revise round 1 (cut to the Tools reference, R-42)
+
+The page keeps the model, one worked example and the guarantees. Everything below moved to the Tools
+reference (R-42, `reference/tools`) or the Resources reference (R-08) and is linked, not stated:
+provider option table, `local` environment and timeout, `just-bash` options, MOAT (install, grants,
+persist, cleanup behaviour, limits), the scope table and workspace paths (tenant segment, run
+incarnation, cleanup of old directories, `user` and `org` fallbacks), the sync steps, change detection,
+the refusal cases, the orphan scan depth, the error table, `createBashTool`, and the state fields a
+collection needs. Facts the page does state, and where they sit above: tool names and shapes (F3);
+`uses: [bashCap]` and that the capability installs no collections (F1, F4, F5); mounting by pattern
+prefix and longest-prefix routing (F14, F20); `tmp/` and orphan handling (F21, F22); no
+`node_modules/` or `.git/` saving (F23); default provider and the `just-bash` fallback (F8, F9);
+`collections` with a read-only entry, and `exclude` (F24, F25); the five provider types in one clause
+each (F31, F32, F35, F36, F38; Upstash is left off, F37); `scope` on `local` and its refusal with `cwd`
+(F41, F42); `local` not an isolation boundary (F32); hydrate on a sandbox's first command and flush
+after `bash` and `bash-write-file` only (F16, F17); only changed files saved (F19); a changed or contested
+file leaves both copies and logs (F27); a refused `bash-write-file` returns `{ success: false,
+refused }` and a read-only refusal says retrying won't help (F28); a refused save from `bash` is only
+logged (F29); non-zero exit returns, missing read throws, an unstartable provider throws on first call
+(F46, F47, F48); `cleanupBlock` on `request.onFinished` and the 30-minute idle release (sandbox
+lifetime in "Stored data" 3).
+
+Name check for the model-facing write tool: it is `bash-write-file` (F3). `writeFile` is the
+`createBashTool` key only (F10). `scope` is a `local` provider option (F41); the page names it in
+the `local` example.
+
+Example verified: the five `ts` blocks type-check against the workspace packages. F52's open question
+(whether a generator carrying the collection in `resources` mounts it) is answered by the mount
+discovery reading `ctx.resources` (`B/blocks.ts:515-570`); not run through `fsdev run`.
