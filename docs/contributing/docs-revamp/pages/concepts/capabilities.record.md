@@ -51,6 +51,7 @@ Skipped: C-11 is kept in the sitemap, and the page was already at `capabilities.
 - Post-loop edit (escalation): fixed the five open pass-7 findings in plain words (the opening list split, `.with()` pointer, the scope sentence names the reader's action, the helper-functions line cut as the Next list covers it, the kit/capability sentence gives its reason). Re-ran check-docs-page.mjs: ok, 769 words.
 
 - Post-review edit (Gitar): lines 95 and 111 no longer say a generator's `tools:` is the complete list; a capability's control tools (a skills loader) come through anyway, worded as on C-03. Re-ran check-docs-page.mjs: ok.
+- After the loop (review): `draftReply`, `summarizeOrder` and `refundReply` take `{ message }` with a `user` slot, since a generator with no `user` slot sends no user message (`packages/core/src/blocks/internal/message-assembly.ts:87-89`). The three blocks type-check with `orders.ts`.
 
 ## 5 · Fact check
 

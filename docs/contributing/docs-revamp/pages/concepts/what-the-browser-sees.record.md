@@ -46,6 +46,7 @@ Written by `docs-writer` (sonnet), 774 words. Scenario: The support desk: flow `
 - Post-review edit (Codex on #5226): a request sent through `useAction` is not followed by a default `useSession`. Re-ran check-docs-page.mjs: ok.
 
 - Post-review edit (Cursor security review on #5226): line 76, the figure description and the figure's key label (`STAYS ON THE SERVER` → `NOT IN CLIENT DATA`) now describe client data, not the stream. Re-ran check-docs-page.mjs and lint-brand: ok.
+- After the loop (review): the opening no longer says nothing else gets through; a live `state_change` item carries the raw delta, unexposed fields included (`packages/react/src/internal/mergeStateChangeIntoSnapshot.ts:11`; FIX-2730).
 
 ## 5 · Fact check
 

@@ -32,6 +32,7 @@ Written by `docs-writer` (sonnet), 1014 words. Scenario: Asking Chief of Staff "
 - After the draft, page sha256 1eed80dbf747: exit 0.
 - After revise round 1, page sha256 9b6e1d77d561: exit 0.
 - After revise round 2, page sha256 24ebbb81d715: exit 0.
+- After the loop (review): the `host.mts` example registers the workers' tools in `agent.catalog` (`projectSourceTools(workspace)`, `search()`, `fetch()`), as `labs/teammates/host.mts:371-375` does; without them the workers' `tools:` lines are refused at start (`packages/workforce/src/agent-worker-flow.ts:489-505`). It type-checks.
 
 ## 5 · Fact check
 

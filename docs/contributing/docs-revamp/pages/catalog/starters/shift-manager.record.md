@@ -45,6 +45,7 @@ Written by `docs-writer` (sonnet), 1054 words. Scenario: none: a catalog page ca
 - After the loop: the counted preamble is gone ("differently from other workers"), the key sentence now says the run never sees the key (fact 4.7), and the pass-9 miss is answered: run with no config and no `--config`, it stops and says to pass one (fact 1.9).
 
 - After the loop (review): the reference links now go to `../../reference/`, the depth the sibling starter pages use, and the Next line no longer implies Settings holds more than MCP keys (flag 10).
+- After the loop (review): the hire and fire line no longer says a fire waits for approval; the stock `fire` tool deletes the worker at once (`packages/workforce/src/workers/hire-blocks.ts:249-258`), and only an app-added wrapper makes it wait.
 
 ## 5 · Fact check
 

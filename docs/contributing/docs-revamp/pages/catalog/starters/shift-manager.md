@@ -60,7 +60,7 @@ The Shift Coordinator is an ordinary worker your files declare. Shift Manager tr
 - **Shift Manager finds it by name.** It opens on it, and shows it as "Shift Coordinator" wherever it names a worker.
 - **The summary above it is Shift Manager's own.** It counts the asks waiting and the runs going, and each ask has the same Approve and Reject as Inbox. Answering one there clears it from Inbox.
 
-Shift Manager gives it no tools of its own. A worker can hire and fire only if its own file names `hire` and `fire`; what they do, and how a fire waits for your approval, is in the [Workforce reference](../../reference/workforce.md).
+Shift Manager gives it no tools of its own. A worker can hire and fire only if its own file names `hire` and `fire`; what they do is in the [Workforce reference](../../reference/workforce.md). A fire removes the worker at once; it waits for your approval only if the app wraps the tool in an approval step of its own.
 
 You have one conversation with it, and your first line opens it. It answers you directly. To have it hand work to other workers, give it the coordinator flow; see [Coordinators](../workforce/coordinators.md).
 

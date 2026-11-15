@@ -9,7 +9,7 @@ import TheWindow from "./figures/the-window.svg";
 
 # What the browser sees
 
-A browser page never runs your flow. The flow runs on the server, and the page reaches it through the client, a small typed window with three openings. The page can call an action, follow a session as it happens, and read the data the flow chooses to expose. Nothing else gets through.
+A browser page never runs your flow. The flow runs on the server, and the page reaches it through the client, a small typed window with three openings. The page can call an action, follow a session as it happens, and read the data the flow chooses to expose. Client data holds only the exposed fields, but the stream a page follows also carries each change to session state while a request runs, so keep anything a browser must never see out of state.
 
 A flow is a self-contained system on the server, with actions you call and state of its own. A session is the record it keeps of many requests together.
 

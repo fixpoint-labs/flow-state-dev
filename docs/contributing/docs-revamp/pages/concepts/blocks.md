@@ -122,7 +122,7 @@ export const lookUpOrder = handler({
 
 Add `tools: [lookUpOrder]` to `draftReply`, importing `lookUpOrder` from `../tools/look-up-order`. The model decides when to call it from its name and description. The framework runs the block and gives the result back to the model.
 
-The model sees the same three things for any block: its `name`, its `description`, and its `inputSchema` as the parameters. So you could hand it `handleTicket` the same way, and it would see a name, a description and an input shape, not the steps. What the sequencer returns, its last step's output, goes back to the model as the tool result.
+The model sees the same three things for any block: its `name`, its `description`, and its `inputSchema` as the parameters. So you could hand it a sequencer the same way, and it would see a name, a description and an input shape, not the steps. Give a block you hand to a model an object input, as `lookUpOrder` has: OpenAI accepts only an object at the root of a tool's parameters, so `handleTicket`, which takes a string, would need one first. What the sequencer returns, its last step's output, goes back to the model as the tool result.
 
 If `lookUpOrder` read a stored list of orders, it would declare that list as a resource, stored data a flow keeps. Any flow that includes the block gets the resource, with no extra setup. [Resources](./resources.md) covers them.
 

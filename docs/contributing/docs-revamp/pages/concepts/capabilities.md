@@ -60,12 +60,15 @@ The generator lists the capability and nothing else.
 
 ```ts title="src/flows/support/blocks/draft-reply.ts"
 import { generator } from "@flow-state-dev/core";
+import { z } from "zod";
 import { orders } from "../capabilities/orders";
 
 export const draftReply = generator({
   name: "draftReply",
   model: "openai/gpt-6-luna",
   prompt: "Answer the customer's question about their order.",
+  inputSchema: z.object({ message: z.string() }),
+  user: (input) => input.message,
   uses: [orders],
 });
 ```
@@ -78,12 +81,15 @@ An order summarizer that should see the order context but never call a tool swit
 
 ```ts title="src/flows/support/blocks/summarize-order.ts"
 import { generator } from "@flow-state-dev/core";
+import { z } from "zod";
 import { orders } from "../capabilities/orders";
 
 export const summarizeOrder = generator({
   name: "summarizeOrder",
   model: "openai/gpt-6-luna",
   prompt: "Summarize the order in one sentence.",
+  inputSchema: z.object({ message: z.string() }),
+  user: (input) => input.message,
   uses: [orders.with({ tools: false })],
 });
 ```
@@ -96,6 +102,7 @@ A generator's `tools:` replaces the tools a capability would add. A capability's
 
 ```ts title="src/flows/support/blocks/refund-reply.ts"
 import { generator } from "@flow-state-dev/core";
+import { z } from "zod";
 import { orders } from "../capabilities/orders";
 import { issueRefund } from "../tools/issue-refund";
 
@@ -103,6 +110,8 @@ export const refundReply = generator({
   name: "refundReply",
   model: "openai/gpt-6-luna",
   prompt: "Handle the refund request.",
+  inputSchema: z.object({ message: z.string() }),
+  user: (input) => input.message,
   tools: [issueRefund],
   uses: [orders],
 });

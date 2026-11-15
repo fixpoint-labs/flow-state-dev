@@ -99,6 +99,8 @@ import { cursorHarness } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
 import { harnesses } from "@flow-state-dev/harness-manager/kit";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
+import { fetch, search } from "@flow-state-dev/tools";
+import { projectSourceTools } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 
@@ -112,7 +114,14 @@ export function openTeammates(workdir: string) {
 
   return createFlowState({
     kits: [
-      workforce({ directory: "./workforce", agent: { model: "openai/gpt-6-luna" } }),
+      workforce({
+        directory: "./workforce",
+        agent: {
+          model: "openai/gpt-6-luna",
+          // The tools the workers' `tools:` lines name.
+          catalog: { ...projectSourceTools(workspace), search: search(), fetch: fetch() },
+        },
+      }),
       harnesses({ workspace, defaultHarness: "cursor", review: true }),
       claudeCode(),
     ],
