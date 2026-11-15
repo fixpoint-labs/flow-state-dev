@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 940 530">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+
+<!-- The app -->
+<rect fill="url(#hatch)" x="24" y="56" width="600" height="10"/><line class="thin" x1="24" y1="66.5" x2="624" y2="66.5"/>
+<rect class="solid" x="24" y="56" width="600" height="484"/>
+<text class="lb" x="40" y="90">THE APP</text>
+<text class="sub" x="608" y="90" text-anchor="end">one createFlowState call · its screens · its stores</text>
+
+<!-- Kits -->
+<text class="lb" x="40" y="124">KITS · kits: [ … ]</text>
+
+<rect class="solid" x="40" y="136" width="176" height="176"/>
+<text class="nm" x="52" y="160">workforce</text>
+<text class="sub" x="52" y="177">owns workforce/</text>
+<rect class="hl" x="52" y="188" width="152" height="24"/>
+<text class="plate on-hl" x="60" y="204">SLOT · workerFlows</text>
+
+<rect class="solid" x="240" y="136" width="176" height="176"/>
+<text class="nm" x="252" y="160">harnesses</text>
+<text class="sub" x="252" y="177">fills workforce&#8217;s slot</text>
+<rect class="thin" x="252" y="188" width="152" height="24"/>
+<text class="t" x="260" y="204">coding worker flow</text>
+<line class="ln" x1="252" y1="200" x2="206" y2="200" marker-end="url(#ah)"/>
+
+
+<rect class="dash" x="440" y="136" width="168" height="176"/>
+<text class="nm" x="452" y="160">your kit</text>
+<text class="sub" x="452" y="177">when you write one</text>
+
+<!-- Flows inside each kit -->
+<text class="lb" x="52" y="246">FLOWS</text>
+<rect class="thin" x="52" y="256" width="70" height="24"/><text class="t" x="60" y="272">agent</text>
+<rect class="thin" x="130" y="256" width="74" height="24"/><text class="t" x="138" y="272">roster</text>
+<text class="lb" x="252" y="246">FLOWS</text>
+<rect class="thin" x="252" y="256" width="152" height="24"/><text class="t" x="260" y="272">coder</text>
+<text class="lb" x="452" y="246">FLOWS</text>
+<rect class="thin" x="452" y="256" width="144" height="24"/><text class="t" x="460" y="272">mission</text>
+
+<!-- The app's own flows -->
+<text class="lb" x="40" y="342">THE APP'S OWN FLOWS · flows: [ … ]</text>
+<rect class="thin" x="40" y="354" width="120" height="28"/><text class="t" x="52" y="372">triage</text>
+<text class="sub" x="176" y="372">served beside the kits' flows</text>
+
+<!-- Blocks -->
+<line class="hi" x1="24" y1="404" x2="624" y2="404"/>
+<text class="lb" x="40" y="428">BLOCKS · EVERY FLOW IS MADE OF THESE FIVE</text>
+<rect class="thin" x="40" y="442" width="104" height="52"/><text class="c" x="52" y="464">handler</text><text class="sub" x="52" y="482">plain code</text>
+<rect class="thin" x="154" y="442" width="104" height="52"/><text class="c" x="166" y="464">generator</text><text class="sub" x="166" y="482">a model call</text>
+<rect class="thin" x="268" y="442" width="104" height="52"/><text class="c" x="280" y="464">evaluator</text><text class="sub" x="280" y="482">typed answers</text>
+<rect class="thin" x="382" y="442" width="104" height="52"/><text class="c" x="394" y="464">sequencer</text><text class="sub" x="394" y="482">runs blocks</text>
+<rect class="thin" x="496" y="442" width="104" height="52"/><text class="c" x="508" y="464">router</text><text class="sub" x="508" y="482">picks one</text>
+<text class="sub" x="40" y="522">A kit's flows and the app's own flows use the same five kinds.</text>
+
+<!-- What you change -->
+<text class="lb" x="664" y="90">WHAT YOU CHANGE</text>
+<line class="hs" x1="664" y1="100" x2="916" y2="100"/>
+
+<line class="hi" x1="624" y1="124" x2="656" y2="124"/>
+<text class="n" x="664" y="128">01</text>
+<text class="c" x="694" y="128">Add a kit</text>
+<text class="t" x="694" y="146">one line in kits</text>
+
+<line class="hi" x1="608" y1="200" x2="656" y2="200"/>
+<text class="n" x="664" y="196">02</text>
+<text class="c" x="694" y="196">Change a kit's feature</text>
+<text class="t" x="694" y="214">edit a file in its folder</text>
+<text class="t" x="694" y="232">(a worker's WORKER.md),</text>
+<text class="t" x="694" y="250">change its config,</text>
+<text class="t" x="694" y="268">or fill one of its slots</text>
+
+<line class="hi" x1="384" y1="368" x2="656" y2="368"/>
+<text class="n" x="664" y="372">03</text>
+<text class="c" x="694" y="372">Add a flow</text>
+<text class="t" x="694" y="390">list it in flows</text>
+
+<line class="hi" x1="600" y1="468" x2="656" y2="468"/>
+<text class="n" x="664" y="472">04</text>
+<text class="c" x="694" y="472">Write a block</text>
+<text class="t" x="694" y="490">the same pieces kits use</text>
+</svg>
