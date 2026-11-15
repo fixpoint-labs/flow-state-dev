@@ -125,8 +125,13 @@ describe("a session's checks at the end of a turn", () => {
     expect(await turn("s-no-brief", false)).toBe("change it");
   });
 
-  it("names checks a resolver reads from the session's directory on a fresh session's first turn", async () => {
-    // The directory doesn't exist until the session's first turn provisions it, as a fresh worktree doesn't.
+  /**
+   * One turn on a fresh session whose directory appears only when provisioned, with a harness
+   * that asks its cwd feed for where it works, as a real harness does. How many times the turn
+   * provisioned the workspace (in all, and before the harness asked for its directory), and the
+   * prompt the harness was handed.
+   */
+  async function freshTurn(sessionId: string, commands: string[] | ((context: { cwd: string }) => string[])) {
     const root = mkdtempSync(join(tmpdir(), "session-verify-fresh-"));
     const wt = join(root, "wt");
     let provisioned = 0;
@@ -141,11 +146,15 @@ describe("a session's checks at the end of a turn", () => {
       branch: () => null,
     };
     const prompts: string[] = [];
-    const capturing = () =>
+    const cwds: string[] = [];
+    let provisionedBeforeHarness: number | null = null;
+    const harness = (feeds: { cwd: (ctx: never) => Promise<string> }) =>
       handler({
         name: "stub-harness",
         inputSchema: z.object({ prompt: z.string() }),
-        execute: async (input: { prompt: string }) => {
+        execute: async (input: { prompt: string }, ctx: unknown) => {
+          provisionedBeforeHarness = provisioned;
+          cwds.push(await feeds.cwd(ctx as never));
           prompts.push(input.prompt);
           return { source: "stub/test", status: "completed", sessionId: null, url: null, dispatchedAt: 0, outcome: "failed", finalMessage: null };
         },
@@ -153,30 +162,39 @@ describe("a session's checks at the end of a turn", () => {
     const stores = createInMemoryStores();
     const now = Date.now();
     await stores.session.set(
-      "s-fresh",
-      { id: "s-fresh", flowKind: "verify-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model" }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+      sessionId,
+      { id: sessionId, flowKind: "verify-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model" }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
       "any" as never,
     );
     await runAction({
-      flow: harnessSessionFlow({
-        kind: "verify-session",
-        workspace: fresh,
-        agent: capturing,
-        verify: { commands: ({ cwd }) => readFileSync(join(cwd, "checks.txt"), "utf8").trim().split("\n"), timeoutMs: 20_000, inBrief: true },
-      }),
+      flow: harnessSessionFlow({ kind: "verify-session", workspace: fresh, agent: harness as never, verify: { commands, timeoutMs: 20_000, inBrief: true } }),
       actionName: "turn",
       input: { prompt: "change it" },
       userId: "u",
       orgId: DEFAULT_ORG_ID,
-      sessionId: "s-fresh",
+      sessionId,
       stores,
       runtimeConfig: {},
     } as never);
-    expect(prompts).toHaveLength(1);
-    expect(prompts[0]).toContain("- `node from-the-checkout.mjs`");
-    // Set up once: the brief's provision is the same one the issue-spec brief and the harness's own cwd feed make.
-    expect(provisioned).toBe(1);
     rmSync(root, { recursive: true, force: true });
+    return { provisioned, provisionedBeforeHarness, prompts, cwds, wt };
+  }
+
+  it("names checks a resolver reads from the session's directory on a fresh session's first turn, setting it up once", async () => {
+    const turn = await freshTurn("s-fresh-fn", ({ cwd }) => readFileSync(join(cwd, "checks.txt"), "utf8").trim().split("\n"));
+    expect(turn.prompts).toHaveLength(1);
+    expect(turn.prompts[0]).toContain("- `node from-the-checkout.mjs`");
+    // The harness works where the brief read: one setup per turn, so a slow or failing setup command runs once.
+    expect(turn.cwds).toEqual([turn.wt]);
+    expect(turn.provisioned).toBe(1);
+  });
+
+  it("names a fixed list without setting up the workspace for the brief", async () => {
+    const turn = await freshTurn("s-fresh-list", ["node green.mjs"]);
+    expect(turn.prompts[0]).toContain("- `node green.mjs`");
+    // Writing a fixed list into the brief needs no directory, so nothing is set up until the harness asks.
+    expect(turn.provisionedBeforeHarness).toBe(0);
+    expect(turn.provisioned).toBe(1);
   });
 
   it("refuses a verify with no time budget when the flow is built", () => {
