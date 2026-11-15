@@ -99,7 +99,7 @@ No memory resource is visible to a client, so a browser cannot read it directly.
 
 Memory lives in the server's configured store. The default store is in-memory, so a restart loses everything the agent remembered. Use a persistent store, such as SQLite, Postgres or the filesystem store, to keep it.
 
-`system()` gives you the same generator surface plus the capture pipeline that writes new observations back into the tiers. Swap `createMemoryCapability(...)` for `system(...)`, and `uses: [mem]` for `uses: [mem.capability]`. The [memory reference](../../reference/memory) has the side-by-side.
+`system()` gives you the same generator surface plus the capture pipeline that writes new observations back into the tiers. Swap `createMemoryCapability(...)` for `system(...)`, and `uses: [mem]` for `uses: [mem.capability]`. Then run the capture after each reply: make `reply` a sequencer that ends in `.sideChain(mem.captureFromItems)`. Attaching the capability writes nothing on its own. The [memory reference](../../reference/memory) has the side-by-side.
 
 ## How it integrates
 
