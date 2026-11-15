@@ -8,7 +8,7 @@ description: Give an agent something to hold onto between turns: four tiers, thr
 
 `@flow-state-dev/memory` gives your agent something to hold onto between turns. Four tiers, three of them optional, and a capability you add to a generator with one line.
 
-If you've ever watched an agent forget what the user told it two turns ago, you already know why this package exists. Most non-trivial agents need to remember something across turns. What the user said a moment ago. What they prefer in general. What happened last session. The memory system lets you compose those needs from four tiers: one always-on working tier and three you opt into. Pick what you need, leave the rest.
+If you've ever watched an agent forget what the user told it two turns ago, you already know why this package exists. What the user said a moment ago. What they prefer in general. What happened last session. The memory system lets you compose those needs from four tiers: one always-on working tier and three you opt into. Pick what you need, leave the rest.
 
 ## Installation
 
@@ -24,7 +24,7 @@ Everything imports from the package root, `@flow-state-dev/memory`: `createMemor
 
 ## What memory is
 
-Memory here is a composed system, not a single store. Each tier has its own scope and lifecycle, and you can mix them.
+Memory is built from tiers. Each has its own scope and lifecycle, and you can mix them.
 
 | Tier | Scope | Best for |
 |------|-------|----------|
@@ -33,7 +33,7 @@ Memory here is a composed system, not a single store. Each tier has its own scop
 | Semantic | follows episodic | Consolidated facts the agent has decided are worth keeping |
 | Digest | follows semantic | Summarized rollups across many sessions |
 
-Working is always present. Episodic, semantic, and digest are opt-in via config. Semantic needs episodic, and digest needs semantic. Working-only is a real configuration: a chat that needs to remember the last few turns can wire in working alone and stop there.
+Working is always present. Episodic, semantic, and digest are opt-in via config. Semantic needs episodic, and digest needs semantic. A chat that only needs the last few turns can use working memory alone.
 
 Memory also tidies itself. With semantic or episodic configured, a periodic [hygiene pass](./hygiene) ranks stale facts below reinforced ones and evicts old episodes. It is on by default; `hygiene: false` turns it off.
 
@@ -50,7 +50,7 @@ The decision is about writes. If your flow never feeds turns back into memory, f
 
 ## Quickest start
 
-This flow only reads memory, so it uses `createMemoryCapability`. The memory goes in a helper file, the generator that uses it in a block file, and the flow exposes the block as an action:
+This flow reads memory that another flow has filled, so it uses `createMemoryCapability`. The memory goes in a helper file, the generator that uses it in a block file, and the flow exposes the block as an action:
 
 ```ts title="src/lib/memory.ts"
 import { createMemoryCapability } from "@flow-state-dev/memory";
@@ -88,6 +88,8 @@ export const supportFlow = defineFlow({
 ```
 
 That's enough to give the agent a per-turn `<memory>` summary and a recall tool it can call when the auto-injected context isn't enough. The memory resources come with `uses: [mem]`, so the flow does not list them.
+
+Nothing in this flow writes memory. Episodic and semantic memory are stored per user and shared across the flows that user touches, so they fill when a flow that runs `system()` captures turns for the same user. Until then the recall tool finds nothing.
 
 `system()` gives you the same generator surface plus the capture pipeline that writes new observations back into the tiers. Swap `createMemoryCapability(...)` for `system(...)`, and `uses: [mem]` for `uses: [mem.capability]`. The [memory reference](../../reference/memory) has the side-by-side.
 

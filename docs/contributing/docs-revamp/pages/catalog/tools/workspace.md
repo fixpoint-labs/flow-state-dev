@@ -121,7 +121,7 @@ export async function saveNote(projection: Projection, content: string) {
 }
 ```
 
-`put` returns the same outcome kinds as `flush` for that path. A path under a read-only mount comes back as `readonly`. Treat `readonly` as permanent: retrying the same `put` gets the same answer.
+`put` returns an outcome for that path, such as `created`, `written`, `conflict` or `contested`. A path under a read-only mount comes back as `readonly`. Treat `readonly` as permanent: retrying the same `put` gets the same answer.
 
 ## Places
 

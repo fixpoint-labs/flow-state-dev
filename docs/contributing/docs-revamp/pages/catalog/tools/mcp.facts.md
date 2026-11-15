@@ -191,7 +191,7 @@ All per-server metadata is optional; a server with none still works. `M/types.ts
   `T/call-tool.test.ts:88-120`. **[page]**
 - F37. A failed connection is not retried by the capability. The result is cached for the manager's
   life; `manager.close()` resets servers to `pending` so the next `getTools()` reconnects.
-  `M/manager.ts:465-469,513-524`; `T/manager.test.ts:229-262`. **[ref]**
+  `M/manager.ts:465-469,513-524`; `T/manager.test.ts:229-262`. **[page]** (section "When a server is down"; `close()` is reachable only on a manager the caller built)
 - F38. Status values: `"pending"`, `"connected"`, `"errored"`. A catalog read before any connection
   returns every server as `pending`, with no tools. `M/types.ts:63`; `T/manager.test.ts:217-228`. **[ref]**
 
@@ -283,3 +283,7 @@ All per-server metadata is optional; a server with none still works. `M/types.ts
 - F20, F22-F25, F26a, F29, F37-F46: moved to R-42 (`reference/tools`, `../../reference/tools.md`):
   metadata rendering and defaults, `enrichDescriptions`, `formatGuidance`, manager methods.
 - Added: only tools are used, not prompts or resources (L7).
+
+## Revise round 2
+
+- F24, F35, F36, F37, L2: the page has a section "When a server is down" answering a docs-search outage at startup: the model gets the other servers' tools, one `[mcp] Failed to connect to "<name>": <message>` warning is logged, the guidance block lists only connected servers, `getCatalog()` shows `errored` with header values removed, no automatic retry, no retry or reconnect option, `manager.close()` then `getTools()` reconnects. The inline sentence in "Use it" is cut to the lazy, parallel connect.

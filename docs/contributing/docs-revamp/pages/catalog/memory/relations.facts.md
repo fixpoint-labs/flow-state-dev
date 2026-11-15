@@ -135,3 +135,10 @@ Runnable snippets that type-check against the exported surface:
 - M4. Cost: one consolidation call (E1, G1), a longer prompt and output. The page keeps only the when-to-reach-for-it line. "No second round-trip" is cut as mechanism.
 - M5. Moved to the memory reference (R-37), page links and does not state: option list and defaults (C1, C3); edge record fields (D); endpoint rules incl. janitor prune only when `createImplicitEntities` is false (E5, I1, I2); superseded-edge culling order (A4); handler helper signatures (F9); limits and cost (G, J).
 - M6. Example sets `working: true` because `MemorySystemConfig.working` is required by the type; the K section note that `working` is optional is wrong for the type. Code wins.
+
+## N. Page revision notes (revise round 2)
+
+- N1. Cost section (G1 to G5): no extra model call, longer consolidation prompt and output, recall scan with up to 10 candidates, edges stored unbounded unless `maxEdges`, in-memory traversal sized for hundreds to low thousands, off costs nothing.
+- N2. Vocabulary section (D part 2, E6, H1 to H4): developer sets it, model cannot change it; unset gives free text; set is enforced, off-list dropped with a console warning, exact match; existing edges kept. Example vocabulary and prose use the spaced form (L2, H3).
+- N3. Supersede walkthrough (E9, F4, F6, J6, A4, I1): closed edge not deleted; connect from nvda to taiwan returns empty results with `totalMatched: 0`; closed edge stays until `maxEdges` evicts it or the janitor prunes it as dangling (an endpoint's fact removed); graph-expanded recall may still surface it.
+- N4. Relations off and `memory/connect` called: returns, not throws, the error envelope (F5), with the message quoted.

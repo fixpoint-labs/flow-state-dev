@@ -23,7 +23,7 @@ export const mem = system({
   episodic: true,
   semantic: {
     relations: {
-      vocabulary: ["drives", "depends_on", "exposed_to", "located_in"],
+      vocabulary: ["drives", "depends on", "exposed to", "located in"],
     },
   },
 });
@@ -37,23 +37,33 @@ Relations are extracted from conversations automatically, during the periodic co
 
 Edges attach to subjects memory already has a fact about. Case and spacing don't matter, so "NVDA" and "nvda" are one node, but "NVDA" and "Nvidia" are two. An edge that names an unknown subject is dropped unless you set `createImplicitEntities: true`. The [memory reference](../../reference/memory) has the full endpoint rules, including what happens to edges when [hygiene](./hygiene) removes a fact.
 
-Contradictions don't overwrite. When a relationship changes, the old edge is closed with an end time and the new one added. Closed edges stay stored, and the connection tools skip them. If you set `maxEdges`, closed edges are the first to go when the cap is reached.
+Contradictions don't overwrite. Say memory holds `nvda depends on tsmc` and `tsmc located in taiwan`, and a later conversation says TSMC has moved its main fab out of Taiwan. Consolidation closes the old `located in` edge by giving it an end time, and adds the new one. Nothing is deleted, but the connection tools only walk edges that are active. Calling `memory/connect` for the path from `nvda` to `taiwan` afterwards returns no results (`totalMatched: 0`), not an error. The closed edge stays stored as history until `maxEdges` evicts it, or until [hygiene](./hygiene) prunes it because an endpoint's fact was removed. Recall's graph expansion does not filter closed edges, so a closed edge can appear there.
 
 ## Asking connection questions
 
 You can query the graph with the `memory/connect` tool, or through recall.
 
-- **The `memory/connect` tool** answers connection questions directly. Give it one entity to get everything connected to it, or two entities to get the path between them ("what links our NVDA exposure to Taiwan?"). It returns the connecting edges.
+- **The `memory/connect` tool** answers connection questions directly. Give it one entity to get everything connected to it, or two entities to get the path between them ("what links our NVDA exposure to Taiwan?"). It returns the connecting edges, or an empty list when there is no path. With relations off, it returns an error result instead of throwing: "The relations graph is not enabled for this memory. Enable the relations tier to use connect."
 - **Recall** follows connections when relations is on. If a search query names an entity that has edges, up to 10 of those edges, within two hops, are added to the candidates the agent sees.
 
 Handlers reach the graph through `ctx.cap.memory`. The [memory reference](../../reference/memory) lists `connections`, `relate` and `egoGraph`.
 
-## Curated vocabulary, and why it's worth it
+## Who decides the relation types
 
-Left to its own devices, an extraction model invents `works_at`, `works_for`, and `employed_by` as three different relationships. A curated `vocabulary` constrains the edge types to a set you choose, and out-of-vocabulary edges are dropped. For a focused domain this is worth doing up front: a trading lab might allow `drives`, `depends_on`, `exposed_to`, `hedges`, `supplier_of`, `competitor_of`. Free-text is fine for exploration; lean on the vocabulary once you know the shape of your domain.
+You do, in config. The model can't change the vocabulary at runtime.
 
-## When to reach for it
+Leave `vocabulary` unset and the model writes each type as free text, so one relationship can come out as `works at` in one run and `employed by` in the next. Those are two different edge types, and a query on one misses the other.
 
-Use relations when your agent answers questions about how things connect: research, analysis, anything shaped like a dependency map. It makes consolidation do more work and stores more per user, and traversal runs in memory, so it suits hundreds to thousands of edges, not a graph database's scale. For pure chat personalization, leave it off. The [memory reference](../../reference/memory) has the cost and limits.
+Set it, and the list goes into the consolidation prompt and is enforced when edges are written. An edge whose type isn't on the list, such as `supplied by` against `["depends on", "located in"]`, is dropped with a console warning. Matching is exact, not lowercased, so list the spelling you want stored. Edges already stored with other types are kept; changing the list never removes them.
+
+Free text is fine for exploration. Lean on the vocabulary once you know the shape of your domain: a trading lab might allow `drives`, `depends on`, `exposed to`, `hedges`, `supplier of`, `competitor of`.
+
+## What it costs
+
+There is no extra model call. The consolidation call that already distills facts also returns an `edges` array, so its prompt and output get longer. Nothing is added to a turn.
+
+Recall scans the stored edges in process for names in the query and may add up to 10 edge candidates, again with no model call. Every edge is stored in the semantic memory's state and loaded with it, with no limit unless you set `maxEdges`. Traversal runs in memory, sized for hundreds to low thousands of edges, not a graph database.
+
+Off, it costs nothing: no edges field, no prompt text, no tool. For pure chat personalization, leave it off. Use relations when your agent answers questions about how things connect: research, analysis, anything shaped like a dependency map. The [memory reference](../../reference/memory) has the limits.
 
 See [Resource Edges](../resources/edges) for the underlying primitive, [Recall tool](./recall-tool) for the search surface, and [Hygiene](./hygiene) for how memory is pruned over time.

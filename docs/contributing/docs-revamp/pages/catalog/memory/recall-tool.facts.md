@@ -150,3 +150,13 @@ The tool stores nothing of its own. It reads three stored parts, each owned by t
 - `ex:23-27` shows a `tool: { defaults: { limit: 5 } }` example; the example is valid (`ms:353-370`) but sets the default value, so it demonstrates nothing. Use a value that differs from 5 or `perItemCharCap`.
 - `ex:31` (the working-only caveat) reads as a tracked bug ("Pre-existing, tracked separately"); that is process narrative. Flag 3 states the behaviour.
 - `ex:40-56` custom strategy: wrong shape. Flag 1.
+
+## 12. Revise round 1: what the page now carries
+
+- The page states: the tool is installed by default with `mem.capability`; install, `recall: false`, the `createMemoryCapability` preset and the generator `tools:` rule are one-clause pointers to `reference/memory` and `reference/capabilities` (sections 2 and 4 **[ref]**). `mem.tool.recall()` is named once (`ms:643-654`).
+- The page's example is `system({ model, working: true, episodic: true, semantic: true, tool: { defaults: { limit: 8, perItemCharCap: 600 } } })`, titled `src/lib/memory.ts`. `tool.defaults` is `{ limit?, perItemCharCap? }` (`ms:352-370`). `working` is required (`ms:392`).
+- Working-only: the tool is installed (`mc:357-362`) and returns an empty result because it reads only semantic facts and episodes (`lf:165-190`, `fh:142-150`). The tool's description does not mention tiers (`ty:216-220`), so the page makes no claim about it. Corrects flag 3's description clause.
+- Ranking: `llm-filter` passes every fact and shows raw `confidence` (`lf:239-240`, `lf:341-346`); `effectiveConfidence(fact)` is exported from the package root (`src/janitor.ts:75`, `src/index.ts:137`). `mem.recall()` is a separate programmatic helper that ranks differently (`ms:465-466`; flag 2). The helper's ranking rule is **[ref]**.
+- Strategy: `RetrievalStrategy` is an object `{ name, prepareBlock, filterBlock?, formatBlock? }`, not a handler (`ty:117-169`). It is set through `tool: { strategy }` on `system()` or `createMemoryCapability`, or `strategy` on `createRecallTool` (`ms:352-371`, `mc:248-256`, `rt:48-51`). `system()` has no top-level `strategy`. The page keeps one sentence and a link; the contract and the custom-strategy example are **[ref]** (the old example is removed; flag 1).
+- Moved to `reference/memory` (R-37) **[ref]**: argument bounds, candidate rules, 400-character default cap and `TRUNCATION_MARKER`, the working-only limit detail, `mem.recall()` ranking, the strategy contract. Moved to `reference/capabilities` (R-10) **[ref]**: a generator with its own `tools` list drops the capability's tools (`cap:146-160`).
+- Relations: with relations on, relation edges can appear as results with `source: 'relation'` (`ge:23-33`, `ty:50-62`).

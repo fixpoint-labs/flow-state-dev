@@ -312,3 +312,21 @@ out of this page's job; see "Left out" below).
   example must declare or import them (see W5).
 - C7. README `claims` section says "hold the claim until it's released" (`packages/workspace/README.md`, "Two
   runs, one file"); code releases at the end of each operation (W26). Use the code.
+
+## Revise round 1 (page as published after pass 8)
+
+- The page now states only: the W1/W4/W44-45 summary; W5-W6 and W8 (one clause), W13 (`collectionId`, one sentence);
+  ownership (W32, one sentence: deletes only paths the projection laid down or committed, `ownedPaths()`);
+  W30-W31 outcome kinds as a bare list (`orphan` is not defined on the page; see W35); W19-W20 and W17 (`base`);
+  W24 (`contested` defined in one sentence); W27-W28, W47 (one sentence, in-process); W36 (`readonly`, `put` only);
+  W38-W40 (`put`); W14 (`snapshot`, `remove`, `breakListing` makes `list` throw: `S/memory-place.ts:12-24`);
+  W15-W16 (own place, `list` must throw); the pull-request lookup (surface only, `S/branch-pull-requests.ts`).
+- Moved to Reference R-42 (`reference/tools`), linked from the page: mount nesting (W9), `entryState` (W12), the full
+  outcome table (W31, W35), conflict report detail, ownership (W28/W32), `put` ownership (W42), refusal between
+  runs and its scope (W24-W28), `unscopedCollectionId`, place details (W14, W16), and the whole branch
+  pull-request lookup detail (branches, `openedSince`, result rules, failure shapes, timeout).
+- Corrections: `observedPullRequestsCollection` is exported from `@flow-state-dev/core/harness`, not the core root
+  (`packages/core/src/harness/index.ts:111`). A flush reports `orphan` only for a path no mount routes (W35). A
+  projection also creates and writes paths it does not own; only deletion and overwrite need ownership
+  (`S/projection.ts:368-377`, `:275-295`).
+- Examples type-check as `src/lib/*.ts` against the package source; free variables became parameters.

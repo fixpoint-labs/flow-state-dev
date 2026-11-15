@@ -61,13 +61,24 @@ export const triage = generator({
 
 Each tool a server publishes becomes a tool named `mcp__<server>__<tool>`, such as `mcp__linear__list_issues`. The server describes its arguments and checks them, not Flow State.
 
-Nothing connects when you build the flow. The first request that needs the tools connects every server, in parallel. If one server fails, the generator gets the other servers' tools and a warning is logged with the server's name and the error.
+Nothing connects when you build the flow. The first request that needs the tools connects every server, in parallel.
 
 A generator that declares its own `tools` list gets only the tools on that list. The capability's tools are dropped, though its system-prompt section arrives. Leave `tools` off the generator, as above.
 
 ## What the model is told
 
 The capability adds a section to the generator's system prompt listing each connected server and when to use it. `description`, `whenToUse`, `examples` and `category` fill it in, and all four are optional. An example is shown to the model word for word, so write it as a real call with realistic arguments. The [Tools reference](../../reference/tools.md) lists how each field renders and what the section says when a server has none.
+
+## When a server is down
+
+One failed server does not stop the others. Say the docs-search server is down at startup and Linear is up:
+
+- The model gets Linear's tools and none from docs-search.
+- Your logs get one warning, `[mcp] Failed to connect to "docs-search": <message>`.
+- The system-prompt section lists only Linear.
+- `manager.getCatalog()` shows docs-search as `errored`, with the error text. Header values, such as your key, are removed from it.
+
+The server does not come back by itself. The result of the first attempt is kept, and there is no retry or reconnect option on the server config. Calling `manager.close()` on a manager you built (see below) resets every server, and the next `getTools()` connects again.
 
 ## Turn tools off for one request
 

@@ -165,4 +165,9 @@ Whose memory is it (the plan's question 3): the user's, by default, and shared a
 - Subjects, hygiene detail, presets and per-tier capabilities moved to `reference/memory` (R-37); the page keeps one sentence each and links. The old import path moved to the release's Upgrading page (R-40); the page no longer carries it. Both are **[ref]** / **[cut]** here.
 - The page links `../../reference/memory` for configuration; there is no `catalog/memory/configuration` page, only `hygiene`, `recall-tool`, `relations`.
 - Example: three titled files (`src/lib/memory.ts`, `src/flows/support/blocks/reply.ts`, `src/flows/support/flow.ts`); `generator` needs `name`, `model`, `prompt` (`ct:923-928`). Type-checked with tsc against the workspace.
+## 12. Revise round 2 changes
+
+- The example flow reads only; the page now says what fills it: a flow running `system()` for the same user, since user-scoped tiers are shared across that user's flows unless isolated (`rd:206-226`; flag 2). Working memory is session-scoped and is not filled by another flow. **[page]**
+- Dropped the "composed system, not a single store" contrast, the "real configuration" line and the opening "most agents need to remember" sentence; no fact changed.
+
 - Gloss: consolidation turns episodes into lasting facts (`ms:178-183`); prune trims facts once the count reaches the threshold (`ms:190-193`). **[page]**
