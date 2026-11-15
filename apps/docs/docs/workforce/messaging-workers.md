@@ -52,7 +52,7 @@ That answer means the message is on its way, not that it has landed. See [Delive
 When a message arrives, the session it lands in gets two items:
 
 - a line the recipient's model reads in its history, `From researcher: What's the codename for the spring launch?`, under the sender's name. It is never sent to the client.
-- a component item of type `workforce:received` (`RECEIVED_MESSAGE_DATA_TYPE`), for your app to draw. Its `data` is `{ id, from, text, inReplyTo?, budget, replyRequested?, noAnswer? }`, where `budget` is how many more messages the exchange can send after this one, `replyRequested` is `true` when the sender [asked for a reply](#asking-for-a-reply), and `noAnswer` is `true` when the message is the framework's [answer that says there's no answer](#when-theres-no-answer). See [Showing messages in your app](#showing-messages-in-your-app).
+- a component item of type `workforce:received` (`RECEIVED_MESSAGE_COMPONENT`), for your app to draw. Its `data` is `{ id, from, text, inReplyTo?, budget, replyRequested?, noAnswer? }`, where `budget` is how many more messages the exchange can send after this one, `replyRequested` is `true` when the sender [asked for a reply](#asking-for-a-reply), and `noAnswer` is `true` when the message is the framework's [answer that says there's no answer](#when-theres-no-answer). See [Showing messages in your app](#showing-messages-in-your-app).
 
 Then the recipient takes a turn on it. That turn is told the message id, who sent it, how to answer, and how many more messages the exchange can send (see [The budget](#the-budget)).
 
@@ -665,7 +665,7 @@ The read never returns another user's messages.
 In a conversation, each side of a message is an item you can match on. Both names come from `@flow-state-dev/workforce/browser`:
 
 - A sent message is a `tool_output` item for the tool named `SEND_MESSAGE_TOOL` (`"sendMessage"`). Match on it to draw the message as a line of its own rather than a tool call.
-- A received message is a `component` item whose component is `RECEIVED_MESSAGE_DATA_TYPE` (`"workforce:received"`), with `data` of `{ id, from, text, inReplyTo?, budget, replyRequested?, noAnswer? }`.
+- A received message is a `component` item whose component is `RECEIVED_MESSAGE_COMPONENT` (`"workforce:received"`), with `data` of `{ id, from, text, inReplyTo?, budget, replyRequested?, noAnswer? }`.
 
 [Shift Manager](../shift-manager/overview.md) does all of this: its Messages screen lists the log, a conversation shows each sent message as *To &lt;worker&gt;: &lt;text&gt;* (or *To task &lt;id&gt;* and *To conversation &lt;id&gt;* for one sent to a task or a session), and each received message as its own item under the sender's name. A message that asks for a reply shows as *Asking &lt;worker&gt;…* until the send completes, or, for one sent with `wait: true`, until the wait ends; then it reads *Asked &lt;worker&gt;*. A waited one shows the answer under it.
 
