@@ -1,23 +1,62 @@
 ---
 title: Run on a schedule with Cloud Scheduler
 type: recipe
-description: "Google Cloud Scheduler fires HTTP targets on a cron schedule with configurable retries, OIDC tokens, and dead-letter handling."
+description: "Have Google Cloud Scheduler call a flow's schedule on a cron, with a shared secret, retries and no duplicate runs."
 ---
 
 # Run on a schedule with Cloud Scheduler
 
-Google Cloud Scheduler fires HTTP targets on a cron schedule with
-configurable retries, OIDC tokens, and dead-letter handling. It maps
-cleanly to the scheduled-actions transport: POST + bearer header +
-JSON body.
+Flow State does not run schedules itself. Your host's scheduler calls an
+endpoint, and the flow runs its block. Google Cloud Scheduler is one such
+scheduler: it POSTs a URL on a cron, with a header you choose and retries
+when the call fails.
 
-This guide assumes the scheduled adapter is already mounted. If not,
+This recipe makes it run `monthly-invoices`, a schedule on the `billing`
+flow, on the first of each month. It assumes the scheduled adapter is
+mounted: `createScheduledTransportAdapter()` from
+`@flow-state-dev/scheduled`, which adds the dispatch endpoint. If not,
 start with [Scheduled actions](/docs/server/scheduled).
 
-## Creating a job
+## 1. Declare the schedule on the flow
 
-The simplest setup uses a shared bearer secret. Cloud Scheduler sends
-the value as a header on every fire.
+A schedule is an entry under `schedules.static`, keyed by the name that
+will appear in the job's URL. It carries a `cron` and the block to run.
+`generateMonthlyInvoices` is a block in its own file beside the flow.
+
+```ts title="src/flows/billing/flow.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
+import { generateMonthlyInvoices } from "./blocks/generate-monthly-invoices";
+
+export default defineFlow({
+  kind: "billing",
+  authentication: {
+    resolvePrincipal: createBearerSecretPrincipalResolver({
+      secret: process.env.FSDEV_SCHEDULER_SECRET!,
+      principal: { userId: "system", orgId: "org_sys" }
+    }),
+    requireUser: true
+  },
+  schedules: {
+    static: {
+      "monthly-invoices": {
+        cron: "0 0 1 * *",
+        timezone: "UTC",
+        block: generateMonthlyInvoices
+      }
+    }
+  },
+  actions: {}
+});
+```
+
+The resolver compares the `Authorization: Bearer` header to your shared
+secret and runs the schedule as the `system` user.
+
+## 2. Create the job
+
+Point the job at the schedule's dispatch URL, `/api/flows/<flow>/schedules/<name>/dispatch`,
+and send the secret as a bearer header.
 
 ```bash
 gcloud scheduler jobs create http monthly-invoices \
@@ -25,87 +64,72 @@ gcloud scheduler jobs create http monthly-invoices \
   --time-zone="UTC" \
   --uri="https://app.example.com/api/flows/billing/schedules/monthly-invoices/dispatch" \
   --http-method=POST \
-  --headers="Authorization=Bearer ${FSDEV_SCHEDULER_SECRET},Content-Type=application/json" \
+  --headers="Authorization=Bearer ${FSDEV_SCHEDULER_SECRET}" \
   --max-retry-attempts=3 \
   --min-backoff=30s \
   --max-backoff=600s
 ```
 
-The job sends no body. Cloud Scheduler can't put the scheduled time in a
-fixed body, and with no `nominalFireTime` the fire counts against the latest
-scheduled time that is already due, which is the time this run is for.
+The job sends no body. Each fire runs the action for the most recent
+scheduled time that is due.
 
-The dispatch endpoint mirrors the schedule on the framework side:
+Write the same cron in `--schedule` and in the flow, and the same zone in
+`--time-zone` and `timezone`. Cloud Scheduler decides when it fires. The
+flow reads its own `cron` and `timezone` to work out which scheduled time a
+fire is for, so a mismatch can refuse a fire or count it against the wrong
+time.
 
-```ts
-import { defineFlow } from "@flow-state-dev/core";
-import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
+## 3. Check it
 
-defineFlow({
-  kind: "billing",
-  authentication: {
-    resolvePrincipal: createBearerSecretPrincipalResolver({
-      secret: process.env.FSDEV_SCHEDULER_SECRET!,
-      principal: { userId: "system" }
-    }),
-    requireUser: true
-  },
-  schedules: {
-    static: {
-      monthly-invoices: { cron: "0 0 1 * *", action: "generateMonthlyInvoices" }
-    }
-  },
-  actions: { /* ... */ }
-});
+List the flow's schedules with the same header:
+
+```bash
+curl -H "Authorization: Bearer ${FSDEV_SCHEDULER_SECRET}" \
+  https://app.example.com/api/flows/billing/schedules
 ```
 
-## OIDC alternative
+`monthly-invoices` should be in the list. A fire the flow accepts answers
+`202 { status: "accepted", scheduleId, origin: "static", requestId }`. That
+means the action started, not that it finished.
 
-If your service runs on Google Cloud and you'd rather use OIDC than a
-shared secret, swap the auth header for `--oidc-service-account-email`
-on the job and verify the resulting JWT in `resolvePrincipal`:
+## Retries
+
+Cloud Scheduler retries a run that gets a non-2xx answer, following the
+`--max-retry-attempts` and backoff flags on the job. A retry never runs the
+action twice: each scheduled time fires at most once, and a repeat answers
+`200 { status: "duplicate" }`. What a retry does once the next scheduled
+time has come is in [Schedules](../reference/schedules.md).
+
+If the action fails after the `202`, Cloud Scheduler does not retry.
+The error is recorded on the request. See [Errors](../reference/errors.md).
+
+## Use OIDC instead of a shared secret
+
+On Google Cloud you can have the job send a Google-signed OIDC token and
+drop the shared secret:
 
 ```bash
 gcloud scheduler jobs create http monthly-invoices \
   --schedule="0 0 1 * *" \
+  --time-zone="UTC" \
   --uri="https://app.example.com/api/flows/billing/schedules/monthly-invoices/dispatch" \
   --http-method=POST \
   --oidc-service-account-email="scheduler@my-project.iam.gserviceaccount.com" \
   --oidc-token-audience="https://app.example.com"
 ```
 
-`resolvePrincipal` then verifies the Google-issued OIDC token instead
-of comparing a shared string. Cloud Scheduler signs the token per
-fire, so rotation is automatic.
+Flow State does not verify Google's tokens for you. You write the check
+yourself in the flow's `resolvePrincipal`: verify the token, then return a
+principal with a `userId` and `orgId`, or throw a
+`PrincipalResolutionError` with status 401 to refuse. Set the audience to
+whatever value your resolver checks. See
+[Authentication and tenancy](../reference/authentication.md).
 
-## Retries
+## What it won't do
 
-Cloud Scheduler retries failed runs (non-2xx responses) according to
-the `--max-retry-attempts` and backoff settings on the job. A retry of a
-run that already dispatched answers `200 { status: "duplicate" }` and the
-action does not run twice: each scheduled time fires at most once. A retry
-that lands after the next scheduled time has come counts against that next
-time instead.
-
-If the action itself fails after the dispatch returned 202, Cloud
-Scheduler does not retry — the dispatch was successful from its
-perspective. The action error lands on the `RequestRecord` and the
-flow's `onErrored` lifecycle hook runs.
-
-## Time zones
-
-`--time-zone` on the job is the cron evaluation zone. The framework
-treats `schedule.timezone` as opaque metadata; it surfaces in
-`metadata.timezone` on the request but doesn't drive evaluation.
-Set both to the same value for consistency in DevTool.
-
-## Limitations
-
-- The job's body is fixed at create time. If your action needs
-  per-fire input that varies, compute it inside the action from the
-  scheduled time (`nominalFireTime` on the input function's context) and
-  any state in the flow's user/org scope. Cloud
-  Scheduler doesn't template body fields beyond a fixed string.
-- Dead-letter and alerting are managed in Cloud Scheduler, not in the
-  framework. Wire those up on the job if you need persistent failure
-  signal beyond what `RequestRecord.status === "errored"` gives you.
+- Change the action's input per fire. The job's request is fixed, so the
+  input comes from the schedule's `input`, a value or a function. See
+  [Schedules](../reference/schedules.md).
+- Alert you or park failed runs. Dead-letter handling and alerting are
+  Cloud Scheduler settings on the job. The framework's own failure signal
+  is a request record with `status: "errored"`.

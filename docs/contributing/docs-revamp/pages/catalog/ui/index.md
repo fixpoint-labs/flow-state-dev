@@ -81,15 +81,16 @@ export function Chat({ userId, sessionId }: { userId: string; sessionId: string 
 }
 ```
 
-`chatAssistantRenderers` does not draw sources, the URLs a model cites when it uses its provider's built-in web search, so `SourcesGroup` sits beside it.
+`chatAssistantRenderers` does not draw sources, the URL references a model's built-in tools, such as web search, return, so `SourcesGroup` sits beside it.
 
 The map is yours to change, and `false` means "don't draw this". Replacing a keyed group such as `component` outright drops its other entries, so spread the existing group first:
 
-```tsx title="src/app/chat/renderers.ts"
+```ts title="src/app/chat/renderers.ts"
+import type { RendererRegistry } from "@flow-state-dev/react";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 
 // Every default renderer except the task-board card.
-export const renderers = {
+export const renderers: RendererRegistry = {
   ...chatAssistantRenderers,
   component: { ...chatAssistantRenderers.component, "task-board-meta": false },
 };

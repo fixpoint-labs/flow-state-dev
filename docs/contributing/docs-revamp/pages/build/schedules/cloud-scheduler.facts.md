@@ -285,3 +285,30 @@ C10. **Neighbour copies to fix with the page** (same claims, same files): the `T
   one fixed body per job.
 - That Cloud Scheduler signs a fresh OIDC token per fire.
 - That Cloud Scheduler has dead-letter and alerting features.
+
+## Page state after revise round 1
+
+The page states, from this sheet: 1-2 (task, mounted adapter, named `createScheduledTransportAdapter`),
+4, 8 (`timezone`, `block`), 10 (dispatch URL), 11 (the flow example: quoted key, `block`, `orgId`),
+13 and 17 (bearer resolver, `orgId`), 20 (job, with no `Content-Type` header since there is no body),
+21 (no body: each fire runs for the most recent scheduled time due), 27 (the 202 shape), 33 (retry
+answers `duplicate`), 36 (no retry after a 202; error on the request record), 47-48 (set `timezone`
+to the job's `--time-zone` and the same cron in both; the framework evaluates the cron in
+`timezone`, so a mismatch can refuse a fire or count it against the wrong time), 50 (input comes
+from `schedule.input`), 54-55 (OIDC: the framework verifies nothing; the host writes
+`resolvePrincipal`), 58 (list endpoint as the check), 39 (dead-letter and alerting in Cloud Scheduler).
+
+Moved to Reference, linked and not stated on the page:
+
+- To `reference/schedules` (R-33): facts 22 (why no body, stale `nominalFireTime`), 25, 34 (a retry
+  after the next scheduled time counts against that next time), 47 and 49 (`timezone` evaluation and
+  `metadata.schedule.timezone`), 50-52 (`input` context, `nominalFireTime`; the input function gets
+  no scope state, the action reads state itself), 23-24, 28-30, 35, 38, 40-45.
+- To `reference/errors` (R-22): fact 36-37 (action failure after a 202 is recorded on the
+  `RequestRecord` with status `errored`; hook wording per fact 37).
+- To `reference/authentication` (R-20): facts 12, 14-16, 18, 55.
+
+Removed from the page as untrue or unsupported: "opaque metadata" for `timezone` (C4), `metadata.timezone`
+(C5), `nominalFireTime` tied to the input function's scope state (C6, and the scope-state claim), the
+`onErrored` hook sentence (C7, fact 37 untested on the scheduled path), "JSON body" and the
+`Content-Type` header (no body is sent).

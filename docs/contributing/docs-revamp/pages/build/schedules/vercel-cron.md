@@ -6,254 +6,145 @@ description: "Vercel Cron fires HTTPS requests on a schedule from the Vercel con
 
 # Run on a schedule with Vercel Cron
 
-Vercel Cron fires HTTPS requests on a schedule from the Vercel
-control plane. Combined with the scheduled-actions transport, that's
-your scheduler — declared in `vercel.json`, authenticated with a
-shared secret, dispatched at the configured cadence.
+Vercel Cron calls a URL on your deployment on a schedule. Point it at the
+scheduled-actions dispatch endpoint and you have a scheduler, configured in
+`vercel.json` and protected by a shared secret.
 
-This guide assumes you already have the scheduled adapter mounted.
-If not, start with [Scheduled actions](/docs/server/scheduled).
+This guide assumes the scheduled-actions transport is already mounted. If
+not, start with [Scheduled actions](/docs/server/scheduled).
 
-## Setup
+## 1. Declare the schedule
 
-Vercel Cron sends GET requests by default, while the dispatch
-endpoint is POST-only. `@flow-state-dev/vercel/schedules` ships a
-helper that bridges the two:
+A static schedule is an entry on the flow's `schedules.static` map. It names
+a cron expression and the handler block to run. The flow never fires it
+itself: Vercel Cron does.
 
-`vercel.json`:
+The resolver for scheduled calls is built once, at the top of the file, so a
+missing `CRON_SECRET` stops the app at startup instead of on the first cron
+request. The principal is who the scheduled run belongs to.
 
-```json
-{
-  "crons": [
-    {
-      "path": "/api/cron/billing/monthly-invoices",
-      "schedule": "0 0 1 * *"
-    }
-  ]
-}
-```
-
-The shim handler in your Next.js app:
-
-```ts title="app/api/cron/billing/monthly-invoices/route.ts"
-import { createGetToPostCronShim } from "@flow-state-dev/vercel/schedules";
-
-export const dynamic = "force-dynamic";
-export const GET = createGetToPostCronShim({
-  flowKind: "billing",
-  scheduleId: "monthly-invoices"
-});
-```
-
-The shim reads `CRON_SECRET` and `NEXT_PUBLIC_BASE_URL` from env (both
-overridable as options), validates the inbound bearer in constant
-time, and forwards as a POST to
-`…/api/flows/billing/schedules/monthly-invoices/dispatch` with the
-same bearer.
-
-### Advanced: write the shim by hand
-
-If you need custom behaviour — alternate auth, custom logging, a
-generic route that maps `(flowKind, scheduleId)` from a path segment —
-write the handler yourself:
-
-```ts title="app/api/cron/billing/monthly-invoices/route.ts"
-import { headers } from "next/headers";
-
-export const dynamic = "force-dynamic";
-
-export async function GET() {
-  const auth = headers().get("authorization") ?? "";
-  // Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}` if the env is set.
-  // Reuse the same secret for the framework dispatch.
-  const url = new URL(
-    "/api/flows/billing/schedules/monthly-invoices/dispatch",
-    process.env.NEXT_PUBLIC_BASE_URL!
-  );
-  const res = await fetch(url, {
-    method: "POST",
-    // No body: the fire counts against the latest scheduled time already
-    // due, the one this cron run is for, however late Vercel invokes it.
-    headers: { authorization: auth }
-  });
-  return new Response(await res.text(), { status: res.status });
-}
-```
-
-## Bearer-secret auth
-
-Set `CRON_SECRET` in Vercel's environment variables. Vercel Cron
-sends it on every cron request as `Authorization: Bearer ${CRON_SECRET}`.
-The framework verifies it on the dispatch endpoint via
-`createBearerSecretPrincipalResolver`:
-
-```ts
+```ts title="src/flows/support/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
-import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
+import {
+  createBearerSecretPrincipalResolver,
+  defaultBodyUserIdPrincipalResolver
+} from "@flow-state-dev/engine";
+import { sweepStaleTickets } from "./blocks/sweep-stale-tickets";
 
-defineFlow({
-  kind: "billing",
+const resolveScheduled = createBearerSecretPrincipalResolver({
+  secret: process.env.CRON_SECRET!,
+  principal: { userId: "system", orgId: "org_support" }
+});
+
+export default defineFlow({
+  kind: "support",
   authentication: {
-    resolvePrincipal: async (ctx) => {
-      if (ctx.source === "scheduled") {
-        return createBearerSecretPrincipalResolver({
-          secret: process.env.CRON_SECRET!,
-          principal: { userId: "system" }
-        })(ctx);
-      }
-      // your existing HTTP auth path
-      return verifyJwtFromHeader(ctx);
-    },
+    resolvePrincipal: async (ctx) =>
+      ctx.source === "scheduled"
+        ? resolveScheduled(ctx)
+        : defaultBodyUserIdPrincipalResolver(ctx), // your existing auth
     requireUser: true
   },
   schedules: {
     static: {
-      "monthly-invoices": { cron: "0 0 1 * *", action: "generateMonthlyInvoices" }
+      "stale-ticket-sweep": {
+        cron: "0 8 * * *",
+        block: sweepStaleTickets,
+        description: "Close tickets with no reply for 14 days"
+      }
     }
-  },
-  actions: { /* ... */ }
+  }
 });
 ```
 
-The shared secret is the only auth on this surface. If it leaks,
-rotate `CRON_SECRET` in Vercel and on the host. Existing in-flight
-dispatches finish; new dispatches on the old value get 401.
+`sweepStaleTickets` is a handler block in `blocks/sweep-stale-tickets.ts`
+beside the flow. Branching on `ctx.source` keeps the bearer resolver away
+from your HTTP routes. See
+[Authentication and resolvers](../reference/auth.md) for the resolver's
+signature and the `source` values.
 
-## Dynamic schedules at scale
+## 2. Add the cron entry
 
-Vercel caps `vercel.json` cron entries (Pro: 40 per project at time
-of writing; lower on Hobby). That cap applies to the schedules
-declared in your config file, not to the number of *dispatches* you
-can issue from a single cron entry.
-
-For dynamic schedules — per-user reminders, agent-created
-follow-ups, anything created at runtime — do **not** add one
-`vercel.json` entry per schedule. Add one tick entry, and have its
-handler fan out per-schedule POSTs to the dispatch endpoint.
+Vercel Cron sends a GET and the dispatch endpoint accepts only POST, so the
+cron entry points at a small route in your app that forwards the call. The
+`schedule` here must match the `cron` on the flow entry. Nothing compares
+the two.
 
 ```json title="vercel.json"
 {
   "crons": [
-    { "path": "/api/cron/schedule-tick", "schedule": "*/1 * * * *" }
+    { "path": "/api/cron/support/stale-ticket-sweep", "schedule": "0 8 * * *" }
   ]
 }
 ```
 
-The tick handler claims due rows from a `ScheduleIndex` and POSTs to
-the framework endpoint per due schedule.
-`@flow-state-dev/vercel/schedules` ships `createScheduleTickHandler`
-to do that with bounded concurrency:
-
-```ts title="app/api/cron/schedule-tick/route.ts"
-import { createScheduleTickHandler } from "@flow-state-dev/vercel/schedules";
-import { scheduleIndex } from "@/lib/schedule-index"; // your ScheduleIndex
+```ts title="src/app/api/cron/support/stale-ticket-sweep/route.ts"
+import { createGetToPostCronShim } from "@flow-state-dev/vercel/schedules";
 
 export const dynamic = "force-dynamic";
-export const GET = createScheduleTickHandler({
-  flowKind: "reminders",
-  index: scheduleIndex
+export const GET = createGetToPostCronShim({
+  flowKind: "support",
+  scheduleId: "stale-ticket-sweep"
 });
 ```
 
-The index is the read-model the cron beat scans. Define it once at
-boot — `createPostgresScheduleIndex(executor)` or
-`createSQLiteScheduleIndex(db)` from your store adapter — and feed it
-on the write side via
-[`defineScheduleCollection`](/docs/server/schedule-index#auto-mirroring).
+Set `NEXT_PUBLIC_BASE_URL` to your deployment's origin. The route forwards to
+the dispatch endpoint there. Options, defaults and the failure cases are in
+the [schedules reference](../reference/schedules.md#cron-shim).
 
-`claimDue` advances rows atomically before returning them. The
-contract is at-most-once: a dispatch that fails after the row has been
-advanced is dropped. Pass `onDispatch` to observe each attempt.
+## 3. Protect the endpoint
 
-The tick cadence (`*/1 * * * *` above is once a minute) is the
-floor on how soon a newly-due schedule can fire. Coarser ticks
-trade lag for invocation cost. Vercel meters cron invocations on
-Pro, so a per-minute tick is ~43k invocations/month — usually fine
-but worth knowing.
+Set `CRON_SECRET` in the project's environment variables. Vercel Cron sends
+it on every cron request as `Authorization: Bearer ${CRON_SECRET}`. The shim
+checks it, then forwards it, and the flow's resolver checks it again before
+the dispatch endpoint reads anything. A request without it gets `401`.
 
-The full pattern is in
-[Dynamic scheduled actions](/guides/scheduled-dynamic) and the
-[Schedule index reference](/docs/server/schedule-index). The
-takeaway for Vercel: one tick entry covers unbounded dynamic
-schedules. The `vercel.json` cap only matters for *static* entries
-you want Vercel itself to fire on a schedule.
+That secret is the only protection. Anyone who holds it can fire any
+schedule on a flow whose resolver accepts it. To rotate it, change
+`CRON_SECRET` in the project's environment variables. The old value stops
+working.
 
-### Advanced: write the tick handler by hand
+If you set `defaultUserId` on the flow, a request with no header runs as
+that user instead of failing. Leave it unset on a flow that has scheduled
+handlers.
 
-When you need custom behaviour the helper doesn't cover (a non-index
-storage shape, custom retry logic, observability hooks beyond
-`onDispatch`). Encode the whole id as one path segment:
-`encodeURIComponent(formatScheduleId(orgId, userId, key))`.
+## 4. Check a run
 
-```ts title="app/api/cron/schedule-tick/route.ts"
-import { formatScheduleId } from "@flow-state-dev/scheduled";
-
-export const dynamic = "force-dynamic";
-
-export async function GET(req: Request) {
-  if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response("unauthorized", { status: 401 });
-  }
-  const now = Date.now();
-  const due = await dueSchedules(now); // your index query
-  await Promise.allSettled(
-    due.map(async (row) => {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/flows/reminders/schedules/${encodeURIComponent(formatScheduleId(row.orgId, row.userId, row.key))}/dispatch`,
-        {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${process.env.CRON_SECRET}`,
-            "content-type": "application/json"
-          },
-          // The scheduled time the row was due at, not the tick's clock.
-          body: JSON.stringify({ nominalFireTime: new Date(row.nextFireAt).toISOString() })
-        }
-      );
-      if (res.ok) await advanceIndex(row, now);
-    })
-  );
-  return new Response("ok");
-}
-```
-
-The tick cadence (`*/1 * * * *` above is once a minute) is the
-floor on how soon a newly-due schedule can fire. Coarser ticks
-trade lag for invocation cost. Vercel meters cron invocations on
-Pro, so a per-minute tick is ~43k invocations/month — usually fine
-but worth knowing.
-
-## Local development
-
-Vercel Cron does not run in `vercel dev`. Two options for testing
-locally:
-
-1. `node-cron` running inside a small dev-only worker that POSTs to
-   the dispatch endpoint with the same bearer secret. Closest to
-   production behaviour.
-2. A `curl` loop or a one-shot manual POST. Faster for iterating on
-   the action itself.
+Fire the schedule once without waiting for Vercel. Send no body, so the call
+counts against the most recent scheduled time that has passed:
 
 ```bash
-curl -X POST http://localhost:3000/api/flows/billing/schedules/monthly-invoices/dispatch \
-  -H "Authorization: Bearer $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"nominalFireTime":"2026-06-01T00:00:00Z"}'
+curl -X POST "$NEXT_PUBLIC_BASE_URL/api/flows/support/schedules/stale-ticket-sweep/dispatch" \
+  -H "Authorization: Bearer $CRON_SECRET"
 ```
 
-## Limitations
+`202` means the handler started. It does not mean it finished: an error in
+the handler shows on the run's request record, not in this response. `200`
+with `duplicate` means that scheduled time has already fired, so nothing
+ran. `200` with `skipped` means the previous run has not finished. A `200`
+from Vercel's own cron call only says the dispatch answered, so read it the
+same way. Status codes and the rest of the contract are in the
+[schedules reference](../reference/schedules.md#dispatch-endpoint).
 
-- **No retries.** Vercel Cron fires once per schedule slot. If the
-  dispatch returns a non-2xx, the cron run is over. The framework
-  does not retry on its own.
-- **No missed-window backfill.** A skipped tick stays skipped.
-  Production workloads that need at-least-once delivery should use
-  Cloud Scheduler or EventBridge instead, both of which retry on
-  failure and dedupe at-least-once delivery.
-- **Hobby plan caps.** Vercel's Hobby plan limits cron jobs by
-  count and granularity. Check the plan docs before relying on
-  sub-hour schedules.
+Vercel Cron does not run under `vercel dev`. Use the curl above while you
+develop.
 
-For higher-reliability workloads, see
-[Cloud Scheduler](/guides/scheduled-cloud-scheduler) or
-[EventBridge Scheduler](/guides/scheduled-eventbridge).
+## Many schedules at once
+
+Vercel limits how many entries `vercel.json` may hold, and the limit
+differs by plan. For schedules created at runtime, such as one per user, do
+not add an entry each. Add one entry that ticks every few minutes and have
+`createScheduleTickHandler` dispatch whatever is due. The
+[schedule index](/docs/server/schedule-index) holds the due times, and
+[the schedules reference](../reference/schedules.md#tick-handler) lists the
+handler's options, cadence and delivery guarantee.
+
+## Limits
+
+- Vercel Cron fires once per slot. If the dispatch returns a non-2xx, the
+  run is over and the framework does not retry it.
+- A skipped tick is not backfilled. If you need delivery you can count on,
+  use [Cloud Scheduler](/guides/scheduled-cloud-scheduler) or
+  [EventBridge Scheduler](/guides/scheduled-eventbridge).
+- Check Vercel's cron documentation for the plan limits on entry count and
+  how often a schedule may run.

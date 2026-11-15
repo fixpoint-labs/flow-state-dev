@@ -65,7 +65,7 @@ export const chat = defineFlow({
 })();
 ```
 
-`defineFlow` returns a flow type. Calling it gives the instance that `createFlowState` takes. `reply` is the flow's only block and has no voice code in it. `tts` takes an optional `model`, `voice` and `speed`, and each falls back to the provider's default. A flow with no `voice` gets no audio. A flow can also set its own `voice.provider`, which replaces the server's provider for that flow's speech output; transcription always uses the server's. Both are on the [reference](../reference/voice.md).
+`defineFlow` returns a flow type. Calling it gives the instance that `createFlowState` takes. `voice` sits on the flow definition only: `reply` is the flow's only block and has no voice code in it. The flow streams text as before, and the server turns that text into speech. Synthesis runs only for a flow whose definition has `voice.tts`, so another flow on the same server with no `voice`, such as a billing flow, streams text only and needs no change. `tts` takes an optional `model`, `voice` and `speed`, and each falls back to the provider's default. A flow can also set its own `voice.provider`, which replaces the server's provider for that flow's speech output; transcription always uses the server's. Both are on the [reference](../reference/voice.md).
 
 ## Speak to it from React
 

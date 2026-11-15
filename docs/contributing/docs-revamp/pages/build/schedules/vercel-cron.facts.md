@@ -132,3 +132,11 @@ Response-code table (fact 40); `ScheduleConfig` fields: `input`, `principal`, `t
 - Facts 21, 30, 46 are Vercel behaviour the repo cannot confirm; the kept page already states them, so the page may carry the kept page's wording and nothing more.
 - The shim's `500` for a missing `NEXT_PUBLIC_BASE_URL` (fact 19, 45) is a likely first-run failure; the check step names it.
 - Word budget: 650 words of prose; the steps are four, the two questions fit in the protect and check steps.
+
+## Revise round 1 (pass 8)
+
+- The page now declares the schedule with `block:` (fact 1), builds the resolver once at module top level (fact 2), gives the principal an `orgId` (fact 35), and branches to `defaultBodyUserIdPrincipalResolver` (fact 29).
+- The hand-written shim, hand-written tick handler, `claimDue` semantics, tick cadence arithmetic, index constructors, Vercel's cap number and the Cloud Scheduler / EventBridge retry claims are off the page. The first six go to Reference (R-33 `schedules`, R-20 auth); the retry claims are Vercel and AWS behaviour the repo cannot confirm, so the page makes none (fact 6).
+- The page's tick-handler section is one paragraph and links to the reference (fact 8).
+- The dispatch check sends no body (fact 44). The hand-written shim's `await headers()` question is moot: it is no longer on the page.
+- Reference anchors the page links to (`#cron-shim`, `#dispatch-endpoint`, `#tick-handler`) must exist on `reference/schedules` when R-33 is written.
