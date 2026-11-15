@@ -81,7 +81,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 ## Reference rows
 
 - Webhook caller identity: `requireUser: false` with `defaultUserId` runs a delivery as a system principal; the binding's `sessionId` function maps an event to a session (omitted, no session continuity) → R-32
-- Verification: `stripeWebhookVerifier` reads `Stripe-Signature`, signs `<timestamp>.<rawBody>` with the secret, and rejects deliveries older than five minutes (the five-minute tolerance and the signed string are the row; the endpoint path pattern `POST /<mount>/<flow kind>/webhooks/<provider>` is also listed) → R-32
+- Verification: `stripeWebhookVerifier` reads `Stripe-Signature`, signs `<timestamp>.<rawBody>` with the secret, and rejects deliveries older than five minutes (the five-minute tolerance and the signed string are the row; the endpoint path pattern `POST /<mount>/<flow>/webhooks/<provider>` is also listed) → R-32
 - Provider fields: `eventType` and `deliveryId` extractors; where the delivery id lands (`metadata.webhook.deliveryId`) → R-32
-- Webhook response codes: what a sender gets for a bad signature (401), an unknown provider or flow kind (404), and an accepted delivery (202; 200 only for a provider's `acknowledge` handshake, which Stripe doesn't use) → R-32 (corrected by pass 5)
+- Webhook response codes: what a sender gets for a bad signature (401), an unknown provider or flow (404), and an accepted delivery (202; 200 only for a provider's `acknowledge` handshake, which Stripe doesn't use) → R-32 (corrected by pass 5)
 - Provider config on `createWebhookTransportAdapter`: `verify`, `eventType`, `deliveryId`, keyed by provider name; where Stripe carries each (the sentence stays as step context only if cut to one clause, the field table moves) → R-32
