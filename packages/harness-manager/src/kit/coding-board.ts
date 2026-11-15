@@ -21,7 +21,6 @@
  */
 import { defineView, handler } from "@flow-state-dev/core";
 import { requireRequestHost } from "@flow-state-dev/core/internal";
-import type { BlockContext } from "@flow-state-dev/core/types";
 import { inboxItems, type InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { listedTaskSchema, taskListEntriesFor } from "@flow-state-dev/orchestration/internal";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
@@ -95,7 +94,7 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
           return [];
         }
         const partition = await filingSessionIdOf({ identity: { id: input.sessionId }, lineageId: conversation.lineageId });
-        const ledger = await conversationLedgerAt(ctx as BlockContext, partition, { readFor: input.sessionId });
+        const ledger = await conversationLedgerAt(ctx, partition, { readFor: input.sessionId });
         const listed = taskListEntriesFor(BOARD, ledger, {}, ctx.view);
         const full = new Map((ledger?.list() ?? []).map((task: Task) => [task.id, task]));
         // Where an answer goes: the conversation's flow, and each run session's, read by identity alone.
