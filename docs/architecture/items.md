@@ -214,7 +214,7 @@ One shared algorithm in `@flow-state-dev/core/items` (`attributeItemsToTasks` / 
 | `state_snapshot` | Sequencer (at step boundaries) | — | — | Trace | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |
 | `generator_step` | Generator owned loop (once per tool-calling step, before dispatch) | — | — | Trace | Persistent (replay-only; retained across resume collapse; never in `GET`/`useSession`) |
 
-**Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. `Visibility category` = how `resolveItemVisibility(item)` determines visibility. Conversational types use `item.itemVisibility` (default `{ client: true, history: true }`). `data` uses `item.itemVisibility` (default `{ client: false, history: false }`). Structural types have fixed per-type defaults. Trace types always resolve to `{ client: false, history: false }`.
+**Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. `Visibility category` = how `resolveItemVisibility(item)` determines visibility. Conversational types use `item.itemVisibility` (default `{ client: true, history: true }`). `data` uses `item.itemVisibility` (default `{ client: true, history: false }`). Structural types have fixed per-type defaults. Trace types always resolve to `{ client: false, history: false }`.
 
 ### Suspension item rendering
 
