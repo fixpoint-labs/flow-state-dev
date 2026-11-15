@@ -8,7 +8,7 @@ description: A loop over a task board that re-drains until a judge says the goal
 
 Some work isn't done after one pass. You research a question, look at what came back, and find a gap, so you research again. `goalSeekLoop` is that cycle as a block: it seeds a [task board](../../concepts/tasks-and-boards.md) (a stored list of tasks and the loop that works through it), drains it, asks a judge whether the goal is reached, and drains again until the judge says yes or the budget runs out. [Plan and Execute](./plan-and-execute.md) and [Parallel Tasks](./parallel-tasks.md) are both built on it.
 
-A drain is one full pass of the board's workers over every task they can run. A judge is any block or function that looks at the board after a drain and returns a verdict: keep going, or stop.
+A drain is one full pass of the board's workers over every task they can run. A judge is any block or function that looks at the board after a drain and returns a verdict: keep going, or stop. The settled board is the board's tasks as the last drain left them, whatever their status: completed, errored or cancelled.
 
 ## The loop
 
@@ -32,7 +32,7 @@ You write the judge. It is an inline function, a block or a sequencer, and it re
 - `continue` drains again with no new tasks. Use it when a task is yet to finish.
 - `replan` adds work, as a `tasks` array on the verdict or from a `replanner` option (a block that returns tasks) when the verdict has none.
 
-An inline judge receives `{ collection, drainResult }`, where `drainResult` summarizes the drain that just ran. `collection.list()` returns the board's tasks, each with an `id`, `goal`, `status` and `output`.
+An inline judge receives `{ collection, drainResult }`, where `drainResult` summarizes the drain that ran. `collection.list()` returns the board's tasks, each with an `id`, `goal`, `status` and `output`.
 
 :::caution Cost
 Every iteration is a full drain plus a judge call. A judge that returns `continue` over a finished board re-drains it with nothing to do until the cap.
@@ -118,7 +118,7 @@ export const researchLoop = goalSeekLoop({
 });
 ```
 
-With no `finalize`, the loop returns the settled board: its tasks, plus `results`, the outputs of the completed ones. The loop returns a sequencer, so a flow uses it like any block.
+With no `finalize`, the loop returns the settled board: its tasks, plus `results`, the outputs of the completed ones. `goalSeekLoop` builds a sequencer, so a flow uses it like any block.
 
 ## Patterns built on it
 
@@ -147,7 +147,7 @@ export const chatAgent = generator({
 
 ## When a task waits
 
-A drain can leave a task waiting on a person's answer, or on an event outside the board. The loop ends that pass without judging or running `finalize`, and the drain doesn't use up an iteration. The call returns the board as the drain left it, with the waiting task still unfinished, and the termination item below carries the stop reason. After the person answers, run the loop again; the next drain picks the waiting task back up. This needs a board whose tasks outlive the request. The stop reasons are on the [task board reference](../../reference/task-board.md).
+A drain can leave a task waiting on a person's answer, or on an event outside the board. The loop ends that pass without judging or running `finalize`, and the drain doesn't use up an iteration. The call returns the board as the drain left it, with the waiting task left `in_progress`, and the termination item below carries the stop reason. After the person answers, run the loop again; the next drain picks the waiting task back up. This needs a board whose tasks outlive the request, such as one backed by `defineTaskCollection` instead of the default request storage. The stop reasons are on the [task board reference](../../reference/task-board.md).
 
 ## Stream items
 

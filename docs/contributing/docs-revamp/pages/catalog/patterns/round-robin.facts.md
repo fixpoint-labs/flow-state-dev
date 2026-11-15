@@ -295,5 +295,5 @@ slots used in default-referee:51-93, which is the evidence it type-checks; the p
 
 - Fact 15 verified (shared/coerce.ts): an override returns a string or `{ text }`; any other value, structured results included, is stored as `String(value)` with a one-time warning. The page no longer says an override gives structured output into the transcript.
 - Fact 37 (custom blocks see only what they declare) now shown on the page: `legalReviewer` declares `editorialContributions`, and the pattern is passed the same resource via `contributions`.
-- Fact 40: `accessorKey` is a `roundRobin` option (and a `createReferee` option); a custom referee's own `resources` key is free. Page example added.
+- Fact 40: `accessorKey` is a `roundRobin` option (and a `createReferee` option); a custom referee's own `resources` key is free. Page example added as a complete titled file (legal-review.ts) with its own roster and `createRoundRobinContributions()`.
 - Section 7, audit task collection: DevTool shows the tasks on the Tasks tab (apps/docs/docs/devtool/overview.md, "Tasks tab"), not the timeline.

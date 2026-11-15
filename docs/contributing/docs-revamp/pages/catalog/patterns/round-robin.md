@@ -117,8 +117,21 @@ export const strictReferee = generator({
 
 In `editorialReview`, add `contributions: editorialContributions` and `referee: strictReferee`. `roundRobin` also takes `accessorKey` (default `"contributions"`), the key its own blocks declare the resource under. Your referee can use any key in its own `resources` map. Two round-robins in one sequencer need distinct keys, each with its own transcript:
 
-```ts
-roundRobin({ name: "legal-review", roster, contributions: legalContributions, accessorKey: "legalContributions" });
+```ts title="src/flows/editorial/blocks/legal-review.ts"
+import { roundRobin } from "@flow-state-dev/patterns";
+import { createRoundRobinContributions } from "@flow-state-dev/patterns/round-robin";
+
+const legalContributions = createRoundRobinContributions();
+
+export const legalReview = roundRobin({
+  name: "legal-review",
+  roster: [
+    { name: "counsel", role: "Check claims for legal risk." },
+    { name: "editor", role: "Rewrite flagged claims." },
+  ],
+  contributions: legalContributions,
+  accessorKey: "legalContributions",
+});
 ```
 
 By default `roundRobin` keeps its own transcript, which is fine until a block outside the pattern needs to read it. Passing `contributions` is how you share it: register the same resource on the flow's `resources` map, and any block can declare it. The pattern clears the resource at the start of every run, so each run starts with an empty transcript. See the [Patterns reference](../../reference/patterns.md) for the rest.

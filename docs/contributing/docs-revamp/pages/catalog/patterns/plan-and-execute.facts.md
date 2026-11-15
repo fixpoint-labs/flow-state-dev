@@ -174,3 +174,10 @@ Every identifier in an example must be imported or declared there (`docs/contrib
 
 - Opening promise now matches the cascade: the run finishes and reports failed and skipped tasks (in the plan, with `synthesizer: false`). The default synthesizer is not asked to report failures: its prompt (`ix:559-566`) says never to say the work could not be completed, and it writes from completed tasks (`ix:511-`). Nothing in the default path reports the failure in prose.
 - "Keep the answer" replaced by what the sources support (`ix:243`, section 8): the final output is the action's result and the default synthesizer's answer joins history. No session-state recipe is stated; none is citable.
+
+## Revise round 3
+
+- The default answer "may not mention the failures": the synthesizer's prompt (`ix:559-566`) forbids saying the work could not be done; the page states only the observable result.
+- `synthesizeGoal` keeps every concrete value only as an instruction in the rewrite prompt (`pe:279-285`); no code checks it. The page says it is not guaranteed. The example is "now add Initech" to "Compare Acme, Globex and Initech for a procurement review." (illustrative; the test at `t:1232-1255` uses other values).
+- `maxAttemptsPerTask` is the total attempts per task (`ix:153-157`: 1 is a single attempt, no retries).
+- `collectionId` on `TaskPlan` is the pattern's `name` (`ix:716`, `collectionId: name`).

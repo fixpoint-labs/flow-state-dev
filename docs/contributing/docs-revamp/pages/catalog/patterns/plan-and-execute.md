@@ -94,11 +94,11 @@ A task is `pending`, `in-progress`, `completed`, `failed` or `skipped`. The [pat
 
 ## When a step fails
 
-A step fails when its executor throws, or returns `success: false`. Every pending task that depends on it, directly or through a chain, is skipped and never runs. Tasks that don't depend on it carry on. The run doesn't error: it finishes, and the plan lists which tasks failed and which were skipped. The default answer is written from the tasks that completed and isn't asked to report the failures, so to see them in the result, pass `synthesizer: false` or a synthesizer of your own.
+A step fails when its executor throws, or returns `success: false`. Every pending task that depends on it, directly or through a chain, is skipped and never runs. Tasks that don't depend on it carry on. The run doesn't error: it finishes, and the plan lists which tasks failed and which were skipped. The default answer is written from the tasks that completed and may not mention the failures, so to see them in the result, pass `synthesizer: false` or a synthesizer of your own.
 
 If every step fails, the default synthesizer runs anyway. It answers the goal from the model's own knowledge and doesn't mention the failed plan.
 
-To retry a failing task before it counts as failed, raise `maxAttemptsPerTask` (default 1, which means one attempt). The cascade rules and retry bounds are in the [task board reference](../../reference/task-board.md).
+To retry a failing task before it counts as failed, raise `maxAttemptsPerTask`, the total number of attempts per task (default 1, so no retries). The cascade rules and retry bounds are in the [task board reference](../../reference/task-board.md).
 
 ## When does it replan?
 
@@ -120,9 +120,9 @@ export const research = planAndExecute({
 
 ## Where the goal comes from
 
-The goal is the `goal` string the action receives. The pattern doesn't read the chat for you. A follow-up such as "do that for all of them" is planned as that literal text.
+The goal is the `goal` string the action receives. The pattern doesn't read the chat for you. A follow-up such as "now add Initech" is planned as that literal text.
 
-Set `synthesizeGoal: true` and a model first rewrites the request into a self-contained goal, using the last eight items of conversation history and keeping every concrete value. "Do that for all of them" becomes "Research asset info for a.com, b.com, c.com". The planner, replanner and synthesizer all work from the rewritten goal. If the rewrite fails, the run uses the original goal.
+Set `synthesizeGoal: true` and a model first rewrites the request into a self-contained goal, using the last eight items of conversation history. It is asked to keep every concrete value, but it is a model's rewrite, so it isn't guaranteed to. "Now add Initech" becomes "Compare Acme, Globex and Initech for a procurement review." The planner, replanner and synthesizer all work from the rewritten goal. If the rewrite fails, the run uses the original goal.
 
 ## Your own step executor
 
@@ -162,7 +162,7 @@ In `research.ts`, add `stepExecutor: researchStep` to the config.
 
 A task sees only itself and its dependencies. The original request, with its values and constraints, reaches a task through its `context` field. By default the pattern copies the goal into the `context` of every task the planner left without one. A `context` the planner wrote is kept.
 
-Set `taskContext: false` to leave tasks with only what the planner wrote. Pass a block to fill every task's `context` from the whole plan in one call, so each task gets only the slice it needs. A block runs on the first plan only. Replanned tasks get the goal copied in. The options are in the [patterns reference](../../reference/patterns.md).
+Set `taskContext: false` to leave tasks with only what the planner wrote. Pass a block to fill every task's `context` from the whole plan in one call, so each task gets only the slice it needs. That block runs on the first plan only; replanned tasks get the goal copied in. The options are in the [patterns reference](../../reference/patterns.md).
 
 ## Your own synthesizer
 
@@ -191,7 +191,7 @@ In `research.ts`, add `synthesizer: writeReport` to the config. Setting `outputS
 - **Order is kept.** The comparison runs after the research it needs and receives each result.
 - **A failure costs one branch.** Tasks that depend on the failed one are skipped. The rest finish.
 - **The plan can change.** With replanning on, a surprising result can add tasks instead of ending the run.
-- **Progress is visible.** The pattern streams each task's status as it changes. Install the `TaskPlan` view with `fsdev ui add task-plan` and render `<TaskPlan collectionId="research" />` to show it live. The item shapes are in the [items reference](../../reference/items.md).
+- **Progress is visible.** The pattern streams each task's status as it changes. Install the `TaskPlan` view with `fsdev ui add task-plan` and render `<TaskPlan collectionId="research" />` to show it live. `collectionId` is the `name` you gave `planAndExecute`. The item shapes are in the [items reference](../../reference/items.md).
 
 ## Next
 
