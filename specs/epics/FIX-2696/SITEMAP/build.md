@@ -245,6 +245,9 @@ Steps: declare what to watch · the block that runs · what it must not do. Ques
 **B-37 · Serve data your app already owns** · `build/serve-your-own-data` · recipe · 600 words
 Steps: declare a read-only collection over your data · the read function · read it from a page. Questions: Where is the data stored? · What happens on each read? Links: C-08, C-09. Source: `resources/projected-collections` (keep).
 
+**B-38 · Find records by facets** · `build/find-by-facets` · recipe · 600 words
+Steps: declare the questions a model answers on write · search by the answers · re-classify after an edit. Questions: When does the model run? · What does a search by facets cost? Links: B-34, B-36, `reference/resources`. Source: `resources/searching` (keep; the facets half, split from B-34).
+
 **B-31 · Move data between stores** · `build/move-data-between-stores` · 700 words
 Steps: what to move · export · import · check counts · switch. Questions: What is copied and what is not? · How do you know it worked? Links: C-14, `reference/stores`. Source: `persistence/overview` (the data-migration operations page).
 
