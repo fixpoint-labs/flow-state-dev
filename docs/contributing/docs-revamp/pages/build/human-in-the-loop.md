@@ -240,7 +240,9 @@ A list can answer without cards. `useSuspensions` also returns `approve(suspensi
 
 Click Approve. The card turns into its outcome, and the refund goes out.
 
-The approvals page can be another tab or a phone, but it has to be the same signed-in user. A support manager who logs in as a different user and opens the customer's session cannot approve the refund: the answer comes back 404, the same as for a request that does not exist, and the run stays suspended. The log records who answered from the signed-in caller, so a `resumedBy` field in the request body changes nothing. The [durable execution reference](../reference/durable-execution.md) lists who may answer and what a refused answer gets back.
+Who may answer depends on sign-in. This tutorial's app has none, so the server cannot tell callers apart: anyone who can reach its API can answer the question, and the log records the request's owner as the one who answered. That is fine on your own machine and not for anything shared.
+
+With sign-in on, the approvals page has to be the same signed-in user, in another tab or on a phone. A support manager who logs in as a different user and opens the customer's session cannot approve the refund: the answer comes back 404, the same as for a request that does not exist, and the run stays suspended. The log records who answered from the signed-in caller, so a `resumedBy` field in the request body changes nothing either way. [Auth and tenancy](../concepts/auth-and-tenancy.md) covers turning sign-in on, and the [durable execution reference](../reference/durable-execution.md) lists who may answer and what a refused answer gets back.
 
 ## 5. Resume, and what runs again
 

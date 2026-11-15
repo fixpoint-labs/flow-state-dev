@@ -34,6 +34,7 @@ Written by `docs-writer` (sonnet), 1560 words. Scenario: The support desk's `sup
 - After revise round 2, page sha256 f58369bb5f5b: exit 0.
 - After revise round 3, page sha256 777669ecff6d: exit 0.
 - After the loop (review): the refund button waits for `flow.activeSessionId`; `RefundCard` takes a `SuspensionView`, passes `isResolved` and `resolution` to `useApproval`, and shows `a.error`; step 4 lists `suspensions`, not `pending`, so an answered card stays as its outcome (`packages/react/src/hooks/useApproval.ts:96-112,133-134`; `useSuspensions.ts:68-71`). The components type-check together.
+- After the loop (review, security): the who-may-answer paragraph now says that without sign-in anyone who can reach the API can answer and the log names the request's owner; the 404 for another user holds only with a resolver (`packages/engine/src/routes/route-auth.ts:395-400`, `route-utils.ts:210`, `answer-routes.ts:135`).
 
 ## 5 · Fact check
 

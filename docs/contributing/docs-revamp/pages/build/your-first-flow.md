@@ -161,7 +161,7 @@ const helloChat = defineFlow({
 export default helloChat();
 ```
 
-Blocks declare the slice of session state they use. The flow declares the whole shape, and a new session starts at the defaults. State is private to the server unless `client.expose` lists it.
+Blocks declare the slice of session state they use. The flow declares the whole shape, and a new session starts at the defaults. `client.expose` decides which fields the session's snapshot and `useClientData` show a browser. It does not hide the others completely: while a request runs, each `state_change` item on the stream carries the raw change, unlisted fields included. Keep anything a browser must never see out of session state.
 
 Run twice against one session id and print each run's change to state:
 
