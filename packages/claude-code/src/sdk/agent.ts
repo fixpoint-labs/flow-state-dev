@@ -554,7 +554,7 @@ export interface ClaudeCodeAgentOptions {
    *   derived from. It arbitrates DISPATCHES, so it does not cover two
    *   invocations in one dispatch (a model calling this tool twice in one step),
    *   nor two external workers unless their queue adapter supplies a shared
-   *   lease backend (`WorkerAdapter.leaseBackend`). Reuse a checkout for one
+   *   lease backend (`JobQueueAdapter.leaseBackend`). Reuse a checkout for one
    *   agent step per run on a single-instance host, or on workers sharing a
    *   lease backend; derive a fresh directory otherwise.
    *

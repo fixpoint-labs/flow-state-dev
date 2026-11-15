@@ -111,9 +111,9 @@ export {
   type FlowStateModelsConfig,
   type FlowStateRuntime,
   type FlowStateVoiceConfig,
-  type WorkerAdapter,
-  type WorkerHandle,
-  type WorkerMode
+  type JobQueueAdapter,
+  type ProcessingHandle,
+  type JobQueueMode
 } from "./flowstate/types";
 export {
   createResponseEmitter,

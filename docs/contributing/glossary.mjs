@@ -314,6 +314,23 @@ export const ENTRIES = [
     ],
   },
   {
+    term: "Job queue",
+    means: "What carries a flow action to be run by another process (`createFlowState({ jobQueue })`, `bullmqJobQueue`). Its modes say which sides a process runs: `enqueue-only`, `process-only` or `colocated`.",
+    decision: "FIX-2751",
+    retires: [
+      {
+        id: "queue-worker-names",
+        check: "sweep",
+        // The queue was a "worker", which collided with Workforce workers. The user docs and package
+        // READMEs follow at release (release-docs), so this reads code and the architecture docs only.
+        files: new RegExp(`${CODE.source}|^docs/architecture/.*\\.md$`),
+        pattern:
+          /\b(bullmqWorker|BullmqWorkerOptions|BullmqWorkerAdapter|WorkerAdapter|WorkerMode|WorkerHandle|startWorker|createFlowWorker|CreateFlowWorkerOptions|FlowWorkerDeps|createWorkerRunner|CreateWorkerRunnerOptions|createScheduleDispatchWorker|CreateScheduleDispatchWorkerOptions|resolveWorkerConnection)\b|\b(dispatch|worker)-only\b/,
+        pathName: /^packages\/bullmq\/(src|test)\/worker(-default-write)?\.(test\.)?ts$/,
+      },
+    ],
+  },
+  {
     term: "Flow runner",
     means: "What decides where a flow action runs (`FlowRunner`).",
     decision: "FIX-2245",

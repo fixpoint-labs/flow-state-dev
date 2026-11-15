@@ -30,7 +30,7 @@ export function resolveProducerConnection(
   };
 }
 
-export function resolveWorkerConnection(
+export function resolveProcessorConnection(
   opts: BullmqConnectionOptions
 ): ResolvedConnection {
   const { connection, prefix } = resolveProducerConnection(opts);

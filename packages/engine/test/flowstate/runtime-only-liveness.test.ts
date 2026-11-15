@@ -2,12 +2,12 @@
  * A runtime-only init must not advertise a sweeper it never started (FIX-999).
  *
  * `createFlowState` resolves the sweeper facts in `#buildRuntime()` and stamps
- * them onto the SHARED runtime config — the one `worker.startWorker` gets. But
+ * them onto the SHARED runtime config — the one `jobQueue.startProcessing` gets. But
  * the sweeper itself is constructed inside `createFlowApiRouter`, which is only
  * reached through `getRouter()` / `ready()`.
  *
  * So a deployment that initializes solely through `getRuntime()` — `fsdev run`
- * and `fsdev chat` both do, and so does any worker-only consumer — got a config
+ * and `fsdev chat` both do, and so does any process-only consumer — got a config
  * claiming a 30s sweep cadence with nothing sweeping. The liveness gate's third
  * arm exists precisely to refuse in that situation ("nothing ever removes a
  * crashed worker's entry from a shared registry, so it reads live forever"),
@@ -174,7 +174,7 @@ describe("liveness is not advertised on a runtime-only init (FIX-999)", () => {
       modelResolver: (() => undefined) as never
     });
 
-    // The exact object `worker.startWorker(runtime)` is given.
+    // The exact object `jobQueue.startProcessing(runtime)` is given.
     const runtime = await state.getRuntime();
 
     await runAction({
