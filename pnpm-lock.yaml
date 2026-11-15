@@ -972,6 +972,9 @@ importers:
       '@flow-state-dev/mcp':
         specifier: workspace:*
         version: link:../packages/mcp
+      '@flow-state-dev/next':
+        specifier: workspace:*
+        version: link:../packages/next
       '@flow-state-dev/node':
         specifier: workspace:*
         version: link:../packages/node
