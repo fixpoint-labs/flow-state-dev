@@ -23,6 +23,19 @@ The resolver for scheduled calls is built once, at the top of the file, so a
 missing `CRON_SECRET` stops the app at startup instead of on the first cron
 request. The principal is who the scheduled run belongs to.
 
+```ts title="src/flows/support/blocks/sweep-stale-tickets.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+export const sweepStaleTickets = handler({
+  name: "sweep-stale-tickets",
+  inputSchema: z.object({}).passthrough(),
+  execute: async (_input, ctx) => {
+    console.log(`sweeping as ${ctx.user?.identity.userId}`);
+  }
+});
+```
+
 ```ts title="src/flows/support/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
 import {
@@ -38,6 +51,7 @@ const resolveScheduled = createBearerSecretPrincipalResolver({
 
 export default defineFlow({
   kind: "support",
+  actions: {},
   authentication: {
     resolvePrincipal: async (ctx) =>
       ctx.source === "scheduled"
@@ -57,9 +71,9 @@ export default defineFlow({
 });
 ```
 
-`sweepStaleTickets` is a handler block in `blocks/sweep-stale-tickets.ts`
-beside the flow. Branching on `ctx.source` keeps the bearer resolver away
-from your HTTP routes. See
+A scheduled handler is not listed in `actions`, so callers can't run it as an
+action. The only way in is the dispatch endpoint. Branching on `ctx.source`
+means the bearer secret is accepted on scheduled calls and nowhere else. See
 [Authentication and resolvers](../reference/auth.md) for the resolver's
 signature and the `source` values.
 
@@ -95,23 +109,25 @@ the [schedules reference](../reference/schedules.md#cron-shim).
 ## 3. Protect the endpoint
 
 Set `CRON_SECRET` in the project's environment variables. Vercel Cron sends
-it on every cron request as `Authorization: Bearer ${CRON_SECRET}`. The shim
-checks it, then forwards it, and the flow's resolver checks it again before
-the dispatch endpoint reads anything. A request without it gets `401`.
+it on every cron request as `Authorization: Bearer ${CRON_SECRET}`. A
+request with the wrong secret gets `401`, from the route or the dispatch
+endpoint.
 
 That secret is the only protection. Anyone who holds it can fire any
 schedule on a flow whose resolver accepts it. To rotate it, change
 `CRON_SECRET` in the project's environment variables. The old value stops
 working.
 
-If you set `defaultUserId` on the flow, a request with no header runs as
-that user instead of failing. Leave it unset on a flow that has scheduled
-handlers.
+If the flow's `authentication` sets `defaultUserId`, a request with no
+`Authorization` header runs as that user instead of failing. A wrong secret
+gets `401` either way. Leave `defaultUserId` unset on a flow that has
+scheduled handlers.
 
 ## 4. Check a run
 
-Fire the schedule once without waiting for Vercel. Send no body, so the call
-counts against the most recent scheduled time that has passed:
+Fire the schedule once without waiting for Vercel. With no body, the call
+stands in for the most recent scheduled time, so a second call for the same
+time returns `duplicate`:
 
 ```bash
 curl -X POST "$NEXT_PUBLIC_BASE_URL/api/flows/support/schedules/stale-ticket-sweep/dispatch" \
@@ -119,11 +135,12 @@ curl -X POST "$NEXT_PUBLIC_BASE_URL/api/flows/support/schedules/stale-ticket-swe
 ```
 
 `202` means the handler started. It does not mean it finished: an error in
-the handler shows on the run's request record, not in this response. `200`
-with `duplicate` means that scheduled time has already fired, so nothing
-ran. `200` with `skipped` means the previous run has not finished. A `200`
-from Vercel's own cron call only says the dispatch answered, so read it the
-same way. Status codes and the rest of the contract are in the
+the handler does not appear in this response. Find it in the DevTool, as
+described in [Debug a run](../debug-a-run.md). `200` with `duplicate` means
+that scheduled time has already fired, so nothing ran. `200` with `skipped`
+means the previous run has not finished. The route from step 2 passes only
+the status code back to Vercel, so Vercel's cron logs show `202` for a
+started run and `200` for both a duplicate and a skip. Status codes and the rest of the contract are in the
 [schedules reference](../reference/schedules.md#dispatch-endpoint).
 
 Vercel Cron does not run under `vercel dev`. Use the curl above while you
@@ -141,9 +158,10 @@ handler's options, cadence and delivery guarantee.
 
 ## Limits
 
-- Vercel Cron fires once per slot. If the dispatch returns a non-2xx, the
+- Vercel Cron calls the route once for each scheduled time. If the dispatch returns a non-2xx, the
   run is over and the framework does not retry it.
-- A skipped tick is not backfilled. If you need delivery you can count on,
+- If Vercel misses a scheduled time, or a run is skipped because the
+  previous one is running, that time is not run later. If you need delivery you can count on,
   use [Cloud Scheduler](/guides/scheduled-cloud-scheduler) or
   [EventBridge Scheduler](/guides/scheduled-eventbridge).
 - Check Vercel's cron documentation for the plan limits on entry count and

@@ -14,25 +14,17 @@ Sentry is an error tracking service: it collects exceptions, groups them, and al
 pnpm add @sentry/node
 ```
 
-Initialize Sentry once, where your app boots:
-
-```ts
-import * as Sentry from "@sentry/node";
-
-Sentry.init({ dsn: process.env.SENTRY_DSN });
-```
-
 ## Write the adapter
 
 The adapter is a plain function. It receives an `ErrorCaptureEvent` and maps it onto Sentry's scope model: the user, low-cardinality `tags` you can search and group by, and free-form `extra` for everything else.
 
-```ts
+```ts title="src/lib/capture-to-sentry.ts"
 import * as Sentry from "@sentry/node";
 import type { ErrorCaptureEvent } from "@flow-state-dev/engine";
 
 export function captureToSentry(event: ErrorCaptureEvent): void {
-  // A request that ends failed also sends a summary event marked `final`.
-  // This adapter forwards each block failure, so skip it to avoid a duplicate.
+  // Skip the request summary event: this adapter reports each block failure.
+  // See the errors reference for why.
   if (event.final) return;
   Sentry.captureException(event.error, {
     // A retryable failure may still recover, so report it as a warning.
@@ -56,43 +48,38 @@ export function captureToSentry(event: ErrorCaptureEvent): void {
 
 ## Wire it in
 
-```ts title="lib/flowstate.ts"
-import { createFlowState } from "@flow-state-dev/engine";
-import { captureToSentry } from "./capture-to-sentry";
+Initialize Sentry once and pass the adapter as `errorCapture`, in the same `fsdev.config.ts` that creates the server. `support` is the flow from [When something fails](../concepts/when-something-fails.md).
 
-export const flowstate = createFlowState({
-  flows: { myFlow },
-  stores: { default: { primary: inMemoryStores() } },
+```ts title="fsdev.config.ts"
+import * as Sentry from "@sentry/node";
+import { createFlowState } from "@flow-state-dev/engine";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
+import support from "./src/flows/support/flow";
+import { captureToSentry } from "./src/lib/capture-to-sentry";
+
+Sentry.init({ dsn: process.env.SENTRY_DSN });
+
+export default createFlowState({
+  flows: [support],
+  stores: sqliteStores({ filename: "support.db" }),
   errorCapture: captureToSentry,
 });
 ```
 
-That is the whole integration. Every runtime block failure now reaches Sentry with the failing block's name, the flow and action, and the request and user IDs.
+Every runtime block failure reaches Sentry with the failing block's name, the flow and action, and the request and user IDs. The request does not wait for your callback.
 
 ## Test it locally
 
-Add a flow with a block that throws, run the action, and confirm the event lands in your Sentry project's Issues view. The DevTool still shows the failure in the transcript as before; `errorCapture` runs alongside that, not instead of it.
+Run a flow with a block that throws, then confirm the event lands in your Sentry project's Issues view. The failure also shows up in the run's transcript in the DevTool, the browser inspector `fsdev dev` opens. The check needs the config: with no `fsdev.config.ts`, `fsdev dev` does not call your hook.
 
 ## Filter the noise
 
-By default rescued and retried failures fire too, because they are real failures even when the flow recovers. If you only want failures that were not retried, filter in the adapter:
+Failures the flow recovers from reach the hook too: ones a rescue handled and ones a retry later fixed. Each retried attempt fires its own event. The [errors reference](../reference/errors.md) says what the `transient`, `error.retryable` and `attempt` fields mean.
 
-```ts
-export function captureToSentry(event: ErrorCaptureEvent): void {
-  if (event.transient || event.error.retryable) return;
-  // ...captureException as above
-}
-```
+To drop events from high-frequency poll-loop blocks, add `if (event.transient) return;` at the top of `captureToSentry`.
 
-If you want one Sentry event per request that really failed, after rescues and retries, flip the check instead: keep only `event.final` events and drop the per-block ones.
-
-```ts
-export function captureToSentry(event: ErrorCaptureEvent): void {
-  if (!event.final) return;
-  // ...captureException as above
-}
-```
+To get one Sentry event per request that ended failed, change the first check to `if (!event.final) return;`. A request a rescue or retry saved sends no such event. The [errors reference](../reference/errors.md) describes the `final` event.
 
 ## Deploy
 
-Set `SENTRY_DSN` in your platform's environment (for Vercel, the project's Environment Variables). Nothing else changes between local and production: the adapter reads the DSN at init time. Alert rules, dashboards, and retention are Sentry's domain; follow their docs once errors are flowing in.
+Set `SENTRY_DSN` in your platform's environment (for Vercel, the project's Environment Variables). Nothing else changes between local and production: `Sentry.init` reads the DSN when the server starts. Alert rules, dashboards, and retention are Sentry's domain; follow their docs once errors are flowing in.

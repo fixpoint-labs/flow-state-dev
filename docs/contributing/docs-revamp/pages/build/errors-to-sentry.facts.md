@@ -103,3 +103,12 @@ The event carries `userId`, `sessionId`, `orgId` and `details`; the page does no
 - How Sentry groups, deduplicates or scrubs: Sentry's behaviour, cited nowhere here.
 - Whether `fsdev run` passes the config's `errorCapture` through to a one-shot run (fact 23), and whether `errorCapture` is held open by `onBackgroundWork` on a serverless host (fact 25): read from source, not run.
 - Whether an input-validation or authentication refusal before the request is recorded reaches `errorCapture` (fact 4).
+
+## Revise round 1 changes
+
+- Code blocks are titled: `src/lib/capture-to-sentry.ts` (adapter) and `fsdev.config.ts` (`Sentry.init` plus `createFlowState`, `flows: [support]`, `sqliteStores`, as the C-19 page does). The filter snippets are now prose, so no untitled block remains. The `@sentry/node` and `process` type-check errors are environmental (package not installed, no node types in the scratch tsconfig); the `ErrorCaptureEvent` field accesses raised none.
+- Fact 15 and the old filter: `transient` means a high-frequency transient block such as a poll loop (`ecs:45-46`). It does not mean rescued or retried. Retried attempts carry `attempt` and fire their own events. The page no longer says `transient || retryable` keeps "failures that were not retried". It shows `if (event.transient) return;` for poll-loop noise, and `if (!event.final) return;` for one event per failed request.
+- Fact 26: `SENTRY_DSN` is read by `Sentry.init`, not the adapter. The page now says so, and `Sentry.init` sits in `fsdev.config.ts`.
+- Moved to Reference (R-22, `reference/errors`): errorCapture fires for every block failure including ones a rescue or retry later recovers, and each retried attempt fires its own event; what `transient`, `error.retryable` and `attempt` mean; the `final` event (when it is sent, `scope: "request"`, names the leaf, never sent for a healed failure, sent for a setup failure); that forwarding both per-block and `final` reports one failure twice. The page links R-22 for each and the adapter comment is a pointer.
+- Cut "That is the whole integration" and the DevTool "still ... as before" sentence; the DevTool is introduced as the browser inspector `fsdev dev` opens. Fact 5 stays: "The request does not wait for your callback."
+- The sheet's earlier choice to forward `final` only (facts 14, 20) is not taken: the page keeps the block-event adapter (with the `level` split) and shows `final` only as a one-line change.

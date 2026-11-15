@@ -326,3 +326,13 @@ Removed from the page as untrue or unsupported: "opaque metadata" for `timezone`
 - Links checked: `/docs/server/scheduled` is an existing page and the one the sibling recipes use;
   `../reference/{schedules,errors,authentication}.md` are the plan slugs R-33, R-22, R-20.
 - The 202 body fields match scheduled/src/routes.ts:325-330.
+
+## Page state after revise round 3
+
+The page now also states: 14-15 (a wrong token answers `401 unauthorized`, nothing runs; a missing
+header is a 401 via `requireUser: true`; rotate the secret on the job too; Cloud Scheduler retries per
+its flags [external]); 21-22, 24, 50 (no body, why: a fixed `nominalFireTime` is accepted once then
+answers `duplicate`/`stale`, runs nothing, logs a warning; `idempotencyKey` is `400`; input comes from
+`schedule.input`); 26, 45-48, C4 (changing zone: set `timezone` on the schedule too with the same
+cron, IANA zone or registration fails, the fired record survives so the month's run is not repeated).
+Machine check: 763 words, passes after dropping "still".

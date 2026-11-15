@@ -1,302 +1,100 @@
 ---
 title: Run background jobs with BullMQ
 type: recipe
-description: "How to run flow actions as durable background jobs using Redis and BullMQ."
+description: "Run flow actions as jobs on a Redis queue, in the web process or in worker processes of their own."
 ---
 
 # Run background jobs with BullMQ
 
-How to run flow actions as durable background jobs using Redis and BullMQ. This covers local development with Docker, co-located workers, separated worker processes, and scheduling.
+Run actions in a queue that survives a restart. A long `buildReport` action on the support desk then keeps going when the user closes the tab, and a job that fails is retried, three attempts by default. This page sets up the queue, then moves the work into its own process. It needs Node 22 or newer and a Redis you can reach.
 
----
+If you deploy to a platform that stops the function when the response returns, a queue consumer in the web process stops with it. Use [Background work](../concepts/background-work.md) to choose between a queue and the other kinds.
 
-## When to use this
-
-Use `@flow-state-dev/bullmq` when you self-host (Docker, Railway, VPS, bare metal) and need:
-
-- **Durable execution** — jobs survive process restarts. If a worker crashes mid-action, the job retries automatically.
-- **Separated workers** — the web process enqueues jobs; dedicated worker containers process them. Useful when flow actions are CPU-heavy or long-running.
-- **Native cron** — BullMQ's built-in repeatable-job scheduler replaces the polling-tick pattern used on serverless (Vercel Cron, Cloud Scheduler).
-- **Dead-letter queues** — permanently failed jobs land in a DLQ for inspection.
-
-If you deploy to Vercel or another serverless platform, you probably don't need this. Vercel's `after()` handles background work, and Vercel Cron handles scheduling.
-
----
-
-## Prerequisites
-
-- Node.js 22+
-- Redis 6+ (local or managed)
-- A flow-state-dev application with at least one flow
-
----
-
-## 1. Install
+## 1. Install and start Redis
 
 ```bash
 pnpm add @flow-state-dev/bullmq bullmq ioredis
+docker run -d -p 6379:6379 redis:7-alpine
 ```
 
----
+Put the address in `.env.local`:
 
-## 2. Start Redis locally
-
-Add a `docker-compose.dev.yml` at your project root:
-
-```yaml title="docker-compose.dev.yml"
-services:
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-volumes:
-  redis-data:
-```
-
-Start it:
-
-```bash
-docker compose -f docker-compose.dev.yml up -d
-```
-
-Set `REDIS_URL` in your `.env.local`:
-
-```
+```text title=".env.local"
 REDIS_URL=redis://localhost:6379
 ```
 
----
+## 2. Give the app a queue
 
-## 3. Wire it up
+The queue is a setting of the app, not of one action. `bullmqWorker` is the `worker` option of `createFlowState`:
 
-One option on `createFlowState` does the whole job. `bullmqWorker` bundles the queue, the dispatch side, the worker, and the Redis stream bridge into a single adapter:
-
-```ts title="lib/flowstate.ts"
+```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
+import support from "./src/flows/support/flow";
 
-export const bullmq = bullmqWorker({
-  connection: process.env.REDIS_URL!,
-  retry: { attempts: 3, backoff: { type: "exponential", delay: 1000 } },
+const flowstate = createFlowState({
+  flows: [support],
+  worker: bullmqWorker({ connection: process.env.REDIS_URL! }),
 });
 
-export const flowstate = createFlowState({
-  flows: { /* ... */ },
-  stores: { /* ... */ },
-  worker: bullmq,
-});
-
-// Runtime init is lazy. Warm it so the worker consumes the queue from boot,
-// and drain it cleanly on shutdown.
+// The queue starts on first use. Start it at boot so this process takes jobs at once.
 void flowstate.ready();
 process.on("SIGTERM", () => void flowstate.dispose());
+
+export default flowstate;
 ```
 
-That's the complete local setup. Actions now route through the BullMQ queue, and a worker in the same process consumes them. The framework hands both sides the same resolved flow registry, stores, and runtime config — there is no way to wire the worker against different stores than the web runtime, which is the classic mistake in queue setups (the worker's output silently disappears from streaming, refresh, and the devtool).
+`support` is the support desk's flow, defined in its own file. Every action call becomes a job. Actions run through the BullMQ queue, and a worker in the same process runs them against the same stores. [`bullmqWorker` options](../reference/background-work.md) covers the connection forms, retries and dead-letter queues.
 
-### Live streaming
+`fsdev serve` starts the queue for you, so the two lines after `createFlowState` are for any other way of starting the app.
 
-Streaming works the same as in-process, with no client changes. The browser sends the action, gets back a request id, and opens `GET /requests/:id/stream` to tail events. The worker persists events to the shared stores; the stream endpoint tails them from there.
+## 3. Call the action as before
 
-**Request discoverability.** Attach is available the moment you enqueue. When an action routes to the queue, the web process registers the in-progress request in the store right away, before the worker claims the job. So a `GET /requests/:id/stream` that arrives before the worker starts resolves an existing record and waits at sequence 0 for the first event, instead of 404ing. A genuinely unknown request id still returns 404.
+Nothing changes in the page. `session.sendAction("buildReport", ...)` resolves when the job is on the queue, not when it finishes, and `session.items` fills as the worker writes items.
 
-**Durability across retries.** The request id and sequence-number resume are stable across worker retries. A client that reconnects with `Last-Event-ID` replays from where it left off — no client code needed.
+You can open the stream as soon as the action returns its request id, even before a worker picks the job up. A client that reconnects replays from the last event it saw. [Live updates](./live-updates.md) shows the page side.
 
-For the full attach and resume contract, see [Streaming](/docs/streaming/overview) and [Connection resilience](/docs/server/connection-resilience).
+## 4. Move the work to worker processes
 
-### Next.js dev note (HMR)
+For production, run the web process and the workers in separate containers. Both build the same `FlowState` from one config, and a `mode` tells each which side to run:
 
-`next dev` re-evaluates your config module on every edit, and each evaluation builds a fresh FlowState — and a fresh worker. Without cleanup, stale workers accumulate and can claim jobs against orphaned stores. Dispose the previous generation when the module re-runs:
+```ts title="fsdev.config.ts"
+import { createFlowState } from "@flow-state-dev/engine";
+import { bullmqWorker } from "@flow-state-dev/bullmq";
+import { postgresStores } from "@flow-state-dev/store-postgres";
+import support from "./src/flows/support/flow";
 
-```ts
-const hmr = globalThis as typeof globalThis & { __fsdFlowstate?: FlowState };
-if (hmr.__fsdFlowstate) void hmr.__fsdFlowstate.dispose();
-hmr.__fsdFlowstate = flowstate;
-```
-
-Don't reach for the cache-on-`globalThis` pattern you'd use for a database client — caching the FlowState would freeze your flows and config until a restart. Disposing the predecessor keeps HMR semantics: every edit takes effect, and exactly one worker generation is live. Production builds evaluate the module once, so this is a no-op there. The same applies to signal handlers: register `SIGTERM`/`SIGINT` once behind a `globalThis` flag, not per evaluation.
-
-### Enqueue a one-off job
-
-The adapter exposes the underlying runtime for direct enqueueing outside the action dispatch path:
-
-```ts
-await bullmq.runtime.enqueueAction({
-  flowKind: "billing",   // the instance id: a kind, or a collection copy's own id
-  actionName: "generateInvoice",
-  input: { month: "2026-06" },
-  userId: "system",
-});
-```
-
-`flowKind` on the job is the [instance the worker runs](/docs/fundamentals/flows#how-an-instance-is-addressed), carried from enqueue to processing, so a job for `review-east` runs the east copy's configuration on whichever worker claims it. A job that names a session another instance owns fails as unrecoverable, with nothing written, rather than retrying.
-
-Draining the queue is part of turning an existing flow into a collection: a job already enqueued under the bare kind finds no instance once the kind stops being an address. See [Persistence](/docs/persistence/overview#who-owns-a-record) for attributing the sessions that flow already saved.
-
-The `queue` property is also exposed — useful for mounting admin consoles like Bull Board.
-
----
-
-## 4. Separated workers
-
-For production, run workers in dedicated containers. Both processes build the **same** `createFlowState(...)` from shared config; the only difference is the adapter's `mode`:
-
-```ts title="lib/flowstate.ts (shared config module)"
-export const flowstate = createFlowState({
-  flows: { /* ... */ },
-  stores: { /* ... a backend both processes reach, e.g. Postgres ... */ },
+const flowstate = createFlowState({
+  flows: [support],
+  stores: postgresStores({ connectionString: process.env.FSD_DB_URL }),
   worker: bullmqWorker({
     connection: process.env.REDIS_URL!,
-    mode: process.env.FSD_WORKER_MODE === "worker-only" ? "worker-only" : "dispatch-only",
+    mode: process.env.QUEUE_MODE === "worker-only" ? "worker-only" : "dispatch-only",
     concurrency: 4,
   }),
 });
+
+export default flowstate;
 ```
 
-- **Web container** — `FSD_WORKER_MODE=dispatch-only`. Serves the router; actions are enqueued, never processed here.
-- **Worker container** — `FSD_WORKER_MODE=worker-only`. The entry point is just:
+The web container sets `QUEUE_MODE=dispatch-only`. It enqueues jobs and runs none. `QUEUE_MODE` is this app's own variable name. `concurrency: 4` is the number of jobs one worker process runs at a time.
+
+The worker container starts a small script:
 
 ```ts title="worker.ts"
-import { flowstate } from "./lib/flowstate";
+import flowstate from "./fsdev.config";
 
 await flowstate.ready();
 process.on("SIGTERM", () => void flowstate.dispose());
 ```
 
-Separated processes can't share an in-memory registry. Both sides need a store backend they genuinely share — Postgres in production, or SQLite/filesystem on a shared disk for a single-machine setup.
+Run it with the container's `QUEUE_MODE=worker-only`, using the TypeScript runner you already use. No `fsdev` command starts a worker-only process.
 
-Each entry's [concurrency policy](/docs/advanced/concurrency-policies#across-processes) holds across every container, through the same Redis as the queue: two `queue` runs into one session run one after the other even when different workers pick them up. The `concurrency: 4` above is something else, the number of jobs one worker process runs at a time. When you upgrade, roll out the worker containers before the web tier.
+Both containers must reach the same stores. If they do not, jobs enqueue and run, but the web process never sees the worker's output and the request stays `in_progress`. Nothing reports the mismatch. The default in-memory stores belong to one process, so use Postgres, or SQLite on a shared disk on one machine. [Stores](../reference/stores.md) lists the backends.
 
-### Low-level primitives
+## Next
 
-`bullmqWorker` composes from public factories — `createBullmqRuntime`, `createFlowWorker`, `createWorkerRunner`, `createRedisStreamBridge`. Reach for them directly only when building a custom topology (your own flow runner, a non-FlowState host). For everything else, the `worker` option is the supported path; hand-wiring these pieces means you own the store-sharing invariant yourself.
-
----
-
-## 5. Scheduling with BullMQ
-
-BullMQ has a built-in repeatable-job scheduler. The `@flow-state-dev/bullmq/schedules` subpath bridges it to the framework's scheduled transport adapter.
-
-### Register static schedules
-
-```ts
-import { Queue } from "bullmq";
-import { registerStaticSchedules } from "@flow-state-dev/bullmq/schedules";
-
-const queue = new Queue("fsd-schedules", { connection: redisUrl });
-
-// Reads each flow's schedules.static map and upserts repeatable jobs.
-// Idempotent — safe to call on every deploy.
-await registerStaticSchedules({ registry, queue });
-```
-
-### Consume schedule fires
-
-```ts
-import { createScheduleDispatchWorker } from "@flow-state-dev/bullmq/schedules";
-
-const scheduleWorker = createScheduleDispatchWorker({
-  connection: redisUrl,
-  queueName: "fsd-schedules",
-  baseUrl: "http://localhost:3000",
-  secret: process.env.CRON_SECRET!,
-});
-```
-
-When a repeatable job fires, the worker POSTs to the framework's schedule dispatch endpoint. This bridges BullMQ's native cron to the same endpoint that Vercel Cron or Cloud Scheduler would hit.
-
-### Schedule index
-
-`createBullmqScheduleIndex` implements the `ScheduleIndex` interface for dynamic schedules. Because BullMQ fires jobs natively, `claimDue` returns `[]` — no polling tick is needed.
-
-```ts
-import { createBullmqScheduleIndex } from "@flow-state-dev/bullmq";
-
-const scheduleIndex = createBullmqScheduleIndex(queue, { flowKind: "my-flow" });
-```
-
----
-
-## Connection options
-
-Pass a Redis URL string or an ioredis options object:
-
-```ts
-// URL
-bullmqWorker({ connection: "redis://localhost:6379" });
-
-// Options
-bullmqWorker({
-  connection: { host: "redis.internal", port: 6379, password: "secret" },
-});
-
-// TLS
-bullmqWorker({ connection: "rediss://user:pass@redis.cloud:6380" });
-```
-
-The `prefix` option namespaces all BullMQ keys. Default is `"fsd"`. Use this for multi-tenant isolation or running multiple apps against the same Redis instance. Never use ioredis `keyPrefix` — it's incompatible with BullMQ's Lua scripts.
-
----
-
-## Retry and dead-letter queues
-
-```ts
-bullmqWorker({
-  connection: redisUrl,
-  retry: {
-    attempts: 5,
-    backoff: { type: "exponential", delay: 2000, jitter: 0.3 },
-    removeOnComplete: { age: 3600, count: 1000 },
-    removeOnFail: { age: 86400 },
-    deadLetter: true,
-  },
-});
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `attempts` | 3 | Max attempts including initial |
-| `backoff.type` | `"exponential"` | `"exponential"` or `"fixed"` |
-| `backoff.delay` | 1000 | Base delay in ms |
-| `backoff.jitter` | 0.5 | Jitter factor (0–1) |
-| `removeOnComplete` | `{ age: 3600, count: 1000 }` | Cleanup for completed jobs |
-| `removeOnFail` | `{ age: 86400 }` | Cleanup for failed jobs |
-| `deadLetter` | `false` | `true` sends to `<queue>-dlq` after exhausting retries |
-
-Validation errors, unknown flows, and unknown actions are marked as `UnrecoverableError` and skip retries entirely.
-
----
-
-## Kitchen-sink reference
-
-The kitchen-sink app includes BullMQ wiring as a reference. To try it:
-
-```bash
-# Start Redis
-cd apps/kitchen-sink
-docker compose -f docker-compose.dev.yml up -d
-
-# Add to .env.local
-echo "REDIS_URL=redis://localhost:6379" >> .env.local
-
-# Start the app
-pnpm dev
-```
-
-When `REDIS_URL` is set, the kitchen-sink builds a `bullmqWorker` adapter (Bull Board mounts its queue at `/api/admin/queues`). Setting `FSD_BULLMQ_DISPATCH=1` additionally installs it as the FlowState `worker`, routing every action through the queue. See `lib/flowstate.ts` for the wiring.
-
----
-
-## See also
-
-- [Work that outlives the turn](/guides/background-work) — how queue-backed runs compare to side chains and dispatch runs
-- [Scheduled actions reference](/docs/server/scheduled) — framework scheduling contract
-- [Deploying with Docker](/guides/deploying-with-docker) — containerized deployment
+- [`bullmqWorker` reference](../reference/background-work.md): connection, `prefix`, retries, dead-letter queues, jobs enqueued by hand, and which failures skip retries.
+- [Concurrency policies](../reference/concurrency.md): how `queue` and the other policies hold across containers.
+- [Run on a schedule](../reference/schedules.md): BullMQ's repeating jobs as the scheduler.
+- [Deploy with Docker](./deploy/docker.md): the two containers in one compose file.

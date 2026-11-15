@@ -140,3 +140,17 @@ Response-code table (fact 40); `ScheduleConfig` fields: `input`, `principal`, `t
 - The page's tick-handler section is one paragraph and links to the reference (fact 8).
 - The dispatch check sends no body (fact 44). The hand-written shim's `await headers()` question is moot: it is no longer on the page.
 - Reference anchors the page links to (`#cron-shim`, `#dispatch-endpoint`, `#tick-handler`) must exist on `reference/schedules` when R-33 is written.
+
+## Revise round 2 (pass 8)
+
+- The page now shows the handler block and `actions: {}` on `defineFlow` so the flow file type-checks (fact 61, 64).
+- Fact 28 stands: the host applies `defaultUserId` after any resolver returns `null` (`host:327-329`), and the bearer resolver returns `null` on a missing header (`bs:76-77`), so the `source === "scheduled"` branch does not change it. A wrong secret throws `401` and `defaultUserId` does not apply.
+- The cron route relays status only (fact 5), so Vercel sees `202` for started and `200` for duplicate and skipped alike (fact 42).
+- The check-twice sentence is off the page; the observable guarantee is `401`.
+
+## Revise round 3 (pass 8)
+
+- Fact 42 stands, but the page no longer says "run the curl to see which": the no-body curl claims the latest due time, so after Vercel's call it answers `duplicate` whether Vercel's call ran or was a duplicate (fact 44, fact 48). The page now only says Vercel's cron logs cannot tell duplicate from skip.
+- Fact 47: the page names the DevTool and links `build/debug-a-run` for handler errors, in place of "request record".
+- Fact 28: the page places `defaultUserId` under the flow's `authentication`, as the host reads it (`host:327-329`).
+- Fact 29: with the `ctx.source` branch, the bearer secret is accepted only on scheduled calls; the handler is reachable only through the dispatch endpoint.

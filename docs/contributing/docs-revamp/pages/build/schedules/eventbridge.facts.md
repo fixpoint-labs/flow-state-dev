@@ -108,8 +108,9 @@ the three recipes must agree on them.
 15. **[external][verify]** Whether `<aws.scheduler.scheduled-time>` is the nominal time or the
     flexible-window offset time. The recipe uses `--flexible-time-window '{"Mode":"OFF"}'`; with a window
     on, a carried time that is the actual (jittered) fire time rather than the scheduled one would be
-    more than five seconds from the cron and refused `400 not_a_scheduled_time`. Keep the window off, as
-    the existing command does, or check AWS. [eb:43; stm:102-112]
+    more than five seconds from the cron and refused `400 not_a_scheduled_time`. The page does not claim why; it says only
+    that the command sets the window to `OFF`, so each call goes out at the scheduled time. Unverified: whether
+    the attribute differs with a window on. [eb:43; stm:102-112]
 16. The body is substituted per run, so unlike a fixed body it is not stale. A scheduler that sent a
     fixed `nominalFireTime` would get `200 { status: "duplicate", reason: "stale" }` once the time is more
     than one period behind, run nothing and log a warning; the recipe's placeholder avoids this and the
@@ -129,9 +130,10 @@ the three recipes must agree on them.
     with 401. `secret` and `principal.userId` must be non-empty or the factory throws. The principal
     needs an `orgId` (a configured resolver that returns none is refused 401); the example uses
     `"org_sys"`. [bs:47-88, 57-69; rt:91-98; auth:60-64, 73-75; opt:44]
-20. The secret is an environment variable on the app side. In EventBridge it is **templated into the
-    schedule's header at create time** (`eb:67-69`, **[external]**): rotating it means updating the
-    schedule, or fronting the call with API Gateway and verifying there. The framework has no secret
+20. The secret is an environment variable on the app side. In EventBridge its value is **pasted literally into the
+    schedule's header at create time** (`eb:67-69`, **[external]**; the page says the value is stored on
+    the schedule and names `FSDEV_SCHEDULER_SECRET` as the secret the resolver checks): rotating it means updating the
+    schedule. The page no longer mentions fronting with API Gateway (unverifiable, left open a question). The framework has no secret
     rotation of its own; to accept two secrets during a rotation a host writes `resolvePrincipal`
     directly. The existing page does not say the latter; the bearer helper's comment says richer auth
     is a hand-written resolver. [bs:10-13]
@@ -229,10 +231,10 @@ queue live in AWS.
     in EventBridge's `Input` are ignored. [st:101-122, 148-154; rt:211, 238-256, 413-418]
 44. **[correction]** The JSDoc on `ScheduleInputContext.nominalFireTime` ("or now() if absent") is wrong:
     it is the scheduled time, never `now()`. [st:111; rt:211, 238-250]
-45. `eb:95-97`: IAM and role setup is heavier than Vercel Cron or Cloud Scheduler; worth it for retries
-    and a dead-letter queue. **[external]**, an opinion about AWS; keep to one clause or cut.
-46. The schedule expression is fixed in AWS when the schedule is created. **[external]** Changing it
-    means updating both AWS and the flow's `cron` (fact 9). [eb:98]
+45. `eb:95-97`: IAM role setup is more than Vercel Cron or Cloud Scheduler ask for; choose it for the
+    dead-letter queue. Not "for retries": Cloud Scheduler retries failed calls too (B-16). **[external]**, an opinion about AWS; keep to one clause or cut.
+46. Changing the schedule's cron means updating both AWS and the flow's `cron` (fact 9); the page states this
+    once, in the cron section, and no longer says the expression is "fixed at create time". [eb:98]
 47. One dispatch runs one action; no fan-out. [ref:468-471]
 48. `GET /api/flows/:flowKind/schedules` lists static schedules (`id`, `cron`, `action`, `timezone`,
     `description`, `enabled`) and `dynamic: { provided }`, with the same resolver, so the bearer header

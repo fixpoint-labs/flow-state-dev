@@ -88,14 +88,26 @@ gcloud scheduler jobs create http monthly-invoices \
   --max-backoff=600s
 ```
 
-The job sends no body. Each fire runs the block for the most recent
-scheduled time that is due.
+The job sends no body. Each fire counts against the most recent scheduled
+time that is due. Leave it that way. Cloud Scheduler sends the same fixed
+body on every run, so a body carrying `nominalFireTime` is accepted once.
+After that it answers `200 { status: "duplicate", reason: "stale" }`, runs
+nothing and logs a warning on the server. A body carrying `idempotencyKey`
+is refused with `400`. The block's input comes from the schedule's `input`,
+not from the request.
 
 Write the same cron in `--schedule` and in the flow, and the same zone in
 `--time-zone` and `timezone`. Cloud Scheduler decides when it fires. The
-flow reads its own `cron` and `timezone` to work out which scheduled time a
-fire is for, so a mismatch can refuse a fire or count it against the wrong
-time.
+flow reads its own `cron` and `timezone` (default `"UTC"`) to work out which
+scheduled time a fire is for, and it does not compare the two copies. A
+mismatch can refuse a fire or count it against the wrong time.
+
+To move the invoices to midnight New York time, change `--time-zone` to
+`America/New_York` and set `timezone: "America/New_York"` on the schedule,
+with the same cron in both. The zone must be an IANA name, or registration
+fails. Changing the cron or zone keeps the schedule's record of its last
+fired time, so a time at or before the one that already fired answers
+`duplicate`. This month's run is not repeated.
 
 ## 3. Check it
 
@@ -120,6 +132,13 @@ Cloud Scheduler retries a run that gets a non-2xx answer, following the
 block twice: each scheduled time fires at most once, and a repeat answers
 `200 { status: "duplicate" }`. What a retry does once the next scheduled
 time has come is in [Schedules](../reference/schedules.md).
+
+A wrong token is refused with `401 { error: "unauthorized", message:
+"Invalid scheduler secret." }` and nothing runs. So when you rotate
+`FSDEV_SCHEDULER_SECRET` on the app, update the job's header too. Until you
+do, Cloud Scheduler retries per its flags and every retry fails the same
+way. A missing header gets a `401` as well, because the flow sets
+`requireUser: true`.
 
 If the block fails after the `202`, Cloud Scheduler does not retry. Look up
 the request by its `requestId`, as in step 3: its `status` is `errored` and
