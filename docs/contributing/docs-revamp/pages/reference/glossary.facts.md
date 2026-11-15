@@ -101,8 +101,8 @@ codes are the proposal in section 3. "G line" is the term's line in `glossary.mj
 |------|-----|-----------------------|--------|
 | **Worker** | R | A configuration with an owner: names the flow it runs on, carries its own instructions, skills and tools. Belongs to one user and acts as them. Never "seat". | G:484; OLD "Worker" |
 | **Worker flow** | R | The flow a worker runs on: the built-in `agent`, the coordinator, or an app-registered flow. Each registered once; every worker naming it shares that copy. | G:517; OLD "Worker flow" |
-| **Standard worker** | R | A worker every user has, read from the installation's files, the same for everyone. Nobody edits one; fork it. | G:523; OLD "Standard worker" |
-| **Fork** | R | Copies a standard worker into a worker of your own, from its configuration. | G:524 |
+| **Standard worker** | R | A worker every user has, read from the installation's files, the same for everyone. Nothing at run time writes the file. A user's first edit copies it onto their own roster under the same id; other users keep the file's version; `reset` deletes the copy. (Corrected after the loop: the earlier "Nobody edits one" was untrue.) | G:523; `wf/workers/standard-workers.ts:6-11`; `wf/workers/client.ts:212-231`; `wf/workers/roster-view.ts:92-99` |
+| **Fork** | R | Copies a standard worker, or one of the user's own, into a new worker of the user's own under a new id, from its configuration. | G:524; `wf/workers/client.ts:212-216` |
 | **Roster** | R | The workers one user has, standard ones included. Shift Manager's Roster screen shows the same workers by what they are doing (on shift or off shift). | G:526; OLD "Roster" (Workforce and Shift Manager rows) |
 | **Coordinator** | R | A worker that hands each message to its delegates as routed tasks. Never a mailbox. | G:533; OLD "Coordinator" |
 | **Routed task** | C/R | A coordinator's post; the message it routes is named by the request that carried it (`messageRequestId`). | G:370; `wf/coordinator/coordinator-flow.ts:263`, `:294` |
@@ -191,7 +191,15 @@ Only terms that store data. Answers are from code or G; "not verified" means the
 - The `updateTask` per-field rule, the hire refusal on missing role entries, and "nothing holds a request open" are off the page and not claimed. "Entry" no longer appears as a term.
 - "Built from" names the lower terms a term is made of, not where its data lives.
 - "Words that mean two things" now has Shift Coordinator (worker, and Shift Manager screen) and a corrected Kind entry.
-- Figures copied into `glossary/` beside the page; the five SVGs pass brand lint.
+- Figures live in `figures/` beside the page as `glossary-{core,layers,orchestration,shift-manager,workforce}.svg` (the vocabulary sweep reads only SVGs under a `figures/` folder as assets, `docs/contributing/glossary.mjs:1459`); the five SVGs pass brand lint.
 
 - 5.1 Team profile is left off the page: it is a Lab config kept in the Shift Manager source folder and is not in the published package, so a reader who installed the package cannot use it.
 - 5.2 Package is listed under "Words that mean two things": the Package column names an npm package, while a Workforce package is a `PACKAGE.md` folder a worker can hold.
+
+## 9 · Added after the loop
+
+- Kit row on the page: `workforce({ model })` and `harnesses({})` are kits; kits install in any listed order, sorted by `requires`; no client half. `core/kit/define-kit.ts:1-17`; `engine/flowstate/kits.ts:5-11`; `docs/architecture/kits.md:25`.
+- Slot: a keyed key given twice is refused naming both contributors, as one `FlowStateConfigError` at construction; `kit.without(slot, key?)` drops a whole contribution or one keyed entry. `core/kit/define-kit.ts:22-61`, `:166-170`; `engine/flowstate/kits.ts:10-11`, `:188-191`.
+- Wait: `getTask({ id, wait: true })` and `dispatcher({ wait: true })`; at the deadline the turn resumes with the task running; the deadline cancels nothing. `orch/tasks/helpers/wait-on-task.ts:3-6`, `:28-30`; `core/blocks/dispatcher.ts:233`.
+- `tools` package: depends on core and workspace; exports `search`, `fetch`, `crawl`, `createBashTool`, and an MCP capability at `./mcp`. `packages/tools/package.json:34-50`, `:95-97`; `packages/tools/src/index.ts:6`; `packages/tools/src/mcp/index.ts:7`.
+- Shift Manager is published (`packages/shift-manager/package.json` has no `private`); the layers figure said "not published" and is corrected.

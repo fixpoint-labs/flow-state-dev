@@ -6,7 +6,7 @@
 <rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="22" width="864" height="140"/>
 <text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="40" y="46">LAYER 05</text>
 <text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="40" y="68">Shift Manager</text>
-<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="40" y="86">an app, not published · serves a Workforce through the Engine</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="40" y="86">an app, published · serves a Workforce through the Engine</text>
 <line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="28" y1="100" x2="892" y2="100"/><text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="40" y="122">Screens over a Lab: Shift Coordinator, Inbox, Tasks, Roster, workstreams, projects</text>
 <text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="40" y="146">USES</text>
 <text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="84" y="146">workforce · engine · node · client · react · fsdev · store-sqlite · devtool · design-system</text>
