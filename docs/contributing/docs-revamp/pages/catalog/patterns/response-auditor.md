@@ -64,7 +64,7 @@ export interface AuditorOutput {
 }
 ```
 
-A result is in `surfacedResults` when its score is at or above `threshold`, or when the analyzer set `shouldSurface`. If an analyzer throws, its result is left out and the others count toward `overallScore`. Nothing in the output says which analyzer failed; the failure shows in the DevTool trace. Used with `.step()` instead of `.sideChain()`, the output is the next step's input.
+A result is in `surfacedResults` when its score is at or above `threshold`, or when the analyzer set `shouldSurface`. If an analyzer throws, say its model call times out, the auditor carries on: that analyzer has no entry in `results`, and only the others count toward `overallScore`. Nothing in the output says which analyzer failed; the failure shows in the DevTool trace. Used with `.step()` instead of `.sideChain()`, the output is the next step's input.
 
 The fields of an analyzer result, and the annotation fields inside it, are in the [patterns reference](../../reference/patterns.md).
 
@@ -81,7 +81,7 @@ An analyzer is any block that takes `{ userInput, response }` and returns an `An
 | `annotations` | array | Each has `type`, `label`, `description`, `severity` and optional `evidence`. |
 | `supplementary` | object, optional | Extras shown on the audit card ([Show the audit](#show-the-audit)): `summary` and `counterArguments`. |
 
-A model-backed analyzer is a generator that returns a typed object, followed by a handler that turns it into a result. Give the analyzer's outer block `outputSchema: AnalyzerResultSchema`, as `toneCheck` does below. Then a result that doesn't match fails only that analyzer, which is left out like one that throws. Without it, a bad result fails the whole audit.
+A model-backed analyzer is a generator that returns a typed object, followed by a handler that turns it into a result. Give the analyzer's outer block `outputSchema: AnalyzerResultSchema`, as `toneCheck` does below. Then a result that doesn't match fails only that analyzer, which is left out like one that throws. Without it, a bad result such as `score: 2`, or an annotation with no `label`, fails the whole auditor when the results are collected. In a side chain, the user's answer arrives regardless.
 
 ```ts title="src/flows/support/blocks/tone-check.ts"
 import { generator, handler, sequencer } from "@flow-state-dev/core";

@@ -262,3 +262,15 @@ or `process.env`).
   `C/index.ts:122-128`). Reference material at most.
 - DNS rebinding limit (`I/public-url.ts:10-16`): internals; a Reference row at most.
 - The exact private-range list beyond the summary in F26.
+
+## Revise round 1: what the page now states
+
+- F45. The page no longer states config `maxPages`/`maxDepth` as defaults (F9). It says the model
+  can pass either per call, defaults 20 and 2, and its examples set neither in config.
+- F46. Patterns: glob rules and the empty-list defaults moved to Reference R-42. The page states
+  exclude-wins (F24), checked before fetch including the root (F25), and that Firecrawl gets the
+  same strings and matches them itself (F31). No Firecrawl syntax is claimed.
+- F47. Errors: a failed root gives `pages: []` for the built-in crawler (F28). An invalid root URL
+  string throws (`C/providers/builtin.ts:14`, `new URL(rootUrl)`), and Firecrawl SDK errors
+  propagate (F28). The "Firecrawl timeout" row is cut: no observable timeout behaviour in the code.
+- F48. The page does not claim anti-bot handling for Firecrawl (F38: not shown by code); it says only that Firecrawl can wait for JavaScript (F17).

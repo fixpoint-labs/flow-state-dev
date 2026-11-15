@@ -63,7 +63,7 @@ export const digestTickets = supervisor({
 
 The default planner, reviewer and synthesizer use `model: "intent/synthesize"`, a model intent your app maps to a model. See [Models](../../reference/models.md).
 
-Besides `name`, you need `worker` or, to route tasks by assignee, a `workers` registry. The reviewer checks each worker's output separately. Every other option is in the [patterns reference](../../reference/patterns.md).
+Besides `name`, you need `worker` or, to route tasks by assignee, a `workers` registry. With a registry, each task goes to the worker named by its assignee, and that worker's output is reviewed on its own. Every other option is in the [patterns reference](../../reference/patterns.md).
 
 ## Write your own reviewer
 
@@ -89,7 +89,7 @@ export const checkLength = handler({
 });
 ```
 
-Add `reviewer: checkLength` to the `supervisor` call. The reviewer sees the task's `goal`, `attempts`, `workerOutput` and your `reviewCriteria`. A verdict's `decision` is `approve`, `reject` or `needs-revision`, and `feedback` is required on the last two. The supervisor treats `reject` and `needs-revision` identically: same retry and same `failed-review` label. The difference is only in meaning: use `needs-revision` when the output is close and needs specific fixes, and `reject` when it needs redoing. The default model reviewer is prompted to choose between them the same way. Pass `reviewer: false` to skip review, so every worker output counts as done.
+Add `reviewer: checkLength` to the `supervisor` call. The reviewer sees the task's `goal`, `attempts`, `workerOutput` and your `reviewCriteria`. A verdict's `decision` is `approve`, `reject` or `needs-revision`, and `feedback` is required on the last two. Both get the same retry and the same `failed-review` label. Use `needs-revision` when the output is close and needs specific fixes, and `reject` when it needs redoing. The default reviewer follows the same distinction. Pass `reviewer: false` to skip review, so every worker output counts as done.
 
 ## When a task is rejected
 
@@ -97,7 +97,7 @@ A rejected task goes back to `pending`, and the verdict's `feedback` reaches the
 
 When the budget is spent, the task ends `errored` with the `failed-review` label and the other tasks carry on. The synthesizer sees only the results of `completed` tasks. A worker that throws spends the same budget, and its error message becomes the next run's `feedback`.
 
-A second limit, `maxTotalRetries` (default 50), caps retries across the whole board, so a large plan on a bad day can't retry without end. What happens when it runs out, the other failure labels and the task counts are in the [patterns reference](../../reference/patterns.md).
+A second limit, `maxTotalRetries` (default 50), caps retries across the whole board. What happens when it runs out, the other failure labels and the task counts are in the [patterns reference](../../reference/patterns.md).
 
 ## Dependencies and the final output
 
@@ -107,7 +107,7 @@ The supervisor returns whatever the synthesizer produces: a string by default, o
 
 A supervisor's tasks live for the request that called it. Nothing it plans survives a new request, so it is not a background queue. For a board that outlives a request, see [Task board](../../reference/task-board.md).
 
-Cost scales with attempts: N tasks that each take two attempts make 2N worker calls and 2N reviewer calls, plus one planner call and one synthesizer call.
+Cost scales with attempts. The reviewer runs once for each attempt that reaches it, so N tasks that each take two reviewed attempts make 2N worker calls and 2N reviewer calls, plus one planner call and one synthesizer call. An attempt where the worker throws skips its review.
 
 ## See also
 

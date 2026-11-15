@@ -70,3 +70,15 @@ Abbreviations: `ix` = `packages/tools/src/index.ts` · `sr` = `packages/tools/sr
 - Jina: auto-selection uses it only when a Jina key is found (`fr:39-42`); keyless Jina needs the provider forced (`fr:23`). The "20 RPM" figure has no source in code and is not stated. **[gap]**
 - `cacheable` applies to any block in a generator's `tools` slot when a tool cache is installed via `createToolCacheCapability` in `uses` (`packages/core/src/blocks/tool-cache.ts:189-200`, `packages/core/src/types/block.ts:1136-1144`); a task board installs one when a worker tool declares `cacheable` (`packages/orchestration/src/task-board/index.ts:526-529`). No effect outside a generator's tool slot. Errors never cached. **[page]** Single-flight coalescing and the scope table's detail are **[ref]**. The page's example is self-contained (no `ctx.resources`) and type-checks.
 - `@flow-state-dev/workspace` exists (`packages/workspace/package.json`, version 0.4.0); the page no longer links it. The `fetch` and `crawl` built-in fetcher is described as "returns markdown"; library names are not on the page.
+
+## 7. Revise round 2 corrections
+
+- Cache scope outside a task board: `run` and `request` both key entries by the request id, and the store is per request (`packages/core/src/blocks/internal/cache-tool-call.ts:178-195`, `packages/core/src/blocks/tool-cache.ts:221-240`). So on a generator with `createToolCacheCapability()` in `uses`, `run` behaves like `request`; on a task board the store is rebound per board run (`tool-cache.ts:267-284`). `session` keys by session id. **[page]**
+- MCP page exists at `/docs/tools/mcp`; the page links it inline and in Next steps.
+
+## 8. Revise round 3 corrections
+
+- Page now states the search auto-selection order (Parallel, Tavily, Exa, Perplexity, Serper, Brave, Perplexity Sonar; `sr:9-17`, `rt:142`) and that Parallel beats Tavily when both env keys are set. **[page]**
+- Forcing a provider is the factory (`tavilySearch`, `si:62-88`; `firecrawlFetch`, `fi:37-47`); a config key wins over env (`sr:75`, `rt:47`); a forced provider with no key throws (`sr:33-40`). **[page]**
+- `tools.search({ keys })` alone does not force a provider: the order still applies (`sr:9-17`). **[page]**
+- Optional peers (`@tavily/core`, `exa-js`, `@mendable/firecrawl-js`; `pj:105-126`); missing-package error `Install @tavily/core to use the Tavily search provider` (`tavily.ts:20`). **[page]**

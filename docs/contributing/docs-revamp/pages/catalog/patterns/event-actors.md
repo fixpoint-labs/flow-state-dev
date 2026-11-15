@@ -8,7 +8,7 @@ description: Actors react to topics they watch; no controller.
 
 Some work has no plan. A message arrives, and whoever cares about it should react. A support desk reads Slack messages, and one actor tags the urgent ones while another pages someone when an alert comes in. Nobody tells them in what order to go.
 
-`eventActors` is that setup. Each *actor* is a block plus a list of topic patterns it watches. When you emit an *entry*, an object shaped `{ type, topic, body }`, the entry is recorded in a shared log and every actor whose pattern matches it runs, up to `concurrency` at a time. You add an actor without touching the others.
+`eventActors` is that setup. Each *actor* is a block plus a list of topic patterns it watches. When you emit an *entry*, an object shaped `{ type, topic, body }`, the entry is recorded in a shared log and every actor whose pattern matches it runs, four at a time by default. Each run of an actor is a *task*, a stored record of that run with the actor's name as its assignee. You add an actor without touching the others.
 
 Use it when:
 
@@ -24,11 +24,9 @@ If a controller should read shared state and pick the next specialist each pass,
 pnpm add @flow-state-dev/patterns
 ```
 
-The pattern's names come from `@flow-state-dev/patterns`.
-
 ## Use it
 
-The examples belong to a `feedback` flow on a support desk. An entry has a type, a topic and a body, and the topic is a dotted name. The schema below describes that shape. Both actors and the workspace use it.
+The examples belong to a `feedback` flow on a support desk. An entry has a type, a topic and a body, and the topic is a dotted name. The schema below describes that shape.
 
 ```ts title="src/flows/feedback/blocks/entry-schema.ts"
 import { z } from "zod";
@@ -40,7 +38,7 @@ export const entrySchema = z.object({
 });
 ```
 
-The *workspace* is the log the entries are recorded in. `entries` describes the entry shape for people reading the code, and nothing validates an emitted entry against it.
+The *workspace* is the log the entries are recorded in. `entries` documents the entry shape, and nothing validates an emitted entry against it.
 
 ```ts title="src/flows/feedback/blocks/feedback-workspace.ts"
 import { createEventActorsWorkspace } from "@flow-state-dev/patterns";
@@ -52,7 +50,7 @@ export const feedbackWorkspace = createEventActorsWorkspace({
 });
 ```
 
-Each actor's block receives the entry as its input. This one tags a Slack message, and hands back a new entry when the message sounds urgent. Nothing happens to that returned entry yet, so we come back to it below.
+Each actor's block receives the entry as its input. This one tags a Slack message, and hands back a new entry when the message sounds urgent. By default that returned entry is dropped; [Run one actor from another](#run-one-actor-from-another) turns it into a new entry.
 
 ```ts title="src/flows/feedback/blocks/slack-monitor.ts"
 import { handler } from "@flow-state-dev/core";
@@ -104,7 +102,7 @@ export const feedback = eventActors({
 });
 ```
 
-`feedback.emit` is a block that takes an entry. Use it as a flow's action block, or as a step in a sequencer after other work:
+`feedback.emit` is a block that takes an entry. Use it as a flow's action block, or as a sequencer step:
 
 ```ts title="src/flows/feedback/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
@@ -130,9 +128,9 @@ export const feedbackFlow = defineFlow({
 
 Emitting `{ type: "observation", topic: "slack.message", body: { text: "Checkout is broken" } }` records the entry and runs `slack-monitor`. `alert-watcher` doesn't match, so it doesn't run. Putting `emit` in a flow adds the workspace to it. You declare nothing else.
 
-`emit` finishes without an error once every actor it started has settled. Its output holds no actor results. To see what ran, read the log and the tasks (see [Seeing it run](#seeing-it-run)).
+`emit` finishes without an error once every actor it started has settled. Its output holds no actor results. To see what ran, read the log and the tasks, as [Seeing it run](#seeing-it-run) shows.
 
-The log keeps one entry per type and topic. Emit a second `observation:slack.message` and it isn't added to the log, but `slack-monitor` runs on it anyway.
+The log keeps the first entry for each type and topic. Emit a second `observation:slack.message` and the log shows the first one, body included, but `slack-monitor` runs on the second anyway.
 
 ## Topic patterns
 
@@ -158,13 +156,17 @@ With that set, the Slack message above runs `slack-monitor`, which returns an `e
 
 A failing actor's task is marked failed. The other actors run as usual, `emit` finishes without an error, and a failed actor isn't retried.
 
+A busy channel can hit a limit instead: one `emit` may create 500 tasks in all, with 100 waiting at once. An entry's tasks are created in one batch, so if they don't all fit, none of its actors run and `emit` errors. When an actor's returned entries would cross the limit, that actor's task fails and none of those entries reach an actor. Raise the limits, or pass `null` to remove them, with `maxTotalTasks` and `maxEnqueuedTasks`.
+
 ## Seeing it run
 
-Each run of an actor is a task, with the actor's name as its assignee. The log is stored with the session, and a UI can read its `entries`.
+The log is a session resource stored under the key `eventedActors`. A client can read its `entries` array, and nothing else on it. Each recorded entry also streams an `rb-entry` component with its `type`, `topic` and `body`.
+
+The tasks live on the request, in the task collection `eventActors:<name>`, and end with it. A task's goal reads `slack-monitor on observation:slack.message` and its input is the entry. While `emit` runs, the stream carries a `task-change` item with the whole task each time one changes. The Checkout-is-broken run shows one `slack-monitor` task that completed.
 
 ## Change it
 
-`concurrency` (default 4) is how many actors run at once. `maxDepth` and `reEmit` are above. `maxTotalTasks` (default 500) and `maxEnqueuedTasks` (default 100) bound how many tasks one `emit` can create. Every option and the exports for building your own `emit` are in the [patterns reference](../../reference/patterns.md).
+`concurrency` (default 4) is how many actors run at once. `maxDepth`, `reEmit`, `maxTotalTasks` and `maxEnqueuedTasks` are above. Every option and the exports for building your own `emit` are in the [patterns reference](../../reference/patterns.md).
 
 ## See also
 

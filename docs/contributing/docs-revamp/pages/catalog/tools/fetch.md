@@ -6,169 +6,135 @@ description: One page as clean Markdown.
 
 # Fetch
 
-`@flow-state-dev/tools` — Fetch a single web page and return its content as clean, LLM-ready markdown.
+Part of `@flow-state-dev/tools`. `tools.fetch` gives a generator a tool that reads one web page and returns it as clean Markdown.
 
 ## Why this exists
 
-Agents need to read web pages. Documentation, articles, user-shared links, search results worth reading in full. The raw HTML is noisy and wastes context tokens. `tools.fetch` handles the fetching, content extraction, and HTML-to-markdown conversion so you don't have to.
+Agents need to read web pages: documentation, articles, links a user pastes, search results worth reading in full. Raw HTML is noisy and wastes context tokens. `tools.fetch` fetches the page, pulls out the content and converts it to Markdown, so the model reads the article and not the navigation around it.
 
-Three providers, auto-selected by what's available:
+It works with no API keys. A built-in provider reads static HTML, and two hosted providers, Firecrawl and Jina Reader, cover pages that need JavaScript rendering or sit behind bot protection.
 
-| Provider | How it works | JS rendering | Anti-bot | Env var |
-|----------|-------------|--------------|----------|---------|
-| Firecrawl | Managed API, best quality | Yes | Yes | `FIRECRAWL_API_KEY` |
-| Jina Reader | HTTP API via `r.jina.ai` | Yes (ReaderLM) | Partial | `JINA_API_KEY` (optional) |
-| Built-in | Node.js fetch + Readability + Turndown | No | No | None needed |
+## Install it
 
-The built-in fallback always works. No API keys, no external services. It handles static HTML well — documentation sites, blog posts, articles. For JS-rendered SPAs or pages behind anti-bot protection, you'll want Firecrawl or Jina.
+```bash
+pnpm add @flow-state-dev/tools
+```
+
+Firecrawl also needs its optional package, `pnpm add @mendable/firecrawl-js`. The other providers need nothing extra.
 
 ## Basic usage
 
-```ts
+```ts title="src/flows/research/blocks/reader.ts"
 import { generator } from "@flow-state-dev/core";
 import { tools } from "@flow-state-dev/tools";
 
-const reader = generator({
+export const reader = generator({
   name: "reader",
-  model: "anthropic/claude-sonnet-5-5",
-  prompt: "Read URLs the user provides and summarize them.",
+  model: "openai/gpt-6-luna",
+  prompt: "Read the URLs the user provides and summarize them.",
   tools: [tools.fetch()],
 });
 ```
 
-The LLM calls `fetch` with a URL and gets back markdown content, a title, and metadata.
+The model calls `fetch` with one input, a `url`, and gets back the page as Markdown with a title and metadata.
 
-## Configuration
+`tools.fetch` picks a provider from the API keys it finds: Firecrawl if `FIRECRAWL_API_KEY` is set, else Jina Reader if `JINA_API_KEY` is set, else the built-in provider. It never fails for lack of a provider. The built-in provider keeps the main article and drops navigation, ads and sidebars. It runs no JavaScript, so a single-page app or a page behind bot protection needs Firecrawl or Jina. The [Tools reference](../../reference/tools.md) lists each provider's key, options and limits.
 
-```ts
-tools.fetch({
-  // Force a specific provider instead of auto-detection
-  provider: "firecrawl",  // "firecrawl" | "jina" | "builtin"
+## Choose a provider
 
-  // Enable JS rendering (Firecrawl and Jina only)
+To override the auto-selection, pass a `provider`. `waitForJS` makes Firecrawl wait for the page to render, and `keys` passes API keys in code instead of reading the environment variables.
+
+```ts title="src/flows/research/tools/read-page.ts"
+import { tools } from "@flow-state-dev/tools";
+
+export const readPage = tools.fetch({
+  provider: "firecrawl",
   waitForJS: true,
-
-  // Explicit API keys (overrides env vars)
-  keys: {
-    firecrawl: "fc-...",
-    jina: "jina_...",
-  },
-})
+  keys: { firecrawl: "fc-key-here" },
+});
 ```
 
-All options are optional. With no config, the tool auto-detects providers from environment variables and falls back to built-in.
+All options are optional. Pass `readPage` to a generator's `tools` list in place of `tools.fetch()`.
 
-## Provider resolution
+To lock a block to one provider, use its constructor. Each takes the same config as `tools.fetch` minus `provider`.
 
-The tool checks for available providers in this order:
+```ts title="src/flows/research/tools/read-page.ts"
+import { builtinFetch, firecrawlFetch, jinaFetch } from "@flow-state-dev/tools";
 
+export const readWithFirecrawl = firecrawlFetch({ keys: { firecrawl: "fc-key-here" } });
+export const readWithJina = jinaFetch();
+export const readOffline = builtinFetch();
 ```
-FIRECRAWL_API_KEY set?  →  Firecrawl (deterministic, JS rendering, anti-bot)
-JINA_API_KEY set?       →  Jina Reader (deterministic, ReaderLM markdown)
-Always                  →  Built-in (static HTML only, but always works)
-```
 
-Unlike `tools.search()`, fetch never throws "no provider available". The built-in fallback covers the zero-config case.
+`firecrawlFetch` throws when it runs if it finds no key. `builtinFetch` never calls an outside service. The [Tools reference](../../reference/tools.md) has the rest of each constructor's behavior.
 
-## Output shape
+## What comes back
 
-Every provider returns the same normalized result:
+Every provider returns the same shape. `source` names the provider that served the page.
 
-```ts
+```json
 {
-  url: "https://example.com/article",
-  title: "Article Title",
-  markdown: "# Article Title\n\nClean markdown content...",
-  metadata: {
-    statusCode: 200,
-    contentType: "text/html",
-    description: "Meta description if available",
-    publishedDate: "2026-01-15",
-    wordCount: 1247,
+  "url": "https://example.com/article",
+  "title": "Article Title",
+  "markdown": "# Article Title\n\nClean markdown content...",
+  "metadata": {
+    "statusCode": 200,
+    "contentType": "text/html",
+    "wordCount": 1247
   },
-  source: "firecrawl"  // which provider was used
+  "source": "firecrawl"
 }
 ```
 
-## How the built-in fallback works
+`metadata.description` appears when Firecrawl or Jina supplies it. A page with no readable content comes back as best-effort Markdown, not an error. The [Tools reference](../../reference/tools.md) lists each field.
 
-The built-in provider uses a three-step pipeline:
+## Combine it with search
 
-1. **Fetch** — standard `fetch()` with a browser-like User-Agent
-2. **Extract** — `@mozilla/readability` strips navigation, ads, sidebars, and boilerplate, keeping just the article content (same library behind Firefox Reader View)
-3. **Convert** — `turndown` converts the cleaned HTML to markdown with ATX-style headings and fenced code blocks
+Search returns titles, URLs and snippets. Fetch reads one URL in full. Give a generator both tools and it can search, then fetch the pages worth reading. No extra wiring is needed.
 
-This is the same pipeline Jina Reader uses internally. The difference is Jina also handles JavaScript-rendered pages via their ReaderLM model.
+```ts title="src/flows/research/blocks/researcher.ts"
+import { generator } from "@flow-state-dev/core";
+import { tools } from "@flow-state-dev/tools";
 
-## Direct provider constructors
-
-If you want to skip auto-detection and lock to a specific provider:
-
-```ts
-import { firecrawlFetch, jinaFetch, builtinFetch } from "@flow-state-dev/tools";
-
-// Always use Firecrawl (throws if no API key)
-const fetch = firecrawlFetch({ keys: { firecrawl: "fc-..." } });
-
-// Always use Jina (works without key at 20 RPM)
-const fetch = jinaFetch();
-
-// Always use built-in (never calls external services)
-const fetch = builtinFetch();
-```
-
-## Composing with search
-
-A natural pattern: search first, then fetch the best results for full content.
-
-```ts
-const researcher = generator({
+export const researcher = generator({
   name: "researcher",
-  model: "anthropic/claude-sonnet-5-5",
+  model: "openai/gpt-6-luna",
   prompt: "Search for information, then read the most relevant pages to give thorough answers.",
   tools: [tools.search(), tools.fetch()],
 });
 ```
 
-The LLM will call `search`, scan the snippets, then `fetch` the pages that look most useful. You don't need to wire this up — the LLM figures out the workflow.
+Search needs a provider key and fetch does not, so this generator reads pages with zero keys but searches only once one is set.
 
-## Error handling
+## When a fetch fails
 
-When a fetch fails, the tool throws a `FlowError` carrying structured detail so you can tell a bot wall from a connection reset without reading raw traces. The detail lives on `error.details`:
+A failed fetch throws a `FlowError`. It never comes back as a result. The error's `details` field says what went wrong, and `retryable` says whether trying again can help.
 
-- `errorType` — the failure category: `"http"`, `"network"`, `"timeout"`, `"abort"`, `"parse"`, or `"unknown"`.
-- `httpStatus` / `httpStatusText` — the status for a non-2xx HTTP response. A 403 reads differently from a 500.
-- `responseBody` — a truncated copy of the response body, useful when an API returns an error message in the body.
-- `cause` — the underlying transport error (e.g. a buried `ECONNRESET`), preserved so the chain survives to the DevTool.
+| Failure | `details` | Retryable |
+| --- | --- | --- |
+| Page gone (404) | `errorType: "http"`, `httpStatus: 404` | No |
+| Server error (5xx) | `errorType: "http"`, `httpStatus`, `responseBody` | Yes |
+| Bot wall (403) | `errorType: "http"`, `httpStatus: 403`, the wall's `responseBody` | No |
+| Connection reset, DNS failure or timeout | `errorType: "network"` or `"timeout"`, with the original error as `cause` | Yes |
+| Private or non-HTTP address (built-in provider) | `errorType: "blocked"` | No |
 
-The thrown error also sets `retryable`: a 5xx, a network failure, or a timeout is retryable; a 4xx, an abort, or a parse failure is not. A generator's built-in retry reads this, so transient server failures are backed off for you without any extra wiring.
+The built-in provider fetches public addresses only, so an intranet page needs your own handler. Redirects, retries and the remaining error shapes are in the [Tools reference](../../reference/tools.md).
 
-| Scenario | Behavior | Retryable |
-|----------|----------|-----------|
-| URL returns 404 (page gone) | Throws with `httpStatus: 404`, `errorType: "http"` | No |
-| URL returns 5xx | Throws with `httpStatus`, `responseBody` | Yes |
-| Bot wall (403) | Throws with `httpStatus: 403` and the wall's response body | No |
-| Connection reset / DNS failure | Throws with `errorType: "network"`, `cause` preserved | Yes |
-| Request times out | Throws with `errorType: "timeout"` | Yes |
-| URL redirects | Follows redirects automatically (standard fetch behavior) | — |
-| Page has no readable content | Returns best-effort markdown, no error | — |
-| Firecrawl API error | Throws with the Firecrawl error message | No (fails fast — no status to judge) |
+To branch on a failure, read `details` where you catch the error:
 
-To branch on the failure yourself, read `error.details` in a rescue or catch:
+```ts title="src/lib/fetch-errors.ts"
+import { FlowError } from "@flow-state-dev/core";
 
-```ts
-try {
-  await fetchTool.run({ url }, ctx);
-} catch (error) {
-  if (error instanceof FlowError && error.details?.httpStatus === 404) {
-    // permanent — don't retry, pick a different source
-  }
+/** True when the page is gone for good, so retrying or fetching it again is pointless. */
+export function isPageGone(error: unknown): boolean {
+  return error instanceof FlowError && error.details?.httpStatus === 404;
 }
 ```
 
-See [Error handling](/docs/advanced/error-handling) for the full error contract and how to consume `details` in a block.
+See [Error handling](/docs/advanced/error-handling) for the full error contract and how a block consumes `details`.
 
 ## Next steps
 
-- [Crawl tool](/docs/tools/crawl) — for multi-page site crawling
-- [Tools overview](/docs/tools/overview) — all available tools
+- [Crawl tool](./crawl.md): read many pages of one site.
+- [Tools overview](./index.md): all available tools.
+- [Tools reference](../../reference/tools.md): providers, options, output fields and every error shape.

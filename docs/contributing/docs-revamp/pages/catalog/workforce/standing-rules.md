@@ -17,7 +17,9 @@ You: Always name the project before the status.
 ✎ Rule added (3 of 20): "Name the project before giving a status."
 ```
 
-It doesn't ask first. If a rule is wrong, or you want one changed or dropped, say so:
+There's nothing to turn on. Once an app installs the workforce kit, a worker on its built-in `agent` or `coordinator` flow has the rule tools, and the kit has no rules option.
+
+The worker doesn't ask first. The `✎` line comes from the tool, not the model: you see it, and the model doesn't get it back as history. If a rule is wrong, or you want one changed or dropped, say so:
 
 ```text
 You: Only ask when it's more than three tasks.
@@ -31,7 +33,9 @@ The worker does this with four tools, one each to read, add, change and remove a
 
 ## Where they apply
 
-A worker follows your rules on every turn it takes for you, in any session, including tasks you filed. An edit counts from the next turn, with no new session. A task can follow your rules but can't change them.
+A worker follows your rules on every turn it takes for you, in any session, including tasks you filed. An edit counts from the next turn, with no new session. On a store that persists, such as SQLite or Postgres, rules survive a restart. A task can follow your rules but can't change them.
+
+If the rules can't be read, say the store is down, the turn runs without them and posts a status line saying so. The turn doesn't fail.
 
 ## Whose rules they are
 
@@ -39,7 +43,17 @@ Rules belong to one worker and one user. A note you give a coordinator doesn't r
 
 Rules aren't memory. [Memory](../memory/overview.md), once you add it, is shared by all of a user's workers and comes back when a search finds it. A rule comes back on every turn, for one worker.
 
-A worker keeps up to 20 one-line rules. What you see when the list is full is on the [reference](../../reference/workforce.md).
+A worker keeps up to 20 one-line rules. When the list is full, an add is refused, nothing is saved, and you see this, with the worker asking which rule to merge or drop:
+
+```text
+✎ Rule not added: the list is full (20 of 20); merge or drop a rule before adding one.
+```
+
+A write the store can't save posts no line, and no existing rule is lost.
+
+## Rule or brief
+
+Say the team wants eng-lead to always answer in French. If every user of the worker should get French, put it in the brief, the `WORKER.md` body, which is the same for every user. If only one user wants it, it's a rule: read only on that user's turns, and it can't change the worker's instructions or anyone else's turns. A rule is text the model reads after the worker's own instructions, not a setting, so don't count on it overriding the file.
 
 ## Editing them yourself
 

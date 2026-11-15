@@ -43,6 +43,7 @@ Skipped: K-21 is kept in the sitemap, and the page was already at `supervisor.md
 - After revise round 1, page sha256 26eb6eb3a412: exit 0.
 - After revise round 2, page sha256 389d0baef53d: exit 0.
 - After revise round 3, page sha256 5420dc9ccfb5: exit 0.
+- After the loop (review): line 66 referent: replaced "checks each worker's output separately" with "each task goes to the worker named by its assignee, and that worker's output is reviewed on its own"; line 92 mechanism: "is prompted to choose" became "The default reviewer follows the same distinction"; line 92 over-explained: collapsed to "Both get the same retry and the same `failed-review` label" plus the guidance; line 100 design defense: sentence ends at "caps retries across the whole board"; line 110 suspected inaccuracy: the cost line now counts reviewed attempts and says an attempt where the worker throws skips its review. Page sha256 1ed29d249f97: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
@@ -53,6 +54,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 5: Worker `input` is 'typically the planner's `context` field' Untrue: Planner `context` goes to the first-class `context` field of the worker input. The seed writer leaves `input` unset for the supervisor (inputDefault is 'none') unless the planner supplied one. The worker input also carries `title`, `context`, `attachments`, `steers`, `followUpOf`, `deps` (a map of dep id to that dep's output) and `priorWork`. (packages/patterns/src/shared/planning-entry.ts:136-151; packages/orchestration/src/task-board/blocks/worker-step.ts:99-154) The row is recorded corrected.
 - The per-worker chain has a step `stampReviewEntered (.tap — set metadata.review.entered ...)`, and the reviewer is a plain `.step` after `.map`, with no other steps Untrue: No `stampReviewEntered` step exists. `stashWorkerOutput` also stamps `reviewMetadata[taskId].entered` on the supervisor's own state, not on `metadata.review`. There is also an `emitReviewingStatus` tap. The chain is stashTaskId, worker, stashWorkerOutput, emitReviewingStatus, buildReviewerInput (.map), reviewer, applyVerdict. (packages/patterns/src/supervisor/blocks/reviewer-check.ts:199-209)
 - The pipeline is goal -> captureAndPlan -> board.drain -> labelFailedReviews -> synthesize Untrue: The pipeline also has a `stampOuterGoal` tap before captureAndPlan, and an optional goal-synthesis step first when `synthesizeGoal` is set. The listed steps are otherwise right. (packages/patterns/src/supervisor/index.ts:427-438)
+- Re-run after the review edit: a registry entry is wrapped per assignee in its own reviewed chain (packages/patterns/src/supervisor/index.ts:76, :328-349); the default reviewer prompt distinguishes reject and needs-revision (index.ts:169-170); the reviewer is a step after the worker in the chain, so a throwing worker never reaches it (packages/patterns/src/supervisor/blocks/reviewer-check.ts:204-209); no review step when there is no reviewer (reviewer-check.ts:91).
 
 ## 6 · Depth pass
 

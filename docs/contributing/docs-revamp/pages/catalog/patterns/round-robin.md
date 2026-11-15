@@ -134,7 +134,7 @@ export const legalReview = roundRobin({
 });
 ```
 
-By default `roundRobin` keeps its own transcript, which is fine until a block outside the pattern needs to read it. Passing `contributions` is how you share it: register the same resource on the flow's `resources` map, and any block can declare it. The pattern clears the resource at the start of every run, so each run starts with an empty transcript. See the [Patterns reference](../../reference/patterns.md) for the rest.
+By default `roundRobin` keeps its own transcript, which is fine until a block outside the pattern needs to read it. Passing `contributions` is how you share it: register the same resource on the flow's `resources` map, and any block can declare it. The pattern clears the resource at the start of every run, so each run starts with an empty transcript. The resource is session-scoped, so after a second review in the same session it holds only the second review's turns, not a history. Browser clients can't read it; only blocks that declare it can. To keep a run's whole record after the loop, set `synthesizer: false` and take `{ rounds, contributions, refereeCritiques }` as the output. See the [Patterns reference](../../reference/patterns.md) for the rest.
 
 ## Decide when to stop
 

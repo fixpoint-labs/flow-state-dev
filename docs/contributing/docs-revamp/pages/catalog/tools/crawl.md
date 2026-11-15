@@ -6,214 +6,92 @@ description: Follow links from a root URL and return each page.
 
 # Crawl
 
-`@flow-state-dev/tools` — Crawl a website starting from a root URL, following links breadth-first, and return markdown for each page found.
+`@flow-state-dev/tools` gives a model a tool that starts at one URL, follows links to other pages on the same site, and returns each page as markdown. Use it when a question needs a whole documentation set or knowledge base, not one page. For a single page, use [Fetch](./fetch.md).
 
-## Why this exists
+## Install it
 
-Sometimes you need more than a single page. Documentation sites, knowledge bases, competitor analysis, research across an entire domain. `tools.crawl` handles the mechanics: link discovery, BFS traversal, depth limits, page limits, URL filtering, and rate limiting.
+Crawl comes with `@flow-state-dev/tools`. The built-in crawler needs no key. Set `FIRECRAWL_API_KEY` and install `@mendable/firecrawl-js`, and the same tool runs on Firecrawl instead, which can wait for JavaScript to render. The [Tools reference](../../reference/tools.md) compares the two providers.
 
-Two providers:
+## Use it
 
-| Provider | How it works | Depth control | Page limits | URL filtering | Env var |
-|----------|-------------|---------------|-------------|---------------|---------|
-| Firecrawl | Managed API (async crawl) | Yes | Yes | Regex patterns | `FIRECRAWL_API_KEY` |
-| Built-in | Local BFS with fetch + Readability | Yes | Yes | Glob patterns | None needed |
+Add `tools.crawl()` to a generator's `tools` list. The model supplies the root URL and, if it wants, `maxPages` (default 20) and `maxDepth` (default 2).
 
-The built-in crawler always works. It follows same-origin links using BFS, respects your depth and page limits, and rate-limits to 1 request per second to be polite. For production crawling at scale, Firecrawl handles JS rendering, anti-bot, and parallel crawling.
-
-## Basic usage
-
-```ts
+```ts title="src/flows/research/blocks/docs-crawler.ts"
 import { generator } from "@flow-state-dev/core";
 import { tools } from "@flow-state-dev/tools";
 
-const docsCrawler = generator({
+export const docsCrawler = generator({
   name: "docs-crawler",
-  model: "anthropic/claude-sonnet-5-5",
+  model: "openai/gpt-6-luna",
   prompt: "Crawl documentation sites and build a knowledge summary.",
   tools: [tools.crawl()],
 });
 ```
 
-The LLM provides a root URL and optionally specifies how many pages and how deep to crawl. The tool returns markdown content for every page found.
+The tool returns the root URL, a `pages` array, `totalPages` and `crawlDepth`. Each page has the same shape as a Fetch result: `url`, `title`, `markdown`, `metadata` and `source`. The Tools reference lists every field.
 
-## Configuration
+A crawl returns all its pages in one result, so a large `maxPages` puts that much markdown into the model's context.
 
-```ts
-tools.crawl({
-  // Force a specific provider
-  provider: "firecrawl",  // "firecrawl" | "builtin"
+## Keep it to part of a site
 
-  // Default limits (LLM can override per call)
-  maxPages: 50,
-  maxDepth: 3,
+URL patterns are the developer's boundary. The model cannot change them. Set them when you build the tool:
 
-  // URL pattern filtering
-  includePatterns: ["/docs/**", "/api/**"],
-  excludePatterns: ["/docs/changelog/**", "/admin/**"],
-
-  // JS rendering (Firecrawl only)
-  waitForJS: true,
-
-  // Explicit API keys
-  keys: {
-    firecrawl: "fc-...",
-  },
-})
-```
-
-### What the LLM controls vs. what you configure
-
-Some parameters are set at **definition time** (your code), others at **call time** (the LLM decides):
-
-| Parameter | Who sets it | Why |
-|-----------|------------|-----|
-| `maxPages` | Both — config sets default, LLM can override | Scope is a semantic decision. A research agent might want 50 pages, a fact-checker wants 5. |
-| `maxDepth` | Both — config sets default, LLM can override | Same reasoning. |
-| `includePatterns` | You (config only) | Safety boundary. You decide which parts of a site are fair game. |
-| `excludePatterns` | You (config only) | Safety boundary. Keep admin, auth, and irrelevant sections out. |
-| `waitForJS` | You (config only) | Infrastructure concern, not a semantic decision. |
-| `provider` | You (config only) | Infrastructure concern. |
-
-## Provider resolution
-
-```
-FIRECRAWL_API_KEY set?  →  Firecrawl (async crawl, JS rendering, parallel)
-Always                  →  Built-in BFS (sequential, static HTML, rate-limited)
-```
-
-Like `tools.fetch()`, the crawl tool never throws "no provider available".
-
-## Output shape
-
-```ts
-{
-  rootUrl: "https://docs.example.com",
-  pages: [
-    {
-      url: "https://docs.example.com",
-      title: "Documentation Home",
-      markdown: "# Docs\n\nWelcome to...",
-      metadata: {
-        statusCode: 200,
-        contentType: "text/html",
-        wordCount: 523,
-      },
-      source: "builtin"
-    },
-    {
-      url: "https://docs.example.com/getting-started",
-      title: "Getting Started",
-      markdown: "# Getting Started\n\n...",
-      metadata: { statusCode: 200, contentType: "text/html", wordCount: 1847 },
-      source: "builtin"
-    },
-    // ... more pages
-  ],
-  totalPages: 12,
-  crawlDepth: 2,
-  source: "builtin"
-}
-```
-
-Each page in the `pages` array has the same shape as a `tools.fetch()` result.
-
-## How the built-in crawler works
-
-The built-in provider uses breadth-first search:
-
-1. Start at the root URL
-2. Fetch the page, extract content with Readability + Turndown
-3. Parse all `<a href>` links from the HTML
-4. Filter to same-origin only (no external links)
-5. Apply include/exclude patterns
-6. Add new URLs to the queue at `depth + 1`
-7. Continue until `maxPages` or `maxDepth` is reached
-
-Key behaviors:
-- **Same-origin only** — the crawler won't follow links to external sites
-- **1-second delay** between requests to avoid hammering servers
-- **URL normalization** — trailing slashes and hash fragments are stripped to prevent duplicate visits
-- **Graceful failure** — if a single page fails (404, timeout, non-HTML), the crawler skips it and continues
-- **Non-HTML skipped** — PDFs, images, and other non-HTML responses are ignored
-
-## URL pattern matching
-
-Patterns use glob syntax matched against the URL path:
-
-```ts
-tools.crawl({
-  includePatterns: ["/docs/**"],     // Only crawl /docs/ and below
-  excludePatterns: ["/docs/v1/**"],  // But skip the old v1 docs
-})
-```
-
-| Pattern | Matches | Doesn't match |
-|---------|---------|---------------|
-| `/docs/**` | `/docs/intro`, `/docs/api/ref` | `/blog/post` |
-| `/docs/*` | `/docs/intro` | `/docs/api/ref` (too deep) |
-| `/blog/2026-*` | `/blog/2026-01-post` | `/blog/2025-12-post` |
-
-If `includePatterns` is empty (the default), all same-origin pages are included. If `excludePatterns` is empty, nothing is excluded.
-
-## Direct provider constructors
-
-```ts
-import { firecrawlCrawl, builtinCrawl } from "@flow-state-dev/tools";
-
-// Always use Firecrawl (throws if no API key)
-const crawl = firecrawlCrawl({ keys: { firecrawl: "fc-..." } });
-
-// Always use built-in BFS
-const crawl = builtinCrawl();
-```
-
-## Full example: search, fetch, crawl
-
-All three tools compose naturally. The LLM picks the right tool for the task.
-
-```ts
+```ts title="src/flows/research/blocks/api-docs-crawler.ts"
 import { generator } from "@flow-state-dev/core";
 import { tools } from "@flow-state-dev/tools";
 
-const researcher = generator({
-  name: "researcher",
-  model: "anthropic/claude-sonnet-5-5",
-  prompt: `You are a research assistant. 
-Use search to find relevant sources.
-Use fetch to read individual pages in full.
-Use crawl when you need to understand an entire site or documentation set.`,
+export const apiDocsCrawler = generator({
+  name: "api-docs-crawler",
+  model: "openai/gpt-6-luna",
+  prompt: "Read the API documentation and answer questions about it.",
   tools: [
-    tools.search(),
-    tools.fetch(),
-    tools.crawl({ maxPages: 30, maxDepth: 2 }),
+    tools.crawl({
+      includePatterns: ["/docs/**", "/api/**"],
+      excludePatterns: ["/docs/changelog/**"],
+    }),
   ],
 });
 ```
 
-## Limitations of the built-in crawler
+Patterns are globs matched against the URL path, and an exclude pattern wins over an include. The built-in crawler checks them before it fetches a page, and that includes the root URL. An include list that does not match the root's path returns no pages, so start the crawl at a URL under the include path. Firecrawl receives the same strings as its include and exclude paths and does its own matching, so globs may not carry over. The Tools reference has the glob rules.
 
-The built-in crawler is for development and prototyping. It works well for static HTML sites (documentation, blogs, wikis). It won't handle:
+## Combine it with search and fetch
 
-- **JavaScript-rendered pages** — returns whatever the server sends as static HTML
-- **Anti-bot protection** — sites behind Cloudflare or similar will block it
-- **Authentication** — no cookie or session handling
-- **robots.txt** — not respected in Phase 1 (the 1-second rate limit provides basic politeness)
+Give the model all three tools and say in the prompt when to use each one.
 
-For production crawling, use Firecrawl. It handles all of the above.
+```ts title="src/flows/research/blocks/researcher.ts"
+import { generator } from "@flow-state-dev/core";
+import { tools } from "@flow-state-dev/tools";
 
-## Error handling
+export const researcher = generator({
+  name: "researcher",
+  model: "openai/gpt-6-luna",
+  prompt: `You are a research assistant.
+Use search to find relevant sources.
+Use fetch to read individual pages in full.
+Use crawl when you need to understand an entire site or documentation set.`,
+  tools: [tools.search(), tools.fetch(), tools.crawl()],
+});
+```
 
-| Scenario | Behavior |
-|----------|----------|
-| Root URL fails | Throws an error |
-| Individual page fails | Skips it, continues crawling other pages |
-| Non-HTML content | Skips it (only processes text/html) |
-| External links | Ignored (same-origin only) |
-| Infinite calendar/pagination | `maxPages` limit prevents runaway |
-| Firecrawl timeout | Firecrawl SDK handles polling internally |
+## Change the provider
 
-## Next steps
+With no `provider` set, Crawl uses Firecrawl when a key is found in config or `FIRECRAWL_API_KEY`, and the built-in crawler otherwise. Pass `provider: "builtin"` or `provider: "firecrawl"` to force one. Forcing Firecrawl with no key throws when the tool is called. `waitForJS: true` makes Firecrawl wait for scripts to run, and the built-in crawler ignores it. The `firecrawlCrawl` and `builtinCrawl` constructors, and the full options table, are in the Tools reference.
 
-- [Fetch tool](/docs/tools/fetch) — for single page fetching
-- [Tools overview](/docs/tools/overview) — all available tools
+## What the built-in crawler won't do
+
+It reads the HTML the server sends and follows same-origin links, one request per second. It is enough for static sites such as documentation, blogs and wikis.
+
+- **JavaScript-rendered pages**: it returns whatever the server sends as HTML.
+- **Authentication**: it sends no cookies and keeps no session.
+- **robots.txt**: not read. The crawler ignores it.
+- **Other origins**: links to another host, port or subdomain are not followed.
+- **Non-HTML responses**: PDFs and images are skipped.
+
+A page that fails to load is skipped and the crawl continues. That includes the root URL: a root that fails gives `pages: []`, not an error. An invalid URL string throws, and so does any Firecrawl failure.
+
+## Next
+
+- [Fetch](./fetch.md): read a single page.
+- [Tools](./index.md): every tool in the package.
+- [Tools reference](../../reference/tools.md): providers, options, output fields, pattern rules and errors.

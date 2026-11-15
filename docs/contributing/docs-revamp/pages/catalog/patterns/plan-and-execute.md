@@ -120,9 +120,9 @@ export const research = planAndExecute({
 
 ## Where the goal comes from
 
-The goal is the `goal` string the action receives. The pattern doesn't read the chat for you. A follow-up such as "now add Initech" is planned as that literal text.
+The goal is the `goal` string the action receives. The pattern doesn't read the chat for you. A follow-up such as "add Initech too" is planned as that literal text.
 
-Set `synthesizeGoal: true` and a model first rewrites the request into a self-contained goal, using the last eight items of conversation history. It is asked to keep every concrete value, but it is a model's rewrite, so it isn't guaranteed to. "Now add Initech" becomes "Compare Acme, Globex and Initech for a procurement review." The planner, replanner and synthesizer all work from the rewritten goal. If the rewrite fails, the run uses the original goal.
+Set `synthesizeGoal: true` and a model first rewrites the request into a self-contained goal, using the last eight items of conversation history. It is asked to keep every concrete value, but it is a model's rewrite, so it isn't guaranteed to. "Add Initech too" becomes "Compare Acme, Globex and Initech for a procurement review." The planner, replanner and synthesizer all work from the rewritten goal. If the rewrite fails, the run uses the original goal.
 
 ## Your own step executor
 

@@ -6,19 +6,19 @@ description: Web search across providers behind one interface.
 
 # Search
 
-`@flow-state-dev/tools` — Web search for generators, across one normalized interface that wraps seven providers.
+`@flow-state-dev/tools` gives a generator web search through one tool that wraps seven providers.
 
 ## Why this exists
 
-Search is the tool agents reach for most. The problem is that every provider has a different API, different parameter names, and a different idea of what "search" means. `tools.search` gives you one tool that auto-detects whichever provider you have a key for, normalizes the results into a single shape, and lets you tune how deep the search goes without rewriting code when you switch providers.
+Every search provider has a different API, different parameter names, and a different idea of what "search" means. `tools.search` is one tool that picks whichever provider you have a key for, returns results in a single shape, and lets you tune how thorough the search is without rewriting code when you switch providers.
 
 ## Basic usage
 
-```ts
+```ts title="src/flows/research/blocks/researcher.ts"
 import { generator } from "@flow-state-dev/core";
 import { tools } from "@flow-state-dev/tools";
 
-const researcher = generator({
+export const researcher = generator({
   name: "researcher",
   model: "anthropic/claude-sonnet-5-5",
   prompt: "Search the web to answer questions accurately.",
@@ -26,154 +26,145 @@ const researcher = generator({
 });
 ```
 
-With no config, the tool picks a provider from your environment variables. The LLM calls `search` with a query and gets back titles, URLs, and snippets.
+With no config, the tool picks a provider from your environment variables. The model calls `search` with a query and gets back titles, URLs, and snippets.
 
 ## Providers
 
-| Provider | Env var | Package |
-|----------|---------|---------|
-| Parallel | `PARALLEL_API_KEY` | _(fetch-based, no extra dep)_ |
-| Tavily | `TAVILY_API_KEY` | `@tavily/core` (optional peer dep) |
-| Exa | `EXA_API_KEY` | `exa-js` (optional peer dep) |
-| Perplexity | `PERPLEXITY_API_KEY` | _(fetch-based, no extra dep)_ |
-| Serper | `SERPER_API_KEY` | _(fetch-based, no extra dep)_ |
-| Brave | `BRAVE_SEARCH_API_KEY` | _(fetch-based, no extra dep)_ |
-| Perplexity Sonar | `PERPLEXITY_API_KEY` | _(fetch-based, no extra dep)_ |
+The seven providers are Parallel, Tavily, Exa, Perplexity, Serper, Brave, and Perplexity Sonar. Each reads its own API key from an environment variable, and Tavily and Exa also need an optional package installed (`@tavily/core`, `exa-js`). The [Tools reference](../../reference/tools.md) lists every variable and package.
 
-Unlike `tools.fetch()`, search has no built-in fallback. If no provider key is configured, the tool throws at execution time.
+Perplexity and Perplexity Sonar share `PERPLEXITY_API_KEY`. Auto-detection reaches Perplexity first, so a Sonar search needs `provider: "perplexity-sonar"` or the `perplexitySonarSearch` constructor (below).
+
+Unlike `tools.fetch()`, search has no built-in fallback. If no provider key is configured, the tool throws when it runs, not when you build it.
 
 ## Search depth tiers
 
-The `tier` option is a provider-agnostic knob for the tradeoff between latency and thoroughness. It's a small vocabulary, mapped to whatever native parameter each provider exposes:
+The `tier` option trades latency against thoroughness. Providers with a depth setting map it to their own native parameter.
 
-- `fast` — favor low latency. Good for quick lookups and autocomplete-style queries.
-- `balanced` — the default. Reproduces each provider's standard behavior.
-- `deep` — favor thoroughness. Good for research and enrichment, at the cost of more time.
+- `fast`: favor low latency.
+- `balanced`: the default, each provider's standard behavior.
+- `deep`: favor thoroughness, at the cost of more time.
 
-```ts
-tools.search({ tier: "deep" });
+```ts title="src/flows/research/tools/web-search.ts"
+import { tools } from "@flow-state-dev/tools";
+
+export const webSearch = tools.search({ tier: "deep" });
 ```
 
-Here's how each tier lands on each provider:
+Pass `webSearch` to a generator's `tools` list in place of `tools.search()`. Serper and Brave have no depth setting and ignore `tier`. Parallel treats `deep` the same as `balanced`. The [Tools reference](../../reference/tools.md) shows what each provider receives.
 
-| Provider | `fast` | `balanced` | `deep` |
-|----------|--------|-----------|--------|
-| Exa | `type: "fast"` | `type: "auto"` | `type: "deep"` |
-| Tavily | `basic` depth | `basic` depth | `advanced` depth |
-| Perplexity | `search_context_size: low` | provider default | `search_context_size: high` |
-| Perplexity Sonar | `sonar` model | `sonar` model | `sonar-reasoning` model |
-| Parallel | `mode: basic` | `mode: advanced` | `mode: advanced` |
-| Serper | no depth control | no depth control | no depth control |
-| Brave | no depth control | no depth control | no depth control |
+### Letting the model choose the tier
 
-Serper and Brave are thin wrappers with no depth concept, so the tier has no effect on them. That matters for provider selection (below).
+By default `tier` is fixed in config, and the model never sees it. Set `agentControlsTier: true` to expose it as a tool parameter, so the model picks the depth per query, such as `deep` when the user asks for thorough research.
 
-### Letting the agent choose the tier
+```ts title="src/flows/research/tools/web-search.ts"
+import { tools } from "@flow-state-dev/tools";
 
-By default `tier` is a build-time setting — the model never sees it. Set `agentControlsTier: true` to expose `tier` as a tool parameter, so the model picks the depth per query (choosing `deep` when the user asks for thorough research, for example):
-
-```ts
-tools.search({ agentControlsTier: true });
+export const webSearch = tools.search({ tier: "fast", agentControlsTier: true });
 ```
 
-A config `tier` still applies as the default the model can override. Leave `agentControlsTier` off for agents that shouldn't vary depth.
+A `tier` set in config becomes the default, and the model can override it.
+
+## How much content each result carries
+
+`tier` sets how thorough the search is. `searchDepth` is a separate option that sets how much content each result carries. It is `"basic"` (the default) or `"advanced"`, and only config sets it, never the model.
+
+```ts title="src/flows/research/tools/web-search.ts"
+import { tools } from "@flow-state-dev/tools";
+
+export const webSearch = tools.search({ searchDepth: "advanced" });
+```
+
+On Exa, `"advanced"` returns each page's full text in `content`. On Parallel, it returns longer excerpts. On Tavily, it selects Tavily's `advanced` retrieval depth, the same one `tier: "deep"` selects.
 
 ## Domain filters
 
-Restrict results to some domains, or exclude others:
+Restrict results to some domains, or exclude others. Every provider applies them.
 
-```ts
-tools.search({
+```ts title="src/flows/research/tools/web-search.ts"
+import { tools } from "@flow-state-dev/tools";
+
+export const webSearch = tools.search({
   includeDomains: ["arxiv.org", "github.com"],
   excludeDomains: ["pinterest.com"],
 });
 ```
 
-Every provider applies them. Exa, Tavily, Perplexity, Perplexity Sonar, and Parallel use their own filter fields. Serper and Brave write them into the query as `site:` and `-site:` operators, and OR-group multiple include domains. Perplexity and Perplexity Sonar take an include list or an exclude list, not both, so when you set both they apply only the include list, and an excluded subdomain of an included domain can still appear.
+Perplexity and Perplexity Sonar take an include list or an exclude list, not both. When you set both, only the include list applies. The [Tools reference](../../reference/tools.md) has the details per provider.
 
-## Provider selection
+## Which provider runs
 
-When you don't set `provider`, the tool checks for keys in priority order and uses the first one it finds:
+When you don't set `provider`, the tool uses the first provider that has a key, in this order: Parallel, Tavily, Exa, Perplexity, Serper, Brave, Perplexity Sonar.
 
-```
-Parallel → Tavily → Exa → Perplexity → Serper → Brave → Perplexity Sonar
-```
+The choice also depends on `tier`. With `tier: "deep"`, a keyed Serper or Brave is skipped for any other keyed provider, since neither has a depth setting. `fast` and `balanced` never change the choice. If no keyed provider can serve the tier, the first keyed provider in the order runs and ignores the tier.
 
-Selection is also tier-aware. If you request `tier: "deep"` and several providers are configured, the tool skips providers that can't serve a deep search. So a `deep` request will route past Serper and Brave even when their keys are present and they sit earlier in the priority order. The `balanced` default supports every provider, so it never changes the selection.
+## Provider-native modes
 
-If no tier-capable provider has a key, the tool falls back to the priority order and the chosen provider does its best with whatever it supports.
+`tier` covers the common cases. For a mode only one provider has, `searchMode` passes a string straight to the provider and takes precedence over `tier`:
 
-## Provider-native passthrough
+```ts title="src/flows/research/tools/web-search.ts"
+import { tools } from "@flow-state-dev/tools";
 
-The `tier` vocabulary is deliberately small and doesn't cover provider-specific behaviors. For those, `searchMode` overrides the tier mapping with a value passed straight to the provider:
-
-```ts
-// Reach Exa's neural retrieval, which the normalized tiers don't expose:
-tools.search({ provider: "exa", searchMode: "neural" });
+// Exa's neural retrieval, which the normalized tiers don't expose.
+export const webSearch = tools.search({ provider: "exa", searchMode: "neural" });
 ```
 
-`searchMode` is read by the providers that have a native mode field (Exa maps it to `type`, Parallel to `mode`, Perplexity Sonar to the model name). When set, it takes precedence over whatever the `tier` would have selected.
+Only Exa, Parallel, and Perplexity Sonar read `searchMode`. The other providers ignore it.
 
-## Output shape
+## What comes back
 
-Every provider returns the same normalized result:
+Every provider returns the same shape:
 
-```ts
+```jsonc
 {
-  query: "your query",
-  results: [
+  "query": "your query",
+  "results": [
     {
-      title: "Result title",
-      url: "https://example.com/page",
-      snippet: "Query-relevant excerpt",
-      content: "Full text (when searchDepth is advanced)",
-      score: 0.92,           // when the provider returns one
-      publishedDate: "2026-01-15",
-      source: "exa",         // which provider produced this result
-    },
+      "title": "Result title",
+      "url": "https://example.com/page",
+      "snippet": "Query-relevant excerpt",
+      "content": "Full text, on some providers",
+      "score": 0.92,
+      "publishedDate": "2026-01-15",
+      "source": "exa"
+    }
   ],
-  answer: "Synthesized answer (grounding providers like Sonar)",
+  "answer": "Synthesized answer, on some providers"
 }
 ```
 
-`searchDepth` (`"basic"` or `"advanced"`) is separate from `tier`. It controls how much content is pulled per result, not how thorough the search itself is.
+`title`, `url`, `snippet`, and `source` are always present. `content`, `score`, `publishedDate`, and `answer` appear only when the provider supplies them. The [Tools reference](../../reference/tools.md) lists which providers fill which field. Failures throw, so a failed search never comes back as a result.
 
-## Direct provider constructors
+## Change it
 
-To skip auto-detection and lock to one provider:
+To skip auto-detection, call a provider's constructor. Each takes the same config as `tools.search()`, minus `provider`. `keys` passes an API key in code instead of reading the environment variable.
 
-```ts
-import {
-  tavilySearch,
-  exaSearch,
-  perplexitySearch,
-  serperSearch,
-  braveSearch,
-  parallelSearch,
-  perplexitySonarSearch,
-} from "@flow-state-dev/tools";
+```ts title="src/flows/research/tools/web-search.ts"
+import { exaSearch } from "@flow-state-dev/tools";
 
-const search = exaSearch({ tier: "deep", keys: { exa: "..." } });
+export const webSearch = exaSearch({ tier: "deep", keys: { exa: "exa-key-here" } });
 ```
 
-Each constructor accepts the same config as `search()` minus `provider`.
+The other constructors are `tavilySearch`, `perplexitySearch`, `serperSearch`, `braveSearch`, `parallelSearch`, and `perplexitySonarSearch`.
 
-## Provider-native search on the generator
+## Built-in search on the generator
 
-The generator's `search` field is a different system from `tools.search`. It turns on the model provider's built-in web search (Anthropic, OpenAI, or Google), which runs inside the provider and returns grounded responses with inline citations, instead of calling a third-party search API over HTTP the way `tools.search` does:
+A generator's `search` field is a different system. It turns on the model provider's own web search (Anthropic, OpenAI, or Google), which runs inside the provider and returns grounded answers with citations. `tools.search` calls a third-party search API instead.
 
-```ts
-generator({ search: true });
+```ts title="src/flows/research/blocks/grounded-researcher.ts"
+import { generator } from "@flow-state-dev/core";
+
+export const groundedResearcher = generator({
+  name: "groundedResearcher",
+  model: "openai/gpt-6-luna",
+  prompt: "Answer using current web results.",
+  search: true,
+});
 ```
 
-The two systems don't share configuration:
-
-- The `tier` knob (`fast`/`balanced`/`deep`) documented above is `tools.search`-only. It has no effect on generator-native search.
-- `searchDepth` exists in both but means different things. On `tools.search` it's `"basic" | "advanced"` (how much content is pulled per result). On the generator it's `"low" | "medium" | "high"` (a context-size hint that maps to OpenAI's `searchContextSize`).
-
-Use `tools.search` when you need a specific search provider or portability across providers. Use generator-native search when you want the provider's built-in grounding with minimal setup. See [Web search](/docs/fundamentals/blocks#web-search) for the generator's full field reference and per-provider mapping.
+The two share no configuration. `tier` applies only to `tools.search`, and `searchDepth` takes `"low"`, `"medium"` or `"high"` on the generator, not `"basic"` or `"advanced"`. Use `tools.search` when you need a specific provider or want to move between providers. Use the generator's `search` for the model provider's built-in grounding with minimal setup. See [Web search](/docs/fundamentals/blocks#web-search) for the generator's fields.
 
 ## Next steps
 
-- [Fetch tool](/docs/tools/fetch) — read the full content of result URLs
-- [Tools overview](/docs/tools/overview) — all available tools
+- [Fetch tool](./fetch.md): read the full content of result URLs.
+- [Tools overview](./index.md): all available tools.
+- [Tools reference](../../reference/tools.md): providers, mappings and every option.

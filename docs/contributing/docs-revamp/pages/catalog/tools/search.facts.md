@@ -218,3 +218,27 @@ Evidence: `S/index.ts:38-58` (the whole `execute`), `S/resolver.ts:71-76` (keys 
 2. The existing page opens "wraps seven providers" and "normalizes the results": true (F4, F35-F37). Its
    Provider table lists Perplexity Sonar after Brave: true to the priority order, but Sonar is never
    auto-selected when `PERPLEXITY_API_KEY` is the only key (F10).
+
+## Revise round 1 additions
+
+- F49. Verified: Parallel maps `balanced` and `deep` to the same `mode: advanced`, so `deep` equals
+  `balanced` on Parallel (F25). The page states it in "Which provider runs".
+- F50. Verified: `fast` is served by every provider including Serper and Brave, so `fast` and `balanced`
+  never change auto-selection (F12). Perplexity Sonar is not reachable by auto-detection on the shared
+  `PERPLEXITY_API_KEY` alone (F10); the page says to use `provider: "perplexity-sonar"` or `perplexitySonarSearch`.
+- F51. Correction: `searchDepth: "advanced"` on Tavily selects Tavily's `advanced` retrieval depth, the
+  same value `tier: "deep"` selects (F25, F27); it is not only a content-size setting.
+  `S/providers/tavily.ts:27-30`.
+- F52. `searchMode` is read by Exa, Parallel and Perplexity Sonar only; the others ignore it (F26).
+  When no keyed provider serves the tier, the first keyed provider in priority order runs and ignores
+  the tier (F11, F28).
+- F53. Moved to Reference R-42 (`reference/tools`, linked as `../../reference/tools.md`): providers
+  table with env vars and packages, tier mapping per provider, domain-filter mechanics, output field
+  provider matrix, generator `searchDepth` values. The page keeps the idea and one example each.
+- F54. `keys` is `Partial<Record<SearchProviderName, string>>`, an API key passed in code instead of
+  read from the environment (F8). `S/types.ts:95`.
+
+## Revise round 2 additions
+
+- F55. Only Serper and Brave have no depth parameter; Parallel maps `fast` to `basic` and `balanced`/`deep` to `advanced` (F25). The page's tier section now says so, so "each provider maps it" became "providers with a depth setting map it". The Parallel limit moved from "Which provider runs" to the tier section.
+- F56. Generator `searchDepth` is `"low" | "medium" | "high"` (`packages/core/src/types/model.ts:31`); the page names the values in its last section.

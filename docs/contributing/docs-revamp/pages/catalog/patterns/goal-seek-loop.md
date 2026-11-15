@@ -22,7 +22,7 @@ seed → drain → judge → (replan) → drain again → … → finalize
 - **replan** adds tasks when the judge asks for them.
 - **finalize** turns the settled board into the loop's output.
 
-`maxIterations` is required. It is the number of drains, and it is what guarantees the loop ends. When the budget runs out without a `done` verdict, the loop doesn't throw: it runs `finalize` over whatever settled. The board's own `maxIterations` is a separate cap inside a single drain. Details of the budget, errors and construction rules are on the [patterns reference](../../reference/patterns.md).
+`maxIterations` is required. It is the number of drains, and it is what guarantees the loop ends. Two things end a healthy loop, and the [termination item](#stream-items) says which: the judge's `done`, carrying the judge's own `reason`, or the last allowed drain ending without `done`, which becomes `done` with reason `"max-iterations"`. Either way the loop doesn't throw, and `finalize` runs over whatever settled. The board's own `maxIterations` is a separate cap inside a single drain. Details of the budget, errors and construction rules are on the [patterns reference](../../reference/patterns.md).
 
 ## Writing a judge
 
@@ -31,6 +31,8 @@ You write the judge. It is an inline function, a block or a sequencer, and it re
 - `done` ends the loop.
 - `continue` drains again with no new tasks. Use it when a task is yet to finish.
 - `replan` adds work, as a `tasks` array on the verdict or from a `replanner` option (a block that returns tasks) when the verdict has none.
+
+A judge that throws, or returns a malformed verdict (one with no `reason` counts), ends the loop with reason `"judge-error"`, and `finalize` runs anyway. Set `onError: "fail"` to make that a request error instead. A failure in `seed` or in a drain is a request error either way.
 
 An inline judge receives `{ collection, drainResult }`, where `drainResult` summarizes the drain that ran. `collection.list()` returns the board's tasks, each with an `id`, `goal`, `status` and `output`.
 
