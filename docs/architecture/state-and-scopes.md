@@ -662,7 +662,7 @@ Four channels, and none of them is shared session state:
 3. **Provenance labels** — `topic` and `coordinate` on the child session record, and `metadata.dispatch` on the child's request record. Server-assembled, frozen, and display-only.
 4. **`parentTask()` / `settleParentTask()`** — one board task, server-stamped at dispatch and closed over. Deliberately not a cross-session browser: one coordinate, one row.
 
-**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host passes behaviour rather than handles — no type on it names a store, a session record or a task. Its one read of another session, `sessions.read`, answers a session of the same principal with its flow and the state fields its flow declares readonly, never the rest of its state.
+**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host passes behaviour rather than handles — no type on it names a store, a session record or a task. Its reads of another session answer only a session of the same principal: `sessions.read` its flow, its lineage id (server only, the key a partition is derived from) and the state fields its flow declares readonly, never the rest of its state; `sessions.history` its settled turns; `sessions.list` its top-level sessions, at most 100; `sessions.turns` its requests' statuses, never their words (FIX-2725 D1). A user view may make them too, admitted as the HTTP session list admits each row; an org view may not.
 
 ### Resources shared to the lineage (FIX-1068)
 

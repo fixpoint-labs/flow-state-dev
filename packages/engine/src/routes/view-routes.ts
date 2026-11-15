@@ -44,6 +44,12 @@ import { runView, UnknownViewError } from "../execution/runView";
 import { isWireTopic } from "../push/socket-session";
 import { asObject, extractTenantId, jsonResponse, loadTenantSession, parseJsonBody, unknownSessionResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
+import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { SessionRecord } from "../stores/types";
+import type { SessionAdmission } from "../context/request-sessions";
+import { isOrgAttributed } from "../context/org-attribution";
+import { resolveRecordOwner } from "../context/record-owner";
+import { admitListedSession, flowAuthenticates, type InstanceCallerResolver } from "./instance-caller";
 
 type ViewRoute = Extract<ParsedFlowRoute, { kind: "run_view" }>;
 
@@ -54,6 +60,9 @@ type ViewRouteContext = {
   runtimeConfig: RuntimeConfig;
   /** Header carrying the tenant id; defaults to `x-tenant-id`. */
   tenantIdHeader?: string;
+  // FIX-2725 D1.
+  /** The caller as each instance's own doors resolve it: the session list's admission, for the view's session reads. */
+  callerFor: InstanceCallerResolver;
 };
 
 /** Run one view for its caller. See the file header. */
@@ -132,7 +141,9 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
       ...(tenantId !== undefined ? { tenantId } : {}),
       stores: ctx.stores,
       runtimeConfig: ctx.runtimeConfig,
-      signal: request.signal
+      signal: request.signal,
+      resolveFlow: (address) => ctx.registry.get(address),
+      admitSession: viewSessionAdmission(ctx, flow, tenantId)
     });
     return jsonResponse(200, {
       output: answer.output ?? null,
@@ -144,6 +155,29 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
   } catch (error) {
     return viewFailureResponse(error, route);
   }
+}
+
+// FIX-2725 D1.
+/**
+ * Which of the caller's sessions a view's session reads may answer, on top of
+ * the owner rule they apply: the HTTP session list's per-row admission
+ * (`admitListedSession`). A row of an instance with a resolver of its own is
+ * judged by that resolver with this request's credentials, so a caller the
+ * view's flow admits but that instance refuses reads nothing of it. Any other
+ * row needs an organization; and when the view's own flow resolves its callers
+ * itself, the host's resolver must name the same owner, as the HTTP list's
+ * host rule would, since the view's principal is not the host's.
+ */
+function viewSessionAdmission(ctx: ViewRouteContext, flow: FlowInstance, tenantId: string | undefined): SessionAdmission {
+  const hostRule = async (row: SessionRecord): Promise<boolean> => {
+    if (!isOrgAttributed(row)) return false;
+    if (!flowAuthenticates(flow)) return true;
+    const owner = resolveRecordOwner(ctx.registry, row);
+    if (!owner.ok) return false;
+    const caller = await ctx.callerFor(owner.flow);
+    return caller !== undefined && caller.userId === row.userId && caller.orgId === row.orgId;
+  };
+  return (row) => admitListedSession({ registry: ctx.registry, callerFor: ctx.callerFor, tenantId, hostRule }, row);
 }
 
 // FIX-2625 D1.

@@ -24,6 +24,7 @@ import type { SuspendedStopDeps } from "../durability/stop-suspended";
 import type { DurabilityProvider } from "../durability/types";
 import type { RuntimeConfig } from "../runtime-config";
 import type { RecordedRead } from "./view-reads";
+import type { SessionAdmission } from "./request-sessions";
 
 export type RequestRuntime = {
   requestId: string;
@@ -84,6 +85,13 @@ export type CreateExecutionContextOptions<
    * `ctx.session` refuses with `NoSessionError`. The org is the run's own.
    */
   noSession?: boolean;
+  // FIX-2725 D1.
+  /**
+   * The scope of the view this run is, which decides the session reads it may
+   * make: a session or user view reads the caller's sessions, an org view
+   * none. Set by the view runner. Absent → a user view when `noSession`.
+   */
+  viewScope?: "session" | "user" | "org";
   /** Called with each scope state and resource a block of this run reaches. Set by the view runner. */
   recordRead?: (read: RecordedRead) => void;
   /** Refuse every model call with `ViewModelCallError`. Set by the view runner (D2). */
@@ -228,6 +236,13 @@ export type RequestHostConstructionInputs = {
    * same fail-closed shape `dispatchOperation` has.
    */
   resolveFlow?: (address: string) => FlowInstance | undefined;
+  // FIX-2725 D1.
+  /**
+   * A view run's per-session admission, on top of the owner rule every
+   * session read applies: the HTTP session list's (`view-routes.ts`). Set by
+   * the view route only. Absent → the owner rule alone.
+   */
+  sessionAdmission?: SessionAdmission;
   // FIX-2623 D1.
   /**
    * Whether any flow the host registers declares a view, read as each request

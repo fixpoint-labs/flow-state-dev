@@ -20,7 +20,7 @@ import { hearsNotice } from "@flow-state-dev/contracts/types/view-hearing";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowRegistry, runAction } from "../src";
 import { handleCreateCollectionResource } from "../src/routes/resource-routes";
-import { createInMemoryBus, createInMemoryStores, type BusTopic, type ChangeNotice } from "../src/host";
+import { createInMemoryBus, createInMemoryStores, withChangeBus, type BusTopic, type ChangeNotice } from "../src/host";
 import { runView, type ViewAnswer } from "../src/execution/runView";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
@@ -147,7 +147,29 @@ views.host_session = defineView({
     inputSchema: z.object({}),
     outputSchema: out,
     resources,
-    execute: async (_input, ctx) => ({ v: (await requestHostOf(ctx)?.sessions?.read("c")) === undefined ? "absent" : "present" })
+    // FIX-2725 D1: which lineage the session is, the one identity a read answers.
+    execute: async (_input, ctx) => ({ v: (await requestHostOf(ctx)?.sessions?.read("c"))?.lineageId ?? "absent" })
+  })
+});
+// FIX-2725 D1: the caller's sessions listed, and a session's turns.
+views.host_list = defineView({
+  scope: "session",
+  block: handler({
+    name: "list-sessions",
+    inputSchema: z.object({}),
+    outputSchema: out,
+    resources,
+    execute: async (_input, ctx) => ({ v: String((await requestHostOf(ctx)!.sessions!.list()).sessions.length) })
+  })
+});
+views.host_turns = defineView({
+  scope: "session",
+  block: handler({
+    name: "read-turns",
+    inputSchema: z.object({}),
+    outputSchema: out,
+    resources,
+    execute: async (_input, ctx) => ({ v: String((await requestHostOf(ctx)!.sessions!.turns("c"))?.length ?? "absent") })
   })
 });
 views.overlap_lineage = defineView({
@@ -221,13 +243,23 @@ function admitted(answer: ViewAnswer, heard: readonly ChangeNotice[]): ChangeNot
   return heard.filter((notice) => hearsNotice(answer.hears, notice));
 }
 
-async function cell(viewName: string, actionName: string, writer: string, writeFirst = true) {
+async function cell(viewName: string, actionName: string, writer: string, writeFirst = true, recreate = false) {
   const bus = createInMemoryBus();
   const stores = { ...createInMemoryStores(), bus };
   await seed(stores, "root");
   await seed(stores, "a", "root");
   await seed(stores, "b", "root");
   const write = async (v: string) => {
+    if (recreate && v === "2") {
+      // The session deleted and made again under its id: a new lineage.
+      const published = withChangeBus(stores);
+      const old = (await stores.session.get(writer))!;
+      await published.session.delete(writer);
+      await published.session.set(writer, { ...old, version: 0, lineageId: `lin_${v}` }, "absent");
+      await tick();
+      await tick();
+      return;
+    }
     const result = await runAction({
       orgId: DEFAULT_ORG_ID,
       flow,
@@ -289,9 +321,25 @@ describe("a view hears a change through every read path, at every scope", () => 
     expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
   });
 
-  it("request host × session", async () => {
-    // The peer session doesn't exist yet; its first run makes it.
-    const { before, after, heard } = await cell("host_session", "say", "c", false);
+  it("request host read × session", async () => {
+    // FIX-2725 D1: a read of its identity is heard on `run`, which a delete
+    // and a recreate under the same id publish.
+    const { before, after, heard } = await cell("host_session", "say", "c", true, true);
+    expect(after.output).not.toEqual(before.output);
+    expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+    expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
+  });
+
+  it("request host list × user", async () => {
+    // A first run in a new session makes it, on the caller's user topic.
+    const { before, after, heard } = await cell("host_list", "say", "c", false);
+    expect(after.output).not.toEqual(before.output);
+    expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+    expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
+  });
+
+  it("request host turns × session", async () => {
+    const { before, after, heard } = await cell("host_turns", "say", "c");
     expect(after.output).not.toEqual(before.output);
     expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
     expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);

@@ -10,13 +10,22 @@
  * session that doesn't exist, answers `undefined`, so neither read is an
  * existence oracle. The flow is not checked: the caller asks which flow it runs.
  *
- * `read` crosses the flow and the state the session's flow declares readonly
- * (server-written markers, as the HTTP session list's state filter keeps
- * them), never the record. `history` crosses the session's settled turns, by
- * the one read a turn's own history window uses (`./settled-turns`), and
- * writes nothing.
+ * `read` crosses the flow, the lineage id and the state the session's flow
+ * declares readonly (server-written markers, as the HTTP session list's state
+ * filter keeps them), never the record. `history` crosses the session's
+ * settled turns, by the one read a turn's own history window uses
+ * (`./settled-turns`), and writes nothing. `list` (FIX-2725) lists the
+ * principal's top-level sessions as `read` answers each, filtered at the store
+ * and bounded; `turns` reads a session's requests by status, never their
+ * words.
+ *
+ * In a view, `admit` adds the HTTP session list's per-row admission on top of
+ * the owner rule (`view-routes.ts`): a session it refuses reads as one that
+ * doesn't exist, on every verb.
  */
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
+import { readonlyStateFilter } from "./readonly-state-filter";
+import { isWriteRecord } from "../resources/default-write-flow";
 import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
 import type {
   FlowInstance,
@@ -27,22 +36,44 @@ import type {
   RequestSessions,
   SessionHistory,
   SessionHistoryQuery,
+  SessionList,
+  SessionListQuery,
+  SessionListRow,
+  SessionTurn,
+  SessionTurnsQuery,
   PeerSessionView
 } from "@flow-state-dev/core/internal";
 import type { DurabilityProvider } from "../durability/types";
-import { resolveSessionStorageKey } from "../stores/scope-keys";
-import type { RequestStore, SessionRecord, SessionStore } from "../stores/types";
+import { resolveLineageId, resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
+import type { RequestRecord, RequestStore, SessionRecord, SessionStore } from "../stores/types";
 import { LLM_AUDIENCE_TYPES, selectRequestsByLimit } from "./history";
 import { sessionRequestScope } from "./session-request-scope";
 import { parkedInterruptedIds } from "../durability/stop-suspended";
 import { readSettledTurns } from "./settled-turns";
+import type { SessionReadObserver } from "./view-reads";
 
 /** The most turns `history` reads from the store, whatever its limit asks. */
 const SESSION_HISTORY_MAX_TURNS = 50;
 const SESSION_HISTORY_DEFAULT_TURNS = 20;
+/** The most sessions `list` answers, and `turns` reads at once. */
+const SESSION_LIST_MAX = 100;
+/** The most requests `turns` answers a session. */
+const SESSION_TURNS_MAX = 50;
+
+/**
+ * A view's per-row admission on top of the owner rule: whether the caller may
+ * be answered this session at all (`view-routes.ts`).
+ */
+export type SessionAdmission = (record: SessionRecord) => Promise<boolean>;
 
 export type RequestSessionsInputs = {
-  sessions: Pick<SessionStore, "get">;
+  sessions: Pick<SessionStore, "get" | "list">;
+  /** Where `turns` reads a session's requests. Without it, `turns` answers nothing. */
+  requests?: Pick<RequestStore, "list">;
+  /** A view's admission (FIX-2725 D1): every verb answers only a session it admits. */
+  admit?: SessionAdmission;
+  /** A view's recording (FIX-2725 D1): told of each session a verb answers, and of each list. */
+  observe?: SessionReadObserver;
   /** Server-derived identity of the running request. */
   identity: { userId: string; tenantId: string | undefined; orgId: string };
   /** The running request's flow. */
@@ -110,39 +141,168 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
   const { sessions, identity, flow } = inputs;
   const flowAt = (address: string): FlowInstance | undefined =>
     address === flow.id ? flow : inputs.resolveFlow?.(address);
+  /** The owner rule, then a view's admission: the record, or `undefined` for a session neither lets through. */
+  const admitted = async (record: SessionRecord | undefined): Promise<SessionRecord | undefined> => {
+    const own = principalSession(record, identity);
+    if (own === undefined || inputs.admit === undefined) return own;
+    return (await inputs.admit(own)) ? own : undefined;
+  };
   const owned = async (sessionId: string): Promise<SessionRecord | undefined> => {
     if (typeof sessionId !== "string" || sessionId.length === 0) return undefined;
-    return principalSession(await sessions.get(resolveSessionStorageKey(sessionId, identity.tenantId)), identity);
+    return admitted(await sessions.get(resolveSessionStorageKey(sessionId, identity.tenantId)));
   };
+
+  /** A session's state cut to the fields its owning flow declares readonly, defaults filled. */
+  const readonlyStateOf = (record: SessionRecord): Readonly<Record<string, unknown>> => {
+    // The owner as `record-owner` reads it: the stored instance id, or, on a
+    // legacy row, the singleton named by its kind. A flow of another kind
+    // under that address is not its owner, and declares nothing for it.
+    const owner = flowAt(record.flowId ?? record.flowKind);
+    const schema = owner?.kind === record.flowKind ? scopeStateSchema(owner, "session") : undefined;
+    const readonly = getReadonlyStateKeys(schema);
+    // As the session's own runs read it, defaults filled.
+    const effective = applyScopeStateDefaults(schema, record.state);
+    const state: Record<string, unknown> = {};
+    for (const key of readonly) {
+      if (Object.prototype.hasOwnProperty.call(effective, key)) state[key] = structuredClone(effective[key]);
+    }
+    return Object.freeze(state);
+  };
+
+  /** `limit` cut to `0..max`, `max` when absent. */
+  const bounded = (limit: number | undefined, max: number): number =>
+    limit === undefined || !Number.isFinite(limit) ? max : Math.max(0, Math.min(max, Math.floor(limit)));
+
+  const turnOf = (request: RequestRecord): SessionTurn => ({
+    id: request.id,
+    sessionId: request.sessionId!,
+    action: request.actionName,
+    status: request.status,
+    source: request.source,
+    startedAtMs: request.startedAtMs,
+    ...(request.completedAtMs != null ? { completedAtMs: request.completedAtMs } : {}),
+    updatedAt: request.updatedAt,
+    ...(request.result?.error != null ? { error: { code: request.result.error.code, message: request.result.error.message } } : {})
+  });
+
+  async function turns(target: string, query?: SessionTurnsQuery): Promise<SessionTurn[] | undefined>;
+  async function turns(target: readonly string[], query?: SessionTurnsQuery): Promise<SessionTurn[]>;
+  async function turns(target: string | readonly string[], query?: SessionTurnsQuery): Promise<SessionTurn[] | undefined> {
+    const one = typeof target === "string";
+    const ids = one ? [target] : [...new Set(target)].slice(0, SESSION_LIST_MAX);
+    const records = await Promise.all(ids.map((id) => owned(id)));
+    const read = ids.flatMap((id, at) => (records[at] === undefined ? [] : [{ id, record: records[at]! }]));
+    for (const entry of read) inputs.observe?.turns(entry.id);
+    if (read.length === 0 || inputs.requests === undefined) return one && read.length === 0 ? undefined : [];
+    const per = bounded(query?.limit, SESSION_TURNS_MAX);
+    if (per === 0) return [];
+    const statuses = query?.status;
+    // One read across the sessions, filtered at the store by owner, tenant,
+    // organization and status. The request stores keep no action column, so
+    // `actions` cuts the bounded read. Across many sessions the read is the
+    // newest `per` x their number, so ask by status to read what runs now.
+    const rows = await inputs.requests.list({
+      sessionId: read.map((entry) => entry.id),
+      userId: identity.userId,
+      tenantId: identity.tenantId,
+      orgId: identity.orgId,
+      ...(statuses !== undefined ? { status: statuses } : {}),
+      orderBy: "startedAtMs",
+      limit: per * read.length
+    });
+    const actions = query?.actions === undefined ? undefined : new Set(query.actions);
+    const kept = new Map<string, number>();
+    const answered: SessionTurn[] = [];
+    for (const row of rows) {
+      const entry = read.find((candidate) => candidate.id === row.sessionId);
+      // The session's own request scope (`sessionRequestScope`): its flow, and
+      // its owning instance when it records one.
+      if (entry === undefined || row.flowKind !== entry.record.flowKind) continue;
+      if (entry.record.flowId != null && row.flowId !== entry.record.flowId) continue;
+      const count = kept.get(entry.id) ?? 0;
+      if (count >= per) continue;
+      kept.set(entry.id, count + 1);
+      if (actions === undefined || actions.has(row.actionName)) answered.push(turnOf(row));
+    }
+    return answered;
+  }
 
   return {
     async read(sessionId: string): Promise<PeerSessionView | undefined> {
       const record = await owned(sessionId);
       if (record === undefined) return undefined;
-      // The owner as `record-owner` reads it: the stored instance id, or, on a
-      // legacy row, the singleton named by its kind. A flow of another kind
-      // under that address is not its owner, and declares nothing for it.
-      const owner = flowAt(record.flowId ?? record.flowKind);
-      const schema = owner?.kind === record.flowKind ? scopeStateSchema(owner, "session") : undefined;
-      const readonly = getReadonlyStateKeys(schema);
-      // As the session's own runs read it, defaults filled.
-      const effective = applyScopeStateDefaults(schema, record.state);
-      const state: Record<string, unknown> = {};
-      for (const key of readonly) {
-        if (Object.prototype.hasOwnProperty.call(effective, key)) state[key] = structuredClone(effective[key]);
-      }
-      return {
+      inputs.observe?.identity(sessionId);
+      const state = readonlyStateOf(record);
+      const view = {
         flowKind: record.flowKind,
         ...(record.flowId != null ? { flowId: record.flowId } : {}),
-        state: Object.freeze(state),
+        state,
+        lineageId: resolveLineageId(record)
       };
+      const observe = inputs.observe;
+      if (observe === undefined) return view;
+      // Its state is heard only once a block reads it: a read of the flow or
+      // lineage alone hears `run`, never a state write.
+      return Object.defineProperty(view, "state", {
+        enumerable: true,
+        get: () => {
+          observe.state(sessionId);
+          return state;
+        }
+      });
     },
+
+    async list(query?: SessionListQuery): Promise<SessionList> {
+      // Heard however few rows it answers: a session made later is a change to it.
+      inputs.observe?.list();
+      const limit = bounded(query?.limit, SESSION_LIST_MAX);
+      const fields = query?.fields ?? {};
+      let state: Record<string, string> | undefined;
+      if (Object.keys(fields).length > 0) {
+        const address = query?.flowId ?? query?.flowKind;
+        const filter = readonlyStateFilter(address === undefined ? undefined : flowAt(address), fields);
+        if ("error" in filter) throw new Error(filter.error);
+        state = filter.state;
+      }
+      // Top-level sessions (the store's default parentage) of this principal,
+      // filtered at the store (BP-033); one row past the limit says `more`.
+      const rows = await sessions.list({
+        ...(query?.flowKind !== undefined ? { flowKind: query.flowKind } : {}),
+        ...(query?.flowId !== undefined ? { flowId: query.flowId } : {}),
+        userId: identity.userId,
+        tenantId: identity.tenantId,
+        orgId: identity.orgId,
+        ...(state !== undefined ? { state } : {}),
+        limit: limit + 1
+      });
+      const answered: SessionListRow[] = [];
+      for (const row of rows.slice(0, limit)) {
+        // A write session is the server's, never a conversation (FIX-2624).
+        if (isWriteRecord(row)) continue;
+        const record = await admitted(row);
+        if (record === undefined) continue;
+        answered.push({
+          id: toBareSessionId(record.id, identity.tenantId),
+          flowKind: record.flowKind,
+          ...(record.flowId != null ? { flowId: record.flowId } : {}),
+          lineageId: resolveLineageId(record),
+          ...(typeof record.title === "string" && record.title.length > 0 ? { title: record.title } : {}),
+          createdAt: record.createdAt,
+          updatedAt: record.updatedAt,
+          state: readonlyStateOf(record)
+        });
+      }
+      return { sessions: answered, more: rows.length > limit };
+    },
+
+    turns,
 
     async history(sessionId: string, query?: SessionHistoryQuery): Promise<SessionHistory | undefined> {
       const reads = inputs.history;
       if (reads === undefined) return undefined;
       const record = await owned(sessionId);
       if (record === undefined) return undefined;
+      inputs.observe?.history(sessionId);
       const limit = query?.limit ?? { turns: SESSION_HISTORY_DEFAULT_TURNS };
       // Bounded at the store: a count of turns reads that many, a token limit
       // the most a read takes (BP-033).

@@ -609,7 +609,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           runtimeConfig,
-          tenantIdHeader: options.tenantIdHeader
+          tenantIdHeader: options.tenantIdHeader,
+          callerFor
         });
       }
 

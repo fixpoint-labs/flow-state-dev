@@ -100,6 +100,7 @@ function app(): FlowInstance {
     views: {
       greeting: defineView({ scope: "user", block: readGreeting }),
       peekUser: defineView({ scope: "user", block: readsSession }),
+      peekOrg: defineView({ scope: "org", block: readsSession }),
       peekSession: defineView({ scope: "session", block: readsSession }),
       liveness: defineView({ scope: "session", block: readsLiveness }),
       items: defineView({ scope: "session", block: readsItems }),
@@ -144,11 +145,15 @@ describe("a template in another scope is a dependency", () => {
 });
 
 describe("the request host's reads in a view", () => {
-  it("refuses a session read in a view with no session", async () => {
+  // FIX-2725 D1: a user view reads the caller's sessions; an org view none.
+  it("refuses a session read in an org view, and records one a user view makes", async () => {
     const stores = createInMemoryStores();
     const flow = app();
     await act(stores, flow, "mine", "touch", {});
-    await expect(view(stores, flow, "peekUser", { target: "mine" })).rejects.toMatchObject({ name: "NoSessionError" });
+    await expect(view(stores, flow, "peekOrg", { target: "mine" })).rejects.toMatchObject({ name: "NoSessionError" });
+    const answer = await view(stores, flow, "peekUser", { target: "mine" });
+    expect(answer.output).toEqual({ found: true });
+    expect(answer.topics).toEqual([{ scope: "session", id: "mine" }]);
   });
 
   it("records the session a session view reads", async () => {
