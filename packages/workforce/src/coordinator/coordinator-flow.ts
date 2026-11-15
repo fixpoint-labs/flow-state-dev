@@ -116,10 +116,9 @@ import {
 import { isTerminalStatus, type Task, type TaskInit } from "@flow-state-dev/orchestration/tasks";
 import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/internal";
 import { conversationLedgerAt } from "../conversation-board/ledger";
-import { defineSessionBoard, WORKER_MESSAGE_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
+import { defineSessionBoard, workerMessageStateShape } from "../conversation-board/session-board";
 import { workerTaskEntry } from "../conversation-board/task-entry";
 import {
-  CONVERSATION_BOARD_SERVER_OWNED,
   REPLY_CONCURRENCY,
   conversationBoardStateShape,
   routedEndingSchema,
@@ -132,7 +131,7 @@ import { declareBuiltInRoles, markRolePiece } from "../worker-roles";
 import { reportRescuedFailure } from "../error-reporter/rescued";
 import { verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
 import { workerRoutineVerbs } from "../routines/routines";
-import { ROUTED_FROM_STATE_KEY, SET_SESSION_FIELDS_ACTION, SET_WORK_PROJECT_ACTION, WORK_PROJECT_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
+import { SET_SESSION_FIELDS_ACTION, SET_WORK_PROJECT_ACTION, WORKER_ID_STATE_KEY } from "../workers/keys";
 import { setSessionFieldsAction } from "../workers/session-fields";
 import { setWorkProjectAction } from "../projects/work-project";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
@@ -1732,6 +1731,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     onRoutedEnded
   );
 
+  const session = installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape, ...workerMessageStateShape });
   const flow = defineFlow({
     kind: COORDINATOR_FLOW,
     configSchema: coordinatorConfigSchema(turn.settings),
@@ -1740,18 +1740,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     // turn's worker on this flow before anything reads a setting.
     ...turn.bound,
     session: {
-      ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape, ...workerMessageStateShape }),
-      // The board's `routedFrom` too: no caller names the conversation a routed task came from (BP-031).
-      // And `workProjectId`: only the work-project action sets the project a conversation works in (FIX-2161).
-      serverOwned: [
-        ...COORDINATOR_SERVER_OWNED,
-        ...CONVERSATION_BOARD_SERVER_OWNED,
-        ...WORKER_MESSAGE_SERVER_OWNED,
-        ROUTED_FROM_STATE_KEY,
-        WORK_PROJECT_STATE_KEY,
-        // The app's session fields: written by the server at open, or born with a hand-over.
-        ...Object.keys(installation.sessionFields)
-      ],
+      ...session,
+      // Every worker flow's server-owned fields (the board's, `routedFrom`, `workProjectId`, the
+      // app's session fields), and the coordinator's own: no caller seeds any of them (BP-031).
+      serverOwned: [...new Set([...session.serverOwned, ...COORDINATOR_SERVER_OWNED])],
       // Every answer, routing and pass-on writes this one record at once; a pass-on that
       // runs out of retries fails after its round has closed, and its answers are lost.
       cas: { maxRetries: 8 }

@@ -19,6 +19,7 @@ import { claimedTask } from "../src/conversation-board/held-task";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import type { WorkerManifest } from "../src/manifest";
 import type { WorkerInstallation } from "../src/workers/installation";
+import type { SessionFields } from "../src/workers/session-fields";
 import { setSessionFieldsAction } from "../src/workers/session-fields";
 import { bootProjectsHost, ORG } from "./projects-harness";
 
@@ -72,12 +73,12 @@ const standardWorkers: WorkerManifest[] = [
   worker("eng.coder", { flow: "taker", description: "Codes." })
 ];
 
-async function boot() {
+async function boot(sessionFields: SessionFields = { repository: z.string().min(1) }) {
   const runs: Run[] = [];
   const judgment = mockGenerator({ script: [{ when: () => true, then: { text: "Noted." } }] });
   const h = await bootProjectsHost({
     standardWorkers,
-    sessionFields: { repository: z.string().min(1) },
+    sessionFields,
     lab: () => ({}),
     flows: (installation) => ({
       taker: { flow: takerFlow(installation, runs), roles: ["contributor", "manager"] },
@@ -142,5 +143,29 @@ describe("an app's session field, written at open and carried down the hand-over
     const write = await h.act("alice", "taker", task.id, SET_SESSION_FIELDS_ACTION, { fields: { repository: "repo-a" } });
     expect(JSON.stringify(write.error)).toContain("can't be set");
     expect(await h.stateOf(task.id)).toMatchObject({ repository: "repo-b" });
+  });
+
+  it("is written once when two opens race: one wins, the other is refused, and the winner's value stays", { timeout: 30_000 }, async () => {
+    const h = await boot();
+    const session = await h.openSession("alice", COORDINATOR_FLOW, { workerId: "lead" });
+    const write = (repository: string) =>
+      h.act("alice", COORDINATOR_FLOW, session, SET_SESSION_FIELDS_ACTION, { worker: "lead", fields: { repository } });
+    const [a, b] = await Promise.all([write("repo-a"), write("repo-b")]);
+    const won = [a, b].filter((result) => result.settled === "completed");
+    const refused = [a, b].filter((result) => result.settled !== "completed");
+    expect(won).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(JSON.stringify(refused[0]!.error)).toContain("already has one");
+    expect((await h.stateOf(session)).repository).toBe(won[0] === a ? "repo-a" : "repo-b");
+  });
+
+  it("keeps the value its schema parsed at open, once, at every hop: a transforming schema doesn't run again on the stored value", { timeout: 30_000 }, async () => {
+    const h = await boot({ repository: z.string().transform((name) => `${name}-repo`) });
+    const session = await h.open("billing");
+    expect((await h.stateOf(session)).repository).toBe("billing-repo");
+    await h.ok("alice", COORDINATOR_FLOW, session, "createTask_tasks", { goal: "split the work", assignee: "eng.taker" });
+    await h.settled();
+    const ran = Object.fromEntries(h.runs.map((run) => [run.goal, run.state.repository]));
+    expect(ran).toEqual({ "split the work": "billing-repo", "piece of split the work": "billing-repo" });
   });
 });
