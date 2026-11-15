@@ -85,21 +85,21 @@ function capSummary(summary: string, limit = MAX_READING_CHARS): string {
 /**
  * The summary to store: the summarizer's prose, then its key points, within
  * {@link MAX_READING_CHARS}. The next fold reads only what is stored, and a
- * fact can live in a key point alone, so the key points take their room first
+ * fact can live in a key point alone, so the key points take their space first
  * and the prose is cut to what is left. Key points that alone pass the cap
  * keep the earliest whole ones that fit, then a line that marks the cut; the
  * prose is then cut to its marker.
  */
 function storedSummary(summary: string, keyPoints: string[] | undefined): string {
   if (keyPoints === undefined || keyPoints.length === 0) return capSummary(summary);
-  const room = MAX_READING_CHARS - TRUNCATED_MARKER.length - KEY_POINTS_HEADER.length;
+  const budget = MAX_READING_CHARS - TRUNCATED_MARKER.length - KEY_POINTS_HEADER.length;
   const lines = keyPoints.map((point) => `- ${point}`);
   let block = lines.join("\n");
-  if (block.length > room) {
+  if (block.length > budget) {
     const kept: string[] = [];
     let used = KEY_POINTS_CUT.length;
     for (const line of lines) {
-      if (used + line.length + 1 > room) break;
+      if (used + line.length + 1 > budget) break;
       kept.push(line);
       used += line.length + 1;
     }
