@@ -17,8 +17,9 @@
  *
  * A read may also return the topics to hear next (`topicsFromResult`). When
  * that set changes (deduped and sorted, so an unchanged set never churns) the
- * live read closes its subscription, subscribes the new topics, and reads once
- * more, so a change between the two is not missed. A result that also says
+ * live read subscribes the new topics before it closes the old subscription
+ * (so a client whose only subscription this is keeps its socket), and reads
+ * once more, so a change between the two is not missed. A result that also says
  * what it hears under them (`hears`, a view's answer) filters each notice by
  * it too (`hearsNotice`), so a topic named for one kind of change wakes no
  * read on another.
