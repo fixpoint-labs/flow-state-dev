@@ -26,7 +26,8 @@ import type { WorkerInstallation } from "./installation";
 import { readRosterEntries, rosterResources } from "./roster-view";
 import { TURN_ACTIONS } from "./turn-actions";
 
-/** What a session with no title yet shows (FIX-2725 Q2). */
+// FIX-2725 Q2.
+/** What a session with no title yet shows. */
 export const UNTITLED_SESSION = "Untitled";
 
 /** The most sessions the worker sessions view lists: `sessions.list`'s bound. */

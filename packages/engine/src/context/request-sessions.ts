@@ -14,7 +14,7 @@
  * declares readonly (server-written markers, as the HTTP session list's state
  * filter keeps them), never the record. `history` crosses the session's
  * settled turns, by the one read a turn's own history window uses
- * (`./settled-turns`), and writes nothing. `list` (FIX-2725) lists the
+ * (`./settled-turns`), and writes nothing. `list` lists the
  * principal's top-level sessions as `read` answers each, filtered at the store
  * and bounded; `turns` reads a session's requests by status, never their
  * words.
@@ -70,9 +70,9 @@ export type RequestSessionsInputs = {
   sessions: Pick<SessionStore, "get" | "list">;
   /** Where `turns` reads a session's requests. Without it, `turns` answers nothing. */
   requests?: Pick<RequestStore, "list">;
-  /** A view's admission (FIX-2725 D1): every verb answers only a session it admits. */
+  /** A view's admission: every verb answers only a session it admits. */
   admit?: SessionAdmission;
-  /** A view's recording (FIX-2725 D1): told of each session a verb answers, and of each list. */
+  /** A view's recording: told of each session a verb answers, and of each list. */
   observe?: SessionReadObserver;
   /** Server-derived identity of the running request. */
   identity: { userId: string; tenantId: string | undefined; orgId: string };

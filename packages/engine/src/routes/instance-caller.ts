@@ -127,7 +127,7 @@ export async function ownResolverVerdict(
 /**
  * The one per-row admission of a session list: the HTTP session list's, and
  * a view's session reads'. A row of another tenant is never shown, nor a write
- * session (FIX-2624), which is no conversation; a row owned by an instance
+ * session, which is no conversation; a row owned by an instance
  * with a resolver of its own is judged on that resolver's word
  * ({@link ownResolverVerdict}); any other row by the caller's `hostRule`.
  */
