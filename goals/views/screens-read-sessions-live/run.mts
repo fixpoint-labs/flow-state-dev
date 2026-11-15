@@ -45,7 +45,8 @@ const SESSIONS = "packages/engine/src/context/request-sessions.ts";
 
 const PATCHES: Record<string, ModulePatch[]> = {
   "unrecorded-session-reads": [
-    { module: SESSIONS, from: String.raw`inputs\.observe\?\.list\(\);`, to: "" },
+    // `list` itself: the read that answers nothing is heard on the same topic, and stays.
+    { module: SESSIONS, from: String.raw`(Promise<SessionList> \{\n\s*//[^\n]*\n\s*)inputs\.observe\?\.list\(\);`, to: "$1" },
     { module: SESSIONS, from: String.raw`for \(const entry of read\) inputs\.observe\?\.turns\(entry\.id\);`, to: "" }
   ],
   "admit-by-input": [{ module: SESSIONS, from: String.raw`const own = principalSession\(record, identity\);`, to: "const own = record;" }],

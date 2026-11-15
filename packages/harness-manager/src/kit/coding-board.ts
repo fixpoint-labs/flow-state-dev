@@ -86,13 +86,9 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
         const sessions = requireRequestHost(ctx).sessions;
         if (sessions === undefined) throw new Error("This host can't read your sessions, so the coding board can't answer here.");
         const conversation = await sessions.read(input.sessionId);
-        if (conversation === undefined) {
-          // Not the caller's, or gone. Heard on the caller's own session list,
-          // where a session made under this id again publishes: never on the
-          // named session's topic, which answered nothing.
-          await sessions.list({ limit: 1 });
-          return [];
-        }
+        // Not the caller's, or gone: the read is heard on the caller's own user
+        // topic, where a session made again under this id publishes.
+        if (conversation === undefined) return [];
         const partition = await filingSessionIdOf({ identity: { id: input.sessionId }, lineageId: conversation.lineageId });
         const ledger = await conversationLedgerAt(ctx, partition, { readFor: input.sessionId });
         const listed = taskListEntriesFor(BOARD, ledger, {}, ctx.view);
