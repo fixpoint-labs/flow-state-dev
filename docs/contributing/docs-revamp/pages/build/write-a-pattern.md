@@ -1,48 +1,47 @@
 ---
 title: Write your own pattern
 type: recipe
-description: A pattern is a factory that wraps taskBoard into a reusable block. Build a planMapReduce pattern from the same plan → drain → reduce skeleton the built-in patterns use.
+description: A pattern is a factory that wraps taskBoard into a reusable block. Build a planMapReduce pattern from the same plan, seed, drain, reduce steps the built-in patterns use.
 ---
 
 # Write your own pattern
 
-The built-in patterns — `supervisor`, `planAndExecute`, `parallelTasks` — look
-like distinct primitives, but they're all the same thing underneath: a factory
-that wraps [`taskBoard`](/docs/orchestration/task-board) and hands back a block.
-When a recurring shape of work doesn't quite match a built-in, you write your
-own the same way.
+The built-in patterns (`supervisor`, `planAndExecute`, `parallelTasks`) look like
+separate tools, but each is a function that builds a [task board](../concepts/tasks-and-boards.md)
+and returns a block. When a recurring shape of work doesn't match one of them, you
+write your own the same way.
 
-This guide builds `planMapReduce` — plan the work, fan the items across a
-worker, then fold the results — and a flow that uses it. The runnable, tested
-code is in
+This recipe builds `planMapReduce`: plan the work, run one task per planned item,
+then fold the results into one answer. The finished code is in
 [`examples/guides/custom-pattern`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/custom-pattern).
+It assumes you know what a board and its drain are; if not, read
+[Tasks and boards](../concepts/tasks-and-boards.md) first.
 
-If you haven't yet, read [The board lifecycle](./board-lifecycle) first — a
-pattern is exactly the "seed, drain, read" lifecycle packaged up, and this
-guide assumes you know what `board.drain` does.
+## 1. Decide what the pattern takes
 
-## The skeleton
+Every board pattern runs the same four steps in one sequencer: plan the work, seed
+the board with one task per item, drain it, reduce the finished tasks. The factory
+hides those steps, so a caller passes five things:
 
-Every board-backed pattern is the same moves against one collection:
+- `name`: unique within the flow. It prefixes every block the pattern builds.
+- `inputSchema`: the schema of the input the pattern is mounted against.
+- `plan`: a block whose output is `{ items: [{ id, input }] }`. Pass a handler for a
+  fixed split or a generator to let a model plan.
+- `map`: the block that does one task. It receives the task, and its output is what
+  `reduce` sees.
+- `reduce`: a function that folds the finished tasks' outputs into the result.
 
-```
-plan the work  →  seed the collection  →  drain via board.drain  →  reduce the results
-```
+## 2. Write the factory
 
-A pattern factory wires those into a sequencer and exposes a small config so
-callers never touch the board directly. The value of writing a pattern is that
-the wiring lives in one place and every caller gets it right.
+Build the board first, then the two blocks that sit around it. The board's
+capability is how a block reads and writes its tasks, so `seed` and `reduce` both
+list it in `uses`.
 
-## Plan is a block, not a function
+```ts title="src/lib/plan-map-reduce.ts"
+import { handler, sequencer, type BlockDefinition } from "@flow-state-dev/core";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { z, type ZodTypeAny } from "zod";
 
-The one design decision worth dwelling on: **`plan` is a block, not a plain
-function.** Real planning usually calls a model — a generator that looks at the
-input and decides how much work there is and what each unit should be. So the
-pattern takes a `plan` *block* whose output is the list of items to map over. A
-consumer can hand it a deterministic handler (for cheap or fixed splits) or a
-generator (to let a model plan), and the pattern doesn't care which.
-
-```ts title="plan-map-reduce.ts"
 /** The shape a `plan` block must output. */
 export const planOutputSchema = z.object({
   items: z.array(z.object({ id: z.string(), input: z.unknown() })),
@@ -51,45 +50,33 @@ export const planOutputSchema = z.object({
 export interface PlanMapReduceConfig<TResult> {
   name: string;
   inputSchema: ZodTypeAny;
-  /** A block (often a generator) that turns the input into items to map over. */
   plan: BlockDefinition;
-  /** The worker block that processes one item. */
   map: BlockDefinition;
-  /** Fold the completed workers' outputs into the final result. Pure. */
   reduce: (outputs: unknown[]) => TResult;
 }
-```
 
-## The factory
-
-Build the board once, then the blocks around it. The board is request-backed so
-the seed and reduce blocks — which run outside `board.drain` — can resolve the
-same collection:
-
-```ts title="plan-map-reduce.ts"
 export function planMapReduce<TResult>(
   config: PlanMapReduceConfig<TResult>,
 ): BlockDefinition {
-  const collectionId = config.name;
-
   const board = taskBoard({
-    name: config.name,
-    collection: { backing: "request", collectionId },
-    workers: { map: config.map },   // one assignee, staffed by the caller's worker
-    initialTasks: [],               // seeded from the plan below
+    name: `${config.name}-board`,
+    workers: { map: config.map }, // one assignee, "map"
   });
 
   const seed = handler({
     name: `${config.name}-seed`,
-    inputSchema: planOutputSchema,   // consumes the plan block's output
+    inputSchema: planOutputSchema,
     outputSchema: z.object({ seeded: z.number() }),
+    uses: [board.capability],
     execute: async (input, ctx) => {
-      // The board says `backing: "request"`; the collection under it says
-      // `backing: "state"` with no `state` field. Same tasks, on the request.
-      const collection = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId });
-      for (const item of input.items) {
-        await collection.createTask({ id: item.id, goal: item.id, assignee: "map", input: item.input });
-      }
+      await ctx.cap[board.capability.name].createTasks(
+        input.items.map((item) => ({
+          id: item.id,
+          goal: item.id,
+          assignee: "map",
+          input: item.input,
+        })),
+      );
       return { seeded: input.items.length };
     },
   });
@@ -98,84 +85,116 @@ export function planMapReduce<TResult>(
     name: `${config.name}-reduce`,
     inputSchema: z.unknown(),
     outputSchema: z.unknown(),
+    uses: [board.capability],
     execute: async (_input, ctx) => {
-      const collection = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId });
-      const outputs = collection.list({ status: "completed" }).map((task) => task.output);
-      return config.reduce(outputs);
+      const done = await ctx.cap[board.capability.name].listTasks({ status: "completed" });
+      return config.reduce(done.map((task) => task.output));
     },
   });
 
   return sequencer({ name: config.name, inputSchema: config.inputSchema })
-    .step(config.plan)  // input → { items }
-    .step(seed)         // enqueue one task per item
-    .step(board.drain)  // drain
-    .step(reduce);      // fold the collected outputs
+    .step(config.plan)  // input becomes { items }
+    .step(seed)         // one task per item
+    .step(board.drain)  // run the tasks
+    .step(reduce);      // fold the outputs
 }
 ```
 
-Three things worth calling out:
+In the sequencer, each step's output is the next step's input. The types don't
+check that, so a `plan` block whose output doesn't match `planOutputSchema` fails
+when the flow runs. `reduce` ignores what the drain hands it and reads the
+finished tasks through the board's capability.
 
-- **`plan` runs first as a real step**, and its `{ items }` output is the seed
-  block's input. Swap the handler for a generator and a model plans the work.
-- **`reduce` reads through `ctx`, not its input.** It resolves the collection by
-  id and folds the completed outputs, so it ignores whatever the drain handed it.
-- **Nothing here is board-internal.** `taskBoard`, `getOrCreateTaskCollection`,
-  and the block builders are all public. A pattern is ordinary composition.
+A task that fails is left out of `outputs`, and the run still completes. Tasks are
+capped per board; the limits are in the [task board reference](../reference/task-board.md).
 
-## Using it
+## 3. Use it in a flow
 
-A consumer writes a plan block, a worker, and a reducer, then mounts the block
-like any other:
+A caller supplies the three blocks and mounts the result like any other block.
+Here `planDocuments` turns a list of documents into one item each, and `countWords`
+counts the words in one. Both are handlers, so the example needs no model key.
 
-```ts title="word-count-flow.ts"
-const wordCountBlock = planMapReduce({
-  name: "word-count",
+```ts title="src/flows/word-count/flow.ts"
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { z } from "zod";
+import { planMapReduce, planOutputSchema } from "../../lib/plan-map-reduce";
+
+const inputSchema = z.object({ documents: z.array(z.string()) });
+
+const planDocuments = handler({
+  name: "plan-documents",
   inputSchema,
-  plan: planDocuments, // input → { items: one per document }
-  map: countWords,     // a handler (or a generator) that counts one document
-  reduce: (outputs) => ({
-    total: outputs.reduce<number>((sum, o) => sum + ((o as { count?: number })?.count ?? 0), 0),
+  outputSchema: planOutputSchema,
+  execute: (input) => ({
+    items: input.documents.map((text, i) => ({ id: `doc-${i}`, input: { text } })),
   }),
 });
 
-export const wordCountFlow = defineFlow({
+const countWords = handler({
+  name: "count-words",
+  inputSchema: taskWorkerInputSchema.extend({
+    input: z.object({ text: z.string() }).optional(),
+  }),
+  outputSchema: z.object({ count: z.number() }),
+  execute: (task) => {
+    const text = task.input?.text.trim() ?? "";
+    return { count: text === "" ? 0 : text.split(/\s+/).length };
+  },
+});
+
+const wordCount = planMapReduce({
+  name: "word-count",
+  inputSchema,
+  plan: planDocuments,
+  map: countWords,
+  reduce: (outputs) => ({
+    total: (outputs as { count: number }[]).reduce((sum, out) => sum + out.count, 0),
+  }),
+});
+
+const wordCountFlow = defineFlow({
   kind: "word-count",
-  actions: { count: { block: wordCountBlock } },
+  requireUser: true,
+  actions: { count: { block: wordCount } },
   session: { stateSchema: z.object({}) },
 });
+
+export default wordCountFlow();
 ```
+
+Make `plan` or `map` a `generator({ model: "openai/gpt-6-luna", ... })` and the
+same pattern lets a model plan the work or process each item.
+
+## 4. Run it
+
+From the example's directory, with the flow registered in `fsdev.config.ts`, run
+the action. Stdout is one JSON item per line, and the last line carries the output.
 
 ```bash
-cd examples/guides/custom-pattern
-pnpm fsdev run word-count count -i '{"documents":["a b c","one two","single"]}'
-# → { total: 6 }
+pnpm fsdev run word-count count -i '{"documents":["a b c","one two","single"]}' | jq -c 'select(.type == "flow_complete").output'
+# {"total":6}
 ```
 
-The plan and map blocks are deterministic handlers here so the example runs with
-no key. Make `plan` (or `map`) a `generator({ model: "openai/gpt-6-luna", … })`
-and the same pattern lets a model plan the work or process each item — the
-pattern doesn't care whether its blocks call a model.
+To test it without a terminal, call `testFlow({ flow, action: "count", userId, input })`
+from `@flow-state-dev/testing`; `result.output` is `{ total: 6 }`.
 
-## Progress comes for free
+## Show the progress
 
-Because the board is doing the work, your pattern emits `task-change` (per-task
-lifecycle) and `task-board-meta` (board-level aggregate) items automatically.
-Install `TaskPlan` with `fsdev ui add task-plan` and import it from
-`@/components/flow-state/task-plan`. Pair the items with `<TaskPlan />` and a
-consumer gets a live progress view without your pattern rendering anything.
+Because a board does the work, the pattern emits `task-change` and
+`task-board-meta` items on its own. Render them with the `TaskPlan` component,
+passing the board's name as `collectionId`. It reads the session's items by default.
 
-## Where to look next
+```tsx
+<TaskPlan collectionId="word-count-board" />
+```
 
-- **The built-in patterns are the reference.** `parallelTasks` is the closest
-  minimal shape to this guide; `supervisor` and `planAndExecute` add review and
-  replan loops on the same skeleton — and `planAndExecute`'s planner is a real
-  generator, exactly the `plan`-as-a-block idea taken to its conclusion. See the
-  [Patterns](/docs/patterns/overview) docs.
-- **The `create-pattern` skill** in the repo scaffolds a pattern with tests and
-  docs if you're building one for real.
+The item types and the component's install steps are in the
+[items reference](../reference/items.md) and the [UI components reference](../reference/ui-components.md).
 
 ## Related
 
-- [The board lifecycle](./board-lifecycle) — the seed/drain/read model a pattern packages.
-- [Building a research team](./building-a-research-team) — task boards from scratch.
-- [Task board](/docs/orchestration/task-board) — the `taskBoard` config reference.
+- [Tasks and boards](../concepts/tasks-and-boards.md): the seed, drain and read model a pattern packages.
+- [Patterns](../catalog/patterns/index.md): the built-in patterns. `parallelTasks` is the closest to this one, and `planAndExecute` uses a generator as its planner.
+- [Task board reference](../reference/task-board.md): the `taskBoard` options.
+- [Task collections reference](../reference/task-collections.md): reading and writing a board's tasks.

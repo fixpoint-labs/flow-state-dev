@@ -111,3 +111,24 @@ This page is about a notice and a read; it stores nothing. A notice carries no r
 - **[verify]** Run the example against a `serve()` host (`goals/realtime/websocket-delivery/run.mts` is the reference harness) and confirm `fsd.sessions.requests(sessionId)` shows a teammate's reply within a second. Not run here.
 - **[verify]** Whether `FlowProvider` users can reach the provider's client for their own read. `useClient` is internal (`us:22`), so the example makes its own client and notes it, as `g:12` does.
 - The old guide's title "Keeping a screen current" and sidebar label `Realtime screens` are replaced by the recipe's task title. Other pages link `/guides/realtime#...` anchors (`ac:226`, `ac:Which hosts`, `apps/docs/docs/client/react.md:180`, `apps/docs/docs/orchestration/task-substrate.md:560`); at cutover those links move to this page and to the Reference rows above.
+
+## Revise round 1 changes
+
+The page was rewritten to the recipe shape (672 words, two titled blocks, five numbered steps). It carries the facts below, all sourced above; everything else is a Reference row.
+
+- **Example** (corrections 1, 3, 4): `src/lib/fsd.ts` makes the client; `src/app/RequestList.tsx` reads `fsd.sessions.requests(sessionId)` (`cl:463`), keeps the first read in an effect, and passes the hook's `signal` to the read (fact 19). Both blocks type-checked with `tsc` against the kitchen-sink tsconfig (scratch folder deleted). `fsd.flow(...).read` and `listTasks_tasks` are gone from the page.
+- **Timing** (fact 10, `wsg` `a:within-1s`): "On the Node host, the read runs as soon as the change is saved, and it sees the change." The page no longer says why (no timer, notice sent once readable); that mechanism is a Reference row.
+- **Client** (fact 20): "pass it as `client` so the subscription signs in the way your reads do". "Socket" is first used in step 4, after "the client holds one WebSocket".
+- **Several processes** (fact 33, 34): the page states only the decision: one process works by default; several processes writing the stores (several servers on one SQLite file, `fsdev run` against a running `fsdev dev`) need a store set that shares changes across processes, such as Postgres; otherwise an open screen hears another process's changes at its next read. The `bus` slot, the timer's behaviour on a crossing bus, `pushSecret`, `FSD_PUSH_SECRET` and `push: false` are Reference.
+- **Authorization** (facts 28 to 32): one paragraph; the per-topic rules for user and org topics, re-asking on each tick, the hour limit and the close codes are Reference.
+- **Notice** (fact 15, 25): the page names `{ topic, kind, origin? }`, `null` (connect, reconnect, timer tick) and `"resync"` as read-everything, and `"items"` as the kind the example skips. The change in whether push reaches every process was cut as unobservable. The seven kinds, `origin.requestId` and `topic.resource` are Reference.
+
+### Where the cut material went
+
+- **R-14 (`../reference/client.md`)**: delivery timing and coalescing, no read on mount, the `client` option; the topic table and each topic's notice kinds; topic options (`{ resource }`, user and org topics take no id); the notice shape and when the callback gets `null`; the notice kinds table with `topic.resource` contents; `fsd.subscribe(topics, { onChange, pollIntervalMs })` returning `close()` and one shared connection per client; `pollIntervalMs` on a push host; the `useSession` `live` option and the `Roster` and `BoardColumns` `live` prop.
+- **R-12 (`../reference/server.md`)**: push support by host; `serve()` push options (`pushSecret`, `FSD_PUSH_SECRET`, refusal of a connection landing on a process with a different key, `push: false`).
+- **R-16 (`../reference/stores.md`)**: the change bus, crossing and in-memory buses, and the cases that miss changes.
+- **R-20 (`../reference/server.md`)**: subscription authorization, credentials through `fetcher`, omitted topics asked again each tick, access not rechecked while open, the one-hour close.
+- **R-23 (`../reference/task-board.md`)**: board notices, announced on the filing session's topic narrowed to the board id wherever the change was made. The page keeps one sentence in "When not to use this".
+- **R-25**: Workforce's `listTasks_tasks` read returns the conversation board plus the planning worker's `plan` board; subscribing `plan` with no planning worker is harmless. The page no longer mentions it; it is a view, watched with `useView`.
+- Link slugs are provisional, as on sibling pages. **[verify]** at cutover.
