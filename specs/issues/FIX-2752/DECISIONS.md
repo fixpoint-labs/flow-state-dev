@@ -112,8 +112,8 @@ day). That wants replay with a cap, which is a schedule option later, not the de
 - **When it runs:** in a process that builds the router (`getRouter()`, `ready()`, `serve()`,
   `fsdev dev`) or starts a job-queue worker (D1), and only when a registered flow declares static
   schedules or an index. **A fire runs the way an action runs on that deployment:** with a job
-  queue, the tick's dispatch is enqueued through the queue's runner in every mode. A `worker-only`
-  process, whose router has no runner today (`createFlowState`'s worker wiring), builds that runner
+  queue, the tick's dispatch is enqueued through the queue's runner in every mode. A `process-only`
+  job-queue process, whose router has no runner today (`createFlowState`'s job-queue wiring), builds that runner
   for the tick, so a fire it claims keeps the queue's retries and survives a worker crash. `fsdev run`,
   `fsdev chat` and `fsdev block` resolve the runtime only and never tick. Each minute, timer
   unref'd, stopped by `dispose()` before the stores close.
@@ -188,7 +188,7 @@ exclusive create, the SQLite and Postgres upserts' `holder` guard) and in its co
 
 ## How it got here
 
-- **Review fold (Codex)** — a fire claimed in a `worker-only` process is enqueued through the job
+- **Review fold (Codex)** — a fire claimed in a `process-only` job-queue process is enqueued through the job
   queue's runner, not run inline, because that process's router has no runner.
 - **Analysis fold** — the local cron also runs in job-queue worker processes (a Vercel web tier with
   BullMQ workers had nothing ticking), the lease renews on its own timer, and D2 widened to
