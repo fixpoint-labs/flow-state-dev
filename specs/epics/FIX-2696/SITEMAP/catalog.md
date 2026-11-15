@@ -56,7 +56,7 @@ a box, arrow (`FILLS A SLOT`), hatching on stored data.
 
 ### K-03 · The Claude Code-style starter
 
-`catalog/starters/<name>` · catalog · 800 words · starter template
+`catalog/starters/claude-code-style` · catalog · 800 words · starter template · placeholder slug (D: written under a placeholder name until the owner names it)
 
 **Job.** A coding app: sessions on the left, the main thread in the centre, background tasks on the right.
 **Contents.** Starter template. First three changes: point it at your repository · change the main worker's brief · add a second harness.
