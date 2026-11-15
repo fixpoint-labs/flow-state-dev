@@ -33,7 +33,7 @@ export interface CodingBriefParts {
   terms?: readonly string[];
   /**
    * `false` leaves out the report of changes and checks: for a run whose last
-   * message is the answer a person reads, and which no check follows. Default: on.
+   * message is the answer the user reads, and which no check follows. Default: on.
    */
   report?: false;
 }
