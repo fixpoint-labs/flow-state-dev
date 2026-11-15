@@ -117,7 +117,7 @@ describe("sessions.list in a view", () => {
     await seed(stores, "fsd-write.desk.x", { updatedAt: 60 });
     const answer = await view(stores, flow, "list", {});
     const list = answer.output as { sessions: Array<{ id: string; state: unknown; lineageId: string }>; more: boolean };
-    expect(list.sessions.map((row) => row.id)).toEqual(["new", "old"]);
+    expect(list.sessions.map((session) => session.id)).toEqual(["new", "old"]);
     expect(list.sessions[0]!.state).toEqual({ workerId: "otto" });
     expect(list.more).toBe(false);
     expect(answer.hears).toEqual([{ topic: { scope: "user" }, kinds: ["run"] }]);
@@ -144,7 +144,7 @@ describe("sessions.list in a view", () => {
     await seed(stores, "otto1", { state: { workerId: "otto" } });
     await seed(stores, "ada1", { state: { workerId: "ada" } });
     const list = (await view(stores, flow, "list", { fields: { workerId: "ada" } })).output as { sessions: Array<{ id: string }> };
-    expect(list.sessions.map((row) => row.id)).toEqual(["ada1"]);
+    expect(list.sessions.map((session) => session.id)).toEqual(["ada1"]);
     await expect(view(stores, flow, "list", { fields: { notes: "private" } })).rejects.toThrow(/only readonly state fields/);
   });
 
@@ -152,8 +152,8 @@ describe("sessions.list in a view", () => {
     const stores = createInMemoryStores();
     await seed(stores, "kept", { updatedAt: 2 });
     await seed(stores, "refused", { updatedAt: 3 });
-    const answer = await view(stores, app(), "list", {}, { admitSession: async (row: SessionRecord) => row.id !== "refused" });
-    expect((answer.output as { sessions: Array<{ id: string }> }).sessions.map((row) => row.id)).toEqual(["kept"]);
+    const answer = await view(stores, app(), "list", {}, { admitSession: async (session: SessionRecord) => session.id !== "refused" });
+    expect((answer.output as { sessions: Array<{ id: string }> }).sessions.map((session) => session.id)).toEqual(["kept"]);
   });
 
   it("is refused in an org view, which reads no session", async () => {

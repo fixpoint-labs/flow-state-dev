@@ -58,7 +58,7 @@ function flows(): { roster: FlowInstance; agent: FlowInstance } {
             const sessions = requestHostOf(ctx)!.sessions!;
             const listed = await sessions.list({ flowKind: "agent" });
             const turns = await sessions.turns([input.probe]);
-            return { ids: listed.sessions.map((row) => row.id).sort(), turns: turns.length, read: (await sessions.read(input.probe)) !== undefined };
+            return { ids: listed.sessions.map((session) => session.id).sort(), turns: turns.length, read: (await sessions.read(input.probe)) !== undefined };
           }
         })
       })

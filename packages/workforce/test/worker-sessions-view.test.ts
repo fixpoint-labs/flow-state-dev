@@ -170,14 +170,14 @@ describe("a user's conversations with one worker", () => {
       // A held task waits on nothing of the user's; a failed one does.
       const held = await h.act("alice", lead, "createTask_tasks", { goal: "Later", assignee: "eng.tasker", held: true });
       expect(held.error, messageOf(held.error)).toBeUndefined();
-      expect((await h.workerSessions("alice", "lead")).map((row) => [row.id, row.waiting])).toEqual([[lead, []]]);
+      expect((await h.workerSessions("alice", "lead")).map((entry) => [entry.id, entry.waiting])).toEqual([[lead, []]]);
       const heldId = (held.output as { taskId: string }).taskId;
-      const [stored] = (await h.rows("alice")).filter((row) => row.id === heldId);
+      const [stored] = (await h.rows("alice")).filter((task) => task.id === heldId);
       expect(stored, "the task is on the session's board").toBeDefined();
       const { partition: _partition, ...task } = stored!;
       await h.writeRow("alice", decodeURIComponent(stored!.partition), { ...task, status: "errored", attempts: 2 } as never);
-      const [row] = await h.workerSessions("alice", "lead");
-      expect(row?.waiting).toEqual([{ taskId: heldId, attempt: 2 }]);
+      const [listed] = await h.workerSessions("alice", "lead");
+      expect(listed?.waiting).toEqual([{ taskId: heldId, attempt: 2 }]);
     } finally {
       await h.dispose();
     }
@@ -191,7 +191,7 @@ describe("an empty board read for a named conversation", () => {
       const lead = await h.conversation("alice", "lead");
       // A user view runs in no session: its board read names the conversation it read for.
       const answer = await h.fsd("alice").view(workerSessionsViewRef(), { worker: "lead" });
-      expect(answer.value.map((row) => [row.id, row.waiting])).toEqual([[lead, []]]);
+      expect(answer.value.map((entry) => [entry.id, entry.waiting])).toEqual([[lead, []]]);
       expect(answer.hears).toContainEqual({ topic: { scope: "session", id: lead, resource: "tasks" }, kinds: ["board"] });
       // The list, on the user topic's `run` (beside the roster's own resource reads).
       expect(answer.hears.find((hearing) => hearing.topic.scope === "user" && hearing.topic.resource === undefined)?.kinds).toContain("run");

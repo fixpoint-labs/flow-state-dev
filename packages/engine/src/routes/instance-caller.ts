@@ -136,11 +136,11 @@ export async function admitListedSession(
     registry: FlowRegistry;
     callerFor: InstanceCallerResolver;
     tenantId: string | undefined;
-    hostRule: (row: SessionRecord) => boolean | Promise<boolean>;
+    hostRule: (session: SessionRecord) => boolean | Promise<boolean>;
   },
-  row: SessionRecord
+  session: SessionRecord
 ): Promise<boolean> {
-  if (!tenantMatches(row.tenantId, ctx.tenantId)) return false;
-  if (isWriteSessionId(row.id)) return false;
-  return (await ownResolverVerdict(ctx.registry, ctx.callerFor, row)) ?? ctx.hostRule(row);
+  if (!tenantMatches(session.tenantId, ctx.tenantId)) return false;
+  if (isWriteSessionId(session.id)) return false;
+  return (await ownResolverVerdict(ctx.registry, ctx.callerFor, session)) ?? ctx.hostRule(session);
 }

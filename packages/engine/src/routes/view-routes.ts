@@ -169,15 +169,15 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
  * host rule would, since the view's principal is not the host's.
  */
 function viewSessionAdmission(ctx: ViewRouteContext, flow: FlowInstance, tenantId: string | undefined): SessionAdmission {
-  const hostRule = async (row: SessionRecord): Promise<boolean> => {
-    if (!isOrgAttributed(row)) return false;
+  const hostRule = async (session: SessionRecord): Promise<boolean> => {
+    if (!isOrgAttributed(session)) return false;
     if (!flowAuthenticates(flow)) return true;
-    const owner = resolveRecordOwner(ctx.registry, row);
+    const owner = resolveRecordOwner(ctx.registry, session);
     if (!owner.ok) return false;
     const caller = await ctx.callerFor(owner.flow);
-    return caller !== undefined && caller.userId === row.userId && caller.orgId === row.orgId;
+    return caller !== undefined && caller.userId === session.userId && caller.orgId === session.orgId;
   };
-  return (row) => admitListedSession({ registry: ctx.registry, callerFor: ctx.callerFor, tenantId, hostRule }, row);
+  return (session) => admitListedSession({ registry: ctx.registry, callerFor: ctx.callerFor, tenantId, hostRule }, session);
 }
 
 // FIX-2625 D1.

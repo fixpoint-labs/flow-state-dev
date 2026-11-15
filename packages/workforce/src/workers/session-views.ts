@@ -37,7 +37,7 @@ const LISTED_MAX = 100;
 const waitingSchema = z.object({ taskId: z.string(), attempt: z.number() });
 
 /** One of a user's conversations with a worker, as the worker sessions view answers it. */
-const workerSessionRowSchema = z.object({
+const listedWorkerSessionSchema = z.object({
   id: z.string(),
   /** Its title, or "Untitled" until one is set. */
   title: z.string(),
@@ -54,7 +54,7 @@ const workerSessionRowSchema = z.object({
   waiting: z.array(waitingSchema)
 });
 
-const workerSessionsSchema = z.array(workerSessionRowSchema);
+const workerSessionsSchema = z.array(listedWorkerSessionSchema);
 const workerSessionsInputSchema = z.object({ worker: z.string().min(1) });
 
 /** One turn of a session, as the session turns view answers it: its status, never its words. */
@@ -75,9 +75,9 @@ const sessionTurnsInputSchema = z.object({ sessionId: z.string().min(1) });
 export type WorkerSessionsView = ViewDefinition<BlockDefinition<typeof workerSessionsInputSchema, typeof workerSessionsSchema>, "user">;
 /** The session turns view, as {@link defineSessionTurnsView} builds it. Import as a type in client code. */
 export type SessionTurnsView = ViewDefinition<BlockDefinition<typeof sessionTurnsInputSchema, typeof sessionTurnsSchema>, "user">;
-/** One row of the worker sessions view. */
-export type ListedWorkerSession = z.infer<typeof workerSessionRowSchema>;
-/** One row of the session turns view. */
+/** One entry of the worker sessions view. */
+export type ListedWorkerSession = z.infer<typeof listedWorkerSessionSchema>;
+/** One entry of the session turns view. */
 export type ListedTurn = z.infer<typeof sessionTurnSchema>;
 
 /** The request host's session reads: a view on a host that can't read session records refuses by name. */
@@ -130,7 +130,7 @@ async function waitingTasksOf(ctx: BlockContext, sessionId: string, lineageId: s
 export function defineWorkerSessionsView(installation: WorkerInstallation): WorkerSessionsView {
   return defineView({
     scope: "user",
-    key: (row) => row.id,
+    key: (entry) => entry.id,
     block: handler({
       name: "workforce-worker-sessions",
       inputSchema: workerSessionsInputSchema,
@@ -181,7 +181,7 @@ export function defineWorkerSessionsView(installation: WorkerInstallation): Work
 export function defineSessionTurnsView(): SessionTurnsView {
   return defineView({
     scope: "user",
-    key: (row) => row.id,
+    key: (entry) => entry.id,
     block: handler({
       name: "workforce-session-turns",
       inputSchema: sessionTurnsInputSchema,

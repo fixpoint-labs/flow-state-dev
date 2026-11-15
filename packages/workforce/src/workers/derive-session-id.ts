@@ -141,17 +141,17 @@ type Timed = { readonly updatedAt: number; readonly createdAt: number };
 export const byRecent = (a: Timed, b: Timed): number => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt;
 
 /**
- * A user's conversations with a worker among `rows` (their top-level
+ * A user's conversations with a worker among `sessions` (their top-level
  * sessions on its flow carrying its id): those carrying no other criteria
  * key, the default (`defaultId`, the derived address) first and marked, the
  * rest by latest activity.
  */
 export function workerConversations<T extends Timed & { readonly id: string; readonly state: Readonly<Record<string, unknown>> }>(
-  rows: readonly T[],
+  sessions: readonly T[],
   defaultId: string
 ): Array<{ session: T; isDefault: boolean }> {
-  return rows
-    .filter((row) => carriesOnly(row.state, WORKER_ONLY))
+  return sessions
+    .filter((candidate) => carriesOnly(candidate.state, WORKER_ONLY))
     .sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId) || byRecent(a, b))
     .map((session) => ({ session, isDefault: session.id === defaultId }));
 }

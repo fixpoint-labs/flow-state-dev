@@ -201,7 +201,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     // organization and status. The request stores keep no action column, so
     // `actions` cuts the bounded read. Across many sessions the read is the
     // newest `per` x their number, so ask by status to read what runs now.
-    const rows = await inputs.requests.list({
+    const requests = await inputs.requests.list({
       sessionId: read.map((entry) => entry.id),
       userId: identity.userId,
       tenantId: identity.tenantId,
@@ -213,16 +213,16 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     const actions = query?.actions === undefined ? undefined : new Set(query.actions);
     const kept = new Map<string, number>();
     const answered: SessionTurn[] = [];
-    for (const row of rows) {
-      const entry = read.find((candidate) => candidate.id === row.sessionId);
+    for (const request of requests) {
+      const entry = read.find((candidate) => candidate.id === request.sessionId);
       // The session's own request scope (`sessionRequestScope`): its flow, and
       // its owning instance when it records one.
-      if (entry === undefined || row.flowKind !== entry.record.flowKind) continue;
-      if (entry.record.flowId != null && row.flowId !== entry.record.flowId) continue;
+      if (entry === undefined || request.flowKind !== entry.record.flowKind) continue;
+      if (entry.record.flowId != null && request.flowId !== entry.record.flowId) continue;
       const count = kept.get(entry.id) ?? 0;
       if (count >= per) continue;
       kept.set(entry.id, count + 1);
-      if (actions === undefined || actions.has(row.actionName)) answered.push(turnOf(row));
+      if (actions === undefined || actions.has(request.actionName)) answered.push(turnOf(request));
     }
     return answered;
   }
@@ -266,7 +266,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       }
       // Top-level sessions (the store's default parentage) of this principal,
       // filtered at the store (BP-033); one row past the limit says `more`.
-      const rows = await sessions.list({
+      const stored = await sessions.list({
         ...(query?.flowKind !== undefined ? { flowKind: query.flowKind } : {}),
         ...(query?.flowId !== undefined ? { flowId: query.flowId } : {}),
         userId: identity.userId,
@@ -276,10 +276,10 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
         limit: limit + 1
       });
       const answered: ListedSession[] = [];
-      for (const row of rows.slice(0, limit)) {
+      for (const candidate of stored.slice(0, limit)) {
         // A write session is the server's, never a conversation (FIX-2624).
-        if (isWriteRecord(row)) continue;
-        const record = await admitted(row);
+        if (isWriteRecord(candidate)) continue;
+        const record = await admitted(candidate);
         if (record === undefined) continue;
         answered.push({
           id: toBareSessionId(record.id, identity.tenantId),
@@ -292,7 +292,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
           state: readonlyStateOf(record)
         });
       }
-      return { sessions: answered, more: rows.length > limit };
+      return { sessions: answered, more: stored.length > limit };
     },
 
     turns,
