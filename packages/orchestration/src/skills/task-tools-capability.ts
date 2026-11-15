@@ -382,7 +382,7 @@ const unknownAssigneeError = (assignee: string, roster: AssigneeRoster) => ({
  * - **Otherwise**: refused, listing who can take it. Filed, the task would
  *   wait pending with nothing to run it while its filer believes it started.
  */
-export function ownerForUnassigned(
+function ownerForUnassigned(
   roster: AssigneeRoster | undefined,
   held: boolean,
 ): { assignee: string } | { ok: false; error: string } | undefined {
