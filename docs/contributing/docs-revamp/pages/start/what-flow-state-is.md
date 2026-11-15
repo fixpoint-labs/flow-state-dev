@@ -102,8 +102,8 @@ const planQueries = generator({
   name: "plan-queries",
   model: "openai/gpt-6-luna",
   prompt: "Write three search queries for the topic.",
-  inputSchema: z.string(),
-  user: (topic) => topic,
+  inputSchema: z.object({ topic: z.string() }),
+  user: (input) => input.topic,
   outputSchema: z.object({ queries: z.array(z.string()) }),
 });
 
@@ -122,7 +122,7 @@ const summarize = generator({
   user: (results) => results,
 });
 
-const research = sequencer({ name: "research", inputSchema: z.string() })
+const research = sequencer({ name: "research", inputSchema: z.object({ topic: z.string() }) })
   .step(planQueries)   // a generator: the model writes search queries
   .step(runSearches)   // a handler: your code runs them
   .step(summarize);    // a generator again
