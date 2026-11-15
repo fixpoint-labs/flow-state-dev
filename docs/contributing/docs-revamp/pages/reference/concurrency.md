@@ -82,7 +82,7 @@ A key function receives `flowKind`, `actionName`, `sessionId?`, `userId`, `tenan
 When the key resolves to nothing, the request runs as `allow`. That happens with no session under `"session"`, with `"none"`, and when a key function returns `undefined`. An MCP call has a session only when its action sets `mcp.session` (a minted id per call, or one read from the call's input). Otherwise it has none and runs unarbitrated under the default key.
 
 ```ts title="src/flows/billing/flow.ts"
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, defineWebhookBinding } from "@flow-state-dev/core";
 import { handleEvent } from "./blocks/handle-event";
 import { syncInvoice } from "./blocks/sync-invoice";
 
@@ -91,19 +91,26 @@ export const billingFlow = defineFlow({
   actions: {
     // One sync per user at a time; duplicates are dropped.
     syncInvoice: { block: syncInvoice, concurrency: { policy: "reject", key: "user" } },
-    // Dedupe webhook deliveries on the provider's delivery id.
-    onEvent: {
-      block: handleEvent,
-      concurrency: {
-        policy: "reject",
-        key: (ctx) => (ctx.metadata?.webhook as { deliveryId?: string } | undefined)?.deliveryId,
+  },
+  webhooks: {
+    stripe: {
+      on: {
+        // Dedupe deliveries on the provider's delivery id.
+        "invoice.paid": defineWebhookBinding({
+          block: handleEvent,
+          input: (event) => event.payload,
+          concurrency: {
+            policy: "reject",
+            key: (ctx) => (ctx.metadata?.webhook as { deliveryId?: string } | undefined)?.deliveryId,
+          },
+        }),
       },
     },
   },
 });
 ```
 
-`syncInvoice` and `handleEvent` are blocks, each in its own file under `src/flows/billing/blocks/`. They sync a user's invoice and handle a provider's webhook event. The webhook transport puts the provider's delivery id at `metadata.webhook.deliveryId`.
+`syncInvoice` and `handleEvent` are blocks, each in its own file under `src/flows/billing/blocks/`. They sync a user's invoice and handle a provider's webhook event. A webhook delivery takes its policy from its binding under `webhooks`, never from `actions`. The webhook transport puts the provider's delivery id at `metadata.webhook.deliveryId`.
 
 ## `hold` and `defer`
 
