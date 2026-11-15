@@ -178,3 +178,13 @@ A concurrency policy stores no user-owned data. The parts it touches:
 - 11.4 A waiting run on a queue is rechecked at most 2 s apart (6.2), so the page says it starts within about two seconds of its turn coming; the bullmq README adds that the next job in line starts straight away when a run finishes (6.3). That sentence now lives in R-19, not on this page.
 - 11.5 The "Coming next" roadmap, the debounce sentence and the rollback rationale for `restart` are cut. The page states only that both reserved names throw at definition time (1.5).
 - 11.6 The chat "split append from respond" example is replaced by one flow example (`src/flows/support/flow.ts`) that shows the flow default, `allow`, `hold`, `defer` and an inherited action; its block imports are app files.
+
+## 12. Revise round 2 (pass 8)
+
+- 12.1 `allow` is the default and runs beside the first request; page no longer calls parallel runs non-corrupting, it points at the `allow` table (7.1).
+- 12.2 A `hold` request is never refused, including while a `reject` request holds the key: `hold` takes a place without the `ifEmpty` check, so it runs at once. Only `reject` (and `defer` past the cap) throws `ConcurrencyRejectedError`. `arbiter.ts:575-579`, `lease-backend.ts:353-360`.
+- 12.3 The state-update retry in the `allow` table is the framework's: an updater can run again on a conflict (core README, `updateStateWith`).
+- 12.4 `external-dispatcher` is a value of `refused` on `DispatchRefusedError`, thrown by `dispatcher()`. `packages/core/README.md:765-776`.
+- 12.5 The 32-request cap is stated once in the cap row (per key, per server process) and once under "On a queue" (counted in the accepting process, from acceptance until the job ends). Same rule (11.2).
+
+- 11.7 Examples import their blocks from `./blocks/<name>` (app files, one per file). The page names each in a clause after the example and does not print them; the pass-4 type-check passes once those modules exist.

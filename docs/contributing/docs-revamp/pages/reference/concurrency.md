@@ -6,19 +6,19 @@ description: "What a second request on the same session does: the five policies,
 
 # Concurrency policies
 
-Two requests can hit the same session at once. A webhook fires twice a second apart. A user sends a second message before the first reply lands. Two browser tabs share one conversation. Without a rule, both requests load the session and run in parallel, racing to write the same state.
+Two requests can hit the same session at once. A webhook fires twice a second apart. A user sends a second message before the first reply lands. Two browser tabs share one conversation. By default, both requests load the session and run in parallel, racing to write the same state.
 
-A concurrency policy decides what happens in that moment. You declare it on an action, or as a flow-wide default, and the framework arbitrates competing requests on a key you choose. By default the key is the session. It sits next to [idempotency](./idempotency.md): idempotency stops the same delivery from running twice, and a concurrency policy arbitrates two different requests that collide on one key. Webhooks usually want both.
+A concurrency policy decides what happens in that moment. You declare it on an action, or as a flow-wide default, and the framework arbitrates competing requests on a key you choose. By default the key is the session. It sits next to [idempotency](./durable-execution.md): idempotency stops the same delivery from running twice, and a concurrency policy arbitrates two different requests that collide on one key. Webhooks usually want both.
 
 ## The policies
 
-The default is `allow`. The only policy that queues in arrival order is `queue`.
+The default is `allow`.
 
 | Policy | A second request on the key while one is running |
 |---|---|
-| `allow` (default) | Runs at once, beside it. Takes no place on the key. Parallel runs do not corrupt state; see [What `allow` leaves to you](#what-allow-leaves-to-you). |
+| `allow` (default) | Runs at once, beside it. Takes no place on the key. For how parallel writes resolve, see [What `allow` leaves to you](#what-allow-leaves-to-you). |
 | `queue` | Waits for its turn, first in, first out, one at a time. A run that waits more than 30 seconds fails with `ConcurrencyQueueTimeoutError` (status `503`), safe to retry with backoff. |
-| `reject` | Dropped while another request holds the key. Nothing is created for it. What the caller gets depends on the transport, see [Refused requests](#refused-requests). It catches a duplicate only while the first is running; a redelivery after the first finished needs an [idempotency key](./idempotency.md). |
+| `reject` | Dropped while another request holds the key. Nothing is created for it. What the caller gets depends on the transport, see [Refused requests](#refused-requests). It catches a duplicate only while the first is running; a redelivery after the first finished needs an [idempotency key](./durable-execution.md). |
 | `hold` | Runs at once, like `allow`, and marks the key busy while it runs. Never waits, never refused. |
 | `defer` | Waits until nothing on the key is running or waiting, then runs. Deferred requests run one at a time. See [`hold` and `defer`](#hold-and-defer). |
 
@@ -28,7 +28,7 @@ The default is `allow`. The only policy that queues in arrival order is `queue`.
 
 | Case | Result |
 |---|---|
-| An update computed from current state, when another run moved the record first | Refused and retried |
+| An update computed from current state, when another run moved the record first | The write is refused and the framework retries your update against the newer record |
 | An increment or an append | Applied to whatever the store holds |
 | Two runs writing one field | Last write wins |
 | Two replies to one session | Can interleave |
@@ -63,6 +63,8 @@ export const supportFlow = defineFlow({
   },
 });
 ```
+
+`appendMessage`, `respond`, `reportResult` and `exportTranscript` are blocks, each in its own file under `src/flows/support/blocks/`. They store a message, produce the reply, post a finished job's follow-up and export the conversation.
 
 ## Keys
 
@@ -101,7 +103,7 @@ export const billingFlow = defineFlow({
 });
 ```
 
-The webhook transport puts the provider's delivery id at `metadata.webhook.deliveryId`.
+`syncInvoice` and `handleEvent` are blocks, each in its own file under `src/flows/billing/blocks/`. They sync a user's invoice and handle a provider's webhook event. The webhook transport puts the provider's delivery id at `metadata.webhook.deliveryId`.
 
 ## `hold` and `defer`
 
@@ -119,11 +121,11 @@ Use `hold` for a user's turn and `defer` for follow-up work that must land after
 |---|---|
 | Id and stream | Its request id and stream are available at once. The stream stays open while it waits. |
 | Cancel | Cancelled while waiting, it never runs. |
-| Newer `hold` requests | It waits for every `hold` running on the key, including one that started after it began waiting, for 30 seconds at most. After that it waits only for the replies already running, then runs. |
-| Time limit | None otherwise. The wait ends when the request ahead of it finishes, throws or is cancelled. |
+| Newer `hold` requests | It waits for every `hold` running on the key. It also waits for `hold` requests that start while it waits, for up to 30 seconds. After that it waits only for the `hold` requests already running, then runs. |
+| Time limit | No overall limit. The wait ends when the request ahead of it finishes, throws or is cancelled. |
 | Server crash | A deferred request waiting on another server starts once the crashed server's lease on the key runs out (10 seconds by default with `bullmqWorker`). |
 | After it starts | It waits for nothing else. A message sent while it runs starts at once, beside it. |
-| Cap | At most 32 `defer` requests wait on one key in each server process; on a queue, each process counts the requests it accepted. The next is refused the way `reject` refuses and nothing is created for it. Retry once the session quiets down. |
+| Cap | At most 32 `defer` requests wait on one key in each server process. The next is refused the way `reject` refuses and nothing is created for it. Retry once the session quiets down. |
 
 ## Refused requests
 
@@ -145,9 +147,9 @@ A request that [suspends](./durable-execution.md) to wait for a user gives up it
 | Deployment | Where the policy holds |
 |---|---|
 | One server, no queue | In memory, in the process that runs the request. |
-| Queue-backed, such as [`bullmqWorker`](/guides/background-jobs-bullmq) | Across every process, the web process and each worker, over the same Redis as the queue. |
+| Queue-backed, such as [`bullmqWorker`](../build/background-jobs-bullmq.md) | Across every process, the web process and each worker, over the same Redis as the queue. |
 | Several web servers, each running requests in process, no queue between them | Each server keeps its own keys, so two requests on one session can run at once if they land on different servers. Run that shape as a single instance, or put a queue in front of it. |
-| A runner you pass to `createFlowState` directly, not through a `worker` adapter | No policy is applied to the work it dispatches. A [delivery into an existing session](./background-work.md#starting-a-job-from-a-flow) is refused with `external-dispatcher`. |
+| A runner you pass to `createFlowState` directly, not through a `worker` adapter | No policy is applied to the work it dispatches. A [delivery into an existing session](./background-work.md#starting-a-job-from-a-flow) is refused: the `dispatcher()` block throws `DispatchRefusedError`, and its `refused` field reads `external-dispatcher`. |
 
 ### On a queue
 
