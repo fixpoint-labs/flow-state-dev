@@ -230,8 +230,16 @@ prompt's start. Each is on by default and turned off by the contract's `defaults
 section stays under 1,600 characters, checked by a test (epic FIX-2490 ER-1); an app's `date`
 line and each skill's listing entry are outside it. An app adds a line to the date block by
 writing under the `date` context key from a capability it composes — the one place app text joins
-the layer, and it is free text nothing checks. A later section (FIX-2500's summary) goes through
-the same module and says which of the two places it uses.
+the layer, and it is free text nothing checks.
+
+**The history summary is the layer's third section (FIX-2500), in the context half.** Core's
+`historySummary` with the summarizer the Teammates lab proved, on the worker's own model: its fold
+runs as a `.tapIf` before `beforeAnswer`, and its `<earlier-conversation>` section and history
+mark reach the answer as a per-turn `uses` entry, its resource declared statically. One reader of
+`defaults.historySummary` decides both halves (`defaults: false` turns it off too). An app that
+brings its own summary — a top-level static `uses` capability declaring a resource on core's
+`historySummaryStateSchema`, matched in `catalogWorkerCapabilities`' reading — replaces it, fold
+and section; a dynamic entry is not seen and doubles. Its content is outside the ceiling.
 
 ### C1a — Settings are a default layer, not the only layer
 
@@ -413,8 +421,9 @@ Three things, and they are separate:
 2. **Memory is a build-time composition seam, not a setting.** An instructions-only worker does
    **not** remember out of the box. (Memory here means the memory system's stores. The worker's
    answer does read the earlier turns of its own conversation through the generator's `history`
-   slot, bounded by the session's history window, which is 50 turns by default: FIX-1612. That
-   adds no resource and no import, so the checks below are unaffected.) The default worker flow and the hire package's required graph stay
+   slot, bounded by the session's history window, which is 50 turns by default: FIX-1612. Turns
+   about to leave it are folded into the session's `historySummary` (FIX-2500): one session
+   resource of core's, not a memory store, so the checks below are unaffected.) The default worker flow and the hire package's required graph stay
    free of memory resources and static memory imports. **"Attached" means an app composed memory
    into its own worker flow at definition time** — spreading the capability's resource maps plus `uses`,
    or an equivalent helper that is still ordinary flow composition (the seam FIX-1364 designs).
