@@ -52,6 +52,7 @@ The team, the task board its workers share and the coding agents they hand work 
 import { claudeCode } from "@flow-state-dev/claude-code";
 import { createFlowState } from "@flow-state-dev/engine";
 import { harnesses } from "@flow-state-dev/harness-manager/kit";
+import { fetch, search } from "@flow-state-dev/tools";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 
@@ -65,7 +66,8 @@ const workspace = localWorkspaceHost({
 
 export default createFlowState({
   kits: [
-    workforce({ directory: "./workforce" }),
+    // The tools a worker's `tools:` line can name.
+    workforce({ directory: "./workforce", agent: { catalog: { search: search(), fetch: fetch() } } }),
     harnesses({ workspace }),
     claudeCode(),
   ],
