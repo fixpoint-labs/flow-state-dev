@@ -27,7 +27,7 @@ Every read returns the signed-in user's rows, never another user's. If Alice at 
 ## Install it
 
 ```bash
-pnpm add @flow-state-dev/workforce
+pnpm add @flow-state-dev/workforce @flow-state-dev/orchestration
 ```
 
 The views exist once the workforce kit is installed, and nothing is configured for the screens themselves. The components need React 18 or 19 and `@flow-state-dev/react`. Import components from `@flow-state-dev/workforce/react`, and `rosterView` from `@flow-state-dev/workforce/browser`, the entry that is safe in a browser bundle. A screen reads through the nearest `FlowProvider`'s client.

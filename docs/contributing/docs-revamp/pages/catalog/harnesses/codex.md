@@ -90,7 +90,7 @@ export const tidyImports = codexAgent({
 // Step it in a flow with { prompt: "Tidy the imports in src/." }
 ```
 
-The input is the prompt and nothing else; the directory, the conversation and the model are configuration, so a model that calls the block as a tool cannot set them. `cwd` points Codex at a directory without fencing it in; `sandboxMode` is the fence. The [Harness runs reference](../../reference/harness-runs.md) lists the options, including `model`, `client` and the Codex options in `thread: { ... }`.
+The input is the prompt, plus optional `attachments`; the directory, the conversation and the model are configuration, so a model that calls the block as a tool cannot set them. `cwd` points Codex at a directory without fencing it in; `sandboxMode` is the fence. The [Harness runs reference](../../reference/harness-runs.md) lists the options, including `model`, `client` and the Codex options in `thread: { ... }`.
 
 A run Codex itself fails returns a handle with `status: "errored"` and does not throw. A run stopped by a deadline throws and returns no handle. The reference has both shapes and how `cost` is estimated.
 
@@ -105,14 +105,14 @@ The handle's `sessionId` is the id Codex gives the conversation. You write `resu
 ```ts title="src/flows/tidy/blocks/tidy-imports.ts"
 import { codexAgent } from "@flow-state-dev/codex";
 
-// A Map stands in for your own storage, such as a database row.
+// A Map stands in for your own storage. Keyed by flow session, so two sessions never share a conversation.
 const saved = new Map<string, string>();
 
 export const tidyImports = codexAgent({
   cwd: () => "/work/acme-shop",
-  resume: () => saved.get("acme-shop") ?? null,
-  onSession: (id) => {
-    saved.set("acme-shop", id);
+  resume: (ctx) => saved.get(ctx.session.identity.id) ?? null,
+  onSession: (id, ctx) => {
+    saved.set(ctx.session.identity.id, id);
   },
 });
 ```

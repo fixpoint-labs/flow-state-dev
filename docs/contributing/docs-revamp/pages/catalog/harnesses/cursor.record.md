@@ -37,12 +37,14 @@ Written by `docs-writer` (sonnet), 916 words. Scenario: The lab's worker desk.co
 - After revise round 1, page sha256 a7b94d9f14fc: exit 0.
 - After revise round 2, page sha256 439f945ca9a7: exit 0.
 - After revise round 3, page sha256 f37e157c800c: exit 1. Failed: retired-terms check on this page alone.
+- After the loop (PR review): the PR review was taken: the intro names the result a handle, as Claude Code and Codex do; the resume example keeps one id file per flow session (`ctx.session.identity.id`), so two sessions never share an agent. Page sha256 f5ed53dea61d: the page check exits 0, the brand lint has 0 findings, and the edited examples type-check.
 
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 fb67c7c69486, and the 11 Reference row(s) pass 6 moved.
 
 - Reference row 4: Row 4: the `cursorHarness({ model })` option is required, with "default" letting Cursor pick. Untrue: `model` is optional on `cursorHarness`. `cursorHarness(options = {})` takes no required fields, because `CursorHarnessOptions` omits only `cwd`, `resume`, `onSession`, `onSteerable` and `onActivity` from `CursorAgentOptions`, where `model` is optional. The harness sets `model: "default"` before spreading the caller's options, so naming no model gives `"default"`, Cursor's own pick. The page's wording "Cursor needs a model, and `"default"` lets Cursor pick when you name none" is true for the SDK, but the row's "required" is not true of this option. (/home/user/flow-state-dev/packages/cursor/src/harness.ts:25-35 (default at line 34); /home/user/flow-state-dev/packages/cursor/src/agent.ts:205) The row is recorded corrected.
+- Re-run after the review edit: the review edit checked against the code, all true. `resume` and `onSession` take the block's context as on Codex (`packages/core/src/types/harness.ts:325,335-338`); the session id is `ctx.session.identity.id` (`packages/core/src/types/scope.ts:295-298`); the block reads `input.attachments` (`packages/cursor/src/agent.ts:504`).
 
 ## 6 · Depth pass
 

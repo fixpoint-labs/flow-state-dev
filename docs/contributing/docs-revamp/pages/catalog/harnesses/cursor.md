@@ -6,9 +6,9 @@ description: Run Cursor's coding agent as a coding harness for a worker, or as o
 
 # Cursor
 
-`@flow-state-dev/cursor` runs Cursor's coding agent as a block. Cursor has its own loop, tools and idea of when it is done, so the framework does not drive it step by step. The block starts or resumes a Cursor agent in a directory you choose, sends one prompt, mirrors what the run says and does into the item stream, and returns a result.
+`@flow-state-dev/cursor` runs Cursor's coding agent as a block. Cursor has its own loop, tools and idea of when it is done, so the framework does not drive it step by step. The block starts or resumes a Cursor agent in a directory you choose, sends one prompt, mirrors what the run says and does into the item stream, and returns a result, called a handle.
 
-That result has the same shape for Claude Code and Codex, the other coding agents Flow State runs. Code that reads it does not change when the agent does. How the shared result and harnesses fit together is on [Coding harnesses](../../concepts/coding-harnesses.md).
+The handle has the same shape for Claude Code and Codex, the other coding agents Flow State runs. Code that reads it does not change when the agent does. How the shared result and harnesses fit together is on [Coding harnesses](../../concepts/coding-harnesses.md).
 
 ## What you get
 
@@ -81,13 +81,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import { cursorAgent } from "@flow-state-dev/cursor";
 import { steering } from "../steering";
 
-const idFile = "/work/acme-shop/.cursor-agent-id";
+// One saved agent per flow session, so two sessions never share a conversation.
+const idFile = (sessionId: string) => `/work/acme-shop/.cursor-agent-${sessionId}`;
 
 export const tidyImports = cursorAgent({
   cwd: () => "/work/acme-shop",
   model: "composer-2.5",
-  resume: () => readFile(idFile, "utf8").catch(() => null), // the agent to continue
-  onSession: (id) => writeFile(idFile, id), // saves the id when Cursor opens the agent
+  resume: (ctx) => readFile(idFile(ctx.session.identity.id), "utf8").catch(() => null), // the agent to continue
+  onSession: (id, ctx) => writeFile(idFile(ctx.session.identity.id), id), // saves the id when Cursor opens the agent
   onSteerable: steering.onSteerable, // see Steering a running turn
 });
 // Step it in a flow with { prompt: "Tidy the imports in src/." }

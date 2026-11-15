@@ -29,10 +29,8 @@ Harnesses is a kit, a feature an app installs with one config line. It needs Wor
 ## Install it
 
 ```bash title="Terminal"
-pnpm add @flow-state-dev/harness-manager @flow-state-dev/claude-code @flow-state-dev/workforce @flow-state-dev/workspace
+pnpm add @flow-state-dev/harness-manager @flow-state-dev/claude-code @anthropic-ai/claude-agent-sdk @flow-state-dev/workforce @flow-state-dev/workspace @flow-state-dev/orchestration
 ```
-
-{/* cutover: the install line is derived from the package names; reconcile with the install lines the catalog index defers. */}
 
 ```ts title="fsdev.config.ts"
 import { claudeCode } from "@flow-state-dev/claude-code";
@@ -166,7 +164,7 @@ A project with a repository runs in a fresh branch of it. A project with none st
 
 The kit opens one slot, `harnesses`. Each entry is a coding agent with an `id`, which a worker's `harness:` line names. `defaultHarness` is the agent a worker with no `harness:` line runs on. [Harness runs](../../reference/harness-runs.md) has the entry's fields.
 
-Claude Code is a kit that fills it. Codex and Cursor are plain values, so the app fills them with `fill`, after `pnpm add @flow-state-dev/codex`:
+Claude Code is a kit that fills it. Codex and Cursor are plain values, so the app fills them with `fill`, after `pnpm add @flow-state-dev/codex @openai/codex-sdk@0.164.0`. The `workspace` here is the one from [A project's code and files](#a-projects-code-and-files), so it adds `project: true`:
 
 ```ts title="fsdev.config.ts"
 import { codexHarness } from "@flow-state-dev/codex";
@@ -178,7 +176,7 @@ import { workspace } from "./src/lib/workspace";
 export default createFlowState({
   kits: [
     workforce({ agent: { model: "openai/gpt-6-luna" } }),
-    harnesses({ workspace, defaultHarness: "codex" }),
+    harnesses({ workspace, project: true, defaultHarness: "codex" }),
   ],
   fill: { [harnesses.slots.harnesses]: [codexHarness()] },
 });
