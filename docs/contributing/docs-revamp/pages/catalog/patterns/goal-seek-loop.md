@@ -144,6 +144,8 @@ export const chatAgent = generator({
   model: "openai/gpt-6-luna",
   prompt: "Answer the user. For questions that need sources, call the research loop.",
   tools: [researchLoop],
+  // Show the reply in the chat and keep it in history.
+  itemVisibility: { client: true, history: true },
 });
 ```
 

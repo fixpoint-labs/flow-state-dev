@@ -92,6 +92,8 @@ export const draftReply = generator({
     readResourceContentTool(),
   ],
   resources: { notes: ticketNotes },
+  // Show the reply in the chat and keep it in history.
+  itemVisibility: { client: true, history: true },
 });
 ```
 

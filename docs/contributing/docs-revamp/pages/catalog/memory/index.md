@@ -74,6 +74,8 @@ export const reply = generator({
   // The capability injects a <memory> context block, installs the recall tool,
   // and exposes typed helpers on ctx.cap.
   uses: [mem],
+  // Show the reply in the chat and keep it in history.
+  itemVisibility: { client: true, history: true },
 });
 ```
 

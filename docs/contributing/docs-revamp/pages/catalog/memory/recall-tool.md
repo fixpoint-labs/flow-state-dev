@@ -26,6 +26,8 @@ export const supportAgent = generator({
   inputSchema: z.object({ message: z.string() }),
   user: (input) => input.message,
   uses: [mem.capability],
+  // Show the reply in the chat and keep it in history.
+  itemVisibility: { client: true, history: true },
 });
 ```
 

@@ -37,6 +37,8 @@ const draftReply = generator({
   model: "openai/gpt-6.1-sol",
   prompt: "You are a support agent for Acme.",
   user: (input: { message: string }) => input.message,
+  // Stream the answer to the user and keep it in history; the audit runs beside it.
+  itemVisibility: { client: true, history: true },
 });
 
 const auditReply = sequencer({ name: "audit-reply", inputSchema: z.unknown() })
