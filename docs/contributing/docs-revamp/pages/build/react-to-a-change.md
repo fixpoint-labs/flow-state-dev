@@ -71,7 +71,7 @@ The other kinds are `created`, `deleted` and `contentUpdated`. A single resource
 
 State and content are separate: `patchState` fires `stateUpdated` only, and `writeContent` fires `contentUpdated` only. A content reaction receives only `key`, `ref` and `kind`. The change does not carry the body, so the block reads it back. That read returns the new text.
 
-The block reaches the collection through `ctx.resources.notes`, the name the `addNote` block gives it in its `resources` map (see the [resources page](../concepts/resources.md)). The reaction does not declare the collection itself, because then the collection and its own reaction would import each other. Without a declaration, `ctx.resources.notes` has no type, so the example casts it to `ResourceCollectionRef<NoteState>`.
+The block reaches the collection through `ctx.resources.notes`, the name the `addNote` block gives it in its `resources` map (see the [resources page](../concepts/resources.md)). Including `addNote` in the flow installs the collection under that name, and every block in the turn reads the same `ctx.resources`, so the name resolves in the reaction too. The reaction does not declare the collection itself, because then the collection and its own reaction would import each other. Without a declaration, `ctx.resources.notes` has no type, so the example casts it to `ResourceCollectionRef<NoteState>`.
 
 ```ts title="src/flows/support/blocks/count-note-words.ts"
 import { handler, resourceContentChangeSchema } from "@flow-state-dev/core";
@@ -111,11 +111,11 @@ export const countInBackground = sequencer({
 
 Bind `countInBackground` in place of `countNoteWords`. Use a blocking reaction when the write is wrong without it. [Background work](../concepts/background-work.md) covers work that has to outlive the turn.
 
-## What a reaction does not do
+## Limits
 
-- **It does not start from a browser.** `client.content.update` and other writes a client makes run outside a flow turn and fire no reaction.
-- **It does not repair a bad input.** If the block's `inputSchema` does not match the change, for example a schema built from a different state, the block is skipped and an `error` item with code `reactive_input_invalid` appears. The write is unaffected.
-- **It does not stop a loop for you.** A reaction that writes the kind it reacts to needs a `when` that ends it. If it has none, the framework stops the chain at a fixed depth and emits a `reactive_cascade_exceeded` error item. The turn still completes.
+- **Client writes don't trigger it.** `client.content.update` and other writes a client makes run outside a flow turn and fire no reaction.
+- **It skips a block whose input does not match.** If the block's `inputSchema` does not match the change, for example a schema built from a different state, the block is skipped and an `error` item with code `reactive_input_invalid` appears. The write is unaffected.
+- **It does not end a loop cleanly.** A reaction that writes the kind it reacts to needs a `when` that ends it. Without one, the chain is cut off at a fixed depth with a `reactive_cascade_exceeded` error item. The turn completes normally.
 
 ## Next
 

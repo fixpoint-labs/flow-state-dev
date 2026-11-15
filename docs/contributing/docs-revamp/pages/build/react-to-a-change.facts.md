@@ -177,7 +177,7 @@ The page's app is the support desk, flow `support`, as on the other Build pages.
 | "Failure is atomic" (`rb:140`) | **Wrong as worded.** Item 1. |
 | `.sideChain()` "drains before the turn reaches a terminal status" (`rb:140`) | True. `sequencer.ts:1005-1010`; **[ran]**. |
 | `when` "receives the same `ResourceChange`" (`rb:153`) | **Wrong for content.** Item 3. |
-| Cascade caps both depth and fan-out; diagnostic is a failed `error` item (`rb:179`) | True. `rd:140-170`, `rd:244-259`. The turn still completes (section 7). |
+| Cascade caps both depth and fan-out; diagnostic is a failed `error` item (`rb:179`) | True. `rd:140-170`, `rd:244-259`. The turn completes normally (section 7). |
 | "You don't configure these limits" (`rb:181`) | True. `rd:43`. |
 | Trace path `__reactive__/<resource-ref>/<kind>` (`rb:185`) | **Missing `#<n>`.** Item 2. |
 | Nesting "under the block that performed the mutation" (`rb:185`) | True when the mutation is in a nested step. The root action block is the parent when it mutates directly: **[ran]**, `it751:84-140`. |
@@ -199,3 +199,8 @@ The page's app is the support desk, flow `support`, as on the other Build pages.
 - `ctx.resources.notes` is untyped without a block-level `resources` declaration, and declaring it makes the definition cycle (`ks:49-64`), so the cast stays. The page now says why. `ResourceCollectionRef` is also exported from the `@flow-state-dev/core` root (`packages/core/src/index.ts:38`); the example imports it from there.
 - `addNote` is introduced with its `resources: { notes: ticketNotes }` map (`res-page:86-96`) and linked.
 - The cascade bullet says the framework stops the chain at a fixed depth and the turn completes (section 7); "evictions" is gone from the reference pointer.
+
+## After the loop (review)
+
+- **`ctx.resources.notes` resolves in a reaction that declares nothing.** `defineFlow` collects `declaredResources` from every block reachable from the flow's actions into `flow.resources` (`packages/core/src/flow/defineFlow.ts:749-761`). The engine builds one flat `ctx.resources` registry from that map (`packages/engine/src/context/createExecutionContext.ts:703-730`, `:3435-3450`), and "every block's context shares this one registry" (`:3462-3463`). The reaction runs through `executeBlock` with the turn's context (`rd:293-299`). So including `addNote` in the flow makes `notes` reachable from the reaction. [page] section 3, one sentence. Settles the [verify] in the registration fact.
+- **The cascade diagnostic is an `error` item.** `emitReactiveError` emits `type: "error"`, `status: "failed"`, with the code (`rd:140-170`); a depth breach (`MAX_CASCADE_DEPTH = 8`, `rd:44`) skips that block and emits `reactive_cascade_exceeded` (`rd:244-257`). [page] the loop limit.

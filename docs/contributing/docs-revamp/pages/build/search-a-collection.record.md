@@ -37,6 +37,7 @@ Skipped: B-34 is kept in the sitemap, and the page was already at `search-a-coll
 - After revise round 1, page sha256 672143270bb7: exit 0.
 - After revise round 2, page sha256 8078de9c016f: exit 0.
 - After revise round 3, page sha256 8909949670ca: exit 1. Failed: node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/build/search-a-collection.md.
+- After the loop (review): line 111 reworded to drop the banned word "now": "Each call reads the bodies at call time, so an edited note is searched by its new text on the next call." The claim is unchanged; `searchResources` calls `readContent()` on every readable instance inside the call (packages/core/src/tools/resource-search-tools.ts:268-279). Page sha256 551591f97121.
 
 ## 5 · Fact check
 
@@ -44,6 +45,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 - Reference row 14: Clients can read and delete documents in a faceted collection, but can't create or edit their bodies. Untrue: Client visibility is opt-in: a collection with no `client` config is invisible to clients, so reading and deleting only work once the app sets `client` access. `defineFacetedCollection` refuses only `client.content.create` and `client.content.update` set to true. It grants no client read or delete. (packages/core/src/types/resource.ts:323 ("Omit to keep the resource invisible to clients"); packages/core/src/types/faceted-collection.ts:280-287) The row is recorded corrected.
 - Reference row 6: `searchResources` scores each resource by term frequency and returns `{ uri, score, snippet }` ranked by score, with non-matches dropped. Untrue: Term-frequency scoring and dropping non-matches apply only to store-backed resources. For a projected collection the score is the hook's result position (`page.items.length - i`), not a term count. Projected-only searches can also take a `cursor` and return `nextCursor`, an option and output field the row and page omit. (packages/core/src/tools/resource-search-tools.ts:196-211, 246-253, 273-278) The row is recorded corrected.
+- Re-run after the review edit: re-checked the "Always current" claim on line 111 against packages/core/src/tools/resource-search-tools.ts:268-279 (each call loops the readable refs and awaits `readContent()`; no index or cache is read). True. check-docs-page passes, recipe 715 words.
 
 ## 6 · Depth pass
 

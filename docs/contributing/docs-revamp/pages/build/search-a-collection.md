@@ -108,7 +108,7 @@ If neither the flow nor any of its blocks declares the collection, the tools fin
 
 - **Not for a large corpus.** Every call reads every readable note body, so search suits a bounded, curated set. Tens of thousands of notes is the wrong size.
 - **Not for meaning.** A search for "charged twice" won't find a note that says "duplicate payment". Words must literally appear. For that, use [memory](../catalog/memory/index.md) or a retrieval layer.
-- **Always current.** Because each call reads the bodies as they are now, an edited note is searched by its new text on the next call. There is no index to rebuild.
+- **Always current.** Each call reads the bodies at call time, so an edited note is searched by its new text on the next call. There is no index to rebuild.
 - **Projected collections.** Only search reaches one, through your own `search` hook, and results come in the hook's order. Glob and grep skip it. The hook receives `userId` and `orgId` and has to scope its own query with them, or a user will see in one organization what they saved in another. See [serve your own data](./serve-your-own-data.md).
 
 ## Next

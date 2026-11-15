@@ -8,9 +8,11 @@ description: "Call a flow's action from a cron job, queue worker or script with 
 
 A nightly job needs to send a reply through the `support` flow. A worker runs one flow per queued message. A script reacts to a webhook your own code already received. None of these is an HTTP request, so none of them can call the flow through a client.
 
+Work a user triggers belongs on HTTP. `runAction` checks no credentials and builds no HTTP response, so a user's request should reach the flow through your server.
+
 `runAction` runs a flow's action the same way an HTTP request does. You give it the flow, the action name, the input and who is running it, and it resolves with the result.
 
-It runs actions, not blocks. To run a single block, use [`@flow-state-dev/testing`](../reference/api/testing.md). If you want a timer or a queue and not your own code, see [Background jobs with BullMQ](./background-jobs-bullmq.md).
+It runs actions, not blocks. To run a single block, use [`@flow-state-dev/testing`](../reference/api/testing.md). If you want a timer or a queue and not your own code, `@flow-state-dev/scheduled` and `@flow-state-dev/bullmq` call `runAction` for you; see [Background jobs with BullMQ](./background-jobs-bullmq.md).
 
 The example is the support desk from [Flows and actions](../concepts/flows-and-actions.md): a `support` flow with a `reply` action.
 
@@ -37,9 +39,22 @@ Pass `onItem(item, kind)` to watch items as they arrive. `kind` says where the i
 
 ## 3. Check the result
 
-A call that is wrong before the run starts rejects. That covers an unknown action, no organization, and someone else's session. A run that starts and fails resolves with `result.error` set. Input the action's schema refuses comes back as `validation_error`.
+A call fails in one of two ways. A call that is wrong before the run starts rejects: an unknown action name, no `orgId`, or a session that belongs to someone else. A run that starts and fails resolves with `result.error` set and `result.output` undefined. Input the action's schema refuses is the second kind: `{ message: 5 }` for a string field resolves with `result.error.code` equal to `"validation_error"`, and the request record is marked `failed`. So catch the rejection, and check `result.error` on what resolves.
 
-Otherwise `result.output` holds what the action returned, and `result.items` holds the items the run produced, in order. Those include trace items, so filter to the types you want. [Items](../reference/items.md) lists them.
+Otherwise `result.output` holds what the action returned, and `result.items` holds the items the run produced, in order. Those include trace items such as `block_trace` and `state_change`, so filter to the types you want. [Items](../reference/items.md) lists them. The reply a user would see is a `message` item, with its text in the `output_text` parts of `content`:
+
+```ts title="scripts/send-reply.ts"
+if (result.error) throw result.error;
+let replyText = "";
+for (const item of result.items) {
+  if (item.type !== "message") continue;
+  for (const part of item.content) {
+    if (part.type === "output_text") replyText += part.text;
+  }
+}
+```
+
+`result.requestId` is the run's id. `runtime.stores.request.get(requestId)` returns its stored record later, with `status`, `items` and `result`. That record leaves out transient items, which only `onItem` sees.
 
 ## 4. Start a run without waiting
 

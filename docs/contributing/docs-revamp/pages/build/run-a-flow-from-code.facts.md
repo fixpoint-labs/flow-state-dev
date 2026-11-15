@@ -125,3 +125,9 @@ A recipe stores no data itself, but each call writes records into `stores`, and 
 
 - **`onItem` (fact 26).** The page says `kind` is the item's lifecycle stage (`"added"`, `"updated"`, `"done"`) and that transient items arrive in `onItem` too but are never saved. Unchanged facts, reworded.
 - **Not waiting (fact 22).** The page says to drop the `await` and pass your own `requestId` so the id is known while the run is going (fact 21); items are saved whether or not the caller waits.
+
+## After the loop (review)
+
+36. **The result carries the request id.** `ExecutionResult.requestId?: string`, set by `runAction` so a non-HTTP caller can look the run up without generating an id first (`eng/execution/types.ts:49-55`). **[page]** step 3, with `stores.request.get` (fact 28).
+37. **`runAction` checks no credentials.** Its doc comment: it "runs BELOW principal resolution, so there is no resolver here to validate a caller and no verified identity to fall back on" (`eng/execution/types.ts:84-87`). Code backing for fact 33. **[page]** the HTTP paragraph after the opening.
+38. **Reading the reply text.** A `MessageItem`'s `content` is `Content[]`; an `OutputTextContent` part has `type: "output_text"` and `text: string` (`packages/contracts/src/items/types.ts:449-469`, `packages/contracts/src/items/content.ts:11-14`). A `for` loop narrowing on `item.type === "message"` and `part.type === "output_text"` type-checks against `result.items`. **[page]** step 3 snippet. Settles the [verify] in fact 25.
