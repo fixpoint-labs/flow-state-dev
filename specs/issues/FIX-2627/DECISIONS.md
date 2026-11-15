@@ -89,8 +89,9 @@ other way, a stretch where the goals don't cover the install every app uses.
   (FIX-2628) takes the source-only one.
 - **App-declared session fields:** one workforce config option, `sessionFields`, a schema per
   field the app declares on the agent and coordinator sessions. Server-written only: a flow on the
-  server sets it (FIX-2628's open action), never a request body, a task's input or the client
-  (BP-031). It generalises `workProjectId`, which the work-project action writes today.
+  server sets it (FIX-2628's open action, [resolved 2026-11-15](#how-it-got-here)), never a request
+  body, a task's input or the client (BP-031). It generalises `workProjectId`, which the
+  work-project action writes today.
 - **Workforce's slots:** `workerFlows`, keyed, filled by builders that receive the installation
   (today's `workerFlow(…)`), so no flow closes over a variable filled later; `uses`, a list of
   capabilities added to the agent and coordinator flows workforce builds. The agent and
@@ -221,7 +222,8 @@ none reverses one.
   disposed; kitchen-sink's, which the app reads for as long as it runs, when the process exits.
 - **The planted stray is named by its folder.** With nothing else under `workforce/flows/`, the
   claim pass names `flows`, the topmost entry no reader used; the goal check asserts that.
-- **`sessionFields` reaches the agent and coordinator flows as a factory option.** The kit hands
+- **`sessionFields` reaches the agent and coordinator flows as a factory option** ([amended
+  2026-11-15](#how-it-got-here): the installation holds them now, for every worker flow). The kit hands
   its `sessionFields` to the two flows it builds (`defineAgentWorkerFlow`, `defineCoordinatorFlow`);
   each field joins that session's schema, its `serverOwned` list and its client data. A field
   named like a key workforce keeps on the session refuses start. Every field is visible to the
@@ -285,5 +287,17 @@ this dispatch has no sub-agent tool, as FIX-2626's wasn't.
 
 - **Draft** — the epic's two kits on FIX-2626's `defineKit`, under the owner's harness shape. The
   census and the callers count ran first and set the order of the claim pass and D2's size.
+- **Amended 2026-11-15, from FIX-2628's implementation (owner decision, Fork A)** — FIX-2628's
+  open action is resolved: the lab's repository binding is a workforce session field, not a
+  lab-owned record. The server writes it once, when a user's conversation opens, through the
+  agent and coordinator flows' `setSessionFields` action (`SET_SESSION_FIELDS_ACTION`), and each
+  hand-over carries the filer's values down to the session it opens, beside `filingProjectId`.
+  To carry a field into a task's session, every worker flow must declare it, so `sessionFields`
+  moves from the two flows' factory options to the installation (`createWorkerInstallation({
+  sessionFields })`, declared by `installation.session()`); the kit's config option is unchanged,
+  and `defineAgentWorkerFlow` and `defineCoordinatorFlow` no longer take one. The installation's
+  create check refuses a caller's create that names a field too, so a flow that declares its own
+  `serverOwned` list can't leave one open. The action refuses a field already set, so a field is
+  read-only after open.
 
 **Open: none.**

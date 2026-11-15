@@ -67,6 +67,16 @@ const LINKED: ReadonlyArray<readonly [string, string]> = [
   [WORKSTREAM_STATE_KEY, "a workstream lead's session, which works in its workstream's project"]
 ];
 
+/**
+ * What the session whose state is `state` is, when it isn't a user's own
+ * conversation (a project coordinator's, a task's, a delegate's or a
+ * workstream lead's session): such a session takes what it works in from
+ * where it was created, filed or opened. `undefined` for a user's own.
+ */
+export function linkedSessionOf(state: Record<string, unknown>): string | undefined {
+  return LINKED.find(([key]) => state[key] !== undefined)?.[1];
+}
+
 function refuse(message: string): never {
   throw new Error(`Refused: ${message}`);
 }
@@ -92,9 +102,8 @@ export function defineSetWorkProjectBlock(otherSession: (sessionId: string) => s
       if (input.worker !== undefined && input.worker !== running) {
         refuse(`this session runs "${running}", not "${input.worker}". Name the session's own worker.`);
       }
-      for (const [key, what] of LINKED) {
-        if (state[key] !== undefined) refuse(`this is ${what}. Its project can't be set.`);
-      }
+      const linked = linkedSessionOf(state);
+      if (linked !== undefined) refuse(`this is ${linked}. Its project can't be set.`);
       const other = otherSession(ctx.session.identity.id);
       if (other !== undefined) refuse(`this is ${other}. Its project can't be set.`);
       const user = ctx.user?.identity?.userId;

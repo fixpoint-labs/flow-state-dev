@@ -49,13 +49,13 @@ import { hireWorkforce } from "../workers/register";
 import { workerFlow } from "../workers/worker-flow";
 
 /** The built-in agent flow's options, as the kit's config takes them. */
-export type WorkforceAgentOptions = Omit<AgentWorkerFlowOptions, "installation" | "sessionFields"> & {
+export type WorkforceAgentOptions = Omit<AgentWorkerFlowOptions, "installation"> & {
   /** The settings a user sees on a worker's roster row (`icon`, `color`). */
   showSettings?: readonly string[];
 };
 
 /** The coordinator flow's options, as the kit's config takes them. */
-export type WorkforceCoordinatorOptions = Omit<CoordinatorFlowOptions, "installation" | "sessionFields">;
+export type WorkforceCoordinatorOptions = Omit<CoordinatorFlowOptions, "installation">;
 
 /** What `fsdev gen` renders into `workforce/workforce.gen.ts`: the app imports it and hands it over whole. */
 export interface GeneratedWorkforce {
@@ -103,9 +103,12 @@ export interface WorkforceConfig {
   /** The standard worker each user's project coordinator runs as. */
   projectCoordinator?: string;
   /**
-   * Session fields the app declares on the agent and coordinator sessions, a
-   * schema each, by name. Only the server writes one: a create that seeds it
-   * is refused, naming it, and the client reads it off the session.
+   * Session fields the app declares on every worker session, a schema each,
+   * by name. Only the server writes one: once on a user's conversation at
+   * open, through the agent and coordinator flows' `setSessionFields`
+   * action, and on a task's session at each hand-over, from its filer. A
+   * create that seeds one is refused, naming it, and the client reads it off
+   * the session.
    * Every field is visible to the session's browser. Never put a secret here.
    */
   sessionFields?: SessionFields;
@@ -226,8 +229,6 @@ function installWorkforce(
       createRoutinesCapability(installation),
     ] as CapabilityRef[];
 
-  /** The app's session fields, for the agent and coordinator flows the kit builds. */
-  const fields = config.sessionFields === undefined ? {} : { sessionFields: config.sessionFields };
   const builtIn: Record<string, WorkerFlowEntry> = {};
   if (!Object.hasOwn(filled, AGENT_FLOW)) {
     const { showSettings, ...agent } = config.agent ?? {};
@@ -237,7 +238,6 @@ function installWorkforce(
           ...(generated.blocks === undefined ? {} : { catalog: generated.blocks as never }),
           ...agent,
           installation,
-          ...fields,
           uses: [...(agent.uses ?? []), ...added(installation)],
         }),
       { showSettings: showSettings ?? [] },
@@ -249,7 +249,6 @@ function installWorkforce(
       defineCoordinatorFlow({
         ...coordinator,
         installation,
-        ...fields,
         agent: { ...coordinator.agent, uses: [...(coordinator.agent?.uses ?? []), ...added(installation)] },
       }),
     );
@@ -263,6 +262,7 @@ function installWorkforce(
     documents: { ...resourcesFromDocs([...folder.documents]), ...modules.resources } as never,
     ...(folder.references.length === 0 ? {} : { references: referencesFromDocs([...folder.references]) as never }),
     ...(config.projectCoordinator === undefined ? {} : { projectCoordinator: config.projectCoordinator }),
+    ...(config.sessionFields === undefined ? {} : { sessionFields: config.sessionFields }),
   });
   // Built before the hire: its provider joins routines, and the worker flows the hire builds reach its publish.
   const internal = config.internalEvents === undefined ? undefined : internalServiceFlow({ ...config.internalEvents, installation });

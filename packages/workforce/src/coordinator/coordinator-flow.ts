@@ -132,8 +132,8 @@ import { declareBuiltInRoles, markRolePiece } from "../worker-roles";
 import { reportRescuedFailure } from "../error-reporter/rescued";
 import { verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
 import { workerRoutineVerbs } from "../routines/routines";
-import { ROUTED_FROM_STATE_KEY, SET_WORK_PROJECT_ACTION, WORK_PROJECT_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
-import { withSessionFields, type SessionFields } from "../workers/session-fields";
+import { ROUTED_FROM_STATE_KEY, SET_SESSION_FIELDS_ACTION, SET_WORK_PROJECT_ACTION, WORK_PROJECT_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
+import { setSessionFieldsAction } from "../workers/session-fields";
 import { setWorkProjectAction } from "../projects/work-project";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import {
@@ -226,7 +226,7 @@ export interface CoordinatorFlowOptions {
    * flow's user-scoped storage by its copy, as it does the agent flow's.
    * Omitted, the agent's defaults.
    */
-  agent?: Omit<AgentWorkerFlowOptions, "installation" | "taskLists" | "answerAgain" | "sessionFields">;
+  agent?: Omit<AgentWorkerFlowOptions, "installation" | "taskLists" | "answerAgain">;
   /**
    * How long a round waits for its answers, in whole milliseconds, before it
    * closes without the ones still out and its answers go back out. Only a
@@ -244,11 +244,6 @@ export interface CoordinatorFlowOptions {
    * `routines.providers` names. Omitted, a coordinator keeps no routines.
    */
   routines?: boolean;
-  /**
-   * Session fields the app declares on the coordinator's sessions, server-written only.
-   * Every field is visible to the session's browser. Never put a secret here.
-   */
-  sessionFields?: SessionFields;
 }
 
 /** What best fit's one call is asked. */
@@ -398,11 +393,6 @@ function verifiedCoordinatorId(ctx: BlockContext): string | undefined {
  */
 export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const { installation } = options;
-  // The coordinator's session is its own, so its fields are declared once, on its own option; a
-  // nested `agent.sessionFields` would be dropped, leaving a field open to a seeded create.
-  if (Object.hasOwn(options.agent ?? {}, "sessionFields")) {
-    throw new Error("defineCoordinatorFlow: `agent.sessionFields` is not read; declare the coordinator session's fields on `sessionFields`.");
-  }
   const deadlineMs = options.roundDeadlineMs ?? ROUND_DEADLINE_MS;
   if (!Number.isSafeInteger(deadlineMs) || deadlineMs <= 0) {
     throw new Error(
@@ -1749,7 +1739,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     // per-turn visibility rule, and the request `onStarted` that loads this
     // turn's worker on this flow before anything reads a setting.
     ...turn.bound,
-    session: withSessionFields({
+    session: {
       ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape, ...workerMessageStateShape }),
       // The board's `routedFrom` too: no caller names the conversation a routed task came from (BP-031).
       // And `workProjectId`: only the work-project action sets the project a conversation works in (FIX-2161).
@@ -1758,12 +1748,14 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         ...CONVERSATION_BOARD_SERVER_OWNED,
         ...WORKER_MESSAGE_SERVER_OWNED,
         ROUTED_FROM_STATE_KEY,
-        WORK_PROJECT_STATE_KEY
+        WORK_PROJECT_STATE_KEY,
+        // The app's session fields: written by the server at open, or born with a hand-over.
+        ...Object.keys(installation.sessionFields)
       ],
       // Every answer, routing and pass-on writes this one record at once; a pass-on that
       // runs out of retries fails after its round has closed, and its answers are lost.
       cas: { maxRetries: 8 }
-    }, options.sessionFields),
+    },
     resources: {
       ...resources,
       ...(turn.bound.resources ?? {}),
@@ -1785,6 +1777,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       },
       [STANDING_RULES_ACTION]: standingRulesAction,
       [SET_WORK_PROJECT_ACTION]: setWorkProjectAction,
+      // The app's session fields, written once at open, when it declares any.
+      ...(Object.keys(installation.sessionFields).length === 0
+        ? {}
+        : { [SET_SESSION_FIELDS_ACTION]: setSessionFieldsAction(installation.sessionFields) }),
       ...(routineActions ?? {})
     },
     // The task list as a session view, watched with `useView` (FIX-2623).
