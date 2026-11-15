@@ -182,3 +182,14 @@ The page's app is the support desk, flow `support`, as on the other Build pages.
 | Trace path `__reactive__/<resource-ref>/<kind>` (`rb:185`) | **Missing `#<n>`.** Item 2. |
 | Nesting "under the block that performed the mutation" (`rb:185`) | True when the mutation is in a nested step. The root action block is the parent when it mutates directly: **[ran]**, `it751:84-140`. |
 | `client.content.update` "does not fire a reaction yet" (`rb:132`) | Consistent with `dwf:19-27` and `resource-routes.ts` having no dispatch. The word "yet" is a promise; the page does not repeat it. |
+
+## 15. Revise round 1: what the page now states
+
+- The page uses `ticketNotes` with a state of `{ author, pinned, wordCount }`; `wordCount` is added for this recipe (section 11). The state schema sits in a leaf file `note-state.ts` so the reaction does not import the collection (section 3, `ks:49-64`).
+- The content-reaction block reaches the collection as `ctx.resources.notes`, cast to `ResourceCollectionRef<NoteState>` from `@flow-state-dev/core/types` as `ks:60` does; `ctx.resources.<name>` is untyped without a block-level declaration. The name `notes` is the one `addNote` declares (`res-page:81-93`). All five files type-check against the kitchen-sink tsconfig.
+- A throwing reaction: the call rejects with the reaction's error and the write stays stored; uncaught, the turn fails (section 0 item 1, **[ran]**). The page no longer says "atomic".
+- The trace path string is not on the page (item 2); only nesting is stated. The `#<n>` suffix is a Reference row (R-06).
+- The page names no payload for a block bound to both `stateUpdated` and `contentUpdated` and says nothing about one block bound to both: a content reaction receives `ResourceContentChange` (`key`, `ref`, `kind`), a state reaction `ResourceChange` (`rc:58-89`). Separate blocks are what the page shows.
+- `client.content.update` fires no reaction (`dwf:19-27`); the page states it without "yet".
+- Cascade breach and `reactive_input_invalid` both emit an `error` item and the turn completes (section 6, section 7 **[ran]**). The depth (8) and fan-out (1000) numbers are Reference rows; the page says "a fixed depth".
+- Links use page-plan slugs: `../concepts/resources.md`, `../concepts/background-work.md`, `../reference/resources.md`, `../reference/items.md`, `./find-by-facets.md`.

@@ -8,7 +8,7 @@ description: "How to deploy a flow-state-dev Next.js application to Vercel."
 
 How to deploy a flow-state-dev Next.js application to Vercel. The `@flow-state-dev/vercel` package mounts the API on a Next.js route and keeps streamed responses from being buffered. Vercel functions lose their disk between invocations, so the recipe also moves your data to Postgres.
 
-If you haven't set up a Next.js project with the framework yet, start with the [Next.js setup guide](/guides/nextjs-setup).
+If you haven't set up a Next.js project with the framework yet, start with [Add to an existing app](../../start/add-to-an-existing-app.md).
 
 ## Prerequisites
 
@@ -41,6 +41,8 @@ export const dynamic = "force-dynamic";
 
 Write the three config lines as literal `export const` declarations. Re-exports such as `export { runtime } from "..."` don't work, because Next.js reads them at build time. `dynamic` stops Next.js caching the stream routes. `maxDuration` is the longest a function may run, in seconds. Your Vercel plan's limit wins if it is lower.
 
+Those lines are one part of what keeps a long reply streaming. While a stream is open, the engine sends a `: ping` comment every 15 seconds, and the adapter's headers (below) stop Vercel's proxy holding the stream back.
+
 A `[...path]` catch-all needs at least one segment, so the bare `/api/flows` listing endpoint needs its own route. `createVercelBareHandler` takes a function that returns the router:
 
 ```ts title="app/api/flows/route.ts"
@@ -50,7 +52,7 @@ import { createVercelBareHandler } from "@flow-state-dev/vercel";
 export const { GET, POST } = createVercelBareHandler(() => flowstate.getRouter());
 ```
 
-On event-stream responses the adapter sets `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no`, so Vercel's proxy doesn't buffer tokens. See the [`@flow-state-dev/vercel` reference](/reference/api/vercel) for every export.
+On event-stream responses the adapter sets `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no`, so Vercel's proxy doesn't buffer tokens. See the [`@flow-state-dev/vercel` reference](../../reference/api/vercel.md) for every export.
 
 ## 3. Describe the runtime
 
@@ -74,11 +76,11 @@ export const flowstate = createFlowState({
 ```
 
 - **`stores`** holds one profile per environment. `vercelPostgresStores()` reads `FSD_DB_URL`, then `DATABASE_URL`. Use it on Vercel. The in-memory store loses everything on each cold start, and filesystem or SQLite files vanish between invocations.
-- **`FSD_ENV`** picks the profile. `NODE_ENV` is not consulted. Without `FSD_ENV`, the runtime uses `defaultProfile`.
+- **`FSD_ENV`** picks the profile. `NODE_ENV` is not consulted. Without `FSD_ENV`, the runtime uses `defaultProfile`. A name with no matching profile, such as `FSD_ENV=production` here, is an error: the runtime throws `FlowStateConfigError` listing the declared profiles, and does not fall back.
 - **`onBackgroundWork`** keeps the function alive after the response, so fire-and-forget actions finish. Set it on `createFlowState`, not on the route handler.
-- **`detectInterruptedOnStartup: false`** skips a startup query that can exhaust the connection pool on a cold start. With it off, a run abandoned by a stopped function is not marked `interrupted` on its own, so it can't be resumed. If you need that, call `POST /api/flows/users/:userId/check-interrupted` from a scheduled route.
+- **`detectInterruptedOnStartup: false`** skips a startup query that can exhaust the connection pool on a cold start. With it off, a run abandoned by a stopped function is not marked `interrupted`, and is not offered for resume, until something calls `POST /api/flows/users/:userId/check-interrupted`. Call it from a scheduled route if you need resume.
 
-Options are in the [runtime reference](/reference/runtime).
+Options are in the [runtime reference](../../reference/runtime.md).
 
 ## 4. Set environment variables
 
@@ -90,7 +92,7 @@ FSD_DB_URL=postgresql://...
 FSD_ENV=prod
 ```
 
-Use `FSD_DB_URL` if another service already owns `DATABASE_URL`. Add any provider keys your flows use. Values in `.env.local` are not synced to Vercel, so set each one for the environments you deploy to (Production, Preview, Development). See the [environment reference](/reference/environment).
+Use `FSD_DB_URL` if another service already owns `DATABASE_URL`. Add any provider keys your flows use. Values in `.env.local` are not synced to Vercel, so set each one for the environments you deploy to (Production, Preview, Development). Make `FSD_DB_URL` available to builds as well as at runtime: the migration in step 5 reads it during the build. See the [environment reference](../../reference/environment.md).
 
 ## 5. Create the schema at build time
 
@@ -128,8 +130,6 @@ Run it with `tsx`. Plain `node` can't load the package.
 
 Without a database URL the script exits cleanly, so previews with no database build normally. With one, a failed migration fails the build.
 
-Tick **Build** when you add `FSD_DB_URL`. Vercel scopes each variable to build, runtime, or both, and the script reads it at build time.
-
 ## 6. Deploy
 
 Run `vercel --prod`, or push to the repository Vercel is connected to. In a monorepo, set the project's Root Directory to your app's folder.
@@ -149,8 +149,8 @@ curl -N https://your-app.vercel.app/api/flows/my-flow/requests/REQUEST_ID/stream
 
 ## Limits
 
-- A Vercel function can run only as long as your plan allows (see [Vercel's function limits](https://vercel.com/docs/functions/limitations)). A flow that outruns it is cut off. For long-running flows, use [Railway](/guides/deploying-to-railway) or [Docker](/guides/deploying-with-docker).
-- On Vercel, an attachment upload is refused with status 501 if your blob store writes to local disk. Use a remote blob store.
+- A Vercel function can run only as long as your plan allows (see [Vercel's function limits](https://vercel.com/docs/functions/limitations)). A flow that outruns it is cut off. For long-running flows, use [Railway](./railway.md) or [Docker](./docker.md).
+- Files users upload to a session are kept in the runtime's blob store. On Vercel, an upload is refused with status 501 if that blob store writes to the function's local disk. Use a hosted blob store.
 - The HTTP API adds no CORS headers. If your frontend is on another domain, add them in Next.js middleware.
 
 ## Troubleshooting

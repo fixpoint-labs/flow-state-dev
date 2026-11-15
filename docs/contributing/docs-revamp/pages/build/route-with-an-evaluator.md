@@ -29,8 +29,8 @@ pnpm fsdev run routing-with-evaluators classify -i '{"message":"I was charged tw
 
 ## Step 1: ask the questions
 
-An evaluator takes some state (here, the ticket text) and a map of questions. There are three
-kinds: `choice` picks one of your options, `score` places the answer on a scale you define, and
+An evaluator takes some state (here, the ticket text) and a map of questions. `choice` picks one
+of your options, `score` places the answer on a scale you define, and
 `boolean` estimates how likely a yes is.
 
 ```ts title="src/flows/support/blocks/classify-ticket.ts"
@@ -58,20 +58,21 @@ The output is `{ answers }`, keyed by your question ids and typed by them:
 
 Any model that supports AI SDK evaluation works. `"typesafe-ai/jev"` goes through the gateway;
 with an OpenAI key, pass `openai.evaluationModel("gpt-6-luna")` instead. See
-[Evaluation models](/docs/fundamentals/models#evaluation-models). A model that can only generate
+[Models](../concepts/models.md). A model that can only generate
 text is refused when the block is built.
 
 Jev reports a `confidence` with its choice answers. OpenAI's evaluation model reports none, and
-the `confidence` key is then absent. A model with no confidence sends every ticket to
-`ambiguous` in Step 2.
+the `confidence` key is then absent.
 
 ## Step 2: route on the answers
 
 When one answer decides which question to ask next, write the tree with `cascadingRouter`.
 Each level asks one evaluator a choice question, and each branch names the option that opens it
-and, optionally, the minimum confidence it needs. A ticket whose answer matches no branch, or
-falls below that branch's `minConfidence`, goes to your required `ambiguous` block instead of a
-guess.
+and, optionally, the minimum confidence it needs. A branch opens only when the model chose its
+option, reported a confidence, and that confidence reaches the branch's `minConfidence` if one is
+set. The floor is inclusive: at `0.6`, a confidence of 0.6 opens the branch and 0.59 does not.
+Anything else, at any level, goes to your required `ambiguous` block instead of a guess. On a
+model that reports no confidence, that is every ticket.
 
 ```ts title="src/flows/support/blocks/triage.ts"
 import { evaluator, choice, utility } from "@flow-state-dev/core";
@@ -133,16 +134,29 @@ export const triage = utility.cascadingRouter({
 });
 ```
 
-`urgentBilling`, `billingQueue`, `techQueue` and `review` are ordinary blocks, each in its own
-file beside this one. In the example they're handlers that return a queue name like
-`{ queue: "billing-urgent" }`. In your app they could be anything.
+`urgentBilling`, `billingQueue`, `techQueue` and `review` are your own blocks, each in its own
+file beside this one. In the example each is a handler that returns a queue name:
 
-Branch keys are checked against the question's options, so a typo is a compile error. The router
-takes no model of its own; the evaluators carry it. Only the levels on the chosen path run.
+```ts title="src/flows/support/blocks/review.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+export const review = handler({
+  name: "review",
+  inputSchema: z.object({ message: z.string().min(1) }),
+  execute: () => ({ queue: "review" }),
+});
+```
+
+Every leaf and `ambiguous` receive the router's own input, the ticket. `review` is not told why
+it got the ticket. The reason (`no-confidence`, `below-floor` or `no-branch`) and the model's
+choice are on that level's verdict in the trace.
+
+Branch keys are checked against the question's options, so a typo is a compile error. Only the
+levels on the chosen path run.
 
 With `strict: true` in `tsconfig.json`, `ask` rejects an evaluator that has typed questions with
-a `strictFunctionTypes` error. Keep `strict` and add `strictFunctionTypes: false`. The example
-turns `strict` off entirely.
+a `strictFunctionTypes` error. Keep `strict` and add `strictFunctionTypes: false`.
 
 Run it with a clear, urgent billing complaint and it lands on `urgentBilling`:
 
@@ -150,10 +164,18 @@ Run it with a clear, urgent billing complaint and it lands on `urgentBilling`:
 pnpm fsdev run routing-with-evaluators route -i '{"message":"I was charged twice for March and need it reversed today"}'
 ```
 
-**On a model that reports no confidence, every ticket lands on `ambiguous`,** even on branches
-with no `minConfidence`. To branch on the bare answer from such a model, run an evaluator and follow
-it with a plain [`router`](/docs/fundamentals/blocks#router--runtime-dispatch) that reads
-`answers.team.choice`.
+To branch on the bare answer from a model that reports no confidence, run an evaluator and follow
+it with a plain [`router`](../concepts/blocks.md) that reads `answers.team.choice`.
+
+A failed evaluation, such as a provider error, is not an answer. It fails the router with that
+error and never reaches `ambiguous`. To keep the action going, put the router in a sequencer
+with a rescue: `sequencer({ name: "safe-triage", inputSchema }).step(triage).rescue([{ block: fallback }])`.
+
+`ambiguous` runs your block and hands nothing to a person on its own. To have someone look first,
+call `ctx.suspendForUser({ kind: "review", prompt })` inside it. The request stops until the user
+answers and resumes with `{ cancelled: false, answer }`, without asking the evaluators again. It
+needs durable execution, which `fsdev run` and `fsdev dev` have. Only the user who sent the request
+can answer it, not a second agent on their own account. See [Human in the loop](./human-in-the-loop.md).
 
 ## Step 3: let the skill activator use an evaluator
 
@@ -179,17 +201,13 @@ export const skillActivator = createSkillActivator({
 
 Slash commands and keywords win when they match. Otherwise the skills the evaluator picks
 are the ones that activate. A model that reports no confidence works here too. See
-[Activation paths](/docs/skills/activation#tier-3-with-an-evaluator).
+[Skills](../catalog/skills.md).
 
 ## Where to go next
 
-- [Blocks: Evaluator](/docs/fundamentals/blocks#evaluator) for
-  every option and the full answer shape.
-- [`cascadingRouter`](/docs/patterns/utility-blocks/core#cascadingrouter) for how an
-  `ambiguous` result shows up in the trace, and when to reach for `intentRouter` instead.
-- [Adding skills to your app](/guides/adding-skills-to-your-app) to build the catalog the
-  activator picks from.
-- [Find by facets](/docs/resources/searching#find-by-facets) to run an evaluator once when a
-  document is written, then search its answers with no model call.
-- [Deciding which turns to observe](/docs/memory/configuration#deciding-which-turns-to-observe)
-  to put an evaluator in front of memory capture.
+- [Blocks](../reference/blocks.md) for every evaluator option and the full answer shape.
+- [Utility blocks](../reference/utility-blocks.md) for how an `ambiguous` result shows up in the
+  trace, and when to reach for `intentRouter` instead.
+- [Find by facets](./find-by-facets.md) to run an evaluator once when a document is written,
+  then search its answers with no model call.
+- [Memory](../reference/memory.md) to put an evaluator in front of memory capture.

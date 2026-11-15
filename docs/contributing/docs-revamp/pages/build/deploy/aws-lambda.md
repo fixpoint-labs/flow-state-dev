@@ -8,7 +8,7 @@ description: "Run a Flow State app on AWS Lambda behind a Function URL, with res
 
 Run a Flow State app on AWS Lambda behind a Function URL, with response streaming so SSE events arrive as they happen.
 
-Lambda is a serverless target: functions spin up on demand and stop when idle. That suits short-to-medium flows and bursty traffic. The tradeoffs are cold starts and a per-invocation time limit, both covered below. For long-running agents that stream for minutes, a long-lived host (see [Deploying to Railway](/guides/deploying-to-railway)) is a better fit.
+Lambda is a serverless target: functions spin up on demand and stop when idle. That suits short-to-medium flows and bursty traffic. The tradeoffs are cold starts and a per-invocation time limit, both covered below. For long-running agents that stream for minutes, a long-lived host (see [Deploy to Railway](./railway.md)) is a better fit.
 
 ---
 
@@ -45,7 +45,7 @@ const flowstate = createFlowState({
 export const handler = createLambdaHandler(flowstate);
 ```
 
-The handler serves the `/api/flows` routes and the `/healthz` endpoint. Every endpoint is listed in the [runtime reference](/reference/runtime).
+`helloChat` is your flow module, `src/flows/hello-chat/flow.ts`, as built in [Your first flow](../your-first-flow.md). The handler serves the `/api/flows` routes and the `/healthz` endpoint. Every endpoint is listed in the [HTTP API reference](../../reference/http-api.md).
 
 ---
 
@@ -65,7 +65,7 @@ aws lambda create-function-url-config \
 
 Without `RESPONSE_STREAM`, Lambda buffers the whole response and SSE events arrive only after the flow finishes.
 
-`--auth-type NONE` is for the smoke test only. A public URL lets any caller act as any user and run billed model calls. For production, switch the Function URL to IAM auth, or give `createFlowState` a `resolvePrincipal` so the app verifies the caller itself. See [Authentication](/docs/server/authentication).
+`--auth-type NONE` is for the smoke test only. A public URL lets any caller act as any user and run billed model calls. For production, switch the Function URL to IAM auth, or give `createFlowState` a `resolvePrincipal` so the app verifies the caller itself. See [Auth and tenancy](../../concepts/auth-and-tenancy.md).
 
 ---
 
@@ -74,13 +74,13 @@ Without `RESPONSE_STREAM`, Lambda buffers the whole response and SSE events arri
 - **Memory:** 256 MB is a reasonable floor; raise it if your flows hold large context. Memory also scales CPU, which shortens cold starts.
 - **Timeout:** set it to your longest expected flow plus headroom (for example 60s). The function bills until the flow completes or the timeout fires.
 
-Keep timeouts conservative so an abandoned stream doesn't bill for minutes. What a client disconnect does is in the [runtime reference](/reference/runtime).
+Keep timeouts conservative so an abandoned stream doesn't bill for minutes. What a client disconnect does is in the [runtime reference](../../reference/runtime.md).
 
 ---
 
 ## 4. Choose a store
 
-The filesystem and SQLite stores don't survive between invocations. Use a database the function reaches over the network, such as a managed Postgres. Create the store at module scope, as step 1 does with `postgresStores()`, so warm invocations reuse its connection. Which stores persist is in the [persistence overview](/docs/persistence/overview). Starting the store on a cold start has a cost you can remove; see [Cold starts](#cold-starts-the-first-request-after-idle).
+The filesystem and SQLite stores don't survive between invocations. Use a database the function reaches over the network, such as a managed Postgres. Create the store at module scope, as step 1 does with `postgresStores()`, so warm invocations reuse its connection. Which stores persist is in [Persistence](../../concepts/persistence.md). Starting the store on a cold start has a cost you can remove; see [Cold starts](#cold-starts-the-first-request-after-idle).
 
 ---
 
@@ -135,23 +135,38 @@ If step 4 returns everything at once, the function isn't streaming. Recheck `Inv
 
 The first request after idle is slower, but it does not fail. The API waits for the store to finish starting and then answers. It returns a 500 only if store startup failed for good. `/healthz` behaves differently: it answers 503 `{ "status": "initializing" }` until the store is ready, so don't point a startup probe at it and treat 503 as an outage.
 
-What that first request pays for is loading the bundle and starting the store. With `postgresStores`, starting the store creates the schema by default: about 30 idempotent statements and an advisory lock, on every cold start. To skip that cost, create the schema once as a deploy step, then pass `skipSchemaInit: true` in the handler:
+What that first request pays for is loading the bundle and starting the store. With `postgresStores`, starting the store creates the schema by default, with idempotent statements under an advisory lock, on every cold start. To skip that cost, create the schema once as a deploy step, then pass `skipSchemaInit: true` in the handler:
 
-```ts title="scripts/migrate.ts (run once per deploy)"
-import { createPostgresStores } from "@flow-state-dev/store-postgres";
+```ts title="scripts/migrate.ts"
+import { createPostgresStores } from "@flow-state-dev/store-postgres/host";
 
 const stores = await createPostgresStores({ connectionString: process.env.DATABASE_URL });
 await stores.close();
 ```
 
 ```ts title="src/handler.ts"
-primary: postgresStores({
-  connectionString: process.env.DATABASE_URL,
-  skipSchemaInit: true,
-}),
+import { createLambdaHandler } from "@flow-state-dev/node/aws-lambda";
+import { createFlowState } from "@flow-state-dev/engine";
+import { postgresStores } from "@flow-state-dev/store-postgres";
+import helloChat from "./flows/hello-chat/flow.js";
+
+const flowstate = createFlowState({
+  flows: [helloChat],
+  models: { default: "openai/gpt-6-luna" },
+  stores: {
+    default: {
+      primary: postgresStores({
+        connectionString: process.env.DATABASE_URL,
+        skipSchemaInit: true,
+      }),
+    },
+  },
+});
+
+export const handler = createLambdaHandler(flowstate);
 ```
 
-Run the migration before the first request that uses the new schema. Store options are in the [persistence overview](/docs/persistence/overview).
+Run `scripts/migrate.ts` once per deploy, before the first request that uses the new schema. Store options are in the [stores reference](../../reference/stores.md).
 
 ### SSE arrives all at once
 
@@ -165,5 +180,5 @@ Raise the timeout, or move long-running flows to a long-lived host.
 
 ## See also
 
-- [Host adapters](/docs/server/host-adapters): when to choose Lambda over the alternatives
-- [Deployment overview](/guides/deployment): SSE and persistence fundamentals
+- [Serving flows](../../concepts/serving-flows.md): when to choose Lambda over the alternatives
+- [Choose where to deploy](../deploy.md): streaming and persistence on each host

@@ -6,7 +6,7 @@ description: "Sentry is an error tracking service: it collects exceptions, group
 
 # Send errors to Sentry
 
-Sentry is an error tracking service: it collects exceptions, groups them, and alerts you when something starts failing. This guide wires flow-state.dev block failures into Sentry using the `errorCapture` hook on `createFlowState`. The same pattern adapts to Datadog, Bugsnag, or any other service. For the full contract behind the hook, see [Error capture](/docs/advanced/error-capture).
+Sentry is an error tracking service: it collects exceptions, groups them, and alerts you when something starts failing. This guide wires flow-state.dev block failures into Sentry using the `errorCapture` hook on `createFlowState`. The same pattern adapts to Datadog, Bugsnag, or any other service. For the full contract behind the hook, see [Errors](../reference/errors.md).
 
 ## Install the SDK
 
@@ -55,7 +55,7 @@ Which field goes where:
 
 ## Wire it in
 
-Initialize Sentry once and pass the adapter as `errorCapture`, in the same `fsdev.config.ts` that creates the server. `support` is the flow from [When something fails](../concepts/when-something-fails.md).
+Initialize Sentry once and pass the adapter as `errorCapture`, in the same `fsdev.config.ts` that creates the server. `./src/flows/support/flow` is your own flow module: any `defineFlow` result works, such as the `support` flow in [When something fails](../concepts/when-something-fails.md).
 
 ```ts title="fsdev.config.ts"
 import * as Sentry from "@sentry/node";

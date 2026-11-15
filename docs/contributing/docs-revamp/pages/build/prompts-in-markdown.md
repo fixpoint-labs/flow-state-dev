@@ -30,7 +30,7 @@ Customer message:
 </user>
 ```
 
-Text outside the sections is ignored. The model, the schemas, the tools and the context stay in TypeScript; the file holds prose only.
+Text outside the sections is ignored. The model, schemas, tools and context stay in TypeScript.
 
 ## Step 2: Replace interpolations with Liquid
 
@@ -60,7 +60,7 @@ export const draftReply = generator({
 });
 ```
 
-`loadPromptFile` reads the file when your code loads it and throws if the file is unreadable, has bad frontmatter or lacks a `<system>` section. The generator takes the file's `<user>` section and frontmatter values too. A field you write next to `prompt` wins over the file's. Frontmatter `model` does nothing: the model stays the one set in TypeScript. Leave `name` out of the file too. With `prompt:` your `name` wins, but if you spread `...definePromptFile(pf)` after the generator's `name`, the file's `name` overwrites it, and items carry that name.
+`loadPromptFile` reads the file when your code loads it and throws if the file is unreadable, has bad frontmatter or lacks a `<system>` section. The generator takes the file's `<user>` section and frontmatter values too. A field you write next to `prompt` wins over the file's. Frontmatter `model` does nothing: the model stays the one set in TypeScript. Leave `name` out of the file. With `prompt:` your `name` wins, but if you spread `...definePromptFile(pf)` after the generator's `name`, the file's `name` overwrites it, and items carry that name.
 
 `loadPromptFile` needs Node; the reference covers browser bundles.
 
@@ -70,9 +70,9 @@ Run `fsdev dev`, send a message, and open the `draft-reply` block in the DevTool
 
 ## Who can change the prompt
 
-A prompt file is source code. Only someone who changes it in your repository, through code review, can edit it. The model, the customer and the generator's run cannot, and nothing in the framework writes it.
+A prompt file is source code. Only a change in your repository, through code review, can edit it. The model, the customer and the generator's run cannot, and nothing in the framework writes it.
 
-The file is read when `loadPromptFile` runs, which for a module-level call is when the module is imported. Editing it while the server runs changes nothing until the module loads again. The edit ships with the code.
+The file is read when `loadPromptFile` runs, which for a module-level call is when the module is imported. Editing it while the server runs changes nothing until the module loads again.
 
 ## Share a fragment between prompts
 
@@ -106,7 +106,7 @@ export const loadPrompt = createPromptLoader(path.join(flowDir, "blocks"), {
 });
 ```
 
-`draftReply` then calls `loadPrompt("draft-reply.prompt.md")`. `resolveBaseDir` takes the first candidate containing the `expect` path. Under Next.js `import.meta.url` is a virtual path, so the `process.cwd()` candidate covers it.
+`draftReply` then calls `loadPrompt("draft-reply.prompt.md")`. `resolveBaseDir` takes the first candidate holding `expect`. Under Next.js `import.meta.url` is a virtual path, so the `process.cwd()` candidate covers it.
 
 ## Render a resource from a template
 

@@ -1,193 +1,125 @@
 ---
 title: Run a block when a resource changes
 type: recipe
-description: "A reactive block runs automatically when a resource changes."
+description: "Bind a block to a resource so it runs whenever a note is pinned or its body is written, without every writer remembering to call it."
 ---
 
 # Run a block when a resource changes
 
-A reactive block runs automatically when a resource changes. It's a regular block, a handler, a generator, or a sequencer, that you bind to a resource or collection mutation. When something creates, updates, or deletes that resource — or writes its content body — the block runs inside the same session that caused the change, as part of the same turn.
+When a support note is pinned, the supervisor should hear about it. When a note's body is rewritten, its word count should follow. You can do both in the block that writes the note, but then every block that writes a note has to remember.
 
-Because it runs inside the originating turn, a reactive block gets the full execution context: `ctx.resources` and scope handles, the live item stream, and trace and DevTool visibility. Items it emits land in that turn's stream, ordered with everything else the turn produced.
+A reactive block moves that work to the resource. You bind an ordinary block (a handler, a generator or a sequencer) to a change on a [collection](../concepts/resources.md), and the framework runs it whenever a block in a turn makes that change. It runs as part of the same turn. Items it emits land in the turn's stream after the writer's own, and it appears in the trace as a child of the block that made the change.
 
-## When to reach for this
+The example is the `ticketNotes` collection from the [resources page](../concepts/resources.md), with a `wordCount` field added to its state.
 
-Collections already have lightweight lifecycle callbacks, `onInstanceCreated`, `onInstanceUpdated`, and `onInstanceDeleted` (see [Resource Collections](/docs/resources/collections#lifecycle-hooks)). Those are synchronous, fire-and-forget functions. They're the right tool when all you need is to log a change or mirror it into another store.
+## 1. Write the reaction
 
-Reach for a reactive block when the reaction needs to do real work in the flow:
+The reaction receives a change object: the note's `key`, its new `state` and its `prevState`. `resourceChangeSchema` types that input from your state schema. Keep the schema in its own file, because the collection file will import the reaction and the reaction must not import the collection.
 
-- Emit items into the stream (a status message, a generated artifact, a tool call result).
-- Run sub-blocks, call models, or use tools.
-- Show up in traces and the DevTool as part of the turn.
-
-The two coexist. A collection can keep its `onInstance*` callbacks for cheap logging and use `reactTo` for the block-driven reaction. For the block case, `reactTo` is the upgrade path: it supersedes the callback when you need anything the callback can't do. Single resources never had lifecycle callbacks; `reactTo` is how they get reactions at all.
-
-## Declaring `reactTo`
-
-`reactTo` is a field on `defineResource()` and `defineResourceCollection()`. You map each reactive kind you care about to a block. Three of them are state changes — `created`, `stateUpdated`, `deleted` — and one is a content-body write, `contentUpdated` (see [Reacting to content changes](#reacting-to-content-changes)):
-
-```ts
-import { defineResourceCollection, handler } from "@flow-state-dev/core";
+```ts title="src/flows/support/resources/note-state.ts"
 import { z } from "zod";
 
-const memoSchema = z.object({
-  title: z.string(),
-  status: z.enum(["draft", "published"]).default("draft"),
+export const noteState = z.object({
+  author: z.string(),
+  pinned: z.boolean().default(false),
+  wordCount: z.number().default(0),
 });
 
-const announceMemo = handler({
-  name: "announce-memo",
+export type NoteState = z.infer<typeof noteState>;
+```
+
+```ts title="src/flows/support/blocks/announce-pinned.ts"
+import { handler, resourceChangeSchema } from "@flow-state-dev/core";
+import { noteState } from "../resources/note-state";
+
+export const announcePinned = handler({
+  name: "announce-pinned",
+  inputSchema: resourceChangeSchema(noteState),
   execute: async (change, ctx) => {
-    ctx.emit.message(`New memo: ${change.state.title}`);
+    ctx.emit.message(`Note ${change.key} by ${change.state?.author} was pinned.`);
   },
 });
+```
 
-const memos = defineResourceCollection({
-  pattern: "memos/**",
+## 2. Bind it, and gate it
+
+`reactTo` maps a kind of change to a block. `stateUpdated` fires when a note's state changes. Write the entry as `{ block, when }` to run the block only for some changes: `when` receives the same change and returns a boolean.
+
+```ts title="src/flows/support/resources/ticket-notes.ts"
+import { defineResourceCollection } from "@flow-state-dev/core";
+import { announcePinned } from "../blocks/announce-pinned";
+import { noteState } from "./note-state";
+
+export const ticketNotes = defineResourceCollection({
+  pattern: "ticketNotes/**",
   scope: "session",
-  stateSchema: memoSchema,
+  stateSchema: noteState,
   reactTo: {
-    created: announceMemo,
-  },
-});
-```
-
-Each entry is either a bare block, as above, or an object `{ block, when }` where `when` gates dispatch (covered below).
-
-Collections fire all four kinds. Single resources support only `stateUpdated` and `contentUpdated`: a single resource always exists with a default state and has no create or delete lifecycle, so `defineResource` accepts those two and throws on `created` or `deleted`.
-
-State and content are separate axes. A `patchState` runs a `stateUpdated` reaction; a `writeContent` runs a `contentUpdated` reaction, not `stateUpdated`. To react to either kind of change, bind the same block to both.
-
-## What the block receives
-
-A reactive block is called with a `ResourceChange` payload as its input:
-
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `key` | `string` | The collection instance key, or the single resource's ref name. |
-| `ref` | `string` | The full storage path, e.g. `"memos/launch"`. |
-| `kind` | `"created" \| "stateUpdated" \| "deleted"` | Which state mutation fired. |
-| `state` | state object or `null` | Post-mutation state. `null` on `deleted`. |
-| `prevState` | state object or `null` | Pre-mutation state. `null` on `created`. |
-| `evicted` | `boolean` | `true` only when a delete came from a capacity eviction (LRU or oldest), not an explicit `delete()`. |
-
-To type the input against your resource's state, use `resourceChangeSchema`, which wraps your state schema in the `ResourceChange` shape:
-
-```ts
-import { resourceChangeSchema, handler } from "@flow-state-dev/core";
-
-const announceMemo = handler({
-  name: "announce-memo",
-  inputSchema: resourceChangeSchema(memoSchema),
-  execute: async (change, ctx) => {
-    // change.state is typed as the memo state (nullable)
-    ctx.emit.message(`New memo: ${change.state?.title}`);
-  },
-});
-```
-
-Both `resourceChangeSchema` and the `ResourceChange` type come from `@flow-state-dev/core`.
-
-## Reacting to content changes
-
-A resource has two axes: structured `state` (via `patchState`) and a content body (via `writeContent`). The kinds above react to state. To react to a content write, bind `reactTo.contentUpdated`. It runs after the body is persisted, so a `readContent()` inside the block returns the new body. This is the natural home for work derived from the body — re-summarizing a document, re-indexing it, post-processing a written file.
-
-```ts
-import { defineResourceCollection, resourceContentChangeSchema, sequencer, handler, utility } from "@flow-state-dev/core";
-import { z } from "zod";
-
-// Reads the fresh body and stores a summary back on the artifact's state.
-const summarize = sequencer({ name: "summarize", inputSchema: resourceContentChangeSchema() })
-  .step(handler({
-    name: "read-body",
-    inputSchema: resourceContentChangeSchema(),
-    outputSchema: z.object({ key: z.string(), content: z.string() }),
-    execute: async (change, ctx) => {
-      const ref = await ctx.resources.artifacts.getOptional(change.key);
-      return { key: change.key, content: (await ref?.readContent()) ?? "" };
+    stateUpdated: {
+      block: announcePinned,
+      when: (change) => change.state?.pinned === true && change.prevState?.pinned !== true,
     },
-  }))
-  .step((loaded) => loaded.content, utility.summarizer({ name: "summarizer", model: "openai/gpt-6-luna" }))
-  .step(saveSummary); // patchState({ summary }) — a state write, so it won't re-trigger this reaction
-
-const artifacts = defineResourceCollection({
-  pattern: "artifacts/**",
-  scope: "session",
-  stateSchema: artifactSchema,
-  reactTo: { contentUpdated: summarize },
+  },
 });
 ```
 
-A content reaction receives a minimal `ResourceContentChange` payload — bodies are never inlined:
+With that in place, `patchState({ pinned: true })` on a note, from any block, emits the message. A write that leaves the state equal to what is stored is a no-op and starts nothing.
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `key` | `string` | The collection instance key, or the single resource's ref name. |
-| `ref` | `string` | The full storage path, e.g. `"artifacts/memo-1"`. |
-| `kind` | `"contentUpdated"` | Always `"contentUpdated"`. |
+The other kinds are `created`, `deleted` and `contentUpdated`. A single resource, not a collection, takes only `stateUpdated` and `contentUpdated`. The [resources reference](../reference/resources.md) lists each kind, the change fields and `when` for evictions.
 
-Type the input with `resourceContentChangeSchema()` (no state schema — a content change carries only identity). Read the body with `readContent()` and read state from `ctx.resources` if you need it. Everything else — [timing](#timing), [the cascade guard](#cascades-and-the-depth-guard), [`when`](#conditioning-with-when), and [trace nesting](#in-the-trace) — works exactly as it does for state reactions.
+## 3. React to the body
 
-Because a content reaction often writes state back (the summary above), note the loop boundary: `patchState` fires `stateUpdated`, not `contentUpdated`, so saving derived state does not re-trigger the content reaction.
+State and content are separate: `patchState` fires `stateUpdated` only, and `writeContent` fires `contentUpdated` only. A content reaction receives only `key`, `ref` and `kind`. The body is never inlined, so the block reads it back, and it sees the new text because the write is stored before the reaction runs.
 
-`contentUpdated` fires for server-side content writes — a tool that calls `writeContent`, the generic content tool, a file flush. Content edits driven straight from a client (`client.content.update`) run outside any flow turn and do not fire a reaction yet.
+The block reaches the collection through `ctx.resources.notes`, the name `addNote` declares. It does not declare the collection itself, which would make the collection and its own reaction import each other.
 
-Classifying a document's body into stored answers you can filter on is one content reaction. See [Find by facets](/docs/resources/searching#find-by-facets).
+```ts title="src/flows/support/blocks/count-note-words.ts"
+import { handler, resourceContentChangeSchema } from "@flow-state-dev/core";
+import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { NoteState } from "../resources/note-state";
 
-## Timing
-
-A reactive block runs blocking, by default, as part of the turn that triggered it. The mutation, the reaction, and any items the reaction emits all belong to one turn, in order. There is no `mode` field to change this.
-
-Failure is atomic, as a result: if a reactive block throws, the mutating turn fails. That's usually what you want for a reaction that's part of the operation's correctness. When the reaction is a side effect you don't want to block on, or could fail independently, make the reactive block a sequencer that uses `.sideChain()`. Work runs in the background, isolated from the turn's success, and drains before the turn reaches a terminal status:
-
-```ts
-import { sequencer } from "@flow-state-dev/core";
-
-const indexMemo = sequencer({ name: "index-memo" })
-  .sideChain(pushToSearchIndex); // background, isolated; a throw here won't fail the turn
-```
-
-So the choice is direct: a blocking block when the reaction must succeed for the turn to be correct, a `.sideChain()` sequencer when it's a fan-out side effect that should run on its own.
-
-## Conditioning with `when`
-
-Wrap a binding as `{ block, when }` to gate dispatch. `when` receives the same `ResourceChange` and returns a boolean. Return `false` and the block doesn't run.
-
-Fire only on a real transition, here only when a memo reaches `published`:
-
-```ts
-reactTo: {
-  stateUpdated: {
-    block: announceMemo,
-    when: (change) => change.state?.status === "published",
+export const countNoteWords = handler({
+  name: "count-note-words",
+  inputSchema: resourceContentChangeSchema(),
+  execute: async (change, ctx) => {
+    const notes = ctx.resources.notes as unknown as ResourceCollectionRef<NoteState>;
+    const note = await notes.getOptional(change.key);
+    if (!note) return;
+    const body = (await note.readContent()) ?? "";
+    await note.patchState({ wordCount: body.split(/\s+/).filter(Boolean).length });
   },
-},
+});
 ```
 
-Skip evictions, so a `deleted` reaction runs for explicit deletes but not for capacity-driven removals:
+In `ticket-notes.ts`, import `countNoteWords` and add `contentUpdated: countNoteWords` beside `stateUpdated`. Saving `wordCount` with `patchState` fires `stateUpdated`, so it does not trigger this reaction again.
 
-```ts
-reactTo: {
-  deleted: {
-    block: cleanupMemo,
-    when: (change) => !change.evicted,
-  },
-},
+## 4. Decide whether the writer waits
+
+A reaction blocks by default. `writeContent` does not return until `countNoteWords` has finished, and a slow reaction slows the writer. If the reaction throws, the call that made the change rejects with the reaction's error and the write stays stored. Uncaught, that fails the turn.
+
+For a side effect the write does not depend on, bind a sequencer that ends in `.sideChain()`. The writer returns at once, the reaction runs in the background, and the turn finishes only after it is done. A throw there fails neither the write nor the turn.
+
+```ts title="src/flows/support/blocks/count-in-background.ts"
+import { sequencer, resourceContentChangeSchema } from "@flow-state-dev/core";
+import { countNoteWords } from "./count-note-words";
+
+export const countInBackground = sequencer({
+  name: "count-in-background",
+  inputSchema: resourceContentChangeSchema(),
+}).sideChain(countNoteWords);
 ```
 
-## Cascades and the depth guard
+Bind `countInBackground` in place of `countNoteWords`. Use a blocking reaction when the write is wrong without it. [Background work](../concepts/background-work.md) covers work that has to outlive the turn.
 
-A reactive block can mutate a resource that has its own reactive block, which fires another reaction, and so on. That re-triggering is allowed, but the framework caps how far it can go in a single turn: it bounds both the re-entrancy depth and the total fan-out. On a breach it stops and emits a `reactive_cascade_exceeded` diagnostic as a failed `error` item, rather than recursing forever or hanging the turn.
+## What a reaction does not do
 
-You don't configure these limits. They're a backstop against accidental loops, not a tuning knob. If you hit the diagnostic, it means a reaction chain is feeding back on itself, and the fix is in the flow's logic, usually a `when` gate that stops the chain re-firing on its own writes.
+- **It does not start from a browser.** `client.content.update` and other writes a client makes run outside a flow turn and fire no reaction.
+- **It does not repair a bad input.** If the block's `inputSchema` does not match the change, for example a schema built from a different state, the block is skipped and an `error` item with code `reactive_input_invalid` appears. The write is unaffected.
+- **It does not loop safely.** A reaction that writes the kind it reacts to needs a `when` that stops it. Past a fixed depth in one turn, the framework stops the chain and emits a `reactive_cascade_exceeded` error item. The turn completes. The limits are fixed.
 
-## In the trace
+## Next
 
-A reactive block shows up in the trace nested under the block that performed the mutation, not at the request root, so you can see what triggered it. Its trace path is self-describing: `__reactive__/<resource-ref>/<kind>`, for example `__reactive__/memos/memo-1/stateUpdated` or `__reactive__/artifacts/memo-1/contentUpdated`. If the reaction itself mutates a resource and triggers a further reaction, that one nests under the reaction, so a cascade reads as a tree.
-
-## See also
-
-- [Resource Collections](/docs/resources/collections) — patterns, eviction, and the `onInstance*` lifecycle callbacks
-- [Resources Overview](/docs/resources/overview) — `defineResource`, content, and state
-- [Blocks](/docs/fundamentals/blocks) — handlers, generators, and sequencers
-- [Items](/docs/streaming/items) — what a reactive block emits into the stream
+- [Resources reference](../reference/resources.md): reactive kinds per resource form, the change payloads, `when` examples and the cascade limits.
+- [Items reference](../reference/items.md): the trace path a reaction runs under.
+- [Find records by facets](./find-by-facets.md): a content reaction that classifies each body.
+- [Resources](../concepts/resources.md): collections, scopes and the methods used above.

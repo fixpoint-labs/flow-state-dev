@@ -23,6 +23,7 @@ that writes to your database; this stub stands in for it.
 export const ledger = {
   async recordPayment(invoiceId: string, cents: number): Promise<void> {
     // Replace with an upsert into your database, keyed on invoiceId.
+    console.log("recorded", invoiceId, cents);
   },
 };
 ```
@@ -77,10 +78,16 @@ export const billingFlow = defineFlow({
 system user, since no signed-in user sends a webhook. `sessionId` keeps each
 customer's payments in one session; drop it if you don't need that.
 
+Don't add a `userId` field to what `input` returns, for example to give each
+Stripe customer their own user. With no principal resolver configured, the
+framework reads the run's user from that object, so a payload field there lets
+whoever sent the payload name the user. Group by customer with `sessionId`.
+
 ## 2. The server verifies and parses
 
-The server checks the signature and reads the event type. You set both up on
-`createWebhookTransportAdapter`, under the same `stripe` name the flow used.
+The server checks the signature, reads the event type and picks out the
+delivery id. You set all three on `createWebhookTransportAdapter`, under the
+same `stripe` name the flow used.
 
 ```ts title="src/lib/flowstate.ts"
 import {
@@ -117,13 +124,24 @@ export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 
 The endpoint is `POST /api/flows/billing/webhooks/stripe`.
 `stripeWebhookVerifier` checks the `Stripe-Signature` header against your secret
-and rejects deliveries older than five minutes.
+and rejects a timestamp more than five minutes from the server's clock. The
+check runs first, on the raw body, before the body is parsed or a session is
+created. A forged delivery gets a 401, and nothing runs.
 
-`deliveryId` puts Stripe's event id on `metadata.webhook.deliveryId` of the
-delivery's request. Stripe delivers at least once and the framework does not
-deduplicate, so a redelivered event reaches your block again with the same id.
-The reference covers keying a write on it when a block has no natural key like
-`invoiceId`.
+`deliveryId` records Stripe's event id with each delivery. Stripe delivers at
+least once and the framework does not deduplicate, so a redelivered event runs
+your block again. Keying the write on `invoiceId` makes that harmless.
+
+What a delivery gets back:
+
+| Response | When |
+| --- | --- |
+| `202 { status: "accepted" }` | Signature good and the event type has a binding. The block runs after the response. |
+| `202 { status: "ignored" }` | Signature good but no binding for the event type, such as `customer.created`. Nothing runs. |
+| `401 { error: "invalid_signature" }` | Wrong secret or signature, or a timestamp outside five minutes. |
+| `404 { error: "webhook_not_found" }` | The provider in the URL is not declared on the flow or the server, such as `.../webhooks/strip`. |
+| `404 { error: "flow_not_found" }` | No flow has the id in the URL. |
+| `400 { error: "invalid_payload" }` | The body is not JSON. |
 
 ## 3. Test it locally
 
@@ -135,7 +153,8 @@ secret, so you exercise the verification path end to end.
 stripe listen --forward-to localhost:3000/api/flows/billing/webhooks/stripe
 ```
 
-`stripe listen` prints a `whsec_...` secret and keeps its terminal. In the
+`stripe listen` prints a `whsec_...` secret and keeps running, so leave that
+terminal open. In the
 terminal where you run your server, export the secret, then start the server, so
 the verifier matches:
 
@@ -150,8 +169,8 @@ stripe trigger invoice.paid
 ```
 
 The CLI reports a `202` from your endpoint. The block runs after the response,
-so check your ledger for the invoice id.
+and your server log shows `recorded`, the invoice id (`in_...`) and the amount
+in cents.
 
-The [webhook receivers reference](/docs/server/webhooks) covers the other
-response codes, `route` for dynamic mapping, the `when` predicate and
-idempotency.
+The [webhooks reference](../../reference/webhooks.md) covers `route` for
+dynamic mapping, the `when` predicate and idempotency.

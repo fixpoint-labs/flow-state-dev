@@ -36,7 +36,7 @@ import { resourceSearchTools } from "@flow-state-dev/core";
 export const search = resourceSearchTools();
 ```
 
-Mount them as actions. Declare the collection on the flow, because the tools search only what the flow or a block declares.
+Mount them as actions. Declare the collection on the flow, because the tools search only the collections the flow declares. A block that declares a collection adds it to the flow, so declaring it on a block works too.
 
 ```ts title="src/flows/support/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
@@ -74,7 +74,7 @@ Search returns only notes from the scope the run resolves to. `ticketNotes` is s
 
 ## 3. Give search to a model
 
-Put the blocks in a generator's `tools`, and declare the collection on the generator. A hit carries a short snippet, so add `readResourceContentTool()` for the model to read a whole note.
+Put the blocks in a generator's `tools`. The flow in step 2 already declares `ticketNotes`, so the generator's tools search it. Declaring it on the generator as well, as below, makes the block work in any flow you add it to. A hit carries a short snippet, so add `readResourceContentTool()` for the model to read a whole note.
 
 ```ts title="src/flows/support/blocks/draft-reply.ts"
 import { generator, readResourceContentTool } from "@flow-state-dev/core";
@@ -95,7 +95,7 @@ export const draftReply = generator({
 });
 ```
 
-If the collection is declared nowhere the model can reach, it isn't searched, and nothing errors.
+If neither the flow nor any of its blocks declares the collection, the tools find nothing, and nothing errors.
 
 ## Choosing a tool
 

@@ -73,7 +73,19 @@ export const supportFlow = defineFlow({
 export default supportFlow();
 ```
 
-`lookUpOrder` and `exportTickets` are blocks, each in its own file beside the flow.
+`lookUpOrder` and `exportTickets` are blocks, each in its own file beside the flow. `exportTickets` can be any block. `lookUpOrder` here returns fixed data:
+
+```ts title="src/flows/support/blocks/look-up-order.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+export const lookUpOrder = handler({
+  name: "look-up-order",
+  inputSchema: z.object({ orderId: z.string() }),
+  outputSchema: z.object({ status: z.string(), totalCents: z.number() }),
+  execute: async ({ orderId }) => ({ status: `shipped (${orderId})`, totalCents: 4200 }), // your code queries your orders
+});
+```
 
 A flow without `mcp: { enabled: true }` answers every tool request with a `-32601` error. With it, every action in `actions` is a tool unless it sets `mcp: { enabled: false }`, as `exportTickets` does. A client that calls an opted-out action by name gets the same `-32601`.
 
@@ -92,17 +104,17 @@ curl -X POST https://app.example.com/api/flows/support/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-The result lists one tool, `look_up_order`, with its description and input schema. A `tools/call` for it returns one text block: the action's output, as text. A failed run returns the error message with `isError: true`.
+The result lists one tool, `look_up_order`, with its description and input schema. A `tools/call` for it returns one text block holding the action's output. A failed run returns the error message with `isError: true`.
 
-Each call is a new session, so calls do not share state. The request appears in the DevTool with an MCP badge, next to requests from your own UI.
+By default each call is a new session, so calls do not share state. [MCP server](../reference/mcp-server.md) shows how to group calls into one session. The request appears in the DevTool with an MCP badge, next to requests from your own UI.
 
 ## 5. Decide who the caller is
 
 An MCP request goes through the flow's `resolvePrincipal`, the same hook HTTP requests use. It receives the raw `Request` and `ctx.source === "mcp"`, and it returns the user and organization the call runs as. Send credentials in the `Authorization` header. The adapter does not read tokens from the URL.
 
-`createBearerSecretPrincipalResolver` accepts one secret and maps it to one fixed user, which suits a server for a single person or team. It throws when the secret is empty, so a missing environment variable stops startup instead of leaving the endpoint open. A request with no `Authorization` header is refused, and a wrong token is a 401.
+`createBearerSecretPrincipalResolver` accepts one secret and maps it to one fixed user, which suits a server for a single person or team. It throws when the secret is empty, so a missing environment variable stops startup instead of leaving the endpoint open. A request with no `Authorization` header, or a wrong token, gets HTTP 401 and a JSON-RPC `-32001` error.
 
-For a different user per client, write your own resolver. Read the token, look up its owner, and return `{ userId, orgId }`. Both are required, and a resolver that returns no organization is refused. `extractBearerToken` and `createHs256JwtVerifier` from `@flow-state-dev/engine` shorten the verification. To refuse a caller, throw `PrincipalResolutionError`: the client gets a JSON-RPC `-32001` error and a 401 by default. The [authentication reference](../reference/authentication.md) has the resolver contract.
+For a different user per client, write your own resolver. Read the token, look up its owner, and return `{ userId, orgId }`. Both are required, and a resolver that returns no organization gets the same 401. `extractBearerToken` and `createHs256JwtVerifier` from `@flow-state-dev/engine` shorten the verification. To refuse a caller, throw `PrincipalResolutionError`: the client gets a JSON-RPC `-32001` error and a 401 by default. The [authentication reference](../reference/authentication.md) has the resolver contract.
 
 ## Next
 

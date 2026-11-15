@@ -144,3 +144,7 @@ Moved to `reference/resources` (R-08) and linked from the page: which search too
 The three example calls on the page are illustrative shapes, not run output: the `uri`, `score` and `snippet` values are made up for the example. The shapes match facts 15 to 17. The unscoped `prefix: "ticketNotes"` and `pattern: "ticketNotes/T-10*"` follow fact 22.
 
 Type-check **[ran]**: every `ts` block on this page and on `find-by-facets.md` compiles under `apps/kitchen-sink`'s `strict` tsconfig, written at its titled path.
+
+## Revise round 2
+
+Fact 3 and 30 sharpened: a flow-level declaration makes the collection searchable from a generator's tools (the registry holds what the flow declares, `ov:295`, `ov:360-364`); a block's declaration bubbles into the flow (`ov:360`). The page says so in step 2, step 3 and the closing line. **[source]** not run end to end.

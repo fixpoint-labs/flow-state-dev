@@ -147,3 +147,10 @@ Moved to Reference as rows and no longer page text. **R-34 (`reference/mcp-serve
 **R-20 (`reference/authentication`)**: session-consistency row. The stored session's owner must match the caller, so an action cannot run against another principal's session state; the principal still comes from `resolvePrincipal`.
 
 Stays on the page: the opt-in and opt-out, tool-name derivation in one sentence, the `mcp.name` override, the duplicate-name failure in one sentence, the description requirement and its registration failure, one text-block result, a fresh session per call, the MCP badge, `resolvePrincipal` with `ctx.source === "mcp"`, the `Authorization` header, `createBearerSecretPrincipalResolver` and its empty-secret throw, `{ userId, orgId }` required, `PrincipalResolutionError` giving `-32001` and 401.
+
+## Revise round 2
+
+- Missing `Authorization` header: the bearer resolver returns `null` (`bs:47-88`); the host then throws `PrincipalResolutionError` 401 "Action request requires non-empty userId" because `requireUser` is true (`createInboundTransportHost.ts:324-331`), which the adapter answers as HTTP 401 with `-32001` (`ad:247-259`). A wrong token is the same 401. A resolver result with no valid `orgId` throws 401 too (`createInboundTransportHost.ts:260-266`). This supersedes correction 2 for a flow with `requireUser: true` (the page's flow).
+- The page now shows `look-up-order.ts` (a `handler` returning fixed data, `handler` from `@flow-state-dev/core`); `exportTickets` is left as any block.
+- Default export: `flow.ts` exports `supportFlow()` as default and `fsdev.config.ts` passes that instance in `flows`, as designed in round 1.
+- The result text and session sentences were reworded; "By default" qualifies the fresh-session-per-call line.
