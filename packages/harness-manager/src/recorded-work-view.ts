@@ -39,7 +39,7 @@ type Listing = { list(prefix?: string): Promise<Stored[]> };
 
 /** `stored`, keyed under its collection as a client reads it. */
 const entriesOf = (collection: string, stored: readonly Stored[]): RecordedEntry[] =>
-  stored.slice(0, RECORDED_MAX).map((ref) => ({ topic: ref.path.startsWith(`${collection}/`) ? ref.path.slice(collection.length + 1) : ref.path, data: ref.state }));
+  stored.map((ref) => ({ topic: ref.path.startsWith(`${collection}/`) ? ref.path.slice(collection.length + 1) : ref.path, data: ref.state }));
 
 /**
  * The recorded work view: input `{ requestId }`, a run of this session; answers
@@ -68,8 +68,12 @@ export function recordedWorkView() {
         const planPrefix = target.resourcesPrefix.slice(OBSERVED_PLAN.length + 1);
         const [plan, opened] = await Promise.all([resources[OBSERVED_PLAN]!.list(planPrefix), resources[OBSERVED_PULL_REQUESTS]!.list()]);
         return {
-          plan: plan.length === 0 ? null : planStepsOf(entriesOf(OBSERVED_PLAN, plan)),
-          pullRequests: openedPullRequestsOf(entriesOf(OBSERVED_PULL_REQUESTS, opened), input.requestId).map(({ number, url, title }) => ({ number, url, title })),
+          plan: plan.length === 0 ? null : planStepsOf(entriesOf(OBSERVED_PLAN, plan).slice(0, RECORDED_MAX)),
+          // The session's records hold every run's; pick this run's, then cap, so
+          // earlier runs never use up this one's allowance (records key by PR, not run).
+          pullRequests: openedPullRequestsOf(entriesOf(OBSERVED_PULL_REQUESTS, opened), input.requestId)
+            .slice(0, RECORDED_MAX)
+            .map(({ number, url, title }) => ({ number, url, title })),
         };
       },
     }),

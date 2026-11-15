@@ -86,6 +86,21 @@ describe("the recorded work view", () => {
     expect(answer.status, JSON.stringify(answer.body)).toBe(200);
     expect(answer.body.output).toEqual({ plan: null, pullRequests: [{ number: 7, url: "https://example.test/pr/7", title: "PR 7" }] });
   });
+
+  it("answers a run's pull requests in a session whose earlier runs opened more than the cap", async () => {
+    const { post, stores } = await boot();
+    const created = await post(["coder", "sessions"], { userId: "alice", state: { workerId: "core.codex" } });
+    const session = created.body.session.id as string;
+    const opened = (requestId: string, number: number) => ({ url: `https://example.test/pr/${number}`, number, title: `PR ${number}`, requestId, firstSeenAt: number, host: null, repository: null, state: null, branch: null, source: "tool" });
+    // Earlier runs' records come first in the listing and fill the cap.
+    for (let n = 0; n < 205; n++) {
+      await stores.resourceState.set("session", session, `observed-pull-requests/a${String(n).padStart(3, "0")}`, opened("req_old", n) as never, "any");
+    }
+    await stores.resourceState.set("session", session, "observed-pull-requests/z", opened("req_new", 999) as never, "any");
+    const answer = await post(["coder", session, "views", "recordedWork"], { userId: "alice", input: { requestId: "req_new" } });
+    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+    expect(answer.body.output.pullRequests).toEqual([{ number: 999, url: "https://example.test/pr/999", title: "PR 999" }]);
+  });
 });
 
 describe("the coding board view", () => {

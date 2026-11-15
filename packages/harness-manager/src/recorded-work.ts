@@ -98,19 +98,15 @@ export async function readRecordedWork(client: RecordedWorkClient, run: Recorded
     const pointers = await read(RECORDED.markers, planResourcesPrefix(run.requestId, OBSERVED_PLAN_LIST));
     const markers = (pointers?.items ?? []).map((item) => ({
       topic: item.topic,
-      conversation: field(item.clientData, "conversation") as string | null | undefined,
+      conversation: fieldOf(item.clientData, "conversation") as string | null | undefined,
     }));
     return read(RECORDED.plan, readPlanTarget(run.requestId, markers).resourcesPrefix);
   };
-  const field = (data: unknown, key: string) => (data as Record<string, unknown> | undefined)?.[key];
   const [plan, files, pullRequests] = await Promise.all([
     readPlan(),
     read(RECORDED.files),
     read(RECORDED.pullRequests, `${OBSERVED_PULL_REQUESTS}/`),
   ]);
-  const text = (data: unknown, key: string) => (typeof field(data, key) === "string" ? (field(data, key) as string) : null);
-  /** The key segments after `<request>/<invocation>/`, or a plan's `conversation/<id>/`. */
-  const rest = (topic: string) => topic.split("/").slice(2).join("/");
   return {
     plan:
       plan === null
@@ -125,10 +121,10 @@ export async function readRecordedWork(client: RecordedWorkClient, run: Recorded
         : {
             truncated: files.truncated,
             rows: files.items.map((item) => {
-              const kind = field(item.clientData, "lastKind");
-              const applied = field(item.clientData, "appliedCount");
+              const kind = fieldOf(item.clientData, "lastKind");
+              const applied = fieldOf(item.clientData, "appliedCount");
               return {
-                path: rest(item.topic),
+                path: restOf(item.topic),
                 kind: kind === "created" || kind === "edited" ? kind : null,
                 applied: typeof applied === "number" ? applied : null,
               };
