@@ -816,7 +816,23 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   const deadlines = turnDeadlines(
     assertPositiveInt("harnessSessionFlow's turnTimeoutMs", options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS),
   );
-  const feeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse, attachedHeads);
+  const sessionFeeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse, attachedHeads);
+  // One working directory per turn, by request id: the turn's brief and its harness both ask
+  // for it, and the workspace is set up once (a setup command runs once). A failed setup is
+  // not kept, and the entry goes when the turn lets its worktree go.
+  const turnCwds = new Map<string, Promise<string>>();
+  const feeds: HarnessSessionFeeds = {
+    ...sessionFeeds,
+    cwd: (ctx) => {
+      const requestId = requestOf(ctx);
+      const known = turnCwds.get(requestId);
+      if (known !== undefined) return known;
+      const made = Promise.resolve(sessionFeeds.cwd(ctx));
+      turnCwds.set(requestId, made);
+      made.catch(() => turnCwds.delete(requestId));
+      return made;
+    },
+  };
   // The approval feed, its stop and the calls it held, kept per request.
   // `stopsOnAbort` is read off the block once it's built, before any turn runs.
   const approvals = sessionApprovals(options.kind, options.workspace);
@@ -974,6 +990,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         }
       } finally {
         // The turn is done with its worktree, however it ended.
+        turnCwds.delete(requestId);
         const lease = inUse.get(requestId);
         if (lease !== undefined) {
           inUse.delete(requestId);
@@ -1128,11 +1145,12 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
               prompt = `${await readIssueSpecSection(cwd, state.issue, specOptions)}\n\n## The request\n\n${prompt}`;
             }
             if (checksInBrief !== undefined) {
-              const place = workPlaceOf(options.kind, harnessCtx);
-              // Provisioned as the harness's own cwd feed does, so a fresh session's directory exists before a resolver reads it.
-              const cwd = await feeds.cwd(harnessCtx);
+              // A resolver reads where the session works, so it is handed the turn's own directory, set up
+              // first on a fresh session; the harness gets the same one. A fixed list needs none.
               const commands =
-                typeof checksInBrief.commands === "function" ? await checksInBrief.commands({ place, cwd }) : checksInBrief.commands;
+                typeof checksInBrief.commands === "function"
+                  ? await checksInBrief.commands({ place: workPlaceOf(options.kind, harnessCtx), cwd: await feeds.cwd(harnessCtx) })
+                  : checksInBrief.commands;
               const section = commandChecksBriefSection(commands, false);
               if (section !== undefined) prompt = `${prompt}\n\n${section}`;
             }
