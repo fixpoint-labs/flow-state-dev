@@ -90,6 +90,8 @@ export {
 export { createInMemoryBus } from "./bus/in-memory-bus";
 export { installBuiltIns } from "./resources/default-write-flow";
 export { withChangeBus } from "./bus/publish-writes";
+// FIX-2695: a host that writes a scope's state outside a run (fsdev run's --seed-session) publishes it as a run would.
+export { publishScopeChange, type ScopeChange } from "./bus/scope-changes";
 export {
   enablePushDelivery,
   type EnablePushDeliveryOptions,

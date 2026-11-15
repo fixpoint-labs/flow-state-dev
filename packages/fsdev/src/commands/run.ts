@@ -23,6 +23,7 @@ import {
   type StoreRegistry
 } from "@flow-state-dev/engine";
 import {
+  publishScopeChange,
   resolveInProcessPrincipal,
   withChangeBus,
   createResponseEmitter,
@@ -419,6 +420,9 @@ export async function executeRunCommand(
           state: { ...existing.state, ...seedData },
           updatedAt: Date.now(),
         }, "any");
+        // Outside a run, so nothing else says the state changed: the store's write publishes `run`,
+        // which a view that read this session's state doesn't hear (FIX-2695).
+        publishScopeChange(stores.bus, { scope: "session", id: sessionId, tenantId: existing.tenantId, kind: "state" });
       }
     } else if (seedData !== undefined || flow.session?.createCheck !== undefined) {
       // The one birth function: it parses the seed through the flow's state

@@ -8,6 +8,7 @@
  * | a session, user or org state write in a run | `emitWrap`'s `onCommitted` (`createExecutionContext.ts`) | the run's request |
  * | a resource write, create, delete or content write in a run | `makeResourceChangeHandler` (same file) | the run's request |
  * | a collection create, content update or delete from a browser | the resource routes (`resource-routes.ts`) | none |
+ * | a session's state seeded outside a run | `fsdev run --seed-session` on an existing session | none |
  *
  * Each runs after its write lands, beside the `state_change` or
  * `resource_change` item the writer's own stream gets, and whether or not a
