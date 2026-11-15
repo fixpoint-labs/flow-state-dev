@@ -51,6 +51,7 @@ Skipped: C-11 is kept in the sitemap, and the page was already at `capabilities.
 - Post-loop edit (escalation): fixed the five open pass-7 findings in plain words (the opening list split, `.with()` pointer, the scope sentence names the reader's action, the helper-functions line cut as the Next list covers it, the kit/capability sentence gives its reason). Re-ran check-docs-page.mjs: ok, 769 words.
 
 - Post-review edit (Gitar): lines 95 and 111 no longer say a generator's `tools:` is the complete list; a capability's control tools (a skills loader) come through anyway, worded as on C-03. Re-ran check-docs-page.mjs: ok.
+- After the loop (review): `draftReply`, `summarizeOrder` and `refundReply` take `z.string()` with `user: (input) => input`, the shape the Blocks page gives `draftReply`, with a `user` slot, since a generator with no `user` slot sends no user message (`packages/core/src/blocks/internal/message-assembly.ts:87-89`). The three blocks type-check with `orders.ts`.
 
 ## 5 · Fact check
 
@@ -66,6 +67,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Post-loop edit: the three suspected inaccuracies, checked. Evaluators take `uses` (`packages/core/src/blocks/evaluator.ts:391`), so line 73 now says every kind of block takes it. A capability that brings context or tools to a non-generator throws when the block is built (`packages/core/src/capability/merge.ts:561-590`); lines 73 and 148 now say that plainly. Capabilities can declare state (`define-capability.ts:128-133`), so line 147 stands.
 
 - Post-review edit: control tools pass the fence by design, `packages/core/src/capability/types.ts:100-121`; generator collects them with the fence up, `generator.ts:3006-3035`.
+- Re-run after the review edit: no wrong claim. `inputSchema` and the `user` slot are valid generator fields and `user` supplies the user message (`packages/core/src/types/block.ts:611-612,1073`; `packages/core/src/blocks/generator.ts:3145-3162`).
 
 ## 6 · Depth pass
 

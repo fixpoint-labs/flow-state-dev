@@ -46,6 +46,7 @@ Written by `docs-writer` (sonnet), 774 words. Scenario: The support desk: flow `
 - Post-review edit (Codex on #5226): a request sent through `useAction` is not followed by a default `useSession`. Re-ran check-docs-page.mjs: ok.
 
 - Post-review edit (Cursor security review on #5226): line 76, the figure description and the figure's key label (`STAYS ON THE SERVER` → `NOT IN CLIENT DATA`) now describe client data, not the stream. Re-ran check-docs-page.mjs and lint-brand: ok.
+- After the loop (review): the opening no longer says nothing else gets through; a live `state_change` item carries the raw delta, unexposed fields included (`packages/react/src/internal/mergeStateChangeIntoSnapshot.ts:11`; FIX-2730).
 
 ## 5 · Fact check
 
@@ -60,6 +61,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 d5d
 - Post-review edit: same facts as items 12, 13 and the C-06 reconnect sentence (`useSession` resumes on its own); no new claim.
 
 - Post-review edit (Codex on #5226), checked against the code: a request sent through `useAction` is not followed by a default `useSession` (`react/src/hooks/useSession.ts:1918-1919`); `client.expose` narrowed to client data, since `state_change` deltas carry raw unexposed keys (`react/src/internal/mergeStateChangeIntoSnapshot.ts:8-14`).
+- Re-run after the review edit: no wrong claim. Client data is the exposed projection and the stream's `state_change` delta carries raw keys (`packages/react/src/internal/mergeStateChangeIntoSnapshot.ts:8-13`; `packages/contracts/src/items/types.ts:554-565`).
 
 ## 6 · Depth pass
 
