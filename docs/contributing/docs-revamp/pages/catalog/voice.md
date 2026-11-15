@@ -33,7 +33,7 @@ export default createFlowState({
 });
 ```
 
-Without a provider, a flow that asks for audio skips it and its text streams as normal. If you build the HTTP router yourself, the same provider goes in `createFlowApiRouter({ registry, voiceProvider })`. The [Voice reference](../reference/voice.md) lists both settings and the status codes.
+`OpenAIVoiceProvider` throws when it is constructed without a key, so if a deploy might lack one, create the provider only when the key is set and leave `voice` out otherwise. With no provider, a flow that asks for audio skips it and its text streams as normal. If you build the HTTP router yourself, the same provider goes in `createFlowApiRouter({ registry, voiceProvider })`. The [Voice reference](../reference/voice.md) lists both settings and the status codes.
 
 ## Turn on audio for a flow
 
@@ -96,8 +96,8 @@ export function VoiceChat({ sessionId }: { sessionId: string }) {
 Hold the button and the browser records. While you speak, `interimTranscript` shows the browser's live guess. Release and the recording goes to the server for transcription, the transcript is sent to `run`, and the reply is spoken as it streams in.
 
 - **The client asks for audio.** `useVoice` requests speech with each action it sends. A message sent any other way gets text only. Set `autoPlayTTS: false` to turn speech off.
-- **Check `isAvailable`.** It is `false` on the first render and when the browser cannot record.
-- **The server's transcript wins.** If server transcription fails, the hook sends the interim text instead, when there is some.
+- **Check `isAvailable`.** The hook records with the browser's `MediaRecorder` over `navigator.mediaDevices.getUserMedia`, and plays replies through the Web Audio `AudioContext`, queued in order. `isAvailable` is `false` on the server render and the first client render, then turns `true` only once an effect finds both `getUserMedia` and `MediaRecorder`. While it is `false`, `startListening` does nothing, so disable or hide the button until it is `true`.
+- **The server's transcript wins.** The text sent to the flow is the server's transcript. If server transcription fails, the hook sends the interim text instead when there is some, and sends nothing when there is not. An empty transcript is never sent.
 - **Batch and streamed audio play the same.** Your component does not change if you switch providers.
 
 The rest of the return value, the transcription endpoint and its status codes are on the [reference](../reference/voice.md).
@@ -107,6 +107,11 @@ The rest of the return value, the transcription endpoint and its status codes ar
 The server reads the text your flow streams, splits it into sentences, and synthesizes each one in order. A provider that streams audio sends each sentence as chunks, so playback starts before the sentence finishes. Any other provider sends each sentence whole. `OpenAIVoiceProvider` sends whole sentences.
 
 If a sentence fails to synthesize, it is skipped and the text carries on. If a sentence produces no audio within 15 seconds, it is skipped the same way. Once audio starts, a long sentence is never cut off. A stream that stalls partway runs until the client disconnects, so set a reverse-proxy idle timeout to bound it. The sentence rule, error events and timeout details are on the [reference](../reference/voice.md).
+
+## When voice is missing or fails
+
+- **No provider on the server.** The flow runs and its text streams and synthesis is skipped, so the customer reads the reply and hears nothing. A recording sent to transcribe gets a 501, so `useVoice` falls back to the interim text if it has any, and otherwise nothing is sent.
+- **The provider fails on one sentence.** That sentence is reported as a non-fatal item and skipped. The text is not stopped, and later sentences are spoken as normal.
 
 Audio you synthesize is stored in the session's items with the reply. The framework does not keep a user's recording.
 

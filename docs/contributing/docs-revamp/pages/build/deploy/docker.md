@@ -10,13 +10,13 @@ You'll build a production image that starts the app with `fsdev serve`, keep the
 
 ## Prerequisites
 
-- A Flow State app with an `fsdev.config.ts` and at least one flow, on Node.js 22 or later. The [Railway recipe](./railway.md#1-put-the-stores-in-fsdevconfigts) shows the config.
+- A Flow State app with an `fsdev.config.ts` and at least one flow, on Node.js 22 or later.
 - [Docker](https://docs.docker.com/get-docker/) installed.
 - One LLM provider API key.
 
 ## 1. Put the SQLite file on `/data`
 
-`fsdev.config.ts` default-exports the result of `createFlowState`. Point the `primary` store, the store every scope uses unless you name another, at a file in a folder you will mount as a volume.
+`fsdev.config.ts` default-exports the result of `createFlowState`. Point the `primary` store, the one the app uses by default, at a file in a folder you will mount as a volume.
 
 ```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
@@ -33,7 +33,7 @@ export default createFlowState({
 
 ## 2. Write the Dockerfile
 
-`fsdev serve` loads `fsdev.config.ts` from the working directory and starts the server, so the image needs your config, your sources and production dependencies. Add `@flow-state-dev/fsdev` and `@flow-state-dev/store-sqlite` to `dependencies`, not `devDependencies`.
+`fsdev serve` loads `fsdev.config.ts` from the working directory and starts the server, so the image needs your config, your sources and production dependencies. Add `@flow-state-dev/fsdev`, `@flow-state-dev/engine` and `@flow-state-dev/store-sqlite` to `dependencies`, not `devDependencies`. The config imports the last two directly, and `--prod` skips anything under `devDependencies`.
 
 ```dockerfile title="Dockerfile"
 FROM node:22-slim
@@ -89,11 +89,16 @@ curl http://localhost:3000/healthz
 
 curl http://localhost:3000/api/flows
 # {"flows":[...]}
+
+# Send the credential your flow's resolvePrincipal accepts.
+curl -X POST http://localhost:3000/api/flows/support/sessions \
+  -H "authorization: Bearer $TOKEN" -H "content-type: application/json" -d '{}'
+# {"session":{"id":"sess_...", ...}}
 ```
 
 `/healthz` returns `200` once the stores are open and `503` while they open. An orchestrator should probe that path and wait through the `503`. The `node:22-slim` image has no `curl`, so probe from outside the container or install it in the image.
 
-To check persistence, create a session through the API, then run `docker restart support-app` and request the same session. The session is there. Remove the container and start a new one with the same `-v`, and the data is there too. Without the volume, the file lives on the container's own disk and goes with it.
+To check persistence, run the `POST` above and copy the `id` from its response. Then run `docker restart support-app` and fetch it with `curl -H "authorization: Bearer $TOKEN" http://localhost:3000/api/flows/sessions/<id>`. The same session comes back. Remove the container and start a new one with the same `-v`, and the data is there too. Without the volume, the file lives on the container's own disk and goes with it.
 
 ## 5. Put a reverse proxy in front
 

@@ -295,3 +295,10 @@ C6. The guide's example file paths (`flows/billing.ts`, `lib/flowstate.ts`) do n
   (`<timestamp>.<rawBody>`), the provider-field table, and caller-identity detail. The page keeps the
   five-minute rejection, the `deliveryId` location (fact 31), and one clause each on `requireUser: false`
   and `sessionId` (facts 45, 50, 51).
+
+## Resolved in the page (revise round 2)
+
+- `src/lib/ledger.ts` is now shown as a stub; the tc check had no file at that path.
+- `flows: [billingFlow()]` re-verified: createFlowState.ts:372-377 throws on the keyed record form, so the older guide's object form (guide :84) is the stale one.
+- Fact 31: the page no longer says where a block reads the delivery id (no cited accessor in a block); it points to the reference.
+- Step 3 outcome: the 202 is observable (fact 41); the log line is not cited, so the page tells the reader to check the ledger.

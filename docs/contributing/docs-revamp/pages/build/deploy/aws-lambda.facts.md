@@ -110,6 +110,11 @@ Legend: **[page]** the page states it. **[ref]** belongs on a Reference page; th
 - Whether a client disconnect stops the function (Q verify above).
 - Cost and memory sizing.
 
+## Revise round 2 (page state)
+
+- Production auth on the page is now IAM auth on the Function URL or `resolvePrincipal` (Q1.17). API Gateway is no longer recommended, because which gateway setup keeps SSE streaming is **[verify]** and not claimed.
+- The "arrives all at once" entry says a gateway or proxy in front can hold the response, softened per Q1.13 (**[verify]**: AWS behaviour depends on gateway type and integration; the page names none).
+
 ## Revise round 1 (page state)
 
 - The handler example uses `postgresStores` from `@flow-state-dev/store-postgres` with `connectionString: process.env.DATABASE_URL`, `flows: [helloChat]`, and imports `./flows/hello-chat/flow.js`; the verify curls name `hello-chat` and action `chat` to match. Closes the two contradictions above.

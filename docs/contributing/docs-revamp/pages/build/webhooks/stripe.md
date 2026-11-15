@@ -17,7 +17,15 @@ The flow says which Stripe event runs which block. The secret and the signature
 check go on the server, in step 2.
 
 `recordPayment` is the block that does the work. `ledger` is your own helper
-that writes to your database.
+that writes to your database; this stub stands in for it.
+
+```ts title="src/lib/ledger.ts"
+export const ledger = {
+  async recordPayment(invoiceId: string, cents: number): Promise<void> {
+    // Replace with an upsert into your database, keyed on invoiceId.
+  },
+};
+```
 
 ```ts title="src/flows/billing/blocks/record-payment.ts"
 import { handler } from "@flow-state-dev/core";
@@ -111,8 +119,9 @@ The endpoint is `POST /api/flows/billing/webhooks/stripe`.
 `stripeWebhookVerifier` checks the `Stripe-Signature` header against your secret
 and rejects deliveries older than five minutes.
 
-`deliveryId` puts Stripe's event id on `metadata.webhook.deliveryId`. Use it if
-your block has no natural key like `invoiceId` to dedup on.
+The `deliveryId` extractor records Stripe's event id on each delivery. The
+reference covers using it to dedup when a block has no natural key like
+`invoiceId`.
 
 ## 3. Test it locally
 
@@ -137,8 +146,8 @@ Then trigger an `invoice.paid` event from another terminal:
 stripe trigger invoice.paid
 ```
 
-The CLI reports a `202` from your endpoint, and your `recordPayment` block runs
-in the server logs.
+The CLI reports a `202` from your endpoint. The block runs after the response,
+so check your ledger for the invoice id.
 
 The [webhook receivers reference](/docs/server/webhooks) covers the other
 response codes, `route` for dynamic mapping, the `when` predicate and

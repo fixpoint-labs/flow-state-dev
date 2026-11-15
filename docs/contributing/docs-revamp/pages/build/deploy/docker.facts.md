@@ -89,3 +89,9 @@ The page stores data (the SQLite file), so the four questions follow.
 31. **`node:22-slim` ships no `curl`, so the page has no `HEALTHCHECK`** (fact 3) and says to probe `/healthz` from outside or install curl. **[page]**
 32. **A missing provider key does not stop startup.** The model resolver throws `No provider available for "<provider>"` when a call is resolved (`packages/core/src/models/createModelResolver.ts:1222-1231`). Startup stops for `Refusing to bind` (fact 11), a port in use, or missing flow sources. **[page]**
 33. **`createFlowState({ onError })` receives `(error, context)`**; the page's config no longer uses it. **[cut]**
+
+## Revise round 2: facts the page now states
+
+34. **`@flow-state-dev/engine` belongs in `dependencies`.** The config imports `createFlowState` from it, and `--prod` skips `devDependencies` (`packages/fsdev/package.json:61-66` lists engine as an fsdev dependency, but a strict package manager does not expose a transitive package to the app's own imports). **[page]**
+35. **A `.ts` config loads without a compile step.** `fsdev` has `jiti` as a runtime dependency; `tsx` is a devDependency only (`packages/fsdev/package.json:61-69`, `:80-84`). The loader tries native `import()`, then jiti on `ERR_MODULE_NOT_FOUND`, `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` and similar (`packages/fsdev/src/import-config-module.ts`), so `--prod` needs no dev-only loader. Supersedes the `tsx` claim in fact 6. The Docker build itself is still unrun. **[page]**
+36. **Session create and fetch.** `POST /api/flows/:flowKind/sessions` answers `201 {"session":{"id", ...}}` (`packages/engine/src/routes/router.ts:124`; `session-routes.ts:401-478`); `GET /api/flows/sessions/:sessionId` answers `200 {"session":{...}}` (`router.ts:58`; `session-routes.ts:394`). With a resolver the owner is the resolved principal and `body.userId` is ignored; the bearer header is the resolver's example (`apps/docs/docs/server/authentication.md`). **[page]**

@@ -26,7 +26,7 @@ pnpm add -D tsx
 
 ## 2. Mount the API route
 
-Pass the `flowstate` handle from step 3 to `createVercelNextHandler`. Pass the handle itself, not `flowstate.getRouter()`; stores that connect asynchronously need it.
+Pass the `flowstate` handle from step 3 to `createVercelNextHandler`. `createVercelNextHandler` takes the `flowstate` handle itself.
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";
@@ -41,7 +41,7 @@ export const dynamic = "force-dynamic";
 
 Write the three config lines as literal `export const` declarations. Re-exports such as `export { runtime } from "..."` don't work, because Next.js reads them at build time. `dynamic` stops Next.js caching the stream routes. `maxDuration` is the longest a function may run, in seconds. Your Vercel plan's limit wins if it is lower.
 
-A `[...path]` catch-all needs at least one segment, so the bare `/api/flows` listing endpoint needs its own route:
+A `[...path]` catch-all needs at least one segment, so the bare `/api/flows` listing endpoint needs its own route. `createVercelBareHandler` takes a function that returns the router:
 
 ```ts title="app/api/flows/route.ts"
 import { flowstate } from "@/lib/flowstate";
@@ -50,7 +50,7 @@ import { createVercelBareHandler } from "@flow-state-dev/vercel";
 export const { GET, POST } = createVercelBareHandler(() => flowstate.getRouter());
 ```
 
-On event-stream responses the adapter sets `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no`, so Vercel's proxy doesn't buffer tokens. The engine, not the adapter, sends the keep-alive pings that hold a stream open. See the [`@flow-state-dev/vercel` reference](/reference/api/vercel) for every export.
+On event-stream responses the adapter sets `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no`, so Vercel's proxy doesn't buffer tokens. See the [`@flow-state-dev/vercel` reference](/reference/api/vercel) for every export.
 
 ## 3. Describe the runtime
 
@@ -90,7 +90,7 @@ FSD_DB_URL=postgresql://...
 FSD_ENV=prod
 ```
 
-`FSD_DB_URL` wins over `DATABASE_URL`, which keeps the name from colliding with other services. Add any provider keys your flows use. Values in `.env.local` are not synced to Vercel, so set each one for the environments you deploy to (Production, Preview, Development). See the [environment reference](/reference/environment).
+Use `FSD_DB_URL` if another service already owns `DATABASE_URL`. Add any provider keys your flows use. Values in `.env.local` are not synced to Vercel, so set each one for the environments you deploy to (Production, Preview, Development). See the [environment reference](/reference/environment).
 
 ## 5. Create the schema at build time
 
@@ -150,7 +150,7 @@ curl -N https://your-app.vercel.app/api/flows/my-flow/requests/REQUEST_ID/stream
 ## Limits
 
 - A Vercel function has a maximum duration for your plan, see [Vercel's function limits](https://vercel.com/docs/functions/limitations). A flow that outruns it is cut off. For long-running flows, use [Railway](/guides/deploying-to-railway) or [Docker](/guides/deploying-with-docker).
-- The adapter marks the disk as ephemeral on Vercel, so an attachment upload to a blob store that keeps bytes on the host is refused with status 501.
+- On Vercel, an attachment upload is refused with status 501 if your blob store writes to local disk. Use a remote blob store.
 - The HTTP API adds no CORS headers. If your frontend is on another domain, add them in Next.js middleware.
 
 ## Troubleshooting

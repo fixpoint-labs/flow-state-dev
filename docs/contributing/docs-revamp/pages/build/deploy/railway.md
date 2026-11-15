@@ -1,7 +1,7 @@
 ---
 title: Deploy to Railway
 type: recipe
-description: "How to deploy a flow-state-dev application as a long-running Node.js server on Railway, with SQLite on a volume."
+description: "How to deploy a Flow State app as a long-running Node.js server on Railway, with SQLite on a volume."
 ---
 
 # Deploy to Railway
@@ -10,7 +10,7 @@ Railway runs your app as a long-lived Node.js process in a container, so SSE str
 
 ## Prerequisites
 
-- Node.js 22+ project with flow-state-dev and at least one flow
+- A Node.js 22+ Flow State project with at least one flow
 - A [Railway account](https://railway.app)
 - The [Railway CLI](https://docs.railway.app/guides/cli), optional
 - At least one LLM provider API key
@@ -33,7 +33,7 @@ export default createFlowState({
 });
 ```
 
-`helloChat` is a flow defined in its own file. `flows` is a list, not an object. The folder in `filename` must already exist; the file is created on first use.
+`helloChat` is a flow defined in its own file. The folder in `filename` must already exist; the file is created on first use.
 
 Install the SQLite store:
 
@@ -50,7 +50,7 @@ aptPkgs = ["build-essential", "python3"]
 
 ## 2. Add a start script
 
-`fsdev serve` starts a production HTTP server from that config. It binds `$PORT` (Railway sets it) on `0.0.0.0`, serves the flow API at `/api/flows` and a health check at `/healthz`, and shuts down cleanly on `SIGTERM`.
+`fsdev serve` starts a production HTTP server from that config. It binds `$PORT` on `0.0.0.0`, serves the flow API at `/api/flows` and a health check at `/healthz`, and shuts down cleanly on `SIGTERM`.
 
 ```json title="package.json (relevant fields)"
 {
@@ -60,20 +60,11 @@ aptPkgs = ["build-essential", "python3"]
 }
 ```
 
-`fsdev` ships in `@flow-state-dev/fsdev`. Add it to `dependencies`, not `devDependencies`, so Railway's install has it.
+`fsdev` ships in `@flow-state-dev/fsdev`. Add that package to the project if it is not there.
 
 `fsdev serve` refuses to bind a network address when a flow has no `authentication.resolvePrincipal`, because the server would trust any `userId` a caller sends. Configure authentication on your flows. To deploy without it, use `fsdev serve --allow-unauthenticated`.
 
-To own the entry file instead, call `serve` from `@flow-state-dev/node`. It does not run the authentication check.
-
-```ts title="src/server.ts"
-import { serve } from "@flow-state-dev/node";
-import flowState from "../fsdev.config";
-
-await serve(flowState);
-```
-
-Then the start script is whatever runs that file.
+To own the entry file instead, call `serve(flowState)` from `@flow-state-dev/node`. It does not run the authentication check.
 
 ## 3. Set variables
 

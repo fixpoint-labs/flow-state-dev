@@ -51,7 +51,7 @@ The handler serves the `/api/flows` routes and the `/healthz` endpoint. Every en
 
 ## 2. Enable response streaming
 
-SSE only works on Lambda when the function streams its response. SSE needs both of these:
+For SSE to work on Lambda, the function has to stream its response:
 
 - The handler uses Lambda's streaming runtime. `createLambdaHandler` does this for you.
 - The function is invoked in streaming mode. Configure a **Function URL** with `InvokeMode: RESPONSE_STREAM`.
@@ -65,7 +65,7 @@ aws lambda create-function-url-config \
 
 Without `RESPONSE_STREAM`, Lambda buffers the whole response and SSE events arrive only after the flow finishes.
 
-`--auth-type NONE` is for the smoke test only. A public URL lets any caller act as any user and run billed model calls. For production, put IAM auth, an API Gateway authorizer, or your own auth proxy in front of the function. See [Authentication](/docs/server/authentication).
+`--auth-type NONE` is for the smoke test only. A public URL lets any caller act as any user and run billed model calls. For production, switch the Function URL to IAM auth, or give `createFlowState` a `resolvePrincipal` so the app verifies the caller itself. See [Authentication](/docs/server/authentication).
 
 ---
 
@@ -137,7 +137,7 @@ The first request after idle pays initialization: loading the bundle, opening th
 
 ### SSE arrives all at once
 
-The function is buffering. Confirm the Function URL uses `RESPONSE_STREAM`, and that you're calling the Function URL directly rather than going through an API Gateway stage that re-buffers.
+The function is buffering. Confirm the Function URL uses `RESPONSE_STREAM`, and that nothing sits between the client and the Function URL. A gateway or proxy in front can hold the response until it ends, so test against the Function URL directly.
 
 ### Function times out mid-stream
 

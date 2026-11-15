@@ -162,3 +162,10 @@ Cite for rows 3 and 4: `uv:181-190` (the hook reads batch parts with audio and s
 - `defineFlow(...)` returns a flow type; calling it returns the `FlowInstance` that `createFlowState({ flows })` takes. `ks/flows/chat-agent/flow.ts:35,134` (`const chatAgentFlow = defineFlow({...}); const flow = chatAgentFlow();`). The page's `chat` is `defineFlow({...})()`.
 - The flow's one block is now shown: `src/flows/chat/blocks/reply.ts`, a `generator` with `name`, `model`, `prompt`, `user`, the shape in `docs/contributing/docs-revamp/pages/catalog/patterns/response-auditor.md:35-40`. It streams the text the voice pipeline reads (section 2).
 - The custom provider no longer imports a client: `speakStream` reads a `fetch` response body with `getReader()` and yields `{ kind: "audio", bytes, mediaType }`. Chunk type is `Uint8Array`.
+
+## Revise round 3 (cold-read gaps)
+
+- Browser features and first render: `MediaRecorder` over `navigator.mediaDevices.getUserMedia({ audio: true })` records (`packages/react/src/voice/audio-recorder.ts:20-60`); Web Audio `AudioContext` plays, decoded and queued in order (`audio-player.ts:15-18,47,57`). `isAvailable` is `false` on server render and first client render, `true` only after an effect finds both; `startListening` does nothing while `false` (`uv:85-93,208`).
+- No provider: run continues text-only (`ra:1895-1898`; `fa:68-73`), transcribe route returns 501 (`fa:68-73`, `sr:384-390`). `OpenAIVoiceProvider` needs a key at construction, so wire it only when a key exists (`ks/fsdev.config.ts:171-179`).
+- One sentence fails: reported as a non-fatal item, text continues (`packages/engine/test/tts-pipeline.test.ts:106-170`).
+- Transcription throws: interim transcript sent if non-empty, else nothing; empty transcript never sent (`uv:268-278`).

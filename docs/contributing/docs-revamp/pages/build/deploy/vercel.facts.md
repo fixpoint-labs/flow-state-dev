@@ -24,7 +24,7 @@ Legend: **[page]** the page states it. **[ref]** belongs on `reference/runtime` 
 
 ## Contradictions and corrections
 
-- **[contradiction] Who sends heartbeats.** `old` line 48-51 and `rd` "What it does" say the Vercel handler injects heartbeat comments. `h:7-9` and `h:94-96` say the engine emits them for every live and GET-attach stream and the adapter does not. `ht:137-144` pins that a POST SSE response through the adapter carries no `: ping`. Ruling: the engine sends them, default every 15 s (`packages/engine/src/routes/http-handlers.ts:211,282-285`; `createFlowApiRouter.ts:163`; `ov:157-159`). The page says the engine, not the adapter. Config: `createFlowState({ defaultSseHeartbeatMs })` (`fst:265`), per flow `defineFlow({ request: { sseHeartbeatMs } })` (`ov:159`). `0` disables (`createFlowApiRouter.ts:163`). [ref]
+- **[contradiction] Who sends heartbeats.** `old` line 48-51 and `rd` "What it does" say the Vercel handler injects heartbeat comments. `h:7-9` and `h:94-96` say the engine emits them for every live and GET-attach stream and the adapter does not. `ht:137-144` pins that a POST SSE response through the adapter carries no `: ping`. Ruling: the engine sends them, default every 15 s (`packages/engine/src/routes/http-handlers.ts:211,282-285`; `createFlowApiRouter.ts:163`; `ov:157-159`). The page does not say who sends them (round 2: nothing on the page asks). Config: `createFlowState({ defaultSseHeartbeatMs })` (`fst:265`), per flow `defineFlow({ request: { sseHeartbeatMs } })` (`ov:159`). `0` disables (`createFlowApiRouter.ts:163`). [ref]
 - **[contradiction] "Next.js 14+" prerequisite.** `old:16` says Next.js 14+; `nx` import path `@flow-state-dev/vercel/next` requires Next.js 15+ (`old:53`, `rd` "`@flow-state-dev/vercel/next`"). Ruling: the page says 15+ for this handler. The lower-level `createVercelHandler` also awaits `ctx.params` as a Promise (`h:54-55,126`), which is the Next 15 shape.
 - **[verify]** `waitUntil` is declared on `VercelHandlerOptions` (`ty:33-39`) but `handler.ts` never reads `options.waitUntil` (`h:66` reads only `onAbort`; grep finds no other use). The working keep-alive is `createFlowState({ onBackgroundWork })` (`fst:208-217`). Keep `waitUntil` off the page. Also `createVercelBareHandler` does not call `onAbort` (`h:162-170`).
 
@@ -109,6 +109,11 @@ Legend: **[page]** the page states it. **[ref]** belongs on `reference/runtime` 
 - Resolve the `models` versus `modelResolver` disagreement (Q3 store item 4) before drafting the example file.
 - Confirm the response fields in the curl verification step.
 - Plan limits table: link to Vercel, do not reprint.
+
+## Round 2 revisions
+
+- Handle-versus-factory rule scoped to each route: `createVercelNextHandler(flowstate)` takes the handle; `createVercelBareHandler` takes a router factory (`h:140-175`, `nx:17-21`). Both resolve the router lazily, so the bare route's `() => flowstate.getRouter()` is correct. The async-store clause is off the page.
+- Q1.12 on the page: 501 when the blob store writes to local disk; no blob store page exists to link.
 
 ## Round 1 revisions
 
