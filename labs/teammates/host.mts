@@ -71,7 +71,7 @@ import { githubSubscriptionProvider, projectSourceTools } from "@flow-state-dev/
 import { workforce } from "@flow-state-dev/workforce/kit";
 import { readWorkforceFolder } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
-import { checkoutCommandProblem, localWorkspaceHost, parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { checkCommandsFrom, localWorkspaceHost, parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
 
 /** The workers, beside this file. */
 const TEAMMATES_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
@@ -229,18 +229,12 @@ export function setupCommand(value: string | undefined): WorkspaceSetup | undefi
 /**
  * The checks `TEAMMATES_CHECKS` names, `;`-separated: `pnpm typecheck; pnpm test`.
  * Each is one command with no shell, so a `;` can only separate two of them.
- * `undefined` when unset or blank.
+ * `undefined` when unset or blank. The parse is the workspace's `checkCommandsFrom`; this names the setting.
  *
  * @throws When a command can't be split into words, or uses a shell operator.
  */
 export function checkCommands(value: string | undefined): string[] | undefined {
-  if (value === undefined || value.trim() === "") return undefined;
-  const commands = value.split(";").map((command) => command.trim()).filter((command) => command !== "");
-  for (const command of commands) {
-    const problem = checkoutCommandProblem(command);
-    if (problem !== undefined) throw new Error(`TEAMMATES_CHECKS: ${problem}`);
-  }
-  return commands;
+  return checkCommandsFrom(value, "TEAMMATES_CHECKS");
 }
 
 /**

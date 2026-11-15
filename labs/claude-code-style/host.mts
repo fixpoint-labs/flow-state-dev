@@ -58,7 +58,7 @@ import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
 import { githubSubscriptionProvider, projectSourceCapability } from "@flow-state-dev/workforce";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import Database from "better-sqlite3";
-import { checkoutCommandProblem, localWorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { checkCommandsFrom, localWorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { defineProjectsFlow, PROJECTS_FLOW } from "./flows/projects.mts";
 import { REPOSITORY_FIELD, sessionFields } from "./flows/session-repository.mts";
 
@@ -139,18 +139,12 @@ function operatorGitHub(operator: string, token: string | undefined, apiUrl: str
 /**
  * The checks `CLAUDE_CODE_STYLE_CHECKS` names, `;`-separated: `pnpm typecheck; pnpm test`.
  * Each is one command with no shell, so a `;` can only separate two of them.
- * `undefined` when unset or blank.
+ * `undefined` when unset or blank. The parse is the workspace's `checkCommandsFrom`; this names the setting.
  *
  * @throws When a command can't be split into words, or uses a shell operator.
  */
 export function checkCommands(value: string | undefined): string[] | undefined {
-  if (value === undefined || value.trim() === "") return undefined;
-  const commands = value.split(";").map((command) => command.trim()).filter((command) => command !== "");
-  for (const command of commands) {
-    const problem = checkoutCommandProblem(command);
-    if (problem !== undefined) throw new Error(`CLAUDE_CODE_STYLE_CHECKS: ${problem}`);
-  }
-  return commands;
+  return checkCommandsFrom(value, "CLAUDE_CODE_STYLE_CHECKS");
 }
 
 /** A schedule index in a SQLite file of its own: the index has one table, and one index ticks one flow. */
