@@ -117,8 +117,11 @@ It comes down to the cost on every list: the fallback reads a message per untitl
   project set, standing rules) never hides a running reply. Waiting tasks are read only for the
   sessions the list answers (at most 100).
 - **Session turns** (workforce, roster flow, keyed by request id): a turn is a request whose action
-  is `RESPOND_ACTION` (the door) or `TASK_SETTLED_ENTRY` (a settled task's turn), the constants
-  imported, not copied; both views read this one set.
+  runs the session's turn block: `RESPOND_ACTION` (the door), `TASK_SETTLED_ENTRY` (a settled
+  task's turn), `MESSAGE_RECEIVED_ENTRY` (a worker's message) and the coordinator's
+  `ROUTE_ON_ACTION` (its later rounds). Workforce exports these once as a frozen set next to the
+  keys, built from the constants, not copied; both views read it, and an entry that runs a turn
+  joins it in the same change.
 - **The words stay on the stream.** A view runs whole per notice and a reply publishes `items` per
   stored chunk, so no view carries a thread's words; a screen joins `sessionFeed` and the turns
   view, as FIX-2628 already keeps the transcript on its session address.
