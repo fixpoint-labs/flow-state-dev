@@ -115,3 +115,13 @@ The page stores nothing at runtime. The one thing that outlives a request is the
 - `chatAssistantRenderers`: the page shows one use example (compiled against kitchen-sink: `FlowProvider`, `ItemsRenderer`, `useSession` from `@flow-state-dev/react`; `Conversation`, `ConversationContent` from `.../conversation`; `SourcesGroup` from `.../sources`) and says sources are not drawn by the map (`rc/chat-assistant.tsx:54`). The map's contents and the override rule are **[ref]**.
 - Common components: described as "most take plain props, or one item to draw, and need no provider" (flags 1 and 2); the page no longer claims "no dependency on `@flow-state-dev/*`" or `role`/`content`/`isStreaming` props.
 - Architecture section and the contributor Storybook pointer are cut (contributor material, section 8).
+
+## 10. Revision round 2
+
+- "Item" is glossed on first use as one entry in a session (a message, tool call and so on). Install units are called "registry item" ("`tokens` registry item", "`chat-assistant` registry item"); bare "item" means a Flow State item. Section 4 sources unchanged.
+- Flow-aware sentence now states only the conclusion: render them inside `FlowProvider` (reads in section 4: `useFlowContext`, `SessionItemsProvider`, hooks). The three mechanisms stay in section 4 and Reference.
+- Generative: "a shape's tool and renderer share a name, so the card the generator picks is the one that draws" (`apps/docs/docs/ui/generative.md:34,69`; `packages/ui/README.md:141`).
+
+## 11. Revision round 3
+
+- Line 'not runtime imports' scoped to exclude the generative pair. Generative section opens with what the reader gets; 'generator' glossed as the block that calls the model. Info card and link card are real shapes (section 2). `chatAssistantRenderers` is described as mapping 'the standard item types' and leaving out sources (`source: false`, `rc/chat-assistant.tsx:54`; also `block_trace`, task and debate internals set to `false`, section 4). 'building blocks' replaced by 'components'.

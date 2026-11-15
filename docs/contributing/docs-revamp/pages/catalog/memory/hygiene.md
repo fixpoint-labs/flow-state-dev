@@ -8,13 +8,19 @@ description: Keep a long-lived store useful: old and stale memories lose out.
 
 Long-lived agents accumulate state. Stable facts pile up. Episodes from a year ago sit next to episodes from this morning. Without hygiene, a fact extracted at high confidence yesterday and an equally confident fact from eighteen months ago rank identically when you call `recall()`, and the store only grows. The longer the agent runs, the less useful it gets.
 
-Hygiene is the maintenance pass that keeps that from happening. It is on by default whenever memory has a semantic or episodic tier. The pass runs as a block called the janitor (`mem.janitor`), it is deterministic, and it makes no model calls. By default it runs after each consolidation, not every turn. Each pass does the following:
+Hygiene is the maintenance pass that keeps that from happening. It is on by default whenever memory has a semantic or episodic tier. The pass runs as a block called the janitor (`mem.janitor`), it is deterministic, and it makes no model calls. By default it runs after consolidation, not every turn; see [When it runs](#when-it-runs).
+
+Each episode is classified when it is recorded, as either *persistent* or *permanent*, and a record with no classification counts as persistent. Persistent episodes can age out. Permanent ones are never deleted. The [memory overview](./index) covers the tiers. Each pass does the following:
 
 - **Decays confidence.** Each semantic fact has an *effective confidence*: its stored score, decayed by the time since the fact was last reinforced. Facts that fall below a floor are removed.
 - **Ages out episodes.** Persistent episodes past a turn-count or age threshold are deleted. Permanent episodes are never deleted. After a long time they get a `stale: true` marker instead.
 - **Drops dangling relation edges.** When [relations](./relations) are on, edges whose endpoint fact was removed go with it.
 
-Every episode is either persistent or permanent. The [memory overview](./index) covers the tiers.
+## When it runs
+
+By default (`schedule: "onConsolidation"`) the janitor runs as part of consolidation, after new facts are written. Consolidation starts after 5 new episodes, at most once every 4 turns, or when persistent items are evicted from working memory. A short conversation with two or three new episodes never triggers it, so no cleanup happens. In an app with an episodic tier and no semantic tier there is no consolidation, so the janitor runs on each capture instead.
+
+`schedule: "onCapture"` runs it on every capture, every turn, which is rarely worth it. `schedule: "manual"` runs it only when you call it; [Run it yourself](#run-it-yourself) shows how.
 
 ## What happens to a fact from eighteen months ago
 
@@ -57,13 +63,13 @@ export const mem = system({
 });
 ```
 
-This halves a fact's weight every 60 days, culls below `0.05`, and deletes persistent episodes after 30 days. The turn threshold, `permanentStaleDays` and the schedule keep their defaults. The [memory reference](../../reference/memory) lists every field, its default, and the `schedule` values.
+That config halves a fact's weight every 60 days, culls below `0.05`, and deletes persistent episodes after 30 days. The turn threshold, `permanentStaleDays` and the schedule keep their defaults. The [memory reference](../../reference/memory) lists every field, its default, and the `schedule` values.
 
 To turn one half off, set `confidenceDecay: false` or `episodicTTL: false`. To turn hygiene off, pass `hygiene: false`. Recall then ranks on raw `fact.confidence`, no janitor is built, and the stores grow without bound.
 
 ## Run it yourself
 
-For a nightly cron, a cron route or a teardown step, set `hygiene: { schedule: "manual" }` in `src/lib/memory.ts`. The janitor is then never wired in automatically. `mem.janitor` is a block that takes any input and returns nothing, so it can be a step in a sequencer:
+To clean up on your own schedule, such as a nightly cron, a cron route or a teardown step, whatever happens in a conversation, set `hygiene: { schedule: "manual" }` in `src/lib/memory.ts`. The janitor then runs only when you run it. `mem.janitor` is a block that takes any input and returns nothing, so it can be a step in a sequencer:
 
 ```ts title="src/flows/support/blocks/cleanup.ts"
 import { sequencer } from "@flow-state-dev/core";

@@ -46,8 +46,7 @@ repo root. No spec, changeset or internal doc is cited.
     `@flow-state-dev/ui/generative/renderers`. `packages/ui/package.json:5-14`.
 11. `generativeTools()` returns `BlockDefinition[]`, one handler block per shape, spread into a
     generator's `tools`. `tools.ts:28-42`; test `aggregator.test.ts:6-14`. Page example:
-    `tools: [...generativeTools(), webSearch]` EP:44-53 (`webSearch` is the example's own tool, not
-    in the pack).
+    `tools: generativeTools()` (the page example no longer adds an app tool of its own; EP:44-53 had `webSearch`).
 12. `generativeRenderers()` returns `Record<string, ComponentType<{ item: ComponentItem }>>`, passed
     as `renderers={{ component: generativeRenderers() }}`. `renderers.ts:32-49`; test
     `aggregator.test.ts:29-34`; EP:57-67.
@@ -189,3 +188,22 @@ F5. Dashed outline on the run: the tool call and the emit happen within one run 
   puts a generator in `src/flows/<flow>/blocks/<block>.ts`).
 - EP's `FlowProvider` examples carry `ChatUI` and `userId` free; the draft needs a component with
   `userId` as a parameter.
+
+## Revise round 1 (pass 8)
+
+- Key scope: keys dedupe within one request only; the same `id`/`url` in another request is a
+  separate card; keyless items are always shown. `packages/react/src/components/ItemRenderer*`
+  / `ItemsRenderer.ts:103-105`; `contracts/src/items/types.ts:498-508`. Page now says so.
+- The page keeps "a tool can be a sequencer" and "a side chain re-emits the same key" as capability
+  statements; fact 26 covers the re-emit replacing data. Sequencer and `.sideChain()` use inside a
+  tool is not exercised by a `packages/ui` test (still unverified there).
+- The page's generator example uses `model`, `itemVisibility`, `prompt`, `tools`, the same fields
+  as `apps/kitchen-sink/flows/rich-text-component/generators.ts:39-47`; `FlowProvider` takes
+  `flowKind`, `userId`, `renderers`, `children` (`packages/react/src/context/FlowContext.ts:21-45`).
+- Schema fields, tool-description template, `pick` details and the item shape moved to the
+  Reference page (`../reference/ui-components.md`); the Migration note is cut.
+
+## Revise round 2 (pass 8)
+
+- Page example uses `tools: generativeTools()` only, so it type-checks without an app-owned `webSearch`. `fsdev ui add info-card` writes `components/flow-state/generative/info-card.tsx` exporting `InfoCardRenderer` (fact 33; `packages/ui/registry/components/generative/info-card.tsx`); the override example's import depends on that file.
+- `.pick("link-card")` used on both sides so the example shows a narrowed set (pack has two shapes, fact 20).

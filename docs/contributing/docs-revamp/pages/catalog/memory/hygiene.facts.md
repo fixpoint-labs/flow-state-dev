@@ -134,3 +134,15 @@ The sitemap's third question. This page is about something that stores data, so 
 - The page states the default-schedule order (consolidate, janitor, prune) only for the default schedule (flag 7).
 - Relation-edge removal is one bullet; its condition (`createImplicitEntities` false) is **[ref]**.
 - Worked 548-day figures are derived from the formula, not from a test: 0.5^(548/180) = 0.1213; 0.8 gives 0.097, 0.9 gives 0.109.
+
+## 11. Revise round 2
+
+- Persistent and permanent are now defined before the bullet list: each episode is classified when recorded, a record with no classification counts as persistent (`ep:36-45`, doc comment). Who or what assigns the class stays **[gap]**; the page does not say.
+- The standalone sentence after the list is gone; the memory overview link moved into the definition.
+- `schedule: "manual"` is stated as "the janitor then runs only when you run it" (`ms:342-344`; `msb:1837-1840`).
+
+## 12. Revise round 3
+
+- New "When it runs" section states the default trigger (`msb:1428-1440`; `ms:178-183`): consolidation after 5 new episodes, at most once every 4 turns, or on persistent eviction from working memory. Page now states these three numbers (**[page]**, promoted from **[ref]**, because the "short session" question needs them). A two-turn, three-episode session does not trigger it.
+- Episodic-only app: janitor attaches to the capture pipeline (`msb:1838-1851`), stated in one sentence.
+- `onCapture` (`ms:340-342`; `msb:1845-1851`) and `manual` stated as one line each; "Run it yourself" opens on the nightly-regardless case.

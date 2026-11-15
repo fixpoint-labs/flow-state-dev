@@ -149,3 +149,10 @@ Cite for rows 3 and 4: `uv:181-190` (the hook reads batch parts with audio and s
 2. The sentence-boundary rule is tested only by example ("One. Two. " splits at the period, `tts-pipeline.test.ts:92-102`). The kept page's `.`, `!`, `?` plus whitespace is not confirmed here. **[gap]** The page does not state the rule.
 3. `createCompositeVoiceProvider` is exported from `@flow-state-dev/core`, `packages/core/src/index.ts:401`, slot config type at `packages/core/src/types/voice-provider.ts:209`.
 4. `openai` sits under `dependencies` in `packages/voice-openai/package.json` (the block ending `"openai": "^6.38.0"`), as does `@flow-state-dev/core`. Not a peer.
+
+## Revise round 1 (page as rewritten)
+
+- Page now states: opt-in text, three needs, install line, `fsdev.config.ts` with `createFlowState({ flows: [chat], voice: { provider } })` (`flows` is `readonly FlowInstance[]`, `packages/engine/src/flowstate/types.ts:124`), `defineFlow({ voice: { tts } })`, the `useVoice` example, the client opt-in (`ttsEnabled` sent by default, `autoPlayTTS: false` off, `uv:82,247-254`), `isAvailable` (`uv:85-93`), interim-text fallback (`uv:272-278`), sentence-by-sentence synthesis, the 15 s no-audio skip, session storage of audio, a custom-provider example.
+- No ElevenLabs anywhere; per-flow override and composite providers are one sentence each with a Reference link.
+- `OPENAI_API_KEY` is mentioned in the server paragraph; the separate "Environment variables" section is cut. Reference R-15 row still needed.
+- Moved to `../reference/voice.md` (R-43), which does not exist yet: both provider settings and status codes, `voice.tts` option table, sentence rule, error event levels, head-of-line ordering, timeout detail, `useVoice` return table (including `isAvailable`, `Promise<void>` start/stop), transcription endpoint forms and model resolution, `OutputAudioContent`, `VoiceProvider` fields, composite abilities.

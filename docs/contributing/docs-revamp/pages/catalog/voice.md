@@ -6,114 +6,64 @@ description: Speech in and audio out on a flow that already streams text.
 
 # Voice
 
-Add speech input and audio output to a flow. Users speak into a microphone, the framework transcribes the audio to text, runs the flow, then synthesizes the response back to speech. It all layers on top of existing text streaming, so flows that don't opt in are unaffected.
-
-Voice is opt-in on two sides: a `voice.tts` block on the flow (so the server knows to synthesize), and a voice provider on the server (so it knows how to call the TTS/STT APIs).
+Add speech input and audio output to a flow. Users speak into a microphone, the framework transcribes the audio to text, runs the flow, then synthesizes the response back to speech. Text streams as usual. Audio is added alongside it, only on flows that ask for it.
 
 ## What you need
 
-1. **A provider package.** `@flow-state-dev/voice-openai` ships now; an ElevenLabs adapter is planned. A provider is a single object that knows how to `speak`, `transcribe`, and (optionally) stream audio.
-2. **`voice.tts`** on your flow definition, so the server synthesizes that flow's responses.
-3. **`useVoice()`** in React, so the browser captures audio and plays the response.
+1. **A voice provider on the server.** A provider is one object that knows how to turn text into speech and speech into text. Install a provider package, such as `@flow-state-dev/voice-openai`.
+2. **`voice.tts` on your flow definition**, so the server synthesizes that flow's responses.
+3. **`useVoice()` in React**, so the browser records the user and plays the reply.
 
-## Server setup
-
-Pass a single `voiceProvider` to your router. The provider owns both directions of voice (text-to-speech and speech-to-text), so there's one thing to wire instead of two resolver functions.
-
-```ts title="lib/server.ts"
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
-import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
-
-const registry = createFlowRegistry();
-registry.register(myFlow);
-
-export const router = createFlowApiRouter({
-  registry,
-  voiceProvider: new OpenAIVoiceProvider({ apiKey: process.env.OPENAI_API_KEY }),
-});
+```bash
+pnpm add @flow-state-dev/voice-openai
 ```
 
-If you use the higher-level `createFlowState` setup, the provider goes under `voice`:
+## Give the server a provider
 
-```ts
-createFlowState({
-  flows: { myFlow },
+Put the provider under `voice` in the app's config. `OpenAIVoiceProvider` needs a key when it is constructed, so pass one or set `OPENAI_API_KEY`.
+
+```ts title="fsdev.config.ts"
+import { createFlowState } from "@flow-state-dev/engine";
+import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
+import { chat } from "./src/flows/chat/flow";
+
+export default createFlowState({
+  flows: [chat],
   voice: { provider: new OpenAIVoiceProvider({ apiKey: process.env.OPENAI_API_KEY }) },
 });
 ```
 
-`voiceProvider` is optional. Without it, flows that request TTS skip synthesis (text still streams) and the transcribe endpoint returns 501.
+Without a provider, a flow that asks for audio skips it and its text streams as normal. If you build the HTTP router yourself, the same provider goes in `createFlowApiRouter({ registry, voiceProvider })`. The [Voice reference](../reference/voice.md) lists both settings and the status codes.
 
-## Per-flow provider override
+## Turn on audio for a flow
 
-Most apps use one provider for everything. If you need a different one for a specific flow, for example one flow on ElevenLabs while the rest use OpenAI, set `voice.provider` on that flow. It wins over the router-level provider at dispatch time.
+Add `voice.tts` to the flow. The flow's blocks have no voice code in them.
 
-```ts
-defineFlow({
-  kind: "narration",
+```ts title="src/flows/chat/flow.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import { replySequencer } from "./blocks/reply-sequencer";
+
+export const chat = defineFlow({
+  kind: "chat",
   voice: {
-    provider: new ElevenLabsVoiceProvider({ apiKey: process.env.ELEVENLABS_API_KEY }),
-    tts: { voice: "Rachel" },
-  },
-  actions: { /* ... */ },
-});
-```
-
-The per-flow override applies to TTS synthesis only. The transcribe endpoint is HTTP-level (not tied to a flow), so it always uses the router-level provider.
-
-## Flow configuration
-
-Add `voice.tts` to a flow to enable audio synthesis for its responses.
-
-```ts title="flows/my-flow/flow.ts"
-const myFlow = defineFlow({
-  kind: "my-flow",
-  voice: {
-    // `model` is optional — omit it to use the provider's default.
     tts: { voice: "alloy" },
   },
-  actions: { /* ... */ },
+  actions: {
+    run: { block: replySequencer },
+  },
 });
 ```
 
-### TTS options
+`replySequencer` is the flow's block, in its own file beside the flow. `tts` takes an optional `model`, `voice` and `speed`, and each falls back to the provider's default. A flow with no `voice` gets no audio. A flow can also set its own `voice.provider`, which replaces the server's provider for that flow's speech output; transcription always uses the server's. Both are on the [reference](../reference/voice.md).
 
-| Option  | Type     | Default          | Description                                                         |
-| ------- | -------- | ---------------- | ------------------------------------------------------------------- |
-| `model` | `string` | provider default | Speak model id passed to the provider. Omit to use its default.     |
-| `voice` | `string` | provider default | Voice variant (e.g. OpenAI's `alloy`, `echo`, `nova`).              |
-| `speed` | `number` | `1.0`            | Playback speed multiplier.                                          |
+## Speak to it from React
 
-The model now goes straight to the provider; there's no separate resolver to register. If `voice` is omitted from the flow definition entirely, no audio processing happens.
+`useVoice` takes a session and the name of the action that receives the user's words. `buildInput` turns the transcript into that action's input.
 
-## How TTS works
-
-When a flow has `voice.tts` configured and the client opts in, the server's TTS pipeline runs during action execution:
-
-1. As the generator streams text, a sentence buffer collects it and detects sentence boundaries (a `.`, `!`, or `?` followed by whitespace).
-2. Each complete sentence is dispatched to the provider. How depends on what the provider advertises in its `abilities`:
-   - If `abilities.speakStream` is `true`, the pipeline calls `speakStream()` and emits the audio as a sequence of `content.audio.delta` chunks. The browser can start playing the first chunk before the sentence finishes synthesizing.
-   - Otherwise the pipeline calls `speak()` and emits the whole sentence as one `OutputAudioContent` part.
-3. Sentences are emitted strictly in order: every chunk of sentence N flushes before sentence N+1's first chunk.
-
-Synthesis errors are non-fatal. A sentence that fails to synthesize is logged and skipped; text streaming is never interrupted. Retryable provider errors (rate limits, transient network failures) are logged quietly; hard failures are logged at warning level.
-
-## Streaming and the first-chunk timeout
-
-Streaming exists to cut time-to-first-audio. Instead of waiting for a whole sentence to render before any sound plays, a streaming provider emits audio as it generates it.
-
-The tradeoff is head-of-line blocking. Because audio must play in order, sentence N+1 waits for sentence N to finish draining before its chunks go out. For normal speech this is fine; the chunks for one sentence arrive quickly.
-
-There's one timer: a 15-second timeout on the **first** chunk of each sentence. If the provider hasn't produced any audio in that window, the sentence is abandoned as a non-fatal error. After the first chunk arrives, the timer is dropped, so a long sentence won't be cut off mid-stream. If a stream stalls partway through, the escape hatch is the request-level abort signal: when the client disconnects, in-flight synthesis is cancelled. Deployments should still set a reverse-proxy idle timeout to bound the worst case.
-
-## React: `useVoice`
-
-`useVoice` composes with `useSession` to manage the full loop: microphone capture, transcription, and playback. It handles both batch and streaming audio transparently, so nothing changes in your component when you switch to a streaming provider.
-
-```tsx
+```tsx title="src/app/chat/voice-chat.tsx"
 import { useSession, useVoice } from "@flow-state-dev/react";
 
-function VoiceChat() {
+export function VoiceChat({ sessionId }: { sessionId: string }) {
   const session = useSession(sessionId);
   const voice = useVoice(session, {
     action: "run",
@@ -125,88 +75,39 @@ function VoiceChat() {
       <button onPointerDown={voice.startListening} onPointerUp={voice.stopListening}>
         {voice.isListening ? "Listening..." : "Hold to speak"}
       </button>
-      {voice.interimTranscript && <p className="interim">{voice.interimTranscript}</p>}
+      {voice.interimTranscript && <p>{voice.interimTranscript}</p>}
       {voice.isSpeaking && <button onClick={voice.stopSpeaking}>Stop</button>}
     </div>
   );
 }
 ```
 
-### Return value
+Hold the button and the browser records. While you speak, `interimTranscript` shows the browser's live guess. Release and the recording goes to the server for transcription, the transcript is sent to `run`, and the reply is spoken as it streams in.
 
-| Property            | Type         | Description                                            |
-| ------------------- | ------------ | ------------------------------------------------------ |
-| `isListening`       | `boolean`    | Microphone is recording.                               |
-| `isSpeaking`        | `boolean`    | Audio playback is active.                              |
-| `isProcessing`      | `boolean`    | Server is transcribing audio.                          |
-| `interimTranscript` | `string`     | Browser's live (non-final) speech recognition result. |
-| `startListening()`  | `() => void` | Start recording.                                       |
-| `stopListening()`   | `() => void` | Stop recording and transcribe.                         |
-| `stopSpeaking()`    | `() => void` | Stop audio playback.                                   |
+- **The client asks for audio.** `useVoice` requests speech with each action it sends. A message sent any other way gets text only. Set `autoPlayTTS: false` to turn speech off.
+- **Check `isAvailable`.** It is `false` on the first render and when the browser cannot record.
+- **The server's transcript wins.** If server transcription fails, the hook sends the interim text instead, when there is some.
+- **Batch and streamed audio play the same.** Your component does not change if you switch providers.
 
-The browser's Web Speech API supplies the interim transcript for instant feedback, but the authoritative text comes from server transcription on the full recording. When the browser API is missing, `useVoice` still works; you just won't see interim text.
+The rest of the return value, the transcription endpoint and its status codes are on the [reference](../reference/voice.md).
 
-## Transcription endpoint
+## How a reply becomes audio
 
-The server exposes a transcription endpoint:
+The server reads the text your flow streams, splits it into sentences, and synthesizes each one in order. A provider that streams audio sends each sentence as chunks, so playback starts before the sentence finishes. Any other provider sends each sentence whole. `OpenAIVoiceProvider` sends whole sentences.
 
-```
-POST /api/flows/transcribe
-```
+If a sentence fails to synthesize, it is skipped and the text carries on. If a sentence produces no audio within 15 seconds, it is skipped the same way. Once audio starts, a long sentence is never cut off. A stream that stalls partway runs until the client disconnects, so set a reverse-proxy idle timeout to bound it. The sentence rule, error events and timeout details are on the [reference](../reference/voice.md).
 
-Send audio as base64 JSON:
+Audio you synthesize is stored in the session's items with the reply. The framework does not keep a user's recording.
 
-```json
-{
-  "userId": "u_123",
-  "audio": "<base64-encoded audio bytes>",
-  "mediaType": "audio/webm",
-  "language": "en"
-}
-```
+## Write your own provider
 
-Or as raw binary:
+A provider declares what it can do in `abilities` and implements the matching methods. Implement only what you need.
 
-```
-POST /api/flows/transcribe?userId=u_123
-Content-Type: audio/webm
-
-<raw audio bytes>
-```
-
-`model` is optional on both forms. The endpoint resolves it in order: the per-request `model` field wins, then the provider's `defaultModels.transcribe`. If neither is set, the endpoint returns `400 no_model` — there is no built-in default model string. If no provider is configured, or the configured provider can't transcribe, it returns 501.
-
-Response:
-
-```json
-{ "text": "Hello, how are you?", "language": "en" }
-```
-
-You don't need to call this directly when using `useVoice`; the hook handles it.
-
-## Content type: `OutputAudioContent`
-
-Voice adds one member to the `Content` union:
-
-```ts
-type OutputAudioContent = {
-  type: "output_audio";
-  audio: string; // base64-encoded audio data
-  mediaType: string; // "audio/mp3", "audio/wav", etc.
-  transcript?: string; // the text that was synthesized
-};
-```
-
-For batch synthesis this carries the full audio. For streaming, the audio plays via `content.audio.delta` chunks and the snapshot carries the transcript with empty audio (streamed chunks are live-only and not replayable on reconnect).
-
-## Custom providers
-
-A provider implements the `VoiceProvider` interface: an `abilities` object declaring which surfaces it supports, plus the matching methods. Implement only what you need.
-
-```ts
+```ts title="src/lib/my-voice-provider.ts"
 import type { VoiceProvider } from "@flow-state-dev/core";
+import { myApi } from "./my-tts-client";
 
-const myStreamingProvider: VoiceProvider = {
+export const myVoiceProvider: VoiceProvider = {
   id: "my-tts:1",
   providerName: "my-tts",
   abilities: { speak: false, speakStream: true, transcribe: false, listVoices: false },
@@ -219,23 +120,8 @@ const myStreamingProvider: VoiceProvider = {
 };
 ```
 
-The framework branches on `abilities`, so a provider that sets `speakStream: true` automatically gets the streaming path; one that only sets `speak: true` gets the batch path. Providers should throw `VoiceError` (with a typed `kind`) on failure and stop producing audio when the abort `signal` fires.
+`myApi` is your own client for the speech service. The framework reads `abilities`, so `speakStream: true` gets the streaming path and `speak: true` alone gets whole sentences. On failure, throw `VoiceError` with a typed `kind`, and stop producing audio when `signal` aborts. To speak with one provider and transcribe with another, wrap them with `createCompositeVoiceProvider({ speak, transcribe })`. The [reference](../reference/voice.md) has the `VoiceProvider` fields.
 
-## Composite providers
+## Next
 
-To mix providers, for example synthesize with one and transcribe with another, use `createCompositeVoiceProvider`:
-
-```ts
-import { createCompositeVoiceProvider } from "@flow-state-dev/core";
-
-const provider = createCompositeVoiceProvider({
-  speak: elevenLabsProvider,
-  transcribe: openAiProvider,
-});
-```
-
-The composite's `abilities` reflect what the underlying providers actually support.
-
-## Environment variables
-
-Each provider reads its own credentials (e.g. `OPENAI_API_KEY` for `OpenAIVoiceProvider`). See the provider package for specifics.
+- [Voice reference](../reference/voice.md): provider and flow settings, the `useVoice` return value, the transcription endpoint, errors and the audio content type.
