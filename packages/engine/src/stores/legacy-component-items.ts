@@ -7,11 +7,11 @@
  * reads hand it back as `{ type: "data", dataType, value, key? }`, with the
  * same status and key. A keyed item's id moves with it, from
  * `item_component_keyed:<key>` to `item_data_keyed:<key>`, so a request
- * resumed after the change upserts its next keyed snapshot onto the stored
- * entry instead of adding a second one. The same holds for the item an
- * `item.added` or `item.done` event carries, so a stream replayed or resumed
- * from the event log carries data items too. Nothing is rewritten in the
- * store.
+ * resumed after the change reads back one entry for that key, holding its
+ * latest snapshot, though the store keeps the legacy row beside the new one.
+ * The same holds for the item an `item.added` or `item.done` event carries,
+ * so a stream replayed or resumed from the event log carries data items too.
+ * Nothing is rewritten in the store.
  *
  * Applied by the change-bus wrapper (`bus/publish-writes.ts`), the one
  * wrapper every entry that hands the engine a registry applies
@@ -21,6 +21,7 @@
 import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { RequestRecord, RequestStore } from "./types";
+import { mergeItemsById } from "./shared";
 
 const LEGACY_KEYED_ID = "item_component_keyed:";
 const DATA_KEYED_ID = "item_data_keyed:";
@@ -57,7 +58,10 @@ function migrateRecord<R extends RequestRecord | undefined>(record: R): R {
   if (record?.items === undefined || !record.items.some((i) => (i as { type: string }).type === "component")) {
     return record;
   }
-  return { ...record, items: record.items.map(migrateLegacyComponentItem) };
+  // A request resumed after the change wrote its next snapshot of a key
+  // under the new id, next to the stored legacy row: the two are one entry,
+  // in the first one's place, holding the later one's snapshot.
+  return { ...record, items: mergeItemsById(record.items.map(migrateLegacyComponentItem), []) };
 }
 
 type AnyMethod = (...args: any[]) => any;

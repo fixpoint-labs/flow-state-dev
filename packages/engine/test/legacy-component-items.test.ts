@@ -157,6 +157,24 @@ describe("legacy component items read back as data items", () => {
   });
 });
 
+describe("a resumed legacy request that emits its key again", () => {
+  it("reads back one entry for the key, holding the later snapshot", async () => {
+    const raw = createInMemoryStores();
+    const requestId = await seedLegacy(raw, []);
+    const stores = withChangeBus(raw);
+    // What a continuation persists: the record's items as read, with the new
+    // snapshot merged on by id.
+    const prior = (await stores.request.get(requestId))!.items!;
+    const next = { ...prior.find(isPlan)!, value: { steps: ["two"] } } as unknown as RuntimeItem;
+    stores.request.persistItems(requestId, [...prior.filter((i) => !isPlan(i)), next]);
+    await stores.request.flushItems(requestId);
+
+    const plans = (await stores.request.get(requestId))!.items!.filter(isPlan);
+    expect(plans).toHaveLength(1);
+    expect(plans[0]).toMatchObject({ id: "item_data_keyed:plan", value: { steps: ["two"] } });
+  });
+});
+
 describe("a get assigned on the wrapped request store", () => {
   it("runs, migrated, and one that calls the get it replaced does not call itself", async () => {
     const raw = createInMemoryStores();
