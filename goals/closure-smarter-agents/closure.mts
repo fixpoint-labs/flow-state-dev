@@ -22,9 +22,10 @@
  *   `runGoal`.
  */
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createClient, type SessionStateSnapshotResponse } from "@flow-state-dev/client";
 import type { MessageItem, OutputItem, SuspensionItem, ToolOutputItem } from "@flow-state-dev/core/items";
@@ -215,9 +216,19 @@ export function clientFor(origin: string, userId: string, bearer?: string): Fsd 
  * Where {@link planted} keeps what it must put back, until it has: a run the
  * machine killed mid-way (no `finally`, no signal) leaves the app's tree
  * planted, and the next run puts it back from here before it plants anything.
- * One journal per app, so the four scripts can run side by side.
+ * One journal per app and tree ({@link plantKey}), so the four scripts, and a
+ * pass on one tree beside a pass on another, can run side by side.
  */
 const journalFile = (key: string) => join(tmpdir(), `fsd-goal-closure-planted-${key}.json`);
+
+/**
+ * The journal key for one app's run on the tree at `root`: the app and a hash of the tree's path, so a
+ * pass on this checkout and a control on another commit's tree, run side by side, never read each
+ * other's journal as a killed run's and put the other's tree back mid-run.
+ */
+export function plantKey(app: string, root: string): string {
+  return `${app}-${createHash("sha256").update(resolve(root)).digest("hex").slice(0, 12)}`;
+}
 
 type Journal = { before: Record<string, string | null>; made: string[] };
 
@@ -651,7 +662,7 @@ export async function runClosure(driver: AppDriver): Promise<void> {
     for (let n = 1; n <= runs; n += 1) {
       const d = draw();
       const scratch = goalTmpDir(`closure-${driver.app}-${p.pass}-${n}`);
-      await planted(driver.app, () => driver.plant(d, p, scratch), async () => {
+      await planted(plantKey(driver.app, p.root), () => driver.plant(d, p, scratch), async () => {
         // Its server is stopped by `planted`, however this ends.
         const run = await driver.start(d, p, scratch);
         for (const ask of asks) {
