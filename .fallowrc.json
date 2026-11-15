@@ -210,6 +210,10 @@
   // registry's own ToolGroup keeps its `defaultOpen` prop, so neither app calls it.
   // They also carry `knownToolVerbs`, the one tool lookup the Teammates lab's answering line reads.
   "ignoreExports": [
+    // Kitchen Sink's and Shift Manager's byte copies of the registry's task-plan-state
+    // (registry drift test): the data types are exported for the registry's tests and stories.
+    { "file": "apps/kitchen-sink/components/flow-state/task-plan-state.ts", "exports": ["TASK_CHANGE_DATA_TYPE", "TASK_BOARD_META_DATA_TYPE"] },
+    { "file": "packages/shift-manager/src/components/flow-state/task-plan-state.ts", "exports": ["TASK_BOARD_META_DATA_TYPE"] },
     // Shift Manager's byte copy of the registry's connection screen: `retryDelayMs` is exported for
     // the registry's own test, and the copy stays byte-equal to its source (static.test.ts V8).
     { "file": "packages/shift-manager/src/components/flow-state/connection-screen.tsx", "exports": ["retryDelayMs"] },

@@ -166,7 +166,7 @@ function migrateCounts<T extends { held?: number }>(counts: T | undefined): T | 
 }
 
 export const TASK_CHANGE_DATA_TYPE = "task-change";
-const TASK_BOARD_META_DATA_TYPE = "task-board-meta";
+export const TASK_BOARD_META_DATA_TYPE = "task-board-meta";
 
 // ---------------------------------------------------------------------------
 // Section ordering
