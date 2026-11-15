@@ -45,6 +45,7 @@ Skipped: B-12 is kept in the sitemap, and the page was already at `stripe.md`.
 - After revise round 1, page sha256 11738ff19961: exit 1. Failed: type-check of TypeScript examples (4 files written at their title paths under apps/kitchen-sink/.docs-tc-B-12, strict, moduleResolution bundler, against workspace packages; folder deleted afterwards).
 - After revise round 2, page sha256 69465a505590: exit 0.
 - After revise round 3, page sha256 81c8625cdeb9: exit 0.
+- After the loop (review): Pass 7 finding 1: the ledger stub logs `recorded`, the invoice id and cents, and step 3 says the server log shows it. Finding 2: the field path is cut; `deliveryId` records Stripe's event id with each delivery, and keying on `invoiceId` makes a redelivery harmless. Finding 3: the step 2 intro names all three settings. Finding 4: 'keeps running, so leave that terminal open'. The `billingFlow()` suspicion holds no error: `defineFlow` returns a factory. Pass 9 forged-delivery question: the check runs first on the raw body and a forged delivery gets 401 with nothing run. Pass 9 userId question: a paragraph warns against mapping `userId` into `input`. Pass 9 response-codes question: a six-row table of responses. The old-site link points at reference/webhooks. Type-check in apps/kitchen-sink/zz-fix-B-12 (with a `process` declaration), deleted afterwards: only the planted error. 519 words. Page sha256 15ba534f9f80: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
@@ -52,6 +53,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 - Reference row 4: Row 4: an accepted delivery returns 200/202. Untrue: An accepted delivery always returns 202 with status "accepted". A bound but unmatched event also returns 202 (status "ignored"). A 200 comes only from a provider's optional `acknowledge` handshake (Slack's url_verification), and Stripe has none. (/home/user/flow-state-dev/packages/engine/src/transports/webhook/routes.ts:134 (200 handshake), :146 and :273 (202)) The row is recorded corrected.
 - You should see the CLI report a `200`/`202` back from your endpoint. Untrue: With the Stripe provider config on the page (no `acknowledge`), the endpoint answers 202 for an accepted delivery. It never answers 200 here. (/home/user/flow-state-dev/packages/engine/src/transports/webhook/routes.ts:134,273 (page line 136))
+- Re-run after the review edit: 404 `flow_not_found` and `webhook_not_found` before verification (packages/engine/src/transports/webhook/routes.ts:48-57); 401 `invalid_signature` from verify on the raw body (routes.ts:59-71); 400 `invalid_payload` (routes.ts:80); 202 `ignored` (routes.ts:146); 202 `accepted` (routes.ts:274); 300-second tolerance (packages/engine/src/transports/auth/createHmacVerifier.ts:96); the default resolver reads `userId` from the mapped body (packages/engine/src/transports/auth/defaultBodyUserIdPrincipalResolver.ts:31-44).
 
 ## 6 · Depth pass
 

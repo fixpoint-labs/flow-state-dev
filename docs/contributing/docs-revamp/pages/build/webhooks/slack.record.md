@@ -38,6 +38,7 @@ Skipped: B-14 is kept in the sitemap, and the page was already at `slack.md`.
 - After revise round 1, page sha256 b5e31d9b3223: exit 0.
 - After revise round 2, page sha256 0dfa9956d85e: exit 0.
 - After revise round 3, page sha256 1608096dde45: exit 0.
+- After the loop (review): Pass 9 sessions question: a paragraph says two channels make two sessions, both owned by `slack-bot` rather than the posters, and a teammate signed in as someone else gets `Unknown session` (404). Pass 9 timing question: a paragraph says the 202 with `requestId` comes once the request is recorded and before the block runs, a recording failure is a 503 Slack retries, and a block's error lands on the request and shows in DevTool. The old-site link points at reference/webhooks. No example changed. 620 words. Page sha256 dba364d0a689: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
@@ -47,6 +48,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Our `slack` flow runs an `ingestMessage` action; `message` events are routed to `ingestMessage` Untrue: The flow code binds `block: ingestPipeline` (never defined on the page), and `actions` is `{}`. No `ingestMessage` exists in the example. A webhook binding carries its own handler block; it is not an entry in `flow.actions`, and the name used for provenance is `binding.block.name`. (packages/engine/src/transports/webhook/routes.ts:149-153; packages/core/src/types/webhooks.ts:44-52)
 - Reference row 1: Row 1: a returned string is sent as a 200 body Untrue: `acknowledge` returns `BodyInit | null`, so any BodyInit (not only a string) is sent as the 200 body. A throwing `acknowledge` is logged and treated as `null`, and routing continues. (packages/engine/src/transports/webhook/createWebhookTransportAdapter.ts:52; packages/engine/src/transports/webhook/routes.ts:121-136) The row is recorded corrected.
 - Reference row 4: Row 4: the 202 on accepted dispatch has no reply body Untrue: The 202 carries a JSON body `{ status: "accepted", provider, eventType, requestId }`. The action's own output is never returned. An event with no matching binding or failing `when` also gets a 202 with `status: "ignored"`. The 202 is sent only after the request is durably recorded (`handle.accepted`), otherwise 503. (packages/engine/src/transports/webhook/routes.ts:144-147, 255-278) The row is recorded corrected.
+- Re-run after the review edit: the session owned by the resolved principal (packages/engine/src/transports/webhook/session-resolver.ts:46-55); 503 `dispatch_not_durable` when recording fails (packages/engine/src/transports/webhook/routes.ts:255-270); 202 `accepted` with `requestId` (routes.ts:273-278); `Unknown session` 404 (packages/engine/src/routes/route-utils.ts:118).
 
 ## 6 · Depth pass
 

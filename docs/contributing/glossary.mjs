@@ -1468,7 +1468,7 @@ export const AREAS = [
   {
     id: "process",
     scope: false,
-    re: new RegExp(`${TOOLING.source}|^docs\\/contributing\\/glossary\\.mjs$|^docs\\/(PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`),
+    re: new RegExp(`${TOOLING.source}|^docs\\/contributing\\/glossary\\.mjs$|^docs\\/contributing\\/docs-revamp\\/pages\\/reference\\/glossary\\.(facts|record)\\.md$|^docs\\/(PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`),
     why: "process tooling (this glossary and the guard's own test among them)",
   },
   { id: "goals", scope: false, re: /^goals\//, why: "tests of behaviour: renamed identifiers reach them through typecheck, their words stay" },

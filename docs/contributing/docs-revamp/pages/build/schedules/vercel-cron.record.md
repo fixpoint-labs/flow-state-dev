@@ -38,12 +38,14 @@ Skipped: B-15 is kept in the sitemap, and the page was already at `vercel-cron.m
 - After revise round 1, page sha256 0f935677c39b: exit 1. Failed: TypeScript example type-check (scratch folder apps/kitchen-sink/.docs-tc-B-15, extends kitchen-sink tsconfig, deleted afterwards).
 - After revise round 2, page sha256 147a16be5f1a: exit 1. Failed: check-docs-page.
 - After revise round 3, page sha256 e6b3f882bcf8: exit 0.
+- After the loop (review): Pass 9 stranger question: step 3 says the secret is checked twice, the cron route answers 401 and calls nothing onward, and the dispatch endpoint runs the resolver before reading anything else. Pass 9 fire-by-hand question: step 4 adds a GET to the cron route, the 500 for an unset `NEXT_PUBLIC_BASE_URL`, and the schedules listing. Old-site links point at reference/schedules, ./cloud-scheduler and ./eventbridge; the reference links climb two levels (../../reference/), and the auth link names reference/authentication (sitemap R-20). No example changed. 762 words. Page sha256 0af2219bf1ef: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the page as it was kept, sha256 793fe7136e28, and the 13 Reference row(s) pass 6 moved.
 
 - Reference row 13: Vercel caps vercel.json cron entries at "Pro: 40 per project at time of writing; lower on Hobby" (page), and Row 5 / Row 13 repeat a count cap and granularity limit on Hobby as tabled facts. Untrue: Nothing in the repo supports the numbers; they are Vercel's platform limits. From my knowledge of Vercel's published limits, not from the code, the cap is 100 cron jobs per project on every plan, Hobby included, and Hobby is limited to once-per-day schedules rather than a lower count. The 40-on-Pro figure is stale and "lower on Hobby" is wrong. The page and the rows should link to Vercel's docs and not state a number. I could not verify this against the repo. (docs/contributing/docs-revamp/pages/build/schedules/vercel-cron.md:124-125 (also :253-255)) The row is recorded corrected.
+- Re-run after the review edit: the shim's 401 with no onward call (packages/vercel/src/schedules.ts:159) and its 500 for a missing base URL (schedules.ts:53); auth before the fire record is read (packages/scheduled/src/routes.ts:70-99).
 
 ## 6 · Depth pass
 

@@ -37,12 +37,14 @@ Skipped: B-11 is kept in the sitemap, and the page was already at `aws-lambda.md
 - After revise round 1, page sha256 c5554119add6: exit 0.
 - After revise round 2, page sha256 fab4a31f8187: exit 0.
 - After revise round 3, page sha256 9ae5b2a36748: exit 1. Failed: Type-check of TypeScript examples (scratch folder apps/kitchen-sink/.docs-tc-B-11, deleted afterwards).
+- After the loop (review): Pass 4 type-check: the migration imports `createPostgresStores` from `@flow-state-dev/store-postgres/host`; the `skipSchemaInit` fragment is a whole `src/handler.ts`; the flow module is named and linked to Your first flow, which shows `src/flows/hello-chat/flow.ts`. The DDL count is cut (the fact check on the Vercel page counted about 55, not 30). Old-site links point at the revamp pages (./railway, reference/http-api for endpoints, concepts/auth-and-tenancy, concepts/persistence, reference/stores, concepts/serving-flows, ../deploy). Type-check in apps/kitchen-sink/zz-fix-B-11 (the node subpath mapped to packages/node/src/aws-lambda.ts, a stub flow module), deleted afterwards: only the planted error. 727 words. Page sha256 5d590e83015f: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the page as it was kept, sha256 6e2dd865df72, and the 4 Reference row(s) pass 6 moved.
 
 No untrue claim found.
+- Re-run after the review edit: `createPostgresStores` is exported from the host subpath (packages/store-postgres/src/host.ts:7); `skipSchemaInit` is a store option (packages/store-postgres/src/registry.ts:50,60); the endpoint list belongs to the HTTP API reference (sitemap R-13).
 
 ## 6 · Depth pass
 
