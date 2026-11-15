@@ -63,3 +63,10 @@ Abbreviations: `ix` = `packages/tools/src/index.ts` · `sr` = `packages/tools/sr
 - No claim about what the tools cost, rate limits (beyond the kept page's "20 RPM" Jina line), result ordering or quality. **[gap]**
 - No `goals/` check or example under `examples/`/`labs/` was found that runs `tools.search` in a generator end to end; the only evidence for generator use is the generator's slot type and the tool unit tests. **[gap]** Verify the page's example type-checks before pass 4.
 - Retired wording to avoid on the page: "the LLM" is fine; use "user", not "person". Page title and frontmatter: `type: catalog`, 500 words (K-29).
+
+## 6. Revise round 1 corrections
+
+- The table row for bash is `createBashCapability()` (the `uses` form, `bc:209`), not `createBashTool()`; it needs the optional peer `just-bash` (`pj:105-126`, `bt:50,69`). MCP row added: `createMcpCapability()`, optional peer `@ai-sdk/mcp`. **[page]**
+- Jina: auto-selection uses it only when a Jina key is found (`fr:39-42`); keyless Jina needs the provider forced (`fr:23`). The "20 RPM" figure has no source in code and is not stated. **[gap]**
+- `cacheable` applies to any block in a generator's `tools` slot when a tool cache is installed via `createToolCacheCapability` in `uses` (`packages/core/src/blocks/tool-cache.ts:189-200`, `packages/core/src/types/block.ts:1136-1144`); a task board installs one when a worker tool declares `cacheable` (`packages/orchestration/src/task-board/index.ts:526-529`). No effect outside a generator's tool slot. Errors never cached. **[page]** Single-flight coalescing and the scope table's detail are **[ref]**. The page's example is self-contained (no `ctx.resources`) and type-checks.
+- `@flow-state-dev/workspace` exists (`packages/workspace/package.json`, version 0.4.0); the page no longer links it. The `fetch` and `crawl` built-in fetcher is described as "returns markdown"; library names are not on the page.
