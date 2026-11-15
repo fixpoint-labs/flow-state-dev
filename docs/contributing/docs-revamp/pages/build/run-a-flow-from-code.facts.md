@@ -120,3 +120,8 @@ A recipe stores no data itself, but each call writes records into `stores`, and 
 - **`onItem` signature (fact 26).** The page gives `onItem(item, kind)` with `kind` one of `"added"`, `"updated"`, `"done"` (`eng/execution/types.ts:162-173`), and links Items for transient items. It still compares `onItem` only with what is stored, never with `result.items` (fact 27).
 - **Shared session (fact 16).** The page says the second `reply` sees the state the first left, not a count.
 - **Standalone script (fact 11).** "A standalone script with no `fsdev.config.ts`" replaces "a script that is the whole app".
+
+## Revise round 3 corrections
+
+- **`onItem` (fact 26).** The page says `kind` is the item's lifecycle stage (`"added"`, `"updated"`, `"done"`) and that transient items arrive in `onItem` too but are never saved. Unchanged facts, reworded.
+- **Not waiting (fact 22).** The page says to drop the `await` and pass your own `requestId` so the id is known while the run is going (fact 21); items are saved whether or not the caller waits.

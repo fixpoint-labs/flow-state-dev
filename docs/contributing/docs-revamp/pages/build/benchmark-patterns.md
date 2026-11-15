@@ -1,56 +1,56 @@
 ---
 title: Benchmark patterns on your own tasks
 type: recipe
-description: "Evals answer one question: is this output correct?"
+description: Run the same support-desk tasks through two coordination patterns and a single-call baseline, then read one scorecard to see whether the extra model calls paid off.
 ---
 
 # Benchmark patterns on your own tasks
 
-Evals answer one question: is this output correct? You hand a block a dataset, score the results, and find out whether the thing you built does its job.
+A coordination pattern is the wiring around your model calls: a supervisor that reviews each result and retries on rejection, a debate between two stances and a judge. It costs more model calls than one generator, so it should produce better output. The benchmark harness checks that. It runs the same tasks through each pattern you name and through a single-generator baseline (one model call, no coordination), then prints one scorecard.
 
-The benchmark harness answers a different question. Not "is the output correct" but "was the coordination shape the right call." A coordination pattern is the wiring around your model calls. A supervisor that reviews each result and retries on rejection. A debate that pits two stances against a judge. A plan-and-execute loop that replans after each step. Same model, same task, different shape. The shape changes the answer, and the benchmark measures by how much.
+The model, the tasks and the judge are the same for every subject, where a subject is a pattern or the baseline. The coordination shape is the only thing that varies. The harness asks whether the shape was the right call.
 
-It runs the same task suite across many patterns and a baseline, on one model, and prints a single scorecard. Same task, same model, many patterns, one table.
+Install `@flow-state-dev/testing` and `@flow-state-dev/patterns`. Real runs make paid model calls and need provider keys for both models in the environment.
 
-## Why benchmark patterns
+## 1. Write a task suite
 
-When you reach for a coordination pattern you're making a bet: the extra orchestration earns its cost. A supervisor makes more model calls than a single generator. It should produce better output, or the calls are wasted.
+A task is a prompt plus a `rubric`, the list of criteria a judge model scores the output against. Its `category` is any label you choose. The scorecard gets one column per category. Write each criterion as one claim, because the judge scores them separately and averages.
 
-That bet is testable. Hold the model fixed. Hold the tasks fixed. Vary only the coordination shape. Whatever moves in the score is attributable to the pattern, not to a different prompt or a different model. One independent variable, measured against a control.
-
-The control matters most. Every comparison includes a single-generator baseline: one model call, no coordination, answering the task directly. "Pattern A scores higher than pattern B" is interesting. "Pattern A beats the naive call you'd write without any framework" is the claim worth making, and the baseline is how you make it.
-
-## Defining a benchmark
-
-A benchmark is a task suite plus the patterns to run it against. `defineBenchmark` from `@flow-state-dev/testing` is the discovery shape the CLI loads.
-
-```ts
-import { defineBenchmark } from "@flow-state-dev/testing";
-import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns";
-import type { BenchmarkTask } from "@flow-state-dev/core";
+```ts title="benchmark.ts"
+import { defineBenchmark, type BenchmarkTask } from "@flow-state-dev/testing/benchmark";
+import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns/benchmark";
 
 const tasks: BenchmarkTask[] = [
   {
-    id: "reason-scheduling",
+    id: "refund-late-parcel",
     category: "reasoning",
     prompt:
-      "Three teammates must each take one of three on-call shifts under a set " +
-      "of constraints. Assign each a shift and justify why it's the only valid " +
-      "assignment.",
+      "A customer's parcel arrived 12 days after the promised date. Our policy " +
+      "refunds shipping after 7 days and the full order after 21. Decide what " +
+      "to refund and explain it.",
     rubric: [
-      "Assigns each person exactly one distinct shift",
-      "The assignment respects every stated constraint",
-      "Explains why the assignment is uniquely forced, not just asserts it",
+      "Refunds shipping and not the full order",
+      "Cites the 7-day threshold as the reason",
+      "States the decision in the first sentence",
     ],
   },
-  // ...more tasks
+  {
+    id: "soften-reply",
+    category: "critique-revision",
+    prompt: "Rewrite this reply so it is polite without promising a refund: 'No. Read the policy.'",
+    rubric: [
+      "Keeps the refusal to promise a refund",
+      "Uses a polite, direct tone",
+      "Points the customer to a next step",
+    ],
+  },
+  // ...more tasks, ideally a dozen or more
 ];
 
 export default defineBenchmark({
-  name: "my-benchmark",
+  name: "support-desk",
   registry: defaultBenchmarkRegistry,
-  patterns: ["supervisor", "plan-and-execute"],
-  baseline: true,
+  patterns: ["supervisor", "debate"],
   tasks,
   model: "openai/gpt-6-luna",
   judgeModel: "anthropic/claude-haiku-5-5",
@@ -58,111 +58,41 @@ export default defineBenchmark({
 });
 ```
 
-Each task carries a `category` and a `rubric`. The category buckets tasks so the scorecard can say "this pattern wins on reasoning, that one wins on planning." The four categories are `reasoning`, `multi-step-research`, `critique-revision`, and `tool-use`. The rubric is the list of criteria the judge grades against. It lives on the task on purpose, so the grading is auditable (see [Scoring honestly](#scoring-honestly)).
+`defineBenchmark` declares a benchmark file that `fsdev benchmark` can load. `registry` is where the CLI looks up each name in `patterns`; `defaultBenchmarkRegistry` knows `supervisor`, `plan-and-execute`, `parallel-tasks`, `round-robin`, `debate` and `routed-specialists`. The baseline is added for you. Each (subject, task) pair runs `runs` times, 3 by default. The definition throws if `tasks` is empty.
 
-The `registry` field carries the pattern lookup on the definition itself. The CLI resolves the `patterns` names against it without importing any specific pattern package. `@flow-state-dev/patterns` ships `defaultBenchmarkRegistry` with the comparable patterns already wired (see [Choosing a model](#choosing-a-model) for executor defaults).
-
-## Running across patterns
-
-In code, `comparePatterns` resolves pattern names against a registry, appends the baseline, and runs the sweep:
-
-```ts
-import { comparePatterns } from "@flow-state-dev/testing";
-import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns";
-
-const report = await comparePatterns(
-  defaultBenchmarkRegistry,
-  ["supervisor", "parallel-tasks"],
-  {
-    tasks,
-    model: "openai/gpt-6-luna",
-    judgeModel: "anthropic/claude-haiku-5-5",
-    runs: 3,
-  },
-);
-
-console.log(report.rankings["overall"]);
-```
-
-The registry is the first argument. Passing it in keeps `@flow-state-dev/testing` from depending on `@flow-state-dev/patterns`. The baseline is appended automatically; pass `baseline: false` to skip it.
-
-If you already have explicit subjects (a custom pattern not in any registry, say), call `runBenchmark` directly with a `subjects` array. `baselineSubject({ model })` builds the single-generator control to include alongside them.
-
-From the terminal, `fsdev benchmark` loads a `defineBenchmark` file and prints the scorecard. The full walkthrough lives in the guide: [Choosing a pattern with benchmarks](/guides/choosing-patterns-with-benchmarks).
-
-## Reading the scorecard
-
-A run returns a `BenchmarkReport`. The default `table` format renders subjects as rows, categories plus an `overall` column, and each cell as `mean±stddev` of the judge score (0 to 1) across repetitions.
-
-```
-subject            reasoning    multi-step-research  critique-revision  tool-use     overall
-supervisor         0.812±0.041  0.755±0.063          0.798±0.052        0.770±0.048  0.784±0.055
-parallel-tasks     0.740±0.038  0.781±0.044          0.690±0.071        0.802±0.039  0.753±0.061
-single-generator   0.690±0.052  0.661±0.058          0.640±0.066        0.701±0.050  0.673±0.060
-```
-
-A higher mean is a better-scoring pattern in that category. The stddev is the spread across repetitions: a wide spread means the result is noisy, and a small gap between two patterns may not mean anything.
-
-`report.rankings` makes the comparison explicit. For each category (and `overall`) it lists subjects sorted by mean, with two fields that earn their keep:
-
-- `deltaVsBaseline` — the subject's mean minus the baseline's mean in that bucket. This is the number that says whether the coordination paid off. A positive delta means the pattern beat the naive single call.
-- `credible` — `true` only when the delta clears about 2× the standard error of the difference of means (and both the subject and the baseline have at least 2 runs). A delta inside the noise, or a run count too small to tell, stays `false`. Treat `credible: false` as "no measurable difference," not as a result.
-
-The report also carries `totalCostUsd`, `budgetExceeded` (true when a cost ceiling stopped the run early), `warnings`, and `timing`. The `markdown` format renders the same table for pasting into a doc or PR; `json` gives you the full report to process.
-
-## Scoring honestly {#scoring-honestly}
-
-Grading is LLM-as-judge: a model reads each output and scores it. That's a conflict of interest when you're grading your own framework's patterns. The methodology is built to make the numbers defensible anyway.
-
-- **Blinded.** The judge sees only the task and the output. It never sees which pattern produced the output, so it can't favor one shape over another.
-- **Distinct judge model.** The judge model is separate from the executor model. A model tends to prefer its own family's phrasing; using a different grader removes that thumb on the scale. If you leave `judgeModel` unset it defaults to the executor and the report carries a self-preference warning.
-- **Locked, published rubric.** Each task's grading criteria live on the task and ship with the suite. Anyone can read exactly what the output was scored against. The judge grades the output against those criteria, not against a vague sense of quality.
-- **Repetition with a credibility flag.** Each (subject, task) cell runs `k` times (`runs`, default 3). A delta that doesn't clear ~2× the standard error of the difference of means is flagged not-credible rather than reported as a win, and with fewer than 2 runs credibility is withheld entirely. Noise doesn't get to look like a result.
-
-The honest caveat: the defaults wire one shared generator into every pattern. That isolates the coordination shape, not each pattern's best-tuned roster of specialist models. The numbers are scoped to the task suite and the model you ran. They inform a pattern choice for work like the tasks in the suite. They don't rank the patterns in general.
-
-## Choosing a model
-
-The executor model is the one variable you hold fixed across every subject, so pick it deliberately. The published suite defaults to a cheap-paid model (`openai/gpt-6-luna`) with a distinct judge (`anthropic/claude-haiku-5-5`). Real runs make real model calls and need provider credentials in the environment.
-
-Cost is tracked best-effort across the sweep. Pass `maxCostUsd` (or `--max-cost` on the CLI) to set a ceiling: when the running estimate crosses it, the sweep stops and returns a partial report with `budgetExceeded: true`.
-
-To run on a free-tier model instead, override the executor with an OpenRouter model id. It's opt-in by design, since free-tier models rate-limit and the point of the default is a reproducible paid baseline.
+## 2. Run it
 
 ```bash
-pnpm fsdev benchmark ./benchmark.ts \
-  --model openrouter:meta-llama/llama-3.1-70b-instruct
+pnpm fsdev benchmark ./benchmark.ts
 ```
 
-## Comparing across models
+The example makes 3 subjects times 2 tasks times 3 runs, 18 cells, each with one judge call, and a pattern makes several model calls per cell. Set a ceiling while you iterate: `--max-cost 2` stops scheduling new cells once the estimate reaches $2, prints a partial scorecard and exits 1. `--runs 1` gives a cheap dry run. `--output scorecard.md --format markdown` writes the result to a file. Details are in the [CLI reference](../reference/cli.md).
 
-Holding the model fixed answers "do the patterns beat the naive call on the same model". A different and useful question is whether coordination on a cheap model beats a more expensive model used alone — "does a Haiku swarm beat raw Sonnet?". Add pure-model baselines for that:
+## 3. Read the table
 
-```bash
-pnpm fsdev benchmark ./benchmark.ts \
-  --model anthropic/claude-haiku-5-5 \
-  --baseline-model anthropic/claude-sonnet-5-5
+The scorecard has two parts. The first has a row per subject and a column per category plus `overall`. Each cell is `mean±stddev` of the judge's score from 0 to 1, pooled over every task and run in that cell. A wide stddev mixes task difficulty with run-to-run noise.
+
+```text
+subject            reasoning    critique-revision  overall
+supervisor         0.812±0.041  0.798±0.052        0.805±0.047
+debate             0.740±0.038  0.690±0.071        0.715±0.061
+single-generator   0.690±0.052  0.640±0.066        0.665±0.060
 ```
 
-Programmatically, pass `baselineModels` to `comparePatterns` (or build subjects with a per-subject `model` and call `runBenchmark`):
+The second part ranks subjects by `overall` mean, with `Δ vs baseline`, `credible`, `success`, `$/task` and `score/$`. Read it in this order:
 
-```ts
-await comparePatterns(defaultBenchmarkRegistry, ["supervisor", "debate"], {
-  tasks,
-  model: "anthropic/claude-haiku-5-5",          // patterns run here
-  judgeModel: "openai/gpt-6-luna",
-  baselineModels: [
-    "anthropic/claude-haiku-5-5",                // pure Haiku (the delta reference)
-    "anthropic/claude-sonnet-5-5",               // pure Sonnet, as its own row
-  ],
-});
-```
+1. `success` first. A subject that throws on a cell scores 0 for it, so a low mean can be failures, not quality.
+2. `Δ vs baseline` and `credible` on the overall row. A positive delta means the pattern beat the single call. `credible` is `yes` only when the gap is larger than about two standard errors and both sides ran at least twice. `no` means the gap may be noise, not that the pattern lost. More `runs` can turn a `no` into a `yes`.
+3. The category columns. A pattern can lose overall and win one category.
+4. `$/task` against the delta. A small gain at several times the baseline's cost may not pay.
 
-The same-model baseline stays the delta reference (`deltaVsBaseline` / the credibility flag are measured against it); each additional pure model is a row of its own, so you read whether the patterns clear it from the absolute scores. `report.baselineSubjects` lists every baseline and `report.primaryBaseline` names the reference.
+The judge sees only the task and the output, never which pattern produced it. Set `judgeModel` to a different model than `model`. If it is unset or equal, the CLI prints a warning to stderr about self-preference.
 
-## See also
+The numbers describe your tasks on this model. They do not rank the patterns in general, and the shipped patterns share one worker, so they compare coordination, not each pattern's best-tuned roster.
 
-- [Patterns overview](../patterns/overview) — the coordination patterns you'd compare
-- [Testing overview](./overview.md) — evals and the rest of the testing package
-- [Benchmark API reference](../api/benchmarks.md) — signatures and option tables
-- [Choosing a pattern with benchmarks](/guides/choosing-patterns-with-benchmarks) — task-oriented walkthrough
+## Next
+
+- [Patterns](../catalog/patterns/index.md): what each pattern in the registry does.
+- [Write your own pattern](./write-a-pattern.md): add a pattern the default registry does not have, then benchmark it as a subject.
+- [Testing reference](../reference/testing.md): `comparePatterns`, `runBenchmark`, the report fields and every option.
+- [CLI reference](../reference/cli.md): every `fsdev benchmark` flag, including `--model` with an OpenRouter id and `--baseline-model` for cross-model baselines.

@@ -129,3 +129,8 @@ A pattern that wraps `taskBoard` stores its tasks; the sheet answers for them. T
 
 - The `reduce` handler's `execute` is annotated `Promise<unknown>`, so it matches its `z.unknown()` output schema and `.step(reduce)` type-checks. Re-checked in a scratch copy of `src/lib/plan-map-reduce.ts` against the kitchen-sink tsconfig: no errors; scratch folder deleted.
 - The config takes `plan` and `map` blocks and a `reduce` function (fact 21); the page now says so in step 3 and lists the config as a plain list with no count.
+
+## Revise round 3: what changed
+
+- Config gains `onError?: "skip" | "fail"`, passed to `taskBoard` (`tb:503`, default `"skip"` at `tb:691`, undefined falls to the default). Page states facts 18 and 19 under "When a task fails" and the empty-plan sentence; `"fail"` aborts the drain and `error` is non-null (`pat:232-255`). Not re-run for the page's own factory: **[verify at type-check]**.
+- Page states facts 27-31 under "Where `uses` goes": no forwarding option; the factory builds only `seed` and `reduce`, which carry `board.capability`. Fact 30's options (a) and (b) are not on the page.

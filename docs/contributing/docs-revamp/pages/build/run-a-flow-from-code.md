@@ -33,7 +33,7 @@ A standalone script with no `fsdev.config.ts` builds its own with `createInMemor
 
 `sessionId` is optional. Pass the same one on every call and the runs share one session, so the second `reply` sees the state the first one left. Leave it out and each call gets a new session. A session belongs to one user, one organization and one flow. Reusing it from another user, organization or flow rejects before anything runs.
 
-Pass `onItem(item, kind)` to watch items as they arrive. It gets every item, and `kind` is `"added"`, `"updated"` or `"done"`, where the item is in its lifecycle. It also receives transient items, which are never saved; [Items](../reference/items.md) says which those are. An error thrown in `onItem` doesn't fail the run.
+Pass `onItem(item, kind)` to watch items as they arrive. `kind` says where the item is in its lifecycle: `"added"`, `"updated"` or `"done"`. Transient items arrive here too, though they are never saved; [Items](../reference/items.md) says which those are. An error thrown in `onItem` doesn't fail the run.
 
 ## 3. Check the result
 
@@ -43,7 +43,7 @@ Otherwise `result.output` holds what the action returned, and `result.items` hol
 
 ## 4. Start a run without waiting
 
-To keep the `requestId` before the run ends, pass your own. Drop the `await`. Items are saved to your stores either way, and a failed run resolves with `result.error` and does not reject. Attach a `.catch` for the calls that reject, and read the outcome from the request record.
+To start a run and return before it finishes, drop the `await` and pass your own `requestId`, so you have the id to look it up later. Items are saved to your stores whether you wait or not, and a failed run resolves with `result.error` and does not reject. Attach a `.catch` for the calls that reject, and read the outcome from the request record.
 
 ```ts title="scripts/enqueue-reply.ts"
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";

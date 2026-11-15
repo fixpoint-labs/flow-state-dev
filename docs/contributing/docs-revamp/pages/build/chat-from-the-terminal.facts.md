@@ -122,3 +122,9 @@ The page's subject keeps one thing: **a session** (with its requests and the flo
 
 - Sample session id now has the real `sess_<ms>_<hex>` shape (fact 5). A nonexistent `--session` id is confirmed not rejected (`cmd:262-282` guard passes a missing record; fact 4); the page keeps the sentence.
 - Terms: the resolver refuses the request (not "the terminal"); `--org` sets the organization and skips the resolver; per-flow sessions are scoped to one `fsdev chat` process; a held turn prints the question and its id.
+
+## Revise round 3
+
+- `/status` row now names who turns run as and the config and store (fact 5; `reg:114-124`). `development-default` in the sample is the `from` label (`principal.ts:38`) and is not explained on the page.
+- `--org` without a resolver: turns run as `--user`, or `devuser` (fact 13; `principal.ts`).
+- Cut the `chat vs run vs dev` section to Reference (sheet line: cut or left to Reference).

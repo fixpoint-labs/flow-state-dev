@@ -40,9 +40,9 @@ An org-scoped resource written only by a block needs no `canWrite`; `canWrite` i
 ## 1. Declare an edge (step 1)
 
 - Pass `edges` to `defineResource`: `edges?: boolean | EdgeSlotConfig`. `true` uses defaults; an object sets `vocabulary` and `maxEdges`. `rs:351-352`, `re:73-79`, `pg:12-28`. [page]
-- With `edges` declared, the framework adds an `edges: Edge[]` field to the resource's state schema and to its `default`; the author does not declare it in `stateSchema`. `rs:656-685` (injection at `rs:667-669` for the schema, `rs:670-678` for the default), `rt:164-175` **[test]**, `pg:30`. [page]
+- With `edges` declared, the framework adds an `edges: Edge[]` field to the resource's state schema and to its `default`; the author does not declare it in `stateSchema`. `rs:656-685` (schema at `rs:667-669`, default at `rs:670-678`), `rt:164-175` **[test]**, `pg:30`. [page]
 - The stored array is part of the resource's own state: no separate storage key, no separate database. `re:52-60` (module doc), `pg:10`. [page]
-- `stateSchema` must be a Zod object. `defineResource` with `edges` on any other schema throws `defineResource() with edges requires an object stateSchema (got ...)`. `rs:663-666`, `rt:186-192` **[test]**. [ref]
+- `stateSchema` must be a Zod object. `defineResource` with `edges` on any other schema throws `defineResource() with edges requires an object stateSchema (got ...)`. `rs:661-666`, `rt:186-192` **[test]**. [ref]
 - A schema that already has an `edges` key is left alone (the author's own shape wins); the default likewise. `rs:667`, `rs:670-678`, `rt:194-204`, `rt:218-226` **[test]**. [ref]
 - `edges: false` or unset: no field is added and no `.edges` API is attached. `rs:661` (`if (config.edges)`), `rt:206-216` **[test]**, `engt:1934-1940` **[test]**, `pg:10` ("a resource that doesn't declare them behaves exactly as before"). [page, one clause]
 - `vocabulary?: string[]`: when set, `add` throws if `type` is not in it. The message is `Edge type "<type>" is not in the declared vocabulary: <list>`. `re:75-76`, `re:197-201`, `ret:71-77` **[test]**, `engt:1923-1932` **[test]**. [page: the throw in one sentence; message text is not stated]
@@ -61,7 +61,7 @@ An org-scoped resource written only by a block needs no `canWrite`; `canWrite` i
 - `supersede(edgeId, at?)`: ends an edge. It sets `validUntil` to `at` (an ISO string) or now. The edge stays stored. A missing id does nothing. `re:95-96`, `re:225-233`, `ret:153-171` **[test]**. [page]
 - `remove(edgeId)`: deletes the edge outright. `re:97-98`, `re:235-240`, `ret:173-182` **[test]**. [page]
 - Supersede, then add, is how a link changes over time: the old edge keeps its record, so a read with `at` set to a past instant still sees it. `re:95`, `tr:30-42`, `pg:65-74`, `mr:38`. [page: a short "when a link changes" paragraph with the three-line example in `pg:70-73`, using `links` not `ref`]
-- `pruneDangling(knownNodes)`: removes every edge with an endpoint not in `knownNodes` and resolves to the count removed. `re:107-108`, `re:258-267`, `ret:213-` (the `pruneDangling` test) **[test]**. [page: one sentence]
+- `pruneDangling(knownNodes)`: removes every edge with an endpoint not in `knownNodes` and resolves to the count removed. `re:107-108`, `re:258-267`, `ret:213-221` **[test]**. [page: one sentence]
 
 ## 3. Follow it (step 3)
 

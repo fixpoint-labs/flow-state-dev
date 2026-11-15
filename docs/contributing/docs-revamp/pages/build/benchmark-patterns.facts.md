@@ -118,3 +118,13 @@ The benchmark stores nothing durable by itself. Each cell runs the subject's seq
 - Shipped suite: twelve tasks, four categories, three each (`tasks`; `grep -c 'id:'` = 12, per-category `category:` lines counted: reasoning 3, multi-step-research 3, critique-revision 3, planning 3).
 - Defaults: `runs` 3, `concurrency` 3, format `table`, baseline on (facts 14, 16, 39).
 - Scorecard columns in the ranking: eight (`rank`, `subject`, `mean`, `Δ vs baseline`, `credible`, `success`, `$/task`, `score/$`; `rep:266`). **[the page states no count.]**
+
+## Revision round 1 (the page as it now stands)
+
+- **Imports.** The page imports `defineBenchmark` and the `BenchmarkTask` type from `@flow-state-dev/testing/benchmark` and `defaultBenchmarkRegistry` from `@flow-state-dev/patterns/benchmark` (facts 1, 25). The example type-checks against the kitchen-sink tsconfig.
+- **Categories.** The page says a category is any label and states no list; the built-ins are `reasoning`, `multi-step-research`, `critique-revision`, `planning`, and there is no `tool-use` (fact 2).
+- **stddev.** The page says each cell pools every task and run in it (fact 5). Errored cells score 0 (fact 19).
+- **OpenRouter ids.** `openrouter:<id>` is the correct form: the provider prefix is parsed with a colon (`packages/core/test/models/provider-detection.test.ts:33`, `packages/core/test/models/create-model-resolver-colon.test.ts:271`). The page leaves the `--model openrouter:...` example to Reference (fact 35).
+- **Moved to Reference (page links, does not state).** `comparePatterns` and `runBenchmark` signatures, `baselineSubject`, `baselineModels` and `--baseline-model`, `--model`, report top-level fields and `totalCostUsd` / `budgetExceeded`, the `table` / `markdown` / `json` formats beyond the one flag shown, the credibility formula. The page states the credibility rule in one sentence (fact 18).
+- **Page-stated numbers.** The example's 18 cells is 3 subjects x 2 tasks x 3 runs (fact 38). `--max-cost` stops new cells, prints a partial scorecard and exits 1 (fact 34). Judge warning goes to stderr (fact 13). The sample table values are illustrative, not output from a run.
+- **Cut.** The package-boundary reason for the registry-first argument, the "published rubric" and "honest" framing, and the free-tier opt-in rationale are not on the page.

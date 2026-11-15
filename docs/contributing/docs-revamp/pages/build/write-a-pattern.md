@@ -30,6 +30,8 @@ hides those steps. A caller passes:
 - `map`: the block that does one task. It receives the task, and its output is what
   `reduce` sees.
 - `reduce`: a function that folds the finished tasks' outputs into the result.
+- `onError`: what a failing task does to the run. Optional, `"skip"` by default. See
+  [When a task fails](#when-a-task-fails).
 
 ## 2. Write the factory
 
@@ -53,6 +55,7 @@ export interface PlanMapReduceConfig<TResult> {
   plan: BlockDefinition;
   map: BlockDefinition;
   reduce: (outputs: unknown[]) => TResult;
+  onError?: "skip" | "fail";
 }
 
 export function planMapReduce<TResult>(
@@ -61,6 +64,7 @@ export function planMapReduce<TResult>(
   const board = taskBoard({
     name: `${config.name}-board`,
     workers: { map: config.map }, // one assignee, "map"
+    onError: config.onError,
   });
 
   const seed = handler({
@@ -105,8 +109,28 @@ check that, so a `plan` block whose output doesn't match `planOutputSchema` fail
 when the flow runs. `reduce` ignores what the drain hands it and reads the
 finished tasks through the board's capability.
 
-A task that fails is left out of `outputs`, and the run completes anyway. Tasks are
-capped per board; the limits are in the [task board reference](../reference/task-board.md).
+An empty plan is fine. The seed writes no tasks, the drain has nothing to run, and
+`reduce` folds an empty list.
+
+### When a task fails
+
+By default one failing `map` call does not fail the run. The error is recorded on
+that task, the other tasks carry on, and `reduce` reads only completed tasks. If
+`map` throws on ticket 7 of 20, `reduce` receives 19 outputs, the run completes, and
+`testBlock` reports `error: null`. The failed ticket is missing without a trace in
+the result.
+
+To stop the whole batch on the first failure, pass `onError: "fail"` in the config.
+The failure then aborts the drain and the error comes back non-null. Tasks are capped per board; the limits are in the
+[task board reference](../reference/task-board.md).
+
+### Where `uses` goes
+
+Every block takes a `uses` slot, so a capability for `plan` or `map` goes on the
+block you pass in. The factory forwards nothing. Built-in patterns such as
+`supervisor` accept `uses` because they build default generators themselves and
+install it on those. Here the only blocks the factory builds are `seed` and
+`reduce`, and they already carry the board's capability.
 
 ## 3. Use it in a flow
 
