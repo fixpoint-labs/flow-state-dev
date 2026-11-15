@@ -3,7 +3,7 @@
  * checks in the session's working directory and records them on the turn. A
  * red check is reported, never a failed turn.
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
@@ -123,6 +123,60 @@ describe("a session's checks at the end of a turn", () => {
     expect(named).toContain("- `node green.mjs`\n- `node red.mjs`");
     expect(named).toMatch(/name each by its command, with its result/);
     expect(await turn("s-no-brief", false)).toBe("change it");
+  });
+
+  it("names checks a resolver reads from the session's directory on a fresh session's first turn", async () => {
+    // The directory doesn't exist until the session's first turn provisions it, as a fresh worktree doesn't.
+    const root = mkdtempSync(join(tmpdir(), "session-verify-fresh-"));
+    const wt = join(root, "wt");
+    let provisioned = 0;
+    const fresh: HarnessSessionWorkspace = {
+      provision: async () => {
+        provisioned += 1;
+        mkdirSync(wt, { recursive: true });
+        writeFileSync(join(wt, "checks.txt"), "node from-the-checkout.mjs\n");
+        return wt;
+      },
+      locate: () => wt,
+      branch: () => null,
+    };
+    const prompts: string[] = [];
+    const capturing = () =>
+      handler({
+        name: "stub-harness",
+        inputSchema: z.object({ prompt: z.string() }),
+        execute: async (input: { prompt: string }) => {
+          prompts.push(input.prompt);
+          return { source: "stub/test", status: "completed", sessionId: null, url: null, dispatchedAt: 0, outcome: "failed", finalMessage: null };
+        },
+      }) as unknown as HarnessBlock;
+    const stores = createInMemoryStores();
+    const now = Date.now();
+    await stores.session.set(
+      "s-fresh",
+      { id: "s-fresh", flowKind: "verify-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model" }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+      "any" as never,
+    );
+    await runAction({
+      flow: harnessSessionFlow({
+        kind: "verify-session",
+        workspace: fresh,
+        agent: capturing,
+        verify: { commands: ({ cwd }) => readFileSync(join(cwd, "checks.txt"), "utf8").trim().split("\n"), timeoutMs: 20_000, inBrief: true },
+      }),
+      actionName: "turn",
+      input: { prompt: "change it" },
+      userId: "u",
+      orgId: DEFAULT_ORG_ID,
+      sessionId: "s-fresh",
+      stores,
+      runtimeConfig: {},
+    } as never);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("- `node from-the-checkout.mjs`");
+    // Set up once: the brief's provision is the same one the issue-spec brief and the harness's own cwd feed make.
+    expect(provisioned).toBe(1);
+    rmSync(root, { recursive: true, force: true });
   });
 
   it("refuses a verify with no time budget when the flow is built", () => {

@@ -1129,7 +1129,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
             }
             if (checksInBrief !== undefined) {
               const place = workPlaceOf(options.kind, harnessCtx);
-              const cwd = options.workspace.locate(place);
+              // Provisioned as the harness's own cwd feed does, so a fresh session's directory exists before a resolver reads it.
+              const cwd = await feeds.cwd(harnessCtx);
               const commands =
                 typeof checksInBrief.commands === "function" ? await checksInBrief.commands({ place, cwd }) : checksInBrief.commands;
               const section = commandChecksBriefSection(commands, false);
