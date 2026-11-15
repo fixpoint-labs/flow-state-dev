@@ -71,11 +71,42 @@ const HISTORY_SUMMARY_DEFAULT: HistorySummaryState = historySummaryStateSchema.p
 /** Ends a summary cut to the cap, so the model and the next fold know text is missing. */
 const TRUNCATED_MARKER = "\n[earlier summary truncated]";
 
-/** A summary no longer than {@link MAX_READING_CHARS}; a longer one keeps its start and ends with the marker. */
-function capSummary(summary: string): string {
-  return summary.length <= MAX_READING_CHARS
-    ? summary
-    : `${summary.slice(0, MAX_READING_CHARS - TRUNCATED_MARKER.length)}${TRUNCATED_MARKER}`;
+/** Opens the key points kept under a summary. */
+const KEY_POINTS_HEADER = "\n\nKey points:\n";
+
+/** Ends key points cut to the cap. */
+const KEY_POINTS_CUT = "- [later key points truncated]";
+
+/** Text no longer than `limit`; a longer one keeps its start and ends with the marker. */
+function capSummary(summary: string, limit = MAX_READING_CHARS): string {
+  return summary.length <= limit ? summary : `${summary.slice(0, limit - TRUNCATED_MARKER.length)}${TRUNCATED_MARKER}`;
+}
+
+/**
+ * The summary to store: the summarizer's prose, then its key points, within
+ * {@link MAX_READING_CHARS}. The next fold reads only what is stored, and a
+ * fact can live in a key point alone, so the key points take their room first
+ * and the prose is cut to what is left. Key points that alone pass the cap
+ * keep the earliest whole ones that fit, then a line that marks the cut; the
+ * prose is then cut to its marker.
+ */
+function storedSummary(summary: string, keyPoints: string[] | undefined): string {
+  if (keyPoints === undefined || keyPoints.length === 0) return capSummary(summary);
+  const room = MAX_READING_CHARS - TRUNCATED_MARKER.length - KEY_POINTS_HEADER.length;
+  const lines = keyPoints.map((point) => `- ${point}`);
+  let block = lines.join("\n");
+  if (block.length > room) {
+    const kept: string[] = [];
+    let used = KEY_POINTS_CUT.length;
+    for (const line of lines) {
+      if (used + line.length + 1 > room) break;
+      kept.push(line);
+      used += line.length + 1;
+    }
+    block = [...kept, KEY_POINTS_CUT].join("\n");
+  }
+  const keyPointsBlock = `${KEY_POINTS_HEADER}${block}`;
+  return `${capSummary(summary, MAX_READING_CHARS - keyPointsBlock.length)}${keyPointsBlock}`;
 }
 
 /** Any spelling of the wrapper's tag, opening or closing, that a model could read as the tag itself. */
@@ -85,10 +116,11 @@ const WRAPPER_TAG = /<(\s*\/?\s*earlier-conversation)/gi;
  * The summary as the model reads it. The summary is model-written from text
  * that includes the user's, so a wrapper tag inside it is escaped (`&lt;`):
  * nothing in it can close the wrapper early and read as outside it. Capped
- * again here for a summary stored before writes were capped.
+ * again, before escaping, for a summary stored before writes were capped; one
+ * stored since is within the cap and reads whole, key points included.
  */
 function wrapSummary(summary: string): string {
-  return `<earlier-conversation>\n${capSummary(summary.replace(WRAPPER_TAG, "&lt;$1"))}\n</earlier-conversation>`;
+  return `<earlier-conversation>\n${capSummary(summary).replace(WRAPPER_TAG, "&lt;$1")}\n</earlier-conversation>`;
 }
 
 /** What the fold's first step decided: the turns to fold and where the mark lands. */
@@ -285,10 +317,7 @@ export function historySummary(options: HistorySummaryOptions) {
     execute: async (output, ctx) => {
       // Core's `summarizer` can put a fact in `keyPoints` alone: keep them
       // with the summary, so the next fold and the model both read them.
-      const summary =
-        output.keyPoints !== undefined && output.keyPoints.length > 0
-          ? `${output.summary}\n\nKey points:\n${output.keyPoints.map((point) => `- ${point}`).join("\n")}`
-          : output.summary;
+      const summary = storedSummary(output.summary, output.keyPoints);
       const decided = ctx.getBlockOutput(plan) as FoldPlan | null | undefined;
       if (decided == null) return;
       await update(ctx, (state) =>
@@ -298,7 +327,7 @@ export function historySummary(options: HistorySummaryOptions) {
           : {
               ...state,
               ...decided.next,
-              summary: capSummary(summary),
+              summary,
               folds: state.folds + 1,
               attempts: state.attempts + 1,
             }
