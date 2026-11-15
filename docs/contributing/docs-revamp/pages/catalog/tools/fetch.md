@@ -141,7 +141,7 @@ See [Errors](../../reference/errors.md) for the full error contract and how a bl
 
 ## Limit what it reads
 
-Fetch reads whatever URL the model passes it, whether or not it came from a search result, and returns the whole page into the model's context. To keep the model on one site, put the tool behind a router that checks the host and answers anything else with a refusal the model reads, so nothing is requested:
+Fetch reads whatever URL the model passes it, whether or not it came from a search result, and returns the whole page into the model's context. To stop the model asking for other sites, put the tool behind a router that checks the host of the URL it asks for and answers anything else with a refusal the model reads, so nothing is requested:
 
 ```ts title="src/flows/research/tools/fetch-docs-page.ts"
 import { handler, router } from "@flow-state-dev/core";
@@ -173,7 +173,7 @@ const refuse: Route = handler({
 
 export const fetchDocsPage = router<typeof fetchInputSchema, ZodTypeAny>({
   name: "fetch",
-  description: `Fetch a page of ${DOCS_HOST} as markdown. Any other site is refused.`,
+  description: `Fetch a page of ${DOCS_HOST} as markdown. A URL on any other site is refused.`,
   inputSchema: fetchInputSchema,
   outputSchema: z.union([fetchResultSchema, refusalSchema]),
   routes: [readPage, refuse],
@@ -182,6 +182,8 @@ export const fetchDocsPage = router<typeof fetchInputSchema, ZodTypeAny>({
 ```
 
 Give `fetchDocsPage` to the generator in place of `tools.fetch()`.
+
+The router checks the URL the model asks for, not where the request ends up. The built-in provider follows a redirect to any public host, and the result's `url` is the address it ended at. If a page that redirects off the site must not reach the model, check that `url` as well.
 
 ## Next steps
 
