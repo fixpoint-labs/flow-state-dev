@@ -19,6 +19,7 @@ import { claimedTask } from "../src/conversation-board/held-task";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import type { WorkerManifest } from "../src/manifest";
 import type { WorkerInstallation } from "../src/workers/installation";
+import { setSessionFieldsAction } from "../src/workers/session-fields";
 import { bootProjectsHost, ORG } from "./projects-harness";
 
 const doorInput = z.object({ message: z.string() });
@@ -55,6 +56,8 @@ function takerFlow(installation: WorkerInstallation, runs: Run[]) {
     resources: { ...installation.resources, ...board.resources },
     actions: {
       respond: { inputSchema: doorInput, block: planned, userMessage: (i: { message: string }) => i.message },
+      // Declared here as the agent and coordinator flows declare it, so a task session's write reaches the action's refusal.
+      [SET_SESSION_FIELDS_ACTION]: setSessionFieldsAction(installation.sessionFields),
       ...board.actions
     },
     internal: { actions: board.entries(planned) },
@@ -137,7 +140,7 @@ describe("an app's session field, written at open and carried down the hand-over
     await h.settled();
     const task = { id: h.runs.find((run) => run.goal === "look")!.sessionId };
     const write = await h.act("alice", "taker", task.id, SET_SESSION_FIELDS_ACTION, { fields: { repository: "repo-a" } });
-    expect(write.settled).not.toBe("completed");
+    expect(JSON.stringify(write.error)).toContain("can't be set");
     expect(await h.stateOf(task.id)).toMatchObject({ repository: "repo-b" });
   });
 });
