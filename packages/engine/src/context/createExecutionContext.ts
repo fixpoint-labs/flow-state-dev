@@ -3449,6 +3449,13 @@ export async function createExecutionContext<
     const handle = (registry as Record<string, AnyResourceRef>)[accessor];
     if (handle !== undefined) flatResourcesHandles[accessor] = handle;
   }
+  /** What the handle at `accessor` can reach: its storage key, or a collection's prefix. */
+  const reachOf = (accessor: string, scope: "session" | "user" | "org"): StorageReach => {
+    const config = scope === "session" ? sessionResourceConfigs[accessor] : scope === "user" ? userResourceConfigs[accessor] : orgResourceConfigs[accessor];
+    return config !== undefined && isCollectionConfig(config)
+      ? { prefix: getPatternPrefix(config.pattern) === "" ? "" : `${getPatternPrefix(config.pattern)}/` }
+      : { key: scopeStorageKeyMaps[scope][accessor] ?? accessor };
+  };
   // FIX-2623: in a view, every resource reached through `ctx.resources` is
   // recorded, by accessor, against its scope. The handle handed back is the
   // same object either way: code that keys by a handle's identity runs the
@@ -3458,13 +3465,7 @@ export async function createExecutionContext<
   const recordResource = (accessor: string): void => {
     const scope = accessorScope[accessor];
     if (viewDependencies === undefined || scope === undefined) return;
-    // What the handle can reach: its storage key, or a collection's prefix.
-    const config = scope === "session" ? sessionResourceConfigs[accessor] : scope === "user" ? userResourceConfigs[accessor] : orgResourceConfigs[accessor];
-    const reach: StorageReach =
-      config !== undefined && isCollectionConfig(config)
-        ? { prefix: getPatternPrefix(config.pattern) === "" ? "" : `${getPatternPrefix(config.pattern)}/` }
-        : { key: scopeStorageKeyMaps[scope][accessor] ?? accessor };
-    viewDependencies.resource(scope, accessor, reach);
+    viewDependencies.resource(scope, accessor, reachOf(accessor, scope));
   };
   const resourceHandle = (name: string): AnyResourceRef => {
     const handle = flatResourcesHandles[name];
@@ -3499,7 +3500,7 @@ export async function createExecutionContext<
             const covers = accessorOfHandle(read.ledger);
             const scope = covers === undefined ? undefined : accessorScope[covers];
             if (covers === undefined || scope === undefined) return;
-            viewDependencies.board(read.board, scope, read.sessionIds, covers);
+            viewDependencies.board(read.board, scope, read.sessionIds, covers, reachOf(covers, scope));
           }
         };
   // A board's changes go out on the bus; a row added to it, on its ledger's scope topic too.
@@ -3511,7 +3512,12 @@ export async function createExecutionContext<
           boardTopicOf: (ledger) => {
             const accessor = accessorOfHandle(ledger);
             const scope = accessor === undefined ? undefined : accessorScope[accessor];
-            return scope === undefined ? undefined : { scope, id: scopeTopicId(scope) };
+            if (accessor === undefined || scope === undefined) return undefined;
+            // FIX-2733: a lineage-shared session ledger's row reaches the other
+            // members' views on the owner's user topic, by the rule a
+            // lineage-shared resource write publishes by (`publishSessionResourceChange`).
+            const lineageShared = scope === "session" && hostHasViews && reachHasFlag(scopeBuckets.session, reachOf(accessor, scope));
+            return { scope, id: scopeTopicId(scope), ...(lineageShared ? { lineageOwnerUserId: sessionRef.current.userId } : {}) };
           }
         })
       : undefined;
