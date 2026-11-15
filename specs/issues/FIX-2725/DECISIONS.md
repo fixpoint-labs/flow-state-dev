@@ -32,7 +32,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Keeping the session list a client call an app assembles (`listWorkerSessions`, `fsd.sessions.requests`) · or one read of a whole session, heard on every kind of change |
 | **Because** | A view has no HTTP client, and its value is that the engine knows what it read (FIX-2623 D1). The read already exists for one session (`sessions.read`, `history`) with one owner rule: same user, tenant and org, else `undefined`, so it is not an existence oracle (BP-031). Listing and turns are the two reads missing. A session's only recorded read today, `ViewDependencies.session`, hears `items` too, so a board that read each run session's flow that way would re-run once per streamed chunk |
-| **Locks in** | `RequestSessions` gains `list` (the caller's top-level sessions, filtered at the store by flow and readonly fields, newest first, at most 100 with a `more` flag, each row with its flow, lineage id and updated time) and `turns` (the requests of one session, or of up to 100 at once, filtered at the store by status and action: id, session, action, status, times, source, error code and message; at most 50 a session; no words). `read` also answers the lineage id. A session's flow and lineage never change, so reading them records nothing; `read` records only when its `state` is read, heard as `run` and `state`. `list` is heard as `run` on the caller's user topic; `turns` as `request` on each session's topic it names. Nothing is recorded for a session the read doesn't answer. User and session views may use these reads; org views refuse them |
+| **Locks in** | `RequestSessions` gains `list` (the caller's top-level sessions, filtered at the store by flow and readonly fields, newest first, at most 100 with a `more` flag, each row with its flow, lineage id and updated time) and `turns` (the requests of one session, or of up to 100 at once, filtered at the store by status and action: id, session, action, status, times, source, error code and message; at most 50 a session; no words). `read` also answers the lineage id. A session's flow and lineage change only when the session is deleted or recreated under the same id, which gives it a new lineage; reading them records `run` alone, which both of those publish, never `items`. `read`'s `state` is heard as `run` and `state`. `list` is heard as `run` on the caller's user topic; `turns` as `request` on each session's topic it names. Nothing is recorded for a session the read doesn't answer. User and session views may use these reads; org views refuse them |
 
 ![D1, what a view may read of the caller's sessions. Chosen: list them and read their turns, admitted by the server and heard on the kinds that change them. Instead of: the client's list call. It comes down to who assembles: with the client call every app keeps the per-row reads and its own subscription; with the view the engine records and hears them. Price: two more reads on a public host type. Tie: who may read a session is the same owner rule either way. Locks in list and turns on RequestSessions. Flips if a session list must show other users' sessions](figures/d1-session-reads.svg)
 
@@ -88,8 +88,12 @@ It comes down to the cost on every list: the fallback reads a message per untitl
   view or an action. Every read a view makes of a session records through
   `createViewDependencies`, never the raw recorder; `views-dependency-matrix.test.ts` gains a row
   per read, and one for a board read of a named conversation with no entries.
-- **What never changes records nothing.** A session's flow and lineage id; `read`'s `state` getter
-  records, as `recordSessionReads` records a session handle's. The lineage id is server-only:
+- **Identity is heard on `run` only.** A session's flow and lineage id change only when it is
+  deleted, or recreated under the same id with a new lineage; both publish `run` on its topic
+  (`publish-writes.ts`, the session store's `set` and `delete`). So reading identity records `run`
+  alone, never `items`, and a board watching a deleted or recreated conversation re-checks it and
+  picks the new ledger partition. `read`'s `state` getter records as `recordSessionReads` records
+  a session handle's. The lineage id is server-only:
   it feeds `filingSessionIdOf`, which digests it into a partition, and is never in a view's answer.
 - **Heard on what changes it.** `list` on the user topic as `run`. Membership changes are full
   session writes, which publish it; a one-key `patchState` (a work project set, `work-project.ts`)
@@ -201,7 +205,7 @@ Recorded for the implementer, from the passes on #5290:
   session stream.
 - **Review round 1** — three passes found the board would re-run per chunk through the one
   recorded session read, an empty board heard nothing, and a list row needed more than two reads.
-  A session's identity now records nothing, a list row's running state comes from one batched
+  A session's identity now records `run` alone (narrowed from "nothing" in round 2, Codex: delete and recreate change it), a list row's running state comes from one batched
   `turns` read over the turn actions (Codex, on the first try's latest-request rule), and the board
   read names its conversation. Who removes `listWorkerSessions` was decided under the standing
   no-legacy decision: this issue. The words-on-the-stream card became an engineering call, so the
