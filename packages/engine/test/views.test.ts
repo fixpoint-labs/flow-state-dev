@@ -300,8 +300,8 @@ describe("the answer names the topics of what the run read", () => {
     expect(await res.json()).toEqual({
       output: { titles: ["alpha"], topic: "alpha" },
       topics: [{ scope: "session", id: "s1" }],
-      // Its state and its notes collection: every change to the session but its other resources and boards.
-      hears: [{ topic: { scope: "session", id: "s1" }, kinds: ["items", "request", "run", "state", "resource"], paths: ["notes"] }]
+      // Its state and its notes collection: the session's state writes and its notes, not its items, requests or record.
+      hears: [{ topic: { scope: "session", id: "s1" }, kinds: ["state", "resource"], paths: ["notes"] }]
     });
   });
 

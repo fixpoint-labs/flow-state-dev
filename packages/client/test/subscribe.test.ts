@@ -660,6 +660,25 @@ describe("client.subscribe on a host with push", () => {
     });
   }
 
+  it("keeps the client's one socket when its only live read follows new topics from an answer", async () => {
+    // A view's watch is often the only subscription in its client. Closing the old topics before
+    // subscribing the new ones would close the socket and connect another on every topic change.
+    const { fetcher } = server({ push: { transport: "websocket" } });
+    const fsd = client(fetcher);
+    let topics: WireTopic[] = [S1];
+    fsd.live([S1], { topicsFromResult: true, read: () => ({ value: topics.length, topics }), pollIntervalMs: null });
+    await settle();
+    const socket = FakeSocket.all.at(-1)!;
+    socket.open();
+    socket.frame({ type: "crossing", crosses: true });
+    await settle();
+    topics = [S1, topic.session("s2")];
+    socket.frame({ type: "notice", ...notice(S1) });
+    await settle();
+    expect(FakeSocket.all).toHaveLength(1);
+    expect(socket.closedWith).toBeUndefined();
+  });
+
   it("keeps calling the other subscriptions when one onChange throws", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const { fetcher } = server({ push: { transport: "websocket" } });

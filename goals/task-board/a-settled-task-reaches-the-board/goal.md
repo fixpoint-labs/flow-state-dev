@@ -22,8 +22,8 @@
 
 **Controls:** each runs leg a with a scratch patch applied as the process loads (`goals/lib/module-patch.mts`).
 - `GOAL_CONTROL=running-session` — the board notice goes on the session that wrote, not the one that filed. Must FAIL `a:within-1s`.
-- `GOAL_CONTROL=whole-topic` — the two lab views subscribe the conversation's whole topic. Must FAIL `a:0-reads`.
-- `GOAL_CONTROL=tasks-only` — the merged read's views subscribe `tasks` alone. Must FAIL `a:plan-step`.
+- `GOAL_CONTROL=whole-topic` — the two lab views drop the board view's `hears`, so they hear every notice under the conversation's whole topic. Must FAIL `a:0-reads`.
+- `GOAL_CONTROL=tasks-only` — the lab views drop the plan's topics and hearings from the board view's answer, so they hear `tasks` alone. Must FAIL `a:plan-step`.
 - Today's `main` (the parent of this change) has no board notice and no `client.subscribe` in the labs, so this script doesn't load there; on it the claude-code-style list reads every 2 s whatever happens, which is what `a:0-reads` would catch. The three controls stand in for its red state.
 
 ## Verdict log
@@ -41,3 +41,6 @@
 | 2026-11-13 | claude/fix-2627-impl-e-b3 on 0a98c8621 | n/a | FAIL (control `running-session` could not apply its patch, not from this change) | The control's patch anchor is not in the source on `-e`: "packages/orchestration/src/tasks/collection/get-or-create.ts has nothing matching /event\.task\.filer\?\.sessionId \?\? legacyFiler\?\.\(event\.task\) \?\? runningSession/ to patch". Unchanged by this conversion; the goal never ran. |
 | 2026-11-13 | claude/fix-2627-impl-e-b3 on 0a98c8621 | n/a | FAIL (control `whole-topic` could not apply its patch, not from this change) | The control's patch anchor is not in the source on `-e`: "labs/teammates/src/adapter.ts has nothing matching /BOARD_LEDGERS\.map\(\(resource\) => topic\.session\(sessionId, \{ resource \}\)\)/ to patch". Unchanged by this conversion; the goal never ran. |
 | 2026-11-13 | claude/fix-2627-impl-e-b3 on 0a98c8621 | n/a | FAIL (control `tasks-only` could not apply its patch, not from this change) | The control's patch anchor is not in the source on `-e`: "labs/teammates/src/adapter.ts has nothing matching /const BOARD_LEDGERS = \["tasks", "plan"\] as const;/ to patch". Unchanged by this conversion; the goal never ran. |
+| 2026-11-15 | origin/main d3381d6f81 | n/a | FAIL | Before FIX-2695. `a:crossing`: one of 5 sockets never said `crosses: true` (the claude-code-style client's first socket, closed when its live read swapped topics). `a:0-reads`: teammates 25, claude-code-style 22 board reads in 10 s. Controls could not apply their patches (anchors gone since views replaced reads) |
+| 2026-11-15 | claude/fix-2695-board-views (pre-commit) | n/a | FAIL | a: crossing and within-1s and plan-step pass; `a:0-reads`: teammates 2, claude-code-style 2, every one from the second conversation filing its task: a board insert on the user topic (`publishBoardInsert`, FIX-2625 D3 amended), which names no partition, so every conversation's board of the user reads again. b (initdb) and c PASS |
+| 2026-11-15 | claude/fix-2695-board-views (pre-commit) | n/a | FAIL (expected) | controls re-anchored on the view code: `running-session`: `a:within-1s` (link 1606 ms) · `whole-topic`: `a:0-reads` (26 and 23 reads) · `tasks-only`: `a:plan-step` (never within 4 s); each also shows the residual `a:0-reads` (2 and 2) |

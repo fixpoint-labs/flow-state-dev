@@ -177,7 +177,9 @@ describe("scope-state writes publish on their scope's topic", () => {
     const topiced = await run(bus, "sessionTopic", "billing");
     await run(bus, "requestStep", "two");
     expect(ofKind(user, "state").map((n) => n.origin)).toEqual([{ requestId: themed }]);
-    expect(ofKind(session, "state").map((n) => n.origin)).toEqual([{ requestId: topiced }]);
+    // Each run here births its session, and a birth publishes `state` with no
+    // origin (publish-writes.ts); the run's own state write carries its request.
+    expect(ofKind(session, "state").filter((n) => n.origin !== undefined).map((n) => n.origin)).toEqual([{ requestId: topiced }]);
     expect(ofKind(org, "state")).toEqual([]);
   });
 });
