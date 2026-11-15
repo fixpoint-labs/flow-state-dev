@@ -2,12 +2,12 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-Two decisions are the sign-off, and two questions are open. The owner already decided that these
+Two decisions are the sign-off, and one question is open. The owner already decided that these
 three screens become views and wait for this issue
 ([FIX-2627](../FIX-2627/DECISIONS.md#decided-during-implementation), 2026-11-13;
 [FIX-2628 Fork B](../FIX-2628/DECISIONS.md#how-it-got-here), 2026-11-15). What is left is what a
-view may read of the caller's sessions, where a view that crosses kits lives, which issue removes
-the old list call, and what an untitled session shows.
+view may read of the caller's sessions, where a view that crosses kits lives, and what an untitled
+session shows.
 
 ## The tree
 
@@ -20,7 +20,6 @@ flowchart TD
   D2 -.->|"rejected · misses an app's own agent flow"| X3["a workforce views slot"]
   D2 -.->|"rejected · a second way a view is installed"| X4["capabilities carry views"]
   D2 -.->|"rejected · the address stops naming the owner"| X5["a session view served through another flow"]
-  I --> Q1["Q1 · open · which issue removes listWorkerSessions"]
   I --> Q2["Q2 · open · what an untitled session shows"]
 ```
 
@@ -60,26 +59,6 @@ session on another kit's flow. The board's pull-request links are such a case, a
 recorded work view, where the run session is the coding flow's own.
 
 ## Open
-
-<a name="q1"></a>
-### Q1 · Which issue removes `listWorkerSessions`?
-
-- **In plain terms.** The workforce client call that lists a user's conversations with a worker.
-  Today the lab, a teammates goal (`stops-and-re-runs-a-task-from-its-popup`, which uses
-  `isDefault`), the docs page *Workers on disk* and the lab README use it. The view replaces it for
-  screens, with the same rows, the default first.
-- **The trade-off.** Removing it here moves the teammates goal onto the view and changes one docs
-  section at release. Leaving it ships two public ways to list a worker's sessions, and removing
-  the call later breaks app code that started using it in between.
-- **My recommendation:** remove it here. The teammates goal is a real second caller and proves
-  the view on a second app.
-- **What would change my mind:** teammates' screens moving onto the views in a near epic; then
-  the goal moves with them.
-- **If wrong:** small either way: a goal moved a little early, or one release with two ways.
-
-![Q1, open: which issue removes listWorkerSessions. Recommended: this issue, moving the teammates goal onto the view. Or: a later issue. It comes down to a second caller: moving the teammates goal proves the view twice, while leaving the call ships two ways to list. Price: one goal and one docs section more here. Tie: the lab moves in FIX-2628 either way. Flips if teammates' screens move to the views soon](figures/open-remove-list-call.svg)
-
-It comes down to a second caller: leaving the call ships two ways to list a worker's sessions.
 
 <a name="q2"></a>
 ### Q2 · What does the sidebar show for a session before its title is generated?
@@ -147,7 +126,10 @@ It comes down to the cost on every list: the fallback reads a message per untitl
   watch per card.
 - **Recorded work** (harness-manager, coding worker flow, session view): the plan and the pull
   requests (number, link, title), beside `changes`.
-- **`findWorkerSession` stays:** it derives the one session a write goes to.
+- **This issue removes `listWorkerSessions`**, with no alias (BP-034), under the owner's standing
+  no-legacy decision ([FIX-2628, 2026-11-15](../FIX-2628/DECISIONS.md#how-it-got-here)). The same PR
+  moves the teammates goal `stops-and-re-runs-a-task-from-its-popup`, which reads `isDefault`,
+  onto the worker sessions view. `findWorkerSession` stays: it derives the one session a write goes to.
 - **Names:** `list`, `turns`, and the views' names are new public names; none is a word the
   glossary retires. **Changeset:** `minor` for `core`, `engine`, `workforce` and
   `harness-manager`. Nothing in `packages/client` changes: `listWorkerSessions` is workforce's.
@@ -189,7 +171,7 @@ before it was folded.
 | A worker-session row can't be built from `list` and `turns` alone: running state needs a read per row, the first-line fallback needs messages | Yes | Folded: rows carry the latest request; the fallback is Q2 |
 | An empty board in a user view hears nothing, so a first filing never wakes the board | Yes | Folded into D2 and the FIX-2625 row (*Extends*); a matrix row |
 | `listWorkerSessions`' membership rule and the route's state-filter guard are private and would be copied | Yes, the Adds | Folded: each moves to one shared place |
-| `listWorkerSessions` has other callers (a teammates goal, a docs page, the lab README, docs-revamp facts), `isDefault` and no row cap | Yes, scope | The view carries `isDefault` and the order; removal is Q1; the docs page joins the docs line |
+| `listWorkerSessions` has other callers (a teammates goal, a docs page, the lab README, docs-revamp facts), `isDefault` and no row cap | Yes, scope | The view carries `isDefault` and the order; this issue removes the call and moves the teammates goal (no-legacy); the docs page joins the docs line |
 | `turns` should hear `request` only; a one-key `patchState` reaches the user topic only when its request settles; record only a found session; the board's `error`; the flows-slot route to the installation; the shared recorded-work mapping; the goal's base | No | Implementer notes, placed in the rows above and in *Notes from review* |
 
 ## Notes from review
@@ -213,5 +195,6 @@ Recorded for the implementer, from the passes on #5290:
 - **Review round 1** — three passes found the board would re-run per chunk through the one
   recorded session read, an empty board heard nothing, and a list row needed more than two reads.
   A session's identity now records nothing, list rows carry their latest request, and the board
-  read names its conversation. The words-on-the-stream card became an engineering call, so the
+  read names its conversation. Who removes `listWorkerSessions` was decided under the standing
+  no-legacy decision: this issue. The words-on-the-stream card became an engineering call, so the
   two owner questions fit the sign-off.

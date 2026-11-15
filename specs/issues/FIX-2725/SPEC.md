@@ -104,7 +104,7 @@ flowchart LR
 | Session turns, ~500: `watchThread`'s request reads, stopping, retry, and `watchTaskWork`'s work | workforce's **session turns** view (each turn's status, times, source and error); the words stay on `sessionFeed` and the in-flight call on the request stream; `entriesOf` and `withStopped` move unchanged, as FIX-2628 says; the plan and pull requests come from the **recorded work** view |
 | Coding board, ~350: `boardOf`, `harnessOf`, `tasksAndTopicsOf`, `holdsOf`, `watchTasks`, outputs, errors, review answers' lookup | harness-manager's **coding board** view: the task-list rows plus each one's open holds and where their answers go, its harness, review, landing and error, and its pull requests by number. Answering stays the Inbox client's `answerOne` and the board's actions |
 | Row types, ~150 | The views' output types |
-| `createWorkforceClient`'s `listWorkerSessions` | Removed, by this issue or another ([Q1](DECISIONS.md#q1)). `findWorkerSession` stays: it finds the one session a write goes to |
+| `createWorkforceClient`'s `listWorkerSessions` | Removed here, with the teammates goal that reads it moved onto the view. `findWorkerSession` stays: it finds the one session a write goes to |
 
 ## What stays as it is
 
@@ -135,7 +135,7 @@ flowchart LR
 
 | The debt | |
 |---|---|
-| **Removes** | `listWorkerSessions` ([Q1](DECISIONS.md#q1)); the reason FIX-2628 keeps ~1,100 adapter lines; the peer-read refusal in user views; the private copies of the membership rule and the state-filter guard |
+| **Removes** | `listWorkerSessions`; the reason FIX-2628 keeps ~1,100 adapter lines; the peer-read refusal in user views; the private copies of the membership rule and the state-filter guard |
 | **Adds** | Two reads and four views, permanent by design. Sessions are listed two ways, the HTTP list and `list`: permanent by design, one filter and one guard under both |
 | **Leaves** | Teammates' and Shift Manager's screens keep `readRecordedWork` and their own assembly (their epics) |
 
@@ -158,8 +158,7 @@ from the first.
    server decides which, and it hears only the changes that alter them.** If wrong: a list that
    wakes on every word, or one a caller can point at someone else's.
 
-**Open: 2.** [Q1](DECISIONS.md#q1) · which issue removes `listWorkerSessions`: I recommend this one.
-[Q2](DECISIONS.md#q2) · what the sidebar shows before a title is generated: I recommend
+**Open: 1.** [Q2](DECISIONS.md#q2) · what the sidebar shows before a title is generated: I recommend
 "Untitled", dropping the first-line fallback.
 
 Feature · `core`, `engine`, `workforce`, `harness-manager` · M (two reads, the hearing
