@@ -37,6 +37,7 @@ import { COORDINATOR_ROUTE } from "../src/coordinator/coordinator-keys";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkforceClient } from "../src/workers/client";
+import { workerSessionsViewRef } from "../src/workers/session-views-ref";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { ROSTER_FLOW } from "../src/workers/keys";
 import { hireWorkforce, type HireWorkforceOptions } from "../src/workers/register";
@@ -477,18 +478,19 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** An app's workforce client for `userId`, talking to this host's router. */
   const inProcess = createInProcessFetch(state);
-  const client = (userId: string) =>
-    createWorkforceClient(
-      createClient({
-        userId,
-        // This host's router in-process, as `userId`.
-        fetcher: (input, init) => {
-          const headers = new Headers(init?.headers);
-          headers.set("x-user", userId);
-          return inProcess(input, { ...init, headers });
-        }
-      })
-    );
+  const fsd = (userId: string) =>
+    createClient({
+      userId,
+      // This host's router in-process, as `userId`.
+      fetcher: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set("x-user", userId);
+        return inProcess(input, { ...init, headers });
+      }
+    });
+  const client = (userId: string) => createWorkforceClient(fsd(userId));
+  /** `userId`'s conversations with `worker`: the roster flow's worker sessions view (FIX-2725). */
+  const workerSessions = async (userId: string, worker: string) => (await fsd(userId).view(workerSessionsViewRef(), { worker })).value;
 
   /**
    * Make every new request on `actionName` fail to be written, as a store
@@ -547,6 +549,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     requestsOf,
     messages,
     client,
+    fsd,
+    workerSessions,
     hire,
     fire,
     loseDispatches,

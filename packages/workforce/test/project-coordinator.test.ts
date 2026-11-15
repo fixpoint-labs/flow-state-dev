@@ -17,7 +17,7 @@ import { handler, sequencer } from "@flow-state-dev/core";
 import { runAction } from "@flow-state-dev/engine";
 import { mockEvaluationModel, mockGenerator, type MockEvaluationModel, type MockGeneratorInstance } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { createWorkforceClient } from "../src/browser";
+import { createWorkforceClient, workerSessionsViewRef } from "../src/browser";
 import {
   COORDINATOR_FLOW,
   COORDINATOR_ROUTE,
@@ -195,6 +195,9 @@ async function boot(
   );
   const lab = (user: string, org?: string) => h.openSession(user, "lab", undefined, org);
   const client = (user: string, org?: string) => createWorkforceClient(createClient({ userId: user, fetcher: h.fetcherFor(user, org) }));
+  /** `user`'s conversations with `worker`: the worker sessions view (FIX-2725). */
+  const workerSessions = async (user: string, worker: string, org?: string) =>
+    (await createClient({ userId: user, fetcher: h.fetcherFor(user, org) }).view(workerSessionsViewRef(), { worker })).value;
   await h.ok("alice", "lab", await lab("alice"), "createProject", { id: "apollo", title: "Apollo", members: ["bob"] });
   await h.ok("alice", "lab", await lab("alice"), "createProject", { id: "notes", title: "My notes", visibility: "private" });
 
@@ -262,7 +265,7 @@ async function boot(
         .map((item) => ({ agentName: item.agentName as string | undefined, text: JSON.stringify(item.content ?? item.text ?? "") }))
     };
   };
-  return { ...h, heard, counting, lab, client, open, mark, coordinator, delegates, eventually, internal, settled, items };
+  return { ...h, heard, counting, lab, client, workerSessions, open, mark, coordinator, delegates, eventually, internal, settled, items };
 }
 
 describe("a user's project coordinator (BR-21, BR-22, BR-23)", () => {
@@ -332,11 +335,11 @@ describe("a user's project coordinator (BR-21, BR-22, BR-23)", () => {
     const project = await h.coordinator("alice");
     const app = h.client("alice");
     // Listed before her default conversation exists: the project session is top-level and names the worker.
-    expect(await app.listWorkerSessions(PROJECT_COORDINATOR)).toEqual([]);
+    expect(await h.workerSessions("alice", PROJECT_COORDINATOR)).toEqual([]);
     const main = await app.ensureWorkerSession({ worker: PROJECT_COORDINATOR });
-    const listed = await app.listWorkerSessions(PROJECT_COORDINATOR);
-    expect(listed.map((entry) => [entry.session.id, entry.isDefault])).toEqual([[main.id, true]]);
-    expect(listed.map((entry) => entry.session.id)).not.toContain(project);
+    const listed = await h.workerSessions("alice", PROJECT_COORDINATOR);
+    expect(listed.map((entry) => [entry.id, entry.isDefault])).toEqual([[main.id, true]]);
+    expect(listed.map((entry) => entry.id)).not.toContain(project);
   });
 });
 

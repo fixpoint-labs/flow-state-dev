@@ -33,7 +33,8 @@ import { workerMessagesResources } from "../messages/message-log";
 import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
 import { defineWorkstreamReportView } from "../projects/workstream-report-view";
-import { ROSTER_FLOW, ROSTER_VIEW, WORKER_USAGE_VIEW, WORKSTREAM_REPORT_VIEW } from "./keys";
+import { ROSTER_FLOW, ROSTER_VIEW, SESSION_TURNS_VIEW, WORKER_SESSIONS_VIEW, WORKER_USAGE_VIEW, WORKSTREAM_REPORT_VIEW } from "./keys";
+import { defineSessionTurnsView, defineWorkerSessionsView } from "./session-views";
 import { defineRosterView } from "./roster-view";
 import { defineWorkerUsageView } from "./worker-usage";
 
@@ -69,6 +70,9 @@ export function defineWorkerRosterFlow(
     views: {
       [ROSTER_VIEW]: defineRosterView(installation),
       [WORKER_USAGE_VIEW]: defineWorkerUsageView(installation),
+      // FIX-2725: a user's sessions with a worker, and one session's turns.
+      [WORKER_SESSIONS_VIEW]: defineWorkerSessionsView(installation),
+      [SESSION_TURNS_VIEW]: defineSessionTurnsView(),
       // FIX-2624: a workstream entry's report, which a direct read doesn't serve (it is content).
       [WORKSTREAM_REPORT_VIEW]: defineWorkstreamReportView(),
       // FIX-2624: the user's routines, the app's declared ones joined in.

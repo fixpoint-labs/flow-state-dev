@@ -19,14 +19,6 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
     ...real,
     createWorkforceClient: () => ({
       roster: async () => [...listed.keys()].map((id) => ({ id, flow: "f" })),
-      listWorkerSessions: async (worker: string) => {
-        listings.count += 1;
-        if (listings.failing > 0) {
-          listings.failing -= 1;
-          throw new Error("the roster is down");
-        }
-        return (listed.get(worker) ?? []).map((session) => ({ session, isDefault: false }));
-      },
       setWorkProject: async () => undefined,
     }),
   };
@@ -59,6 +51,17 @@ function host() {
       return json({ error: "down" }, 503);
     }
     if (path === "/api/flows/sessions") return json({ sessions: [{ id: "own_s", flowKind: "projects", updatedAt: 1 }] });
+    // The roster flow's worker sessions view (FIX-2725): the sidebar's listing, stood in for.
+    if (path === "/api/flows/workforce-roster/views/workerSessions") {
+      listings.count += 1;
+      if (listings.failing > 0) {
+        listings.failing -= 1;
+        return json({ error: "the roster is down" }, 503);
+      }
+      const worker = (JSON.parse(String(init?.body ?? "{}")) as { input?: { worker?: string } }).input?.worker ?? "";
+      const rows = (listed.get(worker) ?? []).map((session) => ({ ...session, isDefault: false }));
+      return json({ output: rows, topics: [{ scope: "user" }], keys: rows.map((row) => row.id) });
+    }
     if (path === "/api/flows/resources/user/lab-pins") {
       await holdPins;
       if (pinsFailing > 0) {

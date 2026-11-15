@@ -21,7 +21,7 @@ import { ClientHttpError, createClient } from "@flow-state-dev/client";
 import { STEER_POLL_MS } from "@flow-state-dev/harness-manager";
 import { createInboxClient, inboxItems, taskActionName, taskListViewRef, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice } from "@flow-state-dev/orchestration/tasks";
-import { createWorkforceClient, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import { createWorkforceClient, WORKER_ID_STATE_KEY, workerSessionsViewRef } from "@flow-state-dev/workforce/browser";
 import { goalTmpDir, loadFixture, REPO_ROOT, repoPath, runGoal, stopProcessGroup } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { itemsOf, sleep, startTeammates, type Fsd } from "../lab.mts";
@@ -62,8 +62,9 @@ const CONTROLS: Record<string, Patch[]> = {
       file: "src/adapter.ts",
       from: "return (await board()).refile(refileRowOf(whole), rerunOverrides(whole, worker));",
       to:
-        `const other = (await workforce.listWorkerSessions(${JSON.stringify(fixture.filer)})).find((s) => !s.isDefault)!.session; ` +
-        "return inbox.board({ flowId: other.flowId ?? other.flowKind, sessionId: other.id, board: TASK_BOARD }).refile(refileRowOf(whole), rerunOverrides(whole, worker));",
+        // FIX-2725: Lead's other conversation, from the roster flow's worker sessions view.
+        `const other = ((await client.view(viewRef("workforce-roster", "workerSessions"), { worker: ${JSON.stringify(fixture.filer)} })).value as Array<{ id: string; isDefault: boolean }>).find((s) => !s.isDefault)!; ` +
+        "return inbox.board({ flowId: await flowOf(), sessionId: other.id, board: TASK_BOARD }).refile(refileRowOf(whole), rerunOverrides(whole, worker));",
       why: "Re-run is bound to a second conversation with Lead, not the one that filed the task",
     },
   ],
@@ -214,7 +215,8 @@ await runGoal(async (failures, tell) => {
     // Opened in every run, so the boards read are the same with or without a control.
     const second = await fsd.flow(cos.flow).createSession({ title: "Another conversation", state: { [WORKER_ID_STATE_KEY]: fixture.filer } });
     const other: Board = { flow: cos.flow, sessionId: second.id };
-    if ((await workforce.listWorkerSessions(fixture.filer)).filter((s) => !s.isDefault).map((s) => s.session.id).join() !== second.id) {
+    // FIX-2725: read through the roster flow's worker sessions view, which reads `isDefault`.
+    if ((await fsd.view(workerSessionsViewRef(), { worker: fixture.filer })).value.filter((s) => !s.isDefault).map((s) => s.id).join() !== second.id) {
       throw new Error("setup: the second conversation with Lead isn't listed as its one other session");
     }
     const everyRow = async () => [...(await rowsOf(fsd, cos)).map((row) => ({ row, board: cos })), ...(await rowsOf(fsd, other)).map((row) => ({ row, board: other }))];

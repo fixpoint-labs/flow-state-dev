@@ -153,11 +153,14 @@ export const conversationLedgerResources = taskLedgerResources(conversationLedge
 
 /**
  * The ledger at `partition`, as the running user's scope holds it, or
- * `undefined` when the running flow doesn't declare it.
+ * `undefined` when the running flow doesn't declare it. A view reading a
+ * conversation's board from no session names that conversation as
+ * `readFor` (FIX-2725 D2): its board is heard on that conversation's topic.
  */
 export async function conversationLedgerAt(
   ctx: BlockContext,
-  partition: string
+  partition: string,
+  options: { readFor?: string } = {}
 ): Promise<TaskCollectionRef | undefined> {
   const collection = resolveResourceCollection(ctx, CONVERSATION_LEDGER_ID);
   if (collection === undefined) return undefined;
@@ -167,7 +170,8 @@ export async function conversationLedgerAt(
     collectionId: CONVERSATION_LEDGER_ID,
     collection,
     partition,
-    immutableAssignee: hasFrozenLedgerAssignee(conversationLedger)
+    immutableAssignee: hasFrozenLedgerAssignee(conversationLedger),
+    ...(options.readFor !== undefined ? { readFor: options.readFor } : {})
   });
 }
 
