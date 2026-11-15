@@ -6,7 +6,7 @@ description: Store connections between things, for questions about how they rela
 
 # Memory relations
 
-Semantic memory stores facts about a subject: "the user prefers dark mode", "Moni is his wife". That works well for personalization. It works less well when the value lives in the connections between things, which is the shape of research and analysis work: a ticker depends on a supplier, a supplier sits in a country, a macro factor drives a sector.
+Semantic memory stores facts about a subject: "the user prefers dark mode", "the user works at Acme". That works well for personalization. It works less well when the value lives in the connections between things, which is the shape of research and analysis work: a ticker depends on a supplier, a supplier sits in a country, a macro factor drives a sector.
 
 The relations layer adds typed links between entities on top of semantic facts. A **relation** is a directed, typed edge, the same primitive described in [Resource Edges](../../build/link-records.md). It's opt-in. Leave it off and memory stores facts only.
 
@@ -33,7 +33,7 @@ export const mem = system({
 
 ## What gets stored
 
-Relations are extracted from conversations automatically, during the periodic consolidation pass that distills facts. Each edge connects two subjects (`user --married to--> moni`) and records how confident memory is and which episodes it came from.
+Relations are extracted from conversations automatically, during the periodic consolidation pass that distills facts. Each edge connects two subjects (`user --works at--> acme`) and records how confident memory is and which episodes it came from.
 
 Edges attach to subjects memory already has a fact about. Endpoints are trimmed and lowercased before they are matched, so "NVDA" and "nvda" are one node. There is no alias merging: "Nvidia" is a different subject string, so an edge to "Nvidia" does not join the "nvda" node.
 
