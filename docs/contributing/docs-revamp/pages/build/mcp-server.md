@@ -73,7 +73,7 @@ export const supportFlow = defineFlow({
 export default supportFlow();
 ```
 
-`lookUpOrder` and `exportTickets` are blocks, each in its own file beside the flow. `exportTickets` can be any block. `lookUpOrder` here returns fixed data:
+`lookUpOrder` and `exportTickets` are blocks, each in its own file beside the flow. Both return fixed data here, where yours would query your own systems:
 
 ```ts title="src/flows/support/blocks/look-up-order.ts"
 import { handler } from "@flow-state-dev/core";
@@ -84,6 +84,18 @@ export const lookUpOrder = handler({
   inputSchema: z.object({ orderId: z.string() }),
   outputSchema: z.object({ status: z.string(), totalCents: z.number() }),
   execute: async ({ orderId }) => ({ status: `shipped (${orderId})`, totalCents: 4200 }), // your code queries your orders
+});
+```
+
+```ts title="src/flows/support/blocks/export-tickets.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+export const exportTickets = handler({
+  name: "export-tickets",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ path: z.string() }),
+  execute: async () => ({ path: "/tmp/open-tickets.csv" }), // your code writes the CSV
 });
 ```
 

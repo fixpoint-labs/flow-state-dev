@@ -65,17 +65,17 @@ export const ticketNotes = defineResourceCollection({
 
 With that in place, `patchState({ pinned: true })` on a note, from any block, emits the message. A write that leaves the state equal to what is stored is a no-op and starts nothing.
 
-The other kinds are `created`, `deleted` and `contentUpdated`. A single resource, not a collection, takes only `stateUpdated` and `contentUpdated`. The [resources reference](../reference/resources.md) lists each kind, the change fields and `when` for evictions.
+The other kinds are `created`, `deleted` and `contentUpdated`. A single resource, not a collection, takes only `stateUpdated` and `contentUpdated`. The [resources reference](../reference/resources.md) lists each kind, the change fields and which kinds `when` applies to.
 
 ## 3. React to the body
 
-State and content are separate: `patchState` fires `stateUpdated` only, and `writeContent` fires `contentUpdated` only. A content reaction receives only `key`, `ref` and `kind`. The body is never inlined, so the block reads it back, and it sees the new text because the write is stored before the reaction runs.
+State and content are separate: `patchState` fires `stateUpdated` only, and `writeContent` fires `contentUpdated` only. A content reaction receives only `key`, `ref` and `kind`. The change does not carry the body, so the block reads it back. That read returns the new text.
 
-The block reaches the collection through `ctx.resources.notes`, the name `addNote` declares. It does not declare the collection itself, which would make the collection and its own reaction import each other.
+The block reaches the collection through `ctx.resources.notes`, the name the `addNote` block gives it in its `resources` map (see the [resources page](../concepts/resources.md)). The reaction does not declare the collection itself, because then the collection and its own reaction would import each other. Without a declaration, `ctx.resources.notes` has no type, so the example casts it to `ResourceCollectionRef<NoteState>`.
 
 ```ts title="src/flows/support/blocks/count-note-words.ts"
 import { handler, resourceContentChangeSchema } from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { ResourceCollectionRef } from "@flow-state-dev/core";
 import type { NoteState } from "../resources/note-state";
 
 export const countNoteWords = handler({
@@ -115,7 +115,7 @@ Bind `countInBackground` in place of `countNoteWords`. Use a blocking reaction w
 
 - **It does not start from a browser.** `client.content.update` and other writes a client makes run outside a flow turn and fire no reaction.
 - **It does not repair a bad input.** If the block's `inputSchema` does not match the change, for example a schema built from a different state, the block is skipped and an `error` item with code `reactive_input_invalid` appears. The write is unaffected.
-- **It does not loop safely.** A reaction that writes the kind it reacts to needs a `when` that stops it. Past a fixed depth in one turn, the framework stops the chain and emits a `reactive_cascade_exceeded` error item. The turn completes. The limits are fixed.
+- **It does not stop a loop for you.** A reaction that writes the kind it reacts to needs a `when` that ends it. If it has none, the framework stops the chain at a fixed depth and emits a `reactive_cascade_exceeded` error item. The turn still completes.
 
 ## Next
 

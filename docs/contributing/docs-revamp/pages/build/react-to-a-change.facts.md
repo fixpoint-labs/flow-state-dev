@@ -193,3 +193,9 @@ The page's app is the support desk, flow `support`, as on the other Build pages.
 - `client.content.update` fires no reaction (`dwf:19-27`); the page states it without "yet".
 - Cascade breach and `reactive_input_invalid` both emit an `error` item and the turn completes (section 6, section 7 **[ran]**). The depth (8) and fan-out (1000) numbers are Reference rows; the page says "a fixed depth".
 - Links use page-plan slugs: `../concepts/resources.md`, `../concepts/background-work.md`, `../reference/resources.md`, `../reference/items.md`, `./find-by-facets.md`.
+
+## 16. Revise round 2
+
+- `ctx.resources.notes` is untyped without a block-level `resources` declaration, and declaring it makes the definition cycle (`ks:49-64`), so the cast stays. The page now says why. `ResourceCollectionRef` is also exported from the `@flow-state-dev/core` root (`packages/core/src/index.ts:38`); the example imports it from there.
+- `addNote` is introduced with its `resources: { notes: ticketNotes }` map (`res-page:86-96`) and linked.
+- The cascade bullet says the framework stops the chain at a fixed depth and the turn completes (section 7); "evictions" is gone from the reference pointer.

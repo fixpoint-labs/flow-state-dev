@@ -11,7 +11,7 @@ scheduled-actions dispatch endpoint and you have a scheduler, configured in
 `vercel.json` and protected by a shared secret.
 
 This guide assumes the scheduled-actions transport is already mounted. If
-not, start with [Scheduled actions](/docs/server/scheduled).
+not, start with the [schedules reference](../../reference/schedules.md).
 
 ## 1. Declare the schedule
 
@@ -74,7 +74,7 @@ export default defineFlow({
 A scheduled handler is not listed in `actions`, so callers can't run it as an
 action. The only way in is the dispatch endpoint. Branching on `ctx.source`
 means the bearer secret is accepted on scheduled calls and nowhere else. See
-[Authentication and resolvers](../reference/auth.md) for the resolver's
+[Authentication and resolvers](../../reference/authentication.md) for the resolver's
 signature and the `source` values.
 
 ## 2. Add the cron entry
@@ -104,7 +104,7 @@ export const GET = createGetToPostCronShim({
 
 Set `NEXT_PUBLIC_BASE_URL` to your deployment's origin. The route forwards to
 the dispatch endpoint there. Options, defaults and the failure cases are in
-the [schedules reference](../reference/schedules.md#cron-shim).
+the [schedules reference](../../reference/schedules.md#cron-shim).
 
 ## 3. Protect the endpoint
 
@@ -113,8 +113,12 @@ it on every cron request as `Authorization: Bearer ${CRON_SECRET}`. A
 request with the wrong secret gets `401`, from the route or the dispatch
 endpoint.
 
-That secret is the only protection. Anyone who holds it can fire any
-schedule on a flow whose resolver accepts it. To rotate it, change
+That secret is the only protection: no network rule restricts either URL.
+It is checked twice. The cron route answers `401` to a request without it
+and calls nothing onward. The dispatch endpoint runs the flow's resolver
+before it reads anything else, so a stranger posting there directly gets
+`401` and learns nothing about which times have fired. Anyone who holds the
+secret can fire any schedule on a flow whose resolver accepts it. To rotate it, change
 `CRON_SECRET` in the project's environment variables. The old value stops
 working.
 
@@ -141,9 +145,15 @@ that scheduled time has already fired, so nothing ran. `200` with `skipped`
 means the previous run has not finished. The route from step 2 passes only
 the status code back to Vercel, so Vercel's cron logs show `202` for a
 started run and `200` for both a duplicate and a skip. Status codes and the rest of the contract are in the
-[schedules reference](../reference/schedules.md#dispatch-endpoint).
+[schedules reference](../../reference/schedules.md#dispatch-endpoint).
 
-Vercel Cron does not run under `vercel dev`. Use the curl above while you
+To exercise the route from step 2 as well, send a GET to
+`/api/cron/support/stale-ticket-sweep` with the same header. If
+`NEXT_PUBLIC_BASE_URL` is unset, it answers `500 "Server misconfigured:
+missing baseUrl"`. A `GET /api/flows/support/schedules` with the same header
+lists the flow's schedules, which confirms the entry registered.
+
+Vercel Cron does not run under `vercel dev`. Use these calls while you
 develop.
 
 ## Many schedules at once
@@ -152,8 +162,8 @@ Vercel limits how many entries `vercel.json` may hold, and the limit
 differs by plan. For schedules created at runtime, such as one per user, do
 not add an entry each. Add one entry that ticks every few minutes and have
 `createScheduleTickHandler` dispatch whatever is due. The
-[schedule index](/docs/server/schedule-index) holds the due times, and
-[the schedules reference](../reference/schedules.md#tick-handler) lists the
+schedule index holds the due times, and
+[the schedules reference](../../reference/schedules.md#tick-handler) lists the
 handler's options, cadence and delivery guarantee.
 
 ## Limits
@@ -162,7 +172,7 @@ handler's options, cadence and delivery guarantee.
   run is over and the framework does not retry it.
 - If Vercel misses a scheduled time, or a run is skipped because the
   previous one is running, that time is not run later. If you need delivery you can count on,
-  use [Cloud Scheduler](/guides/scheduled-cloud-scheduler) or
-  [EventBridge Scheduler](/guides/scheduled-eventbridge).
+  use [Cloud Scheduler](./cloud-scheduler.md) or
+  [EventBridge Scheduler](./eventbridge.md).
 - Check Vercel's cron documentation for the plan limits on entry count and
   how often a schedule may run.

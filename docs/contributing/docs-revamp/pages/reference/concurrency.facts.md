@@ -169,3 +169,12 @@ A concurrency policy stores no user-owned data. The parts it touches:
 3. OLD:20 says `defer` "waits until nothing on the key is running or waiting", while the shipped doc comment says "no request holds or waits on the key" (`core/types/concurrency.ts:36-37`). Same meaning.
 4. OLD:127 says the lease default is "ten seconds by default with `bullmqWorker`". Confirmed: `packages/bullmq/src/lease-backend.ts:43`.
 5. The in-process (no-backend) arbiter is described in OLD as "enforced in memory". Confirmed by `arbiter.ts:30-41`.
+
+## 11. Revise round 1 (pass 8): changes to what the page states
+
+- 11.1 The page was restructured into tables. Sections the page no longer carries, each owned by another Reference page, whose facts stay in sections 5, 6, 7 above for that page's own fact sheet: pause and resume behavior (5.1 to 5.6, R-17 `reference/durable-execution`), queue-backed behavior and lease (6.1 to 6.7, R-19 `reference/background-work` and the bullmq README), `autoResume` (7.2, R-05 `reference/flows`), `onOverlap` (7.3, R-33 `reference/schedules`), concurrent state writes (R-07 `reference/state-operations`). The page links to each.
+- 11.2 The cap of 32 is per key and counted in the process that accepted the request, not across a queue-backed deployment (bullmq README:76; `arbiter.ts` doc on `maxDeferredPerKey`). Resolves doubt 1 of pass 7: one scope, per accepting process.
+- 11.3 An MCP call has a session only when its action sets `mcp.session`: a string template mints an id per call, `{ fromInput }` reads the id from the call's input. Otherwise no session, so no arbitration under the default key. `packages/mcp/src/createMcpTransportAdapter.ts:408`, `:482-504` (`deriveSessionId`).
+- 11.4 A waiting run on a queue is rechecked at most 2 s apart (6.2), so the page says it starts within about two seconds of its turn coming; the bullmq README adds that the next job in line starts straight away when a run finishes (6.3). That sentence now lives in R-19, not on this page.
+- 11.5 The "Coming next" roadmap, the debounce sentence and the rollback rationale for `restart` are cut. The page states only that both reserved names throw at definition time (1.5).
+- 11.6 The chat "split append from respond" example is replaced by one flow example (`src/flows/support/flow.ts`) that shows the flow default, `allow`, `hold`, `defer` and an inherited action; its block imports are app files.

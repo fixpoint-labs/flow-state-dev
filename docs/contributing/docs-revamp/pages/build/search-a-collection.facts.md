@@ -145,6 +145,10 @@ The three example calls on the page are illustrative shapes, not run output: the
 
 Type-check **[ran]**: every `ts` block on this page and on `find-by-facets.md` compiles under `apps/kitchen-sink`'s `strict` tsconfig, written at its titled path.
 
+## Revise round 3
+
+The page now has a "Limits" section and states, besides the earlier facts: 26 (every call reads every body, a small curated set, named in the opening and in Limits), 43 (no meaning or synonyms, "charged twice" vs "duplicate payment" as the example), 28 (a projected collection is reached by search only, in the hook's order; glob and grep skip it) and 40 (the hook receives `userId` and `orgId` and scopes its own query, or a user sees in one organization what they saved in another). New statement from fact 26: an edited note is searched by its new text on the next call, because each call reads the current bodies (no index; `rt:289-296`, `rst:222`, `:268-279`). **[source]** not run.
+
 ## Revise round 2
 
 Fact 3 and 30 sharpened: a flow-level declaration makes the collection searchable from a generator's tools (the registry holds what the flow declares, `ov:295`, `ov:360-364`); a block's declaration bubbles into the flow (`ov:360`). The page says so in step 2, step 3 and the closing line. **[source]** not run end to end.

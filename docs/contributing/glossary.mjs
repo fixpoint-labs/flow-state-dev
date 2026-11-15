@@ -1439,6 +1439,7 @@ const TOOLING = /^scripts\/|^\.github\/|^\.husky\/|^\.omp\/|^\.claude\/|^\.curso
 /** Tracked files the sweep deliberately does not read, each with its reason. */
 export const EXCLUDE = [
   { path: /^docs\/contributing\/glossary\.mjs$/, over: true, why: "the glossary: it names every retired word on purpose" },
+  { path: /^docs\/contributing\/docs-revamp\/pages\/reference\/glossary\.(facts|record)\.md$/, over: true, why: "the Glossary page's fact sheet and record: they read the glossary's retired words, to keep the page off them" },
   { path: HISTORY, over: true, why: "history: specs, internal notes, changelogs, blog posts, the lockfile" },
   { path: KEPT_EXAMPLES, over: true, why: "a skill's worked example, kept for its shape: history" },
   { path: TOOLING, over: true, why: "tooling: scripts, CI and hook config, other harnesses' settings, the plugin" },

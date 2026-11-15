@@ -104,6 +104,12 @@ export const slackFlow = defineFlow({
 bot user, since no signed-in user sends a webhook. `sessionId` keeps each
 channel's messages in one session; drop it if you don't need that.
 
+So two posts in #support and one in #billing make two sessions: the first
+delivery for a channel creates its session and later ones reuse it. Both are
+owned by `slack-bot`, not by the people who posted; the input's `user` is
+Slack's id for the poster, not the run's user. A teammate signed in to your app
+as someone else can't see them and gets `Unknown session` (404).
+
 ## 2. The server verifies and answers the URL check
 
 The server's webhook receiver is `createWebhookTransportAdapter`. You give it a
@@ -188,5 +194,12 @@ The endpoint is `POST /api/flows/slack/webhooks/slack`. In your Slack app's
 Events the flow has no binding for, such as a `reaction_added`, are
 acknowledged and dropped, so subscribing to more than you bind is safe.
 
-The [webhook receivers reference](/docs/server/webhooks) covers the response
+Slack allows three seconds for a response. The server answers
+with a `202` carrying `status: "accepted"` and a `requestId` once the request is
+recorded and before the block runs, so a slow block doesn't make Slack time out. If the request
+can't be recorded, the answer is `503` and Slack retries. An error the block
+throws is not in the response: it lands on the request that `requestId` names,
+and DevTool shows it.
+
+The [webhooks reference](../../reference/webhooks.md) covers the response
 codes, timing, the `when` predicate and idempotency.

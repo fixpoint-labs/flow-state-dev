@@ -151,6 +151,6 @@ Stays on the page: the opt-in and opt-out, tool-name derivation in one sentence,
 ## Revise round 2
 
 - Missing `Authorization` header: the bearer resolver returns `null` (`bs:47-88`); the host then throws `PrincipalResolutionError` 401 "Action request requires non-empty userId" because `requireUser` is true (`createInboundTransportHost.ts:324-331`), which the adapter answers as HTTP 401 with `-32001` (`ad:247-259`). A wrong token is the same 401. A resolver result with no valid `orgId` throws 401 too (`createInboundTransportHost.ts:260-266`). This supersedes correction 2 for a flow with `requireUser: true` (the page's flow).
-- The page now shows `look-up-order.ts` (a `handler` returning fixed data, `handler` from `@flow-state-dev/core`); `exportTickets` is left as any block.
+- The page now shows `look-up-order.ts` (a `handler` returning fixed data, `handler` from `@flow-state-dev/core`); `exportTickets` is shown too, as a `handler` with an empty input schema returning `{ path }`, so the page's imports all resolve.
 - Default export: `flow.ts` exports `supportFlow()` as default and `fsdev.config.ts` passes that instance in `flows`, as designed in round 1.
 - The result text and session sentences were reworded; "By default" qualifies the fresh-session-per-call line.

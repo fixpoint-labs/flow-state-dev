@@ -36,7 +36,7 @@ export function RequestList({ sessionId }: { sessionId: string }) {
     if (!signal.aborted) setRequests(rows);
   }
 
-  // The first read is yours: the hook makes none of its own on mount.
+  // The hook reads only once it connects or its timer ticks, so the first read is yours.
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal);
@@ -49,7 +49,7 @@ export function RequestList({ sessionId }: { sessionId: string }) {
       if (notice !== null && notice.kind === "items") return; // a reply streaming in
       return load(signal);
     },
-    { pollIntervalMs: 3000 },
+    { client: fsd, pollIntervalMs: 3000 },
   );
 
   return (
@@ -66,11 +66,11 @@ export function RequestList({ sessionId }: { sessionId: string }) {
 
 On a host that pushes (`serve()` from `@flow-state-dev/node`, see step 4), the read runs as soon as the change is saved, and it sees the change. A burst of changes runs the read once more after the one in flight, not once per change. You can pass a new topics array or a new function on every render without resubscribing.
 
-The hook subscribes through the `FlowProvider`'s client. If your app builds its own client with its own `fetcher`, pass it as `client` so the subscription signs in the way your reads do.
+The example passes `fsd` as `client`, so the subscription signs in the way your reads do. Without `client`, the hook uses the `FlowProvider`'s client, or, outside a provider, one for `devuser` on the page's origin.
 
 ## 3. Ignore changes you don't show
 
-The read gets the notice that woke it, `{ topic, kind, origin? }`, or `null` after a connect, a reconnect or a timer tick. On a host that pushes, connecting runs it once with `null`, so the screen may read twice on mount: your effect's read, then that one. The example skips `"items"` notices because a reply streaming in sends many and the request list doesn't change with them. Read everything on `null` and on `"resync"`, which means the screen may have missed something. The other kinds are in the [client reference](../reference/client.md).
+The read gets the notice that woke it, `{ topic, kind, origin? }`, or `null` after a connect, a reconnect or a timer tick. On a host that pushes, the hook runs your read once with `null` when it connects, so the screen reads twice on mount: your effect's read, then that one. The example skips `"items"` notices because a reply streaming in sends many and the request list doesn't change with them. Read everything on `null` and on `"resync"`, which means the screen may have missed something. The other kinds are in the [client reference](../reference/client.md).
 
 Narrowing the topic does the same with less code: `topic.session(id, { resource: "plan" })` only hears changes to that one resource, so a long reply never wakes it.
 

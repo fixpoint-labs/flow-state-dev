@@ -6,7 +6,7 @@ description: "`fsdev chat` opens a persistent terminal session over your flows."
 
 # Chat with a flow from the terminal
 
-`fsdev chat` opens a persistent terminal session over your flows. Type a message, it goes to the flow you're talking to, and the reply streams back live. Each turn runs a flow action, and the conversation carries across turns.
+`fsdev chat` opens a persistent terminal session over your flows. Your messages go to the flow you're talking to, and replies stream back live. Each turn runs a flow action, and the conversation carries across turns.
 
 ## Starting a session
 
@@ -14,22 +14,22 @@ description: "`fsdev chat` opens a persistent terminal session over your flows."
 pnpm fsdev chat hello-chat chat
 ```
 
-The two arguments are a flow kind and an action, the same pair `fsdev run` takes. That flow becomes the **default target**: where your typed messages go. `fsdev chat` finds your flows the way `fsdev run` does: from `fsdev.config.ts` in the current directory if there is one, otherwise from `src/flows/` and `flows/`. See [App Configuration](./configuration).
+The two arguments are a flow kind and an action, the same pair `fsdev run` takes. That flow becomes the **default target**: where your typed messages go. `fsdev chat` finds your flows the way `fsdev run` does: from `fsdev.config.ts` in the current directory if there is one, otherwise from `src/flows/` and `flows/`. See the [CLI reference](../reference/cli.md).
 
 You can leave the target out:
 
 - **One flow, one action** in the project: `fsdev chat` binds it automatically.
 - **Several available**: the session starts unbound. `/targets` lists them and `/use <flow>` picks one.
 - **A config default**: set `chat: { default: "hello-chat.chat" }` on `createFlowState` and a bare `fsdev chat` binds it.
-- **No flows at all**: an error, not an empty prompt.
+- **No flows at all**: an error.
 
 ## Sending messages
 
-Anything that isn't a command is a message. It's sent to the default target as `{ message: "<your text>" }`, so the target's action needs to accept that shape. Replies stream as the model produces them.
+Anything that isn't a command is a message. It's sent to the default target as `{ message: "<your text>" }`, so the target's action needs to accept that shape.
 
-If the action's input schema rejects `{ message }`, the turn fails with the validation error. The session stays open, so `/use` another target and keep going.
+If the action's input schema rejects `{ message }`, the turn fails with the validation error and a note that the target isn't chat-shaped. The session stays open, so `/use` another target and keep going.
 
-While a turn runs, a block may report what it's doing, such as "Searching the knowledge base...", as one status line that updates in place. It clears when the reply or a tool call arrives, and it only shows in an interactive terminal, not in piped output.
+While a turn runs, a block's status, such as "Searching the knowledge base...", shows as one line that updates in place until the reply or a tool call arrives. Piped output doesn't show it.
 
 ## Slash commands
 
@@ -54,7 +54,7 @@ With no `fsdev.config.ts`, history is saved to `.fsdev/data/fsdev.db`, the datab
 
 When a turn stops for a user's answer, the session prints the question it is waiting on and that question's id. See [Human in the loop](./human-in-the-loop.md).
 
-Turns run as the user your app's resolver returns. The resolver is the function in your config that says which user a request runs as. With none, turns run as `devuser` in the development organization (`__fsd_default_org__`), and `devuser` is also the DevTool's default user, so the session shows in its list. If the resolver refuses the request, that turn fails and the chat keeps going. Pass `--org <id>` to name the organization yourself; turns then run as `--user <id>`, or `devuser` if you give none. See [Who a run is](./configuration.md#who-a-run-is).
+Turns run as the user your app's resolver returns. The resolver is the function in your config that says which user a request runs as. With none, turns run as `devuser`, the DevTool's default user, in the development organization (`__fsd_default_org__`). If the resolver refuses the request, that turn fails and the chat keeps going. Pass `--org <id>` to name the organization yourself; turns then run as `--user <id>`, or `devuser` if you give none. See [Auth and tenancy](../concepts/auth-and-tenancy.md).
 
 ### Resume yesterday's session
 
@@ -64,9 +64,9 @@ Copy the id from the opening line, `/status`, or the DevTool's session list, the
 pnpm fsdev chat hello-chat chat --session sess_1760000000000_ab12cd
 ```
 
-`--session <id>` resumes that session for the flow you start with. An id from a different flow is rejected. An id that doesn't exist isn't: you get a new, empty session labelled "resumed". Resume as the same user and organization that created the session, or the turn is refused. With no config, run it from the same directory, since history lives in that directory's `.fsdev/data/`.
+`--session <id>` resumes that session for the flow you start with, so it needs a flow bound at start. With several flows and no `chat.default`, a bare `fsdev chat --session <id>` is an error: name the flow, or start the chat and run `/use <flow>`, then `/session <id>`. An id from a different flow ends the command with an error naming its flow. An id that doesn't exist isn't an error: you get a new, empty session labelled "resumed". Resume as the same user and organization that created the session, or the turn is refused. With no config, run it from the same directory, since history lives in that directory's `.fsdev/data/`.
 
-Inside a running chat, `/use <flow>` then `/session <id>` does the same. `/session new` starts over; the old session stays stored.
+Inside a running chat, `/use <flow>` then `/session <id>` does the same. There, an id from another flow prints which flow it belongs to and keeps the current session. `/session new` starts over; the old session stays stored.
 
 ## A session
 
@@ -90,5 +90,5 @@ Store:   app-configured stores
 
 ## Next steps
 
-- [Agent Dev Loop](./agent-dev-loop.md): the non-interactive edit → `fsdev run` → read loop.
-- [CLI API](/docs/api/cli): every `fsdev chat` flag and command, and how `chat` differs from `run` and `dev`.
+- [Build with your coding agent](../start/build-with-your-coding-agent.md): the non-interactive edit → `fsdev run` → read loop.
+- [CLI reference](../reference/cli.md): every `fsdev chat` flag and command, and how `chat` differs from `run` and `dev`.
