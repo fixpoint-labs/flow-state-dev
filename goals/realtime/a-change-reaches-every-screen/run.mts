@@ -76,6 +76,10 @@ const unknownScenes = [...SCENES].filter((s) => !KNOWN_SCENES.includes(s));
 if (SCENES.size === 0 || unknownScenes.length > 0) {
   throw new Error(`setup: GOAL_SCENES must name at least one of ${KNOWN_SCENES.join(", ")} (got ${JSON.stringify(process.env.GOAL_SCENES)})`);
 }
+// j4 does not run under main-before (see the run), so j4 alone would grade nothing there.
+if (CONTROL === "main-before" && [...SCENES].every((s) => s === "j4")) {
+  throw new Error("setup: GOAL_SCENES=j4 runs nothing under GOAL_CONTROL=main-before; select another scene");
+}
 const BOUND_MS = 1_000;
 const SAMPLES = 5;
 const IDLE_MS = 10_000;
@@ -1065,10 +1069,14 @@ async function journeyJ4(
     const port = await peer.call<number>("port");
     return { name, peer, port, origin: `http://127.0.0.1:${port}` };
   };
-  const n1 = await next("j4-next-1");
-  const n2 = await next("j4-next-2");
+  // Each server is stopped in `finally`, whichever later start fails.
+  const started: AppProcess[] = [];
   const contexts: BrowserContext[] = [];
   try {
+    const n1 = await next("j4-next-1");
+    started.push(n1);
+    const n2 = await next("j4-next-2");
+    started.push(n2);
     const capabilities = (await (await fetch(`${n2.origin}/api/flows/capabilities`)).json()) as { push?: unknown };
     tell.over("j4:polls · the Next host's capabilities", [capabilities]);
     if (capabilities.push !== null && capabilities.push !== undefined) failures.push(`j4:polls: GET /capabilities on the Next handler reports push ${JSON.stringify(capabilities.push)}`);
@@ -1102,7 +1110,7 @@ async function journeyJ4(
     note(`j4:polls ${read.join("/")} ms (bound ${bound}); B opened ${b.opens.length} sockets`);
   } finally {
     for (const context of contexts) await context.close().catch(() => {});
-    await Promise.all([n1.peer.stop(), n2.peer.stop()]);
+    await Promise.all(started.map((app) => app.peer.stop()));
   }
 }
 
