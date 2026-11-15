@@ -98,7 +98,15 @@ If detection fails, set the build command to `pnpm install && pnpm build` and th
 curl https://your-app.up.railway.app/healthz
 ```
 
-A `200` with `{"status":"ok"}` means the stores are open. A `503` means they are opening. If initialization fails, `fsdev serve` exits with code `3`; read the service logs.
+The path is `/healthz`, not `/health`. What comes back:
+
+| Response | Meaning |
+| --- | --- |
+| `200` `{"status":"ok"}` | The server is ready and the stores are open. |
+| `503` `{"status":"initializing"}` | The port is bound but the stores are still opening. The server answers the platform's health check during a cold start, so this is normal for a moment. Retry. |
+| `500` | Store initialization failed for good. The process is up but requests error, and the deploy fails fast. Read the service logs. |
+
+Under `fsdev serve`, an initialization failure exits the process with code `3` instead of returning `500`.
 
 ## Run one replica
 

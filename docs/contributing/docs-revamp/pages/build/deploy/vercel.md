@@ -26,7 +26,7 @@ pnpm add -D tsx
 
 ## 2. Mount the API route
 
-Pass the `flowstate` handle from step 3 to `createVercelNextHandler`. `createVercelNextHandler` takes the `flowstate` handle itself.
+`createVercelNextHandler` takes the `flowstate` handle you define in step 3.
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";
@@ -149,7 +149,7 @@ curl -N https://your-app.vercel.app/api/flows/my-flow/requests/REQUEST_ID/stream
 
 ## Limits
 
-- A Vercel function has a maximum duration for your plan, see [Vercel's function limits](https://vercel.com/docs/functions/limitations). A flow that outruns it is cut off. For long-running flows, use [Railway](/guides/deploying-to-railway) or [Docker](/guides/deploying-with-docker).
+- A Vercel function can run only as long as your plan allows (see [Vercel's function limits](https://vercel.com/docs/functions/limitations)). A flow that outruns it is cut off. For long-running flows, use [Railway](/guides/deploying-to-railway) or [Docker](/guides/deploying-with-docker).
 - On Vercel, an attachment upload is refused with status 501 if your blob store writes to local disk. Use a remote blob store.
 - The HTTP API adds no CORS headers. If your frontend is on another domain, add them in Next.js middleware.
 

@@ -121,3 +121,9 @@ Legend: **[page]** the page states it. **[ref]** belongs on a Reference page; th
 - The page no longer names Hono, `streamHandle`, `serve()` or "a built router" (Q1.2 and Q1.4 stay as facts for the Reference; the page says `app` is the `FlowState` `createFlowState` returns).
 - The "1-2s cold start" figure and the client-disconnect claim are off the page's own prose. The page only links the runtime reference for what a disconnect does (Q1 verify item above).
 - Endpoint table, auth resolver, request lifecycle and store-persistence detail live in the Reference (`/reference/runtime`, `/docs/server/authentication`, `/docs/persistence/overview`); the page keeps one sentence and a link each.
+
+## Revise round 3 (page state)
+
+- Troubleshooting "Cold starts" now answers the cold-start question: no 503 on the API (waits for init, 500 only on permanent failure), `/healthz` answers 503 `{ status: "initializing" }` until ready (Q1.5, Q1.8), and the first request pays store init including schema creation (about 30 DDL statements plus an advisory lock), skippable with a deploy-step migration and `skipSchemaInit: true` (Q2.6; `pgd:266-285`). Step 4 links to it.
+- The provisioned-concurrency clause is gone: AWS-side, **[verify]**, not claimed.
+- The deploy-step snippet and the claim that skipping init without migrating fails with missing tables are the page's inference from `pgd:266-285`; the page states no failure mode for skipping without migrating.

@@ -11,11 +11,10 @@ GitHub signs every delivery, so the server checks the signature before anything
 runs. By the end you have an endpoint GitHub can POST to and a `repo` flow that
 runs a review block for each opened pull request.
 
-GitHub sends every webhook for a repository to one URL. It puts the event type
-(`pull_request`, `push`, `issues`) in the `X-GitHub-Event` header, not in the
-body. The sub-event (`opened`, `closed`, `synchronize`) is the body's `action`
-field. You tell the server where to find the event type with an `eventType`
-function, and narrow to `opened` with a `when` predicate on the binding.
+GitHub sends every webhook for a repository to one URL, with the event type
+(`pull_request`, `push`) in the `X-GitHub-Event` header. The sub-event
+(`opened`, `closed`) is the body's `action` field. An `eventType` function reads
+the header, and a `when` predicate on the binding narrows to `opened`.
 
 ## 1. The flow declares routing
 
@@ -86,9 +85,15 @@ export const repoFlow = defineFlow({
 The `on` key is `pull_request`, the value of `X-GitHub-Event`. It is never
 `pull_request.opened`, because `opened` is the body's `action` and `when`
 handles it. A closed or synchronized pull request fails the predicate, and the
-delivery is acknowledged and ignored. `sessionId` gives each pull request its
-own session. `requireUser: false` with a `defaultUserId` runs each delivery as
-a bot user, since no signed-in user sends a webhook.
+delivery is acknowledged and ignored. `requireUser: false` with a `defaultUserId`
+runs each delivery as a bot user, since no signed-in user sends a webhook.
+
+`sessionId` gives each pull request its own session. PRs 42 and 43 on `acme/api`
+make two sessions, `acme/api#42` and `acme/api#43`. The first delivery for a key
+creates its session and later ones reuse it, even if two first deliveries
+arrive at once. `github-bot` owns the sessions, and they live in the `stores`
+profile's session store, so `inMemoryStores()` loses them on restart. Without
+`sessionId`, every delivery gets a fresh ephemeral session.
 
 ## 2. The server verifies and reads the header
 
@@ -148,10 +153,21 @@ In the repository (or organization) settings, add a webhook:
 - **Events:** select "Pull requests". Or select "Send me everything" and let
   `when` filter; an event with no binding is acknowledged and ignored.
 
-A delivery the server accepts gets a 202. GitHub's webhook settings page has a
-"Recent Deliveries" tab that shows each request and response, with a redeliver
-button. Open a pull request, then check the tab for a 202 and your review block
-running.
+## 4. Check it worked
+
+Open a pull request, then open the webhook's "Recent Deliveries" tab on GitHub.
+It shows each request and response, and can redeliver a payload. Success is
+`202 { status: "accepted", provider, eventType, requestId }`, sent before the
+block finishes. Errors inside the block appear in DevTool, not in the response.
+
+A failed delivery tells you what to fix:
+
+- **401 `invalid_signature`:** the Secret on GitHub differs from what
+  `GITHUB_WEBHOOK_SECRET` returns, or the body was altered.
+- **400 `invalid_payload`:** the body isn't JSON. Set Content type to
+  `application/json`.
+- **404 `flow_not_found`:** the flow id in the URL is wrong. **404
+  `webhook_not_found`:** the last segment isn't `github`.
 
 The [webhook receivers reference](/docs/server/webhooks) covers the other
 response codes, the delivery id, and the `when` predicate in full.

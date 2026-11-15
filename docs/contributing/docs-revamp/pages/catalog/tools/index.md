@@ -10,7 +10,7 @@ Your model needs to look something up on the web, read a page, or run a command.
 
 ## What you get
 
-A tool is a handler block a generator can call. The generator shows the model the tool's description and input schema, the model decides when to call it, and its arguments are checked against that schema before the tool runs. A shipped tool is the same kind of block as one you write.
+A tool is a handler block a generator can call. The generator shows the model the tool's description and input schema, the model decides when to call it, and the model's arguments are checked against the input schema before the tool runs. A shipped tool is the same kind of block as one you write.
 
 | Tool | What it does | Setup |
 |------|-------------|-------|
@@ -20,7 +20,7 @@ A tool is a handler block a generator can call. The generator shows the model th
 | `createBashCapability()` | Run bash commands in a sandbox; files from your resource collections are copied in and changes are copied back | Needs the optional `just-bash` package |
 | `createMcpCapability()` | Expose the tools of MCP servers | Needs the optional `@ai-sdk/mcp` package |
 
-Search, fetch and crawl go in a generator's `tools` array. Bash and MCP attach through `uses`; see their pages.
+Search, fetch and crawl go in a generator's `tools` array. Bash and MCP attach through `uses`; see [Bash](/docs/tools/bash) and [MCP](/docs/tools/mcp).
 
 ## Install it
 
@@ -56,19 +56,24 @@ A generator also has its own `search` option that uses the model provider's buil
 
 Search, fetch and crawl choose a provider from the API keys in your environment. Search needs one key, such as `TAVILY_API_KEY`. Without one, running the tool fails with "No search provider available". Fetch and crawl need no key. With none set, they use a built-in fetcher that returns markdown, and a `FIRECRAWL_API_KEY` switches them to Firecrawl.
 
-To choose yourself, pass keys or call a provider's factory:
+When several search keys are set, the first keyed provider wins, in this order: Parallel, Tavily, Exa, Perplexity, Serper, Brave, Perplexity Sonar. With both `TAVILY_API_KEY` and `PARALLEL_API_KEY` in the environment, `tools.search()` uses Parallel.
 
-```ts title="src/flows/research/tools/firecrawl.ts"
-import { tools, firecrawlFetch } from "@flow-state-dev/tools";
+To pick one yourself, call that provider's factory. A forced provider ignores the order, and a key you pass in `keys` wins over the environment variable. The factory throws when it runs if it finds no key.
 
-// Keys passed here win over environment variables.
-export const search = tools.search({ keys: { tavily: "tvly-..." } });
+```ts title="src/flows/research/tools/providers.ts"
+import { tavilySearch, firecrawlFetch } from "@flow-state-dev/tools";
+import { tavilyKey } from "../secrets"; // your own secrets-store lookup
 
-// Force one provider; this throws if it has no key.
+// Always Tavily, with a key from your secrets store.
+export const search = tavilySearch({ keys: { tavily: tavilyKey } });
+
+// Same idea for fetch.
 export const firecrawl = firecrawlFetch({ keys: { firecrawl: "fc-..." } });
 ```
 
-The [Search](/docs/tools/search), [Fetch](/docs/tools/fetch) and [Crawl](/docs/tools/crawl) pages list every provider, its key variable and the order they are tried in.
+Passing `keys` to `tools.search()` does not force a provider; the order above still applies. Tavily, Exa and Firecrawl each need their client library installed, such as `npm install @tavily/core`. Without it, running the tool fails with "Install @tavily/core to use the Tavily search provider".
+
+The [Search](/docs/tools/search), [Fetch](/docs/tools/fetch) and [Crawl](/docs/tools/crawl) pages list every provider, its key variable and its factory.
 
 ## Cache a tool's results
 
@@ -83,7 +88,7 @@ export const exchangeRate = handler({
   description: "Look up the current exchange rate for a currency pair.",
   inputSchema: z.object({ pair: z.string() }),
   outputSchema: z.object({ rate: z.number() }),
-  cacheable: { ttl: 60_000 }, // 60 seconds, default "run" scope
+  cacheable: { ttl: 60_000 }, // 60 seconds, default scope
   execute: async (input) => {
     const res = await fetch(`https://rates.example.com/${input.pair}`);
     return { rate: (await res.json()).rate };
@@ -93,7 +98,7 @@ export const exchangeRate = handler({
 
 Caching applies when the block is a tool in a generator's `tools` slot and a tool cache is installed: add `createToolCacheCapability()` from `@flow-state-dev/core` to the generator's `uses`. A [task board](/docs/orchestration/task-board) installs one for you when a worker's tool declares `cacheable`. Anywhere else, `cacheable` has no effect.
 
-Scope is `run` (default, the current task board run), `request`, or `session` (across requests in a session). Errors are never cached: if `execute` throws, the next call runs the block again.
+Scope is `run` (default), `request`, or `session`. `session` reuses results across every request in the session; `request` reuses them within one request. `run` is one task board run, and on a generator you wired yourself it behaves like `request`. Errors are never cached: if `execute` throws, the next call runs the block again.
 
 Don't mark a tool cacheable if it changes state, depends on time or randomness its arguments don't capture, or if a stale result would do real harm.
 
@@ -102,4 +107,5 @@ Don't mark a tool cacheable if it changes state, depends on time or randomness i
 - [Search tool](/docs/tools/search): multi-provider web search
 - [Fetch tool](/docs/tools/fetch) and [Crawl tool](/docs/tools/crawl): read one page or a whole site
 - [Bash tool](/docs/tools/bash): sandboxed commands over your resource collections
+- [MCP tools](/docs/tools/mcp): give an MCP server's tools to a generator
 - [Coding agents](/docs/tools/coding-agents): run Claude Code, Codex or Cursor as a block

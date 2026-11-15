@@ -119,8 +119,10 @@ The endpoint is `POST /api/flows/billing/webhooks/stripe`.
 `stripeWebhookVerifier` checks the `Stripe-Signature` header against your secret
 and rejects deliveries older than five minutes.
 
-The `deliveryId` extractor records Stripe's event id on each delivery. The
-reference covers using it to dedup when a block has no natural key like
+`deliveryId` puts Stripe's event id on `metadata.webhook.deliveryId` of the
+delivery's request. Stripe delivers at least once and the framework does not
+deduplicate, so a redelivered event reaches your block again with the same id.
+The reference covers keying a write on it when a block has no natural key like
 `invoiceId`.
 
 ## 3. Test it locally
@@ -133,14 +135,15 @@ secret, so you exercise the verification path end to end.
 stripe listen --forward-to localhost:3000/api/flows/billing/webhooks/stripe
 ```
 
-`stripe listen` prints a `whsec_...` secret. Put it in your environment, then
-start your server, so the verifier matches:
+`stripe listen` prints a `whsec_...` secret and keeps its terminal. In the
+terminal where you run your server, export the secret, then start the server, so
+the verifier matches:
 
 ```bash
 export STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
-Then trigger an `invoice.paid` event from another terminal:
+From a third terminal, trigger an `invoice.paid` event:
 
 ```bash
 stripe trigger invoice.paid

@@ -80,7 +80,7 @@ Keep timeouts conservative so an abandoned stream doesn't bill for minutes. What
 
 ## 4. Choose a store
 
-The filesystem and SQLite stores don't survive between invocations. Use a database the function reaches over the network, such as a managed Postgres. Create the store at module scope, as step 1 does with `postgresStores()`, so warm invocations reuse its connection. Which stores persist is in the [persistence overview](/docs/persistence/overview).
+The filesystem and SQLite stores don't survive between invocations. Use a database the function reaches over the network, such as a managed Postgres. Create the store at module scope, as step 1 does with `postgresStores()`, so warm invocations reuse its connection. Which stores persist is in the [persistence overview](/docs/persistence/overview). Starting the store on a cold start has a cost you can remove; see [Cold starts](#cold-starts-the-first-request-after-idle).
 
 ---
 
@@ -131,9 +131,27 @@ If step 4 returns everything at once, the function isn't streaming. Recheck `Inv
 
 ## Troubleshooting
 
-### Cold starts
+### Cold starts: the first request after idle
 
-The first request after idle pays initialization: loading the bundle, opening the store connection. Provisioned concurrency removes it, at a cost.
+The first request after idle is slower, but it does not fail. The API waits for the store to finish starting and then answers. It returns a 500 only if store startup failed for good. `/healthz` behaves differently: it answers 503 `{ "status": "initializing" }` until the store is ready, so don't point a startup probe at it and treat 503 as an outage.
+
+What that first request pays for is loading the bundle and starting the store. With `postgresStores`, starting the store creates the schema by default: about 30 idempotent statements and an advisory lock, on every cold start. To skip that cost, create the schema once as a deploy step, then pass `skipSchemaInit: true` in the handler:
+
+```ts title="scripts/migrate.ts (run once per deploy)"
+import { createPostgresStores } from "@flow-state-dev/store-postgres";
+
+const stores = await createPostgresStores({ connectionString: process.env.DATABASE_URL });
+await stores.close();
+```
+
+```ts title="src/handler.ts"
+primary: postgresStores({
+  connectionString: process.env.DATABASE_URL,
+  skipSchemaInit: true,
+}),
+```
+
+Run the migration before the first request that uses the new schema. Store options are in the [persistence overview](/docs/persistence/overview).
 
 ### SSE arrives all at once
 

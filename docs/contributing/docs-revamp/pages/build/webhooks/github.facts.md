@@ -251,3 +251,23 @@ C9. The guide links the reference as `/docs/server/webhooks`; the revamp plan's 
 - B-12 Receive a Stripe webhook (`./stripe.md`): where the shared steps (binding, mount,
   verification, idempotency) are first written; this page may point to it rather than repeat.
 - C-17 (sitemap): serving flows. Current page: `docs/contributing/docs-revamp/pages/concepts/serving-flows.md`.
+
+## Revision 1 (state of the page after pass 8)
+
+R1. The page declares the block `reviewPullRequest` (a `handler`, file
+    `src/flows/repo/blocks/review-pull-request.ts`) and uses that one name in prose and code. It
+    says "block", never "action". `sequencer` and `reviewPipeline` are gone (C2, C3 resolved).
+    `reviews` is the reader's own helper, as `ledger` is on the Stripe page.
+R2. Files: `src/flows/repo/flow.ts`, `src/lib/flowstate.ts`, `src/app/api/flows/[...path]/route.ts`
+    (C8 resolved). One engine import; `flows: [repoFlow()]` (C1). `repoFlow()` is callable: a flow
+    definition instantiates the way `billingFlow()` does on the Stripe page. [S1-C1]
+R3. Delivery id (row 24, 25): the page says `deliveryId` records GitHub's id on
+    `metadata.webhook.deliveryId` and the framework does not deduplicate on it; the example block
+    keys its write on repo and PR number. The page no longer says the id "flows" for deduplication.
+R4. The page makes no re-review claim. `when` passes only `opened`; later events on the same PR are
+    acknowledged and ignored (row 9). `sessionId` is described as one session per pull request.
+R5. Verification wording: the verifier "checks" `X-Hub-Signature-256` against the raw body and
+    secret (row 18); a failed check is 401 (row 21). Response codes and 503 live on the reference
+    page, linked as `/docs/server/webhooks` as the Stripe page links it.
+R6. Page states "an event with no binding is acknowledged and ignored" (row 30) and that a
+    delivery the server accepts gets a 202 (row 32).
