@@ -125,3 +125,12 @@ The page stores nothing at runtime. The one thing that outlives a request is the
 ## 11. Revision round 3
 
 - Line 'not runtime imports' scoped to exclude the generative pair. Generative section opens with what the reader gets; 'generator' glossed as the block that calls the model. Info card and link card are real shapes (section 2). `chatAssistantRenderers` is described as mapping 'the standard item types' and leaving out sources (`source: false`, `rc/chat-assistant.tsx:54`; also `block_trace`, task and debate internals set to `false`, section 4). 'building blocks' replaced by 'components'.
+
+## Review fix (Codex): the chat example wraps its items in `SessionItemsProvider`
+
+- **[page]** `SessionItemsProvider` and `useSessionItems` come from the `session-items-context` registry item, installed at `components/flow-state/session-items-context.tsx` (`packages/ui/registry.json:557-569`), so the import is `@/components/flow-state/session-items-context`. It is not a package export of `@flow-state-dev/ui` or `@flow-state-dev/react` (grep of `packages/react/src` and `packages/ui/src` finds none). `chat-assistant`, `task-plan` and `approval` each list it as a registry dependency (`registry.json:349,431,459`), so adding `chat-assistant` installs it.
+- **[page]** `SessionItemsProvider` is the context's `Provider` (`rc/session-items-context.tsx:6-8`), so its prop is `value`, an `OutputItem[]`. The registry's own stories pass `value={items}` (`rc/chat-assistant.stories.tsx:22`, `rc/task-plan.stories.tsx:34`).
+- **[page]** `chatAssistantRenderers` draws a task board as `<TaskPlan collectionId requestId />` with no `items` prop (`rc/chat-assistant.tsx:16-28`); `TaskPlan` falls back to `useSessionItems()` (`rc/task-plan.tsx:213-214`), which is `[]` with no provider. So without the wrap the board is empty.
+- **[page]** `Approval` finds the resume that resolved it in `useSessionItems()` and collapses to a receipt only when it finds one (`rc/approval.tsx:18-30`). Without the provider a resolved approval draws as pending after a reload.
+- **[page]** Type-checked: the page's `chat.tsx` and `renderers.ts` blocks in `apps/kitchen-sink/zz-fix-h-ui/` against kitchen-sink's registry copies (`session-items-context.tsx` identical to the registry file), only the planted error. `session.items` is accepted as the provider's `value`.
+

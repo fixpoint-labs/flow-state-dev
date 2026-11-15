@@ -58,17 +58,20 @@ Pass `chatAssistantRenderers` to `FlowProvider` and the default components draw 
 import { FlowProvider, ItemsRenderer, useSession } from "@flow-state-dev/react";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import { Conversation, ConversationContent } from "@/components/flow-state/conversation";
+import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { SourcesGroup } from "@/components/flow-state/sources";
 
 function Items({ sessionId }: { sessionId: string }) {
   const session = useSession(sessionId, { items: true });
   return (
-    <Conversation>
-      <ConversationContent>
-        <ItemsRenderer items={session.items} />
-        <SourcesGroup items={session.items} />
-      </ConversationContent>
-    </Conversation>
+    <SessionItemsProvider value={session.items}>
+      <Conversation>
+        <ConversationContent>
+          <ItemsRenderer items={session.items} />
+          <SourcesGroup items={session.items} />
+        </ConversationContent>
+      </Conversation>
+    </SessionItemsProvider>
   );
 }
 
@@ -80,6 +83,8 @@ export function Chat({ userId, sessionId }: { userId: string; sessionId: string 
   );
 }
 ```
+
+`SessionItemsProvider` hands the whole session to components that look past their own item. A task board reads its task changes from it, and an approval finds the answer that resolved it, so after a reload it shows as answered. Without the provider they see an empty list.
 
 `chatAssistantRenderers` does not draw sources, the URL references a model's built-in tools, such as web search, return, so `SourcesGroup` sits beside it.
 
@@ -98,4 +103,4 @@ export const renderers: RendererRegistry = {
 
 Writing `component: { "task-board-meta": false }` alone would also drop the audit annotations.
 
-Not every component needs the wiring. One that takes a typed item as a prop, such as `<ModelBadge model={item.model} />`, renders anywhere. `Approval`, `TaskPlan` and the other components that look at the rest of the session read its items from `SessionItemsProvider`. Outside one they see an empty list, so an approval's receipt does not show on reload. Wrap the item list in `SessionItemsProvider` when you use them. The map's contents and the override rule are in the [Reference](../../reference/ui-components.md).
+Not every component needs the wiring. One that takes a typed item as a prop, such as `<ModelBadge model={item.model} />`, renders anywhere. `Approval`, `TaskPlan` and the other components that look at the rest of the session need the `SessionItemsProvider` shown above. The map's contents and the override rule are in the [Reference](../../reference/ui-components.md).

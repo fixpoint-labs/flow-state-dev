@@ -51,10 +51,7 @@ export const handler = createLambdaHandler(flowstate);
 
 ## 2. Enable response streaming
 
-For SSE to work on Lambda, the function has to stream its response:
-
-- The handler uses Lambda's streaming runtime. `createLambdaHandler` does this for you.
-- The function is invoked in streaming mode. Configure a **Function URL** with `InvokeMode: RESPONSE_STREAM`.
+For SSE to work, the function has to stream its response. `createLambdaHandler` uses Lambda's streaming runtime, and the **Function URL** needs `InvokeMode: RESPONSE_STREAM`:
 
 ```bash
 aws lambda create-function-url-config \
@@ -106,7 +103,7 @@ The filesystem and SQLite stores don't survive between invocations. Use a databa
 
 ## 5. Deploy
 
-Bundle `src/handler.ts` and its dependencies (esbuild or your bundler of choice), zip it, and create the function. A minimal AWS CLI flow:
+Bundle `src/handler.ts` and its dependencies with your bundler (esbuild, for example), zip it, and create the function:
 
 ```bash
 # after bundling to dist/handler.js and zipping to function.zip
@@ -121,7 +118,7 @@ aws lambda create-function \
   --environment "Variables={OPENAI_API_KEY=sk-...,DATABASE_URL=postgres://...}"
 ```
 
-For anything beyond a first deploy, manage this with SAM, CDK, or Terraform rather than raw CLI calls. The pieces are the same: a Node 22 function, a Function URL in `RESPONSE_STREAM` mode, and your environment variables.
+Past a first deploy, use SAM, CDK, or Terraform with the same pieces: a Node 22 function, a Function URL in `RESPONSE_STREAM` mode, and your environment variables.
 
 ---
 
@@ -136,16 +133,16 @@ curl https://YOUR_URL.lambda-url.REGION.on.aws/healthz
 # 2. List flows
 curl https://YOUR_URL.lambda-url.REGION.on.aws/api/flows
 
-# 3. Run an action
-curl -X POST https://YOUR_URL.lambda-url.REGION.on.aws/api/flows/hello-chat/actions/chat \
+# 3. Run an action and stream its events in the same response
+curl -N -X POST https://YOUR_URL.lambda-url.REGION.on.aws/api/flows/hello-chat/actions/chat \
   -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
   -d '{"userId": "test", "input": {"message": "Hello"}}'
-
-# 4. Stream the response. Events should arrive incrementally, not in one burst
-curl -N https://YOUR_URL.lambda-url.REGION.on.aws/api/flows/hello-chat/requests/REQUEST_ID/stream
 ```
 
-If step 4 returns everything at once, the function isn't streaming. Recheck `InvokeMode: RESPONSE_STREAM` on the Function URL.
+The `Accept: text/event-stream` header keeps the flow running on the invocation that streams it. Without it the POST answers 202 and returns, and Lambda can freeze the function before the flow finishes.
+
+Events should arrive one at a time. If they arrive in one burst, see [SSE arrives all at once](#sse-arrives-all-at-once).
 
 ---
 
