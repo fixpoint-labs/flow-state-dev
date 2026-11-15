@@ -88,7 +88,7 @@ export function Chat({ userId, sessionId }: { userId: string; sessionId: string 
 
 `chatAssistantRenderers` does not draw sources, the URL references a model's built-in tools, such as web search, return, so `SourcesGroup` sits beside it.
 
-The map is yours to change, and `false` means "don't draw this". Replacing a keyed group such as `component` outright drops its other entries, so spread the existing group first:
+The map is yours to change, and `false` means "don't draw this". Replacing a keyed group such as `data` outright drops its other entries, so spread the existing group first:
 
 ```ts title="src/app/chat/renderers.ts"
 import type { RendererRegistry } from "@flow-state-dev/react";
@@ -97,10 +97,10 @@ import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 // Every default renderer except the task-board card.
 export const renderers: RendererRegistry = {
   ...chatAssistantRenderers,
-  component: { ...chatAssistantRenderers.component, "task-board-meta": false },
+  data: { ...chatAssistantRenderers.data, "task-board-meta": false },
 };
 ```
 
-Writing `component: { "task-board-meta": false }` alone would also drop the audit annotations.
+Writing `data: { "task-board-meta": false }` alone would also drop the audit annotations.
 
 Not every component needs the wiring. One that takes a typed item as a prop, such as `<ModelBadge model={item.model} />`, renders anywhere. `Approval`, `TaskPlan` and the other components that look at the rest of the session need the `SessionItemsProvider` shown above. The map's contents and the override rule are in the [Reference](../../reference/ui-components.md).

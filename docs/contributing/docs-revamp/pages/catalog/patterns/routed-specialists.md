@@ -142,7 +142,7 @@ A specialist that throws does not stop the run. The pass is recorded as failed, 
 
 ## Inspecting a run
 
-Each pass emits a status line naming the specialist it invoked. After each pass the pattern also emits a `routedSpecialists` component item, carrying the workspace state, the iteration number, the current specialist and whether the run is done. Register a container renderer under `routedSpecialists` to show it: `renderers={{ container: { routedSpecialists: ResearchProgress } }}`.
+Each pass emits a status line naming the specialist it invoked. After each pass the pattern also emits a `routedSpecialists` data item, a structured record on the stream, carrying the workspace state, the iteration number, the current specialist and whether the run is done. Register a container renderer under `routedSpecialists` to show it: `renderers={{ container: { routedSpecialists: ResearchProgress } }}`.
 
 Each pass that picked a specialist is also recorded as a task, a unit of work from the orchestration package (see [Task Board](../../concepts/tasks-and-boards.md)). The [patterns reference](../../reference/patterns.md) says where those records live and how to read them.
 

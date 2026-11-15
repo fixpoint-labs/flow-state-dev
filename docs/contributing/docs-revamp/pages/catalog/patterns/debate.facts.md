@@ -41,7 +41,7 @@ Abbreviations: `ix` = `packages/patterns/src/debate/index.ts` · `sc` = `package
 - 3.4 Validation at construction (throws, `[debate] ...`): fewer than 2 debaters (`ix:227-229`, `t:394-401`), a debater without a non-empty name (`ix:232-234`), without a non-empty stance (`ix:235-239`), duplicate names (`ix:240-244`, `t:415-425`), `maxRounds <= 0` (`ix:247-249`, `t:427-438`), `moderator: false` (`ix:263-267`, `t:1287-1299`). **[ref]** (a rows list); the page may name two.
 - 3.5 `judge` cannot be `false` ("the verdict is Debate's identity", `ix:136-138`). Typing is `BlockDefinition`; a `false` is not guarded at runtime (no `throw` for it in `ix`). **[ref]**; the page states only that a judge always runs.
 - 3.6 The basic-use snippet in `ex` (`name: "feature-debate"`, `advocate`/`skeptic`, `maxRounds: 2`, `outputSchema` of `{ decision, rationale }`) matches `DebateConfig` (`ix:127-199`). **[page]**
-- 3.7 What the caller sees on screen: the pattern wraps its run in a container item `{ component: "debate" }` (`ix:421`, `ix:587`) and emits component items `debate-turn-pending` (before each debater, `ix:337-350`), `debate-turn` (after each, `ra:279-283`), `debate-decision` (with a moderator, `ix:552`) and `debate-verdict` (after the judge, `ix:355-369`). Test: `t:290-365`. `@flow-state-dev/ui` ships a `debate` renderer that draws them (`packages/ui/registry/components/debate.tsx:1-80`). **[page]** (one short passage; the item type names go to Reference)
+- 3.7 What the caller sees on screen: the pattern wraps its run in a container item `{ component: "debate" }` (`ix:421`, `ix:588`) and emits data items (`ctx.emit.data`, client only, not history) with `dataType` `debate-turn-pending` (before each debater, `ix:337-350`), `debate-turn` (after each, `ra:64-68`), `debate-decision` (with a moderator, `ix:552`) and `debate-verdict` (after the judge, `ix:355-369`). Test: `t:338-346` (matches `type === "data"` and `dataType`). `@flow-state-dev/ui` ships a `debate` renderer that draws them (`packages/ui/registry/components/debate.tsx:1-80`). **[page]** (one short passage; the item type names go to Reference)
 
 ## 4. Who ends the debate
 
@@ -120,7 +120,7 @@ The pattern stores three things. Answers cite the code; where a reading is by co
 
 **10.2 The audit task collection (sequencer state).**
 - Who owns it: the pattern; one `TaskCollection` per run keyed by `collectionId` (default `name`). `ix:276`, `ix:197-198`, `it:207-212`. **[page]**
-- Who can see it: DevTool and anything reading `task-change` component items. Each turn emits at least one `task-change` item; 2 rounds x 2 debaters gave at least 4 (`t:367-391`). **[page]**
+- Who can see it: DevTool and anything reading `task-change` data items. Each turn emits at least one `task-change` item; 2 rounds x 2 debaters gave at least 4 (`t:386`). **[page]**
 - Where it is stored: `backing: "state"`, on the debate sequencer's own state (`it:209-211`, `ra:261-266`; `packages/orchestration/src/tasks/collection/state-backed.ts:3-14`). That file says only a sequencer's state is checkpointed and restored on resume. **[ref]**
 - How many: one task per (round, debater) turn: `goal` `"<agentName> (round <n>)"`, `assignee` the debater name, `metadata` `{ round, stance }`, completed with `{ text }` (`ra:267-275`). A moderator naming a debater twice in a round makes two tasks. **[page]**
 

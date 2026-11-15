@@ -58,7 +58,7 @@ Each item has a `type` and a `status`, and records the block that made it. A blo
 | --- | --- | --- |
 | `message` | The user's input, a generator, or `ctx.emit.message` | Yes |
 | `tool_output` | A tool call | Yes |
-| `component` | `ctx.emit.component` | No |
+| `data` | `ctx.emit.data` | No |
 | `status` | `ctx.emit.status` | No |
 
 [The items reference](../reference/items.md) lists every type, its fields and the visibility rules.
@@ -86,15 +86,15 @@ export const checkOrder = handler({
   outputSchema: z.object({ orderId: z.string(), detail: z.string() }),
   execute: async (input, ctx) => {
     const key = `order-${input.orderId}`;
-    ctx.emit.component("order-lookup", { orderId: input.orderId, state: "looking" }, { key });
+    ctx.emit.data("order-lookup", { orderId: input.orderId, state: "looking" }, { key });
     const detail = orders[input.orderId] ?? "not found";
-    ctx.emit.component("order-lookup", { orderId: input.orderId, state: "found", detail }, { key });
+    ctx.emit.data("order-lookup", { orderId: input.orderId, state: "found", detail }, { key });
     return { orderId: input.orderId, detail };
   },
 });
 ```
 
-The first argument names a React component the client registers; [Rendering items](./rendering-items.md) shows how. The `key` makes the second call replace the first instead of stacking beside it. The new data replaces the old whole, with no merge, so send every field each time. A reload shows only the latest copy.
+Each call emits a data item, a structured record on the stream. The first argument is its `dataType`, the name a client registers a renderer under; [Rendering items](./rendering-items.md) shows how. The `key` makes the second call replace the first instead of stacking beside it. The new value replaces the old whole, with no merge, so send every field each time. A reload shows only the latest copy.
 
 `ctx.emit.message(text)` and `ctx.emit.status(text)` are the other two emitters. The items reference says what each one stores.
 

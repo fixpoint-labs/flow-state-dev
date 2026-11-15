@@ -188,9 +188,9 @@ Each bias audit makes two or three model calls. `biasAnalyzer` skips the counter
 
 ## Show the audit
 
-When at least one result surfaces, the auditor emits an `audit-annotation` component item (a stream item the client renders with a registered component) with the same `{ results, surfacedResults, overallScore }`. Each audit in a request renders its own card, and a card lists only the surfaced results. Nothing is emitted when nothing surfaces.
+When at least one result surfaces, the auditor emits a data item (a structured record on the stream, drawn only by a renderer registered for its name) named `audit-annotation`, with the same `{ results, surfacedResults, overallScore }`. Each audit in a request renders its own card, and a card lists only the surfaced results. Nothing is emitted when nothing surfaces.
 
-`chatAssistantRenderers` from `@flow-state-dev/ui` includes the card, so a chat built on it shows the audit with no extra code. Otherwise run `fsdev ui add audit-annotation` and register it under `renderers.component["audit-annotation"]`. The [UI reference](../../reference/ui-components.md) has the component's details.
+`chatAssistantRenderers` from `@flow-state-dev/ui` includes the card, so a chat built on it shows the audit with no extra code. Otherwise run `fsdev ui add audit-annotation` and register it under `renderers.data["audit-annotation"]`. The [UI reference](../../reference/ui-components.md) has the component's details.
 
 The audit belongs to the request that produced it. It is not saved to session, user or org state.
 

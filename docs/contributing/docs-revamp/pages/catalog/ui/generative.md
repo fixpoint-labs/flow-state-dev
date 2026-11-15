@@ -19,11 +19,11 @@ Import each half from its own path:
 
 Importing the renderers adds no Zod or `@flow-state-dev/core` code to your browser bundle.
 
-The two halves are linked by one string, the component name. When the model calls `emitInfoCard`, the tool emits a `component` item named `info-card`, and `FlowProvider` draws it with the renderer registered under `info-card`. A name with no renderer shows a JSON fallback in development.
+The two halves are linked by one string, the shape's name. When the model calls `emitInfoCard`, the tool emits a data item, a structured record on the stream, whose `dataType` is `info-card`. `FlowProvider` draws it with the renderer registered under `info-card` in its `data` map. A data item with no renderer draws nothing.
 
 The pack has two shapes:
 
-| Tool | Component | Use for |
+| Tool | Shape | Use for |
 | -- | -- | -- |
 | `emitInfoCard` | `info-card` | Profile snapshots, place summaries, contact-style info |
 | `emitLinkCard` | `link-card` | Citations, source attributions, replacing bare URLs |
@@ -61,7 +61,7 @@ export function TripProvider({ userId, children }: { userId: string; children: R
     <FlowProvider
       flowKind="trip-concierge"
       userId={userId}
-      renderers={{ component: generativeRenderers() }}
+      renderers={{ data: generativeRenderers() }}
     >
       {children}
     </FlowProvider>
@@ -71,7 +71,7 @@ export function TripProvider({ userId, children }: { userId: string; children: R
 
 ## Pick a tighter set
 
-Fewer tools generally means better selection on smaller models. Both entrypoints have a `.pick(...names)` that takes component names:
+Fewer tools generally means better selection on smaller models. Both entrypoints have a `.pick(...names)` that takes shape names:
 
 ```ts title="src/flows/trip-concierge/pack.ts"
 import { generativeTools } from "@flow-state-dev/ui/generative/tools";
@@ -81,7 +81,7 @@ export const packTools = generativeTools.pick("link-card");
 export const packRenderers = generativeRenderers.pick("link-card");
 ```
 
-The two sides are picked separately, so keep the names in sync. A shape you picked on the tool side with no renderer shows the JSON fallback. Unknown names are silently ignored.
+The two sides are picked separately, so keep the names in sync. A shape you picked on the tool side with no renderer draws nothing. Unknown names are silently ignored.
 
 ## Update a card in place
 
@@ -127,7 +127,7 @@ export function TripProvider({ userId, children }: { userId: string; children: R
       flowKind="trip-concierge"
       userId={userId}
       renderers={{
-        component: { ...generativeRenderers(), "info-card": InfoCardRenderer },
+        data: { ...generativeRenderers(), "info-card": InfoCardRenderer },
       }}
     >
       {children}
@@ -140,7 +140,7 @@ export function TripProvider({ userId, children }: { userId: string; children: R
 
 ## Build your own shape
 
-A custom shape is a `handler` block whose `inputSchema` is a Zod object and whose `execute` calls `ctx.emit.component(name, input, { key })`. Add it to a generator's `tools`, and register a renderer under the same `name`.
+A custom shape is a `handler` block whose `inputSchema` is a Zod object and whose `execute` calls `ctx.emit.data(name, input, { key })`. Add it to a generator's `tools`, and register a renderer under the same `name` in the `data` map. The renderer receives the item, and the data is on `item.value`.
 
 - **One schema.** Pass the same Zod object to `inputSchema` and to the renderer's data type. Do not transform the data on the way out of the handler.
 - **A stable `key`.** Pick one that reflects the identity of the thing drawn: `id` for a card about a record, `url` for a link.

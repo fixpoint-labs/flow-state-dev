@@ -188,17 +188,18 @@ goes on the page.
 35. Note: the converged message prints `state.iteration` read before the patch, so its number is one
     below the final `iterations`. index:414, 471-474 (`state` is captured before `patchState`).
     Whether the object is live or a snapshot is not shown by a test. Do not quote the number.
-36. After each pass the pattern emits one keyed component item `routedSpecialists` (key = `name`)
-    inside a container `routedSpecialists`, carrying
-    `{ state: <workspace state>, iteration, specialist, done }`. index:554-574, 596-600.
+36. After each pass the pattern emits one keyed data item with `dataType` `routedSpecialists` (key = `name`)
+    inside a container `routedSpecialists`, carrying the `value`
+    `{ state: <workspace state>, iteration, specialist, done }`, client only, not history.
+    `packages/patterns/src/routedSpecialists/index.ts:555-574` (`ctx.emit.data`, 563-572), 599.
 37. A client renders it by registering a container renderer under `routedSpecialists`:
     `renderers={{ container: { routedSpecialists: RoutedSpecialists } }}`; the kitchen-sink has one
     that shows the workspace entries, the current specialist, and a finished state.
-    apps/kitchen-sink/components/flow-state/routed-specialists.tsx:1-60;
-    apps/kitchen-sink/components/flow-state/chat-assistant.tsx:40, 57.
+    `packages/ui/registry/components/routed-specialists.tsx:24-34` (reads the container's data item through
+    `useContainerItems`); `packages/ui/registry/components/chat-assistant.tsx:58-62`.
 38. CONTRADICTION: the existing page and README say the snapshot renders "live in `<Plan />`" and
     the decision sequence "renders natively in `<Plan />`" (existing page lines 28, 112; README:59).
-    The code emits a `routedSpecialists` container and component, rendered by a container renderer
+    The code emits a `routedSpecialists` container and data item, rendered by a container renderer
     the app registers; nothing in this surface names `<Plan />`. Not verified that `<Plan />`
     renders it. The page should describe the container item and renderer registration, or omit
     rendering. No claim about `<Plan />`.
@@ -280,7 +281,7 @@ The existing example (existing page lines 33-72) is the page's one example. Chec
 - Convergence pass: record-iteration, record-completion and snapshot run every pass; the Task is only
   created when `!done`, dispatch only runs when `!done` (`stepIf`), then the check ends the loop to the
   synthesizer (index:596-629). The page no longer states a step list.
-- `<Plan />` removed everywhere (38): the snapshot is a `routedSpecialists` container/component item
+- `<Plan />` removed everywhere (38): the snapshot is a `routedSpecialists` data item inside a `routedSpecialists` container
   with `{ state, iteration, specialist, done }`, rendered by a renderer the app registers (36-37).
 - A custom `controller` gets the block's normal input and no history; only the default controller reads
   the collection (index:213-232, 480-490). `maxHistory` is "most recent N completed iterations in the

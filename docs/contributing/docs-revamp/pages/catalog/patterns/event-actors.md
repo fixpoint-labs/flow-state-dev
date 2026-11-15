@@ -160,7 +160,7 @@ A busy channel can hit a limit instead: one `emit` may create 500 tasks in all, 
 
 ## Seeing it run
 
-The log is a session resource stored under the key `eventedActors`. A client can read its `entries` array, and nothing else on it. Each recorded entry also streams an `rb-entry` component with its `type`, `topic` and `body`.
+The log is a session resource stored under the key `eventedActors`. A client can read its `entries` array, and nothing else on it. Each recorded entry also streams an `rb-entry` data item, a structured record on the stream, with its `type`, `topic` and `body`.
 
 The tasks live on the request, in the task collection `eventActors:<name>`, and end with it. A task's goal reads `slack-monitor on observation:slack.message` and its input is the entry. While `emit` runs, the stream carries a `task-change` item with the whole task each time one changes. The Checkout-is-broken run shows one `slack-monitor` task that completed.
 

@@ -33,12 +33,14 @@ Written by `docs-writer` (sonnet), 885 words. Scenario: Acme, Globex and Initech
 - After revise round 1, page sha256 42ffc542d1b3: exit 0.
 - After revise round 2, page sha256 189fcaaff35f: exit 1. Failed: check-docs-page.
 - After revise round 3, page sha256 5ccb83c374ea: exit 0.
+- After the loop (review): emit.data migration: the stop-reason `jq` filter reads `.item.dataType` and `.item.value`. Run from examples/guides/research-team: the filter prints `{"collectionId":"competitors","status":"completed","terminationReason":"all-completed",...}`. 1035 words. Page sha256 242cdc17b15e.
 
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 e5f5f09298a0, and the 8 Reference row(s) pass 6 moved.
 
 No untrue claim found.
+- Re-run after the review edit: the completed board report is `ctx.emit.data(TASK_BOARD_META_DATA_TYPE, { collectionId, status: "completed", terminationReason, counts, maxTotalRetries }, ...)` (packages/orchestration/src/task-board/blocks/board-meta.ts:313-317); an NDJSON `item_done` line carries the whole item (packages/fsdev/src/commands/run.ts:59,715); the run output above.
 
 ## 6 · Depth pass
 

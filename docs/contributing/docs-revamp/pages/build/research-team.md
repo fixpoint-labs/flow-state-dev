@@ -168,7 +168,7 @@ The drain also reports on the board as it goes. To see how it stopped, filter fo
 
 ```bash
 fsdev run research run -i '{}' --quiet 2>/dev/null \
-  | jq -c 'select(.type=="item_done" and .item.component=="task-board-meta" and .item.data.status=="completed") | .item.data'
+  | jq -c 'select(.type=="item_done" and .item.dataType=="task-board-meta" and .item.value.status=="completed") | .item.value'
 ```
 
 Its `terminationReason`, the stop reason, is `all-completed` on this run. [The task board reference](../reference/task-board.md) lists every stop reason and the report's other fields.

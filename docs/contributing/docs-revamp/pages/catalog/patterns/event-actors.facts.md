@@ -136,8 +136,8 @@ caller can observe by running the pattern, but the page needs a run or a test be
 33. A duplicate seed entry still wakes its actors. The record step returns early on a duplicate, and the
     spawn step runs after it regardless. index:316-324, 460-461; append-entry.ts:143. CODE-ONLY: the test
     at 188-246 asserts the entry count only, not whether actors ran.
-34. Each recorded entry also emits a keyed UI component, `rb-entry`, with `{ type, topic, body }`, key
-    `entry-<n>`. append-entry.ts:153-161; index:409-413. A container component `evented-actors` wraps the
+34. Each recorded entry also emits a keyed data item, `dataType` `rb-entry`, with `value` `{ type, topic, body }`, key
+    `entry-<n>`, client only, not history. append-entry.ts:59-67; index:409-413. A container `evented-actors` wraps the
     emit sequencer. index:458. Surface for custom renderers; the existing page does not mention it.
 35. The tasks the actors run as are created in one batch per entry, so an entry's matching actors are all
     dispatched or none are. index:301-313; caps-test:123-196 (a two-actor fan-out that would cross the cap
@@ -330,7 +330,7 @@ For the patterns Reference page, not the page:
   `reEmit` false, `maxDepth` 3, `maxTotalTasks` 500, `maxEnqueuedTasks` 100; returns `{ emit, workspace, actors }`).
 - Exports of the `@flow-state-dev/patterns/event-actors` subpath: `eventActorsWorkspaceStateSchema`,
   `matchTopic`, `compilePattern`, `normalizeToEntries`, `createAppendEntry`.
-- `createAppendEntry`: appends the entry to the workspace and emits its `rb-entry` component unless an
+- `createAppendEntry`: appends the entry to the workspace and emits its `rb-entry` data item unless an
   entry with the same type and topic is already there; it returns no output, so compose it with `.tap()`.
   With `.step()` the next step receives `undefined`.
 - Storage: tasks are request-scoped (`eventActors:<name>`), the log is a session-scoped writable resource
