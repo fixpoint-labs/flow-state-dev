@@ -507,6 +507,13 @@ export const ENTRIES = [
     retires: [],
   },
   {
+    term: "claimsUnassigned",
+    means:
+      "An `AssigneeRoster` flag: the board's default worker claims a task with no assignee, so a model's `createTask` may file one unassigned. Absent or false, the task goes to the roster's `soleAssignee()`, or the call is refused with `assignee_required`.",
+    decision: "FIX-2735: an unassigned task is filed only where something will run it; strict when absent",
+    retires: [],
+  },
+  {
     term: "Worker flow",
     means: "The flow a worker runs on.",
     decision: "Workforce vocabulary (BR-10)",

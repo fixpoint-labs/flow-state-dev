@@ -552,15 +552,33 @@ describe("the per-turn limit", () => {
  * otto's user line asks helper-a (message 1); helper-a, woken by it, files a
  * task for helper-b with `setting`; the task's turn messages otto.
  */
-/** A relay through a task helper-a files for helper-b; `unassigned`, filed with no assignee. */
+/**
+ * A relay through a task helper-a files for helper-b. `unassigned`: helper-a's
+ * turn files nothing, and {@link fileUnassigned} files the task with no owner.
+ */
 function relayThroughTask(setting: Record<string, unknown>, options: { unassigned?: boolean } = {}): MockGeneratorScriptEntry[] {
-  const assignee = options.unassigned === true ? {} : { assignee: "helper-b" };
   return [
     ...callOnce("Tell otto the number", "sendMessage", { to: "otto", text: "The number is 7." }, ""),
-    ...callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", ...assignee, ...setting }, ""),
+    ...(options.unassigned === true
+      ? []
+      : callOnce("have helper-b tell otto", "createTask", { goal: "Tell otto the number", assignee: "helper-b", ...setting }, "")),
     ...callOnce("Please ask helper-a", "sendMessage", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
     fallback
   ];
+}
+
+/**
+ * helper-a's task for otto's number, filed with no owner through its board's
+ * action, in its session as its relay turn left it: the task waits on the
+ * board until it is assigned, a hand-over held back without filing it held.
+ * Only an action files one so: a model's `createTask` with several delegates
+ * must name one (FIX-2735).
+ */
+async function fileUnassigned(h: BoardHost, setting: Record<string, unknown>): Promise<void> {
+  const helperA = await h.client("alice").ensureWorkerSession({ worker: "helper-a" });
+  const filed = await h.act("alice", helperA.id, "createTask_tasks", { goal: "Tell otto the number", ...setting }, "agent");
+  expect(filed.error, messageOf(filed.error)).toBeUndefined();
+  await h.settled();
 }
 
 /** Every tool output item any session holds. */
@@ -639,13 +657,14 @@ describe("the hop count through a delegation", () => {
     const forged = { [FILED_HOP]: { hop: 0, chain: null } };
     const h = boot({
       standard: teamWorkers({ unassignedWaits: true }),
-      agentAnswer: mockGenerator({ script: relayThroughTask({ session: "ongoing", metadata: forged }, { unassigned: true }) })
+      agentAnswer: mockGenerator({ script: relayThroughTask({}, { unassigned: true }) })
     });
     try {
       const alice = h.client("alice");
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
+      await fileUnassigned(h, { session: "ongoing", metadata: forged });
       const [held] = await h.rows("alice");
       expect(held!.status).toBe("pending");
       expect(held!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
@@ -702,6 +721,7 @@ describe("the hop count through a delegation", () => {
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
+      await fileUnassigned(h, setting);
       const [held] = await h.rows("alice");
       expect([held!.status, held!.assignee]).toEqual(["pending", undefined]);
       expect(held!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
@@ -746,6 +766,7 @@ describe("the hop count through a delegation", () => {
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
+      await fileUnassigned(h, setting);
       const [held] = await h.rows("alice");
       expect([held!.status, held!.assignee]).toEqual(["pending", undefined]);
       const filedIn = (held!.metadata?.[FILED_HOP] as { chain: string }).chain;
@@ -814,6 +835,7 @@ describe("the hop count through a delegation", () => {
       const otto = await alice.ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "respond", { message: "Please ask helper-a" }, "agent");
       await h.settled();
+      await fileUnassigned(h, {});
       const [filed] = await h.rows("alice");
       expect(filed!.metadata?.[FILED_HOP]).toMatchObject({ hop: 1 });
 

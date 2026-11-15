@@ -668,6 +668,22 @@ describe("judgment (V7)", () => {
     expect(host.heard).toEqual([]);
   });
 
+  // FIX-2735: the board starts only a task that names its owner, so one with
+  // none and several delegates would wait forever while the model believes it started.
+  it("refuses a model's task with no assignee when several delegates take tasks, naming them", async () => {
+    const judgment = mockGenerator({
+      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "createTask", args: { goal: "Take this" } }] }, { text: "ok" }]
+    });
+    const host = bootHost({ judgment, standard: standardWorkers({ chief: { delegates: ["eng.em", "eng.coder"] } }) });
+    const id = await host.conversation("alice", "chief");
+    await post(host, id, "take this on");
+    expect(host.heard).toEqual([]);
+    const told = (await host.items(id)).all.find((item: any) => item.type === "tool_output" && item.blockName === "createTask");
+    expect(told.output.ok).toBe(false);
+    expect(told.output.error).toMatch(/^assignee_required: /);
+    expect(told.output.error).toContain("eng.em, eng.coder");
+  });
+
   it("tells the model why a filing was refused, and who takes a task instead", async () => {
     const judgment = mockGenerator({
       script: [{ toolCalls: [{ toolCallId: "h1", toolName: "createTask", args: routed("notes") }] }, { text: "ok" }]
@@ -681,8 +697,7 @@ describe("judgment (V7)", () => {
     expect(told.output.error).toBe(
       'unknown_assignee: "notes" is not on this board\'s team. Available: eng.em. Not taking tasks now: notes: ' +
         'Worker "notes" runs on flow "quiet", which takes no task.. Yourself ("chief"): a step you work next, in this request. ' +
-        "Name one of these exactly, or leave assignee unset " +
-        "to run the task on the default worker."
+        "Name one of these exactly."
     );
   });
 });
