@@ -37,6 +37,7 @@ Skipped: K-35 is kept in the sitemap, and the page was already at `workspace.md`
 - After revise round 1, page sha256 d4425317d614: exit 0.
 - After revise round 2, page sha256 a5ff42f53d8a: exit 0.
 - After revise round 3, page sha256 50c15e61db84: exit 0.
+- After the loop (review): [pass 9] `PlaceUnreadableError`: 'Reading the flush report' ends with a paragraph saying it is the one rejection that means nothing was read, written or deleted, so a caller may catch it, and that any other rejection means work did not reach the store and must not be swallowed. The 'Places' sentence on a custom `list` now says why it must throw: an empty array claims the place is readable and empty, and the flush deletes what the projection owns. Page sha256 fe1c46a88427: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
@@ -50,6 +51,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 19: "A row that exists keeps its `requestId` and `firstSeenAt`; only its empty fields are filled." Untrue: An existing row keeps `firstSeenAt` and `requestId` once set, and empty `url`, `title`, `branch` and `requestId` are filled. But `state` is also overwritten when GitHub reports a different one (a merge or close lands), so not only empty fields change. (Existing rows also take `source: "tool"` when written by the tool recorder.) (/home/user/flow-state-dev/packages/core/src/types/pull-requests.ts:469-481 (writePullRequests update logic)) The row is recorded corrected.
 - Reference row 20: "The whole check ... finishes within `timeoutMs`" (also: whole check bounded by `timeoutMs`) Untrue: `timeoutMs` is one deadline shared only by the `git` and `gh` commands. The wait for the in-turn recorder (`pullRequestWritesSettled`) and the collection and worktree writes come after the commands and are not bounded by it. (/home/user/flow-state-dev/packages/workspace/src/branch-pull-requests.ts:63, :151-153, :200-215) The row is recorded corrected.
 - "The flow must declare `observedPullRequestsCollection` from `@flow-state-dev/core`" Untrue: It is not exported from the `@flow-state-dev/core` root. It is exported from the `@flow-state-dev/core/harness` subpath, and the codex and claude-code packages import it from there. (/home/user/flow-state-dev/packages/core/src/harness/index.ts:111; /home/user/flow-state-dev/packages/codex/src/agent.ts:32-38)
+- Re-run after the review edit: Flush wraps only a failed `place.list` in `PlaceUnreadableError`, message "the workspace could not be listed: ...", before any read, write or delete (packages/workspace/src/projection.ts:256-273); the class (packages/workspace/src/types.ts:212-217); empty listing read as deletion (packages/workspace/src/projection.ts:256-258).
 
 ## 6 · Depth pass
 

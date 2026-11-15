@@ -38,6 +38,7 @@ Skipped: K-29 is kept in the sitemap, and the page was already at `tools.md`.
 - After revise round 1, page sha256 64923eb9ec84: exit 0.
 - After revise round 2, page sha256 45639b351f15: exit 0.
 - After revise round 3, page sha256 dcd97e1d52ee: exit 1. Failed: node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/catalog/tools.md, Type-check of the TypeScript examples (3 files at their titled paths in apps/kitchen-sink/.docs-tc-K-29, strict, bundler resolution, against workspace packages).
+- After the loop (review): [pass 4] banned word: "the order above still applies" is "the order above applies". [pass 4] type-check: the `../secrets` import is gone; the providers example passes the Tavily key inline (`"tvly-..."`), matching the Firecrawl line beside it, and type-checks with only the planted error (labs/teammates). Old-site links point to the revamp pages: ./search.md, ./fetch.md, ./crawl.md, ./bash.md, ./mcp.md, ../../concepts/tasks-and-boards.md (C-21) and ../harnesses/index.md (K-14, coding agents). Page sha256 f291026c1fc2: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
@@ -50,6 +51,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 1: Row 1: "fetch, crawl and Bash fall back to built-ins (... in-memory sandbox)" with no setup Untrue: fetch and crawl fall back to built-ins with no setup. The Bash default sandbox needs the optional `just-bash` peer dependency installed, so it is not available with no setup. (/home/user/flow-state-dev/packages/tools/package.json:105-125; /home/user/flow-state-dev/packages/tools/src/bash/adapters/just-bash.ts:12) The row is recorded corrected.
 - Reference row 3: Row 3: Jina "rate-limit note for Jina (20 RPM without a key)" Untrue: No 20 RPM figure exists in the code. Auto-selection uses Jina only with a key. Keyless use needs `provider: "jina"` forced. (/home/user/flow-state-dev/packages/tools/src/fetch/resolver.ts:23-44; /home/user/flow-state-dev/packages/tools/src/fetch/providers/jina.ts:10) The row is recorded corrected.
 - Reference row 11: Row 11: optional peer dependencies per provider, with Firecrawl (`@mendable/firecrawl-js`) as the example; the page says "Firecrawl requires an optional peer dependency" as the only one Untrue: Optional peers also include `@tavily/core` (Tavily), `exa-js` (Exa), `just-bash` (Bash sandbox) and `@ai-sdk/mcp`. Firecrawl is not the only one. (/home/user/flow-state-dev/packages/tools/package.json:105-125) The row is recorded corrected.
+- Re-run after the review edit: `tavilySearch(config)` takes `keys` (packages/tools/src/search/index.ts:62), and a config key wins over the environment variable (packages/tools/src/search/resolver.ts:75). No other claim changed.
 
 ## 6 · Depth pass
 

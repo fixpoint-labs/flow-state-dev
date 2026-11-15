@@ -168,87 +168,87 @@ named, and its finished code as the last block. "Verdict" is the audit's.
 **B-07 · Choose where to deploy** · `build/deploy` · 700 words
 Steps: what your flows need from a host · long requests and streaming · where the store lives · pick one. Questions: Which host if a request can run ten minutes? · Does serverless change your flows? · What must persist outside the process? Figure: *Hosts by what they keep alive*, a three-row comparison; marks: dashed outline, hatching. Links: C-13, C-14, C-16. Source: `guides/deployment` (keep as the overview).
 
-**B-08 · Deploy to Vercel** · `build/deploy/vercel` · 750 words
+**B-08 · Deploy to Vercel** · `build/deploy/vercel` · recipe · 750 words
 Steps: the adapter · the route · environment · streaming limits · deploy. Questions: Which handler do you use on Vercel? · What keeps a long stream open? · Where do keys go? Example: `createVercelNextHandler`. Links: `reference/runtime`, `reference/environment`. Source: `guides/deploying-to-vercel` (keep; cut kitchen-sink specifics).
 
-**B-09 · Deploy to Railway** · `build/deploy/railway` · 600 words
+**B-09 · Deploy to Railway** · `build/deploy/railway` · recipe · 600 words
 Steps: a Node server · the store · environment · deploy. Questions: What starts the server? · Where does SQLite's file live? Example: the Node host call. Source: `guides/deploying-to-railway` (keep).
 
-**B-10 · Deploy with Docker** · `build/deploy/docker` · 650 words
+**B-10 · Deploy with Docker** · `build/deploy/docker` · recipe · 650 words
 Steps: the Dockerfile · the store volume · run it. Questions: What must the image contain? · What do you mount? Example: the Dockerfile. Source: `guides/deploying-with-docker` (keep).
 
-**B-11 · Deploy to AWS Lambda** · `build/deploy/aws-lambda` · 600 words
+**B-11 · Deploy to AWS Lambda** · `build/deploy/aws-lambda` · recipe · 600 words
 Steps: the handler · streaming · the store · deploy. Questions: What limits a streamed reply on Lambda? · Which store? Example: the Lambda handler. Source: `guides/deploying-to-aws-lambda` (keep).
 
 ### Start a flow from outside
 
-**B-12 · Receive a Stripe webhook** · `build/webhooks/stripe` · 600 words
+**B-12 · Receive a Stripe webhook** · `build/webhooks/stripe` · recipe · 600 words
 Steps: declare the binding · verify the signature · map the event to an action · test it. Questions: What refuses a forged event? · Which user does the run belong to? Example: `defineWebhookBinding`. Links: `reference/webhooks`, C-17. Source: `guides/webhooks-stripe` (keep; the model recipe).
 
-**B-13 · Receive a GitHub webhook** · `build/webhooks/github` · 600 words · as B-12. Source: `guides/webhooks-github` (keep).
+**B-13 · Receive a GitHub webhook** · `build/webhooks/github` · recipe · 600 words · as B-12. Source: `guides/webhooks-github` (keep).
 
-**B-14 · Receive Slack events** · `build/webhooks/slack` · 650 words · as B-12, plus the URL challenge. Source: `guides/webhooks-slack-events` (keep).
+**B-14 · Receive Slack events** · `build/webhooks/slack` · recipe · 650 words · as B-12, plus the URL challenge. Source: `guides/webhooks-slack-events` (keep).
 
-**B-15 · Run on a schedule with Vercel Cron** · `build/schedules/vercel-cron` · 650 words
+**B-15 · Run on a schedule with Vercel Cron** · `build/schedules/vercel-cron` · recipe · 650 words
 Steps: declare the schedule · the cron entry · protect the endpoint · check a run. Questions: Who is the user of a scheduled run? · What stops a stranger calling the endpoint? Links: `reference/schedules`. Source: `guides/scheduled-vercel-cron` (keep).
 
-**B-16 · Run on a schedule with Cloud Scheduler** · `build/schedules/cloud-scheduler` · 500 words · as B-15. Source: `guides/scheduled-cloud-scheduler` (keep).
+**B-16 · Run on a schedule with Cloud Scheduler** · `build/schedules/cloud-scheduler` · recipe · 500 words · as B-15. Source: `guides/scheduled-cloud-scheduler` (keep).
 
-**B-17 · Run on a schedule with EventBridge** · `build/schedules/eventbridge` · 500 words · as B-15. Source: `guides/scheduled-eventbridge` (keep).
+**B-17 · Run on a schedule with EventBridge** · `build/schedules/eventbridge` · recipe · 500 words · as B-15. Source: `guides/scheduled-eventbridge` (keep).
 
 **B-18 · Let users schedule work at run time** · `build/schedules/at-run-time` · 750 words
 Steps: store a schedule as data · one tick that runs what is due · let a flow add or remove one. Questions: Where are user-made schedules kept? · What runs them? Links: `reference/schedules`. Source: `guides/scheduled-dynamic` (rewrite; half is Reference) · `server/schedule-index` (to Reference).
 
-**B-19 · Run background jobs with BullMQ** · `build/background-jobs-bullmq` · 750 words
+**B-19 · Run background jobs with BullMQ** · `build/background-jobs-bullmq` · recipe · 750 words
 Steps: install the adapter · a worker process · send an action to the queue · watch it. Questions: What runs the job after the request returns? · What does the page see meanwhile? Figure: *Request, queue, worker*; marks: columns, arrow, dashed outline on the request, hatching on the queue. Links: C-16, `reference/background-work`. Source: `guides/background-jobs-bullmq` (keep).
 
-**B-20 · Send errors to Sentry** · `build/errors-to-sentry` · 450 words
+**B-20 · Send errors to Sentry** · `build/errors-to-sentry` · recipe · 450 words
 Steps: the hook · what to attach · check it. Questions: Which hook? · What identifies the run? Example: `onErrored`. Links: C-19, `reference/errors`. Source: `guides/routing-errors-to-sentry` (keep).
 
-**B-28 · Run a flow from your own code** · `build/run-a-flow-from-code` · 600 words
+**B-28 · Run a flow from your own code** · `build/run-a-flow-from-code` · recipe · 600 words
 Steps: get the flow · call an action without HTTP · read the items. Questions: When would you skip the HTTP layer? · What do you still have to supply? Links: C-05, `reference/flows`. Source: `advanced/manual-flow-execution` (keep; a basic task).
 
-**B-29 · Chat with a flow from the terminal** · `build/chat-from-the-terminal` · 500 words
+**B-29 · Chat with a flow from the terminal** · `build/chat-from-the-terminal` · recipe · 500 words
 Steps: start a chat · continue a session · switch flows. Questions: How do you resume yesterday's session? Example: `fsdev chat`. Links: `reference/cli`. Source: `cli/interactive-chat` (keep).
 
-**B-30 · Expose flows as an MCP server** · `build/mcp-server` · 700 words
+**B-30 · Expose flows as an MCP server** · `build/mcp-server` · recipe · 700 words
 Steps: turn it on · choose which actions are tools · connect a client · who the caller is. Questions: Which actions become tools? · How is the caller identified? Links: `reference/mcp-server`, C-17. Source: `server/mcp` (keep, trim).
 
 ### Build blocks and prompts
 
-**B-21 · Write your own pattern** · `build/write-a-pattern` · 800 words
+**B-21 · Write your own pattern** · `build/write-a-pattern` · recipe · 800 words
 Steps: the plan, drain, reduce skeleton · wrap it in a factory · accept `uses` · test it. Questions: What does a pattern return? · Why a factory? Example: a `planMapReduce` factory over `taskBoard`. Links: C-21, K-19. Source: `guides/create-your-own-pattern` (keep).
 
-**B-22 · Keep prompts in Markdown files** · `build/prompts-in-markdown` · 750 words
+**B-22 · Keep prompts in Markdown files** · `build/prompts-in-markdown` · recipe · 750 words
 Steps: a prompt file · variables · load it on a generator · a resource template. Questions: Who can edit the prompt after this? · Where do variables come from? Links: `reference/markdown-templates`, C-03. Source: `guides/prompts-as-markdown` (keep) · `advanced/generator-prompts-markdown`, `advanced/resource-templates-markdown` (to Reference).
 
-**B-23 · Route with an evaluator** · `build/route-with-an-evaluator` · 800 words
+**B-23 · Route with an evaluator** · `build/route-with-an-evaluator` · recipe · 800 words
 Steps: ask a typed question · route on the answer · send doubtful cases to a person. Questions: What does an evaluator return? · What happens to a doubtful case? Figure: *The routing tree*; marks: arrow, dashed arrow (`ONLY WHEN UNSURE`), highlighter on the hand-off. Example: `evaluator`, `router`. Links: C-04. Source: `guides/routing-with-evaluators` (keep).
 
 **B-32 · Write a capability** · `build/write-a-capability` · 800 words
 Steps: a tool, a context section, a resource · bundle them · presets · a factory for config. Questions: What does a block write to get all three? · How does a consumer turn the tools off? Example: `defineCapability`. Links: C-11, `reference/capabilities`. Source: `advanced/capabilities-authoring` (rewrite).
 
-**B-33 · Benchmark patterns on your own tasks** · `build/benchmark-patterns` · 700 words
+**B-33 · Benchmark patterns on your own tasks** · `build/benchmark-patterns` · recipe · 700 words
 Steps: a task suite · run two patterns · read the table. Questions: What do you hold fixed? · What does the result compare? Example: `fsdev benchmark`. Links: K-19. Source: `testing/benchmarks` (keep).
 
 ### Work with data
 
-**B-34 · Search a collection** · `build/search-a-collection` · 750 words
+**B-34 · Search a collection** · `build/search-a-collection` · recipe · 750 words
 Steps: mark fields searchable · query from a block · give search to a model. Questions: What is searched? · Whose records come back? Links: C-08, `reference/resources`. Source: `resources/searching` (keep; cut migration notes).
 
-**B-35 · Link records with edges** · `build/link-records` · 500 words
+**B-35 · Link records with edges** · `build/link-records` · recipe · 500 words
 Steps: declare an edge · add one · follow it. Questions: What does an edge connect? Links: `reference/resources`. Source: `resources/edges` (keep).
 
-**B-36 · Run a block when a resource changes** · `build/react-to-a-change` · 650 words
+**B-36 · Run a block when a resource changes** · `build/react-to-a-change` · recipe · 650 words
 Steps: declare what to watch · the block that runs · what it must not do. Questions: What starts the block? · Does the writer wait for it? Links: C-08, C-16. Source: `resources/reactive-blocks` (keep).
 
-**B-37 · Serve data your app already owns** · `build/serve-your-own-data` · 600 words
+**B-37 · Serve data your app already owns** · `build/serve-your-own-data` · recipe · 600 words
 Steps: declare a read-only collection over your data · the read function · read it from a page. Questions: Where is the data stored? · What happens on each read? Links: C-08, C-09. Source: `resources/projected-collections` (keep).
 
 **B-31 · Move data between stores** · `build/move-data-between-stores` · 700 words
 Steps: what to move · export · import · check counts · switch. Questions: What is copied and what is not? · How do you know it worked? Links: C-14, `reference/stores`. Source: `persistence/overview` (the data-migration operations page).
 
-**B-24 · Push live updates to the browser** · `build/live-updates` · 750 words
+**B-24 · Push live updates to the browser** · `build/live-updates` · recipe · 750 words
 Steps: what changes without a request · subscribe on the page · scope it. Questions: Which hook follows a change? · Who receives it? Example: `useSubscription`. Links: C-06, C-10. Source: `guides/realtime` (keep).
 
 ### Use the DevTool

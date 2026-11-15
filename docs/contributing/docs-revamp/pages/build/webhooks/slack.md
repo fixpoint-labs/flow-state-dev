@@ -12,8 +12,9 @@ expecting a fast 2xx back. By the end you have an endpoint Slack can POST to and
 a `slack` flow that ingests each message. The server answers Slack's one-time
 URL check and rejects any request whose signature doesn't verify.
 
-Slack ignores the body of your response, so a reply has to go out separately
-through Slack's Web API. This page covers receiving only.
+For event deliveries Slack ignores your response body, so a reply to a message
+has to go out separately through Slack's Web API. This page covers receiving
+only.
 
 ## 1. The flow declares routing
 
@@ -167,6 +168,11 @@ runs nothing. For every other request it returns `null` and routing continues.
 stale ones. The secret is the signing secret from your Slack app's **Basic
 Information** page, not a bot token.
 
+The `deliveryId` hook hands Slack's `event_id` to the binding as
+`e.deliveryId`, and `input` passes it on as `eventId`. Slack retries a delivery
+it thinks was missed, and the framework does not deduplicate, so `saveMessage`
+should do nothing when it has already seen that id.
+
 ## 3. Point Slack at the endpoint
 
 The endpoint is `POST /api/flows/slack/webhooks/slack`. In your Slack app's
@@ -181,11 +187,6 @@ The endpoint is `POST /api/flows/slack/webhooks/slack`. In your Slack app's
 
 Events the flow has no binding for, such as a `reaction_added`, are
 acknowledged and dropped, so subscribing to more than you bind is safe.
-
-The `deliveryId` hook in step 2 hands Slack's `event_id` to the binding as
-`e.deliveryId`, and `input` passes it on as `eventId`. Slack retries a delivery
-it thinks was missed, and the framework does not deduplicate, so `saveMessage`
-should do nothing when it has already seen that id.
 
 The [webhook receivers reference](/docs/server/webhooks) covers the response
 codes, timing, the `when` predicate and idempotency.

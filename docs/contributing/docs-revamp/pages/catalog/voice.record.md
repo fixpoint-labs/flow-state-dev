@@ -37,6 +37,7 @@ Skipped: K-43 is kept in the sitemap, and the page was already at `voice.md`.
 - After revise round 1, page sha256 8119e01ed2db: exit 1. Failed: type-check of every TypeScript example (fsdev.config.ts, src/flows/chat/flow.ts, src/app/chat/voice-chat.tsx, src/lib/my-voice-provider.ts) in apps/kitchen-sink/.docs-tc-K-43, strict, moduleResolution bundler, @types/node 22, workspace packages.
 - After revise round 2, page sha256 c32a37bea0fb: exit 0.
 - After revise round 3, page sha256 3a3d1265b729: exit 0.
+- After the loop (review): [pass 9] other flows and the flow's blocks: the paragraph after the flow example says `voice` sits on the flow definition only, the block has no voice code, the flow streams text and the server turns it into speech, and synthesis runs only for a flow with `voice.tts`, so another flow on the server, such as a billing flow, streams text only and needs no change. The sentence "A flow with no `voice` gets no audio" is folded into it. Page sha256 8348d744840f: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
@@ -48,6 +49,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 11: The authoritative text comes from server transcription on the full recording (row 11 and the page). Untrue: True on success, but if the transcribe call throws, `useVoice` falls back to the interim (browser) transcript and sends that as the action input. (packages/react/src/voice/useVoice.ts:268-277) The row is recorded corrected.
 - Reference row 7: Retryable errors log quietly, hard failures at warning level (row 7). Untrue: Level by kind: `aborted` is debug, `unknown` is error, other retryable kinds are info, other non-retryable kinds are warn. The error is reported as a non-fatal `tts.synthesis.error` debug event carrying the kind and level. (packages/engine/src/voice/tts-pipeline.ts:~160-175 (reportSynthesisError)) The row is recorded corrected.
 - Reference row 9: 15-second first-chunk timeout (row 9 and page): described as applying to each sentence's first chunk only. Untrue: For streaming providers the 15 s timer bounds the first chunk and is dropped afterward. For batch providers (`speak`), the same 15 s bounds the whole `speak()` call. (packages/engine/src/voice/tts-pipeline.ts:14-20, 232-246) The row is recorded corrected.
+- Re-run after the review edit: Synthesis is set up only when the flow's `voice.tts` is defined and the provider can speak (packages/engine/src/execution/runAction.ts:1895-1906); the TTS hook observes the response's events, so the flow's blocks are unchanged (packages/engine/src/execution/runAction.ts:1906).
 
 ## 6 · Depth pass
 

@@ -37,6 +37,7 @@ Skipped: K-30 is kept in the sitemap, and the page was already at `search.md`.
 - After revise round 1, page sha256 e33e1b42d7ae: exit 0.
 - After revise round 2, page sha256 88290b08f8a4: exit 0.
 - After revise round 3, page sha256 b4bc556092a2: exit 1. Failed: node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/catalog/tools/search.md.
+- After the loop (review): [pass 4] banned word: "can still appear in results" is "can appear in results". The old-site link for the generator's fields (`/docs/fundamentals/blocks#web-search`) points to the Generators reference, ../../reference/generators.md (R-02, which the sitemap assigns the generator option rows). Page sha256 80f55949c7e3: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
@@ -44,6 +45,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 - Reference row 8: Row 8: `content` is present only at `searchDepth: advanced`, and `answer` is for grounding providers. The page's output example also says content is 'Full text (when searchDepth is advanced)'. Untrue: `content` is not tied to `searchDepth` in every adapter. Exa sets it only when `searchDepth === "advanced"`. Parallel sets it whenever a result has more than one excerpt, whatever the depth (`searchDepth` only changes the excerpt size). Tavily, Perplexity and Serper-style adapters never set it. `answer` is also returned by Tavily (`includeAnswer: true`), which is not a grounding provider, as well as by Sonar. (packages/tools/src/search/providers/parallel.ts:78; packages/tools/src/search/providers/exa.ts:53; packages/tools/src/search/providers/tavily.ts:43 and :54) The row is recorded corrected.
 - Page: `searchDepth` ("basic" or "advanced") 'controls how much content is pulled per result, not how thorough the search itself is'. Untrue: Only partly true. For Tavily, `searchDepth: "advanced"` selects Tavily's `advanced` retrieval depth, the thoroughness knob that `tier: deep` also maps to. For Exa and Parallel it changes content or excerpt size. (packages/tools/src/search/providers/tavily.ts:28-32)
+- Re-run after the review edit: No claim changed: the edit removed one word and retargeted one link.
 
 ## 6 · Depth pass
 
