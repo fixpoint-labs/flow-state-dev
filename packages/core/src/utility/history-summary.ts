@@ -27,6 +27,7 @@ import { sequencer } from "../blocks/sequencer";
 import { defineResource } from "../types/resource";
 import type { BlockContext, BlockDefinition } from "../types/block";
 import type { HistoryTurn, LLMMessage } from "../types/scope";
+import { MAX_READING_CHARS } from "./consult-session-history";
 
 /** What `summarize` is handed on each fold. */
 export type HistorySummaryInput = {
@@ -66,6 +67,29 @@ export const historySummaryStateSchema = z.object({
 export type HistorySummaryState = z.infer<typeof historySummaryStateSchema>;
 
 const HISTORY_SUMMARY_DEFAULT: HistorySummaryState = historySummaryStateSchema.parse({});
+
+/** Ends a summary cut to the cap, so the model and the next fold know text is missing. */
+const TRUNCATED_MARKER = "\n[earlier summary truncated]";
+
+/** A summary no longer than {@link MAX_READING_CHARS}; a longer one keeps its start and ends with the marker. */
+function capSummary(summary: string): string {
+  return summary.length <= MAX_READING_CHARS
+    ? summary
+    : `${summary.slice(0, MAX_READING_CHARS - TRUNCATED_MARKER.length)}${TRUNCATED_MARKER}`;
+}
+
+/** Any spelling of the wrapper's tag, opening or closing, that a model could read as the tag itself. */
+const WRAPPER_TAG = /<(\s*\/?\s*earlier-conversation)/gi;
+
+/**
+ * The summary as the model reads it. The summary is model-written from text
+ * that includes the user's, so a wrapper tag inside it is escaped (`&lt;`):
+ * nothing in it can close the wrapper early and read as outside it. Capped
+ * again here for a summary stored before writes were capped.
+ */
+function wrapSummary(summary: string): string {
+  return `<earlier-conversation>\n${capSummary(summary.replace(WRAPPER_TAG, "&lt;$1"))}\n</earlier-conversation>`;
+}
 
 /** What the fold's first step decided: the turns to fold and where the mark lands. */
 type FoldPlan = {
@@ -144,9 +168,7 @@ export function historySummary(options: HistorySummaryOptions) {
                 `Run its fold step before this generator (\`.tap(${name}.fold)\`, or workforce's \`beforeAnswer\`).`
             );
           }
-          return state.summary === null
-            ? null
-            : `<earlier-conversation>\n${state.summary}\n</earlier-conversation>`;
+          return state.summary === null ? null : wrapSummary(state.summary);
         },
       },
       // The summary stands for every turn up to its mark.
@@ -276,7 +298,7 @@ export function historySummary(options: HistorySummaryOptions) {
           : {
               ...state,
               ...decided.next,
-              summary,
+              summary: capSummary(summary),
               folds: state.folds + 1,
               attempts: state.attempts + 1,
             }
