@@ -7,10 +7,10 @@ Calls that bind **more than one epic**. A call that touches one epic belongs to 
 
 ## Cards
 
-None yet. No call so far binds two epics that are both still to run: the two wrapped epics
-settled their own questions, and the two live ones share a seam ([Plan](PLAN.md)) and one rule
-([Rules](BUSINESS-RULES.md) → PR-1), not a new decision.
-The first call a second epic would otherwise have to make again gets card PD-1.
+None yet. The calls that bind more than one epic so far were each settled once by the owner and
+are not live forks, so they sit under *decided once* below; the shared seams are in
+[Plan](PLAN.md) and the rules in [Rules](BUSINESS-RULES.md). The first live call a second epic
+would otherwise have to make again gets card PD-1.
 
 ## Decided once
 
@@ -38,6 +38,22 @@ carries where it was settled.
    spec. *Original description; the rename settled separately.*
 6. **Client data is private by default.** "Expose everything, with a hidden list" was rejected;
    a scope names what crosses to the client. *Original description.*
+7. **No backward-compat aliases.** A moved or renamed published export's old path is removed, not
+   aliased or re-exported. This is BP-034 held at scale: the owner made the call for clean SDK
+   ("break, no backward-compat code") and it applied to every export the epic moved. Binds any
+   later epic that moves or renames a published export, vocabulary's renames included.
+   *FIX-2447, wrapped Nov 15.*
+8. **The removed-root-exports release note is one summary line with the count**, not a name per
+   export. The owner's call. The adopter-goal check's upgrade journey, j5, confirms the line is
+   present on every run and checks the exact count only on the Version Packages PR
+   (`changeset-release/main`). So an epic that drops a root export from here on edits no changeset
+   until release; the count is reconciled there ([Rules](BUSINESS-RULES.md) → PR-2).
+   *FIX-2447 closure, FIX-2562.*
+9. **The install docs keep pnpm's `--allow-build=better-sqlite3` flag until
+   [FIX-2737](https://linear.app/fixpoint-labs/issue/FIX-2737) lands**, moving store-sqlite to
+   `node:sqlite` so an install needs no native build. The owner's call. Binds the docs revamp,
+   which rewrites those pages: the flag goes when FIX-2737 merges, not before. *FIX-2447 wrap.*
+10. **Removing exports from a package root is a `minor` bump before 1.0**, under BP-022. *FIX-2447.*
 
 The source reports the original description names, a team synthesis and a validation synthesis
 under `docs/internal/review*`, are not on `main` today. Where they disagreed, the validation
@@ -48,12 +64,12 @@ synthesis won; the list above is what it concluded.
 ### Does this project end at the public release, or stay open as the standing cleanup bucket?
 
 **Plain terms.** This project was a three-week pass with a May 22 target. That pass is done bar
-two package extractions. Since August it has become where "FSD says one thing, does another" fixes land: four
-epics, 58 open issues, 52 under no epic. Nothing says when it is finished, so no epic can be
+two package extractions. Since August it has become where "FSD says one thing, does another" fixes land: twelve
+epics, 100 open issues, 68 under no epic. Nothing says when it is finished, so no epic can be
 tested against a finish, and the bug count in [the outcome](SPEC.md) has no date to reach zero by.
 
 **The trade-off.** Ending it at the public release gives it a finish line and forces one triage of
-the 52: each either ships before release, moves to Public Launch's hard gates, or moves to a
+the 68: each either ships before release, moves to Public Launch's hard gates, or moves to a
 post-release project. That costs a triage pass and some issues changing project. Keeping it as a
 standing bucket costs nothing now, but it can never be called done, and it becomes a label.
 
@@ -63,7 +79,7 @@ holds, and after it each fix here is a breaking change for somebody outside. Set
 has none yet.
 
 **What would change my mind.** If the release is a quarter or more away, tying this project to it
-is a bucket with a date on it, and a narrower finish ("the 26 bugs") is the better line. Or if
+is a bucket with a date on it, and a narrower finish ("the 28 bugs") is the better line. Or if
 cleanup is already tracked another way you would rather keep.
 
 **What being wrong costs.** Low and reversible: a date and a label. The costly failure is the

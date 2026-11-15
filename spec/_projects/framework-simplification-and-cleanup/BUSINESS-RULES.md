@@ -9,10 +9,16 @@ is a wish.
 | | Rule | Owner | Checked where |
 |---|---|---|---|
 | **PR-1** | When an epic's docs show how a host is mounted or called over HTTP, then they teach a verified caller; a caller-typed `userId` appears only as the named local-development escape, never as a shipped mode | FIX-1503 | FIX-1503's consumer cutover, over every docs example it names; FIX-1637's own docs review for any page it adds |
+| **PR-2** | When an epic removes a published root export, then the release carries it in the one removed-root-exports summary line, with the total count, never a name per export | FIX-2447 | j5 in the adopter-goal check: the line on every run, the exact count on the Version Packages PR only |
 
 **PR-1 is FIX-1503's ER-10, raised to this altitude** because a sibling now writes the pages it
 governs: FIX-1637's config matrix covers the host mount for webhooks, cron and event ingress.
-Whichever lands second reads the other's pages ([Plan](PLAN.md) → seams). The repo-wide grounding,
+Whichever lands second reads the other's pages ([Plan](PLAN.md) → seams).
+
+**PR-2 is owned by a wrapped epic.** Clean SDK built and proved it at closure
+([Decisions](DECISIONS.md) → 8); every later epic that drops a root export inherits it and edits no
+changeset until release. Folding j5 into the CI checks after release moves to
+[FIX-2739](https://linear.app/fixpoint-labs/issue/FIX-2739), under the docs revamp. The repo-wide grounding,
 including BP-031 on caller input, binds every epic already and is not restated here.
 
 **No epic may:**
@@ -24,5 +30,7 @@ including BP-031 on caller input, binds every epic already and is not restated h
 - **Remove capabilities, skills, tools, `ui` or thought-fabric**, or cut the sequencer's public
   surface (→ 4, 5).
 - **Make client data visible by default** (→ 6).
+- **Alias a moved or renamed published export**, or keep it reachable from its old path (→ 7).
+- **Drop the install docs' `--allow-build=better-sqlite3` flag** before FIX-2737 lands (→ 9).
 - **Add a capability under this project's name.** A cleanup that needs a new feature files it
   where features live; this is the fence in the [territory](SPEC.md).
