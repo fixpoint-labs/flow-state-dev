@@ -23,15 +23,15 @@ const ctx = {
 /** A board that keeps what it is handed, and reads it back. */
 function recordingBoard(): { board: TaskCollectionRef; filed: TaskInit[] } {
   const filed: TaskInit[] = [];
-  const rows = new Map<string, Task>();
+  const tasks = new Map<string, Task>();
   const board = {
     collectionId: "desk",
-    get: (id: string) => rows.get(id),
-    list: () => [...rows.values()],
+    get: (id: string) => tasks.get(id),
+    list: () => [...tasks.values()],
     createTask: async (init: TaskInit) => {
       filed.push(init);
       const task = { id: `task_${filed.length}`, status: "pending", ...init } as unknown as Task;
-      rows.set(task.id, task);
+      tasks.set(task.id, task);
       return task;
     }
   } as unknown as TaskCollectionRef;
