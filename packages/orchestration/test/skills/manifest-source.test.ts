@@ -53,7 +53,7 @@ function buildCtx(collection: Collection, key = "skills"): never {
     signal: new AbortController().signal,
     response: { emit: async () => {} },
     cap: {},
-    emit: { message: () => {}, component: () => {}, status: () => {} },
+    emit: { message: () => {}, data: () => {}, status: () => {} },
   } as never;
 }
 

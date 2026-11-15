@@ -1328,7 +1328,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>message</code></td><td>generator (auto), <code>emit.message()</code></td><td class="ctr">cfg</td><td class="ctr">cfg</td><td>persistent</td></tr>
       <tr><td><code>reasoning</code></td><td>generator (auto, CoT models)</td><td class="ctr">cfg</td><td class="ctr">cfg</td><td>persistent</td></tr>
       <tr><td><code>tool_output</code></td><td>generator, per invocation</td><td class="ctr">cfg</td><td class="ctr">cfg</td><td>persistent</td></tr>
-      <tr><td><code>component</code></td><td><code>emit.component()</code></td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent, keyed upsert per <code>(requestId, key)</code></td></tr>
+      <tr><td><code>data</code></td><td><code>emit.data()</code></td><td class="ctr">✓ (cfg)</td><td class="ctr">— (cfg)</td><td>persistent, keyed upsert per <code>(requestId, key)</code>; drawn only through a <code>data</code> renderer</td></tr>
       <tr><td><code>container</code></td><td>sequencer / router with <code>container</code></td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent</td></tr>
       <tr><td><code>source</code></td><td>generator, provider-native tools</td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent</td></tr>
       <tr><td><code>status</code></td><td><code>emit.status()</code>, <code>activeStatusMessage</code></td><td class="ctr">✓</td><td class="ctr">—</td><td><strong>always transient</strong>, single request-scoped slot</td></tr>

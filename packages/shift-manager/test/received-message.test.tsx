@@ -5,14 +5,14 @@
  * conversation has to tell it apart from a plain message, which wants nothing back.
  */
 import { cleanup, render, screen } from "@testing-library/react";
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 import { afterEach, describe, expect, it } from "vitest";
 import { ReceivedMessage } from "../src/components/ReceivedMessage";
 
 afterEach(cleanup);
 
-function received(data: Record<string, unknown>): ComponentItem {
-  return { type: "component", id: "it_1", ts: 0, data: { id: "msg_1", from: "eng.author", text: "the codename?", ...data } } as unknown as ComponentItem;
+function received(value: Record<string, unknown>): DataItem {
+  return { type: "data", id: "it_1", ts: 0, value: { id: "msg_1", from: "eng.author", text: "the codename?", ...value } } as unknown as DataItem;
 }
 
 describe("a received message", () => {

@@ -287,7 +287,7 @@ describe("debate", () => {
     expect(result.error).not.toBeNull();
   });
 
-  it("emits debate-turn, debate-decision, and debate-verdict component items for the UI renderer", async () => {
+  it("emits debate-turn, debate-decision, and debate-verdict data items for the UI renderer", async () => {
     const moderator = handler({
       name: "moderator-emits",
       inputSchema: z.any(),
@@ -335,15 +335,15 @@ describe("debate", () => {
 
     expect(result.error).toBeNull();
     const turns = result.items.filter(
-      (i) => i.type === "component" && (i as any).component === "debate-turn",
+      (i) => i.type === "data" && (i as any).dataType === "debate-turn",
     );
     const decisions = result.items.filter(
       (i) =>
-        i.type === "component" && (i as any).component === "debate-decision",
+        i.type === "data" && (i as any).dataType === "debate-decision",
     );
     const verdicts = result.items.filter(
       (i) =>
-        i.type === "component" && (i as any).component === "debate-verdict",
+        i.type === "data" && (i as any).dataType === "debate-verdict",
     );
     expect(turns).toHaveLength(2);
     expect(decisions).toHaveLength(1);
@@ -351,13 +351,13 @@ describe("debate", () => {
     // Spot-check shape of one turn and the verdict — the UI renderer
     // depends on these fields.
     const firstTurn = turns[0] as any;
-    expect(firstTurn.data).toMatchObject({
+    expect(firstTurn.value).toMatchObject({
       round: 1,
       agentName: "a",
       stance: "for",
     });
-    expect(typeof firstTurn.data.text).toBe("string");
-    expect((verdicts[0] as any).data).toEqual({
+    expect(typeof firstTurn.value.text).toBe("string");
+    expect((verdicts[0] as any).value).toEqual({
       verdict: "v",
       winner: "for",
       reasoning: "r",
@@ -383,7 +383,7 @@ describe("debate", () => {
 
     expect(result.error).toBeNull();
     const taskChanges = result.items.filter(
-      (item) => item.type === "component" && (item as any).component === "task-change",
+      (item) => item.type === "data" && (item as any).dataType === "task-change",
     );
     // 2 rounds × 2 debaters = 4 turns; each turn emits at least one
     // task-change item.

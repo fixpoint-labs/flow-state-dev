@@ -94,16 +94,16 @@ async function hear(notice: WireNotice | null) {
 const boardNotice: WireNotice = { topic: { scope: "session", id: "s1", resource: "tasks" }, kind: "board" };
 
 const meta = (requestId: string) =>
-  ({ id: `m-${requestId}`, type: "component", component: "task-board-meta", requestId, status: "completed", data: { collectionId: "tasks", status: "active" } }) as never;
+  ({ id: `m-${requestId}`, type: "data", dataType: "task-board-meta", requestId, status: "completed", value: { collectionId: "tasks", status: "active" } }) as never;
 
 const filed = (requestId: string, id: string, title: string, assignee: string): OutputItem =>
   ({
     id: `c-${id}`,
-    type: "component",
-    component: "task-change",
+    type: "data",
+    dataType: "task-change",
     requestId,
     status: "completed",
-    data: { collectionId: "tasks", taskId: id, kind: "added", task: { id, goal: `${title}, in full`, title, status: "in_progress", assignee } },
+    value: { collectionId: "tasks", taskId: id, kind: "added", task: { id, goal: `${title}, in full`, title, status: "in_progress", assignee } },
   }) as unknown as OutputItem;
 
 const scope = (items: OutputItem[], requestIds: string[]) => (

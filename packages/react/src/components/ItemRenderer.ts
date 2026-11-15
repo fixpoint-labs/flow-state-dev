@@ -7,6 +7,9 @@
  * 2. Built-in fallback for message/status/error
  * 3. JSON `<pre>` for development visibility (all other unregistered types)
  *
+ * A `data` item with no registered renderer renders nothing: it is a record,
+ * not UI, so it never reaches the JSON fallback.
+ *
  * Non-client types (context, state_change, resource_change) return null.
  *
  * All custom renderers receive `{ item }` as their prop.
@@ -14,8 +17,8 @@
 import { createElement, type ReactNode } from "react";
 import type {
   ToolOutputItem,
-  ComponentItem,
   ContainerItem,
+  DataItem,
   ErrorItem,
   MessageItem,
   OutputItem,
@@ -159,8 +162,7 @@ function renderBlockToolOutputFallback(item: ToolOutputItem): ReactNode {
 
 /**
  * Pick the built-in default renderer for a `suspension` item, in order:
- *  1. `item.render.component` — if it names a registered `renderers.component`
- *     entry, the author's custom component wins (the escape hatch for schemas
+ *  1. `item.render.component` — if it names a `renderers.component` entry, the author's custom component wins (the escape hatch for schemas
  *     richer than the bounded default can handle).
  *  2. by `reason`: `user_approval` → the approve/reject card; `user_input` →
  *     by `resumeSchema` shape (free-text question, enum selection, or flat form).
@@ -240,10 +242,10 @@ function renderItem(
   const { renderers } = useFlowContext();
 
   const componentKey =
-    item.type === "component"
-      ? (item as ComponentItem).component
-      : item.type === "container"
-        ? (item as ContainerItem).component
+    item.type === "container"
+      ? (item as ContainerItem).component
+      : item.type === "data"
+        ? (item as DataItem).dataType
         : undefined;
 
   const resolved = resolveRenderer(renderers, item.type, componentKey);
@@ -258,15 +260,9 @@ function renderItem(
     return createElement(resolved, { item });
   }
 
-  // Component items whose key matches a registered container renderer are
-  // subsumed by the container — suppress them to avoid a raw JSON fallback.
-  // This handles both old items (no ownedBy) and new container-scoped items.
-  if (
-    item.type === "component" &&
-    componentKey !== undefined &&
-    renderers?.container?.[componentKey] !== undefined &&
-    renderers.container[componentKey] !== false
-  ) {
+  // A data item draws only through a renderer registered for its
+  // `dataType`; with none it renders nothing, never the JSON dev fallback.
+  if (item.type === "data") {
     return null;
   }
 

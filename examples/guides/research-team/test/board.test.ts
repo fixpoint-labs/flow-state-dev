@@ -11,8 +11,8 @@ import { researchBoard } from "../src/board";
 
 type TaskChange = {
   type?: string;
-  component?: string;
-  data?: {
+  dataType?: string;
+  value?: {
     kind?: string;
     task?: { id: string; status: string; output?: { report?: string } };
   };
@@ -26,10 +26,10 @@ describe("static research board", () => {
     const statusByTask = new Map<string, string>();
     let synthReport: string | undefined;
     for (const item of result.items as TaskChange[]) {
-      if (item.type !== "component" || item.component !== "task-change" || !item.data?.task) continue;
-      statusByTask.set(item.data.task.id, item.data.task.status);
-      if (item.data.kind === "completed" && item.data.task.id === "synth") {
-        synthReport = item.data.task.output?.report;
+      if (item.type !== "data" || item.dataType !== "task-change" || !item.value?.task) continue;
+      statusByTask.set(item.value.task.id, item.value.task.status);
+      if (item.value.kind === "completed" && item.value.task.id === "synth") {
+        synthReport = item.value.task.output?.report;
       }
     }
 

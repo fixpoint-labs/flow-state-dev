@@ -21,7 +21,7 @@ const SESSION = "s_1";
 
 function boardCtx(): BlockContext {
   return {
-    emit: { component: () => undefined },
+    emit: { data: () => undefined },
     session: { identity: { type: "session", id: SESSION, userId: "alice" } },
     request: { identity: { type: "request", id: "r_1" } }
   } as unknown as BlockContext;

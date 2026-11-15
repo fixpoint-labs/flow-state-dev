@@ -9,7 +9,7 @@
  * Items emitted inside a task-board's per-task execution window are
  * hidden from the chat thread — they render under the task in
  * `<TaskPlan />` instead, mounted at the position of the
- * `task-board-meta` ComponentItem. This avoids duplication
+ * `task-board-meta` data item. This avoids duplication
  * (e.g., 6 individual searches under the task plus a "Ran 6 searches"
  * rollup outside it).
  */

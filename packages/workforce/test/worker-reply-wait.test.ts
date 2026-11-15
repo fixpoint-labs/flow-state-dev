@@ -234,8 +234,8 @@ async function landedIn(h: BoardHost, sessionId: string) {
 async function heardIn(h: BoardHost, sessionId: string): Promise<string[]> {
   return (await h.requestsOf(sessionId))
     .flatMap((request) => (request as unknown as { items?: any[] }).items ?? [])
-    .filter((item) => item.type === "component" && item.component === "workforce:received")
-    .map((item) => item.data?.id as string);
+    .filter((item) => item.type === "data" && item.dataType === "workforce:received")
+    .map((item) => item.value?.id as string);
 }
 
 /** The asks in the log (the messages that answer nothing), and the answers to `id`. */

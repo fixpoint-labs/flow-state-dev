@@ -70,13 +70,13 @@ const step = (n: number) => ({
 });
 const claim = {
   id: "tc1",
-  type: "component",
-  component: "task-change",
+  type: "data",
+  dataType: "task-change",
   status: "completed",
   requestId: "req_board",
   itemIndex: 0,
   ts: 1,
-  data: { collectionId: collectionOfBoard("conv_1"), taskId: "t1", kind: "claimed" },
+  value: { collectionId: collectionOfBoard("conv_1"), taskId: "t1", kind: "claimed" },
 };
 
 beforeEach(() => {

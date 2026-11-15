@@ -2,7 +2,7 @@
  * Bias check pipeline — runs in the background after the router produces output.
  *
  * Wraps `biasAnalyzer` in `responseAuditor` for threshold filtering + UI
- * display. The auditor emits the `audit-annotation` component item itself when
+ * display. The auditor emits the `audit-annotation` data item itself when
  * it surfaces results, so no manual emit is needed here. Skips the LLM calls
  * entirely when the `biasCheck` feature is off.
  */

@@ -29,7 +29,7 @@ import type { ItemRenderSegment, RendererRegistry } from "@flow-state-dev/react"
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { COORDINATOR_ROUTE, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "@flow-state-dev/workforce/browser";
+import { COORDINATOR_ROUTE, RECEIVED_MESSAGE_DATA_TYPE, SEND_MESSAGE_TOOL } from "@flow-state-dev/workforce/browser";
 import { RouteLink } from "./RouteLink";
 import { chatAssistantRenderers } from "./flow-state/chat-assistant";
 import { CoordinatorRoute } from "./CoordinatorRoute";
@@ -306,10 +306,10 @@ export const shiftManagerRenderers: RendererRegistry = {
   // A coordinator's routing record, drawn apart from the conversation's lines.
   // Its task board, with each row opening that task's session. Another
   // worker's message, under its sender's name.
-  component: {
-    ...chatAssistantRenderers.component,
+  data: {
+    ...chatAssistantRenderers.data,
     [COORDINATOR_ROUTE]: CoordinatorRoute,
     "task-board-meta": TaskBoardMeta,
-    [RECEIVED_MESSAGE_COMPONENT]: ReceivedMessage,
+    [RECEIVED_MESSAGE_DATA_TYPE]: ReceivedMessage,
   },
 };

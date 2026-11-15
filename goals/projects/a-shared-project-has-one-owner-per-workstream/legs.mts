@@ -531,9 +531,9 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
     }
     if (ledger.length === 0 && Date.now() - sent > 30_000) break;
   }
-  const routing = (await alice.routes.items(coordinator.id, "component"))
-    .filter((i) => (i as { component?: string }).component === "coordinator-route")
-    .map((i) => i.data as Record<string, any>)
+  const routing = (await alice.routes.items(coordinator.id, "data"))
+    .filter((i) => (i as { dataType?: string }).dataType === "coordinator-route")
+    .map((i) => i.value as Record<string, any>)
     .filter((x) => postIds.has(x?.messageRequestId));
   const bobsItems = holdsWord(await bob.routes.items(bobWs.view.sessionId, "message"));
   c.notes.push(`the post's ledger: ${show(ledger)}; routing: ${show(routing.map((x) => ({ by: x.by, delegates: x.delegates })))}`);

@@ -106,7 +106,7 @@ const ROUTE_MODEL = "vercel:openai/gpt-5.4-mini";
 /** How often a held run narrates a step. */
 const STEP_MS = 1_000;
 /** The keyed progress snapshot every run emits as it starts and again as it finishes. */
-const PROGRESS_COMPONENT = "run-lab-progress";
+const PROGRESS_DATA_TYPE = "run-lab-progress";
 const PROGRESS_KEY = "progress";
 
 /** What an asking run asks a user to approve. */
@@ -246,7 +246,7 @@ const scriptedRun = handler({
     }
 
     // A keyed snapshot: stored once per version, drawn as its latest only.
-    ctx.emit.component(PROGRESS_COMPONENT, { state: "started" }, { key: PROGRESS_KEY });
+    ctx.emit.data(PROGRESS_DATA_TYPE, { state: "started" }, { key: PROGRESS_KEY });
     const until = Date.now() + (script.holdMs ?? 10 * 60_000);
     let step = 0;
     while (script.steps === undefined ? Date.now() < until : step < script.steps) {
@@ -254,7 +254,7 @@ const scriptedRun = handler({
       step += 1;
       ctx.emit.message(`Step ${step}`);
     }
-    ctx.emit.component(PROGRESS_COMPONENT, { state: "finished", steps: step }, { key: PROGRESS_KEY });
+    ctx.emit.data(PROGRESS_DATA_TYPE, { state: "finished", steps: step }, { key: PROGRESS_KEY });
     return { steps: step };
   },
 });

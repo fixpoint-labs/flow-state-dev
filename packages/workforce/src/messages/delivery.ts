@@ -243,11 +243,11 @@ async function tellSender(ctx: BlockContext, ref: ResourceRef<WorkerMessageResou
  * finishes it.
  */
 export function storedEmitters(ctx: BlockContext) {
-  const { _emitMessageAwaited: message, _emitComponentAwaited: component, _flushItems: flush } = ctx;
-  if (message === undefined || component === undefined || flush === undefined) {
+  const { _emitMessageAwaited: message, _emitDataAwaited: data, _flushItems: flush } = ctx;
+  if (message === undefined || data === undefined || flush === undefined) {
     throw new Error("worker messages: this context can't confirm an item was stored, so nothing is recorded as landed");
   }
-  return { message: message.bind(ctx), component: component.bind(ctx), stored: flush.bind(ctx) };
+  return { message: message.bind(ctx), data: data.bind(ctx), stored: flush.bind(ctx) };
 }
 
 // FIX-2123.

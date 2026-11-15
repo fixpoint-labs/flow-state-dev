@@ -17,7 +17,7 @@ export const INFERRED_WORK_MODES = ["off", "observe", "auto"] as const;
 export type InferredWork = (typeof INFERRED_WORK_MODES)[number];
 
 /**
- * The component every routing decision is recorded under, and the name of
+ * The data type every routing decision is recorded under, and the name of
  * best fit's fit check (`../fit-check.ts`). **Pinned**: a client tells a
  * record from a line by it, and a scripted model resolves the check's
  * evaluator by it, and its language-model ask by `coordinator-route-ask`.

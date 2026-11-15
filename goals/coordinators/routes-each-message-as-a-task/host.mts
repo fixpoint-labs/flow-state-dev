@@ -421,7 +421,7 @@ async function until<T>(read: () => Promise<T | undefined>, ms: number, every = 
   return undefined;
 }
 
-type Item = { type?: string; role?: string; component?: string; data?: any; agentName?: string; content?: unknown; text?: string; toolCall?: { name?: string }; blockName?: string; output?: unknown; error?: unknown };
+type Item = { type?: string; role?: string; dataType?: string; value?: any; agentName?: string; content?: unknown; text?: string; toolCall?: { name?: string }; blockName?: string; output?: unknown; error?: unknown };
 
 /** A conversation as Alice reads it through the session route: its routing records, its lines, and its tool results. */
 async function itemsOf(sessionId: string) {
@@ -435,7 +435,7 @@ async function itemsOf(sessionId: string) {
   }
   const text = (i: Item) => (typeof i.text === "string" ? i.text : Array.isArray(i.content) ? i.content.map((p: any) => p?.text ?? "").join("") : String(i.content ?? ""));
   return {
-    records: items.filter((i) => i.type === "component" && i.component === (wf.COORDINATOR_ROUTE ?? "coordinator-route")).map((i) => i.data),
+    records: items.filter((i) => i.type === "data" && i.dataType === (wf.COORDINATOR_ROUTE ?? "coordinator-route")).map((i) => i.value),
     lines: items.filter((i) => i.type === "message").map((i) => ({ role: i.role ?? null, agentName: i.agentName ?? null, text: text(i) })),
     tools: items.filter((i) => i.type === "tool_output").map((i) => ({ name: i.toolCall?.name ?? i.blockName ?? null, output: i.output, ...(i.error === undefined ? {} : { error: i.error }) })),
   };

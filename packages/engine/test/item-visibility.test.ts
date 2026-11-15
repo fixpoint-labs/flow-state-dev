@@ -7,7 +7,7 @@
  *   resolve to `{ client: false, history: false }` regardless of any stamp.
  * - Conversational types (`message`, `reasoning`, `tool_output`) use
  *   `item.itemVisibility` if present, else `{ client: true, history: true }`.
- * - Structural types (everything else: `status`, `error`, `component`,
+ * - Structural types (everything else: `status`, `error`,
  *   `container`, `resource_change`) default to `{ client: true, history: false }`.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -146,13 +146,23 @@ describe("resolveItemVisibility — trace types (always invisible)", () => {
 });
 
 describe("resolveItemVisibility — structural types", () => {
-  it("component → client, not history", () => {
+  it("data with no itemVisibility → client, not history", () => {
     const item = baseItem({
-      type: "component",
-      component: "plan",
-      data: {},
+      type: "data",
+      dataType: "plan",
+      value: {},
     } as unknown as Partial<OutputItem>);
     expect(resolveItemVisibility(item)).toEqual({ client: true, history: false });
+  });
+
+  it("data honors its itemVisibility stamp", () => {
+    const item = baseItem({
+      type: "data",
+      dataType: "plan",
+      value: {},
+      itemVisibility: { client: false, history: true },
+    } as unknown as Partial<OutputItem>);
+    expect(resolveItemVisibility(item)).toEqual({ client: false, history: true });
   });
 
   it("status → client, not history", () => {

@@ -92,8 +92,8 @@ export { RENEWAL_DIVISOR } from "./tasks/lease-renewal";
 // The task board's own blocks and markers.
 export { taskBoardStateSchema } from "./task-board/schemas";
 export { packWorkerInput } from "./task-board/blocks/worker-step";
-export { TASK_BOARD_META_COMPONENT_TYPE } from "./task-board/blocks/board-meta";
-export { GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE } from "./task-board/goal-seek-loop";
+export { TASK_BOARD_META_DATA_TYPE } from "./task-board/blocks/board-meta";
+export { GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE } from "./task-board/goal-seek-loop";
 export { assertDispatchEntrySupported } from "./task-board/dispatch-assignee";
 export { afterTaskCheck, STEER_TURN_DUE_MS } from "./task-board/task-request";
 export { TASK_SESSION_TASK_KEY } from "./task-board/task-turn";

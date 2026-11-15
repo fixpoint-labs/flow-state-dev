@@ -42,7 +42,7 @@ function buildCtx(collection: ReturnType<typeof createMockSkillsCollection>) {
     getBlockOutput: () => undefined,
     getBlockResult: () => ({ status: "not_started" as const }),
     targets: {},
-    emit: { message: () => {}, component: () => {}, status: () => {} },
+    emit: { message: () => {}, data: () => {}, status: () => {} },
   } as never;
 }
 

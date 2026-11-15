@@ -303,7 +303,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     const answered = ((final?.steers ?? []) as TaskRow[]).find((s) => typeof s.answers === "string")?.answers;
     question ??= (told ?? answered) !== undefined ? ({ id: told ?? answered } as TaskRow) : undefined;
     const heardRequests = await alice.routes.requests(helperA.id);
-    const items = await alice.routes.items(helperA.id, "component");
+    const items = await alice.routes.items(helperA.id, "data");
     const heardItem = items.find((i) => i.id === heard[0]?.itemId) as Record<string, unknown> | undefined;
     const heardAction = heardRequests.find((q) => q.id === heard[0]?.requestId)?.actionName;
     r.notes.push(`e: task ${filed.id} ended ${final?.status} on attempt ${final?.attempts}; question ${question?.id ?? "none"}; ${heard.length} received item(s) about it, the first at ${tsOf(heardItem)} in ${heardAction ?? "?"}`);

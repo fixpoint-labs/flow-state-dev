@@ -13,7 +13,7 @@ import { ReasoningItemView } from "./reasoning-item";
 import { BlockTraceItemView } from "./block-output-item";
 import { ErrorItemView } from "./error-item";
 import { StatusItemView, statusItemLabel } from "./status-item";
-import { ComponentItemView } from "./component-item";
+import { DataItemView } from "./data-item";
 import { ContainerItemView } from "./container-item";
 import { StateChangeItemView } from "./state-change-item";
 import { ResourceChangeItemView } from "./resource-change-item";
@@ -110,8 +110,8 @@ function ItemContent({ item }: { item: DevtoolItem }) {
       return <ErrorItemView item={item} />;
     case "status":
       return <StatusItemView item={item} />;
-    case "component":
-      return <ComponentItemView item={item} />;
+    case "data":
+      return <DataItemView item={item} />;
     case "container":
       return <ContainerItemView item={item} />;
     case "state_change":

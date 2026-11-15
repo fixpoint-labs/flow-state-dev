@@ -4,24 +4,27 @@
  * When a sequencer or router declares a `container` config, all items emitted
  * during its execution carry an `ownedBy` field linking them to the container's
  * `blockInstanceId`. This hook resolves those owned items and extracts the
- * latest component state for the container's component key, providing a
+ * latest data record for the container's component key, providing a
  * structured view without manual item correlation.
  */
 import { useMemo } from "react";
-import type { ComponentItem, ContainerItem, OutputItem } from "@flow-state-dev/core/items";
+import type { ContainerItem, DataItem, OutputItem } from "@flow-state-dev/core/items";
 import type { SessionView } from "./useSession";
 
 export type ContainerItemsResult<TState = Record<string, unknown>> = {
-  /** Latest component state for this container, or undefined if no component item found. */
+  /**
+   * The `value` of the latest owned `data` item whose `dataType` is the
+   * container's component key, or undefined if there is none.
+   */
   state: TState | undefined;
   /** All items owned by this container scope, sorted chronologically. */
   items: OutputItem[];
-  /** Latest component data for each unique key, scanning owned items in reverse. */
-  componentsByKey: Map<string, Record<string, unknown>>;
+  /** Latest `value` of each keyed `data` item the container owns, by key. */
+  dataByKey: Map<string, Record<string, unknown>>;
 };
 
 /**
- * Returns the component state, owned items, and per-key component map for a
+ * Returns the container's state, owned items, and per-key data map for a
  * given container item.
  *
  * Accepts either a `SessionView` (uses indexed O(1) lookups) or a raw items
@@ -51,35 +54,31 @@ export function useContainerItems<TState = Record<string, unknown>>(
     if (containerItem.component === undefined) return undefined;
     const componentKey = containerItem.component;
 
-    // Find the latest ComponentItem matching this container's component key.
-    let latest: ComponentItem | undefined;
+    // Find the latest data record named for this container's component key.
+    let latest: DataItem | undefined;
     for (let i = ownedItems.length - 1; i >= 0; i--) {
       const item = ownedItems[i];
-      if (
-        item.type === "component" &&
-        (item as ComponentItem).component === componentKey
-      ) {
-        latest = item as ComponentItem;
+      if (item.type === "data" && item.dataType === componentKey) {
+        latest = item;
         break;
       }
     }
 
-    return latest?.data as TState | undefined;
+    return latest?.value as TState | undefined;
   }, [containerItem.component, ownedItems]);
 
-  const componentsByKey = useMemo(() => {
+  const dataByKey = useMemo(() => {
     const map = new Map<string, Record<string, unknown>>();
     // Scan in reverse so the first match per key is the latest emission.
     for (let i = ownedItems.length - 1; i >= 0; i--) {
       const item = ownedItems[i];
-      if (item.type !== "component") continue;
-      const comp = item as ComponentItem;
-      if (comp.key && !map.has(comp.key)) {
-        map.set(comp.key, comp.data);
+      if (item.type !== "data") continue;
+      if (item.key && !map.has(item.key)) {
+        map.set(item.key, item.value);
       }
     }
     return map;
   }, [ownedItems]);
 
-  return { state, items: ownedItems, componentsByKey };
+  return { state, items: ownedItems, dataByKey };
 }

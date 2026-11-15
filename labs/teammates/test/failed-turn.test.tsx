@@ -37,7 +37,7 @@ const message = (id: string, requestId: string, role: string, text: string, stat
   content: [{ type: "output_text", text }],
 });
 /** A board pass's row change: an item that draws no entry. */
-const boardPass = (id: string, requestId: string) => ({ id, type: "component", component: "task-change", status: "completed", requestId, data: { task: { id: "t1", status: "pending", assignee: LEAD, title: "t1" } } });
+const boardPass = (id: string, requestId: string) => ({ id, type: "data", dataType: "task-change", status: "completed", requestId, value: { task: { id: "t1", status: "pending", assignee: LEAD, title: "t1" } } });
 const failedOf = (entries: ConversationEntry[]) => entries.filter((e): e is Extract<ConversationEntry, { kind: "failed" }> => e.kind === "failed");
 
 describe("the adapter reads a failed turn", () => {

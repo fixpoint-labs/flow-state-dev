@@ -15,7 +15,7 @@
  * on each completed task.
  *
  * Stands in for the kitchen-sink `<Plan />` demo until FIX-445 lands;
- * the substrate produces the live `task-change` component-item stream
+ * the substrate produces the live `task-change` data-item stream
  * that demo will subscribe to.
  */
 import { describe, expect, it } from "vitest";
@@ -136,7 +136,7 @@ describe("taskBoard - research-board demo", () => {
     const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
 
-    // Walk the `task-change` component-item stream: assert all three
+    // Walk the `task-change` data-item stream: assert all three
     // completed and that synthesis-1 completed AFTER both analyses (the
     // substrate admission rule every claim order shares).
     const statusByTask = new Map<string, string>();
@@ -147,20 +147,20 @@ describe("taskBoard - research-board demo", () => {
 
     for (const item of result.items as Array<{
       type?: string;
-      component?: string;
-      data?: {
+      dataType?: string;
+      value?: {
         kind?: string;
         task?: { id: string; status: string; output?: unknown };
       };
     }>) {
       if (
-        item.type !== "component" ||
-        item.component !== "task-change" ||
-        item.data?.task === undefined
+        item.type !== "data" ||
+        item.dataType !== "task-change" ||
+        item.value?.task === undefined
       ) {
         continue;
       }
-      const { kind, task } = item.data;
+      const { kind, task } = item.value;
       statusByTask.set(task.id, task.status);
       if (kind === "completed") {
         if (task.id === "market-1") marketCompleted = true;

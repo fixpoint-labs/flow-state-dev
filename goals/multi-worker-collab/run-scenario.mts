@@ -160,7 +160,7 @@ export interface ActResult {
   items: Array<Record<string, unknown>>;
 }
 
-/** A `task-change` component item, flattened to what the checks read. */
+/** A `task-change` data item, flattened to what the checks read. */
 interface TaskChange {
   kind: string;
   taskId: string;
@@ -422,10 +422,10 @@ export class Scenario {
   }
 }
 
-/** The `task-change` component items among a request's items. */
+/** The `task-change` data items among a request's items. */
 function taskChangesOf(items: ReadonlyArray<Record<string, any>>): TaskChange[] {
   return items
-    .filter((item) => item.type === "component" && item.component === "task-change")
-    .map((item) => item.data as TaskChange)
+    .filter((item) => item.type === "data" && item.dataType === "task-change")
+    .map((item) => item.value as TaskChange)
     .filter((change) => change !== undefined && typeof change.taskId === "string");
 }

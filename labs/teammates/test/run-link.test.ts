@@ -35,12 +35,12 @@ const boardAnswer = (tasks: Array<Record<string, unknown>>) => ({ value: tasks, 
 const filed = (status: string) => ({
   id: "task-change:board/task_1",
   requestId: "req_1",
-  type: "component",
-  component: "task-change",
+  type: "data",
+  dataType: "task-change",
   ts: 1,
   itemIndex: 0,
   status: "completed",
-  data: { collectionId: "board", taskId: "task_1", kind: "added", task: { id: "task_1", title: "Fix the typo", status, assignee: "teammates.cursor" } },
+  value: { collectionId: "board", taskId: "task_1", kind: "added", task: { id: "task_1", title: "Fix the typo", status, assignee: "teammates.cursor" } },
 });
 
 /** A client whose conversation holds `item`, and whose board read names the run once `started`. */
@@ -59,7 +59,7 @@ function clientWith(item: ReturnType<typeof filed>, started = () => true) {
     },
     view: async (ref: { flow: string; view: string }) => {
       reads.push(`${ref.flow}.${ref.view}`);
-      return boardAnswer([{ ...item.data.task, ...(started() ? { run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } } : {}) }]);
+      return boardAnswer([{ ...item.value.task, ...(started() ? { run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } } : {}) }]);
     },
   } as unknown as Client;
   return { client, reads, push };
@@ -113,7 +113,7 @@ describe("a coding task's run, while it runs", () => {
   it("takes the board read over the conversation's copy when the read is as new or newer", async () => {
     // The read names when the row was last written, as the conversation's copy does: the newer copy wins, a tie the read.
     const item = filed("in_progress");
-    const stamped = { ...item, data: { ...item.data, task: { ...item.data.task, updatedAt: 1 } } };
+    const stamped = { ...item, value: { ...item.value, task: { ...item.value.task, updatedAt: 1 } } };
     const push = fakeSubscribe();
     let linked = false;
     const client = {
@@ -126,7 +126,7 @@ describe("a coding task's run, while it runs", () => {
         stream: () => ({ close() {} }),
         get: async () => ({ id: "wks_1", flowKind: "agent" }),
       },
-      view: async () => boardAnswer([{ ...item.data.task, updatedAt: linked ? 3 : 1, ...(linked ? { run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } } : {}) }]),
+      view: async () => boardAnswer([{ ...item.value.task, updatedAt: linked ? 3 : 1, ...(linked ? { run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } } : {}) }]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
@@ -153,7 +153,7 @@ describe("a coding task's run, while it runs", () => {
         stream: () => ({ close() {} }),
         get: async () => ({ id: "wks_1", flowKind: "agent" }),
       },
-      view: async () => boardAnswer([{ ...item.data.task, status, updatedAt: status === "completed" ? 5 : 1 }]),
+      view: async () => boardAnswer([{ ...item.value.task, status, updatedAt: status === "completed" ? 5 : 1 }]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
@@ -181,7 +181,7 @@ describe("what a task's runs spent, as the board read folds it", () => {
         get: async () => ({ id: "wks_1", flowKind: "agent" }),
       },
       view: async () =>
-        boardAnswer([{ ...item.data.task, spend: { harness: "codex", model: "gpt-5.5-codex", inputTokens: 10, outputTokens: 5, costUsd: null, unreported: false, live: false } }]),
+        boardAnswer([{ ...item.value.task, spend: { harness: "codex", model: "gpt-5.5-codex", inputTokens: 10, outputTokens: 5, costUsd: null, unreported: false, live: false } }]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
@@ -197,7 +197,7 @@ describe("a hold answered in the run's session", () => {
     const hold = { id: "susp-1", actor: "user", openedAt: 2, source: { kind: "suspension", requestId: "req_run", suspensionId: "susp-1" }, ask: { kind: "review", prompt: "1 commit on b" } };
     const conversation = filed("in_progress");
     // The conversation's copy caught the row while the review was open.
-    const held = { ...conversation, data: { ...conversation.data, task: { ...conversation.data.task, run, updatedAt: 2, holds: [hold] } } };
+    const held = { ...conversation, value: { ...conversation.value, task: { ...conversation.value.task, run, updatedAt: 2, holds: [hold] } } };
     const push = fakeSubscribe();
     let answered = false;
     const client = {
@@ -211,7 +211,7 @@ describe("a hold answered in the run's session", () => {
         get: async (id: string) => (id === "dsx_run" ? { id, flowKind: "coder" } : { id, flowKind: "agent" }),
       },
       // `listTasks` lists a row's open holds, and leaves `holds` out once none is open.
-      view: async () => boardAnswer([{ ...conversation.data.task, run, updatedAt: answered ? 3 : 2, ...(answered ? {} : { holds: [hold] }) }]),
+      view: async () => boardAnswer([{ ...conversation.value.task, run, updatedAt: answered ? 3 : 2, ...(answered ? {} : { holds: [hold] }) }]),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
@@ -232,8 +232,8 @@ describe("a row the run's feed and the board read both carry", () => {
   function twoSources(board: () => Record<string, unknown>) {
     const run = { sessionId: "dsx_run", requestId: "req_run", attempt: 1 };
     const conversation = filed("in_progress");
-    const linked = { ...conversation, data: { ...conversation.data, task: { ...conversation.data.task, run, updatedAt: 2 } } };
-    const fromRun = { ...linked, id: "task-change:board/task_1@run", requestId: "req_run", ts: 5, data: { ...linked.data, kind: "progress_reported", task: { ...linked.data.task, updatedAt: 5 } } };
+    const linked = { ...conversation, value: { ...conversation.value, task: { ...conversation.value.task, run, updatedAt: 2 } } };
+    const fromRun = { ...linked, id: "task-change:board/task_1@run", requestId: "req_run", ts: 5, value: { ...linked.value, kind: "progress_reported", task: { ...linked.value.task, updatedAt: 5 } } };
     const push = fakeSubscribe();
     const client = {
       get live() {
@@ -245,7 +245,7 @@ describe("a row the run's feed and the board read both carry", () => {
         stream: () => ({ close() {} }),
         get: async (id: string) => ({ id, flowKind: "agent" }),
       },
-      view: async () => boardAnswer([{ ...linked.data.task, ...board() }]),
+      view: async () => boardAnswer([{ ...linked.value.task, ...board() }]),
     } as unknown as Client;
     return { client, push };
   }
@@ -299,7 +299,7 @@ describe("a board read still in flight when the watch stops", () => {
       },
       view: () =>
         new Promise((resolve) => {
-          land = () => resolve(boardAnswer([{ ...item.data.task, run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } }]));
+          land = () => resolve(boardAnswer([{ ...item.value.task, run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } }]));
         }),
     } as unknown as Client;
     const calls: BoardTask[][] = [];
@@ -328,11 +328,11 @@ describe("a coding task's hold, while it runs", () => {
       id: "task-change:board/task_1@run",
       requestId: "req_run",
       ts: 2,
-      data: {
-        ...conversation.data,
+      value: {
+        ...conversation.value,
         kind: "asked",
         task: {
-          ...conversation.data.task,
+          ...conversation.value.task,
           run,
           updatedAt: 2,
           holds: [{ id: "susp-1", actor: "user", openedAt: 2, source: { kind: "suspension", requestId: "req_run", suspensionId: "susp-1" }, ask: { kind: "review", prompt: "1 commit on b" } }],
@@ -349,7 +349,7 @@ describe("a coding task's hold, while it runs", () => {
         stream: () => ({ close() {} }),
         get: async (id: string) => (id === "dsx_run" ? { id, flowKind: "coder" } : { id, flowKind: "agent" }),
       },
-      view: async () => boardAnswer([{ ...held.data.task }]),
+      view: async () => boardAnswer([{ ...held.value.task }]),
     } as unknown as Client;
   }
 
@@ -367,9 +367,9 @@ describe("a coding task's hold, while it runs", () => {
     const closed: string[] = [];
     const pushTo = new Map<string, (event: { item: unknown }) => void>();
     const conversation = filed("in_progress");
-    const old = { ...conversation, id: "task-change:board/task_2", data: { ...conversation.data, taskId: "task_2", task: { id: "task_2", title: "Old task", status: "completed", assignee: "teammates.cursor", run: { sessionId: "dsx_old", requestId: "req_old", attempt: 1 } } } };
-    const running = { ...conversation, data: { ...conversation.data, task: { ...conversation.data.task, run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 }, updatedAt: 1 } } };
-    const ended = { ...running, id: "task-change:board/task_1@end", ts: 3, itemIndex: 2, data: { ...running.data, kind: "completed", task: { ...running.data.task, status: "completed", updatedAt: 3 } } };
+    const old = { ...conversation, id: "task-change:board/task_2", value: { ...conversation.value, taskId: "task_2", task: { id: "task_2", title: "Old task", status: "completed", assignee: "teammates.cursor", run: { sessionId: "dsx_old", requestId: "req_old", attempt: 1 } } } };
+    const running = { ...conversation, value: { ...conversation.value, task: { ...conversation.value.task, run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 }, updatedAt: 1 } } };
+    const ended = { ...running, id: "task-change:board/task_1@end", ts: 3, itemIndex: 2, value: { ...running.value, kind: "completed", task: { ...running.value.task, status: "completed", updatedAt: 3 } } };
     const client = {
       get live() {
         return liveOver(this as never);

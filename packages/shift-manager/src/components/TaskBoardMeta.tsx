@@ -5,11 +5,11 @@
  * byte-equal to the registry, no router).
  */
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import type { ComponentItem, OutputItem } from "@flow-state-dev/core/items";
+import type { DataItem, OutputItem } from "@flow-state-dev/core/items";
 import { ERROR_REPORTER_FLOW } from "@flow-state-dev/workforce/browser";
 import { SessionItemsProvider, useSessionItems } from "./flow-state/session-items-context";
 import { TaskPlan } from "./flow-state/task-plan";
-import { extractTaskPlanState, TASK_CHANGE_COMPONENT } from "./flow-state/task-plan-state";
+import { extractTaskPlanState, TASK_CHANGE_DATA_TYPE } from "./flow-state/task-plan-state";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
 import { columnFor } from "../lib/columns";
 import { useConversationSession } from "../lib/conversation";
@@ -55,9 +55,9 @@ export function SessionScope({
 
 function isConversationTaskChange(item: OutputItem): boolean {
   return (
-    item.type === "component" &&
-    item.component === TASK_CHANGE_COMPONENT &&
-    (item.data as { collectionId?: string } | undefined)?.collectionId === CONVERSATION_BOARD_COLLECTION
+    item.type === "data" &&
+    item.dataType === TASK_CHANGE_DATA_TYPE &&
+    item.value.collectionId === CONVERSATION_BOARD_COLLECTION
   );
 }
 
@@ -75,9 +75,9 @@ function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sess
   return <BoardContext.Provider value={board}>{children}</BoardContext.Provider>;
 }
 
-export function TaskBoardMeta({ item }: { item: ComponentItem }) {
+export function TaskBoardMeta({ item }: { item: DataItem }) {
   const { boardRef, read } = useContext(BoardContext);
-  const collectionId = (item.data as { collectionId?: string } | undefined)?.collectionId;
+  const collectionId = (item.value as { collectionId?: string }).collectionId;
   if (collectionId === undefined) return null;
   // Only the conversation's own ledger is a board this route opens; another collection's task ids name nothing there.
   if (boardRef === undefined || collectionId !== CONVERSATION_BOARD_COLLECTION) {

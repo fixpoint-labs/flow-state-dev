@@ -35,7 +35,7 @@ async function harness() {
     config: declared,
   }) as ResourceCollectionRef<JsonObject>;
   const ctx = {
-    emit: { component: () => undefined },
+    emit: { data: () => undefined },
     resources: {},
     session: { identity: { type: "session", id: "s_parent", userId: USER_ID } },
     request: { identity: { type: "request", id: "r_parent" } },

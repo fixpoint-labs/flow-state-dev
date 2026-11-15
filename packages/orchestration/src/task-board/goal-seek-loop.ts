@@ -179,13 +179,11 @@ export interface GoalSeekLoopConfig {
   onError?: "skip" | "fail";
 }
 
-/** Component type of the loop's terminal observability signal (reason + drain
+/** Data type of the loop's terminal observability record (reason + drain
  *  count). Distinct from `task-board-meta` so it never clobbers the completed
- *  board snapshot `<TaskPlan/>` scans. No renderer consumes it: the shipped
- *  chat registry names it with `false` so it never surfaces as raw JSON. Its
- *  `itemVisibility` stamp cannot do that job — a `component` item is
- *  structural, and structural items ignore `itemVisibility`. */
-export const GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE = "goal-seek-loop-termination";
+ *  board snapshot `<TaskPlan/>` scans. Stamped `{ client: false, history: false }`,
+ *  so it reaches no client and no model. */
+export const GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE = "goal-seek-loop-termination";
 
 // ---------------------------------------------------------------------------
 // mapToVerdict
@@ -545,18 +543,13 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
       };
       const iterations = state.goalSeekLoopDrains ?? 0;
       const reason = state.goalSeekLoopVerdict?.reason ?? "converged";
-      // A typed observability signal, NOT a rendered UI element. It stays on
-      // the live stream for tooling and is what the goalSeekLoop tests assert
-      // on. The `itemVisibility` stamp records that intent but does not
-      // enforce it (structural items ignore it); the renderer registry's
-      // `false` entry for this type is what keeps it out of the thread.
-      ctx.emit.component(
-        GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
+      // A typed observability record, NOT a rendered UI element. It reaches
+      // no client and no model; it is on the request's items for tooling and
+      // the goalSeekLoop tests.
+      ctx.emit.data(
+        GOAL_SEEK_LOOP_TERMINATION_DATA_TYPE,
         { collectionId: board.collectionId, reason, iterations },
-        {
-          key: `${board.collectionId}:goalSeekLoop-termination`,
-          itemVisibility: { client: false, history: false },
-        },
+        { key: `${board.collectionId}:goalSeekLoop-termination`, itemVisibility: { client: false, history: false } },
       );
     },
   });

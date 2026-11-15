@@ -452,7 +452,7 @@ async function checkItems({ page, origin, api, fail }: Ctx, row: Row, running: b
       resolve(undefined);
     }, 5_000);
     const handle = follow(origin, owner, row.run!.requestId, (item) => {
-      if (item.taskId !== row.id || known.has(item.id) || item.type === "component") return;
+      if (item.taskId !== row.id || known.has(item.id) || item.type === "data") return;
       clearTimeout(timer);
       handle.close();
       resolve(item);

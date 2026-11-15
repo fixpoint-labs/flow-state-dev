@@ -88,7 +88,7 @@ function makeGoalWorker(
 
 /**
  * Build a map from task id → its terminal status by walking the
- * `task-change` component items emitted on the stream. The substrate
+ * `task-change` data items emitted on the stream. The substrate
  * emits one item per transition; the last one for a given id is the
  * final status.
  */
@@ -96,15 +96,15 @@ function lastTaskState(items: unknown[]): Map<string, string> {
   const finalStatus = new Map<string, string>();
   for (const item of items as Array<{
     type?: string;
-    component?: string;
-    data?: { task?: { id: string; status: string } };
+    dataType?: string;
+    value?: { task?: { id: string; status: string } };
   }>) {
     if (
-      item.type === "component" &&
-      item.component === "task-change" &&
-      item.data?.task !== undefined
+      item.type === "data" &&
+      item.dataType === "task-change" &&
+      item.value?.task !== undefined
     ) {
-      finalStatus.set(item.data.task.id, item.data.task.status);
+      finalStatus.set(item.value.task.id, item.value.task.status);
     }
   }
   return finalStatus;
@@ -1372,7 +1372,7 @@ describe("taskBoard - capability", () => {
 
   it("the board's own pipeline emits task-change items the capability subscribers consume", async () => {
     // End-to-end smoke: the board's drain produces `task-change`
-    // component items keyed by `${collectionId}/${taskId}`. Any future
+    // data items keyed by `${collectionId}/${taskId}`. Any future
     // consumer that wires the capability into a generator's `uses` and
     // calls `ctx.cap.<name>.tasks()` reads the same collection that emits
     // these items.
@@ -1391,17 +1391,17 @@ describe("taskBoard - capability", () => {
 
     type ChangeItem = {
       type?: string;
-      component?: string;
+      dataType?: string;
       key?: string;
-      data?: { collectionId?: string; taskId?: string };
+      value?: { collectionId?: string; taskId?: string };
     };
     const changeItems = (result.items as ChangeItem[]).filter(
-      (i) => i.type === "component" && i.component === "task-change"
+      (i) => i.type === "data" && i.dataType === "task-change"
     );
     expect(changeItems.length).toBeGreaterThan(0);
     for (const item of changeItems) {
-      expect(item.data?.collectionId).toBe("smoke");
-      expect(item.key).toBe(`smoke/${item.data?.taskId}`);
+      expect(item.value?.collectionId).toBe("smoke");
+      expect(item.key).toBe(`smoke/${item.value?.taskId}`);
     }
   });
 });
@@ -1778,7 +1778,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Board-level meta emission — `task-board-meta` component item at
+// Board-level meta emission — `task-board-meta` data item at
 // start (status: active) and end (status: completed + counts)
 // ---------------------------------------------------------------------------
 
@@ -1802,36 +1802,36 @@ describe("taskBoard - board-meta emission", () => {
 
     type MetaItem = {
       type?: string;
-      component?: string;
+      dataType?: string;
       key?: string;
-      data?: {
+      value?: {
         collectionId?: string;
         status?: string;
         counts?: Record<string, number>;
       };
     };
     const metaItems = (result.items as MetaItem[]).filter(
-      (i) => i.type === "component" && i.component === "task-board-meta"
+      (i) => i.type === "data" && i.dataType === "task-board-meta"
     );
 
-    // FIX-491: keyed component emissions upsert in place. The board emits
+    // FIX-491: keyed data emissions upsert in place. The board emits
     // "active" at start and "completed" at end against the same key, so the
     // persisted record collapses to a single entry holding the final
     // snapshot. Live SSE consumers see both transitions via the event log.
     expect(metaItems).toHaveLength(1);
-    expect(metaItems[0]?.data?.status).toBe("completed");
+    expect(metaItems[0]?.value?.status).toBe("completed");
     expect(metaItems[0]?.key).toBe("meta-test");
-    expect(metaItems[0]?.data?.collectionId).toBe("meta-test");
+    expect(metaItems[0]?.value?.collectionId).toBe("meta-test");
 
     // Counts on the final snapshot reflect the final state.
-    const final = metaItems[0]?.data?.counts;
+    const final = metaItems[0]?.value?.counts;
     expect(final?.total).toBe(2);
     expect(final?.completed).toBe(2);
     expect(final?.errored).toBe(0);
 
     // FIX-626: terminationReason on a fully-succeeded drain.
     expect(
-      (metaItems[0]?.data as { terminationReason?: string } | undefined)
+      (metaItems[0]?.value as { terminationReason?: string } | undefined)
         ?.terminationReason
     ).toBe("all-completed");
   });
@@ -1867,8 +1867,8 @@ describe("taskBoard - board-meta emission", () => {
 
     type MetaItem = {
       type?: string;
-      component?: string;
-      data?: {
+      dataType?: string;
+      value?: {
         status?: string;
         terminationReason?: string;
         counts?: Record<string, number>;
@@ -1876,15 +1876,15 @@ describe("taskBoard - board-meta emission", () => {
     };
     const completed = (result.items as MetaItem[]).find(
       (i) =>
-        i.type === "component" &&
-        i.component === "task-board-meta" &&
-        i.data?.status === "completed"
+        i.type === "data" &&
+        i.dataType === "task-board-meta" &&
+        i.value?.status === "completed"
     );
-    expect(completed?.data?.terminationReason).toBe("blocked-by-failures");
-    expect(completed?.data?.counts?.completed).toBe(0);
-    expect(completed?.data?.counts?.errored).toBe(1);
-    expect(completed?.data?.counts?.pending).toBe(0);
-    expect(completed?.data?.counts?.cancelled).toBe(1);
+    expect(completed?.value?.terminationReason).toBe("blocked-by-failures");
+    expect(completed?.value?.counts?.completed).toBe(0);
+    expect(completed?.value?.counts?.errored).toBe(1);
+    expect(completed?.value?.counts?.pending).toBe(0);
+    expect(completed?.value?.counts?.cancelled).toBe(1);
   });
 
   it("counts errored tasks on completion", async () => {
@@ -1915,21 +1915,21 @@ describe("taskBoard - board-meta emission", () => {
 
     type MetaItem = {
       type?: string;
-      component?: string;
-      data?: { status?: string; counts?: Record<string, number> };
+      dataType?: string;
+      value?: { status?: string; counts?: Record<string, number> };
     };
     const completed = (result.items as MetaItem[]).find(
       (i) =>
-        i.type === "component" &&
-        i.component === "task-board-meta" &&
-        i.data?.status === "completed"
+        i.type === "data" &&
+        i.dataType === "task-board-meta" &&
+        i.value?.status === "completed"
     );
     expect(completed).toBeDefined();
-    expect(completed?.data?.counts?.total).toBe(2);
-    expect(completed?.data?.counts?.errored).toBe(2);
-    expect(completed?.data?.counts?.completed).toBe(0);
+    expect(completed?.value?.counts?.total).toBe(2);
+    expect(completed?.value?.counts?.errored).toBe(2);
+    expect(completed?.value?.counts?.completed).toBe(0);
     expect(
-      (completed?.data as { terminationReason?: string } | undefined)
+      (completed?.value as { terminationReason?: string } | undefined)
         ?.terminationReason
     ).toBe("blocked-by-failures");
   });
@@ -1978,16 +1978,16 @@ describe("taskBoard - seed idempotency", () => {
     // and short-circuits.
     type Change = {
       type?: string;
-      component?: string;
-      data?: { kind?: string; taskId?: string };
+      dataType?: string;
+      value?: { kind?: string; taskId?: string };
     };
     const addedEvents = (result.items as Change[]).filter(
       (i) =>
-        i.type === "component" &&
-        i.component === "task-change" &&
-        i.data?.kind === "added"
+        i.type === "data" &&
+        i.dataType === "task-change" &&
+        i.value?.kind === "added"
     );
-    expect(addedEvents.map((e) => e.data?.taskId).sort()).toEqual(["a", "b"]);
+    expect(addedEvents.map((e) => e.value?.taskId).sort()).toEqual(["a", "b"]);
   });
 
   // Cross-invocation re-entry — the broader case where `board.drain`
