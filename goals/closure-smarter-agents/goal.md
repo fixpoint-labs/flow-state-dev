@@ -34,9 +34,18 @@ draws a docs question.
   search that names the page reads nothing), and the reply states each fact.
 - **coder** graded from the record outward: each recorded check the report names must have the
   outcome the report gives it (the workspace's own pass rule), and at least one must be named. Only
-  a code span can name a check the record lacks, which fails; prose is never parsed into a command.
-  A `null` record fails. The record is the run
-  record's `checks` (labs, Shift Manager), or the harness session turn's (Kitchen Sink).
+  a command part in a code span can name a check the record lacks, which fails; prose is never parsed
+  into a command. A code span is split at `;`, `&&`, `||` and `|` outside quotes, and each part that
+  reads as a command (a program such as `pnpm` or `node` and at least one argument; a bare `node` is
+  prose) is graded alone, so a recorded check inside plumbing
+  (`node check.mjs; echo "exit code: $?"`, `pnpm test | tail -20`) passes and an unrecorded part
+  (`node check.mjs && pnpm lint`) fails. A `null` record fails. The record is the run
+  record's `checks` (labs, Shift Manager), read once the coding run the worker filed has settled
+  (every run record `succeeded` or `failed`; a worker can end its turn before the run writes one),
+  or the harness session turn's (Kitchen Sink). A run not settled within 20 minutes of the turn
+  fails as unsettled.
+  *Decided in build:* a command part, not the whole span (FIX-2502 D3): a true report that wrapped
+  its check in `echo` or a pipe failed under the whole-span rule.
 - **knowledge** at least 3 lookups, and a cited source is one a lookup returned.
 - **sizing** the sum, in 50 words or fewer (D2).
 - **skill** precondition: the worker holds the skill; then no slash in the ask, a `loadSkill` of
@@ -106,3 +115,4 @@ in at least one app where it runs.
 | Date | Commit | Pass | Verdict | Notes |
 |------|--------|------|---------|-------|
 | 2026-11-13 | claude/fix-2627-impl-e-b3 on 0a98c8621 | graders (model-free) | PASS | `heldSkills` now reads through the kit's reader; the apps' passes are model-backed and not run. "PASS — 42 grader cases (27 hollow, each refused), 32 verdict rules, 16 model switch rules, planting after a killed run, a signal mid-run, and a start that throws after serving · read: grader cases: 42; verdict rules: 32; model switch rules: 16" |
+| 2026-11-15 | fix-2541-goals-coder on 5a9ab85f7 | graders (model-free) | PASS | The coder grader reads a code span's command parts, a program with an argument (FIX-2502 D3); the coder ask reads the run record once the filed run has settled; the Teammates and Shift Manager coder repositories ignore `.fsdev/`, checked by a run's own repository check. The apps' passes are model-backed and not run. "PASS — 54 grader cases (33 hollow, each refused), 32 verdict rules, 16 model switch rules, planting after a killed run, a signal mid-run, a start that throws after serving, and the coder ask's repository accepted by a run's check · read: grader cases: 54; verdict rules: 32; model switch rules: 16" |
