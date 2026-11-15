@@ -1247,8 +1247,8 @@ const EXEMPTIONS = [
   {
     id: "kind-type-names",
     terms: ["kind"],
-    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:suspendForUserKindOf|SuspendForUserKind)\b|`Kind`/g,
-    why: "a type discriminant's own type, core's names for what a user's stop asks (FIX-2129), and the engine flow kinds a test registers (BR-10)",
+    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:suspendForUserKindOf|SuspendForUserKind)\b|\bharnessFailureKind\b|`Kind`/g,
+    why: "a type discriminant's own type, core's names for what a user's stop asks (FIX-2129), core's `harnessFailureKind` reader, and the engine flow kinds a test registers (BR-10)",
   },
   {
     id: "engine-flow-kind",
@@ -1311,6 +1311,13 @@ const EXEMPTIONS = [
     terms: ["thread"],
     strip: /\bchat[ -]threads?\b|\bthread:\s*\{/gi,
     why: "a chat thread in the UI, and a coding harness's own `thread:` option, not a mailbox's",
+  },
+  {
+    id: "codex-thread-option",
+    terms: ["thread"],
+    where: (path) => path.startsWith("docs/contributing/docs-revamp/pages/catalog/harnesses/codex."),
+    strip: /`thread`/g,
+    why: "the Codex block's own `thread` option, named in code font on the revamp's Codex page",
   },
   {
     id: "claude-code-threads",
