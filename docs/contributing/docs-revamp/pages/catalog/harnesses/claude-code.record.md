@@ -38,12 +38,15 @@ Written by `docs-writer` (sonnet), 1389 words. Scenario: The C-23 app (acme-shop
 - After revise round 2, page sha256 5365f65eb856: exit 0.
 - After revise round 3, page sha256 e89c2d46352b: exit 1. Failed: node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/catalog/harnesses/claude-code.md: FAIL docs/contributing/docs-revamp/pages/catalog/harnesses/claude-code.md (catalog, 1222 words). Banned: "no longer" x2. Failing lines: L90 "...If it can no longer find the one it was asked to continue, the next run starts a fresh session, with the brief, the question and the answer in its prompt." and L94 "When Claude Code no longer has the conversation, the block marks the failure as `harnessFailure: "unknown-conversation"` on the `ClaudeCodeAgentRunError` it throws.".
 - After the loop (review): the two "no longer" lines the page check flagged were reworded ("can't find the one it was asked to continue", "doesn't have the conversation it was asked to resume"); the meaning is unchanged.
+- After the loop (docs site build): the status strings in the run table and the paragraph after it are code spans, so `<tool>` and `<reason>` no longer parse as tags; the transient one uses the code's `…`. Page sha256 46fa8cf4dfba: the page check exits 0 and the brand lint has 0 findings.
 
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 40ae256078fe, and the 14 Reference row(s) pass 6 moved.
 
 - The block's input is `{ prompt }`, and nothing else ("As a step" section). Untrue: The block's input schema is core's `harnessRunInputSchema`, which is `{ prompt: string, attachments?: AttachmentReference[] }`. `attachments` is an optional list of stored-file references, and the block reads it (`input.attachments`) and refuses a file Claude Code cannot take. The input is not prompt-only. The directory and session are still options and not input. (packages/core/src/types/harness.ts:139-143; packages/claude-code/src/sdk/agent.ts:961,1001)
+
+- Re-run after the review edit: the two status strings checked against the code, all true. A non-Bash tool call's transient status is `Using ${name}…` and a Bash call's is its description (`packages/claude-code/src/sdk/translate.ts:360-362`); a run ends with the kept status `Claude Code agent run completed in …` or `Claude Code agent run errored (…).` (`packages/claude-code/src/sdk/agent.ts:1633-1637`, `transient: false`).
 
 ## 6 · Depth pass
 

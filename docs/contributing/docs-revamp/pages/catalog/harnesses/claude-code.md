@@ -103,7 +103,7 @@ Claude Code's stream becomes items in the flow's stream as the run goes:
 | --- | --- |
 | Writes text | A `message` item, streamed token by token |
 | Thinks | A `reasoning` item |
-| Calls a tool | A `tool_output` item. While it runs, a transient status: a `Bash` call's description, otherwise `Using <tool>...` |
+| Calls a tool | A `tool_output` item. While it runs, a transient status: a `Bash` call's description, otherwise `Using <tool>…` |
 | Starts a sub-agent | A `container` item |
 | Fails | An `error` item |
 | Starts, retries an API call, compacts its context | A transient status such as "Starting Claude Code..." |
