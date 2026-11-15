@@ -83,14 +83,10 @@ the three recipes must agree on them.
 
 ## Step: create the schedule in EventBridge
 
-12. **[external][verify]** The `aws scheduler create-schedule` command in `eb:38-65` should be checked
-    against AWS documentation before the page prints it. Specifically: `Arn: "arn:aws:scheduler:::http-invoke"`
-    as a target ARN, `HttpParameters` (`PathParameterValues`, `QueryStringParameters`, `HeaderParameters`)
-    inside a Scheduler `--target`, and a `--target-uri` flag on `create-schedule`. None of these can be
-    confirmed from the repo, and the endpoint URL (the one fact the repo does own) is given only by that
-    last flag. If AWS requires an API destination (its own connection and endpoint) for an HTTPS target,
-    the URL and the bearer header live there, not in the schedule. The writer states what survives the
-    check; do not carry the command unchanged.
+12. **[superseded by A1-A12, review edit]** The kept page's `aws scheduler create-schedule` command
+    cannot work: `create-schedule` has no `--target-uri` flag, and a Scheduler target has no
+    `HttpParameters` and no `arn:aws:scheduler:::http-invoke` target that POSTs a URL. The page uses an
+    EventBridge rule with an API destination target instead (A1-A12 below).
 13. What the repo owns in that command, whatever the AWS wrapper is:
     - **URL**: `POST {basePath}/:flowKind/schedules/:scheduleId/dispatch`, `basePath` default
       `/api/flows`; for flow `billing`, schedule `monthly-invoices`:
@@ -101,16 +97,11 @@ the three recipes must agree on them.
     - **Body**: `{"nominalFireTime":"<aws.scheduler.scheduled-time>"}`. The endpoint reads one field
       from the body, `nominalFireTime` (a string), and `idempotencyKey` only to refuse it. Any other
       field is ignored. [rt:407-423; ref:253-259]
-14. `<aws.scheduler.scheduled-time>` is an EventBridge context attribute that EventBridge replaces with
-    the time the schedule was due. **[external]** [eb:55, 74-75] The endpoint accepts it if it parses as
-    ISO-8601 (`Date.parse`) and lands within five seconds of a scheduled time of the cron. The docs'
-    own example is `"2026-06-01T09:00:00Z"`. [stm:94-112; ref:253-259; opt:131-136]
-15. **[external][verify]** Whether `<aws.scheduler.scheduled-time>` is the nominal time or the
-    flexible-window offset time. The recipe uses `--flexible-time-window '{"Mode":"OFF"}'`; with a window
-    on, a carried time that is the actual (jittered) fire time rather than the scheduled one would be
-    more than five seconds from the cron and refused `400 not_a_scheduled_time`. The page does not claim why; it says only
-    that the command sets the window to `OFF`, so each call goes out at the scheduled time. Unverified: whether
-    the attribute differs with a window on. [eb:43; stm:102-112]
+14. **[superseded by A7, A8]** The body is built from the scheduled event's `time` by an input
+    transformer, not from `<aws.scheduler.scheduled-time>`. The endpoint accepts it if it parses as
+    ISO-8601 (`Date.parse`) and lands within five seconds of a scheduled time of the cron.
+    [stm:54, 94-112; ref:253-259; opt:131-136]
+15. **[superseded]** A rule has no flexible time window; the page drops the `Mode: OFF` sentence.
 16. The body is substituted per run, so unlike a fixed body it is not stale. A scheduler that sent a
     fixed `nominalFireTime` would get `200 { status: "duplicate", reason: "stale" }` once the time is more
     than one period behind, run nothing and log a warning; the recipe's placeholder avoids this and the
@@ -130,10 +121,9 @@ the three recipes must agree on them.
     with 401. `secret` and `principal.userId` must be non-empty or the factory throws. The principal
     needs an `orgId` (a configured resolver that returns none is refused 401); the example uses
     `"org_sys"`. [bs:47-88, 57-69; rt:91-98; auth:60-64, 73-75; opt:44]
-20. The secret is an environment variable on the app side. In EventBridge its value is **pasted literally into the
-    schedule's header at create time** (`eb:67-69`, **[external]**; the page says the value is stored on
-    the schedule and names `FSDEV_SCHEDULER_SECRET` as the secret the resolver checks): rotating it means updating the
-    schedule. The page no longer mentions fronting with API Gateway (unverifiable, left open a question). The framework has no secret
+20. The secret is an environment variable on the app side. In EventBridge its value is stored on the
+    **connection** as `ApiKeyValue: "Bearer <secret>"` under `ApiKeyName: "Authorization"` (A2), so rotating
+    it means `aws events update-connection` (A3). The page no longer mentions fronting with API Gateway (unverifiable, left open a question). The framework has no secret
     rotation of its own; to accept two secrets during a rotation a host writes `resolvePrincipal`
     directly. The existing page does not say the latter; the bearer helper's comment says richer auth
     is a hand-written resolver. [bs:10-13]
@@ -155,10 +145,9 @@ the three recipes must agree on them.
     `401` failed auth; `404` unknown flow or schedule (also a disabled one); `500` a resolver or `input`
     function threw; `503` flow unregistered or dispatch failed. [rt:59-66, 138-161, 209, 252-256,
     301-304, 319-322; ref:268-277]
-27. EventBridge retries non-2xx responses per `RetryPolicy` (`MaximumRetryAttempts`,
-    `MaximumEventAgeInSeconds`). **[external]** [eb:73-74]. Every row in fact 26 is therefore retried,
-    including the 400s from a cron mismatch (fact 7), which can never succeed: they exhaust the budget
-    and land in the dead-letter queue. [rt:138-161 vs eb:73-80]
+27. **[superseded by A9]** An API destination retries only `401`, `407`, `409`, `429`, `5xx` and
+    timeouts. The `400`s from a cron mismatch (fact 7) and a `404` are not retried; they go to the
+    dead-letter queue (A10). The `401` (fact 19) and the `500`/`503` rows are retried.
 28. A retry of a run that already dispatched answers `200 { status: "duplicate" }`; the action does not
     run twice. That holds for any number of POSTs of one scheduled time: a retry, a second host, a
     restart. A retry that arrives after the next scheduled time has fired is a duplicate too.
@@ -210,7 +199,7 @@ queue live in AWS.
 
 ## Time zones
 
-40. `--schedule-expression-timezone` is the zone EventBridge evaluates its cron in. **[external]** [eb:88-89]
+40. **[superseded by A11]** A rule has no `--schedule-expression-timezone`; its cron runs in UTC.
 41. **[correction]** `eb:90-92` says the framework treats `schedule.timezone` as opaque metadata. The
     endpoint evaluates the framework `cron` in `schedule.timezone` (default `"UTC"`) to name the scheduled
     time, for the five-second tolerance and for the stale check. Set `timezone` on the schedule to the
@@ -258,17 +247,64 @@ C8. Neighbour copies: same `Time zones` claim in `apps/docs/guides/scheduled-clo
 
 ## Not verifiable from the repo (carry or drop; do not assert as fact)
 
-- Every `aws scheduler` flag, the target ARN, `HttpParameters`, the `--target-uri` flag, and IAM role
-  setup (fact 12).
-- That `<aws.scheduler.scheduled-time>` is the nominal time and its format (facts 14, 15).
-- That EventBridge retries non-2xx and not 2xx, `RetryPolicy` semantics, and dead-letter delivery of the
-  original payload (facts 27, 31, 32).
-- The EventBridge column of the cron conversion table (fact 10).
-- Header templating at create time and rotation by updating the schedule or fronting with API Gateway
-  (fact 20).
+- From the repo alone: every `aws events` flag and field (checked against AWS docs instead, A1-A12).
+- Open after the AWS check: that a scheduled event's `time` lands within five seconds of the
+  scheduled minute (A8), and what body a DLQ message carries when the target has an input transformer.
+  The page claims neither.
 
 ## What the page keeps out (Reference or nowhere)
 
 Response-code table (fact 26, the full list); once-per-time mechanism and store scope (28, 34); the
 fired record's four answers beyond one sentence (35-39); `onOverlap` options (25); the listing endpoint
 (48); dynamic schedules; OIDC; the IAM role. Link to `reference/schedules` for the rows.
+
+## AWS facts for the review edit (rule + API destination)
+
+Checked against AWS documentation on 2026-11-15. Not run against AWS.
+
+A1. Approach: an EventBridge rule with a schedule expression whose target is an API destination. An API
+    destination is an HTTPS endpoint invoked as a rule target; it uses a connection for authorization.
+    EventBridge Scheduler's targets are AWS API operations (templated or universal), not an HTTPS URL.
+    [https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-api-destinations.html;
+    https://docs.aws.amazon.com/scheduler/latest/UserGuide/managing-targets.html]
+A2. `aws events create-connection --name --authorization-type API_KEY --auth-parameters
+    '{"ApiKeyAuthParameters":{"ApiKeyName":...,"ApiKeyValue":...}}'`. `ApiKeyName`/`ApiKeyValue` pattern
+    `^[ \t]*[^\x00-\x1F:\x7F]+([ \t]+[^\x00-\x1F:\x7F]+)*[ \t]*$`: inner spaces allowed (so
+    `Bearer <secret>` is valid), a colon is not. Output `ConnectionArn`.
+    [https://docs.aws.amazon.com/cli/latest/reference/events/create-connection.html]
+A3. `aws events update-connection --name ... --auth-parameters ...` updates the same fields.
+    [https://docs.aws.amazon.com/cli/latest/reference/events/update-connection.html]
+A4. `aws events create-api-destination --name --connection-arn --invocation-endpoint --http-method POST`
+    (all four required). Output `ApiDestinationArn`.
+    [https://docs.aws.amazon.com/cli/latest/reference/events/create-api-destination.html]
+A5. `aws events put-rule --name --schedule-expression "cron(...)"`; rules are enabled by default.
+    Scheduled rules are labelled legacy, AWS recommends EventBridge Scheduler, and scheduled rules can
+    only be created on the default event bus.
+    [https://docs.aws.amazon.com/cli/latest/reference/events/put-rule.html;
+    https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-create-rule-schedule.html]
+A6. `aws events put-targets --rule --targets '[{Id, Arn, RoleArn, InputTransformer{InputPathsMap,
+    InputTemplate}, RetryPolicy{MaximumRetryAttempts 0-185, MaximumEventAgeInSeconds 60-86400},
+    DeadLetterConfig{Arn}}]'`. [https://docs.aws.amazon.com/cli/latest/reference/events/put-targets.html]
+A7. Input transformer: `InputPathsMap {"time": "$.time"}` and template `{"nominalFireTime": <time>}`;
+    EventBridge adds quotes to string variables in a JSON template.
+    [https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-transform-target-input.html]
+A8. An event's `time` is the time the event occurred (ISO-8601 UTC); for a scheduled event, when the rule
+    fired. Schedule precision is one minute. **[unverified]** that `time` always lands on the scheduled
+    minute within the endpoint's five-second tolerance; AWS does not document it.
+    [https://docs.aws.amazon.com/eventbridge/latest/ref/overiew-event-structure.html;
+    https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-create-rule-schedule.html]
+A9. API destinations retry `401`, `407`, `409`, `429` and `5xx`; not `1xx`, `2xx`, `3xx` or other `4xx`.
+    A request has a 5-second timeout and timed-out requests are retried. EventBridge sets
+    `Content-Type: application/json; charset=utf-8` when none is given (the endpoint does not check the
+    header; it parses the body: rt:407-423). After the last retry the event goes to the DLQ, otherwise it
+    is dropped. [https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-api-destinations.html]
+A10. A DLQ receives all failed events, some without retries; messages carry `ERROR_CODE`,
+    `ERROR_MESSAGE`, `EXHAUSTED_RETRY_CONDITION`, `RETRY_ATTEMPTS`. A DLQ set through `PutTargets` needs a
+    queue policy granting `events.amazonaws.com` `sqs:SendMessage`. Standard queues only, same Region.
+    [https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-dlq.html;
+    https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-retry-policy.html]
+A11. All scheduled events use UTC+0; a rule has no time-zone option.
+    [https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-create-rule-schedule.html;
+    https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-scheduled-rule-pattern.html]
+A12. The target's `RoleArn` role needs `events:InvokeApiDestination` on `arn:aws:events:*:*:api-destination/*`.
+    [https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-events-iam-roles.html]
