@@ -61,7 +61,7 @@ export function carriedSessionFields(fields: SessionFields, state: unknown): Rec
  * What {@link setSessionFieldsAction} takes: the fields to write, by name,
  * and the worker the caller means the session to run, which it must.
  */
-export const setSessionFieldsInputSchema = z.object({ fields: z.record(z.unknown()), worker: z.string().min(1).optional() }).strict();
+const setSessionFieldsInputSchema = z.object({ fields: z.record(z.unknown()), worker: z.string().min(1).optional() }).strict();
 
 function refuse(message: string): never {
   throw new Error(`Refused: ${message}`);
