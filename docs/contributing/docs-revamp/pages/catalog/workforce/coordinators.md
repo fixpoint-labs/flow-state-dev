@@ -115,7 +115,7 @@ rounds: 1
 
 ### Handing out tasks
 
-Routing is one use of tasks. A coordinator can also hand a delegate a task of its own making. Its model has the task board's tools, such as `createTask_tasks`, and the assignee must be one of the conversation's delegates. [Delegating work](./delegating-work.md) covers filing, splitting and hearing how a task ended.
+Routing is one use of tasks. A coordinator can also hand a delegate a task of its own making. Its model has the task board's tools, such as `createTask`, and the assignee must be one of the conversation's delegates. [Delegating work](./delegating-work.md) covers filing, splitting and hearing how a task ended.
 
 ## Slots and views
 

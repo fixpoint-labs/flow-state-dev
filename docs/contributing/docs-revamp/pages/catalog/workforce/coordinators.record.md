@@ -32,6 +32,7 @@ Written by `docs-writer` (sonnet), 1077 words. Scenario: The kitchen-sink suppor
 - After the draft, page sha256 80c9f70abfac: exit 0.
 - After revise round 1, page sha256 2a4bbe336358: exit 0.
 - After revise round 2, page sha256 ff2f1e8d5fcc: exit 0.
+- After the loop (review): the Handing out tasks paragraph names the model's tool `createTask` (`packages/orchestration/src/skills/task-tools-capability.ts:1397`), not the app's action `createTask_tasks` (`packages/workforce/src/conversation-board/session-board.ts:95`), as Delegating work does.
 
 ## 5 · Fact check
 
