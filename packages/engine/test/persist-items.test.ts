@@ -118,7 +118,7 @@ describe("RequestStore.persistItems — filesystem", () => {
   //
   //   1. handler.execute calls `request.atomicState(...)` → `stores.request.set(record_v1, expected=0)`
   //      writes a new record with state=tasks, v=1.
-  //   2. After CAS resolves, the same handler emits component items
+  //   2. After CAS resolves, the same handler emits data items
   //      (e.g. task-change items via the substrate's onChange path).
   //   3. Each non-transient item triggers `persistItems`, queueing a task
   //      that reads the request record and writes back with the items field

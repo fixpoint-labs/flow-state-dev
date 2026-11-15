@@ -133,7 +133,7 @@ import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
-import { DOCUMENT_KEY, INSPECT_ENTRY, WORKER_FACTS_COMPONENT, workerOf } from "./worker-config.mts";
+import { DOCUMENT_KEY, INSPECT_ENTRY, WORKER_FACTS_DATA_TYPE, workerOf } from "./worker-config.mts";
 import { editedTree } from "./edited-tree.mts";
 import { defineAnswerPhase, defineImplementPhase, noteStartingFiles } from "./phase.mts";
 import { defineCoderJudge } from "./judge.mts";
@@ -1776,24 +1776,24 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
             (line) =>
               JSON.parse(line.slice(6)) as {
                 type: string;
-                item?: { type?: string; component?: string; data?: Record<string, unknown> };
+                item?: { type?: string; dataType?: string; value?: Record<string, unknown> };
               },
           );
-        // The facts come off the client-visible component the entry emits, by
+        // The facts come off the client-visible data item the entry emits, by
         // name, not off any trace item: trace items are not for client, and
         // are not captured at all when trace observability is off.
         const facts = events
           .filter(
             (event) =>
-              event.item?.type === "component" && event.item.component === WORKER_FACTS_COMPONENT,
+              event.item?.type === "data" && event.item.dataType === WORKER_FACTS_DATA_TYPE,
           )
-          .at(-1)?.item?.data;
+          .at(-1)?.item?.value;
         const completed = events.some((event) => event.type === "request.completed");
         if (completed && facts !== undefined) return { facts };
         const seen = events.map((event) => event.type).join(", ");
         return {
           error: completed
-            ? `request.completed fired with no ${WORKER_FACTS_COMPONENT} component (events: ${seen})`
+            ? `request.completed fired with no ${WORKER_FACTS_DATA_TYPE} data item (events: ${seen})`
             : `request.completed never fired (events: ${seen})`,
         };
       }

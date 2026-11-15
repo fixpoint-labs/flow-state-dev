@@ -2,14 +2,14 @@
 
 /**
  * `<InfoCardRenderer />` — registry-distributed renderer for the `info-card`
- * generative UI shape. Consumes `ComponentItem.data` matching the
+ * generative UI shape. Consumes `DataItem.value` matching the
  * `InfoCardSchema` exported from `@flow-state-dev/ui/generative/tools`.
  *
  * Plain Tailwind classnames; no shadcn-primitive dependency. Edit freely once
  * copied into your project — typical customizations are swapping the layout or
  * wiring the card into an existing card primitive.
  */
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 
 interface InfoCardData {
   id: string;
@@ -20,8 +20,8 @@ interface InfoCardData {
   footer?: string;
 }
 
-export function InfoCardRenderer({ item }: { item: ComponentItem }) {
-  const data = item.data as unknown as InfoCardData;
+export function InfoCardRenderer({ item }: { item: DataItem }) {
+  const data = item.value as unknown as InfoCardData;
   return (
     <div className="rounded-lg border border-border bg-card text-card-foreground shadow-sm overflow-hidden max-w-md">
       {data.imageUrl ? (

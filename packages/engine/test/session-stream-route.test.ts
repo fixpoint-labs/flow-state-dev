@@ -97,7 +97,7 @@ const REQUEST_A_ITEMS: OutputItem[] = [
   }),
   item(REQ_A, "reasoning", "reasoning", 5, OTHER, { summary: [] }),
   item(REQ_A, "tool", "tool_output", 6, OTHER, { callId: "c1", toolName: "t", output: {} }),
-  item(REQ_A, "component", "component", 7, OTHER, { name: "widget", props: {} }),
+  item(REQ_A, "data", "data", 7, OTHER, { dataType: "widget", value: {} }),
   item(REQ_A, "container", "container", 8, OTHER, { children: [] }),
   item(REQ_A, "status", "status", 9, OTHER, { message: "working" }),
   item(REQ_A, "state_change", "state_change", 10, OTHER, { scope: "session", changes: [] }),
@@ -622,10 +622,10 @@ describe("a keyed item emitted again", () => {
     await seedSession(built.stores, Date.now() - 600_000);
     const owner = buildBlockInstanceId("req_k", "root", 0);
     const plan = (step: number, ts: number, itemIndex: number) =>
-      item("req_k", "item_component_keyed:plan", "component", itemIndex, owner, {
+      item("req_k", "item_data_keyed:plan", "data", itemIndex, owner, {
         ts,
-        component: "plan-view",
-        data: { step },
+        dataType: "plan-view",
+        value: { step },
         key: "plan"
       });
     const first = Date.now();
@@ -639,8 +639,8 @@ describe("a keyed item emitted again", () => {
     const events = collectEvents(res);
     const steps = (): number[] =>
       events.flatMap((event) =>
-        event.type === "session.item" && event.item.id === "item_component_keyed:plan"
-          ? [(event.item as unknown as { data: { step: number } }).data.step]
+        event.type === "session.item" && event.item.id === "item_data_keyed:plan"
+          ? [(event.item as unknown as { value: { step: number } }).value.step]
           : []
       );
     try {

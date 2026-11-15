@@ -256,7 +256,7 @@ async function boot(
       .sort((a: { createdAt: number }, b: { createdAt: number }) => a.createdAt - b.createdAt)
       .flatMap((request: unknown) => (request as { items?: any[] }).items ?? []);
     return {
-      records: all.filter((item) => item.type === "component" && item.component === COORDINATOR_ROUTE).map((item) => item.data),
+      records: all.filter((item) => item.type === "data" && item.dataType === COORDINATOR_ROUTE).map((item) => item.value),
       messages: all
         .filter((item) => item.type === "message")
         .map((item) => ({ agentName: item.agentName as string | undefined, text: JSON.stringify(item.content ?? item.text ?? "") }))

@@ -31,14 +31,14 @@ function change(options: {
 }): TaskStreamItem {
   return {
     id: `item_${options.requestId}_${options.taskId}_${options.ts}`,
-    type: "component",
+    type: "data",
     status: "completed",
     requestId: options.requestId,
     itemIndex: 0,
     provenance: { blockName: "board", blockInstanceId: "b:0", phase: "main" },
     ts: options.ts,
-    component: "task-change",
-    data: {
+    dataType: "task-change",
+    value: {
       collectionId: "issues",
       taskId: options.taskId,
       kind: "metadata_changed",
@@ -62,15 +62,15 @@ function meta(options: {
 }): TaskStreamItem {
   return {
     id: `meta_${options.requestId}_${options.ts}`,
-    type: "component",
+    type: "data",
     status: "completed",
     requestId: options.requestId,
     itemIndex: 0,
     provenance: { blockName: "board", blockInstanceId: "b:0", phase: "main" },
     ts: options.ts,
-    component: "task-board-meta",
+    dataType: "task-board-meta",
     key: "issues",
-    data: {
+    value: {
       collectionId: "issues",
       status: options.status,
       counts: {
@@ -222,7 +222,7 @@ describe("flattenTaskItems — the two axes a tie can fall on", () => {
 
     // A non-`task-change` item would show as its type, so the order check still fails.
     const statusOf = (item: TaskStreamItem) =>
-      item.type === "component" ? (item.data.task as { status: string }).status : item.type;
+      item.type === "data" ? (item.value.task as { status: string }).status : item.type;
     expect(items.map(statusOf)).toEqual(
       ["in_progress", "completed"]
     );

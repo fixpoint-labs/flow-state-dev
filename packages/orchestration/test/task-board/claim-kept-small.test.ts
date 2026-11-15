@@ -13,7 +13,7 @@ import { createFakeResourceCollection, createFakeSequencerState } from "../helpe
 
 function ctxWith(memo: Map<string, unknown>): BlockContext {
   return {
-    emit: { component: () => undefined, status: () => undefined },
+    emit: { data: () => undefined, status: () => undefined },
     _blockIdentity: { blockName: "claim", blockInstanceId: "req_1:root/step[0]/loop[0]/step[1]:0" },
     session: { identity: { type: "session", id: "s_1", userId: "alice" } },
     request: { identity: { type: "request", id: "req_1" } },

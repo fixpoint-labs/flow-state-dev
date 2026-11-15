@@ -135,14 +135,14 @@ async function rewriteRow(stores: StoreRegistry, kind: string, taskId: string, p
 async function taskChanges(stores: StoreRegistry, requestId: string | undefined) {
   const events = await stores.request.getEvents(requestId!);
   return events
-    .map((event) => event as { type?: string; item?: { type?: string; component?: string; data?: unknown } })
+    .map((event) => event as { type?: string; item?: { type?: string; dataType?: string; value?: unknown } })
     .filter(
       (event) =>
         event.type === "item.done" &&
-        event.item?.type === "component" &&
-        event.item.component === "task-change"
+        event.item?.type === "data" &&
+        event.item.dataType === "task-change"
     )
-    .map((event) => event.item!.data as { kind: string; taskId: string; task: Task & Record<string, unknown> });
+    .map((event) => event.item!.value as { kind: string; taskId: string; task: Task & Record<string, unknown> });
 }
 
 /** Drain the board with a recording dispatcher; nothing is started. */

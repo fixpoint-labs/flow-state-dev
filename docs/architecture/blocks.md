@@ -174,7 +174,7 @@ Key properties:
 - `validateChunk` (optional) validates input chunks before execution
 - `retry` (optional) configures retry policy
 - Handlers emit `block_trace` automatically (internal/devtools only)
-- Use `ctx.emit.message()` or `ctx.emit.component()` for client-visible output
+- Use `ctx.emit.message()` for conversational output and `ctx.emit.data()` for structured content: a record code reads, or generative UI a client draws through a renderer registered for its `dataType`
 
 ## Generator
 
@@ -475,7 +475,7 @@ Stable name stamped on every emitted item. Defaults to the block's `name`. Gener
 ### Emission helpers
 
 - `ctx.emit.message(text | content[], options?)` — the primary way to emit assistant-visible content. Accepts optional `{ key?, itemVisibility?, agentName? }`. Without an explicit `itemVisibility`, a handler-emitted message defaults to `{ client: true, history: true }`.
-- `ctx.emit.component(component, data, options?)` — UI components. Accepts optional `{ key?, itemVisibility?, agentName? }`.
+- `ctx.emit.data(dataType, value, options?)` — structured content: a record code reads by `dataType`, drawn by a client only through a renderer registered for that `dataType` (generative UI). Accepts optional `{ key?, itemVisibility?, agentName?, transient? }`; reaches the client and not model history unless `itemVisibility` says otherwise.
 - `ctx.emit.status(message, options?)` — transient progress indicators. Structural; `itemVisibility` does not affect visibility.
 
 Examples:

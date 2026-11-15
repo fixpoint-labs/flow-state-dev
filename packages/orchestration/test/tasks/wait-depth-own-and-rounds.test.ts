@@ -38,7 +38,7 @@ const DEADLINES = { defaultMs: 300_000, minMs: 1_000, maxMs: 86_400_000 };
 
 async function board(): Promise<TaskCollectionRef> {
   const ctx = {
-    emit: { component: () => undefined },
+    emit: { data: () => undefined },
     session: { identity: { type: "session", id: SESSION, userId: "alice" } },
     request: { identity: { type: "request", id: "r_1" } }
   } as unknown as BlockContext;

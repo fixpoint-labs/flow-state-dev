@@ -977,20 +977,20 @@ describe("useSession live", () => {
     describe("two finished copies of one keyed item", () => {
       function plan(step: number, ts: number, itemIndex: number): OutputItem {
         return {
-          id: "item_component_keyed:plan",
-          type: "component",
+          id: "item_data_keyed:plan",
+          type: "data",
           status: "completed",
           requestId: "req_mine",
           itemIndex,
           ts,
           provenance: { blockName: "b", blockInstanceId: "b_1", phase: "main" },
-          component: "plan-view",
-          data: { step },
+          dataType: "plan-view",
+          value: { step },
           key: "plan"
         } as unknown as OutputItem;
       }
       const steps = (items: readonly OutputItem[]) =>
-        items.map((shown) => (shown as unknown as { data: { step: number } }).data.step);
+        items.map((shown) => (shown as unknown as { value: { step: number } }).value.step);
 
       it("keeps the later copy when the session stream brings it before the view's own stream brings the earlier", async () => {
         const { result, own } = await mountAttached();

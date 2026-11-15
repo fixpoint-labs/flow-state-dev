@@ -10,25 +10,25 @@
  * just before the wait), while the wire and the events log still get every
  * event, and item indices never repeat.
  */
-import type { ComponentItem, MessageItem, OutputItem } from "@flow-state-dev/core/items";
+import type { DataItem, MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import { whenResourceChanged } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { createResponseEmitter, type RequestStreamEventWithId } from "../src/streaming/response-emitter";
 
 const provenance = { blockName: "test", blockInstanceId: "test_1", phase: "main" as const };
 
-function transientItem(itemIndex: number, id = `item_t_${itemIndex}`): ComponentItem {
+function transientItem(itemIndex: number, id = `item_t_${itemIndex}`): DataItem {
   return {
     id,
-    type: "component",
+    type: "data",
     status: "completed",
     transient: true,
     requestId: "req_test",
     itemIndex,
     provenance,
     ts: 100,
-    component: "status",
-    data: { n: itemIndex }
+    dataType: "status",
+    value: { n: itemIndex }
   };
 }
 
@@ -68,7 +68,7 @@ describe("ResponseEmitter done-transient retention", () => {
     const doneTransient = items.filter((i) => i.transient === true && i.id !== "item_in_progress");
     // Polling churn must not grow the map: only the newest `cap` survive.
     expect(doneTransient).toHaveLength(cap);
-    expect(doneTransient.map((i) => (i as ComponentItem).data)).toEqual(
+    expect(doneTransient.map((i) => (i as DataItem).value)).toEqual(
       [195, 196, 197, 198, 199].map((k) => ({ n: k + 2 }))
     );
     // What the request record and live views depend on is all still there.
@@ -124,7 +124,7 @@ describe("ResponseEmitter done-transient retention", () => {
     };
 
     // A keyed (replace-on-emit) transient item: same id on every emission.
-    const keyed = (index: number) => transientItem(index, "item_component_keyed:progress");
+    const keyed = (index: number) => transientItem(index, "item_data_keyed:progress");
     let k = keyed(take());
     await emitter.emitItemAdded(k);
     await emitter.emitItemDone(k);
@@ -144,7 +144,7 @@ describe("ResponseEmitter done-transient retention", () => {
       }
     }
     // The keyed item has been pushed out of the map by now.
-    expect(emitter.getItems().some((i) => i.id === "item_component_keyed:progress")).toBe(false);
+    expect(emitter.getItems().some((i) => i.id === "item_data_keyed:progress")).toBe(false);
 
     // Re-emitting the evicted keyed id must not move the cursor backwards.
     k = keyed(take());
@@ -179,11 +179,11 @@ describe("ResponseEmitter done-transient retention", () => {
       }
     });
 
-    const keyed = "item_component_keyed:status";
+    const keyed = "item_data_keyed:status";
     await emitter.emitItemAdded(transientItem(0, keyed));
     const staleDone = emitter.emitItemDone(transientItem(0, keyed));
 
-    const durable: ComponentItem = { ...transientItem(1, keyed), transient: false };
+    const durable: DataItem = { ...transientItem(1, keyed), transient: false };
     await emitter.emitItemAdded(durable);
     await emitter.emitItemDone(durable);
 

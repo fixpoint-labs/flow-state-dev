@@ -2626,18 +2626,18 @@ describe("transient block output", () => {
   });
 
   describe("emit* default semantics (FIX-478)", () => {
-    it("transient block + emit.component → non-transient by default; persists", async () => {
+    it("transient block + emit.data → non-transient by default; persists", async () => {
       const stores = createInMemoryStores();
       const flow = defineFlow({
         kind: "fix478-comp-default",
         actions: {
           run: handler({
-              name: "transient-emit-component",
+              name: "transient-emit-data",
               transient: true,
               inputSchema: z.object({ value: z.string() }),
               outputSchema: z.string(),
               execute: async ({ value }, ctx) => {
-                ctx.emit.component("widget", { v: 1 });
+                ctx.emit.data("widget", { v: 1 });
                 return value;
               }
             })
@@ -2656,27 +2656,27 @@ describe("transient block output", () => {
       });
 
       expect(result.error).toBeUndefined();
-      const inFlight = result.items.filter((item) => item.type === "component");
+      const inFlight = result.items.filter((item) => item.type === "data");
       expect(inFlight.length).toBe(1);
       expect(inFlight[0]?.transient).toBeUndefined();
 
       const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
-      const stored = (requestRecord?.items ?? []).filter((item) => item.type === "component");
+      const stored = (requestRecord?.items ?? []).filter((item) => item.type === "data");
       expect(stored.length).toBe(1);
     });
 
-    it("transient block + emit.component({ transient: true }) → transient; stripped", async () => {
+    it("transient block + emit.data({ transient: true }) → transient; stripped", async () => {
       const stores = createInMemoryStores();
       const flow = defineFlow({
         kind: "fix478-comp-opt-in",
         actions: {
           run: handler({
-              name: "transient-emit-component-transient",
+              name: "transient-emit-data-transient",
               transient: true,
               inputSchema: z.object({ value: z.string() }),
               outputSchema: z.string(),
               execute: async ({ value }, ctx) => {
-                ctx.emit.component("widget", { v: 1 }, { transient: true });
+                ctx.emit.data("widget", { v: 1 }, { transient: true });
                 return value;
               }
             })
@@ -2695,16 +2695,16 @@ describe("transient block output", () => {
       });
 
       expect(result.error).toBeUndefined();
-      const inFlight = result.items.filter((item) => item.type === "component");
+      const inFlight = result.items.filter((item) => item.type === "data");
       expect(inFlight.length).toBe(1);
       expect(inFlight[0]?.transient).toBe(true);
 
       const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
-      const stored = (requestRecord?.items ?? []).filter((item) => item.type === "component");
+      const stored = (requestRecord?.items ?? []).filter((item) => item.type === "data");
       expect(stored.length).toBe(0);
     });
 
-    it("non-transient block + emit.component({ transient: true }) → transient", async () => {
+    it("non-transient block + emit.data({ transient: true }) → transient", async () => {
       const stores = createInMemoryStores();
       const flow = defineFlow({
         kind: "fix478-comp-nontransient-block",
@@ -2714,7 +2714,7 @@ describe("transient block output", () => {
               inputSchema: z.object({ value: z.string() }),
               outputSchema: z.string(),
               execute: async ({ value }, ctx) => {
-                ctx.emit.component("widget", { v: 1 }, { transient: true });
+                ctx.emit.data("widget", { v: 1 }, { transient: true });
                 return value;
               }
             })
@@ -2733,12 +2733,12 @@ describe("transient block output", () => {
       });
 
       expect(result.error).toBeUndefined();
-      const inFlight = result.items.filter((item) => item.type === "component");
+      const inFlight = result.items.filter((item) => item.type === "data");
       expect(inFlight.length).toBe(1);
       expect(inFlight[0]?.transient).toBe(true);
 
       const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
-      const stored = (requestRecord?.items ?? []).filter((item) => item.type === "component");
+      const stored = (requestRecord?.items ?? []).filter((item) => item.type === "data");
       expect(stored.length).toBe(0);
     });
 
@@ -2904,7 +2904,7 @@ describe("transient block output", () => {
   });
 });
 
-describe("keyed component upsert (FIX-491)", () => {
+describe("keyed data upsert (FIX-491)", () => {
   it("two emits with same key collapse to one item; latest data wins", async () => {
     const stores = createInMemoryStores();
     const flow = defineFlow({
@@ -2915,8 +2915,8 @@ describe("keyed component upsert (FIX-491)", () => {
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
             execute: async ({ value }, ctx) => {
-              ctx.emit.component("widget", { a: 1, b: 2 }, { key: "k" });
-              ctx.emit.component("widget", { a: 99 }, { key: "k" });
+              ctx.emit.data("widget", { a: 1, b: 2 }, { key: "k" });
+              ctx.emit.data("widget", { a: 99 }, { key: "k" });
               return value;
             }
           })
@@ -2936,26 +2936,26 @@ describe("keyed component upsert (FIX-491)", () => {
 
     expect(result.error).toBeUndefined();
 
-    const inFlight = result.items.filter((item) => item.type === "component");
+    const inFlight = result.items.filter((item) => item.type === "data");
     expect(inFlight.length).toBe(1);
     const inFlightItem = inFlight[0] as {
       id: string;
-      data: Record<string, unknown>;
+      value: Record<string, unknown>;
       key?: string;
     };
-    expect(inFlightItem.id).toBe("item_component_keyed:k");
+    expect(inFlightItem.id).toBe("item_data_keyed:k");
     expect(inFlightItem.key).toBe("k");
     // Replace, not merge: `b` from the first emission is gone.
-    expect(inFlightItem.data).toEqual({ a: 99 });
+    expect(inFlightItem.value).toEqual({ a: 99 });
 
     const requestRecord = await stores.request.get(
       result.items[0]?.requestId ?? ""
     );
     const stored = (requestRecord?.items ?? []).filter(
-      (item) => item.type === "component"
+      (item) => item.type === "data"
     );
     expect(stored.length).toBe(1);
-    expect((stored[0] as { data: Record<string, unknown> }).data).toEqual({
+    expect((stored[0] as { value: Record<string, unknown> }).value).toEqual({
       a: 99
     });
   });
@@ -2970,8 +2970,8 @@ describe("keyed component upsert (FIX-491)", () => {
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
             execute: async ({ value }, ctx) => {
-              ctx.emit.component("widget", { v: 1 });
-              ctx.emit.component("widget", { v: 2 });
+              ctx.emit.data("widget", { v: 1 });
+              ctx.emit.data("widget", { v: 2 });
               return value;
             }
           })
@@ -2991,7 +2991,7 @@ describe("keyed component upsert (FIX-491)", () => {
 
     expect(result.error).toBeUndefined();
 
-    const inFlight = result.items.filter((item) => item.type === "component");
+    const inFlight = result.items.filter((item) => item.type === "data");
     expect(inFlight.length).toBe(2);
     const ids = new Set(inFlight.map((item) => item.id));
     expect(ids.size).toBe(2);
@@ -3000,7 +3000,7 @@ describe("keyed component upsert (FIX-491)", () => {
       result.items[0]?.requestId ?? ""
     );
     const stored = (requestRecord?.items ?? []).filter(
-      (item) => item.type === "component"
+      (item) => item.type === "data"
     );
     expect(stored.length).toBe(2);
   });
@@ -3015,9 +3015,9 @@ describe("keyed component upsert (FIX-491)", () => {
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
             execute: async ({ value }, ctx) => {
-              ctx.emit.component("widget", { v: 1 }, { key: "a" });
-              ctx.emit.component("widget", { v: 2 }, { key: "b" });
-              ctx.emit.component("widget", { v: 3 }, { key: "a" });
+              ctx.emit.data("widget", { v: 1 }, { key: "a" });
+              ctx.emit.data("widget", { v: 2 }, { key: "b" });
+              ctx.emit.data("widget", { v: 3 }, { key: "a" });
               return value;
             }
           })
@@ -3037,12 +3037,12 @@ describe("keyed component upsert (FIX-491)", () => {
 
     expect(result.error).toBeUndefined();
 
-    const inFlight = result.items.filter((item) => item.type === "component");
+    const inFlight = result.items.filter((item) => item.type === "data");
     expect(inFlight.length).toBe(2);
     const byKey = new Map(
       inFlight.map((item) => {
-        const typed = item as { key?: string; data: Record<string, unknown> };
-        return [typed.key, typed.data] as const;
+        const typed = item as { key?: string; value: Record<string, unknown> };
+        return [typed.key, typed.value] as const;
       })
     );
     expect(byKey.get("a")).toEqual({ v: 3 });
@@ -3059,9 +3059,9 @@ describe("keyed component upsert (FIX-491)", () => {
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.string(),
             execute: async ({ value }, ctx) => {
-              ctx.emit.component("widget", { v: 1 }, { key: "k" });
-              ctx.emit.component("widget", { v: 2 }, { key: "k" });
-              ctx.emit.component("widget", { v: 3 }, { key: "k" });
+              ctx.emit.data("widget", { v: 1 }, { key: "k" });
+              ctx.emit.data("widget", { v: 2 }, { key: "k" });
+              ctx.emit.data("widget", { v: 3 }, { key: "k" });
               return value;
             }
           })
@@ -3083,28 +3083,28 @@ describe("keyed component upsert (FIX-491)", () => {
     const requestId = result.items[0]?.requestId ?? "";
     const events = await stores.request.getEvents(requestId);
 
-    const componentEvents = events.filter((event) => {
+    const dataEvents = events.filter((event) => {
       const e = event as {
         type: string;
         item?: { type?: string; id?: string };
       };
       return (
         (e.type === "item.added" || e.type === "item.done") &&
-        e.item?.type === "component"
+        e.item?.type === "data"
       );
     });
 
     // 3 emissions × (added + done) = 6 events.
-    expect(componentEvents.length).toBe(6);
+    expect(dataEvents.length).toBe(6);
 
     const itemIds = new Set(
-      componentEvents.map((event) => {
+      dataEvents.map((event) => {
         const e = event as { item?: { id?: string } };
         return e.item?.id;
       })
     );
     expect(itemIds.size).toBe(1);
-    expect(itemIds.has("item_component_keyed:k")).toBe(true);
+    expect(itemIds.has("item_data_keyed:k")).toBe(true);
   });
 });
 

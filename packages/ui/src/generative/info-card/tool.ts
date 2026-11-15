@@ -1,6 +1,6 @@
 /**
  * Info-card tool factory. Produces a `handler` block that emits an `info-card`
- * component item when the LLM calls it. Tool description follows the
+ * data item when the LLM calls it. Tool description follows the
  * "USE FOR / DO NOT USE FOR" template so the model can discriminate this shape
  * from neighboring shapes in the palette.
  */
@@ -24,7 +24,7 @@ export function emitInfoCardTool(
     description: DESCRIPTION,
     inputSchema: InfoCardSchema,
     execute: (input, ctx) => {
-      ctx.emit.component("info-card", input, { key: keyFrom(input) });
+      ctx.emit.data("info-card", input, { key: keyFrom(input) });
       return { rendered: true, kind: "info-card", id: input.id };
     },
   });

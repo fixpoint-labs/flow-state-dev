@@ -372,10 +372,10 @@ describe("what the Session draws of the run's items", () => {
     });
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
     await screen.findByTestId("session", {}, { timeout: 10_000 });
-    await waitFor(() => expect(itemIds()).toContain("item_component_keyed:progress"));
+    await waitFor(() => expect(itemIds()).toContain("item_data_keyed:progress"));
     expect(itemIds()).not.toContain(working.id);
     // The run wrote its progress snapshot twice; it shows once, at its latest.
-    expect(itemIds().filter((id) => id === "item_component_keyed:progress")).toHaveLength(1);
+    expect(itemIds().filter((id) => id === "item_data_keyed:progress")).toHaveLength(1);
   }, 30_000);
 });
 

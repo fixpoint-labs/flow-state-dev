@@ -38,6 +38,7 @@ import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-err
 import { warnOnce } from "@flow-state-dev/core/internal";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { inMemoryStores } from "../stores";
+import { withLegacyComponentItems } from "../stores/legacy-component-items";
 import { resolveProfileStores } from "./resolve-slots";
 import { installKits, planKits, type KitPlan } from "./kits";
 import type { FlowRunner } from "../transports/runner";
@@ -960,7 +961,10 @@ class InternalFlowState<TSettings extends object>
     // D2). Wrapped here, before the router, the worker or `runtime.stores`
     // takes the registry, so every handle derived from it writes through the
     // index writer, host code that writes the store directly included.
-    const stores = withResourceIndexWriter(resolved, () => this.#registry.indexedCollections());
+    const indexed = withResourceIndexWriter(resolved, () => this.#registry.indexedCollections());
+    // A request stored before structured content became `data` items reads
+    // back with its `component` items as data items (the one read migration).
+    const stores = withLegacyComponentItems(indexed);
 
     // Diagnostic on stderr (like the worker/dispose logs below): stdout is
     // reserved for data streams such as `fsdev run`'s NDJSON, which a config

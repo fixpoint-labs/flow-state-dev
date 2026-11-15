@@ -7,15 +7,15 @@
  * item is the message's own: the line the worker's model reads is history
  * only and never reaches the page.
  */
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 import { workerLabel } from "../lib/derive";
 import { RouteLink } from "./RouteLink";
 import { clockTime } from "../lib/shell";
 
 type Received = { id?: string; from?: string; text?: string; inReplyTo?: string; replyRequested?: boolean };
 
-export function ReceivedMessage({ item }: { item: ComponentItem }) {
-  const data = (item.data ?? {}) as Received;
+export function ReceivedMessage({ item }: { item: DataItem }) {
+  const data = item.value as Received;
   const from = data.from ?? "";
   // An item with no flag was a plain message.
   const asksForReply = data.replyRequested === true;

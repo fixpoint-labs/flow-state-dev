@@ -79,7 +79,7 @@ import {
   answerTextOf,
   createWorkforceClient,
   delegateAnswerOf,
-  RECEIVED_MESSAGE_COMPONENT,
+  RECEIVED_MESSAGE_DATA_TYPE,
   SEND_MESSAGE_TOOL,
   WORKER_MESSAGES_PATTERN,
   WORKER_MESSAGES_RESOURCE,
@@ -571,7 +571,7 @@ export const RETRYABLE_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "s
 
 /** How often the reads with no stream are read again. */
 const POLL_MS = 1_500;
-/** The keyed item a conversation's board emits for each row it changes. */
+/** The keyed data item a conversation's board emits for each row it changes. */
 const TASK_CHANGE = "task-change";
 /** The tool a worker files a task with. */
 const CREATE_TASK = "createTask";
@@ -765,7 +765,7 @@ function sameAttempt(copy: Record<string, any> | undefined, row: Record<string, 
 function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   const rows = new Map<string, Record<string, any>>();
   for (const item of items) {
-    if (item.type === "component" && item.component === TASK_CHANGE && item.data?.task?.id) rows.set(item.data.task.id, item.data.task);
+    if (item.type === "data" && item.dataType === TASK_CHANGE && item.value?.task?.id) rows.set(item.value.task.id, item.value.task);
   }
   return rows;
 }
@@ -1010,8 +1010,8 @@ export function toEntries(
     } else if (item.type === "suspension_resume") {
       const asked = entries.find((e) => e.kind === "approval" && e.suspensionId === item.suspensionId);
       if (asked?.kind === "approval") asked.resolution = item.resolution;
-    } else if (item.type === "component" && item.component === RECEIVED_MESSAGE_COMPONENT) {
-      const { id, from, text, inReplyTo, noAnswer } = item.data ?? {};
+    } else if (item.type === "data" && item.dataType === RECEIVED_MESSAGE_DATA_TYPE) {
+      const { id, from, text, inReplyTo, noAnswer } = item.value ?? {};
       entries.push({ kind: "received", id: item.id, messageId: id, from, text, ...(inReplyTo === undefined ? {} : { inReplyTo }), ...(noAnswer === true ? { noAnswer: true } : {}) });
     }
   };
@@ -1117,8 +1117,8 @@ export function toSteps(items: readonly Item[]): SessionStep[] {
   for (const item of items) {
     if (item.type === "message" && textOf(item).trim() !== "") {
       steps.push({ id: item.id, kind: item.role === "user" ? "given" : "said", text: textOf(item), ...(item.status === "in_progress" ? { streaming: true } : {}) });
-    } else if (item.type === "component" && item.component === RECEIVED_MESSAGE_COMPONENT && typeof item.data?.text === "string") {
-      steps.push({ id: item.id, kind: "given", text: item.data.text });
+    } else if (item.type === "data" && item.dataType === RECEIVED_MESSAGE_DATA_TYPE && typeof item.value?.text === "string") {
+      steps.push({ id: item.id, kind: "given", text: item.value.text });
     } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL && sentTo(item) !== undefined) {
       steps.push({ id: item.id, kind: "sent", text: String(parseArgs(item).text ?? ""), to: sentTo(item) ?? "" });
     } else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") {
@@ -1149,7 +1149,7 @@ export function destinationOf(rows: readonly unknown[], messageId: string): stri
  * taken over, and the turn that took over is the one that answered.
  */
 export function exchangeOf(items: readonly Item[], messageId: string): SessionStep[] {
-  const read = [...items].reverse().find((i) => i.type === "component" && i.component === RECEIVED_MESSAGE_COMPONENT && i.data?.id === messageId);
+  const read = [...items].reverse().find((i) => i.type === "data" && i.dataType === RECEIVED_MESSAGE_DATA_TYPE && i.value?.id === messageId);
   return read === undefined ? [] : toSteps(items.filter((i) => i.requestId === read.requestId));
 }
 

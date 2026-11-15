@@ -23,7 +23,7 @@ const ending = (id: string, taskId: string, patch: Partial<TaskNotice>) => {
   return line(id, noticeText(notice, task), noticeMetadata(notice, task));
 };
 const row = (id: string, status: string) =>
-  ({ id: `c-${id}`, type: "component", component: "task-change", status: "completed", requestId: "r1", data: { task: { id, status, assignee: CODER, title: id } } });
+  ({ id: `c-${id}`, type: "data", dataType: "task-change", status: "completed", requestId: "r1", value: { task: { id, status, assignee: CODER, title: id } } });
 
 describe("a task's ending in the conversation", () => {
   it("draws a conversation-result answer, which names no task, as the answer and not as failed", () => {
@@ -131,7 +131,7 @@ describe("where a sent message's popup looks", () => {
 
 describe("the turn a message's popup shows", () => {
   const receipt = (id: string, requestId: string) =>
-    ({ id, type: "component", component: "workforce:received", status: "completed", requestId, data: { id: "msg_1", text: "Launch date?" } });
+    ({ id, type: "data", dataType: "workforce:received", status: "completed", requestId, value: { id: "msg_1", text: "Launch date?" } });
   const said = (id: string, requestId: string, text: string) =>
     ({ id, type: "message", role: "assistant", status: "completed", requestId, content: [{ type: "output_text", text }] });
 

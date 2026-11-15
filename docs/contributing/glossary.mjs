@@ -168,6 +168,12 @@ export const ENTRIES = [
     decision: "Owner, 2026-11-06",
     retires: [],
   },
+  {
+    term: "Data item",
+    means: "The one stream item kind for structured content (`ctx.emit.data(dataType, value)`, `DataItem`). Code reads it by `dataType`: a routing decision, a task change, a received message. A client draws it only through a renderer registered for its `dataType`, which is how generative UI works; with none it stays invisible in the UI. It reaches the client and not model history unless `itemVisibility` says otherwise. There is no `component` item kind.",
+    decision: "Owner, 2026-11-14 and 2026-11-15 (FIX-2738): the payload is `value` (`record`, `fact` and `payload` were rejected); one kind, the `component` item removed, a component is a dataType with a renderer",
+    retires: [],
+  },
 
   // Dispatch, wait, ask and hand-off ----------------------------------------------------------
   {

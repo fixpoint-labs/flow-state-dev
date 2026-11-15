@@ -1,8 +1,8 @@
 "use client";
 
 import type {
-  ComponentItem,
   ContainerItem,
+  DataItem,
   OutputItem,
 } from "@flow-state-dev/core/items";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
@@ -102,8 +102,8 @@ export function EventedActors({ item }: { item: ContainerItem }) {
   const scopedItems = useMemo(() => {
     const hasOwned = ownedItems.some(
       (i) =>
-        i.type === "component" &&
-        (i as ComponentItem).component === "rb-entry"
+        i.type === "data" &&
+        (i as DataItem).dataType === "rb-entry"
     );
     if (hasOwned) return ownedItems;
     return allItems.filter(
@@ -116,10 +116,10 @@ export function EventedActors({ item }: { item: ContainerItem }) {
   const entries = useMemo(() => {
     const result: EventedActorsEntry[] = [];
     for (const i of scopedItems) {
-      if (i.type !== "component") continue;
-      const comp = i as ComponentItem;
-      if (comp.component !== "rb-entry") continue;
-      const { type, topic, body } = comp.data as Record<string, unknown>;
+      if (i.type !== "data") continue;
+      const comp = i as DataItem;
+      if (comp.dataType !== "rb-entry") continue;
+      const { type, topic, body } = comp.value;
       if (typeof type === "string" && typeof topic === "string") {
         result.push({
           type,

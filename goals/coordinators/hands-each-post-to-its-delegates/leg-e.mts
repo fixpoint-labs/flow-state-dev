@@ -66,7 +66,7 @@ const word = () => `${["amber", "cobalt", "fjord", "quill", "tundra", "velvet"][
 const report = (value: unknown) => new Promise<void>((resolve) => process.stdout.write(`__GOAL__${JSON.stringify(value)}\n`, () => resolve()));
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-type Item = { type?: string; role?: string; component?: string; data?: any; agentName?: string; content?: unknown; text?: string; requestId?: string };
+type Item = { type?: string; role?: string; dataType?: string; value?: any; agentName?: string; content?: unknown; text?: string; requestId?: string };
 
 const wf = workforce as unknown as Record<string, any>;
 const missing = ["defineCoordinatorFlow", "workerTaskEntry", "workerFlow", "workerConfigSchema"].filter(
@@ -254,7 +254,7 @@ async function conversation(worker: string) {
     const record = stored?.userId === ALICE ? stored : undefined;
     const text = (i: Item) => (typeof i.text === "string" ? i.text : Array.isArray(i.content) ? i.content.map((p: any) => p?.text ?? "").join("") : String(i.content ?? ""));
     return {
-      records: items.filter((i) => i.type === "component" && i.component === (wf.COORDINATOR_ROUTE ?? "coordinator-route")).map((i) => i.data),
+      records: items.filter((i) => i.type === "data" && i.dataType === (wf.COORDINATOR_ROUTE ?? "coordinator-route")).map((i) => i.value),
       lines: items.filter((i) => i.type === "message").map((i) => ({ role: i.role, agentName: i.agentName ?? null, text: text(i) })),
       delegates: record?.state?.delegates ?? null,
       fallback: record?.state?.fallback ?? null,

@@ -2,10 +2,10 @@
 
 /**
  * `<LinkCardRenderer />` — registry-distributed renderer for the `link-card`
- * generative UI shape. Consumes `ComponentItem.data` matching the
+ * generative UI shape. Consumes `DataItem.value` matching the
  * `LinkCardSchema` exported from `@flow-state-dev/ui/generative/tools`.
  */
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 
 interface LinkCardData {
   url: string;
@@ -24,8 +24,8 @@ function safeHostname(url: string): string {
   }
 }
 
-export function LinkCardRenderer({ item }: { item: ComponentItem }) {
-  const data = item.data as unknown as LinkCardData;
+export function LinkCardRenderer({ item }: { item: DataItem }) {
+  const data = item.value as unknown as LinkCardData;
   const host = safeHostname(data.url);
   return (
     <a
