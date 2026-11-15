@@ -493,7 +493,7 @@ function runChecks(records: RunRecordState[]): Turn["checks"] {
 }
 
 /** How long a coder ask waits, after the worker's turn ends, for the coding run it filed to settle. */
-export const CODER_SETTLE_MS = 20 * 60_000;
+const CODER_SETTLE_MS = 20 * 60_000;
 
 /**
  * The checks of the coding run a coder ask filed, read once that run has
