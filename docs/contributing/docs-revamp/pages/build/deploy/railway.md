@@ -1,6 +1,6 @@
 ---
 title: Deploy to Railway
-type: build
+type: recipe
 description: "How to deploy a flow-state-dev application as a long-running Node.js server on Railway."
 ---
 

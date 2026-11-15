@@ -1,6 +1,6 @@
 ---
 title: Route with an evaluator
-type: build
+type: recipe
 description: Ask a model questions you already know the answers to, route on its answers with a tree that hands doubtful cases to a person, and let the skill activator pick skills the same way.
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: Chat with a flow from the terminal
-type: build
+type: recipe
 description: "`fsdev chat` opens a persistent terminal session over your flows."
 ---
 

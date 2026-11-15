@@ -1,6 +1,6 @@
 ---
 title: Receive a GitHub webhook
-type: build
+type: recipe
 description: "This guide wires a GitHub 'pull request opened' event to a review action."
 ---
 

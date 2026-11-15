@@ -1,6 +1,6 @@
 ---
 title: Link records with edges
-type: build
+type: recipe
 description: "Most resource state is a bag of fields."
 ---
 

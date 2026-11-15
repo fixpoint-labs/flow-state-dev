@@ -1,6 +1,6 @@
 ---
 title: Serve data your app already owns
-type: build
+type: recipe
 description: A read-only view of data the app already owns. Each read asks the app again.
 ---
 

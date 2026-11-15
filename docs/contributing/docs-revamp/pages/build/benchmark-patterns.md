@@ -1,6 +1,6 @@
 ---
 title: Benchmark patterns on your own tasks
-type: build
+type: recipe
 description: "Evals answer one question: is this output correct?"
 ---
 

@@ -10,9 +10,32 @@ description: What the model calls when the always-on memory view is not enough.
 
 `mem` below is the memory system you create with `system()`. The tool installs with `mem.capability` by default, and the [memory reference](../../reference/memory) covers turning it off. A flow built with `createMemoryCapability` instead of `system()` turns the tool on through that function's `recall` preset, also covered there. A generator that lists its own `tools` does not receive the capability's tools, so add `mem.tool.recall()` to that list; the [capabilities reference](../../reference/capabilities) has the rule.
 
-## What the model sees
+## When the model searches
 
-The model sees a tool with a `query` argument, an optional `limit` and an optional `sinceTurn`. A call runs the retrieval strategy, the part that picks what comes back. The default, `llm-filter`, has a model choose the relevant semantic facts and episodes, and the tool returns them in that order, capped at `limit`. It reads semantic facts and episodes, never working memory, so a flow that configures only the working tier gets an empty result from every call. If you configure only the working tier, turn the tool off (see the memory reference).
+A support agent has `uses: [mem.capability]`. A user asks about a detail from a session three weeks ago, and it isn't in the summary at the top of the prompt.
+
+```ts title="src/flows/support/blocks/support-agent.ts"
+import { generator } from "@flow-state-dev/core";
+import { z } from "zod";
+import { mem } from "../../../lib/memory";
+
+export const supportAgent = generator({
+  name: "support-agent",
+  model: "openai/gpt-6-luna",
+  prompt: "You help customers with their orders. Be brief and specific.",
+  inputSchema: z.object({ message: z.string() }),
+  user: (input) => input.message,
+  uses: [mem.capability],
+});
+```
+
+The `<memory>` section gains a line saying more memories exist than are shown and to check memory before saying it doesn't know. The tool's own description says to call it for a specific detail that isn't in the summary, and not to re-fetch facts already shown. forces a call: the model decides.
+
+The tool searches semantic facts (consolidated statements the agent kept), past episodes (records of something that happened in an earlier session) and, with [relations](./relations) on, graph edges. It does not search working memory or the digest, which are already in the prompt.
+
+## What comes back
+
+The model sends a `query`, an optional `limit` and an optional `sinceTurn`, which drops episodes from before that turn. The default `limit` is 5 and tops out at 20. A call that asks for more fails the input check.
 
 ```ts title="src/lib/memory.ts"
 import { system } from "@flow-state-dev/memory";
@@ -28,21 +51,37 @@ export const mem = system({
 });
 ```
 
-`tool.defaults` sets how many results come back when the model passes no `limit`, and how much of each item's content the model reads. Longer content is cut and marked as truncated, so the model knows it didn't see the whole record. The memory reference has the defaults and the full shape of what comes back.
+`tool.defaults` sets how many results come back when the model passes no `limit`, and how much of each item's content the model reads. A `defaults.limit` above 20 is treated as 20. Longer content is cut and marked as truncated, so the model knows it didn't see the whole record.
 
-## Ranking and decay
+The model reads one line per result, `- <content>`, not the structured result. When more matched than were returned, a final line says how many. The structured result, with each item's `id`, `source`, `score` and `metadata`, goes to the devtool and the history; the [memory reference](../../reference/memory) has its full shape.
 
-The default `llm-filter` strategy shows the model every semantic fact with its raw `confidence`, so a fact's age does not change what the tool returns. To weight by age in a custom strategy, call `effectiveConfidence(fact)`, exported from `@flow-state-dev/memory`. The `mem.recall()` helper, which handlers call directly, is a separate surface: it can weight facts by age when hygiene's confidence decay is on. See [Hygiene](./hygiene) for decay.
+## How results are chosen
+
+The default strategy, `llm-filter`, runs in three steps.
+
+1. **Prepare**, with no model call. Every semantic fact is a candidate. Episodes are ranked by significance and recency, and the top 30 are kept. An older episode that contains a distinctive phrase from the query is added back.
+2. **Filter**, one model call. It uses `tool.model`, or the memory system's `model`, and returns the IDs of the relevant candidates, most relevant first. It may return fewer than `limit`, and it never pads.
+3. **Format**. The tool returns those items in the filter's order. An ID the filter invents is dropped.
+
+A fact's age does not by itself keep it out. The filter model decides, and it sees each fact's stored confidence. Each result's `score` is its rank rescaled so the top item is 1. It is not a probability.
 
 To use a different strategy, set `tool: { strategy }` on `system()` or `createMemoryCapability`. The strategy contract is in the memory reference.
 
-## When to use it vs. context auto-injection
+## When it comes back empty or fails
+
+A new user has no stored episodes or facts. The tool returns no results and makes no model call, and the model reads `No memories matched "<query>".`
+
+If the filter's model call fails, say on a rate limit, the tool does not throw into the generator. It returns an ordinary result with an `error` field, and the model reads `Recall failed: <error>`.
+
+With only working memory configured, the tool is installed and describes itself as a memory search, but every call comes back empty. Leave it off with `mem.capability.with({ recall: false })`.
+
+## Recall or automatic context
 
 The two surfaces complement each other, and most flows want both.
 
 - **Context auto-injection** costs no extra model call per turn but is always on. Right for the digest and working-memory excerpts the agent should always see.
-- **The recall tool** costs a tool call and a follow-up turn, but the agent decides when to use it. Right when the relevant context depends on what the user asked: the agent picks when to look, what to search for, and how many results to ask for.
+- **The recall tool** costs a tool call, one filter model call and a follow-up turn, but the agent decides when to use it. Right when the relevant context depends on what the user asked.
 
-When [relations](./relations) are enabled, a companion `memory/connect` tool answers connection questions ("what links X to Y", "what's connected to X") by traversing the edge graph, and recall can return relation edges as results.
+When relations are enabled, a companion `memory/connect` tool answers connection questions ("what links X to Y") by traversing the edge graph, and recall can return relation edges as results.
 
-See the [memory reference](../../reference/memory) for toggling each surface, and [Tools](../tools/overview) for how tool blocks work in general.
+See the [memory reference](../../reference/memory) for toggling each surface, [Hygiene](./hygiene) for how stored facts age, and [Tools](../tools/overview) for how tool blocks work in general.

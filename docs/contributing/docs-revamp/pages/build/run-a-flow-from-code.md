@@ -1,6 +1,6 @@
 ---
 title: Run a flow from your own code
-type: build
+type: recipe
 description: "Most flows run because something came in over HTTP: a user hit an endpoint, your Next.js route handed the request to `createFlowApiRouter`, and the runtime took it from there."
 ---
 

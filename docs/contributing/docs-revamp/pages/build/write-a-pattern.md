@@ -1,6 +1,6 @@
 ---
 title: Write your own pattern
-type: build
+type: recipe
 description: A pattern is a factory that wraps taskBoard into a reusable block. Build a planMapReduce pattern from the same plan → drain → reduce skeleton the built-in patterns use.
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: Send errors to Sentry
-type: build
+type: recipe
 description: "Sentry is an error tracking service: it collects exceptions, groups them, and alerts you when something starts failing."
 ---
 

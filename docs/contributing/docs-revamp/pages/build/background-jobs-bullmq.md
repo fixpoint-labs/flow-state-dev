@@ -1,6 +1,6 @@
 ---
 title: Run background jobs with BullMQ
-type: build
+type: recipe
 description: "How to run flow actions as durable background jobs using Redis and BullMQ."
 ---
 

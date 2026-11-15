@@ -1,6 +1,6 @@
 ---
 title: Deploy with Docker
-type: build
+type: recipe
 description: "How to containerize and self-host a flow-state-dev application."
 ---
 

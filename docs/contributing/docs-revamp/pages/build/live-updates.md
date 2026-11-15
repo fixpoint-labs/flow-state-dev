@@ -1,6 +1,6 @@
 ---
 title: Push live updates to the browser
-type: build
+type: recipe
 description: "Some screens show data other people or agents change: a task board a team works, a list of runs, a project's files."
 ---
 

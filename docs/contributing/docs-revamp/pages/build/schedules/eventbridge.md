@@ -1,6 +1,6 @@
 ---
 title: Run on a schedule with EventBridge
-type: build
+type: recipe
 description: "EventBridge Scheduler fires HTTPS targets on a schedule with retries, flexible time windows, and dead-letter queues."
 ---
 

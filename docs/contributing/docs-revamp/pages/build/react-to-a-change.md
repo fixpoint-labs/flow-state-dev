@@ -1,6 +1,6 @@
 ---
 title: Run a block when a resource changes
-type: build
+type: recipe
 description: "A reactive block runs automatically when a resource changes."
 ---
 

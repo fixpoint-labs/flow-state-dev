@@ -63,7 +63,7 @@ export const reportWriter = generator({
 
 Bash finds every collection on the generator and mounts it at its pattern prefix. The collection `artifacts/**` appears in the sandbox at `/workspace/artifacts/`. When the model runs `echo "# Q3" > artifacts/q3.md`, the file is saved to the `artifacts` collection as `q3.md`. A second collection with the pattern `skills/**` would mount at `/workspace/skills/`, and a file goes to the collection whose prefix matches its path most closely.
 
-Two other places exist in the workspace. `/workspace/tmp/` is scratch: files there are never saved, and nothing warns about them. A file anywhere else is dropped with a warning in the server log. The guidance text tells the model this up front, so it writes under a mount or `tmp/`.
+`/workspace/tmp/` is scratch: files there are never saved, and nothing warns about them. A file outside a mount or `tmp/` is never saved either, and one in the workspace root is dropped with a warning in the server log. The guidance text tells the model this up front, so it writes under a mount or `tmp/`.
 
 Files under `node_modules/` or `.git/` inside a mount are never saved.
 
@@ -71,7 +71,7 @@ Files under `node_modules/` or `.git/` inside a mount are never saved.
 
 ## Choose what gets mounted
 
-By default every collection on the generator is mounted and writable. Pass `collections` to mount only some, and use the object form for a read-only mount. Edits to a read-only mount stay in the sandbox and are never saved. Say the generator also holds a `references` collection that the agent should read but not change:
+By default every collection on the generator is mounted and writable. Pass `collections` to mount only some, and use the object form for a read-only mount. A `bash` command's edits to a read-only mount stay in the sandbox and are never saved; `bash-write-file` refuses them. Say the generator also holds a `references` collection that the agent should read but not change:
 
 ```ts title="src/lib/bash.ts"
 import { createBashCapability } from "@flow-state-dev/tools/bash";
@@ -103,7 +103,7 @@ export const bashCap = createBashCapability({
 });
 ```
 
-On `local`, `scope` decides who shares a workspace directory. `session`, the default, gives each session one, so a conversation's runs build on each other. `run` gives each request its own, which is what you want when several agents work at the same time. `user` and `org` share one across sessions. `scope` and `cwd` can't be combined. Setting both throws at construction.
+On `local`, `scope` decides who shares a workspace directory. `session`, the default, gives each session one, so a conversation's runs build on each other. `run` gives each request its own, which is what you want when several agents work at the same time. `user` and `org` share one across sessions. `cwd` pins one fixed directory instead of a scoped one. It can't be combined with `scope`, and setting both throws at construction.
 
 `local` runs commands as the same OS user as the server. It is not an isolation boundary, so use `moat` or a container for untrusted commands.
 
@@ -122,9 +122,9 @@ For credentials and cost, see the [Deploying to Vercel guide](/guides/deploying-
 
 ## What gets saved
 
-A sandbox hydrates on the first command it runs: every collection entry is written into it as a file. After each `bash` command and each `bash-write-file`, changed files go back to their collections. Only files that changed are written. `bash-read-file` saves nothing.
+On the first command a sandbox runs, every collection entry is written into it as a file. After each `bash` command and each `bash-write-file`, changed files go back to their collections. Only files that changed are written. `bash-read-file` saves nothing.
 
-Two runs sharing a collection never overwrite each other's changes. If a file changed in its collection while this run held it, the run's copy and the collection's copy both stay where they are, and the server log names the path.
+Two runs sharing a collection never overwrite each other's changes. If another run changed the file first, this run's edit is not saved. The collection keeps the other run's version, the edit stays in this run's sandbox, and the server log names the path.
 
 A refused `bash-write-file` returns the reason, so the model can react:
 

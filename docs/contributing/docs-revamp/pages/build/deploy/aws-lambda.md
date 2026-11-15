@@ -1,6 +1,6 @@
 ---
 title: Deploy to AWS Lambda
-type: build
+type: recipe
 description: "How to deploy a flow-state-dev application to AWS Lambda with a Function URL, using the portable Hono app and Lambda's response streaming so SSE works."
 ---
 

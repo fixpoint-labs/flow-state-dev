@@ -1,6 +1,6 @@
 ---
 title: Expose flows as an MCP server
-type: build
+type: recipe
 description: "`@flow-state-dev/mcp` exposes any flow as a Model Context Protocol server."
 ---
 

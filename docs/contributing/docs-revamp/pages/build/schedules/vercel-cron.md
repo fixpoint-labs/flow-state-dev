@@ -1,6 +1,6 @@
 ---
 title: Run on a schedule with Vercel Cron
-type: build
+type: recipe
 description: "Vercel Cron fires HTTPS requests on a schedule from the Vercel control plane."
 ---
 

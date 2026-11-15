@@ -1,6 +1,6 @@
 ---
 title: Run on a schedule with Cloud Scheduler
-type: build
+type: recipe
 description: "Google Cloud Scheduler fires HTTP targets on a cron schedule with configurable retries, OIDC tokens, and dead-letter handling."
 ---
 

@@ -335,3 +335,8 @@ out of this page's job; see "Left out" below).
 
 - `collectionId` sentence now states the observable effect: same id over the same rows means a simultaneous write to one entry is `contested` (W13, W24, W27, claims keyed by `collectionId` plus key, `S/claims.ts:47-49`); different ids are never arbitrated. The review's suggested `conflict` wording was not used: `conflict` comes from comparing hashes against the baseline (W18), not from `collectionId`.
 - Refusal sentence names the outcome (`contested`, W24) and keeps the in-process limit flat (W47).
+
+## Revise round 3
+
+- The which-runs-get-checked rule (same `collectionId` over the same rows is arbitrated, different ids never; W13, W27) moved from the mount paragraph to the flush-report section where `contested` is defined. The mount paragraph now defines `collectionId` and `collectionIdFor` only.
+- The conflict-hash note now says what a reader reads off the hashes: `ours: null` is a delete against someone's edit (W22), `base: null` is a path the projection never laid down (W20). The `/tmp/run-42` comment became generic, since `runResearch` is not given the run id.

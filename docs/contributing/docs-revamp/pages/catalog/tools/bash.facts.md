@@ -413,3 +413,15 @@ the `local` example.
 Example verified: the five `ts` blocks type-check against the workspace packages. F52's open question
 (whether a generator carrying the collection in `resources` mounts it) is answered by the mount
 discovery reading `ctx.resources` (`B/blocks.ts:515-570`); not run through `fsdev run`.
+
+## Revise round 2
+
+- F9 `find` exception confirmed: the fallback answers a command starting `find ` with exit 0 and the
+  file keys; every other command exits 1 (`B/adapters/just-bash.ts:93-115`). The page keeps the clause.
+- F24 read-only: a `bash` command's edits are skipped silently by the flush (`warnUnsettled` has no
+  `readonly` branch, `B/projection-setup.ts`); `bash-write-file` returns the `readonly` refusal. The page
+  now says which tool each sentence means.
+- F27 conflict and contested: the run's copy is not committed and stays in its sandbox; the collection
+  keeps the other writer's version; `warnUnsettled` names the path. The page says so in those terms.
+- F22: the page states the orphan warning only for the workspace root, matching the scan depth.
+- F42: `cwd` is glossed on the page as one fixed directory in place of a scoped one.

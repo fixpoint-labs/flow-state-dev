@@ -1,6 +1,6 @@
 ---
 title: Receive Slack events
-type: build
+type: recipe
 description: "This guide covers Slack's **Events API** — asynchronous server-to-server notifications, received over the webhook transport."
 ---
 

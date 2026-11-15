@@ -1,6 +1,6 @@
 ---
 title: Search a collection
-type: build
+type: recipe
 description: "Resources are addressable by key, and a collection can list instances under a prefix."
 ---
 

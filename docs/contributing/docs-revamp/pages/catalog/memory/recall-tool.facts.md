@@ -167,3 +167,12 @@ The tool stores nothing of its own. It reads three stored parts, each owned by t
 - Working-only: the action is "turn the tool off", which applies to both setups (`cf:261`, `mc:357-362`).
 - `llm-filter` gloss: a model call picks relevant candidates and returns IDs in order (`lf:326-336`, section 5 step 2).
 - `mem.recall()` weights facts by `effectiveConfidence` when hygiene's confidence decay is on; otherwise raw confidence (`src/internal/recall.ts:37-60`, `:158-162`).
+
+## 14. Revise round 3
+
+- New example `src/flows/support/blocks/support-agent.ts`: `generator({ name, model, prompt, inputSchema, user, uses: [mem.capability] })`, imports `mem` from `src/lib/memory.ts` (generator shape as in `apps/kitchen-sink/flows/chat-agent/run/assistant/assistant.ts:19-60`).
+- When the model searches: the `recall` preset adds the "more memories exist, check memory before saying you don't know" line to `<memory>` (`mc:357-361`); the tool description says to call for a detail not in the summary and not to re-fetch shown facts (`ty:210-219`); nothing forces a call (`ex:66`). Searches semantic facts, episodes and, with relations, edges; not working memory or the digest (`ty:1-8`, `ms:643-648`).
+- Three steps prepare, filter, format; episodes top 30 by significance and recency plus phrase pass-through; filter model is `tool.model` else the system's model, may return fewer than `limit`; invented IDs dropped; `score` is rank rescaled, top = 1 (`rt:1-28`, `lf:228-336`, `fh:95-98,157-163`, `rtt:412-429`).
+- Empty stores: no results, no model call, model reads `No memories matched "<query>".`; failure: `{ error, query, strategy }` returned, model reads `Recall failed: <error>` (`fh:19-43,142-150`, `rt:125-143`, `rtt:271-288,388-399`).
+- `limit` default 5, max 20; over 20 fails the input schema; `defaults.limit` above 20 clamps to 20 (`ty:75-81`, `rtt:316-317`, `rt:102`). Working-only: installed, always empty; `mem.capability.with({ recall: false })` (`mc:357-362`, `cf:261`).
+- Cost line: a call is one tool call, one filter model call and a follow-up turn (`lf:301`, `rt:154-158`).

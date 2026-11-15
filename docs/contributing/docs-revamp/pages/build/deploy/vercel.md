@@ -1,6 +1,6 @@
 ---
 title: Deploy to Vercel
-type: build
+type: recipe
 description: "How to deploy a flow-state-dev Next.js application to Vercel."
 ---
 

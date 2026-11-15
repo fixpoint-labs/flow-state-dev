@@ -1,6 +1,6 @@
 ---
 title: Receive a Stripe webhook
-type: build
+type: recipe
 description: "This guide wires Stripe's `invoice.paid` event to a flow action and tests it locally with the Stripe CLI."
 ---
 

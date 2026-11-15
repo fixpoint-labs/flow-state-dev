@@ -1,6 +1,6 @@
 ---
 title: Keep prompts in Markdown files
-type: build
+type: recipe
 description: "Move a generator's system prompt into a separate Markdown file and load it back."
 ---
 
