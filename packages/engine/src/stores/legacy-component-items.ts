@@ -4,29 +4,38 @@
  *
  * A request record stored then can hold `{ type: "component", component,
  * data, key? }`. Nothing reads that shape any more, so the request store's
- * reads hand it back as `{ type: "data", dataType, value, key? }`: same id,
- * same status, same key. The same holds for the item an `item.added` or
- * `item.done` event carries, so a stream replayed or resumed from the event
- * log carries data items too. Applied once, where `createFlowState` resolves
- * the stores, so every reader above the store (session items, history,
- * snapshots, stream replay, the devtool) sees only data items. Nothing is
- * rewritten in the store.
+ * reads hand it back as `{ type: "data", dataType, value, key? }`, with the
+ * same status and key. A keyed item's id moves with it, from
+ * `item_component_keyed:<key>` to `item_data_keyed:<key>`, so a request
+ * resumed after the change upserts its next keyed snapshot onto the stored
+ * entry instead of adding a second one. The same holds for the item an
+ * `item.added` or `item.done` event carries, so a stream replayed or resumed
+ * from the event log carries data items too. Nothing is rewritten in the
+ * store.
+ *
+ * Applied by the change-bus wrapper (`bus/publish-writes.ts`), the one
+ * wrapper every entry that hands the engine a registry applies
+ * (`resolveStores`, `runAction`, `fsdev run` and `chat`, BullMQ's job
+ * processor), so every reader above the store sees only data items.
  */
 import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { RequestRecord, RequestStore, StoreRegistry } from "./types";
+import type { RequestRecord, RequestStore } from "./types";
 
-const MIGRATING = new WeakSet<object>();
-const MIGRATING_READS = ["get", "list", "getEvents", "subscribeToEvents"] as const;
-type MigratingRead = (typeof MIGRATING_READS)[number];
+const LEGACY_KEYED_ID = "item_component_keyed:";
+const DATA_KEYED_ID = "item_data_keyed:";
 
 /** A stored `component` item as a `data` item; any other item unchanged. */
 function migrateLegacyComponentItem(item: RuntimeItem): RuntimeItem {
-  const raw = item as unknown as { type: string; component?: unknown; data?: unknown };
+  const raw = item as unknown as { type: string; id?: unknown; component?: unknown; data?: unknown };
   if (raw.type !== "component") return item;
   const { component, data, ...rest } = raw;
+  const id = typeof rest.id === "string" && rest.id.startsWith(LEGACY_KEYED_ID)
+    ? DATA_KEYED_ID + rest.id.slice(LEGACY_KEYED_ID.length)
+    : rest.id;
   return {
     ...rest,
+    id,
     type: "data",
     dataType: typeof component === "string" ? component : "",
     value: data !== null && typeof data === "object" ? (data as Record<string, unknown>) : {},
@@ -51,38 +60,19 @@ function migrateRecord<R extends RequestRecord | undefined>(record: R): R {
   return { ...record, items: record.items.map(migrateLegacyComponentItem) };
 }
 
+type AnyMethod = (...args: any[]) => any;
+
 /**
- * The registry with a request store whose reads (`get`, `list`, `getEvents`,
- * `subscribeToEvents`) migrate stored component items. Every other method
- * reaches the store itself, and so does any other method assigned on the
- * wrapper. One of those reads assigned on the wrapper replaces the wrapper's
- * own: forwarded to the store, a replacement that calls the migrating method
- * it replaced would call itself.
+ * The request store's reads that migrate (`get`, `list`, `getEvents`,
+ * `subscribeToEvents`), each built over the store's own method as a wrapper
+ * hands it in.
  */
-export function withLegacyComponentItems<T extends StoreRegistry>(stores: T): T {
-  const store = stores.request;
-  if (MIGRATING.has(store)) return stores;
-  const own: Pick<RequestStore, MigratingRead> = {
-    get: async (id) => migrateRecord(await store.get(id)),
-    list: async (options) => (await store.list(options)).map((r) => migrateRecord(r)),
-    getEvents: async (id, fromSequence) => (await store.getEvents(id, fromSequence)).map(migrateEvent),
-    subscribeToEvents: (id, options) => migrateEvents(store.subscribeToEvents(id, options)),
-  };
-  const isOwn = (key: string | symbol): key is MigratingRead => (MIGRATING_READS as readonly (string | symbol)[]).includes(key);
-  const wrapper = new Proxy(store, {
-    get(target, key) {
-      if (isOwn(key)) return own[key];
-      const value = Reflect.get(target, key, target) as unknown;
-      return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
-    },
-    set(target, key, value) {
-      if (isOwn(key)) {
-        own[key] = value as never;
-        return true;
-      }
-      return Reflect.set(target, key, value, target);
-    },
-  });
-  MIGRATING.add(wrapper);
-  return { ...stores, request: wrapper };
-}
+export const legacyComponentItemReads: Record<string, (original: AnyMethod) => AnyMethod> = {
+  get: (original: RequestStore["get"]) => async (id: string) => migrateRecord(await original(id)),
+  list: (original: RequestStore["list"]) => async (options?: Parameters<RequestStore["list"]>[0]) =>
+    (await original(options)).map((r) => migrateRecord(r)),
+  getEvents: (original: RequestStore["getEvents"]) => async (id: string, fromSequence?: number) =>
+    (await original(id, fromSequence)).map(migrateEvent),
+  subscribeToEvents: (original: RequestStore["subscribeToEvents"]) =>
+    (id: string, options: Parameters<RequestStore["subscribeToEvents"]>[1]) => migrateEvents(original(id, options)),
+};
