@@ -1369,8 +1369,12 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       const owner = await decideOnce(ctx, memoize, "unassigned", async () =>
         ownerForUnassigned(await rosterFor(roster, ctx), input.held === true) ?? null,
       );
-      if (owner !== null && "error" in owner) return owner;
-      if (owner !== null) assignee = owner.assignee;
+      // A replay of a call an older build filed carries no such decision
+      // (BP-030): its row is on the board, so `fileReady` answers it rather
+      // than this refusal telling the model nothing was filed.
+      const filed = owner !== null && "error" in owner && memoize ? await recordedFiling(ctx) : undefined;
+      if (owner !== null && "error" in owner && (filed === undefined || collection.get(filed) === undefined)) return owner;
+      if (owner !== null && !("error" in owner)) assignee = owner.assignee;
     }
     // One piece of work, one task (FIX-2350): the same goal for the same
     // worker while a task for it is open is a second start, from a call sent

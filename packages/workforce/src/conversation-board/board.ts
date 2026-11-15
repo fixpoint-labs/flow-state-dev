@@ -383,11 +383,13 @@ function rosterOf(delegates: TaskDelegates): AssigneeRoster {
  * A turn's roster: the board's, plus the worker itself, whose filing is a step
  * it works next in the same request.
  */
-function withSelf(roster: AssigneeRoster, self: string): AssigneeRoster {
+export function withSelf(roster: AssigneeRoster, self: string): AssigneeRoster {
   return {
     has: (name) => name === self || roster.has(name),
     describe: () => `${roster.describe()}. Yourself ("${self}"): a step you work next, in this request`,
-    ...(roster.soleAssignee === undefined ? {} : { soleAssignee: roster.soleAssignee })
+    ...(roster.soleAssignee === undefined ? {} : { soleAssignee: roster.soleAssignee }),
+    // What the board does with a task naming nobody is the board's, so a turn keeps it (FIX-2735).
+    ...(roster.claimsUnassigned === undefined ? {} : { claimsUnassigned: roster.claimsUnassigned })
   };
 }
 

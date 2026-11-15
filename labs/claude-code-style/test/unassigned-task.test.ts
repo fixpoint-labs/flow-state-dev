@@ -69,12 +69,19 @@ async function tasksAfterTurn(lab: LabAdapter, session: string, results: string[
     if (Date.now() > end) throw new Error("the main turn never took its createTask result");
     await waitFor(100);
   }
-  // Long enough for a filed task's dispatch to have claimed it, had anything claimed it.
+  const tasks = await new Promise<LabTask[]>((resolve) => {
+    const stop = lab.watchTasks(session, (read) => {
+      stop();
+      resolve(read);
+    });
+  });
+  if (tasks.length === 0) return tasks;
+  // A task was filed: long enough for its dispatch to have claimed it, had anything claimed it.
   await waitFor(1_500);
   return new Promise((resolve) => {
-    const stop = lab.watchTasks(session, (tasks) => {
+    const stop = lab.watchTasks(session, (read) => {
       stop();
-      resolve(tasks);
+      resolve(read);
     });
   });
 }

@@ -105,6 +105,35 @@ describe("createTask with no assignee", () => {
   });
 });
 
+describe("a replay of a call an older build filed with no assignee (BP-030)", () => {
+  it("answers the task it filed, not assignee_required, though the roster now refuses a new one", async () => {
+    // The request record as the older build left it: the call's filing id,
+    // and no decision about a missing assignee, which that build never made.
+    const recorded = new Map<string, unknown>();
+    const replay = {
+      ...ctx,
+      runOnce: async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+        if (key.startsWith("fsd.dispatch.plan:")) return "task_old" as T;
+        if (!recorded.has(key)) recorded.set(key, await fn());
+        return recorded.get(key) as T;
+      }
+    } as unknown as BlockContext;
+    const collection = await getOrCreateTaskCollection({
+      ctx: replay,
+      backing: "state",
+      state: createFakeSequencerState<Record<string, unknown>>({ tasks: {} }),
+      collectionId: "desk"
+    });
+    await collection.createTask({ id: "task_old", goal: "Rename the greeting" });
+    const tools = taskToolsForTurn(async () => collection, rosterOf(["desk.coder", "desk.researcher"]), { dispatches: true })(replay);
+    const tool = tools.find((t) => (t as { name?: string }).name === "createTask") as GeneratorTool;
+    const out = (await runForTest(tool as never, { goal: "Rename the greeting" } as never, replay)) as { ok: boolean; taskId?: string; error?: string };
+    expect(out).toEqual(expect.objectContaining({ ok: true, taskId: "task_old" }));
+    // Still one task: the replay found its own row instead of filing a second.
+    expect(collection.list()).toHaveLength(1);
+  });
+});
+
 describe("createTask with an assignee", () => {
   it("files it for the worker named, whatever the board does with a task naming nobody", async () => {
     for (const roster of [rosterOf(["desk.coder", "desk.researcher"]), rosterOf(["desk.coder", "desk.researcher"], { claimsUnassigned: true })]) {
