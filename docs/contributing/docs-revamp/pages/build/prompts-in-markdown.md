@@ -14,7 +14,7 @@ This page moves the `draftReply` generator of the support desk onto a prompt fil
 
 ## Step 1: Move the prose into a `.md` file
 
-Create the file beside the block, named `<block>.prompt.md`. The prose goes in a `<system>` section, which every prompt file needs. A `<user>` section is optional and holds a fixed user message for each turn. Frontmatter, the YAML between `---` fences, is optional too.
+Create the file beside the block, named `<block>.prompt.md`. The prose goes in a `<system>` section, which every prompt file needs. A `<user>` section is optional and holds the user message sent each turn, written as a template. Frontmatter, the YAML between `---` fences, is optional too.
 
 ```liquid title="src/flows/support/blocks/draft-reply.prompt.md"
 ---
@@ -44,7 +44,7 @@ A variable that does not exist throws when the prompt renders. For an optional v
 
 ## Step 3: Load it into the generator
 
-Pass the loaded file to the `prompt` slot. The `<user>` section replaces the old `user` line, so that line goes.
+Pass the loaded file to the `prompt` slot. If your generator sets `user`, delete it: the file's `<user>` section takes its place.
 
 ```ts title="src/flows/support/blocks/draft-reply.ts"
 import { generator } from "@flow-state-dev/core";
@@ -62,8 +62,6 @@ export const draftReply = generator({
 
 `loadPromptFile` reads the file when your code loads it and throws if the file is unreadable, has bad frontmatter or lacks a `<system>` section. The generator takes the file's `<user>` section and frontmatter values too. A field you write next to `prompt` wins over the file's.
 
-Do not put `name` in the frontmatter when you spread the file with `...definePromptFile(pf)` from `@flow-state-dev/core/prompt-file`. The spread would overwrite the generator's own name. The `prompt:` form above keeps yours.
-
 `loadPromptFile` needs Node. In a browser bundle, import the raw text and call `parsePromptFile`; the reference covers that path.
 
 ## Step 4: Check the rendered prompt
@@ -72,15 +70,17 @@ Run `fsdev dev` and send a message. Open the `draft-reply` block in the DevTool.
 
 ## Share a fragment between prompts
 
-A partial is another `.md` file that a prompt pulls in. Put the lines every support prompt repeats in `src/flows/support/blocks/_partials/house-style.md`:
+A partial is another `.md` file that a prompt pulls in. Every other `.md` file in the same directory as the prompt file loads as a partial with no setup. Put the lines every support prompt repeats in `src/flows/support/blocks/house-style.md`, beside `draft-reply.prompt.md`:
 
-```liquid title="src/flows/support/blocks/_partials/house-style.md"
+```liquid title="src/flows/support/blocks/house-style.md"
 Write in plain sentences. Never promise a refund date.
 ```
 
 In the prompt, add `{% render 'house-style' %}` inside `<system>`. The name is the file name without `.md`. `render` runs the partial in its own scope, so it cannot read the caller's variables. A missing partial fails when the file loads.
 
-Sibling `.md` files register as partials on their own. To keep them in a `_partials` directory, build one loader for the flow:
+### Keep partials in their own directory
+
+To move partials into `src/flows/support/blocks/_partials/`, build one loader for the flow and point it there:
 
 ```ts title="src/flows/support/prompts.ts"
 import path from "node:path";
@@ -105,5 +105,5 @@ export const loadPrompt = createPromptLoader(path.join(flowDir, "blocks"), {
 ## Next
 
 - [Markdown templates](../reference/markdown-templates.md) for every variable, filter, section, loader option and error.
-- [Generators and tools](../concepts/generators-and-tools.md) for the `context` slot a `<context>` section reorders.
+- [Generators and tools](../concepts/generators-and-tools.md) for the `context` slot a prompt's text is assembled from.
 - [Debug a run](./debug-a-run.md) for reading a block's trace.

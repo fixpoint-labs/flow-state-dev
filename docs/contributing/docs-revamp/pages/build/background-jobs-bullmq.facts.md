@@ -170,3 +170,11 @@ The page is now four steps (install and Redis, give the app a queue, call the ac
 - `QUEUE_MODE` is the page's own variable name; no code reads it.
 
 Moved to Reference (the page links `reference/background-work`, `reference/stores`, `reference/concurrency`, `reference/schedules`), none stated on the page: connection forms, `prefix`, `keyPrefix`; retry table and `<queue>-dlq`; which failures skip retries; `enqueueAction` fields and the instance rule for `flowKind`; draining a queue before a flow becomes a collection and the worker-first rollout (Upgrading page); the 404 for an unknown request id and the unclaimed-request behaviour; HMR dispose; `Last-Event-ID` details; low-level factories; static schedules, `createScheduleDispatchWorker`, `createBullmqScheduleIndex`; kitchen-sink `REDIS_URL` and `FSD_BULLMQ_DISPATCH`; Bull Board.
+
+## 12. Revise round 2: what the page now states
+
+Two cold-read misses (no worker running; retry while the client reconnects) were answered only in Reference. The page now has a section "When a job is late or fails" stating both, so section 10 questions 5 and 6 are answerable from the page:
+
+- No worker: the POST answers 202, the request waits `in_progress`, unclaimed past `queuedGraceMs` (default ten minutes, an option of `createFlowState`) it is marked `interrupted`. Sources: section 4 (`eng/routes/createFlowApiRouter.ts:184-198`, `eng/flowstate/types.ts:270-279`).
+- Retry while reconnecting: three attempts counting the first, events numbered after the last stored one, client resumes via `Last-Event-ID` or `starting_after` and replays from the store. Sources: sections 4 and 6 (`bmq/retry.ts:203-211`, `bmq/worker.ts:341-353`, `eng/routes/stream-routes.ts:172-175`, `cl/client.ts:399-405`).
+- The page does not state the final `failed` outcome after the last attempt (section 4, Reference).

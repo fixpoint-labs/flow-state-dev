@@ -52,7 +52,7 @@ export default flowstate;
 
 Nothing changes in the page. `session.sendAction("buildReport", ...)` resolves when the job is on the queue, not when it finishes, and `session.items` fills as the worker writes items.
 
-You can open the stream as soon as the action returns its request id, even before a worker picks the job up. A client that reconnects replays from the last event it saw. [Live updates](./live-updates.md) shows the page side.
+You can open the stream as soon as the action returns its request id, even before a worker picks the job up. [Live updates](./live-updates.md) shows the page side.
 
 ## 4. Move the work to worker processes
 
@@ -91,6 +91,12 @@ process.on("SIGTERM", () => void flowstate.dispose());
 Run it with the container's `QUEUE_MODE=worker-only`, using the TypeScript runner you already use. No `fsdev` command starts a worker-only process.
 
 Both containers must reach the same stores. If they do not, jobs enqueue and run, but the web process never sees the worker's output and the request stays `in_progress`. Nothing reports the mismatch. The default in-memory stores belong to one process, so use Postgres, or SQLite on a shared disk on one machine. [Stores](../reference/stores.md) lists the backends.
+
+## When a job is late or fails
+
+**No worker is running.** The POST for `buildReport` gets its 202, because the job is on the queue. The request then sits as `in_progress`. If no worker claims it within `queuedGraceMs`, ten minutes by default (an option of `createFlowState`), it is marked `interrupted`.
+
+**A retry while the client reconnects.** The job runs again, three attempts counting the first. Each attempt numbers its events after the last one stored, so the stream reads as one run and does not restart at zero. Reconnecting needs no code: the client resumes after the last event it received (`Last-Event-ID` or `starting_after`) and replays the rest from the store.
 
 ## Next
 

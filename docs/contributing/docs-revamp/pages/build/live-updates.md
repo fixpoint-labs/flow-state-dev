@@ -1,145 +1,92 @@
 ---
 title: Push live updates to the browser
 type: recipe
-description: "Some screens show data other people or agents change: a task board a team works, a list of runs, a project's files."
+description: "Some screens show data other users or agents change: a list of requests a teammate's worker is answering, a project's files."
 ---
 
 # Push live updates to the browser
 
-Some screens show data other people or agents change: a task board a team works, a list of runs, a project's files. Without help, the screen goes stale until it reads again. This guide shows how to have the screen read again when the data changes, with code that works the same on every host.
+Some screens show data other users or agents change: a list of requests a teammate's worker is answering, a project's files. Without help, the screen goes stale until it reads again. This recipe has the screen read again when the data changes.
 
-The idea is small. The server tells your screen *when* something under a topic changed. Your screen then makes the read it already makes, which says *what*. Nothing about the data travels with the notice, and every read is checked on the server like any other.
+The server tells the screen *when* something under a topic changed, never *what*. The screen then makes the read it already makes, and the server checks that read like any other. If your read is a view, use `useView` instead and skip this recipe: it listens for you (see the [views reference](../reference/views.md)).
 
-## The hook
+## 1. Make a client for your reads
 
-Hand `useSubscription` the topics your screen shows and the read it makes:
+```ts title="src/lib/fsd.ts"
+import { createClient } from "@flow-state-dev/client";
 
-```tsx
-import { useCallback, useEffect, useState } from "react";
+export const fsd = createClient({ userId: "devuser", baseUrl: "" });
+```
+
+`baseUrl: ""` is your page's own origin. `fsd.sessions.requests` lists the requests run in one session, and it is the read the next step keeps current.
+
+## 2. Subscribe on the screen
+
+```tsx title="src/app/RequestList.tsx"
+import { useEffect, useState } from "react";
+import { topic, type SessionRequestSummary } from "@flow-state-dev/client";
 import { useSubscription } from "@flow-state-dev/react";
-import { createClient, topic } from "@flow-state-dev/client";
+import { fsd } from "../lib/fsd";
 
-const fsd = createClient({ userId, baseUrl: "" });
+export function RequestList({ sessionId }: { sessionId: string }) {
+  const [requests, setRequests] = useState<SessionRequestSummary[]>([]);
 
-type Task = { id: string; title: string };
+  async function load(signal: AbortSignal) {
+    const rows = await fsd.sessions.requests(sessionId);
+    if (!signal.aborted) setRequests(rows);
+  }
 
-function TaskList({ sessionId }: { sessionId: string }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const refresh = useCallback(
-    () => fsd.flow("support").read<Task[]>("listTasks_tasks", {}, { sessionId }).then(setTasks),
-    [sessionId],
-  );
+  // The first read is yours: the hook only reads when something changes.
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [sessionId]);
 
-  useEffect(() => void refresh(), [refresh]); // the first read
   useSubscription(
-    [topic.session(sessionId, { resource: "tasks" }), topic.session(sessionId, { resource: "plan" })],
-    refresh,
+    [topic.session(sessionId)],
+    (notice, signal) => {
+      if (notice !== null && notice.kind === "items") return; // a reply streaming in
+      return load(signal);
+    },
     { pollIntervalMs: 3000 },
   );
 
-  return <ul>{tasks.map((task) => <li key={task.id}>{task.title}</li>)}</ul>;
+  return (
+    <ul>
+      {requests.map((request) => (
+        <li key={request.id}>{request.actionName}: {request.status}</li>
+      ))}
+    </ul>
+  );
 }
 ```
 
-On the Node host, `refresh` runs as soon as the change is saved: the server sends the notice once the change can be read, and no timer is involved, so the delay is the network and your read. A burst of changes runs it once more after the read in flight finishes, not once per change. The hook doesn't read on mount, so keep the first read where your screen already makes it. It subscribes through the provider's client; an app that builds its own client, with its own `fetcher`, passes it as `client` so the socket signs in the same way.
+A topic names what to listen to. `topic.session(id)` covers a session's requests, their items and the runs started under it. `topic.user()` and `topic.org()` cover the signed-in user and their organization, and take no id: the server uses the caller it signed in, so a screen can only hear its own.
 
-| Topic | What changes it covers |
-|-------|------------------------|
-| `topic.session(id)` | One session: its requests, their items, runs started under it, and changes to its task boards. |
-| `topic.user()` | The signed-in user's own scope, and their sessions: a `"run"` notice when one is created, titled or deleted, or a request in one starts or ends. |
-| `topic.org()` | The signed-in user's organization. |
+On the Node host, the read runs as soon as the change is saved, and it sees the change. A burst of changes runs the read once more after the one in flight, not once per change. You can pass a new topics array or a new function on every render without resubscribing.
 
-Each takes `{ resource }` to narrow it to one resource, such as `topic.session(id, { resource: "tasks" })`. User and org topics name no id. The server uses the caller it signed in, so a screen can only hear its own user and organization.
+The hook subscribes through the `FlowProvider`'s client. If your app builds its own client with its own `fetcher`, pass it as `client` so the subscription signs in the way your reads do.
 
-## Acting on what changed
+## 3. Ignore changes you don't show
 
-`refresh` gets the notice that woke it, `{ topic, kind, origin? }`, or `null` when the screen should read everything again: after a connect or a reconnect, on a timer tick, and when push starts or stops reaching every server process. A screen that only cares about some changes can skip the others:
+The read gets the notice that woke it, `{ topic, kind, origin? }`, or `null` after a connect, a reconnect or a timer tick. The example skips `"items"` notices because a reply streaming in sends many and the request list doesn't change with them. Read everything on `null` and on `"resync"`, which means the screen may have missed something. The other kinds are in the [client reference](../reference/client.md).
 
-```ts
-useSubscription([topic.session(sessionId)], (notice) => {
-  if (notice !== null && notice.kind === "items") return; // a reply streaming in
-  return refresh();
-});
-```
+Narrowing the topic does the same with less code: `topic.session(id, { resource: "plan" })` only hears changes to that one resource, so a long reply never wakes it.
 
-`kind` is `"items"`, `"request"`, `"run"`, `"state"`, `"resource"`, `"board"` or `"resync"`. `"state"` means the scope's state was written, and `"resource"` that a resource under it was, with the resource's path in `topic.resource`. `"board"` means a task on one of the session's task boards changed, with the board's id in `topic.resource` (see [Task boards](#task-boards)). `origin.requestId` names the request that made the change, when one did. Read everything on `null` and on `"resync"`: the screen may have missed something.
+## 4. Run it on any host
 
-Narrowing the topic does the same job with less code. A screen subscribed to `topic.session(id, { resource: "tasks" })` only hears changes to that board, so a long reply never wakes it.
+The code is the same on every host. On `serve()` from `@flow-state-dev/node`, which `fsdev dev` and `fsdev serve` use, the client holds one WebSocket and the server pushes. On Vercel, Next.js or `createServerApp` alone there is no push, and the read runs every `pollIntervalMs`. Leave `pollIntervalMs` out on one of those and the screen never changes after its first read. The [server reference](../reference/server.md) has the full table.
 
-## Task boards
+If your app runs as one process, the default works. If several processes write your stores (several servers on one SQLite file, or `fsdev run` writing the file `fsdev dev` serves), use a store set that shares changes across processes, such as Postgres. Otherwise an open screen hears another process's changes only at its next read. See [stores](../reference/stores.md).
 
-A task board's change is announced on the session that filed the task, narrowed to the board, whichever session or process made the change. A conversation's delegate settles its task in a task session of its own, and the conversation's board screen still hears of it at once. Subscribe the conversation's topic narrowed to each board your read returns:
+## 5. Check who hears what
 
-```ts
-useSubscription(
-  [topic.session(conversationId, { resource: "tasks" }), topic.session(conversationId, { resource: "plan" })],
-  refresh,
-  { pollIntervalMs: 3000 },
-);
-```
+Each topic is checked when the connection opens, with the same check the matching read uses. A topic the caller may not read is left out, as a session that doesn't exist is, and the screen never hears of it. Credentials come from the client's `fetcher`, a bearer token or a cookie. If someone loses access while their tab is open, their reads are refused at once, and the connection keeps saying that something changed, never what, until it reconnects. The [server reference](../reference/server.md) has the rules.
 
-Workforce's `listTasks_tasks` read returns the conversation's board and its planning worker's own steps, which sit on the `plan` board, so a screen of that read subscribes both. Subscribing `plan` is harmless when the flow has no planning worker.
+## When not to use this
 
-`BoardList` with `live` does this for you, for the one board it draws. Its `client` needs `subscribe` (see [A board as a list](/docs/workforce/ui#a-board-as-a-list)).
-
-## Outside React
-
-`useSubscription` wraps `fsd.subscribe`, which you can call directly:
-
-```ts
-const sub = fsd.subscribe([topic.session(sessionId), topic.org()], {
-  onChange: () => void reload(),
-  pollIntervalMs: 3000,
-});
-
-// when the view goes away
-sub.close();
-```
-
-Every `subscribe` call on one client shares one connection.
-
-## Which hosts push
-
-| Host | What happens |
-|------|--------------|
-| `serve()` from `@flow-state-dev/node`, including `fsdev dev` and `fsdev serve` | One WebSocket per client carries the notices. |
-| Vercel, Next.js, `createServerApp` alone (Lambda, Bun, Deno) | No push. The read runs every `pollIntervalMs`. |
-
-You don't write different code for either. The client asks the server what it supports and picks.
-
-`pollIntervalMs` is also the fallback on a push host. The read runs on that timer while the socket is down, and while the server process the socket reached can't hear changes made in other processes (see below). Leave it out and there is no timer at all: the read runs on a notice, a connect and a reconnect only.
-
-## One process, several processes
-
-Each server keeps a *change bus*, the `bus` slot of its stores profile (the stores you hand `createFlowState`; see [Store adapters](/docs/persistence/overview#store-adapters)). A bus that *crosses processes* hands a change made in one server process to every other one. The default bus lives in memory and is for an app that runs as one process. Every change is made where the socket is, so it counts as crossing, and the `pollIntervalMs` timer stays off while the socket is up. If your app writes its stores from several processes, use a bus that crosses, such as the one Postgres stores fill by default. On the in-memory bus, another process's changes reach an open view only at its next read. That covers several servers on one SQLite file, or `fsdev run` writing the file a running `fsdev dev` serves.
-
-When several processes serve one address, give them all the same signing key, so a connection that lands on any of them is accepted:
-
-```ts
-await serve(flowstate, {
-  host,
-  pushSecret: process.env.FSD_PUSH_SECRET,
-});
-```
-
-`serve()` reads `FSD_PUSH_SECRET` itself when you don't pass `pushSecret`. Without a shared key, a connection that lands on another process is refused, and the screen reads on its timer until a retry lands. `push: false` turns push off for a `serve()` host.
-
-## Who hears what
-
-Each topic is checked on the server when the connection opens, with the same check the matching read uses. The client asks through its own `fetcher`, so a bearer token your fetcher adds signs the connection in, and so does a cookie. A topic the caller may not read is left out, exactly as a session that doesn't exist is, and the screen never hears of it. With `pollIntervalMs`, the client asks for it again at each tick, so access given back starts working without a reload.
-
-An open connection is not checked again. If someone loses access while their tab stays open, their reads are refused at once, and the connection can still say that something changed, never what, until it reconnects. The server closes every connection after an hour, and the reconnect checks again.
-
-## State and resources other sessions change
-
-You don't need a subscription for a session's own state, or for its user's, its organization's, or their resources. `useSession(sessionId, { live: true })` subscribes the session, user and org topics for you, and the hooks built on it (`useClientData`, `useResourceCollectionList`, `useResource` and the rest) read again on a change from any session. It skips a change its own request made, since that request's stream already carried it. The workforce panels `Roster` and `BoardColumns` do the same with `live`. Reach for `useSubscription` for a read those hooks don't make, such as a flow read.
-
-## Following a session's own items
-
-To show the messages and items of a session as they land, use `useSession(sessionId, { live: true })` or `fsd.sessions.stream`, not a subscription. Those send the items themselves. A session topic on `useSubscription` is for other reads of the session, such as a flow read.
-
-## See also
-
-- [`fsd.subscribe`](/docs/api/client#fsdsubscribetopics-options) in the client API
-- [`useSubscription`](/docs/api/react#usesubscriptiontopics-read-options) in the React API
-- [Host adapters](/docs/server/host-adapters)
+- A session's own state, and its user's, organization's and resources: `useSession(sessionId, { live: true })` and the hooks built on it follow changes from any session for you.
+- A session's own messages as they land: `useSession(sessionId, { live: true })` or `fsd.sessions.stream`. Those carry the items themselves.
+- Code outside React: call `fsd.subscribe` directly (see the [client reference](../reference/client.md)).
+- A task board's changes: they are announced on the session that filed the task, wherever the change was made (see the [task board reference](../reference/task-board.md)).

@@ -44,7 +44,7 @@ The page's one app is the support desk: flow `support`, as on the other Build pa
 ## 2. Ask a typed question (step 1)
 
 - The code the step shows is `ex/src/classify.ts:4-29` (an evaluator named `classify-ticket` with `team`, `frustration`, `urgent`). `team` is exported and reused by the tree's first level: `ex/src/classify.ts:10-14`; `ex/src/route.ts:6`, `:36-37`. The example takes the model as a parameter so tests can pass a scripted model: `ex/src/classify.ts:1-3`; `ex/src/flow.ts:8-9`. [page: show a trimmed `team` and `urgency` pair, not all three kinds, since the router routes only on `choice`: see item 4]
-- File layout: the page's app puts a block in `src/flows/<flow>/blocks/<block>.ts`, one export per file (`docs/contributing/user-docs.md` "Code examples"). The example's own layout is `ex/src/classify.ts` and `ex/src/route.ts`. [plan] the page's code titles follow the user-docs layout; the example's paths are not the page's.
+- File layout: the page's app puts a block in `src/flows/<flow>/blocks/<block>.ts`, one export per file (`docs/contributing/user-docs.md` "Code examples"). The example's own layout is `ex/src/classify.ts` and `ex/src/route.ts`. The page's code titles follow the user-docs layout (`src/flows/support/blocks/<block>.ts`, one export per file). Block files `urgent-billing`, `billing-queue`, `tech-queue`, `review` and the `skills/` folder are named in a clause and not shown; the example's flat paths are not the page's. The page writes `model: "typesafe-ai/jev"` inline (a string is accepted: `ev:311-392`), and `skillEvaluator("typesafe-ai/jev")` takes a string as the example's `skillActivator(model?)` does.
 - The example's input schema is `z.object({ message: z.string().min(1) })`: `ex/src/classify.ts:8`. [page]
 - The example's action runs from the CLI as `pnpm fsdev run routing-with-evaluators classify -i '{"message":"..."}'`: `ex/src/flow.ts:41`; `guide` lines 26-28. The test pins that every command on the guide matches this pattern: `ex/test/guide.test.ts:76-82`. [page: one command, if any]
 
@@ -83,7 +83,7 @@ All from `gate:42-60` and its tests `crt:32-129`.
 - A level asks its evaluator once; on resume the recorded answer is replayed, not asked again: `cr:15-16`; `ert:366-398` (both models called exactly once across a suspend and a resume, `expect(departmentModel.calls).toHaveLength(1)`). [ref; needs durable execution, see section 6]
 - On a model that reports no confidence, every edge goes to `ambiguous` and the tree never reaches level 2: `cr:225-226`; `util:1045`; `ert:183-195`; `goal:Outcome` and its `o1`-`o3` signal (three tickets: each `no-confidence` at `root`, review ran, level 2 never asked, per the 2026-09-24 verdict row). [page]
 - To branch on the bare answer from such a model, put a plain `router` after the evaluator that reads `answers.team.choice`; its leaves then receive the evaluator's answers, not the ticket: `util:1045-1057`; `blk:584`. [page: one sentence and a link; the code listing is [ref]]
-- **[conflict] `guide` line 193-194** says that a question which isn't a support ticket ... Jev's pick doesn't clear the edge's floor. The guide's run command is not a recorded test; `goal` records a clear billing-urgent ticket on Jev routing to the escalate leaf, and no off-topic ticket run. **[verify]** keep that sentence off the page.
+- **[conflict] `guide` line 193-194** says that a question which isn't a support ticket ... Jev's pick doesn't clear the edge's floor. The guide's run command is not a recorded test; `goal` records a clear billing-urgent ticket on Jev routing to the escalate leaf, and no off-topic ticket run. **[verify]** the off-topic run is not recorded, so the page says only that a confidence below a branch's `minConfidence` lands on `review` (`gate:58`; `crt:51-55`).
 
 ### What the trace shows
 
@@ -180,3 +180,9 @@ For the cold-read pass (written by another agent; these are the facts it can key
 - Three ambiguous reasons: `gate:15`.
 - On a no-confidence model, three of three tickets go to `ambiguous`, whatever the model chose: `goal:Outcome`, 2026-09-24 verdict row.
 - Failure: provider error propagates; `.rescue` catches: `ert:307-323`.
+
+## 10. Revise round 1
+
+- Moved off the page to Reference, linked only: the three-way model-key list and gateway limits, the generate-only refusal text, the `cascadingRouter` field-by-field description, the no-confidence trace verdict and the `routeWithoutConfidence` run, the activator's error and fallback behaviour and `skillQuestions`. The page keeps one sentence each for the default model, absent `confidence`, the no-confidence rule, and the activator's tiers and final pick.
+- The `ambiguous` block is described as one fallback block; the page no longer says it hands a case to a person (item 1).
+- Open: under `strict: true`, `utility.cascadingRouter` rejects evaluators with typed question maps (`ask` is typed `AnyEvaluatorBlock`, `cr:40`, whose `onCompleted` parameter is `Record<string, EvaluatorAnswer>`). The snippet passes under the example's tsconfig (`strict: false`). A core typing fix, not a page fix.
