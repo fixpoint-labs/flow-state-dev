@@ -40,6 +40,7 @@ Written by `docs-writer` (sonnet), 621 words. Scenario: One flow `support` with 
 
 - After the loop: the pass-9 miss is answered. The "Every call says who is calling" paragraph now says a call without a `userId` is refused (the client throws `userId is required`, `client/src/internal/http.ts:89-93`, `client/test/client.test.ts:53`; the default resolver answers 400, `engine/test/transports/http-adapter.test.ts:226-240`).
 - After the loop (review): the page's form clears its text only once `sendAction` resolves and shows `session.error`, since a refused send rejects and records the error (`packages/react/src/hooks/useSession.ts:441-445` and its catch, which calls `setError` and rethrows). It type-checks.
+- After the loop (review): the Node path now starts the server with `tsx --env-file=.env.local`, since `serve` and `createFlowState` load no env file and provider detection reads `process.env` (`packages/node/src/serve.ts`; `packages/core/src/models/providerDetection.ts`).
 
 ## 5 · Fact check
 

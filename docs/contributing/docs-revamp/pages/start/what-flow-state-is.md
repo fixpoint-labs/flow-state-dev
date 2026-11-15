@@ -103,6 +103,7 @@ const planQueries = generator({
   model: "openai/gpt-6-luna",
   prompt: "Write three search queries for the topic.",
   inputSchema: z.string(),
+  user: (topic) => topic,
   outputSchema: z.object({ queries: z.array(z.string()) }),
 });
 
@@ -118,6 +119,7 @@ const summarize = generator({
   model: "openai/gpt-6-luna",
   prompt: "Summarize the search results.",
   inputSchema: z.string(),
+  user: (results) => results,
 });
 
 const research = sequencer({ name: "research", inputSchema: z.string() })
