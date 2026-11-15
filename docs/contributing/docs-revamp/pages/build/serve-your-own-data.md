@@ -6,145 +6,152 @@ description: A read-only view of data the app already owns. Each read asks the a
 
 # Serve data your app already owns
 
-A projected collection is a read-only view of data the app already owns. The framework does not store a copy. Each `get`, `list`, or client read calls the `read` or `search` hook you supply, and the answer is whatever the app returns that moment.
+The support desk already has an orders table in its own database. A projected collection lets flows and screens read those orders without Flow State keeping a copy. You supply two functions, `read` and `search`. Every read calls one of them, and the answer is whatever your app returns at that moment.
 
-Reach for it when the app is the source of truth and you do not want a second copy in the framework. When the framework should own the rows, use a [resource collection](./collections.md).
+Reach for it when the app is the source of truth. When Flow State should own the rows, use a [resource collection](../concepts/resources.md) instead.
 
-## Defining one
+## 1. Declare the collection
 
-`defineProjectedResourceCollection` takes a wildcard pattern, a scope, a `stateSchema`, and the two hooks. `read` resolves one record by key (`null` means the app has no such record). `search` returns a page of hits. The agent's search tool, the list route, and `ctx.resources.<name>.list()` all send their query to `search`.
+`defineProjectedResourceCollection` takes a wildcard `pattern`, a `scope`, a `stateSchema` for one record, and the two functions. `read` returns one record by key, or `null` when the app has none. `search` returns a page of hits and a `nextCursor` while more remain.
 
-```ts
-import { defineProjectedResourceCollection, handler } from "@flow-state-dev/core";
-import { parseResourceTemplate } from "@flow-state-dev/core/resource-template";
+`db` is the support app's own data layer, not part of the framework.
+
+```ts title="src/flows/support/resources/orders.ts"
+import { defineProjectedResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
+import { db } from "../../../lib/db";
 
-const positions = defineProjectedResourceCollection({
-  pattern: "positions/*",
+export const orders = defineProjectedResourceCollection({
+  pattern: "orders/*",
   scope: "user",
-  stateSchema: z.object({ ticker: z.string(), shares: z.number() }),
+  stateSchema: z.object({
+    id: z.string(),
+    status: z.string(),
+    total: z.number(),
+  }),
 
   async read({ key, ctx }) {
-    return db.positions.findOne({ userId: ctx.userId, orgId: ctx.orgId, ticker: key });
+    if (!ctx.orgId) return null;
+    return db.orders.findOne({ userId: ctx.userId, orgId: ctx.orgId, id: key });
   },
 
   async search({ query, ctx }) {
-    const rows = await db.positions.find({
+    if (!ctx.orgId) return { hits: [] };
+    const { rows, nextCursor } = await db.orders.find({
       userId: ctx.userId,
       orgId: ctx.orgId,
-      q: query.search,
+      text: query.search,
       after: query.cursor,
       limit: query.limit ?? 20,
     });
     return {
-      hits: rows.map((r) => ({ key: r.ticker, state: r })),
-      nextCursor: rows.nextCursor, // omit on the last page
+      hits: rows.map((row) => ({ key: row.id, state: row })),
+      nextCursor, // leave undefined on the last page
     };
   },
 
-  contentTemplate: parseResourceTemplate(
-    `<system>{{ state.ticker }}: {{ state.shares }} shares</system>`
-  ),
-  client: { state: { read: true }, content: { read: true } },
+  client: { state: { read: true }, expose: ["status", "total"] },
 });
 ```
 
-A user-scoped collection belongs to a user inside one organization, the same as the user data the framework stores. Your hooks receive both `ctx.userId` and `ctx.orgId`. Use both in every query, or a user sees in one organization what they saved in another.
+Both functions receive `ctx`, which the framework fills in from the request. Put `ctx.userId` and `ctx.orgId` in every query. The framework does not filter what your app returns, so a query without them can show a user another organization's orders. A browser reading from a session with no organization gets `ctx.orgId` as `undefined`, so the example returns nothing in that case. A block read always has an organization.
 
-`contentTemplate` renders each record into Markdown against `state`. A `client` config projects `clientData` the same way a `defineResourceCollection` collection does.
+The patterns are wildcard only: `orders/*` for one path segment, `orders/**` for nested ones. `client` opens the collection to the browser, and `expose` limits which fields it sees. Without `client`, only blocks can read it.
 
-Register it under any accessor name, like any collection:
+The full field list, the rest of `ctx` and the definitions the framework refuses are in [Resources reference](../reference/resources.md#projected-collections).
 
-```ts
-const desk = handler({
-  name: "desk",
-  resources: { portfolio: positions },
-  execute: async (_input, ctx) => {
-    const aapl = await ctx.resources.portfolio.get("AAPL");
-    // aapl.state.shares — from the app, validated through stateSchema
+## 2. Read one order in a block
+
+Declare the collection under `resources` on a block. The key of that map is the name it has on `ctx.resources`.
+
+```ts title="src/flows/support/blocks/look-up-order.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { orders } from "../resources/orders";
+
+export const lookUpOrder = handler({
+  name: "look-up-order",
+  inputSchema: z.object({ orderId: z.string() }),
+  resources: { orders },
+  execute: async ({ orderId }, ctx) => {
+    const order = await ctx.resources.orders.getOptional(orderId);
+    return order ? order.state.status : "no such order";
   },
 });
 ```
 
-`ctx.resources.portfolio` is a `ProjectedResourceCollectionRef`: `get`, `getOptional`, and `list`. There is no `create`, `upsert`, `delete`, or `count`. Two reads of the same key in one request share one `read` call. The next request calls the hook again.
+`get(key)` throws when `read` returns `null`. `getOptional(key)` returns `undefined`. Either one returns a read-only record whose `state` has been checked against `stateSchema`. A record that fails the check throws. Within one request a key is read once, and the next request asks your app again.
 
-## What comes back
+There is no `create`, `upsert`, `delete` or `count`. Change orders through your app's own code. The next read sees the change.
 
-`get(key)` returns a `ProjectedResourceRef` — `path`, `scope`, `uri`, a synchronous `state`, plus `readContent()` / `readContentRaw()`. `state` is the hook's record after `stateSchema` validation.
+## 3. Search and page
 
-| Call | Result |
-| --- | --- |
-| `get` and the app has the record | the ref |
-| `get` and `read` returns `null` | throws (`not found`) |
-| `getOptional` and `read` returns `null` | `undefined` |
-| `read` returns a record that fails `stateSchema` | throws (`stateSchema`) |
-| `get` with a key that does not match the pattern | throws (`does not match`); `read` is not called |
-| `list` and a hit fails `stateSchema` | that hit is dropped and logged; the rest of the page is returned |
-| org-scoped collection, session has no org | the read is refused (`organization`); `read` is not called |
+`list` sends its query to `search`, and a bare string means `{ search }`.
 
-The HTTP item-state route returns `200` with `null` when the app has no such record. A client `POST` / `PATCH` / `DELETE` against the collection returns `403` with an error matching `read-only projected collection`.
+```ts title="src/flows/support/blocks/find-orders.ts"
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { orders } from "../resources/orders";
 
-Definition-time failures:
-
-- parameterized `[name]` patterns — wildcard only (`positions/*` or `positions/**`)
-- scope other than `session` / `user` / `org`
-- missing `read` or `search`
-- `client.content.create` / `update` / `delete` — build-time error
-- both `contentTemplate` and `contentTemplateRef`
-
-## Searching and listing
-
-`search` receives `{ search?, prefix?, filter?, limit?, cursor? }` and returns `{ hits, nextCursor? }`. Hits stay in the order you return them. Pass `nextCursor` back as `query.cursor` for the next page. A bare string to `list` is `{ search }`.
-
-```ts
-const page = await ctx.resources.portfolio.list({ search: "tech", limit: 20 });
-// page.items — read-only refs; state and rendered content already resolved
-// page.nextCursor — omit on the last page
+export const findOrders = handler({
+  name: "find-orders",
+  inputSchema: z.object({ text: z.string(), cursor: z.string().optional() }),
+  resources: { orders },
+  execute: async ({ text, cursor }, ctx) => {
+    const page = await ctx.resources.orders.list({ search: text, limit: 20, cursor });
+    return {
+      statuses: page.items.map((item) => item.state.status),
+      nextCursor: page.nextCursor,
+    };
+  },
+});
 ```
 
-- **In a block** — `list` as above.
-- **The agent** — with `llmReadable: true`, `searchResources` calls `search` and can page with `nextCursor` when that collection is the only searchable source. `globResources` and `grepResourceContent` skip projected collections. An agent that already has a record's URI reads it with `readResourceContentTool`.
-- **The UI** — `GET /sessions/:id/resources/:ref?limit=&cursor=` returns one page and the app's `nextCursor`. `useResourceCollectionList` accumulates pages and exposes `loadMore` / `hasMore`.
+Hits come back in the order `search` returns them. Ranking and filtering are whatever your app does. A hit that fails `stateSchema` is dropped from the page, and the rest is returned.
 
-`/state` does not enumerate the app. A client-visible projected collection appears as `{ prefetched: [] }` with no `count`. The UI discovers instances through list or search, then fetches each by key.
+A model can search the same collection through `searchResources` when the collection sets `llmReadable: true`; see [Search a collection](./search-a-collection.md).
 
-## The trusted context
+## 4. Show it on a page
 
-`read` and `search` receive a `ProjectedResourceContext` the framework derives from the request. Scope the query with these fields, not with caller input.
+`useResourceCollectionList` asks for one page at a time and appends the next on `loadMore`. The second argument, `"orders"`, is the collection's name: the same key you gave it under `resources`.
 
-```ts
-type ProjectedResourceContext = {
-  scope: "session" | "user" | "org";
-  scopeId: string;   // the resolved sessionId / userId / orgId
-  userId: string;    // the server-derived owner
-  orgId?: string;
-  tenantId?: string; // trusted tenant coordinate
-  flowKind: string;
-  signal?: AbortSignal;
-};
+```tsx title="src/app/orders-panel.tsx"
+import { useSession, useResourceCollectionList } from "@flow-state-dev/react";
+import type { ClientDataOf } from "@flow-state-dev/core";
+import type { orders } from "../flows/support/resources/orders";
+
+export function OrdersPanel({ sessionId }: { sessionId: string }) {
+  const session = useSession(sessionId);
+  const { items, hasMore, loadMore, isLoading } =
+    useResourceCollectionList<ClientDataOf<typeof orders>>(session, "orders", { limit: 20 });
+
+  return (
+    <div>
+      <ul>
+        {items.map((item) => (
+          <li key={item.topic}>
+            {item.topic}: {item.clientData?.status}
+          </li>
+        ))}
+      </ul>
+      {hasMore && (
+        <button onClick={loadMore} disabled={isLoading}>
+          Load more
+        </button>
+      )}
+    </div>
+  );
+}
 ```
 
-## Writes stay on the app
+`items` is empty until the first page arrives. If the app needs a total, count it in your own code.
 
-The resource surface does not write. The ref has no mutators, the agent CRUD tools skip the collection, and the client write routes are closed.
+A screen shows what your app returned when it asked. Nothing tells Flow State when your data changes, so re-rendering with the same query shows the earlier answer. Remounting the component or changing `limit` asks your app again.
 
-Change the data through the app's own handlers and store. The next `get` or `list` sees that write. A live screen stays current by re-running its list or state query. To run flow work after a write, dispatch an action that reads the collection. See [Inbound transports](../advanced/inbound-transports.md).
+Browser writes to the collection are refused with `403`.
 
-## Limits
+## Next
 
-- The framework does not cache or materialize a copy across requests.
-- Wildcard patterns only. Encode a discriminator into a path segment; `[name]` patterns are rejected.
-- No `count()`. The snapshot is `{ prefetched: [] }` with no `count`.
-- Ranking, filtering, and paging are whatever `search` does. The framework does not re-rank.
-- `searchResources` returns `nextCursor` only when one projected collection is the only searchable source. Mixed or multi-collection search is a single page with no cursor.
-- `globResources` and `grepResourceContent` skip projected collections.
-
-## Migration
-
-Callers of `defineExternalResourceCollection` switch to `defineProjectedResourceCollection`. The `ExternalResource*` types become `ProjectedResource*`. `isExternalResourceCollection` becomes `isProjectedResourceCollection`.
-
-## See also
-
-- [Resource collections](./collections.md) — `defineResourceCollection`
-- [Searching resources](./searching.md) — `searchResources`, glob, and grep
-- [Client access](./client-access.md) — `client` config and React hooks
+- [Resources](../concepts/resources.md): what a collection is, and how scopes decide who sees what.
+- [Search a collection](./search-a-collection.md): the model's search over a collection.
+- [Resources reference](../reference/resources.md#projected-collections): fields, failures, routes and limits for projected collections.

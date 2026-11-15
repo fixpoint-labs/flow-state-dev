@@ -147,3 +147,22 @@ The recipe stores nothing in the framework. The two parts it touches are the app
 - **Drop from the old page:** Migration, the Limits list, the definition-time failure list, the agent paragraph (`proj:106`), the "Writes stay on the app" aside about dispatching an action (it points at an inbound-transports page the revamp may not keep; check the sitemap before restoring it).
 - **`[verify]` left:** fact 20 (user-scope keying wording) and fact 37 (a view over projected data). Keep both off the page.
 - **Words to avoid** per `docs/contributing/glossary.mjs`: "user", not "person"; "block" for a handler. Not rechecked against the glossary file here.
+
+## Revise round 1: what the page now states, and what moved to `reference/resources#projected-collections`
+
+The page is four numbered steps (declare, read in a block, search and page, show on a page) on the `orders` scenario. It states facts 7-9, 11, 12, 16, 19, 21, 23, 25, 26, 27, 28, 29, 30, 34 and 36, plus fact 10's wildcard rule as one clause. Page-only choices: `db` is named as the app's own data layer imported from `src/lib/db`; the list/`get` examples use `getOptional`, `get` and `list` from facts 16/17 and 25.
+
+Moved to Reference rows (the page links, does not state): the definition fields table, scope and ownership keying, `contentTemplate` / `contentTemplateRef` and `client` options, the collection operations row, the `ProjectedResourceRef` fields, the full results table (including the org-scoped refusal, C4), the HTTP rows (item-state `200` with `null`, `403` `read-only projected collection`, status codes, the 50/200 limits), the definition-time refusals, the full `search` query contract, the access-by-caller table, the snapshot row, the `ProjectedResourceContext` fields, the write-surface row and the limits rows. The Migration section is cut from the page; its rename table goes to the Upgrading page (R-40).
+
+Dropped from the page per C2 and C3: no claim that `refetch()` re-asks the app, and no claim that `readResourceContentTool` reads a projected record. The page says only that a new mount or a different `limit` asks again (C2, fact 35), and sends the model to B-34.
+
+## Revise round 2
+
+- `ctx.orgId` is typed optional (`pc:96-101`). A block read always carries one (`cec:2933`, default org when the app has no sign-in, C4). A browser read builds `orgId` from `session.orgId`, which can be absent (`ri:95-117`). The page says so in step 1, after the sentence on putting `ctx.orgId` in every query. **[source]**
+- Step 4 names the hook's second argument as the `resources` key (fact 15, fact 29), says `items` is empty until the first page (fact 30), and says a re-render with the same query shows the earlier answer while a remount or a new `limit` asks again (C2, fact 35 **[ran]**).
+
+## Revise round 3
+
+- Step 1's `read` and `search` return nothing when `ctx.orgId` is absent, so the example does what the sentence says. The prose opens with the browser case, then says a block read always has an organization (`cec:2933`, C4). **[source]**
+- Checked: the client list item's `topic` is the bare key `search` returned (`rr:544-567`, `rtest:204`), so `item.topic` is right in step 4.
+- The "session's own state carries no orders" clause is cut; fact 30 stays on the sheet for the Reference.
