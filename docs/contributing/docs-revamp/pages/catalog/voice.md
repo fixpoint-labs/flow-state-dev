@@ -47,6 +47,8 @@ export const reply = generator({
   model: "openai/gpt-6-luna",
   prompt: "You are a friendly assistant. Keep answers short.",
   user: (input: { message: string }) => input.message,
+  // Emit the reply: speech is made from the reply the client receives.
+  itemVisibility: { client: true, history: true },
 });
 ```
 

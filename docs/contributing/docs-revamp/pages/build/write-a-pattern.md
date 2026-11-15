@@ -207,15 +207,22 @@ from `@flow-state-dev/testing`; `result.output` is `{ total: 6 }`.
 
 Because a board does the work, the pattern emits `task-change` and
 `task-board-meta` items on its own. Render them with the `TaskPlan` component,
-passing the board's name as `collectionId`. It reads the session's items by default.
+passing the board's name as `collectionId` and the session's items as `items`,
+for example `session.items` from `useSession`.
 
 ```tsx title="src/app/word-count-progress.tsx"
+"use client";
+
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { TaskPlan } from "@/components/flow-state/task-plan";
 
-export function WordCountProgress() {
-  return <TaskPlan collectionId="word-count-board" />;
+export function WordCountProgress({ items }: { items: ReadonlyArray<OutputItem> }) {
+  return <TaskPlan collectionId="word-count-board" items={items} />;
 }
 ```
+
+Without `items`, `TaskPlan` reads them from a `SessionItemsProvider` above it, and
+with neither it gets no items and draws an empty board.
 
 The item types and the component's install steps are in the
 [items reference](../reference/items.md) and the [UI components reference](../reference/ui-components.md).

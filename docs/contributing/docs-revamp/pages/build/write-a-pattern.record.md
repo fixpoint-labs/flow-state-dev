@@ -33,12 +33,14 @@ Skipped: B-21 is kept in the sitemap, and the page was already at `write-a-patte
 - After revise round 1, page sha256 b5e491777c59: exit 1. Failed: type-check of every TypeScript example (scratch folder apps/kitchen-sink/.docs-tc-B-21, each block written at its titled path: src/lib/plan-map-reduce.ts, src/flows/word-count/flow.ts, src/app/word-count-progress.tsx; tsconfig extends kitchen-sink's with @/* mapped to the kitchen-sink root so @/components/flow-state/task-plan resolves to the installed registry component; tsc 7.0.2; folder deleted afterwards).
 - After revise round 2, page sha256 f1467139f2e9: exit 0.
 - After revise round 3, page sha256 66267ef1a63f: exit 0.
+- After the loop (review): Codex P2: the progress component rendered `TaskPlan` with no `items` and no provider, so it fell back to an empty `useSessionItems()` context and drew an empty board. The component now takes the session's items and passes them as `items`; a sentence says what happens without them. Type-check in apps/kitchen-sink/zz-p2b, deleted afterwards: only the planted error. 1235 words. Page sha256 76cfc0c4d93c.
 
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the page as it was kept, sha256 ae7d0ad1f83d, and the 5 Reference row(s) pass 6 moved.
 
 - Pair the items with `<TaskPlan />` and a consumer gets a live progress view (rendered with no props). Untrue: TaskPlan has a required `collectionId: string` prop and scopes its items to that collection. It is rendered as `<TaskPlan collectionId="..." />`, and here `collectionId` is the pattern's `name`. The bare `<TaskPlan />` would not compile. By default it reads its items from `useSessionItems()`, which comes from the session-items context, or from an explicit `items` prop. (/home/user/flow-state-dev/packages/ui/registry/components/task-plan.tsx:137,201-202 (props); /home/user/flow-state-dev/packages/ui/README.md:117-134 (usage and items source); page line 165)
+- Re-run after the review edit: `TaskPlan` takes `items?: ReadonlyArray<OutputItem>` (packages/ui/registry/components/task-plan.tsx:158) and otherwise reads `useSessionItems()` (:48, :204); the context defaults to `[]` (packages/ui/registry/components/session-items-context.tsx).
 
 ## 6 · Depth pass
 
