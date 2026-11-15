@@ -2,8 +2,8 @@
 /**
  * The storage roots a screen's resource may change at, which the path rule
  * (`mayHold`, in `@flow-state-dev/contracts/types/view-hearing`) checks a
- * change notice's path against. React's resource hooks and workforce's reads
- * call it through `@flow-state-dev/client/internal`. Not public.
+ * change notice's path against. Reached through
+ * `@flow-state-dev/client/internal`. Not public.
  */
 import { getPatternPrefix } from "@flow-state-dev/contracts/helpers";
 import type { ResourceManifest } from "../types";

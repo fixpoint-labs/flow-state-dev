@@ -20,8 +20,9 @@ import type { WireNotice } from "./push-delivery";
  * Which notices under one of a view answer's topics may change what its run
  * read. A watcher reads again on a notice its topic covers whose kind is
  * listed and, for a `resource` notice that names a path, whose path falls at
- * or under one of `paths` (the client's path rule). A `resource` notice that
- * names no path, and a `resync`, always read.
+ * or under one of `paths` ({@link mayHold}). A `resource` notice that names
+ * no path always reads. A `resync` is not decided here: the watcher reads on
+ * it before this rule runs.
  *
  * - `state`, on a user or org topic: the scope's state was read.
  * - `items`, `request`, `run` and `state`, on a session topic: the session
