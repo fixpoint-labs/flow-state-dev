@@ -112,7 +112,7 @@ export function criteriaOfState(workerId: string, state: Readonly<Record<string,
 }
 
 /** The session-state fields a criteria key can name, by key. A lookup returns only sessions carrying none it didn't name. */
-export const CRITERIA_STATE_KEYS: readonly string[] = [
+const CRITERIA_STATE_KEYS: readonly string[] = [
   WORKER_ID_STATE_KEY,
   FILING_SESSION_STATE_KEY,
   WORKSTREAM_STATE_KEY,
@@ -123,7 +123,7 @@ export const CRITERIA_STATE_KEYS: readonly string[] = [
 // FIX-2725: the one copy of which sessions are a user's conversations with a
 // worker, shared by the workforce client's lookups and the worker sessions view.
 /** The criteria keys a lookup by worker alone names. */
-export const WORKER_ONLY: ReadonlySet<string> = new Set([WORKER_ID_STATE_KEY]);
+const WORKER_ONLY: ReadonlySet<string> = new Set([WORKER_ID_STATE_KEY]);
 
 /**
  * Whether a session whose state is `state` carries no criteria key but the
