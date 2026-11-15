@@ -884,7 +884,7 @@ const EXEMPTIONS = [
   },
   {
     // The docs-revamp pages that describe the Teammates lab name its worker as the lab does.
-    path: /^docs\/contributing\/docs-revamp\/pages\/(?:start\/(?:run-a-starter|what-flow-state-is|make-it-yours)|catalog\/starters\/(?:teammates|shift-manager))(?:\.facts|\.record)?\.md$/,
+    path: /^docs\/contributing\/docs-revamp\/pages\/(?:start\/(?:run-a-starter|what-flow-state-is)|catalog\/starters\/teammates)(?:\.facts|\.record)?\.md$/,
     rules: ["shift-coordinator-names", "shift-coordinator-prose"],
     why: "FIX-2696: pages about the Teammates lab name its Chief of Staff worker and its `teammates.chief-of-staff` id as the lab ships them; FIX-2244 retires the name for Shift Manager's coordinator, not for this lab",
   },

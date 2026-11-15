@@ -70,7 +70,7 @@ export default dedupeQueries;
 ```diff title="src/flows/research/blocks/assistant.ts"
 +import { dedupeQueries } from "./dedupe-queries";
 
- const research = sequencer({ name: "research" })
+ const research = sequencer({ name: "research", inputSchema: z.string() })
    .step(planQueries)
 +  .step(dedupeQueries)
    .step(runSearches)

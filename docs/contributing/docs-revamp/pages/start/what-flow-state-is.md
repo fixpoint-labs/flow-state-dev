@@ -150,5 +150,5 @@ Flow State is open source, written in TypeScript, and runs as a web service you 
 ## Next
 
 - [Run a starter](./run-a-starter.md) takes about ten minutes and one API key.
-- [How it fits together](./how-it-fits-together.md) goes through the layers above, one at a time.
+- [How it fits together](../concepts/how-it-fits-together.md) goes through the layers above, one at a time.
 - [Add to an existing app](./add-to-an-existing-app.md) is the way in when you already have a product and want flows inside it.
