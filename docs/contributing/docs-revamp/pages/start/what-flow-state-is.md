@@ -13,7 +13,7 @@ Most agent frameworks hand you parts. Flow State hands you an app.
 
 Run a starter and you have a team of AI workers, which are agents you brief in plain files, and a page to talk to them on. Behind both is a backend that streams their answers, keeps what they learned and, when the app keeps its data in SQLite or Postgres, picks a run back up where it stopped after a crash. The code is in your repo: worker files, flows, the kits in your config, React pages. The data is in your database: conversations, tasks, state, memory and the workers a user edits inside the app.
 
-If the server crashes mid-run, the starters' SQLite store lets the restarted app replay the finished work and carry on. Over in-memory stores durable execution is off unless you force it on, so that resume does not hold.
+If the server crashes mid-run, the restarted app marks the run interrupted. Continue it and, over the starters' SQLite store, the finished work is replayed instead of run again. Over in-memory stores durable execution is off unless you force it on, so that resume does not hold.
 
 Then you change it. A worker is a Markdown file, so you rewrite its brief. A feature is a kit, a bundle an app installs, so you add a line. When you want something nobody has built yet, you write it from blocks, the same typed pieces the kits are made of.
 
@@ -129,6 +129,8 @@ export const assistant = generator({
   name: "assistant",
   model: "openai/gpt-6-luna",
   prompt: "You help the user research a topic.",
+  inputSchema: z.object({ message: z.string() }),
+  user: (input) => input.message,
   tools: [research],   // the whole pipeline is one tool call
 });
 ```

@@ -33,6 +33,7 @@ Skipped: S-1 is piloted in the sitemap, and the page was already at `what-flow-s
 - After revise round 1, page sha256 ecd048678102: exit 0.
 - After revise round 2, page sha256 ee16f57d5c0d: exit 0.
 - After the loop (review): the `fsdev.config.ts` example now passes `agent: { catalog: { search: search(), fetch: fetch() } }` to `workforce`, because the researcher it shows names `search` and `fetch` and a worker naming a tool outside the catalog is refused at start (`packages/workforce/src/agent-worker-flow.ts:485-505`; `labs/teammates/host.mts:371-375`). The example type-checks.
+- After the loop (review): the crash paragraph now says a restarted app marks the run interrupted and the run carries on when it is continued, since an interrupted request with no gate behind it resumes only through `/continue` (`docs/architecture/execution-and-errors.md:195`). The `assistant` example gained `inputSchema` and `user`, so the `chat` action's message reaches the model (`packages/core/src/blocks/internal/message-assembly.ts:87-89` builds user messages only from the `user` slot).
 
 ## 5 · Fact check
 

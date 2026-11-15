@@ -114,11 +114,14 @@ function Support() {
   return (
     <main>
       <ItemsRenderer items={session.items} />
+      {session.error && <p role="alert">{session.error.message}</p>}
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          void session.sendAction("reply", { message: text });
-          setText("");
+          session.sendAction("reply", { message: text }).then(
+            () => setText(""),
+            () => {}, // kept in session.error, and the text stays for a retry
+          );
         }}
       >
         <input value={text} onChange={(e) => setText(e.target.value)} />
@@ -129,7 +132,7 @@ function Support() {
 }
 ```
 
-`useFlow` finds the user's newest session, or creates one, and gives back its id. The id is empty on the first render, so the button waits for it. `session.items` is the transcript, in order, and `ItemsRenderer` draws it with plain defaults. `sendAction` returns when the request is accepted. The answer arrives in `items`.
+`useFlow` finds the user's newest session, or creates one, and gives back its id. The id is empty on the first render, so the button waits for it. `session.items` is the transcript, in order, and `ItemsRenderer` draws it with plain defaults. `sendAction` resolves when the request is accepted, and the answer arrives in `items`. If the request is refused, it rejects and `session.error` holds why, so the form clears the text only on success.
 
 **Every call says who is calling.** The provider's `userId` goes with each request, and a call without one is refused. With no sign-in configured, the server believes whatever `userId` the request carries, so a setup like this one is only for development. [Auth and tenancy](../concepts/auth-and-tenancy.md) covers verifying callers.
 

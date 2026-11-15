@@ -42,6 +42,22 @@ A skill is a Markdown file a coding agent loads when a task calls for it. The Fl
 
 ## Ask for a change
 
+The change below is to the research pipeline from [What Flow State is](./what-flow-state-is.md). Its flow serves the `assistant` generator as the `chat` action:
+
+```ts title="src/flows/research/flow.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import { assistant } from "./blocks/assistant";
+
+const research = defineFlow({
+  kind: "research",
+  actions: {
+    chat: { block: assistant, userMessage: (input) => input.message },
+  },
+});
+
+export default research();
+```
+
 Say what you want and how to check it.
 
 ```text title="Prompt"

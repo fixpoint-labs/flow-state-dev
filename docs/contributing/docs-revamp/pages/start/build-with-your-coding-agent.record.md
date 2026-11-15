@@ -32,6 +32,7 @@ Written by `docs-writer` (sonnet), 614 words. Scenario: The research flow: an ag
 - After the draft, page sha256 70b2c9d6c3d8: exit 0.
 - After revise round 1, page sha256 b36649f4f323: exit 0.
 - After revise round 2, page sha256 f471bf6aa20c: exit 0.
+- After the loop (review): added `src/flows/research/flow.ts`, which serves S-1's `assistant` as the `chat` action, so `fsdev run research chat` has a flow to run (`packages/fsdev/src/resolve-flow.ts` finds only default-exported flows). It type-checks with S-1's `assistant.ts`.
 
 ## 5 · Fact check
 
