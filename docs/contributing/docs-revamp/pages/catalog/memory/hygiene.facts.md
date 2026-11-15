@@ -124,3 +124,13 @@ The sitemap's third question. This page is about something that stores data, so 
 ## 9. Sources used
 
 `packages/memory/src/janitor.ts`, `janitor-blocks.ts`, `internal/hygiene-config.ts`, `internal/recall.ts`, `memory-system.ts`, `memory-system-blocks.ts`, `memory-capability.ts`, `episodic-memory.ts`, `episodic-memory-helpers.ts`, `semantic-memory.ts`, `semantic-memory-helpers.ts`, `index.ts`; `packages/memory/test/janitor.test.ts`; `apps/docs/docs/memory/hygiene.md`, `configuration.md`, `overview.md`, `recall-tool.md`, `relations.md`; `packages/memory/README.md`; the sibling fact sheet `docs/contributing/docs-revamp/pages/catalog/memory/index.facts.md`. A draft page exists beside this sheet (`hygiene.md`, a copy of the existing page); it is not evidence. No example under `examples/` or `labs/` uses hygiene (searched `apps/kitchen-sink` for `hygiene`, no match in `.ts`).
+
+## 10. Revise round 1 (page changes this sheet now covers)
+
+- The page no longer states the default object, the option tables, the `schedule` values, the `operator` option, the `cullFloor`/`persistentTurns` thresholds as a list, or the `effectiveConfidence` signature. All are **[ref]** (R-37) and the page links `reference/memory`. The page keeps the formula, the 180-day default half-life, the 0.1 floor, the 500-turn and 90-day persistent-episode defaults and the 180-day stale default, because the eighteen-month answer needs them.
+- "Persistent" and "permanent" are defined only as the two durabilities of an episode (`ep:36-53`); the page does not say which observations become which (**[gap]**).
+- Fallback clause is "from `extractedAt` when a fact has never been reinforced" (`jn:80`).
+- `hygiene: false` is stated as behavior (no janitor, raw confidence ranking, unbounded stores) with no before/after framing.
+- The page states the default-schedule order (consolidate, janitor, prune) only for the default schedule (flag 7).
+- Relation-edge removal is one bullet; its condition (`createImplicitEntities` false) is **[ref]**.
+- Worked 548-day figures are derived from the formula, not from a test: 0.5^(548/180) = 0.1213; 0.8 gives 0.097, 0.9 gives 0.109.

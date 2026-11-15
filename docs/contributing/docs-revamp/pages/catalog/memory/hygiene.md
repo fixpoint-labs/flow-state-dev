@@ -6,165 +6,93 @@ description: Keep a long-lived store useful: old and stale memories lose out.
 
 # Memory hygiene
 
-Long-lived agents accumulate state. Stable facts pile up. Episodes from a year ago sit next to episodes from this morning. A semantic fact extracted at high confidence yesterday and an equally-confident fact from eighteen months ago rank identically when you call `recall()`. The longer the agent runs, the less useful the store gets.
+Long-lived agents accumulate state. Stable facts pile up. Episodes from a year ago sit next to episodes from this morning. Without hygiene, a fact extracted at high confidence yesterday and an equally confident fact from eighteen months ago rank identically when you call `recall()`, and the store only grows. The longer the agent runs, the less useful it gets.
 
-Hygiene is the maintenance pass that keeps that from happening. It's on by default. Two things happen periodically:
+Hygiene is the maintenance pass that keeps that from happening. It is on by default whenever memory has a semantic or episodic tier. The pass runs as a block called the janitor (`mem.janitor`), it is deterministic, and it makes no model calls. By default it runs after each consolidation, not every turn. Each pass does the following:
 
-1. **Confidence decays.** Each semantic fact has an *effective confidence* — the raw confidence score decayed by how long it's been since the fact was last reinforced. The decay is exponential with a tunable half-life. Facts that fall below a floor are removed.
-2. **Episodes age out.** Persistent episodes past a turn-count or wall-time threshold are evicted. Permanent episodes are never deleted; instead, after a long silent window they pick up a `stale: true` marker so operators can see what's gone cold.
+- **Decays confidence.** Each semantic fact has an *effective confidence*: its stored score, decayed by the time since the fact was last reinforced. Facts that fall below a floor are removed.
+- **Ages out episodes.** Persistent episodes past a turn-count or age threshold are deleted. Permanent episodes are never deleted. After a long time they get a `stale: true` marker instead.
+- **Drops dangling relation edges.** When [relations](./relations) are on, edges whose endpoint fact was removed go with it.
 
-The whole pass is deterministic and free of LLM calls. It runs on the consolidation cadence by default, not every turn.
+Every episode is either persistent or permanent. The [memory overview](./index) covers the tiers.
 
-## How it works
+## What happens to a fact from eighteen months ago
 
-### Effective confidence
+Recall ranks facts by effective confidence:
 
-When the recall ranking reads a fact's confidence, it doesn't use the raw stored value. It calls `effectiveConfidence(fact, now, halfLife)`:
-
-```
+```text
 effective = confidence × 0.5 ^ (elapsedDays / halfLife)
 ```
 
-`elapsedDays` is measured from `fact.lastReinforced` (or `extractedAt` as a fallback for older facts created before the flag was wired). At one half-life, effective confidence is half raw. At two half-lives, a quarter.
+`elapsedDays` counts from the fact's last reinforcement, or from `extractedAt` when a fact has never been reinforced. With the default `halfLife` of 180 days, effective confidence is half the stored value after 180 days and a quarter after 360. Reinforcing a fact restarts its clock. The stored `confidence` never changes; the decayed value is computed when it is needed.
 
-This is the value that ranks facts in `mem.recall()` and in the recall tool's intrinsic semantic score. A year-old fact at confidence `0.8` ranks well below a freshly-reinforced fact at the same `0.8`.
+Take a fact that nothing has reinforced for 548 days, about eighteen months. At the default settings its factor is 0.12. Stored at `0.8`, it is at about `0.097`, below the default cull floor of `0.1`, so the next pass removes it. Stored at `0.9`, it is at about `0.109`, so it is kept and ranks at roughly an eighth of a freshly reinforced fact. A removed fact is gone; the janitor keeps no copy.
 
-### Cull floor
+To decay without ever removing a fact, set `cullFloor: 0`. Facts then rank lower over time and remain in the store. For sharper decay, lower `halfLife`.
 
-The janitor's confidence-decay pass also removes facts whose effective confidence has dropped below `cullFloor` (default `0.1`). This keeps the store from growing without bound — once a fact's signal-to-noise has decayed past usefulness, the storage cost stops being worth it.
+## What happens to an episode
 
-If you'd rather decay without ever culling, set `cullFloor: 0` — facts will rank lower over time but stay in the store.
+A persistent episode is deleted once it passes either threshold: 500 turns or 90 days, whichever comes first. The days are counted from when the episode was recorded. Turn counts reset each session, so an episode from an earlier session ages out on the day threshold alone.
 
-### Episodic TTL
+The janitor never deletes a permanent episode. 180 days after it was recorded, it gets `stale: true`. Nothing else changes about it.
 
-Persistent episodes have two thresholds. By default the janitor culls when either fires (`operator: 'OR'`):
+Hygiene does not touch working memory or digests, and it does not check whether a fact is true. Contradictions and redundancy are the job of prune, a separate optional step that uses a model; see the [memory reference](../../reference/memory).
 
-- More than `persistentTurns` turns since the episode occurred (default 500)
-- More than `persistentDays` days since the episode was encoded (default 90)
+## Change it
 
-Permanent episodes are sacrosanct. The janitor never deletes them. After `permanentStaleDays` of silence (default 180) it sets `stale: true` on them so operators can see what's gone quiet.
+Pass `hygiene` on `system()`. Every field has a default, and a partial object is merged onto them.
 
-## Default behavior
+```ts title="src/lib/memory.ts"
+import { system } from "@flow-state-dev/memory";
 
-If you call `memory.system()` with no `hygiene:` field, you get the default configuration:
-
-```ts
-{
-  confidenceDecay: { halfLife: 180, cullFloor: 0.1 },
-  episodicTTL: {
-    persistentTurns: 500,
-    persistentDays: 90,
-    operator: 'OR',
-    permanentStaleDays: 180,
-  },
-  schedule: 'onConsolidation',
-}
-```
-
-The 180-day half-life is conservative on purpose. Many systems pick aggressive half-lives (a week, a month). The default here is slow enough that you can leave the feature on without seeing surprising behavior in the first weeks. If you want sharper decay, drop the half-life.
-
-## Configuration
-
-Pass `hygiene` on the `memory.system()` call. Every field has a default; partial overrides are merged.
-
-```ts
-import { system } from '@flow-state-dev/memory'
-
-const mem = system({
-  model: 'openai/gpt-6-luna',
+export const mem = system({
+  model: "openai/gpt-6-luna",
   working: true,
   episodic: true,
   semantic: true,
   hygiene: {
     confidenceDecay: { halfLife: 60, cullFloor: 0.05 },
     episodicTTL: { persistentDays: 30 },
-    schedule: 'onConsolidation',
   },
-})
+});
 ```
 
-### `confidenceDecay`
+This halves a fact's weight every 60 days, culls below `0.05`, and deletes persistent episodes after 30 days. The turn threshold, `permanentStaleDays` and the schedule keep their defaults. The [memory reference](../../reference/memory) lists every field, its default, and the `schedule` values.
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `halfLife` | `180` | Days for effective confidence to drop to half. Must be `> 0`. |
-| `cullFloor` | `0.1` | Effective confidence below this is removed. `0` disables culling. |
+To turn one half off, set `confidenceDecay: false` or `episodicTTL: false`. To turn hygiene off, pass `hygiene: false`. Recall then ranks on raw `fact.confidence`, no janitor is built, and the stores grow without bound.
 
-Set `confidenceDecay: false` to skip the semantic branch entirely. Recall ranking then uses raw `fact.confidence`.
+## Run it yourself
 
-### `episodicTTL`
+For a nightly cron, a cron route or a teardown step, set `hygiene: { schedule: "manual" }` in `src/lib/memory.ts`. The janitor is then never wired in automatically. `mem.janitor` is a block that takes any input and returns nothing, so it can be a step in a sequencer:
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `persistentTurns` | `500` | Turn-count threshold for culling persistent episodes |
-| `persistentDays` | `90` | Wall-time threshold for culling persistent episodes |
-| `operator` | `'OR'` | `'OR'` culls when either fires; `'AND'` requires both |
-| `permanentStaleDays` | `180` | Days of silence before a permanent episode is marked `stale` |
+```ts title="src/flows/support/blocks/cleanup.ts"
+import { sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
+import { mem } from "../../../lib/memory";
 
-Set `episodicTTL: false` to skip the episodic branch entirely.
-
-### `schedule`
-
-When the janitor runs.
-
-| Value | Behavior |
-|-------|----------|
-| `'onConsolidation'` (default) | Appended to the consolidation chain; runs whenever consolidation runs |
-| `'onCapture'` | Runs every turn as a `.sideChain()` step. Rarely worth the cost. |
-| `'manual'` | Never auto-wired. Invoke `mem.janitor` directly. |
-
-## Calling the janitor directly
-
-For custom scheduling — a nightly cron, a Vercel cron route, a teardown step — use `mem.janitor` with `schedule: 'manual'`:
-
-```ts
-const mem = system({
-  model: 'openai/gpt-6-luna',
-  working: true,
-  episodic: true,
-  semantic: true,
-  hygiene: { schedule: 'manual' },
-})
-
-// Inside a flow or scheduled handler:
-const cleanup = sequencer({ name: 'cleanup', inputSchema: z.any() })
-  .step(mem.janitor!)
+export const cleanup = sequencer({
+  name: "cleanup",
+  inputSchema: z.any(),
+}).step(mem.janitor!);
 ```
 
-## Operator visibility
+`mem.janitor` is typed as optional, because it does not exist when hygiene is off.
 
-Each janitor run writes a snapshot to the session-scoped `janitor` resource (`mem.janitorResource`):
+## See what it did
 
-- `lastRunTurn` — turn number of the most recent run
-- `lastRunAt` — ISO timestamp of the most recent run
-- `totalRuns` — cumulative count
-- `lastCulledFactIds` — fact IDs culled on the most recent run
-- `lastCulledEpisodeIds` — episode IDs culled on the most recent run
-- `lastMarkedStaleEpisodeIds` — episode IDs newly flagged as stale
+Each run writes a snapshot to the session's `janitor` resource (`mem.janitorResource`). Read it in DevTool or the resource registry.
 
-Inspect via DevTool or the resource registry. The arrays are a snapshot, not a history — each run overwrites them.
+| Field | Meaning |
+|-------|---------|
+| `lastRunTurn` | Turn number of the most recent run |
+| `lastRunAt` | ISO timestamp of the most recent run |
+| `totalRuns` | Runs in this session |
+| `lastCulledFactIds` | Fact IDs removed on the most recent run |
+| `lastCulledEpisodeIds` | Episode IDs deleted on the most recent run |
+| `lastMarkedStaleEpisodeIds` | Episode IDs newly marked stale |
 
-## Disabling hygiene
-
-To revert entirely to pre-hygiene behavior, pass `hygiene: false`:
-
-```ts
-const mem = system({
-  model: 'openai/gpt-6-luna',
-  working: true,
-  episodic: true,
-  semantic: true,
-  hygiene: false,
-})
-```
-
-Recall ranking falls back to raw `fact.confidence`, no janitor is built, and stores grow without bound.
+It records IDs only, never the removed text. Each run overwrites the arrays, so it is a snapshot, not a history. Facts and episodes are shared across a user's sessions, but this record lives in the session that ran the pass. A different session shows an empty snapshot.
 
 ## Relationship to prune
 
-The semantic store has two complementary maintenance steps:
-
-- **Janitor** — deterministic, no LLM. Decays confidence and removes facts past the floor. Cheap, runs on consolidation.
-- **Prune** — LLM-driven, optional, gated by `pruneThreshold`. Reviews surviving facts for contradictions and redundancy.
-
-The order is: consolidate → janitor → prune. The janitor evicts the obviously stale before the prune step burns LLM cycles deciding whether to merge or remove them.
+Facts the janitor removes never reach prune, so prune's model calls cover only the facts that remain. With the default schedule the order is consolidate, janitor, prune.
