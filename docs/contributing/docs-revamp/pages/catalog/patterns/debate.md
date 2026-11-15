@@ -73,7 +73,7 @@ Add `featureDebate` as a step in the flow, with input like `{ question: "Should 
 
 The output matches `outputSchema`. Pass `synthesizer: false` to skip the synthesizer and get the raw result back: `{ rounds, question, transcript, verdict, moderatorDecisions }`. Setting `outputSchema` together with `synthesizer: false` is an error. The [Patterns reference](../../reference/patterns.md) has the full shape and every config field with its default.
 
-You supply the stances. Debate does not derive positions from the question. With three or more debaters you can argue more than two sides, such as aggressive, conservative and neutral readings of a risk.
+You supply the stances. Debate does not derive positions from the question, so a debater with an empty `stance` is not given one by the model. The block throws when it is built, with a message starting `[debate]`. Dropping a debater until only one is left throws the same way, because a debate needs at least two. With three or more debaters you can argue more than two sides, such as aggressive, conservative and neutral readings of a risk.
 
 ## Let a moderator run the rounds
 
@@ -148,7 +148,7 @@ You can also replace the `judge` with a block that takes `{ question }`, reads t
 
 ## What it won't do
 
-- Pick stances for you.
+- Pick stances for you. A missing or empty stance, fewer than two debaters, duplicate debater names or `maxRounds` of 0 or less are rejected when the block is built. The [Patterns reference](../../reference/patterns.md) lists every check.
 - Guarantee a better answer. Debate adds cost and adversarial pressure, and what you get from that depends on the question.
 - Recover from a failed turn. The run fails.
 - Let you force a winner or a synthesis through config. Steer the judge with `instructions`, or write your own.

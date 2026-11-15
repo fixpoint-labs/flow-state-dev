@@ -307,3 +307,10 @@ schemas:43-49).
 - **[ran]** An analyzer with `outputSchema: AnalyzerResultSchema` that returns `score: 2` fails inside its own `.rescue()`: the audit succeeds and `results` holds only the other analyzer's result. The same analyzer without an `outputSchema` fails the whole audit (`execution_error` on `response-auditor`, no output).
 - `biasAnalyzer` (`packages/thought-fabric-core/src/metacognition/bias-detection-blocks.ts:371-375`) skips counter-arguments below its own `counterpointThreshold`, default 0.4 (`bias-detection-helpers.ts:19`). It is not the auditor's `threshold`.
 - `openai/gpt-6.1-sol` is a current name (the default model in the fsdev README); the small model is `openai/gpt-6-luna`.
+
+## Revise round 3 additions
+
+- The page names the block that carries `outputSchema: AnalyzerResultSchema`: the analyzer's outer block (the sequencer in the example), per the round 2 **[ran]** fact.
+- Duplicate `analyzerId`: the card uses it as the React `key` (`audit-annotation.tsx:127`), so duplicates can render wrongly. The exact visible effect was not run; the page says only "can render wrongly".
+- Whether a generator inside a side-chained analyzer emits to the chat stream is unverified. The page no longer says it (the `tone/detect` code comment is cut; fact 5.3's "runs silently" is not on the page).
+- `.tap()` against `.step()` is not on the page; the Change it section links only the patterns reference.

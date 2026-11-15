@@ -74,14 +74,14 @@ An analyzer is any block that takes `{ userInput, response }` and returns an `An
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `analyzerId` | string | Names the analyzer. Keep it unique: results with the same id collide on the audit card ([Show the audit](#show-the-audit)). |
+| `analyzerId` | string | Names the analyzer. Keep it unique: the audit card keys each result by this id, so two results with the same id can render wrongly ([Show the audit](#show-the-audit)). |
 | `category` | string | The domain, such as `tone` or `compliance`. |
 | `score` | number, 0 to 1 | Higher means more concern. |
 | `shouldSurface` | boolean | Shows the result when its score is under the threshold. |
 | `annotations` | array | Each has `type`, `label`, `description`, `severity` and optional `evidence`. |
 | `supplementary` | object, optional | Extras shown on the audit card ([Show the audit](#show-the-audit)): `summary` and `counterArguments`. |
 
-A model-backed analyzer is a generator that returns a typed object, followed by a handler that turns it into a result. With an `outputSchema`, a malformed result fails only that analyzer, which is left out like one that throws. Without one, it fails the whole audit.
+A model-backed analyzer is a generator that returns a typed object, followed by a handler that turns it into a result. Give the analyzer's outer block `outputSchema: AnalyzerResultSchema`, as `toneCheck` does below. Then a result that doesn't match fails only that analyzer, which is left out like one that throws. Without it, a bad result fails the whole audit.
 
 ```ts title="src/flows/support/blocks/tone-check.ts"
 import { generator, handler, sequencer } from "@flow-state-dev/core";
@@ -105,7 +105,6 @@ const detectTone = generator({
   prompt:
     "Rate how condescending, dismissive or unprofessional the reply is, 0 to 1. List each problem.",
   user: (input) => `User: ${input.userInput}\n\nReply: ${input.response}`,
-  // Output goes to `tone/format`, not to the chat.
 });
 
 const formatTone = handler({
@@ -193,7 +192,7 @@ The audit belongs to the request that produced it. It is not saved to session, u
 
 ## Change it
 
-The blocks the auditor is built from, `captureContext`, `aggregateResults` and `applyThreshold(n)`, are exported for remixing. The [patterns reference](../../reference/patterns.md) lists them with the rest of the exports, and the [sequencer methods reference](../../reference/sequencer-methods.md) covers `.tap()` against `.step()`, which decides whether a block's output reaches the next step.
+The blocks the auditor is built from, `captureContext`, `aggregateResults` and `applyThreshold(n)`, are exported for remixing. The [patterns reference](../../reference/patterns.md) lists them with the rest of the exports.
 
 ## Next
 

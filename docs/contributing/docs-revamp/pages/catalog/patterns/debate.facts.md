@@ -160,3 +160,7 @@ The pattern stores three things. Answers cite the code; where a reading is by co
 - Custom debaters read the moderator decisions from sequencer state, `ctx.sequencer.state.moderatorDecisions`, picking the entry whose `round` equals `state.round` (`dd:109-127`).
 - `createModerator({ name })` names its block `<name>-moderator` (`dm:59-60`), so the moderator in the page's example does not collide with the debate block's name.
 - Debaters see stances, not names (`dd:268-271`); the judge's view is governed by `anonymizeTranscript` (8.2).
+
+## Revise round 3
+
+- Findability of the build-time failures: the page now says an empty `stance` and fewer than two debaters each throw at construction with a `[debate]` message (3.4, 1.4, `ix:227-229`, `ix:235-239`, `t:394-413`), that stances are never derived (1.4), and, under "What it won't do", names duplicate names and `maxRounds <= 0` too. `outputSchema` with `synthesizer: false` and `moderator: false` were already on the page. The full list stays a Reference row (3.4).

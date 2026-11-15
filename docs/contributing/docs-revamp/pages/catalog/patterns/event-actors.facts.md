@@ -352,3 +352,12 @@ page says the output holds no actor results and does not show the shape. Page no
 type and topic is not recorded but still runs its actors (facts 31, 33); `emit` finishes without error
 and a failed actor does not change that; depth counting (emitted entry's actors are depth 1, fact 45);
 `reEmit` is an option of `eventActors`; the two cap options by name and default (fact 17).
+
+## 15. Revise round 3
+
+Checked against index:337-420 and the `maxDepth` comment (index:190-195): with `reEmit` off, the re-emit
+step returns at once, so an actor's output never becomes an entry. With `reEmit` on, entry-shaped output
+is appended to the log (deduped on type and topic) and tasks are created only while depth+1 <= `maxDepth`.
+So entries returned at depth `maxDepth` are in the log and trigger no actor (fact 46 confirmed by code).
+Whether an actor's output is stored on its task was not confirmed in the board source, so the page says
+only that it never becomes an entry, and points to the log and the tasks for what ran.
