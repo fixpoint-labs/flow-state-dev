@@ -14,6 +14,7 @@
  */
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { RuntimeItem } from "@flow-state-dev/core/internal";
+import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createFlowState, runAction } from "../src";
@@ -129,5 +130,42 @@ describe("a get assigned on the migrating store", () => {
     expect(got?.status).toBe("failed");
     expect(got?.items?.find((i) => i.id === legacy.id)).toMatchObject(migrated);
     expect(raw.request.get).not.toBe(store.get);
+  });
+});
+
+describe("legacy component items in a stored event log", () => {
+  /** A request whose event log carries the legacy item, as one stored before data items did. */
+  async function seedEvents() {
+    const raw = createInMemoryStores();
+    const requestId = "req_legacy";
+    const item = { ...legacy, requestId, itemIndex: 0, ts: 0, provenance: { blockName: "b", blockInstanceId: "b#1", phase: "main" } };
+    const base = { stream: "request" as const, requestId, ts: 0 };
+    const events = [
+      { ...base, type: "item.added", sequence_number: 1, item },
+      { ...base, type: "item.done", sequence_number: 2, item },
+      { ...base, type: "request.completed", status: "completed", sequence_number: 3 },
+    ] as unknown as RequestStreamEvent[];
+    raw.request.persistEvents(requestId, events);
+    return { raw, requestId };
+  }
+  const itemsOf = (events: readonly RequestStreamEvent[]) =>
+    events.flatMap((e) => (e.type === "item.added" || e.type === "item.done" ? [e.item as unknown as Record<string, unknown>] : [])).filter((i) => i.id === legacy.id);
+
+  it("getEvents replays the item as a data item, as a resumed stream reads it", async () => {
+    const { raw, requestId } = await seedEvents();
+    const stores = withLegacyComponentItems(raw);
+    const replayed = itemsOf(await stores.request.getEvents(requestId));
+    expect(replayed).toHaveLength(2);
+    for (const item of replayed) expect(item).toMatchObject(migrated);
+    expect(itemsOf(await raw.request.getEvents(requestId))[0]).toMatchObject({ type: "component" });
+  });
+
+  it("subscribeToEvents catches up with the item as a data item", async () => {
+    const { raw, requestId } = await seedEvents();
+    const stores = withLegacyComponentItems(raw);
+    const seen: RequestStreamEvent[] = [];
+    for await (const event of stores.request.subscribeToEvents(requestId, { fromSequence: 0 })) seen.push(event);
+    expect(itemsOf(seen)).toHaveLength(2);
+    for (const item of itemsOf(seen)) expect(item).toMatchObject(migrated);
   });
 });

@@ -145,7 +145,7 @@ export type EmitDataOptions = {
   /** Stable identity for the keyed-snapshot pattern. See {@link DataItem.key}. */
   key?: string;
   /**
-   * Who the record reaches. Absent means nobody: neither the client nor
+   * Who the item reaches. Absent means the data default: the client, not
    * model history. Not inherited from an enclosing generator.
    */
   itemVisibility?: ItemVisibility;

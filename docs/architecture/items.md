@@ -309,7 +309,7 @@ With `transient: false` (the default), this is the **keyed snapshot** pattern: o
 
 ### Stored `component` items
 
-Sessions stored before structured content became data items can hold `{ type: "component", component, data, key? }`. The one read migration (`packages/engine/src/stores/legacy-component-items.ts`, applied where `createFlowState` resolves the stores) hands every such item back as `{ type: "data", dataType: component, value: data, key? }`, with the same id and status. Nothing above the request store reads the old shape, and nothing is rewritten in the store.
+Sessions stored before structured content became data items can hold `{ type: "component", component, data, key? }`. The one read migration (`packages/engine/src/stores/legacy-component-items.ts`, applied where `createFlowState` resolves the stores) hands every such item back as `{ type: "data", dataType: component, value: data, key? }`, with the same id and status, from a record read and from the `item.added` and `item.done` events a replayed or resumed stream reads. Nothing above the request store reads the old shape, and nothing is rewritten in the store.
 
 ### Container ownership
 
