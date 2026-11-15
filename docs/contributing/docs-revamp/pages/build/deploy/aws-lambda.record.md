@@ -38,6 +38,7 @@ Skipped: B-11 is kept in the sitemap, and the page was already at `aws-lambda.md
 - After revise round 2, page sha256 fab4a31f8187: exit 0.
 - After revise round 3, page sha256 9ae5b2a36748: exit 1. Failed: Type-check of TypeScript examples (scratch folder apps/kitchen-sink/.docs-tc-B-11, deleted afterwards).
 - After the loop (review): Pass 4 type-check: the migration imports `createPostgresStores` from `@flow-state-dev/store-postgres/host`; the `skipSchemaInit` fragment is a whole `src/handler.ts`; the flow module is named and linked to Your first flow, which shows `src/flows/hello-chat/flow.ts`. The DDL count is cut (the fact check on the Vercel page counted about 55, not 30). Old-site links point at the revamp pages (./railway, reference/http-api for endpoints, concepts/auth-and-tenancy, concepts/persistence, reference/stores, concepts/serving-flows, ../deploy). Type-check in apps/kitchen-sink/zz-fix-B-11 (the node subpath mapped to packages/node/src/aws-lambda.ts, a stub flow module), deleted afterwards: only the planted error. 727 words. Page sha256 5d590e83015f: the page check exits 0 and the brand lint has 0 findings.
+- After the loop (review): Codex review on the PR. Step 2 adds the two `aws lambda add-permission` statements a CLI-made Function URL with `--auth-type NONE` needs, or every request gets 403: `lambda:InvokeFunctionUrl` with `--function-url-auth-type NONE`, and `lambda:InvokeFunction` with `--invoked-via-function-url`, both for principal `*` (docs/contributing/docs-revamp/pages/build/deploy/aws-lambda.md:66-84; https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html). Page sha256 af9b05cf5232.
 
 ## 5 · Fact check
 
@@ -45,6 +46,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 No untrue claim found.
 - Re-run after the review edit: `createPostgresStores` is exported from the host subpath (packages/store-postgres/src/host.ts:7); `skipSchemaInit` is a store option (packages/store-postgres/src/registry.ts:50,60); the endpoint list belongs to the HTTP API reference (sitemap R-13).
+- Re-run after the review edit: the 403 without a policy, the two statements, their flags and the `InvokedViaFunctionUrl` condition, and that the console and SAM add the policy, re-checked against https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html and the `add-permission` CLI reference. All hold.
 
 ## 6 · Depth pass
 

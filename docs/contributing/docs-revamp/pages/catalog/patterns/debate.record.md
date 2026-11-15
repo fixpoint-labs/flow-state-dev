@@ -34,6 +34,7 @@ Skipped: K-23 is kept in the sitemap, and the page was already at `debate.md`.
 - After revise round 2, page sha256 cf071e55c0c0: exit 0.
 - After revise round 3, page sha256 07b08f9117f5: exit 0.
 - After the loop (review): link pass. Repointed links that led to old-site pages or to pages outside the sitemap: `./overview.md` to `./index.md`. Every link on the page now resolves to a sitemap page. No prose or example changed. Page sha256 0abaef061ce0.
+- After the loop (review): Codex review on the PR. The "Change a debater" example gave a block with constant messages and no transcript, so it could not see its stance, the question or earlier turns (packages/patterns/src/debate/index.ts:427-445 runs `entry.block ?? createDebater(...)`). The section now says what a custom block is not given, and the example reads the question and round from `ctx.sequencer.state` with `sequencerStateSchema: debateStateSchema`, reads earlier turns from a shared `createDebateTranscript()` declared in its `resources` and passed to `debate({ transcript })`, and writes its stance into its prompt (docs/contributing/docs-revamp/pages/catalog/patterns/debate.md:130-187). Page sha256 62353ad3199b.
 
 ## 5 · Fact check
 
@@ -45,6 +46,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - The moderated example is labelled "non-deterministic dispatch in rounds 2+". Untrue: The moderator opens every round, including round 1. The code runs it right after incrementRound on every iteration, and the default prompt opens round 1 with a briefing. (packages/patterns/src/debate/index.ts:20-28, 520-530)
 - Round Robin is the "chassis Debate is built on". Untrue: Debate does not import or compose Round Robin. It builds its own sequencer, and the synthesizer only "mirrors" the round-robin one in a comment. (packages/patterns/src/debate/index.ts:42-67 (imports); packages/patterns/src/debate/blocks/default-synthesizer.ts:4)
 - Re-run after the review edit: the edit changed link targets only, so no claim changed. Each new target is a sitemap entry (specs/epics/FIX-2696/SITEMAP/*.md) that covers what the link text names.
+- Re-run after the review edit: what a custom debater receives (input, `ctx.sequencer.state`, the transcript resource, no stance), the exports it uses, and the shared-transcript requirement, re-checked against packages/patterns/src/debate/index.ts, schemas.ts, blocks/default-debater.ts and packages/core/src/blocks/internal/build-block.ts:77. All hold. The examples type-check, and a throwaway vitest ran the block with and without a moderator and saw the question, the round and the earlier turns.
 
 ## 6 · Depth pass
 

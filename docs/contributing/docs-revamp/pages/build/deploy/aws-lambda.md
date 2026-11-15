@@ -63,6 +63,26 @@ aws lambda create-function-url-config \
   --invoke-mode RESPONSE_STREAM
 ```
 
+A Function URL made through the CLI comes with no access policy, and every request gets a 403, even with `--auth-type NONE`. Grant public access with two statements, one per command. The second limits `lambda:InvokeFunction` to calls made through the Function URL.
+
+```bash
+aws lambda add-permission \
+  --function-name my-flow-app \
+  --statement-id UrlPolicyInvokeURL \
+  --action lambda:InvokeFunctionUrl \
+  --principal '*' \
+  --function-url-auth-type NONE
+
+aws lambda add-permission \
+  --function-name my-flow-app \
+  --statement-id UrlPolicyInvokeFunction \
+  --action lambda:InvokeFunction \
+  --principal '*' \
+  --invoked-via-function-url
+```
+
+The console and AWS SAM add this policy for you when they create a Function URL with auth type `NONE`. See [Control access to Lambda function URLs](https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html).
+
 Without `RESPONSE_STREAM`, Lambda buffers the whole response and SSE events arrive only after the flow finishes.
 
 `--auth-type NONE` is for the smoke test only. A public URL lets any caller act as any user and run billed model calls. For production, switch the Function URL to IAM auth, or give `createFlowState` a `resolvePrincipal` so the app verifies the caller itself. See [Auth and tenancy](../../concepts/auth-and-tenancy.md).

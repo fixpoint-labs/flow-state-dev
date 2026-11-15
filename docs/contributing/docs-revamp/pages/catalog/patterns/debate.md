@@ -131,18 +131,60 @@ A debate ends after a round when any of these holds:
 
 Most debaters need only `name` and `stance`. A `role` adds a persona line. To take over a debater, give its entry a `block`.
 
+A block you write replaces the default debater whole, so debate passes it none of what the default gets. Its input is not the question, and its stance is not handed to it. It reads the rest from two places:
+
+- The question and the round number are on the debate's state. Declare `sequencerStateSchema: debateStateSchema` and read `ctx.sequencer.state`.
+- Earlier turns are in the transcript resource. Create it with `createDebateTranscript`, declare it in the block's `resources`, and pass the same one to `debate` as `transcript`. Its `entries` hold `{ round, agentName, stance, text }` in turn order.
+
+Write the stance into the block's prompt yourself.
+
+```ts title="src/flows/decide/blocks/transcript.ts"
+import { createDebateTranscript } from "@flow-state-dev/patterns/debate";
+
+export const transcript = createDebateTranscript();
+```
+
 ```ts title="src/flows/decide/blocks/security-reviewer.ts"
 import { generator } from "@flow-state-dev/core";
+import {
+  debateStateSchema,
+  type DebateTranscriptState,
+} from "@flow-state-dev/patterns/debate";
+import { transcript } from "./transcript";
+
+const stance = "do not ship now";
 
 export const securityReviewer = generator({
   name: "security-reviewer",
   model: "openai/gpt-6-luna",
-  prompt: "Argue the assigned position from a security point of view. Reply in two paragraphs.",
-  user: () => "Respond to the debate so far.",
+  resources: { transcript },
+  sequencerStateSchema: debateStateSchema,
+  prompt: `Argue "${stance}" from a security point of view. Do not concede. Reply in two paragraphs.`,
+  user: (_input, ctx) => {
+    const { question, round } = ctx.sequencer!.state;
+    const { entries } = ctx.resources.transcript.state as DebateTranscriptState;
+    const prior = entries.map((e) => `[${e.stance}] ${e.text}`).join("\n");
+    return `Question: ${question}\nRound ${round}.\nEarlier arguments:\n${prior || "none"}`;
+  },
 });
 ```
 
-In `featureDebate`, `{ name: "skeptic", stance: "do not ship now", block: securityReviewer }` takes the place of the default skeptic. The block returns a string or `{ text }`. It brings its own prompt, tools and resources, so pattern-level `instructions`, `uses`, `tools` and `context` do not reach it.
+```ts title="src/flows/decide/blocks/reviewed-debate.ts"
+import { debate } from "@flow-state-dev/patterns/debate";
+import { securityReviewer } from "./security-reviewer";
+import { transcript } from "./transcript";
+
+export const reviewedDebate = debate({
+  name: "reviewed-debate",
+  transcript,
+  debaters: [
+    { name: "advocate", stance: "ship now" },
+    { name: "skeptic", stance: "do not ship now", block: securityReviewer },
+  ],
+});
+```
+
+The block returns a string or `{ text }`. It brings its own prompt, tools and resources, so pattern-level `instructions`, `uses`, `tools` and `context` do not reach it.
 
 You can also replace the `judge` with a block that takes `{ question }`, reads the transcript and returns `{ verdict, winner, reasoning }`. A judge always runs. To run without a moderator, leave `moderator` out; `moderator: false` is rejected. The Patterns reference has the override contracts.
 
