@@ -34,7 +34,7 @@ import {
 } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
 import { CODER_FLOW } from "../coder-flow-name";
-import { landedOf } from "../landed-work";
+import { landedOf, landedWorkSchema } from "../landed-work";
 import { pullRequestWait, type PullRequestWaitInput } from "../pull-request-wait";
 
 /** The conversation board's ledger id and its `updateTask` action, where a task's own questions are answered. */
@@ -50,12 +50,7 @@ const codingTaskSchema = listedTaskSchema.extend({
   /** How a coding run's review ended: `accepted`, `deadline` (nobody answered); `null` when none was asked or it isn't done. */
   review: z.enum(["accepted", "deadline"]).nullable(),
   /** Where an accepted run's work went, once it landed. */
-  landed: z
-    .union([
-      z.object({ kind: z.literal("pull-request"), url: z.string(), number: z.number(), branch: z.string(), base: z.string() }),
-      z.object({ kind: z.literal("merge"), branch: z.string(), commit: z.string(), checkout: z.string(), from: z.string() }),
-    ])
-    .nullable(),
+  landed: landedWorkSchema.nullable(),
   /** Why its last attempt failed; only on a failed task. */
   error: z.string().nullable(),
   /** The numbers of the pull requests it waits on to merge or close; their links are the recorded work view's. */
@@ -95,12 +90,9 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
         const full = new Map((ledger?.list() ?? []).map((task: Task) => [task.id, task]));
         // Where an answer goes: the conversation's flow, and each run session's, read by identity alone.
         const flows = new Map<string, string | null>([[input.sessionId, conversation.flowId ?? conversation.flowKind]]);
-        for (const task of full.values()) {
-          const run = task.run?.sessionId;
-          if (run === undefined || flows.has(run)) continue;
-          const read = await sessions.read(run);
-          flows.set(run, read === undefined ? null : (read.flowId ?? read.flowKind));
-        }
+        const runSessions = [...new Set([...full.values()].flatMap((task) => (task.run?.sessionId === undefined ? [] : [task.run.sessionId])))].filter((id) => !flows.has(id));
+        const reads = await Promise.all(runSessions.map((id) => sessions.read(id)));
+        runSessions.forEach((id, at) => flows.set(id, reads[at] === undefined ? null : (reads[at]!.flowId ?? reads[at]!.flowKind)));
         const asks = new Map(
           inboxItems({
             rows: [...full.values()].map((task) => ({
@@ -119,8 +111,10 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
           }).flatMap((item) => (item.task === null ? [] : [[item.task.taskId, [...item.holds]] as const])),
         );
         const roster = await readRosterEntries(ctx, installation);
-        const harnessOf = (task: Task): string | null => {
-          const reported = (task as { spend?: { harness?: unknown } | null }).spend?.harness;
+        // The harness its runs reported, as the list folds the stored spend into the entry's view of it;
+        // only a task no run reported on takes its worker's setting today.
+        const harnessOf = (entry: (typeof listed)[number], task: Task): string | null => {
+          const reported = entry.spend?.harness;
           if (typeof reported === "string") return reported;
           const worker = roster.find((entry) => entry.id === task.assignee && !entry.standard) ?? roster.find((entry) => entry.id === task.assignee);
           if (worker === undefined || worker.flow !== CODER_FLOW) return null;
@@ -129,7 +123,7 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
         };
         return listed.map((entry) => {
           const task = full.get(entry.id);
-          const harness = task === undefined ? null : harnessOf(task);
+          const harness = task === undefined ? null : harnessOf(entry, task);
           const output = (task?.output ?? {}) as Record<string, unknown>;
           const review = harness !== null && entry.status === "completed" && (output.review === "accepted" || output.review === "deadline") ? output.review : null;
           const wait = task === undefined ? null : pullRequestWait({ status: task.status, holds: task.holds as unknown as PullRequestWaitInput["holds"], steers: task.steers ?? [] });

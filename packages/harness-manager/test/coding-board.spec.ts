@@ -16,6 +16,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { planKeySegment } from "@flow-state-dev/core/harness";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import type { Harness } from "../src/harness";
@@ -84,7 +86,7 @@ describe("the recorded work view", () => {
     await stores.resourceState.set("session", session, "observed-pull-requests/b", opened("req_2", 9) as never, "any");
     const answer = await post(["coder", session, "views", "recordedWork"], { userId: "alice", input: { requestId: "req_1" } });
     expect(answer.status, JSON.stringify(answer.body)).toBe(200);
-    expect(answer.body.output).toEqual({ plan: null, pullRequests: [{ number: 7, url: "https://example.test/pr/7", title: "PR 7" }] });
+    expect(answer.body.output).toEqual({ plan: null, pullRequests: { rows: [{ number: 7, url: "https://example.test/pr/7", title: "PR 7" }], truncated: false } });
   });
 
   it("answers a run's pull requests in a session whose earlier runs opened more than the cap", async () => {
@@ -99,7 +101,27 @@ describe("the recorded work view", () => {
     await stores.resourceState.set("session", session, "observed-pull-requests/z", opened("req_new", 999) as never, "any");
     const answer = await post(["coder", session, "views", "recordedWork"], { userId: "alice", input: { requestId: "req_new" } });
     expect(answer.status, JSON.stringify(answer.body)).toBe(200);
-    expect(answer.body.output.pullRequests).toEqual([{ number: 999, url: "https://example.test/pr/999", title: "PR 999" }]);
+    expect(answer.body.output.pullRequests).toEqual({ rows: [{ number: 999, url: "https://example.test/pr/999", title: "PR 999" }], truncated: false });
+  });
+});
+
+describe("the recorded work view, past its cap", () => {
+  it("says a plan and a run's pull requests were cut at 200, so a screen never shows a partial answer as whole", async () => {
+    const { post, stores } = await boot();
+    const created = await post(["coder", "sessions"], { userId: "alice", state: { workerId: "core.codex" } });
+    const session = created.body.session.id as string;
+    const segment = planKeySegment("req_big");
+    for (let n = 0; n < 201; n++) {
+      const at = String(n).padStart(3, "0");
+      await stores.resourceState.set("session", session, `observed-plan/${segment}/inv/${at}`, { title: `Step ${at}`, status: "pending" } as never, "any");
+      await stores.resourceState.set("session", session, `observed-pull-requests/p${at}`, { url: `https://example.test/pr/${n}`, number: n, title: null, requestId: "req_big", firstSeenAt: n, host: null, repository: null, state: null, branch: null, source: "tool" } as never, "any");
+    }
+    const answer = await post(["coder", session, "views", "recordedWork"], { userId: "alice", input: { requestId: "req_big" } });
+    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+    expect(answer.body.output.plan.rows).toHaveLength(200);
+    expect(answer.body.output.plan.truncated).toBe(true);
+    expect(answer.body.output.pullRequests.rows).toHaveLength(200);
+    expect(answer.body.output.pullRequests.truncated).toBe(true);
   });
 });
 
@@ -126,5 +148,18 @@ describe("the coding board view", () => {
     const bobs = await board("bob", conversation);
     expect(bobs.output).toEqual([]);
     expect(bobs.hears.map((hearing) => hearing.topic)).not.toContainEqual(expect.objectContaining({ id: conversation }));
+
+    // A past run that reported another harness shows that harness, and its review, whatever the
+    // worker's setting is now and whether the worker is still on the roster.
+    const userKey = `alice:~org:${DEFAULT_ORG_ID}`;
+    const stored = await stores.resourceState.getByPrefix("user", userKey, "tasks/");
+    const [key, row] = Object.entries(stored).find(([, value]) => (value.state as { id?: string }).id === task.id)!;
+    const ranOn = (harness: string) => ({ requests: [{ requestId: "req_past", settled: [], live: null, harness, harnessModel: null, model: null, writer: "w1", admittedAt: 1, recovered: null }] });
+    await stores.resourceState.set("user", userKey, key, { ...(row.state as object), status: "completed", output: { review: "accepted" }, spend: ranOn("claude") } as never, "any");
+    const [past] = (await board("alice", conversation)).output;
+    expect(past).toMatchObject({ harness: "claude", review: "accepted" });
+    await stores.resourceState.set("user", userKey, key, { ...(row.state as object), assignee: "core.gone", status: "completed", output: { review: "deadline" }, spend: ranOn("claude") } as never, "any");
+    const [gone] = (await board("alice", conversation)).output;
+    expect(gone).toMatchObject({ harness: "claude", review: "deadline" });
   });
 });

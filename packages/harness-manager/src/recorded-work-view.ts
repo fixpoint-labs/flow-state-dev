@@ -28,10 +28,10 @@ import { openedPullRequestsOf, planStepsOf, type RecordedEntry } from "./recorde
 const RECORDED_MAX = 200;
 
 const recordedWorkSchema = z.object({
-  /** The run's plan steps; `null` while it records none. */
-  plan: z.array(z.object({ id: z.string(), title: z.string(), status: z.string().nullable() })).nullable(),
-  /** The pull requests the run opened, oldest first. */
-  pullRequests: z.array(z.object({ number: z.number().nullable(), url: z.string(), title: z.string().nullable() })),
+  /** The run's plan steps, at most 200, `truncated` when more were recorded; `null` while it records none. */
+  plan: z.object({ rows: z.array(z.object({ id: z.string(), title: z.string(), status: z.string().nullable() })), truncated: z.boolean() }).nullable(),
+  /** The pull requests the run opened, oldest first, at most 200, `truncated` when it opened more. */
+  pullRequests: z.object({ rows: z.array(z.object({ number: z.number().nullable(), url: z.string(), title: z.string().nullable() })), truncated: z.boolean() }),
 });
 
 type Stored = { path: string; state: unknown };
@@ -67,13 +67,12 @@ export function recordedWorkView() {
         );
         const planPrefix = target.resourcesPrefix.slice(OBSERVED_PLAN.length + 1);
         const [plan, opened] = await Promise.all([resources[OBSERVED_PLAN]!.list(planPrefix), resources[OBSERVED_PULL_REQUESTS]!.list()]);
+        // The session's records hold every run's; pick this run's, then cap, so
+        // earlier runs never use up this one's allowance (records key by PR, not run).
+        const runs = openedPullRequestsOf(entriesOf(OBSERVED_PULL_REQUESTS, opened), input.requestId);
         return {
-          plan: plan.length === 0 ? null : planStepsOf(entriesOf(OBSERVED_PLAN, plan).slice(0, RECORDED_MAX)),
-          // The session's records hold every run's; pick this run's, then cap, so
-          // earlier runs never use up this one's allowance (records key by PR, not run).
-          pullRequests: openedPullRequestsOf(entriesOf(OBSERVED_PULL_REQUESTS, opened), input.requestId)
-            .slice(0, RECORDED_MAX)
-            .map(({ number, url, title }) => ({ number, url, title })),
+          plan: plan.length === 0 ? null : { rows: planStepsOf(entriesOf(OBSERVED_PLAN, plan).slice(0, RECORDED_MAX)), truncated: plan.length > RECORDED_MAX },
+          pullRequests: { rows: runs.slice(0, RECORDED_MAX).map(({ number, url, title }) => ({ number, url, title })), truncated: runs.length > RECORDED_MAX },
         };
       },
     }),
