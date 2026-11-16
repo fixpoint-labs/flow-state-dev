@@ -49,6 +49,8 @@ const PATCHES: Record<string, ModulePatch[]> = {
     { module: SESSIONS, from: String.raw`(Promise<SessionList> \{\n\s*//[^\n]*\n\s*)inputs\.observe\?\.list\(\);`, to: "$1" },
     { module: SESSIONS, from: String.raw`for \(const entry of read\) inputs\.observe\?\.turns\(entry\.id\);`, to: "" }
   ],
+  // The turns view stops hearing a request's status: the reply never shows as it runs and ends.
+  "turns-deaf-to-request": [{ module: "packages/engine/src/context/view-reads.ts", from: String.raw`turns: \["request"\],`, to: "turns: []," }],
   "admit-by-input": [{ module: SESSIONS, from: String.raw`const own = principalSession\(record, identity\);`, to: "const own = record;" }],
   "user-only-admission": [
     {
@@ -225,6 +227,12 @@ await runGoal(async (failures, tell) => {
         { id: requestId, flowKind: session.flowKind, flowId: session.flowId, actionName: "respond", userId: "alice", orgId: session.orgId ?? undefined, sessionId: conversation, source: "http", status: "in_progress", startedAtMs: now, state: {}, version: 0, createdAt: now, updatedAt: now } as never,
         "absent" as never
       );
+      // The bound alone passes a view that never woke: the reply must also show, running, then done.
+      const shownRunning = await within(
+        async () => (last(sessions) ?? []).some((s) => s.id === conversation && s.running) && (last(turns) ?? []).some((t) => t.id === requestId && t.status === "in_progress"),
+        Date.now()
+      );
+      if (shownRunning === undefined) failures.push("b:quiet: the reply never showed as a running turn of a running session within 3 s");
       for (let chunk = 0; chunk < 40; chunk += 1) {
         await (stores.request as unknown as { persistItems(id: string, items: unknown[]): Promise<unknown> }).persistItems(requestId, [
           { id: `${requestId}_${chunk}`, type: "message", role: "assistant", status: "in_progress", requestId, itemIndex: chunk, ts: Date.now(), content: [{ type: "output_text", text: `chunk ${chunk} ` }] }
@@ -233,6 +241,12 @@ await runGoal(async (failures, tell) => {
       }
       const ran = (await stores.request.get(requestId))!;
       await stores.request.set(requestId, { ...ran, status: "completed", completedAtMs: Date.now() } as never, ran.version as never);
+      const shownDone = await within(
+        async () => (last(turns) ?? []).some((t) => t.id === requestId && t.status === "completed") && (last(sessions) ?? []).some((s) => s.id === conversation && !s.running),
+        Date.now()
+      );
+      if (shownDone === undefined) failures.push("b:quiet: the reply's turn never showed completed, and its session no longer running, within 3 s");
+      else evidence.push(`b: the reply showed running ${shownRunning} ms after it started and completed ${shownDone} ms after it ended`);
       await quiet([alice.views]);
       const runs = { sessions: sessions.length - before.sessions, turns: turns.length - before.turns, board: board.length - before.board };
       const calls = alice.views.slice(callsBefore);
