@@ -21,6 +21,23 @@ import { runView } from "../src/execution/runView";
 import type { SessionRecord } from "../src/stores/types";
 
 const ORG = DEFAULT_ORG_ID;
+
+/** `store` with each write waiting out a macrotask first, as a networked store's round trip does. */
+function slowWrites<S extends object>(store: S): S {
+  const writes = new Set(["set", "patchField", "incField", "pushToArray", "deleteField"]);
+  return new Proxy(store, {
+    get(target, key) {
+      const value = Reflect.get(target, key, target) as unknown;
+      if (typeof value !== "function") return value;
+      const method = (value as (...args: unknown[]) => unknown).bind(target);
+      if (typeof key !== "string" || !writes.has(key)) return method;
+      return async (...args: unknown[]) => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        return method(...args);
+      };
+    }
+  });
+}
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** Two gates a turn waits on: before its one write, and after it. */
@@ -61,16 +78,17 @@ function app(turn: ReturnType<typeof gates>): FlowInstance {
           }
         })
       },
-      // Five increments and five pushes on exposed fields at once, each a
-      // whole-record write racing the others on one session.
-      tally: {
+      // A busy turn: increments and pushes on exposed fields at once, among
+      // many writes to an internal field, each moving the session's version.
+      busy: {
         block: handler({
-          name: "tally",
+          name: "busy",
           inputSchema: z.object({}),
           execute: async (_input, ctx) => {
             await Promise.all([
-              ...Array.from({ length: 5 }, () => ctx.session.incState({ count: 1 } as never)),
-              ...Array.from({ length: 5 }, (_, at) => ctx.session.pushState("tags" as never, `t${at}` as never))
+              ...Array.from({ length: 10 }, () => ctx.session.incState({ count: 1 } as never)),
+              ...Array.from({ length: 5 }, (_, at) => ctx.session.pushState("tags" as never, `t${at}` as never)),
+              ...Array.from({ length: 30 }, (_, at) => ctx.session.patchState({ notes: `n${at}` } as never))
             ]);
             return { ok: true };
           }
@@ -132,24 +150,26 @@ async function midTurnWrite(field: "project" | "notes", value: string) {
 describe("a view listing sessions hears an exposed field's delta mid-turn", () => {
   it("wakes when a turn changes an exposed field, and shows the new value before the turn ends", async () => {
     const { woke, during } = await midTurnWrite("project", "beta");
-    expect(woke, "the list heard the exposed field's write").not.toEqual([]);
+    expect(woke, "the list heard the exposed field's write, once").toHaveLength(1);
     expect((during.output as { sessions: Array<{ state: unknown }> }).sessions[0]!.state).toEqual({ workerId: "otto", project: "beta" });
   });
 
-  it("lands every increment and push on an exposed field though they race each other", async () => {
-    // An exposed field is written whole, at a version, so concurrent writers
-    // conflict; each must re-read and apply again, never drop a write.
+  it("lands every increment and push on an exposed field during a busy turn, on a store whose writes take time", async () => {
+    // Why it matters: a write to an exposed field must stay atomic. Written
+    // whole, at a version, it would conflict with each of the turn's own
+    // internal writes, and on a store with real latency run out of retries.
     const flow = app(gates());
-    const stores = createInMemoryStores();
+    const memory = createInMemoryStores();
+    const stores = { ...memory, session: slowWrites(memory.session) };
     await stores.session.set(
       "conv",
       { id: "conv", orgId: ORG, flowKind: "desk", flowId: "desk", userId: "alice", state: { workerId: "otto", count: 0, tags: [] }, version: 0, createdAt: 1, updatedAt: 1, journal: [], lineageId: "lin_conv" } as SessionRecord,
       "any"
     );
-    const result = await runAction({ orgId: ORG, flow, actionName: "tally" as never, input: {} as never, userId: "alice", sessionId: "conv", stores, runtimeConfig: {} });
-    expect(result.error).toBeUndefined();
+    const result = await runAction({ orgId: ORG, flow, actionName: "busy" as never, input: {} as never, userId: "alice", sessionId: "conv", stores, runtimeConfig: {} });
+    expect(result.error?.message).toBeUndefined();
     const stored = (await stores.session.get("conv"))!.state as { count: number; tags: string[] };
-    expect(stored.count).toBe(5);
+    expect(stored.count).toBe(10);
     expect([...stored.tags].sort()).toEqual(["t0", "t1", "t2", "t3", "t4"]);
   });
 
