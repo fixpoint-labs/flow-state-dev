@@ -9,7 +9,8 @@
  */
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LabAdapter, LabTask, TaskWork } from "../src/adapter";
+import type { LabTask } from "../src/lab";
+import { stubServer } from "./stub-server";
 import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import { ThreadCard } from "../src/components/ThreadCard";
 import { ThreadView } from "../src/components/ThreadView";
@@ -30,22 +31,16 @@ const WAITING: LabTask = {
   pullRequests: [{ number: 7, url: URL_7, title: "Rename the session log" }],
 };
 
-const adapter = {
-  watchTaskWork: (_: string, __: string, onChange: (work: TaskWork) => void) => {
-    onChange({ entries: [] });
-    return () => {};
-  },
-  taskActions: () => ({}),
-  resolve: async () => {},
-} as unknown as LabAdapter;
 
 function openView(task: LabTask) {
   render(
-    <SessionOverlayProvider>
-      <SessionOverlayArea>
-        <ThreadView adapter={adapter} sessionId="s-1" task={task} pinned={false} onClose={() => {}} />
-      </SessionOverlayArea>
-    </SessionOverlayProvider>,
+    stubServer().wrap(
+      <SessionOverlayProvider>
+        <SessionOverlayArea>
+          <ThreadView sessionId="s-1" task={task} pinned={false} onClose={() => {}} />
+        </SessionOverlayArea>
+      </SessionOverlayProvider>,
+    ),
   );
   return screen.getByRole("dialog", { name: `Task: ${task.title}` });
 }
@@ -58,7 +53,7 @@ describe("a task waiting on its pull request", () => {
   });
 
   it("shows PR open · #7 on its card, the number a link to the pull request", () => {
-    render(<ThreadCard adapter={adapter} sessionId="s-1" task={WAITING} onOpen={() => {}} />);
+    render(stubServer().wrap(<ThreadCard sessionId="s-1" task={WAITING} onOpen={() => {}} />));
     const card = screen.getByRole("region", { name: `Task: ${WAITING.title}` });
     expect(within(card).getByTestId("pull-request-wait").textContent).toBe("PR open · #7");
     expect(within(card).getByRole("link", { name: "#7" }).getAttribute("href")).toBe(URL_7);

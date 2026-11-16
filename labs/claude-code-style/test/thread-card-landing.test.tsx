@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
 /**
- * A thread card's accept, on a stub adapter that hands the card one review. The review's `lands` decide
+ * A thread card's accept, on a stand-in server whose run session holds one review stop. The review's `lands` decide
  * what the accept offers; the card never offers a way its review doesn't list, never reads a failed
  * landing as accepted, and sends the way you chose.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LabAdapter, LabTask, ReviewDetail } from "../src/adapter";
+import type { LabTask, ReviewDetail } from "../src/lab";
 import { ThreadCard } from "../src/components/ThreadCard";
+import { RUN, reviewStop, stubServer, underReview, verdictOf, type Posted } from "./stub-server";
 
 afterEach(cleanup);
 
@@ -22,35 +23,26 @@ const REVIEW: ReviewDetail = {
 
 const codingTask = (patch: Partial<LabTask> = {}): LabTask =>
   ({
-    id: "t-1",
-    title: "Add a CHANGELOG line",
-    goal: "Add a line",
-    status: "in_progress",
-    harness: "claude-code",
-    openHold: { kind: "review", prompt: "Accept the changes, or ask for changes in words." },
+    ...underReview({ id: "t-1", title: "Add a CHANGELOG line", goal: "Add a line", status: "in_progress", harness: "claude-code" }),
     ...patch,
   }) as LabTask;
 
 /**
- * An adapter whose only read is the run's review, and whose accept is `resolve`. `emit` sends the
- * work again, as the run's stream does when its review stop changes.
+ * A run session holding `review` as its review stop (none: no stop yet), and the review answers
+ * the accept sent, by the land each named. `answer` answers each POST. `emit` stores a new stop.
  */
-function stubAdapter(review: ReviewDetail | undefined, resolve = vi.fn(async (_s: string, _t: string, _land?: string) => {})) {
-  let send: ((work: unknown) => void) | undefined;
-  const adapter = {
-    watchTaskWork: (_sessionId: string, _taskId: string, onChange: (work: unknown) => void) => {
-      send = onChange;
-      onChange({ entries: [], ...(review === undefined ? {} : { review, reviewStop: "stop-1" }) });
-      return () => {};
-    },
-    resolve,
-  };
-  const emit = (next: ReviewDetail, reviewStop: string) => send?.({ entries: [], review: next, reviewStop });
-  return { adapter: adapter as unknown as LabAdapter, resolve, emit };
+function stubRun(review: ReviewDetail | undefined, answer?: (posted: Posted) => Promise<void> | void) {
+  const server = stubServer({ items: { [RUN.sessionId]: review === undefined ? [] : [reviewStop("stop-1", review)] }, ...(answer === undefined ? {} : { answer }) });
+  const accepted = () => server.posts.flatMap((posted) => {
+    const verdict = verdictOf(posted);
+    return verdict?.verdict === "accepted" ? [verdict.land] : [];
+  });
+  const emit = (next: ReviewDetail, stop: string) => server.push(RUN.sessionId, reviewStop(stop, next));
+  return { server, accepted, emit };
 }
 
-function renderCard(task: LabTask, adapter: LabAdapter, onOpen = vi.fn()) {
-  render(<ThreadCard adapter={adapter} sessionId="s-1" task={task} onOpen={onOpen} />);
+function renderCard(task: LabTask, run: ReturnType<typeof stubRun>, onOpen = vi.fn()) {
+  render(run.server.wrap(<ThreadCard sessionId="s-1" task={task} onOpen={onOpen} />));
   return { onOpen };
 }
 
@@ -58,43 +50,43 @@ const card = () => screen.getByRole("region", { name: "Task: Add a CHANGELOG lin
 
 describe("a thread card's accept", () => {
   it("offers only the landings its review lists, and sends the one chosen with the accept", async () => {
-    const { adapter, resolve } = stubAdapter(REVIEW);
-    renderCard(codingTask(), adapter);
+    const run = stubRun(REVIEW);
+    renderCard(codingTask(), run);
     await waitFor(() => expect(within(card()).getByRole("button", { name: "Open a PR" })).toBeTruthy());
     expect(within(card()).getByRole("button", { name: "Merge locally" })).toBeTruthy();
     expect(within(card()).queryByRole("button", { name: "Resolve" })).toBeNull();
     fireEvent.click(within(card()).getByRole("button", { name: "Merge locally" }));
-    await waitFor(() => expect(resolve).toHaveBeenCalledWith("s-1", "t-1", "merge"));
+    await waitFor(() => expect(run.accepted()).toEqual(["merge"]));
   });
 
   it("offers no way its review doesn't list: a review that lists one landing shows only that one", async () => {
-    const { adapter } = stubAdapter({ ...REVIEW, lands: ["pull-request"] });
-    renderCard(codingTask(), adapter);
+    renderCard(codingTask(), stubRun({ ...REVIEW, lands: ["pull-request"] }));
     await waitFor(() => expect(within(card()).getByRole("button", { name: "Open a PR" })).toBeTruthy());
     expect(within(card()).queryByRole("button", { name: "Merge locally" })).toBeNull();
   });
 
   it("is a plain Resolve when the review lists no landing, sending no land", async () => {
-    const { adapter, resolve } = stubAdapter({ ...REVIEW, lands: [] });
-    renderCard(codingTask(), adapter);
+    const run = stubRun({ ...REVIEW, lands: [] });
+    renderCard(codingTask(), run);
     const resolveButton = await waitFor(() => within(card()).getByRole("button", { name: "Resolve" }));
     fireEvent.click(resolveButton);
-    await waitFor(() => expect(resolve).toHaveBeenCalledWith("s-1", "t-1", undefined));
+    await waitFor(() => expect(run.accepted()).toEqual([undefined]));
   });
 
   it("offers no accept for a coding review until the review is read, so a plain accept can't go before its lands are known", async () => {
-    const { adapter } = stubAdapter(undefined);
-    renderCard(codingTask(), adapter);
+    renderCard(codingTask(), stubRun(undefined));
     expect((within(card()).getByRole("button", { name: "Resolve" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("shows why a landing failed, offers its retry, and never reads as accepted", async () => {
-    const { adapter } = stubAdapter({
-      ...REVIEW,
-      landFailed: { land: "pull-request", message: "gh: permission denied to push" },
-      landAttempts: [{ land: "pull-request", message: "gh: permission denied to push" }],
-    });
-    renderCard(codingTask(), adapter);
+    renderCard(
+      codingTask(),
+      stubRun({
+        ...REVIEW,
+        landFailed: { land: "pull-request", message: "gh: permission denied to push" },
+        landAttempts: [{ land: "pull-request", message: "gh: permission denied to push" }],
+      }),
+    );
     const alert = await waitFor(() => within(card()).getByRole("alert"));
     expect(alert.textContent).toBe("Opening the PR failed: gh: permission denied to push");
     expect(within(card()).getByRole("button", { name: "Retry: Open a PR" })).toBeTruthy();
@@ -103,21 +95,20 @@ describe("a thread card's accept", () => {
   });
 
   it("retries the same landing that failed, sending its land again", async () => {
-    const { adapter, resolve } = stubAdapter({
+    const run = stubRun({
       ...REVIEW,
       landFailed: { land: "merge", message: "checkout is dirty" },
       landAttempts: [{ land: "merge", message: "checkout is dirty" }],
     });
-    renderCard(codingTask(), adapter);
+    renderCard(codingTask(), run);
     fireEvent.click(await waitFor(() => within(card()).getByRole("button", { name: "Retry: Merge locally" })));
-    await waitFor(() => expect(resolve).toHaveBeenCalledWith("s-1", "t-1", "merge"));
+    await waitFor(() => expect(run.accepted()).toEqual(["merge"]));
   });
 
   it("reads as landing, not accepted, while the accept is on its way, and says why when it is refused", async () => {
     let refuse!: (error: Error) => void;
-    const resolve = vi.fn(() => new Promise<void>((_, reject) => (refuse = reject)));
-    const { adapter } = stubAdapter(REVIEW, resolve);
-    renderCard(codingTask(), adapter);
+    const run = stubRun(REVIEW, (posted) => (verdictOf(posted) === undefined ? undefined : new Promise<void>((_, reject) => (refuse = reject))));
+    renderCard(codingTask(), run);
     fireEvent.click(await waitFor(() => within(card()).getByRole("button", { name: "Open a PR" })));
     await waitFor(() => expect(within(card()).getAllByRole("button", { name: "Landing…" })).toHaveLength(2));
     expect(card().textContent).not.toMatch(/accepted/i);
@@ -127,35 +118,35 @@ describe("a thread card's accept", () => {
 
   it("a retry that fails with the same message is a new round, so its buttons come back", async () => {
     const failure = { land: "pull-request" as const, message: "no push remote" };
-    const { adapter, resolve, emit } = stubAdapter({ ...REVIEW, landFailed: failure, landAttempts: [failure] });
-    renderCard(codingTask(), adapter);
+    const run = stubRun({ ...REVIEW, landFailed: failure, landAttempts: [failure] });
+    renderCard(codingTask(), run);
     fireEvent.click(await waitFor(() => within(card()).getByRole("button", { name: "Retry: Open a PR" })));
-    await waitFor(() => expect(resolve).toHaveBeenCalledWith("s-1", "t-1", "pull-request"));
+    await waitFor(() => expect(run.accepted()).toEqual(["pull-request"]));
     // The answered stop stays the latest until the run stops for review again: the accept stays down.
     expect(within(card()).getAllByRole("button", { name: "Landing…" })).toHaveLength(2);
     // The run tried again, failed with the same words, and stopped for review under a new round.
-    await act(async () => emit({ ...REVIEW, landFailed: failure, landAttempts: [failure] }, "stop-2"));
+    await act(async () => run.emit({ ...REVIEW, landFailed: failure, landAttempts: [failure] }, "stop-2"));
     await waitFor(() => expect(within(card()).getByRole("button", { name: "Retry: Open a PR" })).toBeTruthy());
     expect(within(card()).queryByRole("button", { name: "Landing…" })).toBeNull();
   });
 
   it("keeps Request changes: it opens the task's view, where the words go", async () => {
-    const { adapter, resolve } = stubAdapter(REVIEW);
-    const { onOpen } = renderCard(codingTask(), adapter);
+    const run = stubRun(REVIEW);
+    const { onOpen } = renderCard(codingTask(), run);
     fireEvent.click(await waitFor(() => within(card()).getByRole("button", { name: "Request changes" })));
     expect(onOpen).toHaveBeenCalledWith("t-1");
-    expect(resolve).not.toHaveBeenCalled();
+    expect(run.server.posts).toEqual([]);
   });
 
   it("shows the pull request a landed task opened, as a link to it", async () => {
-    const { adapter } = stubAdapter(undefined);
     renderCard(
       codingTask({
         status: "completed",
         openHold: undefined,
+        asks: [],
         landed: { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: "t-1--code", base: "main" },
       }),
-      adapter,
+      stubRun(undefined),
     );
     const link = within(card()).getByRole("link", { name: "PR #7" });
     expect(link.getAttribute("href")).toBe("https://github.com/acme/relay/pull/7");
