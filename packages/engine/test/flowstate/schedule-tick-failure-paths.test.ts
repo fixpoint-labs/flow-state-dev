@@ -45,6 +45,26 @@ describe("the schedule tick, when one index never answers its claim", () => {
   });
 });
 
+describe("the schedule tick, when a claim answers after it stopped waiting", () => {
+  it("logs the entries that claim advanced, since none of them fires", async () => {
+    const errors: Array<{ message: string; context: Record<string, unknown> }> = [];
+    let answer: (entries: (typeof dueEntry)[]) => void = () => undefined;
+    const late: ScheduleDueSource = { claimDue: () => new Promise((resolve) => (answer = resolve)) };
+    await runScheduleTick({
+      flows: [flowWith("late", { index: late })],
+      resourceState: createInMemoryStores().resourceState,
+      dispatch: async () => 202,
+      now: Date.parse("2026-11-16T09:00:00.020Z"),
+      intervalMs: 40,
+      logger: { error: (message, context) => errors.push({ message, context }) }
+    }).catch(() => undefined);
+    answer([dueEntry]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const dropped = errors.find((entry) => entry.message.includes("not fired"));
+    expect(dropped?.context).toMatchObject({ flowKind: "late", scheduleIds: ["o/u/k"] });
+  });
+});
+
 describe("the schedule tick, when one fire never answers", () => {
   it("stops waiting for it after a beat, so the tick settles and the other fires are reported", async () => {
     const tick = runScheduleTick({

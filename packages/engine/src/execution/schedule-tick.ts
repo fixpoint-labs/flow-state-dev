@@ -113,7 +113,16 @@ export async function runScheduleTick(options: RunScheduleTickOptions): Promise<
   // not hold back every other schedule's fire (it counts as a failed claim).
   const claimWaitMs = (options.intervalMs ?? SCHEDULE_TICK_INTERVAL_MS) / 2;
   const claims = await Promise.allSettled(
-    indexes.map(({ flowKind, index }) => withinMs(index.claimDue(now, options.maxPerTick ?? 100), claimWaitMs, flowKind, "claim"))
+    indexes.map(({ flowKind, index }) =>
+      withinMs(index.claimDue(now, options.maxPerTick ?? 100), claimWaitMs, flowKind, "claim", (entries) => {
+        // Answered after the tick moved on: the store advanced these, and none of them fires.
+        if (entries.length === 0) return;
+        logRuntimeEvent(logger, "error", `[flow-state] schedules claimed too late and not fired: ${flowKind}`, {
+          flowKind,
+          scheduleIds: entries.map((entry) => formatScheduleId(entry.orgId ?? "", entry.userId, entry.key))
+        });
+      })
+    )
   );
   let claimError: unknown;
   claims.forEach((claim, i) => {
@@ -218,15 +227,32 @@ async function writeLastTick(resourceState: ResourceStateStore, at: number): Pro
   await resourceState.set("org", LAST_TICK_SCOPE_ID, LAST_TICK_KEY, { at }, "any");
 }
 
-/** Run `task` over `items`, at most `concurrency` at once. The task catches its own failures. */
-/** `promise`, or a rejection naming what was waited on once `ms` pass without an answer. */
-function withinMs<T>(promise: Promise<T>, ms: number, subject: string, what: "claim" | "fire"): Promise<T> {
+/**
+ * `promise`, or a rejection naming what was waited on once `ms` pass without an
+ * answer. `onLate` gets an answer that arrives after that.
+ */
+function withinMs<T>(
+  promise: Promise<T>,
+  ms: number,
+  subject: string,
+  what: "claim" | "fire",
+  onLate?: (value: T) => void
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`schedule tick: ${what} for "${subject}" did not answer within ${ms} ms`)), ms);
+    timer = setTimeout(() => {
+      timedOut = true;
+      reject(new Error(`schedule tick: ${what} for "${subject}" did not answer within ${ms} ms`));
+    }, ms);
   });
+  if (onLate !== undefined) {
+    promise.then((value) => (timedOut ? onLate(value) : undefined), () => undefined);
+  }
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
+
+/** Run `task` over `items`, at most `concurrency` at once. The task catches its own failures. */
 
 async function runWithConcurrency<T>(items: readonly T[], concurrency: number, task: (item: T) => Promise<void>): Promise<void> {
   let cursor = 0;
