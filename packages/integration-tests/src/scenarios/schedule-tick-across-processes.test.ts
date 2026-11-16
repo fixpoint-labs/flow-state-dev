@@ -31,20 +31,20 @@ const SECRET = "tick-secret";
 const MINUTE = 60_000;
 const DYNAMIC_ID = formatScheduleId("acme", "alice", "poll");
 
-/** An index holding one row, advanced past `now` as a real index's claim advances it. */
-function oneRowIndex(cron: string, firstDue: number) {
-  const row: ScheduleDueEntry = { userId: "alice", orgId: "acme", key: "poll", cron, nextFireAt: firstDue };
+/** An index holding one entry, advanced past `now` as a real index's claim advances it. */
+function oneEntryIndex(cron: string, firstDue: number) {
+  const entry: ScheduleDueEntry = { userId: "alice", orgId: "acme", key: "poll", cron, nextFireAt: firstDue };
   const claims = { count: 0 };
   return {
     claims,
     claimDue: async (now: number) => {
       claims.count += 1;
-      if (row.nextFireAt > now) return [];
-      const due = { ...row };
+      if (entry.nextFireAt > now) return [];
+      const due = { ...entry };
       // The next scheduled minute after `now`.
       let next = Math.floor(now / MINUTE) * MINUTE + MINUTE;
       while (latestScheduledTime(cron, "UTC", next) !== next) next += MINUTE;
-      row.nextFireAt = next;
+      entry.nextFireAt = next;
       return [due];
     }
   };
@@ -102,7 +102,7 @@ describe("the schedule tick, against the real endpoint", () => {
     vi.setSystemTime(Date.parse("2026-11-16T09:00:30Z"));
     const runs: string[] = [];
     let ticker: ScheduleTicker | undefined;
-    const index = oneRowIndex("*/5 * * * *", Date.parse("2026-11-16T09:00:00Z"));
+    const index = oneEntryIndex("*/5 * * * *", Date.parse("2026-11-16T09:00:00Z"));
     const a = app(join(dir, "d3.sqlite"), scheduledFlow("*/5 * * * *", index, runs), {
       start: (t) => ((ticker = t), { stop: async () => undefined })
     });
@@ -135,10 +135,10 @@ describe("the local cron across processes on one SQLite file", () => {
     __resetDeprecationWarningsForTests();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const file = join(dir, "shared.sqlite");
-    // Each process counts its own claims; a row is never due, so nothing runs.
+    // Each process counts its own claims; the entry is never due, so nothing runs.
     const never = Date.parse("2099-01-01T00:00:00Z");
-    const one = oneRowIndex("0 0 1 1 *", never);
-    const two = oneRowIndex("0 0 1 1 *", never);
+    const one = oneEntryIndex("0 0 1 1 *", never);
+    const two = oneEntryIndex("0 0 1 1 *", never);
     const runs: string[] = [];
     const a = app(file, scheduledFlow("0 0 1 1 *", one, runs));
     const b = app(file, scheduledFlow("0 0 1 1 *", two, runs));
