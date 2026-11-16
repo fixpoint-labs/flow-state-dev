@@ -119,3 +119,7 @@ export { buildLoadCatalogContext } from "./skills/load-tool";
 
 // The frontmatter dialect `SKILL.md` and workforce's `WORKER.md` share.
 export { splitFrontmatter, parseFrontmatterYaml } from "./shared/frontmatter";
+// FIX-2725 D2: the board's own list code, for a view another package serves
+// over a board it reads (the coding board).
+export { taskListEntriesFor } from "./skills/task-tools-capability";
+export { listedTaskSchema } from "./skills/task-listing";

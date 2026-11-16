@@ -64,6 +64,7 @@ import {
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
   CODER_FLOW,
+  landedOf,
   harnessReadinessViewRef,
   pullRequestWait,
   readSessionPullRequests,
@@ -467,21 +468,8 @@ export function acceptOf(land?: ReviewLand): ReviewAnswer {
   return land === undefined ? { verdict: "accepted" } : { verdict: "accepted", land };
 }
 
-/**
- * Where an accepted run's work went, from its output's `landed`, or nothing when it names none
- * readable. Exported for its tests.
- */
-export function landedOf(value: unknown): LandedWork | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  const v = value as Record<string, unknown>;
-  if (v.kind === "pull-request" && typeof v.url === "string" && typeof v.number === "number" && typeof v.branch === "string" && typeof v.base === "string") {
-    return { kind: "pull-request", url: v.url, number: v.number, branch: v.branch, base: v.base };
-  }
-  if (v.kind === "merge" && typeof v.branch === "string" && typeof v.commit === "string" && typeof v.checkout === "string" && typeof v.from === "string") {
-    return { kind: "merge", branch: v.branch, commit: v.commit, checkout: v.checkout, from: v.from };
-  }
-  return undefined;
-}
+// FIX-2725: where an accepted run's work went is read by harness-manager's one reader. Re-exported for its tests.
+export { landedOf };
 
 const textOf = (item: Item) => (item.content ?? []).map((part) => part.text ?? "").join("");
 
