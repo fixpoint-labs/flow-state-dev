@@ -37,7 +37,7 @@ export const RUN = { sessionId: "run-1", requestId: "q1" } as const;
 export const reviewStop = (id: string, review: unknown) => ({ id, type: "suspension", kind: "review", status: "pending", requestId: RUN.requestId, itemIndex: 0, ts: 1, data: review });
 
 /** The review hold a coding task's row carries, answered at the run's stop `stop`. */
-export const reviewHold = (stop = "stop-1"): InboxHold =>
+const reviewHold = (stop = "stop-1"): InboxHold =>
   ({
     id: stop,
     source: { kind: "suspension", flowId: "coder", sessionId: RUN.sessionId, requestId: RUN.requestId, suspensionId: stop },

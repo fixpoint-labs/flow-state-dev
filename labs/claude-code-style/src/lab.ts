@@ -22,7 +22,6 @@ import { useView } from "@flow-state-dev/react";
 import { createInboxClient, taskView, type BoardActions, type InboxAnswer, type InboxHold, type TaskView } from "@flow-state-dev/orchestration/inbox";
 import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
-  CODER_FLOW,
   codingBoardViewRef,
   harnessReadinessViewRef,
   recordedWorkViewRef,
@@ -716,4 +715,3 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
   };
 }
 
-export { CODER_FLOW };

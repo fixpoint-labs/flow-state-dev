@@ -1,20 +1,4 @@
 import { useEffect, useState } from "react";
-/** Stops a watch. */
-type Unsubscribe = () => void;
-
-/**
- * The latest value a `watch*` verb reports, re-subscribing when `deps` change.
- * `undefined` until the first report.
- */
-export function useWatch<T>(subscribe: (onChange: (value: T) => void) => Unsubscribe, deps: readonly unknown[]): T | undefined {
-  const [value, setValue] = useState<T>();
-  useEffect(() => {
-    setValue(undefined);
-    return subscribe(setValue);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-  return value;
-}
 
 /** The current time, in ms, re-read every `everyMs` while `active`. */
 export function useNow(active: boolean, everyMs = 1000): number {

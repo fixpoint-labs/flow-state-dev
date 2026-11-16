@@ -24,10 +24,10 @@ import { LabProvider, labCalls, type LabCalls, type LabProject } from "../src/la
 import type { ModeId } from "../src/modes";
 
 export { waitFor } from "../../test-support/contract";
-export type { Script, ScriptedCall } from "../../test-support/contract";
+export type { Script } from "../../test-support/contract";
 
 /** How often a screen's reads read in these tests, in ms. */
-export const TEST_POLL_MS = 150;
+const TEST_POLL_MS = 150;
 
 /** A repository the lab may cut from: committed, ignoring `.fsdev/`. */
 export function repository(dir: string): string {
