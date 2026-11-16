@@ -44,9 +44,10 @@ export interface DispatchEnvelope {
   /**
    * Pre-resolved action core for an event dispatch with no static coordinate
    * (the dynamic schedule). NOT serializable — a block cannot cross a queue
-   * boundary — so it is honoured only by the in-process runner; external
-   * runners (BullMQ) drop it, which is consistent with dynamic schedules
-   * being non-recoverable. See `InboundRequestEnvelope.resolvedActionCore`.
+   * boundary — so the host runs a dispatch carrying it on the in-process
+   * runner even when an external runner (BullMQ) is installed; an external
+   * runner is never handed one. Consistent with dynamic schedules being
+   * non-recoverable. See `InboundRequestEnvelope.resolvedActionCore`.
    */
   resolvedActionCore?: ActionCore;
   /**

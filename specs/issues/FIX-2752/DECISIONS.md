@@ -124,6 +124,16 @@ day). That wants replay with a cap, which is a schedule option later, not the de
   crash hands over within three minutes. An acquire that throws (SQLite's `SQLITE_BUSY` under
   contention) counts as not holding: idle this minute. The
   concurrency lease backend is not used: it orders runs on a key, it doesn't elect.
+- **Amendment, 2026-11-16 (post-merge, during the build):** "with a job queue, the tick's
+  dispatch is enqueued through the queue's runner in every mode" holds for **static** fires only.
+  A **dynamic** fire runs in the process that ticked, even when a job queue is configured. Why:
+  its action core is a block the resolver makes at dispatch time, which a queue job can't carry;
+  an external runner dropped it, so the fire was claimed and never ran (the goal's
+  `queue:fires-once` showed every dynamic time fire 0 times). The rule sits at the inbound host,
+  not the scheduler: any dispatch carrying a resolved core runs in-process, as
+  `transports/runner.ts` already documented. Cost: a dynamic fire gets no queue retries, and a
+  ticking process that crashes mid-run loses it, as dynamic schedules were already
+  non-recoverable.
 
 ### The interface and the adapters
 

@@ -286,7 +286,9 @@ scheduler only calls `ScheduleTicker.tick`:
   warns at start: their lease can't keep a second server from ticking. The
   tick dispatches through the app's own router, bearing `CRON_SECRET` when
   set; a `process-only` job-queue process gives that router the queue's
-  runner, so a fire is enqueued like any action.
+  runner, so a static fire is enqueued like any action. A dynamic fire runs in
+  the ticking process whatever runner is installed: its carried core can't ride
+  a job (`InboundRequestEnvelope.resolvedActionCore`).
 - **`vercelScheduler()`** (`@flow-state-dev/vercel`): no process stays up, so
   one Vercel Cron entry calls its `route`. The route checks the bearer
   secret (constant-time; an empty secret refuses all), ticks with the
