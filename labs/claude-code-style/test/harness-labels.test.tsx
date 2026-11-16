@@ -44,3 +44,14 @@ describe("a plan task's harness name", () => {
     expect(harnessLabelOf(planTask, LABELS)).toBe("Claude Code (plan)");
   });
 });
+
+describe("a coding run nobody reviewed by its deadline", () => {
+  it("is marked Not reviewed on its card, so it never reads as approved, and an accepted one is not", () => {
+    const done: LabTask = { ...planTask, harness: "claude-code", assignee: "desk.thread-coder" };
+    render(stubServer().wrap(<ThreadCard sessionId="s-1" task={{ ...done, review: "deadline" }} onOpen={() => {}} />));
+    expect(screen.getByText("Not reviewed")).toBeTruthy();
+    cleanup();
+    render(stubServer().wrap(<ThreadCard sessionId="s-1" task={{ ...done, review: "accepted" }} onOpen={() => {}} />));
+    expect(screen.queryByText("Not reviewed")).toBeNull();
+  });
+});

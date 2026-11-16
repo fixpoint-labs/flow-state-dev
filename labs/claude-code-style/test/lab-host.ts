@@ -184,7 +184,8 @@ export interface VendorControl {
  * and "Vendor C · summary", a coding thread on the scripted coder, waits for
  * your review. A line that names billing makes it file two: "Weekly uptime
  * digest" keeps working, and "Export failed invoices" fails, "The export
- * timed out after 30s.", every attempt until `fixExports`. Any other line is noted.
+ * timed out after 30s.", every attempt until `fixExports`. A line that names
+ * the CHANGELOG makes it file that line as one coding thread. Any other line is noted.
  */
 export function vendorScripts(): { scripts: Record<string, Script>; control: VendorControl } {
   let releaseGlobex = () => {};
@@ -237,6 +238,11 @@ export function vendorScripts(): { scripts: Record<string, Script>; control: Ven
         { assignee: "desk.thread", title: "Vendor B · regions", goal: "Find where Vendor B hosts. Ask the user which region matters." },
         { assignee: "desk.thread-coder", title: "Vendor C · summary", goal: "Add Vendor C's summary to the CHANGELOG." },
       ];
+      if (lastUserLine(said).includes("CHANGELOG")) {
+        if (step > 0) return { text: "I've started a Claude Code thread for it." };
+        const line = /"(?:content|text)":"([^"]*CHANGELOG[^"]*)"/.exec(lastUserLine(said))?.[1] ?? "Add a CHANGELOG line";
+        return { call: { name: "createTask", args: { assignee: "desk.thread-coder", title: line, goal: line } } };
+      }
       if (lastUserLine(said).includes("vendor") && step < threads.length) return { call: { name: "createTask", args: threads[step]! } };
       const billing = [
         { assignee: "desk.thread", title: "Weekly uptime digest", goal: "Write the weekly uptime digest." },
