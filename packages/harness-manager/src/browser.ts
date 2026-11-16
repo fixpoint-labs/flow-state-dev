@@ -23,6 +23,10 @@ export {
 } from "./recorded-work";
 export { CODER_FLOW } from "./coder-flow-name";
 export { harnessReadinessViewRef } from "./readiness-view-ref";
+export { codingBoardViewRef, recordedWorkViewRef } from "./coding-board-ref";
+export type { CodingBoardTask, CodingBoardView } from "./kit/coding-board";
+export type { RecordedWorkView } from "./recorded-work-view";
+export { landedOf, type LandedWork } from "./landed-work";
 export { harnessUsageViewRef, recheckHarnessUsage } from "./usage-view-ref";
 export { reviewDetail, type ReviewCheck, type ReviewDetail, type ReviewLand } from "./review-detail";
 export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type WorkPlaceViewer } from "./work-place";

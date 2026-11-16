@@ -6,3 +6,9 @@
 export * from "./routines/internal";
 export * from "./subscriptions/internal";
 export * from "./service-flows/internal";
+// FIX-2725 D2: what a view on another kit's flow reads a conversation's board
+// and the roster through: the user-scoped ledger at a conversation's
+// partition, and the worker collections.
+export { conversationLedgerAt, conversationLedgerResources } from "./conversation-board/ledger";
+export { filingSessionIdOf } from "./conversation-board/filing-session";
+export { readRosterEntries, rosterResources } from "./workers/roster-view";
