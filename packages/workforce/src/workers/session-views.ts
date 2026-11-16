@@ -39,22 +39,34 @@ const LISTED_PAGES_MAX = 10;
 /**
  * The worker's sessions newest first, read a page at a time until
  * {@link LISTED_MAX} of them are conversations (`workerConversations`' rule)
- * or none are left, at most {@link LISTED_PAGES_MAX} pages. The store can't
- * filter on a field being absent, and a project's, a task's, a delegate's and
- * a lead's sessions carry the worker's id too, so newer ones of those must
- * not crowd out a conversation.
+ * and the default `defaultId` is among them, or none are left, at most
+ * {@link LISTED_PAGES_MAX} pages. The store can't filter on a field being
+ * absent, and a project's, a task's, a delegate's and a lead's sessions carry
+ * the worker's id too, so newer ones of those must not crowd out a
+ * conversation, nor newer conversations the default. Each session is answered
+ * once: a turn that starts between two pages moves its session to the front,
+ * and shifts a session already read onto the next page.
+ *
+ * Exported for its test; not on the package root.
  */
-async function conversationCandidates(
+export async function conversationCandidates(
   sessions: RequestSessions,
   flow: string,
-  criteria: { worker: string }
+  criteria: { worker: string },
+  defaultId: string
 ): Promise<ListedSession[]> {
   const read: ListedSession[] = [];
+  const seen = new Set<string>();
   let eligible = 0;
-  for (let page = 0; page < LISTED_PAGES_MAX && eligible < LISTED_MAX; page += 1) {
+  let foundDefault = false;
+  for (let page = 0; page < LISTED_PAGES_MAX && (eligible < LISTED_MAX || !foundDefault); page += 1) {
     const listed = await sessions.list({ flowKind: flow, fields: criteriaState(criteria), limit: LISTED_MAX, offset: page * LISTED_MAX });
-    read.push(...listed.sessions);
-    eligible += workerConversations(listed.sessions, "").length;
+    const fresh = listed.sessions.filter((session) => !seen.has(session.id));
+    for (const session of fresh) seen.add(session.id);
+    read.push(...fresh);
+    const conversations = workerConversations(fresh, defaultId);
+    eligible += conversations.length;
+    if (conversations.some((conversation) => conversation.isDefault)) foundDefault = true;
     if (!listed.more) break;
   }
   return read;
@@ -174,10 +186,9 @@ export function defineWorkerSessionsView(installation: WorkerInstallation): Work
         // The user and organization the run was admitted as: the default is derived under them.
         const { userId, orgId } = ctx.request.identity;
         if (userId === undefined || orgId === undefined) throw new Error("The worker sessions view needs the user and organization it runs as.");
-        const [defaultId, listed] = await Promise.all([
-          deriveWorkerSessionId({ userId, orgId, flow: found.flow, criteria }),
-          conversationCandidates(sessions, found.flow, criteria)
-        ]);
+        const defaultId = await deriveWorkerSessionId({ userId, orgId, flow: found.flow, criteria });
+        const listed = await conversationCandidates(sessions, found.flow, criteria, defaultId);
+        // The default sorts first, so it keeps its place among the 100.
         const conversations = workerConversations(listed, defaultId).slice(0, LISTED_MAX);
         const ids = conversations.map(({ session }) => session.id);
         const running: SessionTurn[] = ids.length === 0 ? [] : await sessions.turns(ids, { status: ["in_progress"], actions: TURN_ACTIONS });

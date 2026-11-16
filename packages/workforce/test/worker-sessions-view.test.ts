@@ -130,6 +130,23 @@ describe("a user's conversations with one worker", () => {
     }
   });
 
+  it("default-behind-100 · lists the default first and marked though 100 newer conversations fill a page", async () => {
+    const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: [fallback] }) });
+    try {
+      const main = await h.client("alice").ensureWorkerSession({ worker: "otto" });
+      for (let at = 0; at < 100; at += 1) {
+        await sleep(1);
+        await open(h, "alice");
+      }
+      const listed = await h.workerSessions("alice", "otto");
+      expect(listed[0] && [listed[0].id, listed[0].isDefault]).toEqual([main.id, true]);
+      expect(listed).toHaveLength(100);
+      expect(listed.filter((entry) => entry.isDefault)).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
   it("message-in-default · a message another worker addresses to the worker starts in the default, though the others were used since", async () => {
     const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: tellsOtto() }) });
     try {
