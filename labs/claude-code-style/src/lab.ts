@@ -601,9 +601,15 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
     const tasks = (await fsd.view(codingBoardViewRef(), { sessionId })).value;
     return tasks.find((task) => task.id === taskId)?.asks.find((hold) => hold.ask.kind === asks);
   };
+  /**
+   * Answer the review round the screen drew, and only while the board still holds it: a verdict on a
+   * round you never saw would land work nobody read, so a newer round is refused for the screen to draw.
+   */
   const answerReview = async (sessionId: string, task: LabTask, answer: InboxAnswer) => {
     const review = await holdOn(sessionId, task.id, "review");
     if (review === undefined) throw new Error(`The thread "${task.id}" isn't waiting on your review.`);
+    const drawn = task.asks?.find((hold) => hold.ask.kind === "review");
+    if (drawn?.id !== review.id) throw new Error(`The thread "${task.id}" has a newer review; look it over first.`);
     await inbox.answerOne(review, answer);
   };
   const pins = () => fsd.resource(labPins);

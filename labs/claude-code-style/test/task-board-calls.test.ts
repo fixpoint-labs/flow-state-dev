@@ -83,12 +83,21 @@ describe("the lab's task actions", () => {
     expect(lab.sent).toEqual([{ flow: "agent", action: "updateTask_tasks", input: { id: "t1", answers: "ask-1", message: "British." }, sessionId: "s1" }]);
   });
 
-  it("answers the review stop the board holds now, not the one the drawn row named", async () => {
-    // The drawn row names an answered round's stop; the run has stopped for review again since.
+  it("refuses a review verdict when the board has stopped for a newer round than the one drawn", async () => {
+    // The screen drew round 1's review; the run has since answered it and stopped for round 2.
+    // Accepting round 2 unseen would land work nobody read, so nothing is sent.
     const lab = fakeClient([{ ...RUNNING, asks: [reviewHold("stop-2")] }]);
     const drawn = { ...RUNNING, title: RUNNING.goal, status: "in_progress" as const, asks: [reviewHold("stop-1")] };
+    await expect(labCalls(lab.client).resolve("s1", drawn)).rejects.toThrow(`The thread "t1" has a newer review; look it over first.`);
+    await expect(labCalls(lab.client).requestChanges("s1", drawn, "Shorter, please.")).rejects.toThrow(/newer review/);
+    expect(lab.answered).toEqual([]);
+  });
+
+  it("answers the review round it drew while the board still holds it", async () => {
+    const lab = fakeClient([{ ...RUNNING, asks: [reviewHold("stop-1")] }]);
+    const drawn = { ...RUNNING, title: RUNNING.goal, status: "in_progress" as const, asks: [reviewHold("stop-1")] };
     await labCalls(lab.client).requestChanges("s1", drawn, "Shorter, please.");
-    expect(lab.answered.map((a) => a.body.suspensionId)).toEqual(["stop-2"]);
+    expect(lab.answered.map((a) => a.body.suspensionId)).toEqual(["stop-1"]);
   });
 
   it("refuses a review answer when the board holds no review, whatever the drawn row says", async () => {
