@@ -186,6 +186,23 @@ No POC. The lease behaviour the design rests on, same-holder renewal and one hol
 processes, is in every `LeaseStore` today (`memory/lease-store.ts`, `filesystem/lease-store.ts`'s
 exclusive create, the SQLite and Postgres upserts' `holder` guard) and in its conformance suite.
 
+## Notes from review
+
+Recorded for the implementer to weigh against the code; not folded into the design.
+
+- **Cursor (direction approve), SPEC.md `b:one-ticker`:** "tick record" is ambiguous next to the
+  D3 last-tick record. Name what the goal reads per minute (the lease holder, or a small claim
+  record the tick writes) so the check stays simple.
+- **Cursor, phasing:** a phased build (unify the tick, static schedules and the default cron
+  first; delete the BullMQ and Vercel paths second) could shrink the blast radius without
+  changing direction.
+- **Cursor, D3:** D3 changes dynamic dispatch timing (latest missed time, not today's oldest or
+  stale). Pin it in integration coverage, not only the goal; optionally ship it after the path
+  unification.
+- **Cursor:** keep `serve()`'s per-index `Set` dedupe when walking flows, so a shared index is not
+  claimed twice. On SQLite, the sweeper and the tick at `:00` can BUSY-skip a minute; a holder
+  renew fast path helps.
+
 ## How it got here
 
 - **Review fold (Codex)** — a fire claimed in a `process-only` job-queue process is enqueued through the job
