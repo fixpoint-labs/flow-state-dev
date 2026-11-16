@@ -342,6 +342,8 @@ class InternalFlowState<TSettings extends object>
   // FIX-2752.
   /** The built-in local cron, when `scheduler` is omitted; armed once a router or job processing starts. */
   readonly #localScheduler: LocalScheduler | undefined;
+  /** The stores the local cron arms on, once this process may tick: a flow registered later arms it too. */
+  #tickStores: StoreRegistry | undefined;
   /** What `dispose()` stops: the local cron, or an adapter's handle. */
   readonly #schedulerHandle: { stop(): Promise<void> } | undefined;
 
@@ -443,6 +445,7 @@ class InternalFlowState<TSettings extends object>
 
   register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void {
     this.#registry.register(flow, options);
+    if (this.#tickStores !== undefined) this.#armLocalScheduler(this.#tickStores);
   }
 
   unregister(id: string): boolean {
@@ -1396,10 +1399,12 @@ class InternalFlowState<TSettings extends object>
    * Start the local cron, when it is the scheduler and a registered flow
    * declares a schedule it fires. Called once a router is built or job
    * processing starts: a process that only resolves the runtime (`fsdev run`)
-   * never ticks.
+   * never ticks. Called again by `register()` once a router or processing is
+   * up, so a scheduled flow registered after start arms it.
    */
   #armLocalScheduler(stores: StoreRegistry): void {
     if (this.#localScheduler === undefined) return;
+    this.#tickStores = stores;
     if (!this.#registry.list().some(declaresTickedSchedules)) return;
     // D2: a lease that lives in one process (memory) or can race (filesystem)
     // cannot keep a second server from ticking too. Warned, not refused: it is

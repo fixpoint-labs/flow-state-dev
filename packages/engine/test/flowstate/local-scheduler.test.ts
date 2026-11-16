@@ -88,6 +88,18 @@ describe("the local cron", () => {
     expect(p.ticks.count).toBe(2);
   });
 
+  // `register()` after start is public: a scheduled flow registered then must still fire.
+  it("ticks for a scheduled flow registered after the router is built", async () => {
+    fakeClock();
+    const app = createFlowState({ flows: [], stores: sharedStore(), adapters: [scheduledStandIn] });
+    apps.push(app);
+    await app.ready();
+    const { flow, ticks } = countedFlow();
+    app.register(flow);
+    await vi.advanceTimersByTimeAsync(MINUTE);
+    expect(ticks.count).toBe(1);
+  });
+
   it("never ticks in a process that only resolves the runtime (fsdev run, chat, block)", async () => {
     fakeClock();
     const p = processOn(sharedStore());
