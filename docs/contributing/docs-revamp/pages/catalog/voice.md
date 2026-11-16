@@ -62,7 +62,7 @@ export const chat = defineFlow({
     tts: { voice: "alloy" },
   },
   actions: {
-    run: { block: reply },
+    run: reply,
   },
 })();
 ```

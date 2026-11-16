@@ -180,7 +180,7 @@ const wordCount = planMapReduce({
 const wordCountFlow = defineFlow({
   kind: "word-count",
   requireUser: true,
-  actions: { count: { block: wordCount } },
+  actions: { count: wordCount },
   session: { stateSchema: z.object({}) },
 });
 

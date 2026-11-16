@@ -40,6 +40,7 @@ Written by `docs-writer` (sonnet), 1389 words. Scenario: The C-23 app (acme-shop
 - After the loop (review): the two "no longer" lines the page check flagged were reworded ("can't find the one it was asked to continue", "doesn't have the conversation it was asked to resume"); the meaning is unchanged.
 - After the loop (docs site build): the status strings in the run table and the paragraph after it are code spans, so `<tool>` and `<reason>` no longer parse as tags; the transient one uses the code's `…`. Page sha256 46fa8cf4dfba: the page check exits 0 and the brand lint has 0 findings.
 - After the loop (security review): the security review was taken: the step example passes the kit's `env`, `settingSources` and `settings` and says what leaving them out does; the approvals paragraph says the kit pre-allows `Read`, `Write`, `Edit` and `Bash`, so an approval appears only for a tool it does not, and that approvals need durable execution. Page sha256 2cc93e497fd6: the page check exits 0, the brand lint has 0 findings, and the edited examples type-check.
+- After the loop (review): owner request: action entries that set only `block` are written as the bare block (`name: block`, or `{ name }` when the names match). Type-check in apps/kitchen-sink/zz-act, deleted afterwards: only the planted error, plus the partial examples' missing-import errors, identical before the edit. 1567 words. Page sha256 a3157692be9c.
 
 ## 5 · Fact check
 
@@ -49,6 +50,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 40a
 
 - Re-run after the review edit: the two status strings checked against the code, all true. A non-Bash tool call's transient status is `Using ${name}…` and a Bash call's is its description (`packages/claude-code/src/sdk/translate.ts:360-362`); a run ends with the kept status `Claude Code agent run completed in …` or `Claude Code agent run errored (…).` (`packages/claude-code/src/sdk/agent.ts:1633-1637`, `transient: false`).
 - Re-run after the review edit: the review edit checked against the code, all true. Without `env` the run gets `process.env` (`packages/claude-code/src/sdk/agent.ts:358-366`); `settingSources` is forwarded only when set (`agent.ts:1115-1118`); hooks run unless `settings.disableAllHooks` (`agent.ts:345-350`); the kit sets all three and pre-allows `Read`/`Write`/`Edit`/`Bash` (`sdk/kit.ts:44-57`); `CLAUDE_CODE_PASS` is exported (`sdk/index.ts:41`) and `harnessEnv` from `@flow-state-dev/core/harness` (`packages/core/src/harness/index.ts:140`); a pre-allowed call never reaches the approval and approvals need durability (`packages/harness-manager/src/manager.ts:669-671,2539-2544`).
+- Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749, `TActions[K] | TActions[K]["block"]`).
 
 ## 6 · Depth pass
 

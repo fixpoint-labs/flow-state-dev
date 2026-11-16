@@ -48,9 +48,9 @@ export default defineFlow({
   requireUser: true,
   resources: { notes: ticketNotes },
   actions: {
-    findNotes: { block: search.searchResources },
-    grepNotes: { block: search.grepResourceContent },
-    globNotes: { block: search.globResources },
+    findNotes: search.searchResources,
+    grepNotes: search.grepResourceContent,
+    globNotes: search.globResources,
   },
 })();
 ```

@@ -40,6 +40,7 @@ Skipped: K-43 is kept in the sitemap, and the page was already at `voice.md`.
 - After the loop (review): [pass 9] other flows and the flow's blocks: the paragraph after the flow example says `voice` sits on the flow definition only, the block has no voice code, the flow streams text and the server turns it into speech, and synthesis runs only for a flow with `voice.tts`, so another flow on the server, such as a billing flow, streams text only and needs no change. The sentence "A flow with no `voice` gets no audio" is folded into it. Page sha256 8348d744840f: the page check exits 0 and the brand lint has 0 findings.
 - After the loop (review): Greptile review on the PR. the hook-based `src/app/chat/voice-chat.tsx` example now opens with `"use client";`, so a Next.js App Router page can import it as shown (hooks run only in a client component). This matches the other revamp pages' client examples (catalog/ui/index.md, catalog/workforce/screens.md). No other line changed. Page sha256 e2b027ffef90.
 - After the loop (review): Codex P2: the `reply` generator had no `itemVisibility`, so it emitted no assistant message and the TTS hook, which reads content deltas of emitted messages, had no text to speak. `reply` now sets `itemVisibility: { client: true, history: true }`. Type-check in apps/kitchen-sink/zz-p2b, deleted afterwards: only the planted error. 1227 words. Page sha256 dd289c1f4e86.
+- After the loop (review): owner request: action entries that set only `block` are written as the bare block (`name: block`, or `{ name }` when the names match). Type-check in apps/kitchen-sink/zz-act, deleted afterwards: only the planted error, plus the partial examples' missing-import errors, identical before the edit. 1224 words. Page sha256 709fd4551a2e.
 
 ## 5 · Fact check
 
@@ -54,6 +55,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Re-run after the review edit: Synthesis is set up only when the flow's `voice.tts` is defined and the provider can speak (packages/engine/src/execution/runAction.ts:1895-1906); the TTS hook observes the response's events, so the flow's blocks are unchanged (packages/engine/src/execution/runAction.ts:1906).
 - Re-run after the review edit: no claim changed; the directive adds no behaviour beyond marking the file a client component.
 - Re-run after the review edit: no auto-emitted items without `itemVisibility` (packages/core/src/blocks/generator.ts:1271-1274); the TTS hook feeds `content.delta` and `content.done` events (packages/engine/src/voice/tts-emitter-hook.ts:2-8).
+- Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749, `TActions[K] | TActions[K]["block"]`).
 
 ## 6 · Depth pass
 

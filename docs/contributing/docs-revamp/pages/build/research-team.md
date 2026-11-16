@@ -148,7 +148,7 @@ const researchRun = sequencer({ name: "research-run", inputSchema: z.object({}) 
 export default defineFlow({
   kind: "research",
   requireUser: true,
-  actions: { run: { block: researchRun } },
+  actions: { run: researchRun },
 })();
 ```
 
@@ -238,7 +238,7 @@ const researchRun = sequencer({
 export default defineFlow({
   kind: "research",
   requireUser: true,
-  actions: { run: { block: researchRun } },
+  actions: { run: researchRun },
 })();
 ```
 

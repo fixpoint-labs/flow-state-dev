@@ -85,7 +85,7 @@ import { reply } from "./blocks/reply";
 
 export const supportFlow = defineFlow({
   kind: "support",
-  actions: { reply: { block: reply } },
+  actions: { reply },
 });
 ```
 

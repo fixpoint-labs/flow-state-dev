@@ -46,6 +46,7 @@ Skipped: C-21 is piloted in the sitemap, and the page was already at `tasks-and-
 - Closed after the loop: the three pass-9 misses (making the list survive; `initialTasks` on a second drain; user versus session scope).
 
 - After the loop: the figure caption is "A board is a list and a loop, the list on a resource", within the brand lint's 60 characters.
+- After the loop (review): owner request: action entries that set only `block` are written as the bare block (`name: block`, or `{ name }` when the names match). Type-check in apps/kitchen-sink/zz-act, deleted afterwards: only the planted error, plus the partial examples' missing-import errors, identical before the edit. 1524 words. Page sha256 d7c4245a0f97.
 
 ## 5 · Fact check
 
@@ -53,6 +54,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 - Task `status` is `pending`, then `in_progress`, then `completed` or `errored`, or `cancelled` when a task it depends on failed. This lists five statuses and gives one cause of cancellation. Untrue: There are six statuses. `held` is the sixth, and a pending task can move to it (pending -> held) and back. Cancellation also cascades from a dependency that was itself cancelled, not only one that failed (`endsDependents` covers both `errored` and `cancelled`). An `in_progress` task can also go back to `pending` on a retry. (packages/orchestration/src/tasks/schema/task-status.ts:16-19,78-80; packages/orchestration/src/tasks/collection/cascade.ts:57-60)
 - Reference row 1: Row 1: statuses are pending, in_progress, completed, errored, cancelled, with cancelled set when a task it depends on failed. Untrue: The statuses are pending, in_progress, held, completed, errored and cancelled. A task is cancelled (labelled `skipped`) when a task it depends on fails for good or is itself cancelled, and the cancel chains down to the end of the dependency line. Retrying a failed task under `maxAttempts` sends it from in_progress back to pending. (packages/orchestration/src/tasks/schema/task-status.ts:16-19,78-80; packages/orchestration/src/tasks/collection/cascade.ts:5-12,57-60) The row is recorded corrected.
+- Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749, `TActions[K] | TActions[K]["block"]`).
 
 ## 6 · Depth pass
 

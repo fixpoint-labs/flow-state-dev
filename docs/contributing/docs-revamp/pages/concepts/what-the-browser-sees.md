@@ -82,7 +82,7 @@ import { reply } from "./blocks/reply";
 
 export default defineFlow({
   kind: "support",
-  actions: { reply: { block: reply } },
+  actions: { reply },
   session: {
     stateSchema: z.object({
       ticketStatus: z.enum(["open", "waiting", "solved"]).default("open"),

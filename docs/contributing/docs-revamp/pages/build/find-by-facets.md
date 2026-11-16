@@ -105,9 +105,9 @@ export default defineFlow({
   requireUser: true,
   resources: tickets.resources,
   actions: {
-    write: { block: writeTicket },
-    search: { block: tickets.search },
-    reindex: { block: tickets.reindex },
+    write: writeTicket,
+    search: tickets.search,
+    reindex: tickets.reindex,
   },
 })();
 ```

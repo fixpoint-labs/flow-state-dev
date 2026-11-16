@@ -46,6 +46,7 @@ Skipped: B-38 is kept in the sitemap, and the page was already at `find-by-facet
 - After revise round 2, page sha256 b6ba97783013: exit 1. Failed: node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/build/find-by-facets.md: Result line: `FAIL docs/contributing/docs-revamp/pages/build/find-by-facets.md (recipe, 460 words)` with one banned word, `"still" ×1`, and exit 1. The word is on line 121: "If classification fails, the save still succeeds, but the ticket has no facets and search won't return it until you reindex." The check reported no budget, code-title or fence failures..
 - After revise round 3, page sha256 a69343307681: exit 0.
 - After the loop (review): find-by-facets.md:11 defines facets as stored answers; :31-32 code comment says the `EvaluatorQuestions` annotation drops the search's typed option keys, checked at run time; :96 says the blocks bring the collection and `tickets.resources` carries the evaluator's resources; :115 search returns the signed-in user's tickets, linked to concepts/state-and-scopes; :122 one evaluator call per body write during the write's action run, the garden-path sentence rewritten, a failed call leaves no facets, matches no search (not even `{}`), no retry; :133 reindex lists `reindexed` and `failed`. Facts file: retired word at :82 reworded, "After the loop (review)" section added. check-docs-page ok (recipe, 508 words). Page sha256 9d2773c60f6e.
+- After the loop (review): owner request: action entries that set only `block` are written as the bare block (`name: block`, or `{ name }` when the names match). Type-check in apps/kitchen-sink/zz-act, deleted afterwards: only the planted error, plus the partial examples' missing-import errors, identical before the edit. 862 words. Page sha256 ccc9f6976f4a.
 
 ## 5 · Fact check
 
@@ -54,6 +55,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 No untrue claim found.
 
 - Re-run after the review edit: re-checked the `EvaluatorQuestions` annotation (page code type-checked verbatim under kitchen-sink `strict` with a planted error: only the planted error; a probe shows `{ topic: "billing" }` is rejected by the search's input type, and the unannotated or `satisfies` form fails `AnyEvaluatorBlock`, fc:69), whether the flow needs `tickets.resources` (ran the page's flow through `testFlow` with and without it: both classify and search alike; it carries the evaluator's resources, fc:26-28, :178-182, enx:868-876), one model call for both questions, failure behaviour (write completes, `{}` and `{ topic }` return `[]`, reindex returns `failed: ["t1"]`; fc:18-19, :367-372, :573-606) and user scope (a second user's `search {}` returns `[]`). The step 1 comment was inaccurate and is corrected; the line 95 claim was incomplete and is corrected; no other untrue claim found.
+- Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749, `TActions[K] | TActions[K]["block"]`).
 
 ## 6 · Depth pass
 

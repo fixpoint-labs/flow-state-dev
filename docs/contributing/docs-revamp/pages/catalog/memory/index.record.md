@@ -44,6 +44,7 @@ Skipped: K-36 is kept in the sitemap, and the page was already at `index.md`.
 - After the loop (review): Greptile review on the PR. frontmatter: the `description` held an unquoted `: `, which YAML refuses ("Nested mappings are not allowed in compact mappings", checked with the `yaml` package apps/docs uses). It is now quoted, with the text unchanged. No prose or example changed. Page sha256 11664fa9807d.
 - After the loop (review): Codex review on the PR. The paragraph on moving to `system()` said swapping the capability and `uses` was enough, but attaching `mem.capability` runs no capture: `system()` returns `capture` and `captureFromItems` for the caller to compose (packages/memory/src/memory-system.ts:448-451). The paragraph now says to end `reply` in `.sideChain(mem.captureFromItems)`, the wiring apps/kitchen-sink/flows/chat-agent/run/run.ts:61 uses, and that the capability writes nothing on its own. Page sha256 b6f3070c24e2.
 - After the loop (review): Sweep after a Codex P2 on the same class: the action's `reply` generator had no `itemVisibility`; a generator with no `itemVisibility` emits no items, so the reply never reached the chat (packages/core/src/blocks/generator.ts:1271-1274), and defineFlow warns on it in development (packages/core/src/flow/defineFlow.ts:548-573). It now sets `itemVisibility: { client: true, history: true }`. Type-check in apps/kitchen-sink/zz-vis, deleted afterwards: only the planted error. 1180 words. Page sha256 d0c4ccb98444.
+- After the loop (review): owner request: action entries that set only `block` are written as the bare block (`name: block`, or `{ name }` when the names match). Type-check in apps/kitchen-sink/zz-act, deleted afterwards: only the planted error, plus the partial examples' missing-import errors, identical before the edit. 1176 words. Page sha256 1e0b8c6a4619.
 
 ## 5 · Fact check
 
@@ -56,6 +57,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Re-run after the review edit: no claim changed; the frontmatter parses, and `description` reads back the same text.
 - Re-run after the review edit: `captureFromItems` is documented for `.sideChain()` after the generator (memory-system.ts:450-451) and is wired that way in run.ts:61. Holds.
 - Re-run after the review edit: no auto-emitted items without `itemVisibility` (packages/core/src/blocks/generator.ts:1271-1274); the development warning for an action whose block is a silent generator (packages/core/src/flow/defineFlow.ts:548-573).
+- Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749, `TActions[K] | TActions[K]["block"]`).
 
 ## 6 · Depth pass
 

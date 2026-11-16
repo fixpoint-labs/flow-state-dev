@@ -34,6 +34,7 @@ Skipped: B-21 is kept in the sitemap, and the page was already at `write-a-patte
 - After revise round 2, page sha256 f1467139f2e9: exit 0.
 - After revise round 3, page sha256 66267ef1a63f: exit 0.
 - After the loop (review): Codex P2: the progress component rendered `TaskPlan` with no `items` and no provider, so it fell back to an empty `useSessionItems()` context and drew an empty board. The component now takes the session's items and passes them as `items`; a sentence says what happens without them. Type-check in apps/kitchen-sink/zz-p2b, deleted afterwards: only the planted error. 1235 words. Page sha256 76cfc0c4d93c.
+- After the loop (review): owner request: action entries that set only `block` are written as the bare block (`name: block`, or `{ name }` when the names match). Type-check in apps/kitchen-sink/zz-act, deleted afterwards: only the planted error, plus the partial examples' missing-import errors, identical before the edit. 1232 words. Page sha256 7540f9aa9ee7.
 
 ## 5 · Fact check
 
@@ -41,6 +42,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 - Pair the items with `<TaskPlan />` and a consumer gets a live progress view (rendered with no props). Untrue: TaskPlan has a required `collectionId: string` prop and scopes its items to that collection. It is rendered as `<TaskPlan collectionId="..." />`, and here `collectionId` is the pattern's `name`. The bare `<TaskPlan />` would not compile. By default it reads its items from `useSessionItems()`, which comes from the session-items context, or from an explicit `items` prop. (/home/user/flow-state-dev/packages/ui/registry/components/task-plan.tsx:137,201-202 (props); /home/user/flow-state-dev/packages/ui/README.md:117-134 (usage and items source); page line 165)
 - Re-run after the review edit: `TaskPlan` takes `items?: ReadonlyArray<OutputItem>` (packages/ui/registry/components/task-plan.tsx:158) and otherwise reads `useSessionItems()` (:48, :204); the context defaults to `[]` (packages/ui/registry/components/session-items-context.tsx).
+- Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749, `TActions[K] | TActions[K]["block"]`).
 
 ## 6 · Depth pass
 

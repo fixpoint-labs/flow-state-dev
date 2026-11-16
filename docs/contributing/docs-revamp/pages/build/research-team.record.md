@@ -34,6 +34,7 @@ Written by `docs-writer` (sonnet), 885 words. Scenario: Acme, Globex and Initech
 - After revise round 2, page sha256 189fcaaff35f: exit 1. Failed: check-docs-page.
 - After revise round 3, page sha256 5ccb83c374ea: exit 0.
 - After the loop (review): emit.data migration: the stop-reason `jq` filter reads `.item.dataType` and `.item.value`. Run from examples/guides/research-team: the filter prints `{"collectionId":"competitors","status":"completed","terminationReason":"all-completed",...}`. 1035 words. Page sha256 242cdc17b15e.
+- After the loop (review): owner request: action entries that set only `block` are written as the bare block (`name: block`, or `{ name }` when the names match). Type-check in apps/kitchen-sink/zz-act, deleted afterwards: only the planted error, plus the partial examples' missing-import errors, identical before the edit. 1849 words. Page sha256 5f7e4f8eb706.
 
 ## 5 · Fact check
 
@@ -41,6 +42,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 e5f
 
 No untrue claim found.
 - Re-run after the review edit: the completed board report is `ctx.emit.data(TASK_BOARD_META_DATA_TYPE, { collectionId, status: "completed", terminationReason, counts, maxTotalRetries }, ...)` (packages/orchestration/src/task-board/blocks/board-meta.ts:313-317); an NDJSON `item_done` line carries the whole item (packages/fsdev/src/commands/run.ts:59,715); the run output above.
+- Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749, `TActions[K] | TActions[K]["block"]`).
 
 ## 6 · Depth pass
 
