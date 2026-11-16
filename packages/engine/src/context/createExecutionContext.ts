@@ -2,6 +2,7 @@ import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistr
 import { createRequestSpendLedger, isInterruptedEndingHeld, loggedSpendOf, sumSpend } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { createBoardNoticeSeam } from "../bus/board-notice";
+import { publishSessionOwnerRun } from "../bus/publish-writes";
 import { createScopedAsyncStorage } from "./scoped-async-storage";
 import type {
   AnyResourceRef,
@@ -105,6 +106,7 @@ function waitedByStamp(source: string | undefined, metadata: unknown) {
 }
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
 import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
+import { clientVisibleStateKeys } from "./client-visible-state";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
@@ -2666,6 +2668,26 @@ export async function createExecutionContext<
   // Off the merged schema, so a readonly field a block declares is guarded too.
   const readonlyFields = getReadonlyStateKeys(scopeStateSchema(flow, "session"));
   const createdWith = sessionContainer.read() as Record<string, unknown>;
+  const persistSession = createScopePersist<TSessionState, SessionRecord>(
+    sessionRef,
+    stores.session,
+    (expectedVersion, state) => ({
+      ...sessionRef.current,
+      state: state as TSessionState,
+      version: expectedVersion + 1,
+      updatedAt: Date.now()
+    }),
+    readSessionState
+  );
+  // FIX-2754: a list of the owner's sessions shows the fields the client is
+  // shown, and hears the owner's user topic, which the store wrapper tells of
+  // whole-record writes but not of field deltas (a busy turn writes many). The
+  // wrapper can't see flow definitions to tell an exposed field from an
+  // internal one, and a delta must stay atomic (written whole, it would
+  // conflict with each of the turn's own writes), so the notice is published
+  // here, beside a delta to an exposed field, once it lands.
+  const exposedSessionFields = new Set(clientVisibleStateKeys(flow));
+  const sessionBus = stores.bus;
   const sessionOps = createScopeStateOps(sessionContainer, {
     cas: flow.session?.cas,
     ...(readonlyFields.length === 0
@@ -2674,17 +2696,16 @@ export async function createExecutionContext<
           guard: (next: Readonly<TSessionState>) =>
             refuseReadonlyStateChange(flow.kind, sessionId, readonlyFields, createdWith, next)
         }),
-    persist: createScopePersist<TSessionState, SessionRecord>(
-      sessionRef,
-      stores.session,
-      (expectedVersion, state) => ({
-        ...sessionRef.current,
-        state: state as TSessionState,
-        version: expectedVersion + 1,
-        updatedAt: Date.now()
-      }),
-      readSessionState
-    ),
+    persist:
+      sessionBus === undefined || exposedSessionFields.size === 0
+        ? persistSession
+        : async (state, expectedVersion, hint) => {
+            const result = await persistSession(state, expectedVersion, hint);
+            if (result.ok && hint.kind !== "set" && exposedSessionFields.has(hint.path[0])) {
+              publishSessionOwnerRun(sessionBus, sessionRef.current);
+            }
+            return result;
+          },
     reread: createScopeReread<TSessionState, SessionRecord>(sessionRef, stores.session, readSessionState)
   });
 

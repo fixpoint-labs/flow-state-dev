@@ -61,6 +61,19 @@ function flows(): { roster: FlowInstance; agent: FlowInstance } {
             return { ids: listed.sessions.map((session) => session.id).sort(), turns: turns.length, read: (await sessions.read(input.probe)) !== undefined };
           }
         })
+      }),
+      // FIX-2754: the same list, asked for sessions by id.
+      agentSessionsById: defineView({
+        scope: "user",
+        block: handler({
+          name: "agent-sessions-by-id",
+          inputSchema: z.object({ ids: z.array(z.string()) }),
+          outputSchema: z.object({ ids: z.array(z.string()) }),
+          execute: async (input, ctx) => {
+            const listed = await requestHostOf(ctx)!.sessions!.list({ flowKind: "agent", ids: input.ids });
+            return { ids: listed.sessions.map((session) => session.id).sort() };
+          }
+        })
       })
     }
   })() as unknown as FlowInstance;
@@ -88,24 +101,32 @@ async function boot() {
   await seed("other-org", { orgId: "globex" });
   await seed("t2:other-tenant", { tenantId: "t2" });
   await seed("fsd-write.agent.x");
+  await seed("bobs", { userId: "bob" });
   const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
   routers.push(router);
   return router;
 }
 
-async function view(router: ReturnType<typeof createFlowApiRouter>, probe: string, headers: Record<string, string>) {
-  const path = ["roster", "views", "agentSessions"];
+async function post(router: ReturnType<typeof createFlowApiRouter>, name: string, input: unknown, headers: Record<string, string>) {
+  const path = ["roster", "views", name];
   const response = await router.POST(
     new Request(`http://test/api/flows/${path.join("/")}`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-verified-user": "alice", "x-verified-org": "acme", ...headers },
-      body: JSON.stringify({ input: { probe } })
+      body: JSON.stringify({ input })
     }),
     { params: { path } }
   );
   expect(response.status).toBe(200);
-  return (await response.json()) as { output: z.infer<typeof answer>; topics: unknown[] };
+  return (await response.json()) as { output: unknown; topics: unknown[] };
 }
+
+async function view(router: ReturnType<typeof createFlowApiRouter>, probe: string, headers: Record<string, string>) {
+  return (await post(router, "agentSessions", { probe }, headers)) as { output: z.infer<typeof answer>; topics: unknown[] };
+}
+
+/** Every seeded session but alice's own, and one that doesn't exist. */
+const NOT_HERS = ["other-org", "t2:other-tenant", "fsd-write.agent.x", "bobs", "missing"];
 
 describe("a view's session reads take the HTTP list's admission", () => {
   it("answers alice her own agent session, and none in another org or tenant, and no write session", async () => {
@@ -127,5 +148,20 @@ describe("a view's session reads take the HTTP list's admission", () => {
     const { output, topics } = await view(router, "other-org", { "x-agent-ok": "yes" });
     expect(output.read).toBe(false);
     expect(topics).not.toContainEqual({ scope: "session", id: "other-org" });
+  });
+
+  it("a list by ids answers alice her own session and none of the others she names, hearing only her user topic", async () => {
+    const router = await boot();
+    const { output, topics } = await post(router, "agentSessionsById", { ids: ["mine", ...NOT_HERS] }, { "x-agent-ok": "yes" });
+    expect(output).toEqual({ ids: ["mine"] });
+    expect(topics).toEqual([{ scope: "user" }]);
+  });
+
+  it("a list by ids answers nothing, and names no session, for another user's, a write or a missing id, or to a refused caller", async () => {
+    const router = await boot();
+    const others = await post(router, "agentSessionsById", { ids: NOT_HERS }, { "x-agent-ok": "yes" });
+    expect(others).toMatchObject({ output: { ids: [] }, topics: [{ scope: "user" }] });
+    const refused = await post(router, "agentSessionsById", { ids: ["mine"] }, {});
+    expect(refused).toMatchObject({ output: { ids: [] }, topics: [{ scope: "user" }] });
   });
 });

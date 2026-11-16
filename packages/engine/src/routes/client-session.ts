@@ -16,8 +16,8 @@
  * is no request flag that widens this view.
  */
 import type { JsonObject } from "@flow-state-dev/core/types";
-import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
+import { clientVisibleStateKeys } from "../context/client-visible-state";
 import type { SessionRecord } from "../stores/types";
 import { resolveRecordOwner } from "../context/record-owner";
 import { applyScopeStateDefaults, scopeStateSchema } from "../context/scope-state-defaults";
@@ -47,12 +47,7 @@ export function toClientSession(
 ): ClientSessionRecord {
   const { journal: _journal, resources: _resources, state, ...envelope } = record;
   const owner = resolveRecordOwner(registry, record);
-  const visible = owner.ok
-    ? [
-        ...(owner.flow.session?.client?.expose ?? []),
-        ...getReadonlyStateKeys(scopeStateSchema(owner.flow, "session"))
-      ]
-    : [];
+  const visible = owner.ok ? clientVisibleStateKeys(owner.flow) : [];
   // The fields read as a run reads them: with the schema's defaults.
   const read = owner.ok ? applyScopeStateDefaults(scopeStateSchema(owner.flow, "session"), state) : state;
   return { ...envelope, id: bareId, state: visibleState(read, visible) };

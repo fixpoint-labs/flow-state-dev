@@ -38,14 +38,15 @@ const LISTED_PAGES_MAX = 10;
 
 /**
  * The worker's sessions newest first, read a page at a time until
- * {@link LISTED_MAX} of them are conversations (`workerConversations`' rule)
- * and the default `defaultId` is among them, or none are left, at most
- * {@link LISTED_PAGES_MAX} pages. The store can't filter on a field being
+ * {@link LISTED_MAX} of them are conversations (`workerConversations`' rule),
+ * or none are left, at most {@link LISTED_PAGES_MAX} pages; and the default
+ * `defaultId`, read by id when the first page lacks it, so it is among them however
+ * many newer sessions there are. The store can't filter on a field being
  * absent, and a project's, a task's, a delegate's and a lead's sessions carry
  * the worker's id too, so newer ones of those must not crowd out a
- * conversation, nor newer conversations the default. Each session is answered
- * once: a turn that starts between two pages moves its session to the front,
- * and shifts a session already read onto the next page.
+ * conversation. Each session is answered once: a turn that starts between two
+ * pages moves its session to the front, and shifts a session already read
+ * onto the next page.
  *
  * Exported for its test; not on the package root.
  */
@@ -58,16 +59,21 @@ export async function conversationCandidates(
   const read: ListedSession[] = [];
   const seen = new Set<string>();
   let eligible = 0;
-  let foundDefault = false;
-  for (let page = 0; page < LISTED_PAGES_MAX && (eligible < LISTED_MAX || !foundDefault); page += 1) {
-    const listed = await sessions.list({ flowKind: flow, fields: criteriaState(criteria), limit: LISTED_MAX, offset: page * LISTED_MAX });
-    const fresh = listed.sessions.filter((session) => !seen.has(session.id));
+  const take = (listed: readonly ListedSession[]): void => {
+    const fresh = listed.filter((session) => !seen.has(session.id));
     for (const session of fresh) seen.add(session.id);
     read.push(...fresh);
-    const conversations = workerConversations(fresh, defaultId);
-    eligible += conversations.length;
-    if (conversations.some((conversation) => conversation.isDefault)) foundDefault = true;
-    if (!listed.more) break;
+    eligible += workerConversations(fresh, defaultId).length;
+  };
+  const query = { flowKind: flow, fields: criteriaState(criteria), limit: LISTED_MAX };
+  const first = await sessions.list(query);
+  take(first.sessions);
+  // A default used recently is on the first page; read it by id only when it isn't.
+  if (!seen.has(defaultId)) take((await sessions.list({ ...query, ids: [defaultId] })).sessions);
+  for (let page = 1, more = first.more; more && page < LISTED_PAGES_MAX && eligible < LISTED_MAX; page += 1) {
+    const listed = await sessions.list({ ...query, offset: page * LISTED_MAX });
+    take(listed.sessions);
+    more = listed.more;
   }
   return read;
 }
@@ -85,8 +91,8 @@ const listedWorkerSessionSchema = z.object({
   updatedAt: z.number(),
   /** Whether one of its turns is running now. */
   running: z.boolean(),
-  /** Its readonly state fields. */
-  fields: z.record(z.unknown()),
+  /** Its state as the HTTP session list shows the caller: the fields its flow exposes to the client and its readonly ones, such as `workProjectId`. Display data. */
+  state: z.record(z.unknown()),
   /** The conversation `findWorkerSession({ worker })` returns. */
   isDefault: z.boolean(),
   /** Its board's tasks that wait on the user: a question, a review, or a failure to retry. */
@@ -200,7 +206,7 @@ export function defineWorkerSessionsView(installation: WorkerInstallation): Work
             worker: input.worker,
             updatedAt: session.updatedAt,
             running: runningIn.has(session.id),
-            fields: { ...session.state },
+            state: { ...session.state },
             isDefault,
             waiting: await waitingTasksOf(ctx, session.id, session.lineageId)
           }))

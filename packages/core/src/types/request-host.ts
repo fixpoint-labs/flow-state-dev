@@ -321,10 +321,21 @@ export type SessionListQuery = {
   readonly flowId?: string;
   /**
    * Exact match on readonly state fields the flow `flowId` (else the
-   * registered flow of kind `flowKind`) declares. Any other field throws:
-   * a session's other state is not the list's to filter on.
+   * registered flow of kind `flowKind`) declares. Any other field throws,
+   * an exposed one included: a filter is trusted to pick sessions by what the
+   * server set at birth and nothing changes, unlike the display data
+   * {@link ListedSession.state} carries.
    */
   readonly fields?: Readonly<Record<string, string>>;
+  // FIX-2754.
+  /**
+   * Only these sessions, by id, at most the first 100. The other filters
+   * still apply, and each session passes the same rule as the rest of the
+   * list: another principal's, a refused and a missing session are left out
+   * alike, and the read is heard as the list is, never on an asked-for
+   * session's own topic.
+   */
+  readonly ids?: readonly string[];
   /** How many rows, newest first. Defaults to and at most 100. */
   readonly limit?: number;
   /**
@@ -335,7 +346,7 @@ export type SessionListQuery = {
   readonly offset?: number;
 };
 
-/** One session as {@link RequestSessions.list} answers it: no items, no state but its readonly fields. */
+/** One session as {@link RequestSessions.list} answers it: no items, no state but what the HTTP session list shows. */
 export type ListedSession = {
   readonly id: string;
   readonly flowKind: string;
@@ -348,7 +359,15 @@ export type ListedSession = {
   readonly createdAt: number;
   /** When the session last changed: a request starting in it, a title. */
   readonly updatedAt: number;
-  /** Its readonly state fields, as {@link PeerSessionView.state}. */
+  // FIX-2754.
+  /**
+   * Its state as the HTTP session list shows the same caller: the fields its
+   * flow exposes to the client (`session.client.expose`) and the ones it
+   * declares readonly. Display data, for a screen to label the session by: an
+   * exposed field may change after the session is made, so a block that
+   * decides on a session reads {@link RequestSessions.read}, whose state is
+   * readonly fields only, and filters by {@link SessionListQuery.fields}.
+   */
   readonly state: Readonly<Record<string, unknown>>;
 };
 

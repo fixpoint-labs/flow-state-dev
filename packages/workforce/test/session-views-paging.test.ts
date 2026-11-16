@@ -36,4 +36,39 @@ describe("conversationCandidates", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toContain("c50");
   });
+
+  // FIX-2754.
+  it("reads the default by id beside one full page of newer conversations, and pages no further for it", async () => {
+    // Why it matters: paging to find the default costs a refresh up to ten
+    // reads, and still misses a default behind more than 999 newer sessions.
+    const page = Array.from({ length: 100 }, (_, at) => listed(`c${at}`, { workerId: "otto" }));
+    const queries: SessionListQuery[] = [];
+    const sessions = {
+      list: async (query: SessionListQuery = {}) => {
+        queries.push(query);
+        if (query.ids !== undefined) return { sessions: query.ids.includes("main") ? [listed("main", { workerId: "otto" })] : [], more: false };
+        return { sessions: (query.offset ?? 0) === 0 ? page : [listed("main", { workerId: "otto" })], more: (query.offset ?? 0) === 0 };
+      },
+      read: async () => undefined
+    } as unknown as RequestSessions;
+    const ids = (await conversationCandidates(sessions, "agent", { worker: "otto" }, "main")).map((session) => session.id);
+    expect(ids.filter((id) => id === "main")).toHaveLength(1);
+    expect(queries.filter((query) => query.ids === undefined).map((query) => query.offset ?? 0)).toEqual([0]);
+    expect(queries.filter((query) => query.ids !== undefined)).toEqual([expect.objectContaining({ flowKind: "agent", ids: ["main"] })]);
+  });
+
+  it("reads the default by id only when the first page doesn't hold it", async () => {
+    // The usual case, a default used recently, costs one read.
+    const queries: SessionListQuery[] = [];
+    const sessions = {
+      list: async (query: SessionListQuery = {}) => {
+        queries.push(query);
+        return { sessions: [listed("main", { workerId: "otto" }), listed("c1", { workerId: "otto" })], more: false };
+      },
+      read: async () => undefined
+    } as unknown as RequestSessions;
+    const ids = (await conversationCandidates(sessions, "agent", { worker: "otto" }, "main")).map((session) => session.id);
+    expect(ids).toEqual(["main", "c1"]);
+    expect(queries).toHaveLength(1);
+  });
 });

@@ -21,6 +21,8 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { runView } from "../src/execution/runView";
+import { createFlowRegistry } from "../src";
+import { toClientSession } from "../src/routes/client-session";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
 const ORG = DEFAULT_ORG_ID;
@@ -28,10 +30,19 @@ const ORG = DEFAULT_ORG_ID;
 const out = z.any().nullable().describe("answer");
 const host = (ctx: unknown) => requestHostOf(ctx as never)!.sessions!;
 
-function app(): FlowInstance {
-  return defineFlow({
+/**
+ * The desk flow: its own singleton, or, as `collection`, the member of a
+ * collection of kind "desk" whose instance id is also "desk".
+ */
+function app(cardinality: "singleton" | "collection" = "singleton"): FlowInstance {
+  const definition = defineFlow({
     kind: "desk",
-    session: { stateSchema: z.object({ workerId: z.string().readonly().optional(), notes: z.string().optional() }) },
+    ...(cardinality === "collection" ? { cardinality: "collection" as const } : {}),
+    session: {
+      stateSchema: z.object({ workerId: z.string().readonly().optional(), project: z.string().optional(), notes: z.string().optional() }),
+      // A server-written, changeable field the HTTP session list shows the caller.
+      client: { expose: ["project"] }
+    },
     actions: { touch: { block: handler({ name: "touch", inputSchema: z.object({}), execute: () => ({ ok: true }) }) } },
     views: {
       list: defineView({
@@ -92,7 +103,8 @@ function app(): FlowInstance {
         block: handler({ name: "org-list", inputSchema: z.object({}), outputSchema: out, execute: async (_input, ctx) => host(ctx).list() })
       })
     }
-  })() as unknown as FlowInstance;
+  });
+  return (cardinality === "collection" ? (definition as never as (o: { id: string }) => unknown)({ id: "desk" }) : definition()) as unknown as FlowInstance;
 }
 
 async function seed(stores: StoreRegistry, id: string, over: Partial<SessionRecord> = {}) {
@@ -104,7 +116,7 @@ async function seed(stores: StoreRegistry, id: string, over: Partial<SessionReco
       flowKind: "desk",
       flowId: "desk",
       userId: "alice",
-      state: { workerId: "otto", notes: "private" },
+      state: { workerId: "otto", project: "apollo", notes: "private" },
       version: 0,
       createdAt: 1,
       updatedAt: Number(over.updatedAt ?? 1),
@@ -125,7 +137,7 @@ const view = (stores: StoreRegistry, flow: FlowInstance, viewName: string, input
   runView({ flow, viewName, input, userId: "alice", orgId: ORG, stores, ...extra });
 
 describe("sessions.list in a view", () => {
-  it("answers the caller's own top-level sessions, newest first, with readonly state only, heard on their user topic's run", async () => {
+  it("answers the caller's own top-level sessions, newest first, with the state the HTTP list shows them, heard on their user topic's run", async () => {
     const stores = createInMemoryStores();
     const flow = app();
     await seed(stores, "old", { updatedAt: 10 });
@@ -137,7 +149,9 @@ describe("sessions.list in a view", () => {
     const answer = await view(stores, flow, "list", {});
     const list = answer.output as { sessions: Array<{ id: string; state: unknown; lineageId: string }>; more: boolean };
     expect(list.sessions.map((session) => session.id)).toEqual(["new", "old"]);
-    expect(list.sessions[0]!.state).toEqual({ workerId: "otto" });
+    // FIX-2754: readonly and exposed fields, as the HTTP list shows the same
+    // caller, so a screen labels a row from the one read; never a private field.
+    expect(list.sessions[0]!.state).toEqual({ workerId: "otto", project: "apollo" });
     expect(list.more).toBe(false);
     expect(answer.hears).toEqual([{ topic: { scope: "user" }, kinds: ["run"] }]);
   });
@@ -180,6 +194,14 @@ describe("sessions.list in a view", () => {
     await expect(view(stores, flow, "list", { fields: { notes: "private" } })).rejects.toThrow(/only readonly state fields/);
   });
 
+  it("refuses a filter on an exposed field: the list shows it, but a filter is trusted and takes readonly fields only", async () => {
+    // FIX-2754: an exposed field is display data; filtering on it would let a
+    // caller pick sessions by a field that changes after the session is made.
+    const stores = createInMemoryStores();
+    await seed(stores, "mine");
+    await expect(view(stores, app(), "list", { fields: { project: "apollo" } })).rejects.toThrow(/only readonly state fields/);
+  });
+
   it("answers only what the view's admission lets through", async () => {
     const stores = createInMemoryStores();
     await seed(stores, "kept", { updatedAt: 2 });
@@ -190,6 +212,27 @@ describe("sessions.list in a view", () => {
 
   it("is refused in an org view, which reads no session", async () => {
     await expect(view(createInMemoryStores(), app(), "orgList", {})).rejects.toMatchObject({ name: "NoSessionError" });
+  });
+});
+
+// FIX-2754.
+describe("a session whose owner the HTTP list can't attribute", () => {
+  it("answers it with the state the HTTP list shows: none, when the row predates instance ownership and its kind is now a collection", async () => {
+    // Why it matters: the HTTP list refuses to name an owner for this row
+    // (it needs the owner migration), so it shows none of its state. A view
+    // that took the collection member whose id equals the kind as its owner
+    // would show a caller exposed fields the HTTP list withholds.
+    const stores = createInMemoryStores();
+    const flow = app("collection");
+    await seed(stores, "legacy", { flowId: undefined });
+    const registry = createFlowRegistry();
+    registry.register(flow);
+    const http = toClientSession(registry, (await stores.session.get("legacy"))!, "legacy");
+    expect(http.state).toEqual({});
+    const list = (await view(stores, flow, "list", {})).output as { sessions: Array<{ id: string; state: unknown }> };
+    expect(list.sessions.map((session) => [session.id, session.state])).toEqual([["legacy", http.state]]);
+    const read = await view(stores, flow, "identity", { id: "legacy", withState: true });
+    expect(read.output).toEqual({ flowKind: "desk", state: {} });
   });
 });
 
@@ -285,6 +328,15 @@ describe("sessions.history in a user view", () => {
 });
 
 describe("sessions.read in a user view", () => {
+  it("answers readonly state only, never an exposed field, though the list shows one", async () => {
+    // FIX-2754: a block reading a peer session decides on server-written,
+    // fixed fields; an exposed field is display data the list carries.
+    const stores = createInMemoryStores();
+    await seed(stores, "mine");
+    const read = await view(stores, app(), "identity", { id: "mine", withState: true });
+    expect(read.output).toEqual({ flowKind: "desk", state: { workerId: "otto" } });
+  });
+
   it("answers the caller's session and hears its identity on run alone, its state once read", async () => {
     const stores = createInMemoryStores();
     const flow = app();

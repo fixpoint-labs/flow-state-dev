@@ -15,9 +15,12 @@
  * filter keeps them), never the record. `history` crosses the session's
  * settled turns, by the one read a turn's own history window uses
  * (`./settled-turns`), and writes nothing. `list` lists the
- * principal's top-level sessions as `read` answers each, filtered at the store
- * and bounded; `turns` reads a session's requests by status, never their
- * words.
+ * principal's top-level sessions, filtered at the store by readonly fields
+ * and bounded, or, asked for `ids`, read by id under the same filters; each
+ * with the state the HTTP session list shows the caller, exposed and readonly
+ * (`./client-visible-state`), which is display data: `read` and the filter
+ * stay readonly-only, what a block may decide on. `turns` reads a session's
+ * requests by status, never their words.
  *
  * In a view, `admit` adds the HTTP session list's per-row admission on top of
  * the owner rule (`view-routes.ts`): a session it refuses reads as one that
@@ -25,6 +28,8 @@
  */
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { readonlyStateFilter } from "./readonly-state-filter";
+import { clientVisibleStateKeys } from "./client-visible-state";
+import { resolveRecordOwner } from "./record-owner";
 import { isWriteRecord } from "../resources/default-write-flow";
 import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
 import type {
@@ -44,7 +49,13 @@ import type {
   PeerSessionView
 } from "@flow-state-dev/core/internal";
 import type { DurabilityProvider } from "../durability/types";
-import { resolveLineageId, resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
+import {
+  matchesParentageFilter,
+  matchesStateFilter,
+  resolveLineageId,
+  resolveSessionStorageKey,
+  toBareSessionId
+} from "../stores/scope-keys";
 import type { RequestRecord, RequestStore, SessionRecord, SessionStore } from "../stores/types";
 import { LLM_AUDIENCE_TYPES, selectRequestsByLimit } from "./history";
 import { sessionRequestScope } from "./session-request-scope";
@@ -152,6 +163,30 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     return admitted(await sessions.get(resolveSessionStorageKey(sessionId, identity.tenantId)));
   };
   /**
+   * The sessions `ids` names, at most the first {@link SESSION_LIST_MAX}, that
+   * the store's list would hold for this principal and `filter`: the
+   * principal's, top-level, of the flow and readonly fields asked for, newest
+   * first. Read by id, so a missing session is simply not among them; a
+   * view's admission is the list's own step after.
+   */
+  const byIds = async (
+    ids: readonly string[],
+    filter: { flowKind: string | undefined; flowId: string | undefined; state: Readonly<Record<string, string>> | undefined }
+  ): Promise<SessionRecord[]> => {
+    const wanted = [...new Set(ids)].filter((id) => typeof id === "string" && id.length > 0).slice(0, SESSION_LIST_MAX);
+    const records = await Promise.all(wanted.map((id) => sessions.get(resolveSessionStorageKey(id, identity.tenantId))));
+    return records
+      .filter((record): record is SessionRecord => principalSession(record, identity) !== undefined)
+      .filter(
+        (record) =>
+          matchesParentageFilter(undefined, record.parentSessionId) &&
+          (filter.flowKind === undefined || record.flowKind === filter.flowKind) &&
+          (filter.flowId === undefined || record.flowId === filter.flowId) &&
+          matchesStateFilter(filter.state, record.state)
+      )
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  };
+  /**
    * A verb that left a session it was asked for unanswered (one-session, or a
    * member of a `turns` batch) is heard as the caller's list is, on their own
    * user topic, so a session made later under the id wakes the view; never on
@@ -163,18 +198,27 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     return undefined;
   };
 
-  /** A session's state cut to the fields its owning flow declares readonly, defaults filled. */
-  const readonlyStateOf = (record: SessionRecord): Readonly<Record<string, unknown>> => {
-    // The owner as `record-owner` reads it: the stored instance id, or, on a
-    // legacy row, the singleton named by its kind. A flow of another kind
-    // under that address is not its owner, and declares nothing for it.
-    const owner = flowAt(record.flowId ?? record.flowKind);
-    const schema = owner?.kind === record.flowKind ? scopeStateSchema(owner, "session") : undefined;
-    const readonly = getReadonlyStateKeys(schema);
+  /**
+   * A session's state cut to the fields its owning flow declares readonly
+   * (`"readonly"`, what a block may decide on), or to those it shows a client,
+   * exposed and readonly (`"visible"`, what the HTTP list shows); defaults filled.
+   */
+  const stateOf = (record: SessionRecord, cut: "readonly" | "visible"): Readonly<Record<string, unknown>> => {
+    // The owner as the HTTP session routes resolve it (`resolveRecordOwner`,
+    // as `toClientSession` does): the stored instance id, or, on a legacy row,
+    // only the singleton named by its kind. A row it can't attribute (another
+    // kind under the address, a collection member whose id is the kind) has
+    // no owner here either, and shows no state, as the HTTP list shows none.
+    // Only the verdict is read, never a refusal's reason, so the registry's
+    // `list` (which names the reason) is not needed.
+    const resolved = resolveRecordOwner({ get: flowAt, list: () => [] }, record);
+    const owner = resolved.ok ? resolved.flow : undefined;
+    const schema = owner === undefined ? undefined : scopeStateSchema(owner, "session");
+    const keys = cut === "readonly" ? getReadonlyStateKeys(schema) : owner === undefined ? [] : clientVisibleStateKeys(owner);
     // As the session's own runs read it, defaults filled.
     const effective = applyScopeStateDefaults(schema, record.state);
     const state: Record<string, unknown> = {};
-    for (const key of readonly) {
+    for (const key of keys) {
       if (Object.prototype.hasOwnProperty.call(effective, key)) state[key] = structuredClone(effective[key]);
     }
     return Object.freeze(state);
@@ -240,7 +284,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       const record = await owned(sessionId);
       if (record === undefined) return unanswered();
       inputs.observe?.identity(sessionId);
-      const state = readonlyStateOf(record);
+      const state = stateOf(record, "readonly");
       const view = {
         flowKind: record.flowKind,
         ...(record.flowId != null ? { flowId: record.flowId } : {}),
@@ -275,16 +319,19 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       }
       // Top-level sessions (the store's default parentage) of this principal,
       // filtered at the store (BP-033); one row past the limit says `more`.
-      const stored = await sessions.list({
-        ...(query?.flowKind !== undefined ? { flowKind: query.flowKind } : {}),
-        ...(query?.flowId !== undefined ? { flowId: query.flowId } : {}),
-        userId: identity.userId,
-        tenantId: identity.tenantId,
-        orgId: identity.orgId,
-        ...(state !== undefined ? { state } : {}),
-        limit: limit + 1,
-        ...(offset > 0 ? { offset } : {})
-      });
+      const stored =
+        query?.ids === undefined
+          ? await sessions.list({
+              ...(query?.flowKind !== undefined ? { flowKind: query.flowKind } : {}),
+              ...(query?.flowId !== undefined ? { flowId: query.flowId } : {}),
+              userId: identity.userId,
+              tenantId: identity.tenantId,
+              orgId: identity.orgId,
+              ...(state !== undefined ? { state } : {}),
+              limit: limit + 1,
+              ...(offset > 0 ? { offset } : {})
+            })
+          : (await byIds(query.ids, { flowKind: query.flowKind, flowId: query.flowId, state })).slice(offset, offset + limit + 1);
       const answered: ListedSession[] = [];
       for (const candidate of stored.slice(0, limit)) {
         // A write session is the server's, never a conversation (FIX-2624).
@@ -299,7 +346,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
           ...(typeof record.title === "string" && record.title.length > 0 ? { title: record.title } : {}),
           createdAt: record.createdAt,
           updatedAt: record.updatedAt,
-          state: readonlyStateOf(record)
+          state: stateOf(record, "visible")
         });
       }
       return { sessions: answered, more: stored.length > limit };
