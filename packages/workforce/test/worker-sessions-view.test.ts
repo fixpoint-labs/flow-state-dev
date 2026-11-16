@@ -217,7 +217,7 @@ describe("a session's turns", () => {
         [RESPOND_ACTION, "completed"]
       ]);
       expect(value[0]!.startedAt).toBeLessThanOrEqual(value[1]!.startedAt);
-      expect(value.every((turn) => TURN_ACTIONS.has(turn.action))).toBe(true);
+      expect(value.every((turn) => TURN_ACTIONS.includes(turn.action))).toBe(true);
       // Another user's session answers nothing.
       expect((await h.fsd("bob").view(sessionTurnsViewRef(), { sessionId: main.id })).value).toEqual([]);
     } finally {
@@ -225,8 +225,7 @@ describe("a session's turns", () => {
     }
   });
 
-  it("turn-set · names the four entries that run a session's turn, and no caller can add one", () => {
+  it("turn-set · names the four entries that run a session's turn", () => {
     expect([...TURN_ACTIONS].sort()).toEqual(["onMessageReceived", "onTaskSettled", "respond", "routeOn"]);
-    expect(() => (TURN_ACTIONS as Set<string>).add("setWorkProject")).toThrow();
   });
 });

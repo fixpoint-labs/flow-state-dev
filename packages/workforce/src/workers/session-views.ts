@@ -32,7 +32,8 @@ const UNTITLED_SESSION = "Untitled";
 
 /** The most sessions the worker sessions view lists: `sessions.list`'s bound. */
 const LISTED_MAX = 100;
-/** The most pages of `sessions.list` one run reads looking for them (BP-042). */
+// BP-042.
+/** The most pages of `sessions.list` one run reads looking for them: a bound on what one run reads. */
 const LISTED_PAGES_MAX = 10;
 
 /**
@@ -179,7 +180,7 @@ export function defineWorkerSessionsView(installation: WorkerInstallation): Work
         ]);
         const conversations = workerConversations(listed, defaultId).slice(0, LISTED_MAX);
         const ids = conversations.map(({ session }) => session.id);
-        const running: SessionTurn[] = ids.length === 0 ? [] : await sessions.turns(ids, { status: ["in_progress"], actions: [...TURN_ACTIONS] });
+        const running: SessionTurn[] = ids.length === 0 ? [] : await sessions.turns(ids, { status: ["in_progress"], actions: TURN_ACTIONS });
         const runningIn = new Set(running.map((turn) => turn.sessionId));
         return Promise.all(
           conversations.map(async ({ session, isDefault }) => ({
@@ -214,7 +215,7 @@ export function defineSessionTurnsView(): SessionTurnsView {
       inputSchema: sessionTurnsInputSchema,
       outputSchema: sessionTurnsSchema,
       execute: async (input, ctx) => {
-        const turns = (await sessionsOf(ctx).turns(input.sessionId, { actions: [...TURN_ACTIONS] })) ?? [];
+        const turns = (await sessionsOf(ctx).turns(input.sessionId, { actions: TURN_ACTIONS })) ?? [];
         return [...turns].reverse().map((turn) => ({
           id: turn.id,
           action: turn.action,
