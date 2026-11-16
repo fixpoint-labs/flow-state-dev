@@ -17,7 +17,7 @@ import { createElement, type ReactNode } from "react";
 import { createClient, type Client, type ClientFetch } from "@flow-state-dev/client";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { createInProcessFetch } from "@flow-state-dev/engine";
-import { pluggable, scriptedModels, type Script } from "../../test-support/contract";
+import { pluggable, scriptedModels, waitFor, type Script } from "../../test-support/contract";
 import { openLab, type LabOptions } from "../host.mts";
 import { LabProvider, labCalls, type LabCalls, type LabProject } from "../src/lab";
 import type { ModeId } from "../src/modes";
@@ -67,6 +67,10 @@ export interface TestLab {
   /** The host stops answering; `restore` brings it back. */
   pull(): void;
   restore(): void;
+  /** Holds every call whose path ends with `path` until the returned release is called. */
+  hold(path: string): () => void;
+  /** Every call the page made, as `METHOD path`, in order. */
+  readonly asked: string[];
   /** `children` under the lab's provider, on this client. */
   wrap(children: ReactNode): ReactNode;
   close(): Promise<void>;
@@ -74,8 +78,13 @@ export interface TestLab {
 
 const opened = new Set<TestLab>();
 
+/** What a script holds until released: each is let go before the labs close, so no held turn outlives its test. */
+const holds = new Set<() => void>();
+
 /** Close every lab a test opened. Call from `afterEach`. */
 export async function closeLabs(): Promise<void> {
+  for (const release of [...holds]) release();
+  holds.clear();
   for (const lab of [...opened]) await lab.close();
 }
 
@@ -90,7 +99,15 @@ export async function openTestLab(options: TestLabOptions = {}): Promise<TestLab
   ) as ModelResolver;
   const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: [], modelResolver: resolver, ...host });
   const inProcess = createInProcessFetch(flowState as never) as unknown as ClientFetch;
-  const plug = pluggable((intercept === undefined ? inProcess : intercept(inProcess)) as never);
+  const asked: string[] = [];
+  const held = new Map<string, Promise<void>>();
+  const watched = (async (input, init) => {
+    const path = new URL(String(input instanceof Request ? input.url : input), "http://x").pathname;
+    asked.push(`${init?.method ?? "GET"} ${path}`);
+    for (const [suffix, until] of [...held]) if (path.endsWith(suffix)) await until;
+    return inProcess(input, init);
+  }) as ClientFetch;
+  const plug = pluggable((intercept === undefined ? watched : intercept(watched)) as never);
   const fetcher = plug.fetcher as unknown as ClientFetch;
   const client = createClient({ userId: "u_lab", baseUrl: "", fetcher });
   const calls = labCalls(client, { fetcher });
@@ -103,6 +120,16 @@ export async function openTestLab(options: TestLabOptions = {}): Promise<TestLab
     repo,
     data,
     flowState,
+    asked,
+    hold: (path) => {
+      let release!: () => void;
+      const until = new Promise<void>((resolve) => (release = resolve));
+      held.set(path, until);
+      return () => {
+        if (held.get(path) === until) held.delete(path);
+        release();
+      };
+    },
     pull: () => plug.pull(),
     restore: () => plug.restore(),
     wrap: (children) => createElement(LabProvider, { client, connection: { fetcher }, pollIntervalMs: TEST_POLL_MS }, children),
@@ -133,6 +160,50 @@ export async function seedSession(lab: TestLab, mode: ModeId, line: string): Pro
   await readUntil(() => lab.client.sessions.get(id), (session) => session.title === line.split("\n")[0]);
   await readUntil(() => lab.client.sessions.requests(id, { limit: 20 }), (requests) => requests.every((r) => r.status !== "in_progress"));
   return id;
+}
+
+/** What the vendor scripts are doing, for a test to steer them. */
+export interface VendorControl {
+  /** Lets the held Globex research finish. */
+  releaseGlobex(): void;
+}
+
+/**
+ * The scripts the screen's tests share. Session mode: "Compare Acme and
+ * Globex" makes the main session file two research tasks, Acme's settles at
+ * once and Globex's stays running until released. Threads mode: the lead
+ * files a thread, "Vendor B · regions", which asks you which region matters.
+ * Any other line is noted.
+ */
+export function vendorScripts(): { scripts: Record<string, Script>; control: VendorControl } {
+  let releaseGlobex = () => {};
+  const globex = new Promise<void>((resolve) => (releaseGlobex = resolve));
+  holds.add(releaseGlobex);
+  const lastUserLine = (said: string) => said.slice(said.lastIndexOf('"role":"user"'));
+  const scripts: Record<string, Script> = {
+    "agent-answer": async ({ said, step, signal }) => {
+      const who = /You are ([\w-]+)/.exec(said)?.[1];
+      if (who === "researcher") {
+        if (said.includes("Globex")) await Promise.race([globex, waitFor(60_000, signal)]);
+        return { text: said.includes("Globex") ? "Globex: $35 per user." : "Acme: $40 per user, 24-hour support." };
+      }
+      if (who === "thread") {
+        if (step === 0) return { call: { name: "holdTaskForUser", args: { question: "Which region matters, EU or US?" } } };
+        return { text: "Vendor B hosts in the EU." };
+      }
+      if (lastUserLine(said).includes("Compare Acme and Globex")) {
+        if (step === 0) return { call: { name: "createTask", args: { assignee: "desk.researcher", title: "Research Acme", goal: "Find Acme's price and support hours." } } };
+        if (step === 1) return { call: { name: "createTask", args: { assignee: "desk.researcher", title: "Research Globex", goal: "Read Globex's pricing pages." } } };
+        return { text: "I'm researching both vendors in the background." };
+      }
+      return { text: "Noted." };
+    },
+    "coordinator-judgment": ({ step, said }) =>
+      step === 0 && lastUserLine(said).includes("vendor")
+        ? { call: { name: "createTask", args: { assignee: "desk.thread", title: "Vendor B · regions", goal: "Find where Vendor B hosts. Ask the user which region matters." } } }
+        : { text: "I've started a thread for it." },
+  };
+  return { scripts, control: { releaseGlobex: () => releaseGlobex() } };
 }
 
 /** Reads `read` every 50 ms until `check` holds, or fails after `ms` with the last value. */
