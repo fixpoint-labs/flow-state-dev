@@ -156,7 +156,8 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     await page.getByRole("region", { name: "Choose a project" }).waitFor();
     const box = page.getByRole("textbox", { name: "Message the main session" });
     /** The open thread's view, in place of the board. */
-    const threadView = () => page.locator('aside[aria-label^="Task: "]');
+    // A thread's view is a sheet over the main thread.
+    const threadView = () => page.locator('[role="dialog"][aria-label^="Task: "]');
     const back = () => page.getByRole("button", { name: "Back to tasks" }).click().catch(() => undefined);
     const rowFor = (taskId: string) => page.locator(`aside[aria-label="Tasks"] [data-task-id="${taskId}"]`);
     const cardFor = (taskId: string) => page.locator(`main[aria-label="Main thread"] [data-entry="thread"][data-task-id="${taskId}"]`);

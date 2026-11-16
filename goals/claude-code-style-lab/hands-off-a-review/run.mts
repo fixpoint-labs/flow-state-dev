@@ -121,7 +121,8 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     const sessionId = (await fsd.sessions.list({ flowKind: "coordinator", userId: USER })).sort((a, b) => b.updatedAt - a.updatedAt)[0]!.id;
     const main = page.locator('main[aria-label="Main thread"]');
     const cardFor = (taskId: string) => main.locator(`[data-entry="thread"][data-task-id="${taskId}"]`);
-    const threadView = () => page.locator('aside[aria-label^="Task: "]');
+    // A thread's view is a sheet over the main thread.
+    const threadView = () => page.locator('[role="dialog"][aria-label^="Task: "]');
     const back = () => page.getByRole("button", { name: "Back to tasks" }).click().catch(() => undefined);
 
     await box.fill(fixture.ask);
@@ -207,7 +208,8 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
         failures.push(`4: no result line for "${task.title ?? task.goal}" in the main thread`);
         continue;
       }
-      const button = line.getByRole("button");
+      // The fold's own button: a result line also offers Open task.
+      const button = line.locator("button[aria-expanded]");
       const shut = await line.textContent();
       if ((await button.getAttribute("aria-expanded")) !== "false") failures.push(`4: "${task.title ?? task.goal}"'s result line isn't collapsed`);
       await button.click();
