@@ -196,7 +196,7 @@ delivering into an *existing* session (`{ id }`) is refused with
 `external-flow-runner` on such a host, while a `{ key }` child and every
 transport dispatch take the ordinary enqueue path. The refusal is lifted when
 `host.arbitratesExternalDispatch` is true, which the host sets when its arbiter
-runs over a lease backend the worker adapter supplied: the delivery is then
+runs over a lease backend the job queue adapter supplied: the delivery is then
 fenced by its place on the session's key, which every process honours.
 
 One operation runs *from inside a block* through the same host, installed on
@@ -311,8 +311,8 @@ shared backend, the backend's own `take` order decides.
 **Where the lines live.** The arbiter keeps its lines in a lease backend
 (`transports/concurrency/lease-backend.ts`): in memory by default, which
 serializes one process, or the one a queue adapter supplies as
-`WorkerAdapter.leaseBackend`, which every process of the deployment shares.
-`bullmqWorker` supplies one on its Redis (`createRedisLeaseBackend`). An
+`JobQueueAdapter.leaseBackend`, which every process of the deployment shares.
+`bullmqJobQueue` supplies one on its Redis (`createRedisLeaseBackend`). An
 external dispatch is arbitrated only over a shared backend; that is what
 `host.arbitratesExternalDispatch` reports.
 

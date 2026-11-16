@@ -121,6 +121,25 @@ views.handle_session = defineView({
     execute: (_input, ctx) => ({ v: String(ctx.session.items.all().length) })
   })
 });
+views.state_session = defineView({
+  scope: "session",
+  block: handler({
+    name: "read-session-state",
+    inputSchema: z.object({}),
+    outputSchema: out,
+    resources,
+    execute: (_input, ctx) => ({ v: String((ctx.session.state as { n: number }).n) })
+  })
+});
+actions.state_session = handler({
+  name: "write-session-state",
+  inputSchema: z.object({ v: z.string() }),
+  resources,
+  execute: async (input, ctx) => {
+    await ctx.session.patchState({ n: Number((input as { v: string }).v) } as never);
+    return { ok: true };
+  }
+});
 views.host_session = defineView({
   scope: "session",
   block: handler({
@@ -258,6 +277,13 @@ describe("a view hears a change through every read path, at every scope", () => 
 
   it("session handle × session", async () => {
     const { before, after, heard } = await cell("handle_session", "say", "a");
+    expect(after.output).not.toEqual(before.output);
+    expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+    expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
+  });
+
+  it("session state × session", async () => {
+    const { before, after, heard } = await cell("state_session", "state_session", "a");
     expect(after.output).not.toEqual(before.output);
     expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
     expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);

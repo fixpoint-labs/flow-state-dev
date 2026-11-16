@@ -44,7 +44,7 @@ vi.mock("bullmq", () => ({
 }));
 
 import { createBullmqScheduleIndex } from "../src/schedule-index";
-import { createScheduleDispatchWorker } from "../src/schedules";
+import { createScheduleDispatchProcessor } from "../src/schedules";
 
 const SECRET = "scheduler-secret";
 
@@ -113,7 +113,7 @@ function boot() {
     router.POST(new Request(url, init), { params: { path: [] } })) as typeof fetch;
 
   const statuses: number[] = [];
-  createScheduleDispatchWorker({
+  createScheduleDispatchProcessor({
     queueName: "schedules",
     baseUrl: BASE,
     secret: SECRET,

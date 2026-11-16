@@ -202,7 +202,7 @@ export type RequestHostConstructionInputs = {
   /**
    * Starts the request a dispatch becomes, through the same host-level arbiter
    * and enqueue-time materialization. Absent → the dispatch seam refuses
-   * `no-dispatch-operation` — the `worker-only` case: that mode constructs no
+   * `no-dispatch-operation` — the `process-only` case: that mode constructs no
    * dispatcher, so a deployment whose capabilities dispatch must supply this
    * there explicitly.
    */

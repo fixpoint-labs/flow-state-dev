@@ -42,6 +42,7 @@ function flow(): FlowInstance {
       rosterAndTheme: view("roster-and-theme", async (ctx) => (await ctx.resources.workers.list()).length + ctx.user.state.theme.length),
       pinned: view("pinned", (ctx) => ctx.resources.pins.state.n),
       items: view("items", (ctx) => ctx.session.items.all().length),
+      sessionState: view("session-state", (ctx) => Object.keys(ctx.session.state).length),
       board: view("board", async (ctx) => {
         const ledger = ctx.resources.desk;
         const entries = await ledger.list();
@@ -89,6 +90,13 @@ describe("a view's answer says which notices change what it read", () => {
 
   it("a session read hears every change to the session but its resources and boards", async () => {
     expect((await run("items")).hears).toEqual([{ topic: { scope: "session", id: "s1" }, kinds: ["items", "request", "run", "state"] }]);
+  });
+
+  it("a session state read hears the session's state writes, not a reply streaming in it or a request stamping it", async () => {
+    // A board view reads its conversation's state to find its worker. A reply's items, its
+    // request's moves and the request stamping the session record (`run`) change no state:
+    // hearing them re-read an idle board on every chunk and every turn.
+    expect((await run("sessionState")).hears).toEqual([{ topic: { scope: "session", id: "s1" }, kinds: ["state"] }]);
   });
 
   // A user ledger's filing in a session the answer never named is heard as

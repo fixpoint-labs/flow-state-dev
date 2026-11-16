@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { createInMemoryBus, createInMemoryStores, type ChangeNotice } from "@flow-state-dev/engine/host";
 import { executeRunCommand, type FlowRunResult, type FlowEvent } from "../src/commands/run";
 import { discoverFlows, getSearchedDirs } from "../src/resolve-flow";
 import { CliError } from "../src/resolve-block";
@@ -575,6 +575,31 @@ describe("seed state", () => {
     expect(result.success).toBe(true);
     // Should start from seeded value 10 and increment by 1
     expect(result.output).toEqual({ count: 11 });
+  });
+
+  it("tells a view that read the session's state when it seeds an existing session", async () => {
+    // A view that read a session's state hears only its `state` notices. The seed writes the state
+    // outside any run, so the store write's own `run` notice is not one it hears.
+    const bus = createInMemoryBus();
+    const stores = { ...createInMemoryStores(), bus };
+    const sessionId = "seeded-under-a-view";
+    await executeRunCommand("echo", "respond", { input: '{"message": "first"}', session: sessionId, cwd: fixturesDir, stores, quiet: true });
+    const heard: ChangeNotice[] = [];
+    bus.subscribe({ scope: "session", id: sessionId, tenantId: "" }, (notice) => heard.push(notice));
+
+    const result = await executeRunCommand("echo", "respond", {
+      input: '{"message": "second"}',
+      session: sessionId,
+      seedSession: '{"seeded": true}',
+      cwd: fixturesDir,
+      stores,
+      quiet: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect((await stores.session.get(sessionId))?.state).toMatchObject({ seeded: true });
+    // What a state read hears on the session's topic: a `state` notice.
+    expect(heard.filter((notice) => notice.kind === "state" && notice.topic.resource === undefined)).not.toEqual([]);
   });
 
   it("seeds session state from file via --seed-session", async () => {

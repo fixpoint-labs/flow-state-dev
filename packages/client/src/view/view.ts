@@ -22,7 +22,6 @@ import { wireTopicKey, type WireNotice, type WireTopic } from "@flow-state-dev/c
 import type { ViewDefinition, ViewHearing, ViewInput, ViewOutput } from "@flow-state-dev/core/types";
 import type { SubscribeOptions, Subscription } from "../subscribe/push-hub";
 import { liveRead, type LiveRead } from "../live/live-read";
-import { hearsNotice } from "@flow-state-dev/contracts/types/view-hearing";
 
 /** A view by flow address and name, typed by the view. Holds no block: safe in a browser bundle. */
 export type ViewRef<TView extends ViewDefinition = ViewDefinition> = {
@@ -102,8 +101,6 @@ type Shared = {
   byKey: Map<string, { json: string; entry: unknown }>;
   /** A keyed answer as last held, for a partial answer to be placed over: its rows, keys and topics. */
   held?: { entries: unknown[]; keys: string[]; topics: WireTopic[]; hears?: ViewHearing[] };
-  /** What the last answer hears (`ViewResult.hears`). */
-  hears?: ViewHearing[];
 };
 
 const sharedByClient = new WeakMap<object, Map<string, Shared>>();
@@ -263,7 +260,6 @@ export function watchView<TValue = unknown>(
       [],
       {
         topicsFromResult: true,
-        hear: (notice) => hearsNotice(entry.hears, notice),
         read: async (notice) => {
           try {
             const changed = changeFor(notice, entry.held);
@@ -294,8 +290,7 @@ export function watchView<TValue = unknown>(
               result.keys !== undefined && Array.isArray(result.value)
                 ? { entries: result.value, keys: result.keys, topics: result.topics, ...(result.hears !== undefined ? { hears: result.hears } : {}) }
                 : undefined;
-            entry.hears = result.hears;
-            return { value: keepUnchangedEntries(entry, result), topics: result.topics };
+            return { value: keepUnchangedEntries(entry, result), topics: result.topics, ...(result.hears !== undefined ? { hears: result.hears } : {}) };
           } catch (error) {
             // FIX-2625: the rows held are older than the change whose read failed: the next read
             // answers whole, or a later partial answer placed over them leaves that row stale.

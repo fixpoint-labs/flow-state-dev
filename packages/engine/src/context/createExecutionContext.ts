@@ -3376,7 +3376,7 @@ export async function createExecutionContext<
   ) as SessionScopeHandle<TSessionState>;
   // FIX-2623 D1: in a session view, the session's items, metadata, window and
   // journal are reads of the session too. Its topic covers every change to them.
-  if (viewDependencies !== undefined && !noSession) recordSessionReads(sessionHandle, () => viewDependencies.state("session"));
+  if (viewDependencies !== undefined && !noSession) recordSessionReads(sessionHandle, () => viewDependencies.session(sessionId));
 
   const orgOpsEmitting =
     orgOps === undefined || orgContainer === undefined

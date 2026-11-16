@@ -1,17 +1,17 @@
 /**
- * Static schedule registration and schedule dispatch worker.
+ * Static schedule registration and schedule dispatch processor.
  *
  * `registerStaticSchedules` reads each flow's `schedules.static` map and
  * upserts a BullMQ repeatable job per entry.
  *
- * `createScheduleDispatchWorker` consumes scheduler-produced jobs and
+ * `createScheduleDispatchProcessor` consumes scheduler-produced jobs and
  * POSTs to the framework's schedule dispatch endpoint, bridging BullMQ's
  * native cron to the scheduled transport adapter.
  */
 import { Worker, UnrecoverableError } from "bullmq";
 import type { Queue, Job } from "bullmq";
 import type { FlowRegistry } from "@flow-state-dev/engine/host";
-import { resolveWorkerConnection } from "./connection";
+import { resolveProcessorConnection } from "./connection";
 import { dynamicScheduleId } from "./schedule-id";
 import type { BullmqConnectionOptions } from "./types";
 
@@ -78,7 +78,7 @@ export async function registerStaticSchedules(
   }
 }
 
-export interface CreateScheduleDispatchWorkerOptions
+export interface CreateScheduleDispatchProcessorOptions
   extends BullmqConnectionOptions {
   /** Queue name to consume scheduler jobs from. */
   queueName: string;
@@ -111,10 +111,10 @@ interface ScheduleJobData {
  * the framework's schedule dispatch endpoint. Bridges BullMQ's native
  * repeatable-job scheduler to the framework's scheduled transport adapter.
  */
-export function createScheduleDispatchWorker(
-  opts: CreateScheduleDispatchWorkerOptions
+export function createScheduleDispatchProcessor(
+  opts: CreateScheduleDispatchProcessorOptions
 ): Worker {
-  const { connection, prefix } = resolveWorkerConnection(opts);
+  const { connection, prefix } = resolveProcessorConnection(opts);
   const { baseUrl, secret, queueName, onDispatch } = opts;
 
   const processor = async (job: Job<ScheduleJobData>) => {

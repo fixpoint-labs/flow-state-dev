@@ -221,6 +221,30 @@ describe("withChangeBus · every request and session write publishes its session
     expect(heard).toEqual([]);
   });
 
+  it("publishes `state` when a session is born or deleted, so a view that read only its state hears it come and go", async () => {
+    const { stores, bus } = wired();
+    const heard = hear(bus, sessionTopic("s1"));
+    await stores.session.set("s1", session("s1"), "absent");
+    await tick();
+    await tick();
+    expect(heard.map((n) => n.kind), "born").toContain("state");
+
+    heard.length = 0;
+    await stores.session.delete("s1");
+    await tick();
+    await tick();
+    expect(heard.map((n) => n.kind), "deleted").toContain("state");
+
+    // An ordinary rewrite of a live record (a request's stamp, a title) is no state change.
+    await stores.session.set("s1", session("s1"), "absent");
+    await tick();
+    heard.length = 0;
+    await stores.session.set("s1", session("s1", { version: 1 }), "any");
+    await tick();
+    await tick();
+    expect(heard.map((n) => n.kind), "rewritten").not.toContain("state");
+  });
+
   it("publishes nothing for a write that did not land", async () => {
     const { stores, bus } = wired();
     await stores.session.set("s1", session("s1"), "any");

@@ -38,7 +38,7 @@ vi.mock("@flow-state-dev/engine/host", () => ({
 
 import { holdLeasePlace, settleUnstartedRequest, withChangeBus } from "@flow-state-dev/engine/host";
 import { runAction } from "@flow-state-dev/engine";
-import { createFlowJobProcessor, type FlowWorkerDeps } from "../src/worker";
+import { createFlowJobProcessor, type JobProcessorDeps } from "../src/job-processor";
 import type { FlowJobData } from "../src/types";
 
 const runActionMock = vi.mocked(runAction);
@@ -58,14 +58,14 @@ function makeBridge() {
   return { bridge, publisher };
 }
 
-function makeDeps(bridge?: unknown, overrides: Record<string, unknown> = {}): FlowWorkerDeps {
+function makeDeps(bridge?: unknown, overrides: Record<string, unknown> = {}): JobProcessorDeps {
   return {
     registry: { get: vi.fn(() => ({ kind: "chat", actions: {} })) },
     stores: { request: { getEvents: vi.fn().mockResolvedValue([]) } },
     runtimeConfig: {},
     bridge,
     ...overrides
-  } as unknown as FlowWorkerDeps;
+  } as unknown as JobProcessorDeps;
 }
 
 function makeJob(overrides: Record<string, unknown> = {}): Job<FlowJobData> {

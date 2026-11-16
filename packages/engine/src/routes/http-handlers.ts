@@ -312,7 +312,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // whose `requestHost` it has already rebuilt as a fresh literal
   // (`{ ...base.requestHost, staleThresholdMs, staleSweepIntervalMs }`), and
   // that spread is a fork — so anything stamped here lands on a copy nobody
-  // else holds. The object `createFlowState` gives `worker.startWorker` never
+  // else holds. The object `createFlowState` gives `jobQueue.startProcessing` never
   // saw it, so a colocated queue worker running a board that dispatches met
   // `no-dispatch-operation`; and because this operation carries no child tracking,
   // an HTTP-started child session was invisible to the shutdown drain.

@@ -29,6 +29,7 @@
  * | any other request write | the same, and `run` on its owner's user topic |
  * | a session's state field delta | `run` on the session and on its parent |
  * | any other session write | the same, and `run` on its owner's user topic |
+ * | a session born (`set` over `"absent"`) or deleted | also `state` on the session |
  *
  * The user topic is what a list of the user's sessions watches: it hears a
  * session made, titled or deleted and a request's status written, not the
@@ -453,14 +454,26 @@ function sessionWrites(store: SessionStore, bus: ChangeBus, identities: Identiti
   return present(store, {
     set: (original) => async (id: string, value: SessionRecord, expected: unknown) => {
       const result = await original(id, value, expected);
-      if (result?.ok === true) publishNotices(bus, identities.sessionNotices(identities.rememberSession(id, value), "run"));
+      if (result?.ok === true) {
+        const identity = identities.rememberSession(id, value);
+        publishNotices(bus, identities.sessionNotices(identity, "run"));
+        // A birth (`"absent"`) brings state into being, so a view that read
+        // only the session's state hears it. Any other rewrite (a request's
+        // stamp, a title) changes no state: in-run state publishes `state` on
+        // commit, and an out-of-run state write publishes its own.
+        if (expected === "absent") publishNotices(bus, [notice(sessionTopic(identity.id, identity.tenantId), "state")]);
+      }
       return result;
     },
     delete: (original) => async (id: string) => {
       const identity = await identities.session(id);
       await original(id);
       identities.forgetSession(id);
-      if (identity !== undefined) publishNotices(bus, identities.sessionNotices(identity, "run"));
+      if (identity !== undefined) {
+        publishNotices(bus, identities.sessionNotices(identity, "run"));
+        // Deleting takes the state away: a view that read only it must hear.
+        publishNotices(bus, [notice(sessionTopic(identity.id, identity.tenantId), "state")]);
+      }
     },
     ...Object.fromEntries(DELTA_METHODS.map((name) => [name, delta]))
   });

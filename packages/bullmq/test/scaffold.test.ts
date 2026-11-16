@@ -7,7 +7,7 @@ describe("@flow-state-dev/bullmq exports", () => {
   it("exports connection helpers", async () => {
     const mod = await import("../src/index");
     expect(typeof mod.resolveProducerConnection).toBe("function");
-    expect(typeof mod.resolveWorkerConnection).toBe("function");
+    expect(typeof mod.resolveProcessorConnection).toBe("function");
   });
 
   it("exports retry helpers", async () => {
@@ -21,19 +21,19 @@ describe("@flow-state-dev/bullmq exports", () => {
     expect(typeof mod.createBullmqRuntime).toBe("function");
   });
 
-  it("exports worker factory", async () => {
+  it("exports the job processor factory", async () => {
     const mod = await import("../src/index");
-    expect(typeof mod.createFlowWorker).toBe("function");
+    expect(typeof mod.createJobProcessor).toBe("function");
   });
 
-  it("exports the flowstate worker adapter factory", async () => {
+  it("exports the flowstate job queue adapter factory", async () => {
     const mod = await import("../src/index");
-    expect(typeof mod.bullmqWorker).toBe("function");
+    expect(typeof mod.bullmqJobQueue).toBe("function");
   });
 
   it("exports the flow runner factory", async () => {
     const mod = await import("../src/index");
-    expect(typeof mod.createWorkerRunner).toBe("function");
+    expect(typeof mod.createJobQueueRunner).toBe("function");
   });
 
   it("exports stream bridge factory", async () => {

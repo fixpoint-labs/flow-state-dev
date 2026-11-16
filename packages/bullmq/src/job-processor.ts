@@ -43,12 +43,12 @@ import type {
 } from "@flow-state-dev/engine/host";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { resolveWorkerConnection } from "./connection";
+import { resolveProcessorConnection } from "./connection";
 import type { JobLeaseBackend, JobLeaseTakeInput } from "./lease-backend";
 import type { BullmqConnectionOptions, FlowJobData, RetryConfig } from "./types";
 
-/** Dependencies injected into the flow worker. */
-export interface FlowWorkerDeps {
+/** Dependencies injected into the job processor. */
+export interface JobProcessorDeps {
   registry: FlowRegistry;
   stores: StoreRegistry;
   runtimeConfig: RuntimeConfig;
@@ -79,10 +79,10 @@ export interface FlowWorkerDeps {
   deferPatienceMs?: number;
 }
 
-export interface CreateFlowWorkerOptions extends BullmqConnectionOptions {
+export interface CreateJobProcessorOptions extends BullmqConnectionOptions {
   queueName?: string;
   retry?: RetryConfig;
-  deps: FlowWorkerDeps;
+  deps: JobProcessorDeps;
 }
 
 const DEFAULT_QUEUE_NAME = "fsd-flows";
@@ -94,11 +94,11 @@ const DEFAULT_LOCK_DURATION = 300_000;
 const CANCELLED = Symbol("cancelled");
 
 /**
- * Builds the job processor used by `createFlowWorker`. Exported separately so
+ * Builds the per-job function `createJobProcessor` hands BullMQ. Exported separately so
  * the retry/terminal-publish semantics are testable without a Redis
  * connection (constructing a BullMQ `Worker` connects eagerly).
  */
-export function createFlowJobProcessor(deps: FlowWorkerDeps) {
+export function createFlowJobProcessor(deps: JobProcessorDeps) {
   const { registry, bridge, onItem, leaseBackend, deferPatienceMs } = deps;
   // The framework's own flows read the host's resolver off their context (FIX-2624).
   const runtimeConfig = { ...deps.runtimeConfig, hostResolver: deps.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver };
@@ -502,8 +502,8 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
  * the registry, executes it, and maps the result back to BullMQ job
  * completion/failure semantics.
  */
-export function createFlowWorker(options: CreateFlowWorkerOptions): Worker {
-  const { connection, prefix } = resolveWorkerConnection(options);
+export function createJobProcessor(options: CreateJobProcessorOptions): Worker {
+  const { connection, prefix } = resolveProcessorConnection(options);
   const queueName = options.queueName ?? DEFAULT_QUEUE_NAME;
   const { concurrency, lockDuration } = options.deps;
   const processor = createFlowJobProcessor(options.deps);

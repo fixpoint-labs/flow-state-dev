@@ -1,9 +1,9 @@
 /**
- * Unit tests for `bullmqWorker` — the WorkerAdapter composition for
+ * Unit tests for `bullmqJobQueue` — the JobQueueAdapter composition for
  * `createFlowState({ worker })`. The runtime/bridge/runner factories are
  * mocked; these tests pin the composition contract: option threading, mode
  * default, queue exposure, and that the worker side maps the resolved
- * FlowStateRuntime onto FlowWorkerDeps verbatim.
+ * FlowStateRuntime onto JobProcessorDeps verbatim.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { FlowStateRuntime } from "@flow-state-dev/engine/host";
@@ -13,7 +13,7 @@ const fakeQueue = { name: "fsd-flows" };
 const fakeRuntime = {
   queue: fakeQueue,
   enqueueAction: vi.fn(),
-  createWorker: vi.fn(() => createdWorker),
+  createJobProcessor: vi.fn(() => createdWorker),
   close: vi.fn().mockResolvedValue(undefined),
 };
 const fakeBridge = { createPublisher: vi.fn(), createSubscriber: vi.fn() };
@@ -27,7 +27,7 @@ vi.mock("../src/stream-bridge", () => ({
   createRedisStreamBridge: vi.fn(() => fakeBridge),
 }));
 vi.mock("../src/runner", () => ({
-  createWorkerRunner: vi.fn(() => fakeRunner),
+  createJobQueueRunner: vi.fn(() => fakeRunner),
 }));
 vi.mock("../src/lease-backend", () => ({
   createRedisLeaseBackend: vi.fn(() => fakeLeaseBackend),
@@ -35,9 +35,9 @@ vi.mock("../src/lease-backend", () => ({
 
 import { createBullmqRuntime } from "../src/runtime";
 import { createRedisStreamBridge } from "../src/stream-bridge";
-import { createWorkerRunner } from "../src/runner";
+import { createJobQueueRunner } from "../src/runner";
 import { createRedisLeaseBackend } from "../src/lease-backend";
-import { bullmqWorker } from "../src/flowstate-adapter";
+import { bullmqJobQueue } from "../src/flowstate-adapter";
 
 const flowStateRuntime = {
   registry: { get: () => undefined },
@@ -48,17 +48,17 @@ const flowStateRuntime = {
 beforeEach(() => {
   vi.mocked(createBullmqRuntime).mockClear();
   vi.mocked(createRedisStreamBridge).mockClear();
-  vi.mocked(createWorkerRunner).mockClear();
+  vi.mocked(createJobQueueRunner).mockClear();
   vi.mocked(createRedisLeaseBackend).mockClear();
   fakeLeaseBackend.close.mockClear();
-  fakeRuntime.createWorker.mockClear();
+  fakeRuntime.createJobProcessor.mockClear();
   fakeRuntime.close.mockClear();
   createdWorker.close.mockClear();
 });
 
-describe("bullmqWorker", () => {
+describe("bullmqJobQueue", () => {
   it("threads connection/queue/retry options into the runtime and bridge", () => {
-    bullmqWorker({
+    bullmqJobQueue({
       connection: "redis://localhost:6379",
       prefix: "app",
       queueName: "jobs",
@@ -79,36 +79,36 @@ describe("bullmqWorker", () => {
   });
 
   it("defaults mode to colocated and exposes the queue and runtime", () => {
-    const adapter = bullmqWorker({ connection: "redis://localhost:6379" });
+    const adapter = bullmqJobQueue({ connection: "redis://localhost:6379" });
     expect(adapter.mode).toBe("colocated");
     expect(adapter.queue).toBe(fakeQueue);
     expect(adapter.runtime).toBe(fakeRuntime);
   });
 
   it("createRunner wires the shared queue, bridge, and retry config", () => {
-    const adapter = bullmqWorker({
+    const adapter = bullmqJobQueue({
       connection: "redis://localhost:6379",
       retry: { attempts: 2 },
     });
     const runner = adapter.createRunner(flowStateRuntime);
 
     expect(runner).toBe(fakeRunner);
-    expect(createWorkerRunner).toHaveBeenCalledWith({
+    expect(createJobQueueRunner).toHaveBeenCalledWith({
       queue: fakeQueue,
       bridge: fakeBridge,
       retryConfig: { attempts: 2 },
     });
   });
 
-  it("startWorker maps the resolved runtime onto FlowWorkerDeps with the shared bridge", async () => {
-    const adapter = bullmqWorker({
+  it("startProcessing maps the resolved runtime onto JobProcessorDeps with the shared bridge", async () => {
+    const adapter = bullmqJobQueue({
       connection: "redis://localhost:6379",
       concurrency: 7,
       lockDuration: 60_000,
     });
-    const handle = adapter.startWorker(flowStateRuntime);
+    const handle = adapter.startProcessing(flowStateRuntime);
 
-    expect(fakeRuntime.createWorker).toHaveBeenCalledWith({
+    expect(fakeRuntime.createJobProcessor).toHaveBeenCalledWith({
       registry: flowStateRuntime.registry,
       stores: flowStateRuntime.stores,
       runtimeConfig: flowStateRuntime.runtimeConfig,
@@ -123,7 +123,7 @@ describe("bullmqWorker", () => {
   });
 
   it("close delegates to the runtime (queue + workers) and closes the lease backend", async () => {
-    const adapter = bullmqWorker({ connection: "redis://localhost:6379" });
+    const adapter = bullmqJobQueue({ connection: "redis://localhost:6379" });
     await adapter.close?.();
     expect(fakeRuntime.close).toHaveBeenCalledTimes(1);
     expect(fakeLeaseBackend.close).toHaveBeenCalledTimes(1);
@@ -132,7 +132,7 @@ describe("bullmqWorker", () => {
   it("supplies the engine a lease backend on the same Redis, reading the shared queue", () => {
     // Without it the engine arbitrates only its own process, so a session's
     // `queue` / `reject` policy would not hold across worker processes.
-    const adapter = bullmqWorker({
+    const adapter = bullmqJobQueue({
       connection: "redis://localhost:6379",
       prefix: "app",
       leaseMs: 4_000,
@@ -148,10 +148,10 @@ describe("bullmqWorker", () => {
 
   it("honors an explicit mode", () => {
     expect(
-      bullmqWorker({ connection: "r", mode: "dispatch-only" }).mode
-    ).toBe("dispatch-only");
+      bullmqJobQueue({ connection: "r", mode: "enqueue-only" }).mode
+    ).toBe("enqueue-only");
     expect(
-      bullmqWorker({ connection: "r", mode: "worker-only" }).mode
-    ).toBe("worker-only");
+      bullmqJobQueue({ connection: "r", mode: "process-only" }).mode
+    ).toBe("process-only");
   });
 });
