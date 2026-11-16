@@ -153,12 +153,12 @@ describe("the coding board view", () => {
     // worker's setting is now and whether the worker is still on the roster.
     const userKey = `alice:~org:${DEFAULT_ORG_ID}`;
     const stored = await stores.resourceState.getByPrefix("user", userKey, "tasks/");
-    const [key, row] = Object.entries(stored).find(([, value]) => (value.state as { id?: string }).id === task.id)!;
+    const [key, record] = Object.entries(stored).find(([, value]) => (value.state as { id?: string }).id === task.id)!;
     const ranOn = (harness: string) => ({ requests: [{ requestId: "req_past", settled: [], live: null, harness, harnessModel: null, model: null, writer: "w1", admittedAt: 1, recovered: null }] });
-    await stores.resourceState.set("user", userKey, key, { ...(row.state as object), status: "completed", output: { review: "accepted" }, spend: ranOn("claude") } as never, "any");
+    await stores.resourceState.set("user", userKey, key, { ...(record.state as object), status: "completed", output: { review: "accepted" }, spend: ranOn("claude") } as never, "any");
     const [past] = (await board("alice", conversation)).output;
     expect(past).toMatchObject({ harness: "claude", review: "accepted" });
-    await stores.resourceState.set("user", userKey, key, { ...(row.state as object), assignee: "core.gone", status: "completed", output: { review: "deadline" }, spend: ranOn("claude") } as never, "any");
+    await stores.resourceState.set("user", userKey, key, { ...(record.state as object), assignee: "core.gone", status: "completed", output: { review: "deadline" }, spend: ranOn("claude") } as never, "any");
     const [gone] = (await board("alice", conversation)).output;
     expect(gone).toMatchObject({ harness: "claude", review: "deadline" });
   });
