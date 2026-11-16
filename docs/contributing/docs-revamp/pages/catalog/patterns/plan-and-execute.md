@@ -191,7 +191,7 @@ In `research.ts`, add `synthesizer: writeReport` to the config. Setting `outputS
 - **Order is kept.** The comparison runs after the research it needs and receives each result.
 - **A failure costs one branch.** Tasks that depend on the failed one are skipped. The rest finish.
 - **The plan can change.** With replanning on, a surprising result can add tasks instead of ending the run.
-- **Progress is visible.** The pattern streams each task's status as it changes. Install the `TaskPlan` view with `fsdev ui add task-plan` and render `<TaskPlan collectionId="research" />` to show it live. `collectionId` is the `name` you gave `planAndExecute`. The item shapes are in the [items reference](../../reference/items.md).
+- **Progress is visible.** The pattern streams each task's status as it changes. Install the `TaskPlan` view with `fsdev ui add task-plan` and render `<TaskPlan collectionId="research" items={session.items} />` to show it live. `collectionId` is the `name` you gave `planAndExecute`, and `items` is the session's items, from `useSession`. Without `items` it reads them from a `SessionItemsProvider` above it, and with neither it draws an empty board. The item shapes are in the [items reference](../../reference/items.md).
 
 ## Next
 

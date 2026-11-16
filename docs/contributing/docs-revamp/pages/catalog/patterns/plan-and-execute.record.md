@@ -38,6 +38,7 @@ Skipped: K-22 is kept in the sitemap, and the page was already at `plan-and-exec
 - After revise round 2, page sha256 646f3f2bc167: exit 0.
 - After revise round 3, page sha256 263adf02f812: exit 1. Failed: node scripts/check-docs-page.mjs docs/contributing/docs-revamp/pages/catalog/patterns/plan-and-execute.md.
 - After the loop (review): pass 4 banned word "now" x2: the example follow-up reads "add Initech too" (line 123) and "Add Initech too" becomes ... (line 125); no other text changed. Page sha256 ec2987c5f911: the page check exits 0 and the brand lint has 0 findings.
+- After the loop (review): Codex P2: the `TaskPlan` line rendered it with no `items` and no provider, so it read an empty `useSessionItems()` context. The line now passes `items={session.items}` and says what happens without it. No code block changed. 1474 words. Page sha256 4aaac4ea3813.
 
 ## 5 · Fact check
 
@@ -50,6 +51,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Reference row 12: Page (config reference) and row 12: `model` default "openai/gpt-6-luna" for the default planner, executor, replanner and synthesizer. Untrue: The default executor falls back to "intent/synthesize". The replanner and synthesizer default to "openai/gpt-6-luna". The planner gets `config.model` passed to `utility.decomposer`, which is `undefined` when unset. (/home/user/flow-state-dev/packages/patterns/src/plan-and-execute/index.ts:346 (executor), :275 (replanner), :571 (synthesizer), :647-652 (planner)) The row is recorded corrected.
 - Reference row 12: Page (config reference) and row 12: `plannerVisibility` "applies when a custom `planner` is supplied"; default `{ client: true, history: false }`. Untrue: `plannerVisibility` is declared on the config but never read. Nothing in `planAndExecute` passes it to any block, custom or default, so it has no effect. (/home/user/flow-state-dev/packages/patterns/src/plan-and-execute/index.ts:239-240 (declared); no other reference in packages/) The row is recorded corrected.
 - Re-run after the review edit: no claim changed: only the example user message was reworded; the goal-synthesis option it illustrates is unchanged (packages/patterns/src/plan-and-execute/index.ts:216, :700-770).
+- Re-run after the review edit: `TaskPlan` takes `items?` (packages/ui/registry/components/task-plan.tsx:158) and otherwise reads `useSessionItems()` (:48, :204), whose context defaults to `[]` (packages/ui/registry/components/session-items-context.tsx).
 
 ## 6 · Depth pass
 
