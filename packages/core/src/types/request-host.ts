@@ -325,6 +325,15 @@ export type SessionListQuery = {
    * a session's other state is not the list's to filter on.
    */
   readonly fields?: Readonly<Record<string, string>>;
+  // FIX-2754.
+  /**
+   * Only these sessions, by id, at most the first 100. The other filters
+   * still apply, and each session passes the same rule as the rest of the
+   * list: another principal's, a refused and a missing session are left out
+   * alike, and the read is heard as the list is, never on an asked-for
+   * session's own topic.
+   */
+  readonly ids?: readonly string[];
   /** How many rows, newest first. Defaults to and at most 100. */
   readonly limit?: number;
   /**

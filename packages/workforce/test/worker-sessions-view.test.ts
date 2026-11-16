@@ -5,7 +5,7 @@
  * where a request ran, never a stored key, and seeds nothing by hand.
  * Project-coordinator sessions are in `project-coordinator.test.ts`, the host that names one.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mockGenerator, type MockGeneratorScriptEntry } from "@flow-state-dev/testing";
 import type { WorkerManifest } from "../src";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
@@ -138,10 +138,15 @@ describe("a user's conversations with one worker", () => {
         await sleep(1);
         await open(h, "alice");
       }
+      // FIX-2754: the default is read by id, so finding it reads no page past the first.
+      const store = (await h.state.getRuntime()).stores.session;
+      const reads = vi.spyOn(store, "list");
       const listed = await h.workerSessions("alice", "otto");
       expect(listed[0] && [listed[0].id, listed[0].isDefault]).toEqual([main.id, true]);
       expect(listed).toHaveLength(100);
       expect(listed.filter((entry) => entry.isDefault)).toHaveLength(1);
+      const pages = reads.mock.calls.filter(([options]) => options?.state?.workerId === "otto").map(([options]) => options?.offset ?? 0);
+      expect(pages).toEqual([0]);
     } finally {
       await h.dispose();
     }

@@ -162,6 +162,17 @@ views.host_list = defineView({
     execute: async (_input, ctx) => ({ v: String((await requestHostOf(ctx)!.sessions!.list()).sessions.length) })
   })
 });
+// FIX-2754: the caller's sessions listed by id.
+views.host_list_ids = defineView({
+  scope: "session",
+  block: handler({
+    name: "list-sessions-by-id",
+    inputSchema: z.object({}),
+    outputSchema: out,
+    resources,
+    execute: async (_input, ctx) => ({ v: String((await requestHostOf(ctx)!.sessions!.list({ ids: ["c"] })).sessions.length) })
+  })
+});
 views.host_turns = defineView({
   scope: "session",
   block: handler({
@@ -405,6 +416,17 @@ describe("a view hears a change through every read path, at every scope", () => 
     // A first run in a new session makes it, on the caller's user topic.
     const { before, after, heard } = await cell("host_list", "say", "c", false);
     expect(after.output).not.toEqual(before.output);
+    expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+    expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
+  });
+
+  it("request host list by ids × user, of a session made after the read", async () => {
+    // A list by id hears as the list does, on the caller's own user topic,
+    // never on the asked-for session's topic, which it can't check is theirs.
+    const { before, after, heard } = await cell("host_list_ids", "say", "c", false);
+    expect(before.output).toEqual({ v: "0" });
+    expect(after.output).toEqual({ v: "1" });
+    expect(before.topics).not.toContainEqual({ scope: "session", id: "c" });
     expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
     expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
   });
