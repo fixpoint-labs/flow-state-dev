@@ -196,7 +196,7 @@ describe("an empty board read for a named conversation", () => {
       // The list, on the user topic's `run` (beside the roster's own resource reads).
       expect(answer.hears.find((hearing) => hearing.topic.scope === "user" && hearing.topic.resource === undefined)?.kinds).toContain("run");
       // Its turns are heard on its request notices; nothing hears its streamed items.
-      expect(answer.hears).toContainEqual({ topic: { scope: "session", id: lead }, kinds: ["request"] });
+      expect(answer.hears).toContainEqual({ topic: { scope: "session", id: lead }, kinds: ["request", "state"] });
       expect(answer.hears.flatMap((hearing) => hearing.kinds)).not.toContain("items");
     } finally {
       await h.dispose();

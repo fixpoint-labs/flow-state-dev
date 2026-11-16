@@ -436,6 +436,9 @@ export interface RequestSessions {
    * and for one that doesn't exist. Reads only: nothing is written to the
    * session and nothing runs in it. A turn the session runs now, a suspended
    * turn and a parked one are left out, and `running` says one is open.
+   * It returns the transcript, so a view that reads it hears `items` and runs
+   * again per streamed chunk; a view meant to stay quiet during a reply reads
+   * {@link turns}, not `history`.
    */
   history(sessionId: string, query?: SessionHistoryQuery): Promise<SessionHistory | undefined>;
 

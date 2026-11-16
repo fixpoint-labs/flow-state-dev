@@ -93,14 +93,17 @@ const SESSION_KINDS: readonly ChangeKind[] = ["items", "request", "run", "state"
  * The kinds each read of another session, or of the user's sessions, hears.
  * A session's flow and lineage change only when it is deleted or recreated
  * under its id, both of which publish `run` on it. Its requests' statuses
- * change on a request write, which publishes `request` on it. The user's
+ * change on a request write, which publishes `request` on it; they vanish
+ * with the session, whose delete (and a recreate) publishes `state` on it but
+ * leaves its requests in the store. `state`, not `run`: a busy turn's session
+ * field deltas and its child sessions' writes publish `run`. The user's
  * session list changes on a session written whole (made, titled, deleted) or
  * a request's status written, each of which publishes `run` on their user
  * topic. None hears `items`, which a reply publishes once per stored chunk.
  */
 const PEER_KINDS: Record<"identity" | "turns" | "sessions", readonly ChangeKind[]> = {
   identity: ["run"],
-  turns: ["request"],
+  turns: ["request", "state"],
   sessions: ["run"]
 };
 
@@ -295,8 +298,8 @@ export class UnrecordedReadError extends Error {
  * What a view's session reads record, read by read: the request host's
  * `sessions` verbs call it where they answer a session (`request-sessions.ts`),
  * so a session the owner rule or the view's admission refuses never has its
- * topic named. A one-session `read`, `turns` or `history` that answers nothing
- * records the caller's list.
+ * topic named. A `read`, `turns` or `history` that leaves an asked-for session
+ * unanswered (a `turns` batch member included) records the caller's list.
  */
 export type SessionReadObserver = {
   /** `read` answered the session: its flow and lineage. */

@@ -7,7 +7,7 @@
  * Both read the caller's sessions through the request host (`sessions.list`,
  * `sessions.turns`, `sessions.read`), so the engine answers only sessions the
  * caller may read and records what each read hears: the list on the user
- * topic's `run`, a session's turns on its `request`, never `items`, which a
+ * topic's `run`, a session's turns on its `request` and its delete (`state`), never `items`, which a
  * reply publishes once per streamed chunk. The words of a conversation stay on the
  * session stream (`sessionFeed`).
  *
