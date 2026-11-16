@@ -61,7 +61,7 @@ const flow = defineFlow({
   }
 });
 
-function app(options: { push: boolean }) {
+function app(options: { push: boolean; secret?: () => string }) {
   const registry = createFlowRegistry();
   registry.register(flow());
   const bus = createInMemoryBus();
@@ -75,7 +75,7 @@ function app(options: { push: boolean }) {
       return user == null ? null : { userId: user, orgId: context.request?.headers.get("x-org") ?? "acme" };
     }
   });
-  const delivery = options.push ? enablePushDelivery(router, { secret: SECRET }) : undefined;
+  const delivery = options.push ? enablePushDelivery(router, { secret: options.secret ?? SECRET }) : undefined;
   return { router, delivery };
 }
 
@@ -113,7 +113,8 @@ async function userSocket(router: FlowApiRouter, delivery: NonNullable<ReturnTyp
   const frames: PushServerFrame[] = [];
   const session = delivery.openSocket("alice", { send: (frame) => frames.push(frame), close: () => undefined });
   session.receive(JSON.stringify({ type: "subscribe", ticket: answer.ticket }));
-  return () => frames.filter((frame): frame is { type: "notice" } & WireNotice => frame.type === "notice" && frame.kind === "board");
+  const notices = () => frames.filter((frame): frame is { type: "notice" } & WireNotice => frame.type === "notice");
+  return Object.assign(() => notices().filter((notice) => notice.kind === "board"), { notices });
 }
 
 describe("a board-insert notice's partition, at the push edge", () => {
@@ -142,6 +143,30 @@ describe("a board-insert notice's partition, at the push edge", () => {
       expect(partitions).not.toContain(raw);
     }
     expect(JSON.stringify(answer.hears)).not.toContain("conv-b");
+    // The secret never changed: nothing told the browser to read again.
+    expect(sent.notices().filter((notice) => notice.kind === "resync")).toEqual([]);
+  });
+
+  // Greptile on #5306: the push secret is read on each use, so it can change
+  // while a board is open. Its answer holds keys made under the old secret;
+  // the socket tells the browser to read again before it sends a key made
+  // under the new one, so the board's next answer holds the new keys.
+  it("tells an open socket to read everything again when the push secret changes, before a key under the new one", async () => {
+    let secret = "one";
+    const { router, delivery } = app({ push: true, secret: () => secret });
+    await file(router, "conv-a", "seed", "conv-a");
+    await view(router, "conv-a");
+    const sent = await userSocket(router, delivery!);
+    await file(router, "conv-b", "b1", "conv-b");
+
+    secret = "two";
+    await file(router, "task-of-a", "a1", "conv-a");
+    // The board and resync notices after B's filing (the user topic also carries each session write's `run`).
+    const after = sent.notices().filter((notice) => notice.kind === "board" || notice.kind === "resync").slice(1);
+    expect(after.map((notice) => notice.kind)).toEqual(["resync", "board"]);
+    expect(after[0]!.topic).toEqual(topic.user());
+    // The board's next answer, read on that resync, hears the notice keyed under the new secret.
+    expect(hearsNotice((await view(router, "conv-a")).hears, after[1]!)).toBe(true);
   });
 
   it("on a host with no push, the view's answer names no partition and hears every board notice", async () => {

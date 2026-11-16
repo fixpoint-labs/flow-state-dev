@@ -36,7 +36,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { createInMemoryBus, type BusTopic, type ChangeBus, type ChangeListener, type ChangeNotice } from "@flow-state-dev/engine/host";
-import { noticeIdsOf } from "@flow-state-dev/core/internal";
+import { noticeIdsOf, noticePartitionOf } from "@flow-state-dev/core/internal";
 import type { Pool } from "pg";
 import type { QueryExecutor } from "./types";
 import { openListen, reconnectDelay, type ListenConnection } from "./listen";
@@ -399,12 +399,13 @@ function noticeOf(message: object): ChangeNotice | undefined {
   if (typeof scope !== "string" || typeof id !== "string" || typeof tenantId !== "string") return undefined;
   if (resource !== undefined && typeof resource !== "string") return undefined;
   const named = noticeIdsOf(ids);
+  const carried = noticePartitionOf(partition);
   return {
     topic: { scope, id, tenantId, ...(resource !== undefined ? { resource } : {}) },
     kind: kind as ChangeNotice["kind"],
     ...(named !== undefined ? { ids: named } : {}),
     // FIX-2750: a partition that isn't a string is dropped, never the notice: no partition wakes every board.
-    ...(typeof partition === "string" ? { partition } : {})
+    ...(carried !== undefined ? { partition: carried } : {})
   };
 }
 

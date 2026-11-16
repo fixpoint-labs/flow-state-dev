@@ -12,7 +12,7 @@
  *
  * Run through the real engine (`runAction`, `runView`) on an in-memory bus.
  * In process the bus carries the raw partition; the push edge keys it, which
- * `engine/test/push/board-partition-key.test.ts` checks.
+ * `engine/test/board-partition-key.test.ts` checks.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";

@@ -145,8 +145,11 @@ function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
     } else if ("board" in read.what) {
       const hearing = at({ ...scopeTopic, resource: read.what.board });
       hearing.kinds.add("board");
-      if (read.what.partition === undefined) hearing.whole = true;
-      else hearing.partitions.add(read.what.partition);
+      // Read whole, it hears every partition: the ones listed no longer narrow it.
+      if (read.what.partition === undefined) {
+        hearing.whole = true;
+        hearing.partitions.clear();
+      } else if (!hearing.whole) hearing.partitions.add(read.what.partition);
     } else if (!covered.has(read.what.resource)) {
       const hearing = at(scopeTopic);
       hearing.kinds.add("resource");

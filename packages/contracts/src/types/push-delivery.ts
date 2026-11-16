@@ -65,6 +65,16 @@ export function noticeIdsOf(value: unknown): string[] | undefined {
   return Array.isArray(value) && value.every((id) => typeof id === "string") ? (value as string[]) : undefined;
 }
 
+// FIX-2750.
+/**
+ * A notice's board partition key as it arrived off a wire: the value when it
+ * is a string, else `undefined`. One that isn't is dropped, never the notice:
+ * no partition wakes every board.
+ */
+export function noticePartitionOf(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 /**
  * The ids two notices of one topic and kind carry together: their union, in
  * the order first named, or `undefined` (read everything) when either carries
