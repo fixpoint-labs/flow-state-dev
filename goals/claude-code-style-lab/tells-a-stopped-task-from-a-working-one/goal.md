@@ -32,7 +32,7 @@ the card's words on the page against the board's own `listTasks` row.
   request as interrupted after 5 minutes (the 4 down plus one), not one. Reading still starts
   as the server starts.
 
-**Anti-game:** read the page, never the adapter, the test double or React state. Every read is
+**Anti-game:** read the page, never the lab's hooks or React state. Every read is
 compared with the board's row. A row the board took back before the page could be read is CAN'T
 TELL (`tell.over`), not PASS; so are no reads of the alive card.
 

@@ -30,8 +30,8 @@ scripted coder (`CLAUDE_CODE_STYLE_HARNESS=stub`, a step every 6 s).
 
 **Anti-game:** every leg grades the board's own records, read with the public client
 (`listTasks`, `getTask`, the run session's requests); the page is read only for which buttons it
-offers and, in the error leg, for the board's recorded words. Nothing asserts on the adapter, the
-fake in `test/`, or React state. The steers read and the recorded error are floored with
+offers and, in the error leg, for the board's recorded words. Nothing asserts on the lab's hooks
+or React state. The steers read and the recorded error are floored with
 `tell.over`, so an empty read is CAN'T TELL. A press that the page reports as done while the row
 doesn't change fails its leg, which is what `wrong-board` proves. The error leg can't be failed by
 `wrong-board` (it is no action of the row), so `no-error` is its own control.
@@ -43,7 +43,7 @@ fails rather than infers; nothing graded waits on it.
 
 **Controls:**
 - `GOAL_CONTROL=wrong-board`: the lab's action row bound to board `"plan"` instead of `"tasks"`
-  (`src/adapter.ts`, planted and put back; pages rebuilt). Must FAIL steer, cancel and retry, with
+  (`src/lab.ts`, planted and put back; pages rebuilt). Must FAIL steer, cancel and retry, with
   the refusal on the page.
 - `GOAL_CONTROL=no-error`: the sheet's error drawn with nothing (`src/components/TasksPane.tsx`).
   Must FAIL error.

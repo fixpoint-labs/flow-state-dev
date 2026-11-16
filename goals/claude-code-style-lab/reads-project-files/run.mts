@@ -13,7 +13,7 @@
  *      holds one clone and no place, after two questions.
  *   2. a session with no repository asks the same: no value, and its turn
  *      holds a read refused `no-repository`.
- * And in the lab's own tool lines (its adapter's entries over the turn's
+ * And in the lab's own tool lines (its thread's entries (`entriesOf`) over the turn's
  * items): each of leg 1's reads names what it read (a read its file, a search
  * its pattern, a listing its pattern); leg 2's refused read reads "(failed)".
  *
@@ -55,7 +55,7 @@ const MAIN_FILE = join(LAB, "workforce", "teams", "desk", "workers", "main", "WO
 type Item = LabItem;
 
 /**
- * The tool lines a turn's items draw in the lab: its adapter's entries, each
+ * The tool lines a turn's items draw in the lab: its thread's entries (`entriesOf`), each
  * run's steps. Under `old-lines`, the lab's lines as they were before it read
  * the registry: one fixed phrase per tool, and no step ever failed.
  */
@@ -72,7 +72,7 @@ async function linesOf(items: readonly Item[]): Promise<{ tool: string; args: Re
     const { toolLine } = await oldToolLine();
     return calls.map((item) => ({ tool: item.blockName ?? "tool", args: argsOf(item), line: toolLine(item.blockName ?? "tool"), failed: false }));
   }
-  // The adapter draws one step per call, in the calls' order.
+  // The thread draws one step per call, in the calls' order.
   const steps = entriesOf(items).flatMap((entry) => (entry.kind === "tool" ? entry.steps : []));
   if (steps.length !== calls.length) throw new Error(`the lab drew ${steps.length} step(s) for ${calls.length} call(s)`);
   return calls.map((item, i) => ({ tool: item.blockName ?? "tool", args: argsOf(item), line: steps[i]!.line, failed: steps[i]!.state === "error" }));

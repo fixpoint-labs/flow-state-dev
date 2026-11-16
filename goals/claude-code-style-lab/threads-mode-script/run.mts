@@ -8,7 +8,7 @@
  * asks, resolve the one ready for review, then ask for a code change and
  * resolve its review. Each signal is graded from the rendered page and from
  * the board's own records (`listTasks_tasks`, `getTask_tasks`, the project
- * repository's worktrees and branches), never from the adapter or the lab's React state. Answers and
+ * repository's worktrees and branches), never from the lab's hooks or its React state. Answers and
  * reviews are typed and clicked, never sent through a package call.
  *
  * Controls (`GOAL_CONTROL=<name>`, same command). Each plants a change for the

@@ -28,7 +28,7 @@ The Codex legs grade where the change was filed and how it is tagged, not how th
 they need no Codex sign-in. *Plan first* runs Claude Code for real.
 
 **Anti-game:** every signal reads the rendered page or the board's own records and git history.
-Nothing asserts on the adapter, the fake in `test/`, or React state. The chip is picked and the
+Nothing asserts on the lab's hooks or React state. The chip is picked and the
 line typed in the browser.
 
 **Retries:** up to `GOAL_ATTEMPTS` (3) fresh runs, only when the model filed no coding task at
