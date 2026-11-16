@@ -64,7 +64,6 @@ function scheduledFlow(kind: string, schedules: SchedulesConfig) {
   return defineFlow({ kind, actions: { noop: { inputSchema: z.object({}), block: noop } }, schedules })();
 }
 
-const MINUTE = 60_000;
 const T = Date.parse("2026-11-16T09:00:30Z");
 
 afterEach(() => {
