@@ -132,6 +132,14 @@ export type ScopeStateOpsOptions<TState extends object> = {
    * readonly state fields as the session was created with them.
    */
   guard?: (next: Readonly<TState>) => void;
+  // FIX-2754.
+  /**
+   * Top-level state fields never written as a delta: a mutation that would
+   * route to a delta verb on one of them is written whole, at a version,
+   * through the CAS retry loop (`runWithCAS`), which re-reads the record and
+   * re-runs the mutation on a conflict, within the `cas` budget.
+   */
+  wholeRecordFields?: ReadonlySet<string>;
 };
 
 /**
@@ -171,6 +179,7 @@ async function applyMutation<TState extends object>(
 ): Promise<boolean> {
   const persist = options?.persist;
   const guard = options?.guard;
+  if (hint.kind !== "set" && options?.wholeRecordFields?.has(hint.path[0]) === true) hint = SET_HINT;
   if (guard !== undefined) {
     const propose = mutator;
     mutator = async (state) => {

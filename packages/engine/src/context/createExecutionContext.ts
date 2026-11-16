@@ -105,6 +105,7 @@ function waitedByStamp(source: string | undefined, metadata: unknown) {
 }
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
 import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
+import { clientVisibleStateKeys } from "./client-visible-state";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
@@ -2668,6 +2669,12 @@ export async function createExecutionContext<
   const createdWith = sessionContainer.read() as Record<string, unknown>;
   const sessionOps = createScopeStateOps(sessionContainer, {
     cas: flow.session?.cas,
+    // FIX-2754: a write to a field the client is shown goes to the store
+    // whole, never as a delta. The owner's user topic, which a list of their
+    // sessions hears, is told of whole-record writes and not of deltas (a busy
+    // turn writes many); exposed fields are display data a list shows, so a
+    // change to one must reach it while the turn still runs.
+    wholeRecordFields: new Set(clientVisibleStateKeys(flow)),
     ...(readonlyFields.length === 0
       ? {}
       : {
