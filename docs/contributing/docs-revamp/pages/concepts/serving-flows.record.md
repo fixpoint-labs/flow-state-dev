@@ -49,7 +49,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 f5c
 - Post-review edit (Codex on #5226), checked against the code: Stripe example reads the invoice from `e.payload.data.object` (the payload is the whole Stripe event, `engine/src/transports/webhook/routes.ts:74-78`; matches `apps/docs/docs/server/webhooks.md:94-95`).
 
 - Post-review edit, checked: `flowAuthenticates` needs a non-default `resolvePrincipal` (`engine/src/routes/instance-caller.ts:91-95`); `serve` defaults to host `0.0.0.0` (`node/src/serve.ts:54-55`); the bind guard runs only in `fsdev serve`/`fsdev dev` (`fsdev/src/commands/serve.ts:109`, `dev.ts:371`).
-- Post-merge edit, checked against the code: the tick calls the schedule's dispatch URL through the app's own router, or over the network when a cron route gave it the deployment's address (`engine/src/flowstate/createFlowState.ts`, `#tick`, `scheduleDispatchRequest` then `router.POST` or `fetch`); the cron route is `vercelScheduler().route` (`vercel/src/scheduler.ts:61`).
+- Post-merge edit, checked against the code: the tick calls the schedule's dispatch URL through the app's own router, or over the network when a cron route gave it the deployment's address (`engine/src/flowstate/createFlowState.ts`, `#tick`, `scheduleDispatchRequest` then `router.POST` or `fetch`); the cron route is `vercelScheduler().route` (`packages/vercel/src/scheduler.ts:61`).
 
 ## 6 · Depth pass
 
