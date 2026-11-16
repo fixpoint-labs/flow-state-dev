@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Queue } from "bullmq";
 import type { DispatchEnvelope, StreamBridge } from "@flow-state-dev/engine/host";
-import { createWorkerRunner } from "../src/runner";
+import { createJobQueueRunner } from "../src/runner";
 import { DEFAULT_LEASE_MS, leaseJobId } from "../src/lease-backend";
 
 function makeBridge() {
@@ -34,11 +34,11 @@ const envelope: DispatchEnvelope = {
   leasePlace: place,
 } as DispatchEnvelope;
 
-describe("createWorkerRunner", () => {
+describe("createJobQueueRunner", () => {
   it("enqueues a place-bearing job under the id its place names", async () => {
     const { bridge } = makeBridge();
     const add = vi.fn(async (_name: string, data: unknown) => ({ data }));
-    const runner = createWorkerRunner({ queue: { add } as unknown as Queue, bridge });
+    const runner = createJobQueueRunner({ queue: { add } as unknown as Queue, bridge });
 
     await runner.dispatch(envelope);
 
@@ -52,7 +52,7 @@ describe("createWorkerRunner", () => {
   it("carries how the job reaches its turn, so its worker applies hold and defer", async () => {
     const { bridge } = makeBridge();
     const add = vi.fn(async (_name: string, data: unknown) => ({ data }));
-    const runner = createWorkerRunner({ queue: { add } as unknown as Queue, bridge });
+    const runner = createJobQueueRunner({ queue: { add } as unknown as Queue, bridge });
 
     await runner.dispatch({ ...envelope, leaseTurn: { kind: "now" } });
     await runner.dispatch({
@@ -72,14 +72,14 @@ describe("createWorkerRunner", () => {
     // new request without a word.
     const { bridge, subscriber } = makeBridge();
     const add = vi.fn(async () => ({ data: { requestId: "req_old" } }));
-    const runner = createWorkerRunner({ queue: { add } as unknown as Queue, bridge });
+    const runner = createJobQueueRunner({ queue: { add } as unknown as Queue, bridge });
 
     await expect(runner.dispatch(envelope)).rejects.toThrow(/req_old/);
     expect(subscriber.close).toHaveBeenCalled();
   });
 });
 
-describe("createWorkerRunner — a dispatch whose terminal never arrives", () => {
+describe("createJobQueueRunner — a dispatch whose terminal never arrives", () => {
   // The terminal can be lost: its publish fails (swallowed), the pub/sub
   // message drops, or the worker dies before publishing. The dispatch's
   // subscriber holds two Redis connections, and its `finished` holds the
@@ -99,7 +99,7 @@ describe("createWorkerRunner — a dispatch whose terminal never arrives", () =>
     vi.useFakeTimers();
     const { bridge, subscriber } = makeBridge();
     const { queue } = queueWith(["active", "failed"], { failedReason: "worker crashed" });
-    const runner = createWorkerRunner({ queue, bridge });
+    const runner = createJobQueueRunner({ queue, bridge });
 
     const handle = await runner.dispatch(envelope);
     let settled: unknown;
@@ -118,7 +118,7 @@ describe("createWorkerRunner — a dispatch whose terminal never arrives", () =>
     vi.useFakeTimers();
     const { bridge, subscriber } = makeBridge();
     const { queue } = queueWith(["completed"], { returnvalue: { output: "ok", items: [] } });
-    const runner = createWorkerRunner({ queue, bridge });
+    const runner = createJobQueueRunner({ queue, bridge });
 
     const handle = await runner.dispatch(envelope);
     await vi.advanceTimersByTimeAsync(DEFAULT_LEASE_MS);
@@ -133,7 +133,7 @@ describe("createWorkerRunner — a dispatch whose terminal never arrives", () =>
     vi.useFakeTimers();
     const { bridge, subscriber } = makeBridge();
     const { queue } = queueWith(["unknown"]);
-    const runner = createWorkerRunner({ queue, bridge });
+    const runner = createJobQueueRunner({ queue, bridge });
 
     const handle = await runner.dispatch(envelope);
     await vi.advanceTimersByTimeAsync(DEFAULT_LEASE_MS);
@@ -148,7 +148,7 @@ describe("createWorkerRunner — a dispatch whose terminal never arrives", () =>
     vi.useFakeTimers();
     const { bridge, subscriber } = makeBridge();
     const { queue, getJobState } = queueWith(["waiting", "active", "delayed", "active"]);
-    const runner = createWorkerRunner({ queue, bridge });
+    const runner = createJobQueueRunner({ queue, bridge });
 
     const handle = await runner.dispatch(envelope);
     let settled = false;
@@ -166,7 +166,7 @@ describe("createWorkerRunner — a dispatch whose terminal never arrives", () =>
     const { bridge, subscriber } = makeBridge();
     subscriber.completed = new Promise((res) => (deliver = res));
     const { queue, getJobState } = queueWith(["active"]);
-    const runner = createWorkerRunner({ queue, bridge });
+    const runner = createJobQueueRunner({ queue, bridge });
 
     const handle = await runner.dispatch(envelope);
     deliver({ output: "ok" });

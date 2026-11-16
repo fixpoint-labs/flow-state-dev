@@ -11,7 +11,7 @@
     { "slug": "node", "file": "packages/node/src/bind-guard.ts", "name": "assertNetworkBindIsAuthenticated", "kind": "function" },
     { "slug": "next", "file": "packages/next/src/createNextHandler.ts", "name": "createNextHandler", "kind": "function" },
     { "slug": "vercel", "file": "packages/vercel/src/handler.ts", "name": "createVercelBareHandler", "kind": "function" },
-    { "slug": "bullmq", "file": "packages/bullmq/src/flowstate-adapter.ts", "name": "bullmqWorker", "kind": "function" },
+    { "slug": "bullmq", "file": "packages/bullmq/src/flowstate-adapter.ts", "name": "bullmqJobQueue", "kind": "function" },
     { "slug": "mcp", "file": "packages/mcp/src/tool-conversion.ts", "name": "actionToMcpTool", "kind": "function" },
     { "slug": "scheduled", "file": "packages/scheduled/src/createBadCronWarner.ts", "name": "createBadCronWarner", "kind": "function" },
     { "slug": "store-sqlite", "file": "packages/store-sqlite/src/schedule-index.ts", "name": "createSQLiteScheduleIndex", "kind": "function" },

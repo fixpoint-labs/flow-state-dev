@@ -1,16 +1,16 @@
 /**
  * createBullmqRuntime — the main entry point for the BullMQ adapter.
  *
- * Returns a runtime handle with `enqueueAction`, `createWorker`, and `close`.
- * The producer side (queue) lives in the web process; workers can be spawned
- * in the same process or in dedicated worker containers.
+ * Returns a runtime handle with `enqueueAction`, `createJobProcessor`, and `close`.
+ * The producer side (queue) lives in the web process; job processors can be
+ * started in the same process or in dedicated processing containers.
  */
 import { Queue } from "bullmq";
 import type { Worker } from "bullmq";
 import { resolveProducerConnection } from "./connection";
 import { toJobOptions, resolveDlqName, wireDlqHandler } from "./retry";
-import { createFlowWorker } from "./worker";
-import type { FlowWorkerDeps } from "./worker";
+import { createJobProcessor } from "./job-processor";
+import type { JobProcessorDeps } from "./job-processor";
 import type {
   BullmqConnectionOptions,
   FlowJobData,
@@ -25,8 +25,8 @@ export interface BullmqRuntime {
   /** Enqueue a flow action for durable, off-request execution. Returns the BullMQ job id. */
   enqueueAction(data: FlowJobData, opts?: EnqueueOptions): Promise<string>;
   /** Construct a Worker that processes flow-run jobs by calling runAction. */
-  createWorker(deps: FlowWorkerDeps): Worker;
-  /** Close all connections/queues/workers. Wire to SIGTERM/SIGINT. */
+  createJobProcessor(deps: JobProcessorDeps): Worker;
+  /** Close all connections, queues and job processors. Wire to SIGTERM/SIGINT. */
   close(): Promise<void>;
 }
 
@@ -39,7 +39,7 @@ const DEFAULT_QUEUE_NAME = "fsd-flows";
 
 /**
  * Creates the BullMQ runtime: a queue for enqueuing flow-run jobs, a factory
- * for constructing workers, and a `close` hook for graceful shutdown.
+ * for constructing job processors, and a `close` hook for graceful shutdown.
  */
 export function createBullmqRuntime(
   options: CreateBullmqRuntimeOptions
@@ -75,8 +75,8 @@ export function createBullmqRuntime(
     return job.id ?? "unknown";
   };
 
-  const createWorkerFn = (deps: FlowWorkerDeps): Worker => {
-    const worker = createFlowWorker({
+  const createJobProcessorFn = (deps: JobProcessorDeps): Worker => {
+    const worker = createJobProcessor({
       connection: options.connection,
       prefix: options.prefix,
       queueName,
@@ -99,5 +99,5 @@ export function createBullmqRuntime(
     if (dlqQueue) await dlqQueue.close();
   };
 
-  return { queue, enqueueAction, createWorker: createWorkerFn, close };
+  return { queue, enqueueAction, createJobProcessor: createJobProcessorFn, close };
 }

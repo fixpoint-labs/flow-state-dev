@@ -352,7 +352,7 @@ export interface StaleSweepOptions {
  * request-host liveness gate reason about.
  *
  * There are two entry points that construct a `RuntimeConfig` — `createFlowState`
- * (whose config reaches the router *and* `worker.startWorker`) and a direct
+ * (whose config reaches the router *and* `jobQueue.startProcessing`) and a direct
  * `createFlowApiRouter` call. Both must describe the same sweeper, so the
  * defaulting rule lives here rather than being restated at each one. `0` is
  * preserved, not defaulted: it means sweeping is deliberately disabled, which

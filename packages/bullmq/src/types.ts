@@ -1,6 +1,6 @@
 /**
  * Shared types for the BullMQ host/runtime adapter. Defines the connection,
- * job, retry, and dispatch surface consumed by runtime.ts, worker.ts, and
+ * job, retry, and dispatch surface consumed by runtime.ts, job-processor.ts, and
  * the scheduler modules.
  */
 import type { RedisOptions } from "ioredis";

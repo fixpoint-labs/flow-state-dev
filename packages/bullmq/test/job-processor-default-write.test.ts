@@ -13,7 +13,7 @@ import type { Job } from "bullmq";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import { createFlowRegistry } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
-import { createFlowJobProcessor } from "../src/worker";
+import { createFlowJobProcessor } from "../src/job-processor";
 import type { FlowJobData } from "../src/types";
 
 const ORG = "org-a";

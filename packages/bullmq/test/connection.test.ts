@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveProducerConnection, resolveWorkerConnection } from "../src/connection";
+import { resolveProducerConnection, resolveProcessorConnection } from "../src/connection";
 
 describe("resolveProducerConnection", () => {
   it("parses a redis:// URL into host/port", () => {
@@ -49,23 +49,23 @@ describe("resolveProducerConnection", () => {
   });
 });
 
-describe("resolveWorkerConnection", () => {
+describe("resolveProcessorConnection", () => {
   it("sets maxRetriesPerRequest to null for BullMQ workers", () => {
-    const result = resolveWorkerConnection({
+    const result = resolveProcessorConnection({
       connection: "redis://localhost:6379"
     });
     expect(result.connection.maxRetriesPerRequest).toBeNull();
   });
 
   it("sets enableReadyCheck to false", () => {
-    const result = resolveWorkerConnection({
+    const result = resolveProcessorConnection({
       connection: "redis://localhost:6379"
     });
     expect(result.connection.enableReadyCheck).toBe(false);
   });
 
   it("preserves other connection options from the URL", () => {
-    const result = resolveWorkerConnection({
+    const result = resolveProcessorConnection({
       connection: "redis://:secret@redis.internal:6380/3"
     });
     expect(result.connection.host).toBe("redis.internal");

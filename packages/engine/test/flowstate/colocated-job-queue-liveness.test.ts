@@ -2,7 +2,7 @@
  * A colocated worker must see the sweeper its own process is running (FIX-999).
  *
  * `createFlowState` builds ONE runtime config and hands it to two consumers:
- * `worker.startWorker(runtime)` during runtime init, and `createFlowApiRouter`
+ * `jobQueue.startProcessing(runtime)` during runtime init, and `createFlowApiRouter`
  * in `#doInit()`. The sweeper facts stamped in `#buildRuntime()` deliberately
  * omit `staleSweepIntervalMs`, because at that moment nothing sweeps — the
  * sweeper is constructed by the router, which only `getRouter()` / `ready()`
@@ -15,7 +15,7 @@
  * executes fails the gate's third arm with `sweeper-not-running` and gets no
  * `ctx.requestHost.livenessOf`, even though this process is sweeping.
  *
- * Fail-closed is the right answer for worker-only init. It is the wrong answer
+ * Fail-closed is the right answer for process-only init. It is the wrong answer
  * for a colocated worker whose router is actively sweeping, and the two are
  * indistinguishable from inside the worker unless the fact propagates.
  *
@@ -94,7 +94,7 @@ function probeFlow(kind: string, seen: Seen) {
 
 /**
  * A colocated FlowState whose worker adapter captures the exact runtime object
- * `startWorker` is handed — the one every worker-side `runAction` executes
+ * `startProcessing` is handed — the one every worker-side `runAction` executes
  * against.
  */
 function colocatedState(kind: string, seen: Seen): {
@@ -107,10 +107,10 @@ function colocatedState(kind: string, seen: Seen): {
     flows: [probeFlow(kind, seen)()],
     stores: { default: { primary: sharedInMemoryStores() } },
     modelResolver: (() => undefined) as never,
-    worker: {
+    jobQueue: {
       mode: "colocated",
       createRunner: () => undefined as never,
-      startWorker: (runtime) => {
+      startProcessing: (runtime) => {
         capturedRuntime = runtime;
         return { close: async () => {} };
       }
@@ -120,7 +120,7 @@ function colocatedState(kind: string, seen: Seen): {
   return {
     state,
     captured: () => {
-      if (capturedRuntime === undefined) throw new Error("startWorker was never called");
+      if (capturedRuntime === undefined) throw new Error("startProcessing was never called");
       return capturedRuntime;
     }
   };
@@ -165,8 +165,8 @@ describe("a colocated worker sees its own process's sweeper (FIX-999)", () => {
     expect(seen.hasLiveness).toBe(true);
   });
 
-  it("hands the worker a config that already describes the sweeper, at startWorker time", async () => {
-    // `#buildRuntime` calls `startWorker` and returns; `#doInit` only resumes
+  it("hands the worker a config that already describes the sweeper, at startProcessing time", async () => {
+    // `#buildRuntime` calls `startProcessing` and returns; `#doInit` only resumes
     // after that, so a cadence recorded there arrives too late for anything the
     // worker consumes on the way up. A real colocated worker starts consuming
     // the moment it is started, and the host it builds for such a job is
@@ -187,10 +187,10 @@ describe("a colocated worker sees its own process's sweeper (FIX-999)", () => {
       flows: [probeFlow("colocated-startup", seen)()],
       stores: { default: { primary: sharedInMemoryStores() } },
       modelResolver: (() => undefined) as never,
-      worker: {
+      jobQueue: {
         mode: "colocated",
         createRunner: () => undefined as never,
-        startWorker: (runtime) => {
+        startProcessing: (runtime) => {
           sawStartWorker = true;
           cadenceAtStartWorker = runtime.runtimeConfig.requestHost?.staleSweepIntervalMs;
           // And drive a job from inside the window, as a consuming worker does.

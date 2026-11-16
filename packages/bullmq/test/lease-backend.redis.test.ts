@@ -10,7 +10,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { type LeasePlace } from "@flow-state-dev/engine/host";
 import { createRedisLeaseBackend, leaseJobId, type RedisLeaseBackend } from "../src/lease-backend";
-import { createFlowJobProcessor } from "../src/worker";
+import { createFlowJobProcessor } from "../src/job-processor";
 import { resolveProducerConnection } from "../src/connection";
 import type { FlowJobData } from "../src/types";
 import { REDIS_URL, describeWithRedis, isolatedPrefix } from "./redis-helpers";

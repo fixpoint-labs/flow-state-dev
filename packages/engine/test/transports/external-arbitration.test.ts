@@ -23,7 +23,7 @@ import {
   type ConcurrencyLeaseBackend,
   type DispatchEnvelope,
   type FlowRunner,
-  type WorkerAdapter
+  type JobQueueAdapter
 } from "../../src/host";
 import {
   createFlowRegistry,
@@ -112,9 +112,9 @@ function testWorker(options: {
   failEnqueue?: () => boolean;
   /** Hold every enqueue until this settles: a slow queue acknowledgement. */
   enqueueAck?: Promise<void>;
-}): WorkerAdapter {
+}): JobQueueAdapter {
   return {
-    mode: "dispatch-only",
+    mode: "enqueue-only",
     ...(options.backend !== undefined ? { leaseBackend: options.backend } : {}),
     createRunner(runtime: FlowStateRuntime): FlowRunner {
       return {
@@ -129,7 +129,7 @@ function testWorker(options: {
         close: async () => {}
       } as FlowRunner;
     },
-    startWorker: () => ({ close: async () => {} })
+    startProcessing: () => ({ close: async () => {} })
   };
 }
 
@@ -173,12 +173,12 @@ async function runJob(
 async function processOf(
   flow: ReturnType<typeof queueFlow>["flow"],
   store: StoreAdapter,
-  worker: WorkerAdapter
+  jobQueue: JobQueueAdapter
 ) {
   const state = createFlowState({
     flows: [flow],
     stores: { default: { primary: store } },
-    worker
+    jobQueue
   });
   return { state, runtime: await state.getRuntime(), router: await state.getRouter() };
 }
@@ -513,7 +513,7 @@ describe("`reject` on a queue host, refused through acceptance", () => {
 });
 
 describe("a run a process starts in process, over the deployment's backend", () => {
-  // A `worker-only` process runs its own deliveries in process. Over the
+  // A `process-only` process runs its own deliveries in process. Over the
   // adapter's backend those runs line up on the same keys as every other
   // process's, with an admission that is asynchronous.
   function inProcessHosts(

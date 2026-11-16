@@ -340,16 +340,16 @@ describe("request-host seam on the shipped router path", () => {
 
 /**
  * The WORKER path (FIX-999). `createFlowState` hands one runtime config to both
- * `createFlowApiRouter` and `worker.startWorker`; the BullMQ adapter forwards it
+ * `createFlowApiRouter` and `jobQueue.startProcessing`; the BullMQ adapter forwards it
  * unchanged to worker-side `runAction`. Stamping the seam onto the router's
- * local copy therefore fixed HTTP and left every colocated / worker-only
+ * local copy therefore fixed HTTP and left every colocated / process-only
  * execution without it.
  *
  * This drives the worker's call shape directly: the runtime config the adapter
- * would receive, passed to `runAction` exactly as `bullmq/src/worker.ts` does.
+ * would receive, passed to `runAction` exactly as `bullmq/src/job-processor.ts` does.
  */
 describe("request-host seam on the shipped worker path", () => {
-  it("the runtime handed to worker.startWorker carries the seam", async () => {
+  it("the runtime handed to worker.startProcessing carries the seam", async () => {
     const seen: Seen = {};
     const flow = probeFlow("worker-seam", seen, []);
 
@@ -359,7 +359,7 @@ describe("request-host seam on the shipped worker path", () => {
       modelResolver: (() => undefined) as never
     });
 
-    // The exact object `worker.startWorker(runtime)` is given.
+    // The exact object `jobQueue.startProcessing(runtime)` is given.
     const runtime = await state.getRuntime();
 
     await runAction({
