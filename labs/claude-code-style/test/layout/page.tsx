@@ -8,7 +8,7 @@
  */
 import { createRoot } from "react-dom/client";
 import { taskView } from "@flow-state-dev/orchestration/inbox";
-import type { LabAdapter, LabTask } from "../../src/adapter";
+import type { LabTask } from "../../src/lab";
 import { TasksPane } from "../../src/components/TasksPane";
 import "../../src/styles.css";
 
@@ -35,12 +35,10 @@ const tasks = [
   done("t3", "Rename the settings field", "desk.coder-cursor", null),
 ];
 
-const adapter = { watchPins: () => () => {} } as unknown as LabAdapter;
-
 createRoot(document.getElementById("root")!).render(
   <div style={{ width, height: 600, display: "flex" }} data-testid="pane-box">
     <div style={{ width: "100%", minWidth: 0 }}>
-      <TasksPane adapter={adapter} sessionId="s1" tasks={tasks} openId={undefined} onOpen={() => {}} onMissing={() => {}} />
+      <TasksPane sessionId="s1" tasks={tasks} openId={undefined} onOpen={() => {}} onMissing={() => {}} />
     </div>
   </div>,
 );

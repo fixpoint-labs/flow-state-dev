@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
-import { useWatch } from "../lib/use-watch";
-import type { LabAdapter, LabTask } from "../adapter";
+import { usePullRequestLinks, useTaskWork, type LabTask } from "../lab";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
 import { LandFailure } from "./flow-state/review-hold";
@@ -18,7 +17,6 @@ import { HarnessTag, PullRequestOpen, statusColumn, statusLine, ThreadIcon, wait
  * refused or failed landing shows why, with a retry.
  */
 export function ThreadCard(props: {
-  adapter: LabAdapter;
   sessionId: string;
   task: LabTask | undefined;
   onOpen: (taskId: string) => void;
@@ -30,17 +28,16 @@ const button = "rounded-md border border-border bg-muted px-2 py-0.5 text-xs hov
 const primary = "rounded-md bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground";
 
 function LoadedThreadCard({
-  adapter,
   sessionId,
   task,
   onOpen,
 }: {
-  adapter: LabAdapter;
   sessionId: string;
   task: LabTask;
   onOpen: (taskId: string) => void;
 }) {
   const column = statusColumn(task);
+  const linked = usePullRequestLinks(task);
   const viewThread = (
     <button type="button" className={button} onClick={() => onOpen(task.id)}>
       View task
@@ -67,7 +64,7 @@ function LoadedThreadCard({
           <HarnessTag task={task} />
         </div>
         {waitsOnPullRequest(task) ? (
-          <PullRequestOpen task={task} className="block" />
+          <PullRequestOpen task={linked} className="block" />
         ) : (
           <div className="truncate text-xs text-muted-foreground">{statusLine(task)}</div>
         )}
@@ -78,7 +75,7 @@ function LoadedThreadCard({
         )}
         <Spend spend={task.spend} />
         {column === "review" ? (
-          <ReviewActions adapter={adapter} sessionId={sessionId} task={task} onOpen={onOpen} viewThread={viewThread} />
+          <ReviewActions sessionId={sessionId} task={task} onOpen={onOpen} viewThread={viewThread} />
         ) : column === "waiting" ? (
           <div className="mt-1.5 flex gap-1.5">
             {task.status !== "errored" ? (
@@ -100,20 +97,18 @@ function LoadedThreadCard({
  * only while the thread is ready for review, since that is where its lands come from.
  */
 function ReviewActions({
-  adapter,
   sessionId,
   task,
   onOpen,
   viewThread,
 }: {
-  adapter: LabAdapter;
   sessionId: string;
   task: LabTask;
   onOpen: (taskId: string) => void;
   viewThread: ReactNode;
 }) {
-  const work = useWatch((emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit), [adapter, sessionId, task.id]);
-  const accept = useReviewAccept(adapter, sessionId, task, work);
+  const work = useTaskWork(task);
+  const accept = useReviewAccept(sessionId, task, work);
   return (
     <div className="mt-1.5 min-w-0">
       <div className="flex flex-wrap gap-1.5">

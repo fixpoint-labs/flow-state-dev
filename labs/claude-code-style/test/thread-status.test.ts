@@ -7,7 +7,7 @@
  * it failed, from the board's error, and never a running note.
  */
 import { describe, expect, it } from "vitest";
-import type { LabTask } from "../src/adapter";
+import type { LabTask } from "../src/lab";
 import { rowNote, statusLine } from "../src/components/ThreadStatus";
 
 /** The note a harness run leaves on the row: its last tool call. */

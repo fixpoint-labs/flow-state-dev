@@ -3,12 +3,13 @@
  * Your marks on threads: the threads you pinned and the failed attempts you
  * dismissed. Each is a user resource the screen reads by scope and key with no
  * session, and writes through the default write flow (`runBy: "default"`), so
- * a pin is one line in the adapter and no flow of the lab's.
+ * a pin is one line in `src/lab.ts` and no flow of the lab's.
  *
  * A leaf module: the screen imports these definitions to read and
  * write them, the host declares them on a flow it serves.
  */
-import { defineResource } from "@flow-state-dev/core";
+// The types entry, not the package root: the page bundles this file, and the root carries Node-only model resolution.
+import { defineResource } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /** The threads you pinned, by task id: each once. */

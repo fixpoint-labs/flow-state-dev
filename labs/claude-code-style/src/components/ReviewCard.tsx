@@ -1,4 +1,4 @@
-import type { ReviewDetail, LabTask } from "../adapter";
+import type { ReviewDetail, LabTask } from "../lab";
 import { ReviewHold } from "./flow-state/review-hold";
 
 /**

@@ -1,5 +1,5 @@
 /**
- * The adapter's half of attachments: a line's files reach the worker's door as
+ * The lab calls' half of attachments: a line's files reach the worker's door as
  * the send's `attachments`, beside `{ message }`, which stays as it is; an
  * upload is the client's; a line's file parts come back on your line; and a
  * thumbnail's bytes are read through the page's own fetch, which carries the
@@ -9,7 +9,8 @@
 import type { Client } from "@flow-state-dev/client";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
-import { createWiredLab, entriesOf, type Item } from "../src/adapter";
+import { labCalls } from "../src/lab";
+import { entriesOf, type Item } from "../src/lib/thread-entries";
 
 const SHOT: FileContent = { type: "file", data: "fsd-blob:b_0123456789", mediaType: "image/png", filename: "bug.png" };
 
@@ -32,10 +33,10 @@ function fakeClient() {
   return { client, sends, uploads };
 }
 
-describe("the adapter's files", () => {
+describe("the lab's files", () => {
   it("sends a line's files beside its message, through the worker's door", async () => {
     const lab = fakeClient();
-    await createWiredLab(lab.client).send("s1", "What does this show?", [SHOT]);
+    await labCalls(lab.client).send("s1", "What does this show?", [SHOT]);
     expect(lab.sends).toEqual([{ action: "respond", input: { message: "What does this show?" }, options: { sessionId: "s1", attachments: [SHOT] } }]);
   });
 
@@ -46,17 +47,17 @@ describe("the adapter's files", () => {
       asked.push(url);
       return new Response(new Blob(["png"]), { status: 200 });
     };
-    const adapter = createWiredLab(lab.client, { basePath: "/lab", fetcher });
+    const calls = labCalls(lab.client, { basePath: "/lab", fetcher });
     const blob = new Blob(["x"], { type: "image/png" });
-    expect(await adapter.upload({ data: blob, mediaType: "image/png", filename: "bug.png" })).toBe(SHOT);
+    expect(await calls.upload({ data: blob, mediaType: "image/png", filename: "bug.png" })).toBe(SHOT);
     expect(lab.uploads).toEqual([{ data: blob, mediaType: "image/png", filename: "bug.png" }]);
-    expect(await (await adapter.readFile(SHOT)).text()).toBe("png");
+    expect(await (await calls.readFile(SHOT)).text()).toBe("png");
     expect(asked).toEqual(["/lab/api/flows/blobs/b_0123456789"]);
   });
 
   it("says so when the server won't serve a file, so the line draws its chip", async () => {
-    const adapter = createWiredLab(fakeClient().client, { fetcher: async () => new Response(null, { status: 404 }) });
-    await expect(adapter.readFile(SHOT)).rejects.toThrow("bug.png couldn't be read (404).");
+    const calls = labCalls(fakeClient().client, { fetcher: async () => new Response(null, { status: 404 }) });
+    await expect(calls.readFile(SHOT)).rejects.toThrow("bug.png couldn't be read (404).");
   });
 
   it("puts a line's file parts on your line, and none on a line without them", () => {

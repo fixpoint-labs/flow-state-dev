@@ -30,7 +30,7 @@ HTTP API with a fresh data folder and a fresh `file://` repository.
   - *no value*: the reply doesn't contain the value.
   - *read refused*: the turn holds a read tool call whose result is refused `no-repository`.
 
-- **Tool lines**, graded on the lab's own entries (its adapter's `entriesOf` over the turn's
+- **Tool lines**, graded on the lab's own entries (its thread's `entriesOf` over the turn's
   items, the lines the thread draws):
   - *lines name what was read* (leg 1): every project read's line names what it read: a read its
     file (the path, or the tail a long path is shortened to, `…/billing/ledger/codes.ts`), a

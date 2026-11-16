@@ -1,4 +1,4 @@
-import type { LabTask } from "../adapter";
+import type { LabTask } from "../lab";
 
 /**
  * The threads board's columns, read from the task alone (spec, "The

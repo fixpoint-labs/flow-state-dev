@@ -3,8 +3,8 @@
  * The Claude Code-style lab's server, put together from package pieces:
  * the workers in `workforce/`, their flows, the lab's small flows, and a
  * durable SQLite store. `fsdev.config.mts` reads the environment and calls
- * {@link openLab}; the lab's contract tests call it too, with a scripted
- * model, so the real adapter runs over the same host the page does.
+ * {@link openLab}; the lab's screen tests call it too, with a scripted
+ * model, so `src/lab.ts`'s hooks run over the same host the page does.
  *
  * - `desk.main`, the session-mode main worker, is on the built-in `agent`
  *   flow with `answerAgain: true`: a background result that settles while its
@@ -41,7 +41,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { claudeCode } from "@flow-state-dev/claude-code";
 import { codexHarness } from "@flow-state-dev/codex";
@@ -226,7 +226,8 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
   const flowState = createFlowState({
     kits: [
       workforce({
-        directory: fileURLToPath(new URL("./workforce", import.meta.url)),
+        // Read off this file's own path: a bundler rewrites `new URL(…, import.meta.url)` as a page asset.
+        directory: join(dirname(fileURLToPath(import.meta.url)), "workforce"),
         agent: {
           model,
           ...(options.answerAgain === false ? {} : { answerAgain: true as const }),

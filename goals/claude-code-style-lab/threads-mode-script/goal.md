@@ -45,7 +45,7 @@ worktrees from (`CLAUDE_CODE_STYLE_REPOSITORIES`).
 
 **Anti-game:** every signal reads the rendered page (`data-entry`, `data-task-id`,
 `data-column`, the header) or the board's own records (`listTasks_tasks`, `getTask_tasks`, the
-clone's git log). Nothing asserts on the adapter's return values, the fake in `test/`, or React
+clone's git log). Nothing asserts on the lab's hooks' return values or React
 state. The answer is typed in the thread's view and *Resolve* is clicked; neither goes through a
 package call from the script.
 

@@ -10,7 +10,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { delegateAnswerMetadata } from "@flow-state-dev/workforce/browser";
-import type { LabTask } from "../src/adapter";
+import type { LabTask } from "../src/lab";
 import { Entry } from "../src/components/Entry";
 import { filedTaskOf, toolRun } from "../src/lib/tool-steps";
 
@@ -48,7 +48,7 @@ describe("a tool call in a thread or a task's work", () => {
     output,
   });
   const drawn = async (items: object[]) => {
-    const { entriesOf } = await import("../src/adapter");
+    const { entriesOf } = await import("../src/lib/thread-entries");
     const entries = entriesOf(items as never);
     const { container } = render(<>{entries.map((entry) => <Entry key={entry.id} entry={entry} />)}</>);
     return { entries, container };
@@ -128,7 +128,7 @@ describe("a tool call in a thread or a task's work", () => {
 
 describe("a delegate's answer that landed in the conversation as written", () => {
   it("is a result line under the delegate's name, not the main session's own words", async () => {
-    const { entriesOf } = await import("../src/adapter");
+    const { entriesOf } = await import("../src/lib/thread-entries");
     const reply = "- Apply the theme before first paint.\n- Label the icon-only mark.";
     const entries = entriesOf([
       { id: "i1", type: "message", role: "user", requestId: "r1", content: [{ type: "output_text", text: "Review PR #4272" }] },

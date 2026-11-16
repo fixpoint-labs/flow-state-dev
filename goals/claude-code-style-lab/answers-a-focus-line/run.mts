@@ -9,7 +9,7 @@
  * show under it, and the session must get a title of its own. Then an ask for
  * work: a thread for `desk.thread` must be filed. Every signal reads the
  * rendered page or the server's own records (the board's `listTasks`, the
- * session's title); never the adapter or React state.
+ * session's title); never the lab's hooks or React state.
  *
  * Controls (`GOAL_CONTROL=<name>`, same command). Each plants its change for
  * the run and puts it back:

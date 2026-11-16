@@ -170,49 +170,48 @@ dropped), it keeps the last rows and never calls a task quiet from them. A finis
 board's rows carry the same time, and the pane's heading counts the tasks running, waiting, failed
 and done.
 
-Both modes are wired. The screen tests run on a test double, `test/fake-lab.ts`, which the app
-never imports. The contract tests in `test/contract/` keep the two honest: five scenarios (a result
-that lands mid-turn, a failed turn, a held question and its answer, a stop, a lapsed connection)
-run against the double and against the real adapter over the lab's own server (`host.mts`), in
-process, with only the model scripted. A scenario the real adapter can't show yet is marked to fail
-with the issue that adds it.
+Both modes are wired. The screen tests run on the lab's own server (`host.mts`), in process, with
+only the models scripted and every coding run on harness-manager's scripted coder
+(`test/lab-host.ts`). The contract tests in `test/contract/` hold what the hooks hand the screen
+through scenarios (a result that lands mid-turn, a failed turn, a held question and its answer, a
+stop, a lapsed connection). A component's own test that draws one screen from data it names stands
+in for the server at the client's fetch (`test/stub-server.ts`); the screen still reads through
+`src/lab.ts`. The inventory test (`test/inventory.test.ts`) holds the app to configuration, screens
+and small flows: no adapter, nothing of the app's in `workforce/`, no screen file that reaches the
+server itself, and no hand-written type for a row a view returns.
 
 ## How the screen reaches the package
 
-Everything the screen reads and writes goes through one adapter, `src/adapter.ts`, and each verb is
-a package call:
+Everything the screen reads and writes goes through `src/lab.ts`: hooks over the kit packages'
+views and direct reads, and the calls the screen makes, each a package call. `LabProvider` holds the
+one client, which `src/main.tsx` builds.
 
 | The screen | Package piece |
 |---|---|
-| The sessions list | the roster flow's worker sessions view, `workerSessionsViewRef()` from `@flow-state-dev/workforce/browser` |
+| The sessions list (`useSessions`) | workforce's worker sessions view, `workerSessionsViewRef()`, per mode's worker: each row's title, whether a turn runs, its project from `state.workProjectId`, and the tasks that wait on you, less the failures you dismissed |
 | *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject`, then workforce's `setSessionFields` with the project's repository: the session's `repository` (`flows/session-repository.mts`), which the host's run source reads |
-| The project picker and *New project* | `listProjects`, `createProject` and `checkRepository`, from `defineProjectBlocks` with the workspace host's check (`flows/projects.mts`) |
+| The project picker and *New project* | the projects collection, read by scope, and its `createProject` and `checkRepository` (`flows/projects.mts`) |
 | The picker's harness chips | the harness kit's `harnesses` flow's `readiness` view, read with no session |
-| Sending and the thread | the `respond` action, and the session's message and tool items |
+| Sending and the thread (`useThread`) | the `respond` action; the session's message, tool and error items on the client's `sessionFeed`; its turns (running, stopped, failed, and which a Retry may run again) from workforce's session turns view, `sessionTurnsViewRef()` |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the repository's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host and its run source, the session's repository; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
-| Interrupting | aborting the turns running when you press Stop; the thread then shows the registry's `request-recovery` stopped line after that turn, read from its `aborted` request, with the count of background work still running from the session stream's runs |
+| Interrupting | aborting the turns running when you press Stop; the thread then shows the registry's `request-recovery` stopped line after that turn, with the count of background work still running from the session stream's runs |
 | A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery` (installed in `src/components/flow-state/`); Retry is the client's `request(id).retry()`, on the newest turn only |
-| The tasks pane and a task's work | the `listTasks_tasks` read (stores nothing per poll), and the items of the task's run session |
+| The tasks pane and the board (`useTasks`) | harness-manager's coding board view, `codingBoardViewRef()`, at user scope: each row with its open holds and where their answers go, its harness, how its review ended, where its work landed, why it failed, and the pull requests it waits on |
+| A task's work (`useTaskWork`) | the items of the task's run session on `sessionFeed`; while it runs, the call in flight from the run request's own stream, and the plan its harness recorded, from harness-manager's recorded work view, `recordedWorkViewRef()`, which also gives each pull request's link |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
 | A thread card, and *Sent to a task* | the lead's `createTask` call in the session's items |
-| The board's columns | the status of each row the `listTasks_tasks` read returns, and its open holds, read with `inboxItems` from `@flow-state-dev/orchestration/inbox` |
-| A coding thread's tag | the `harness` action of the coding flow, asked in the thread's run session |
+| The board's columns | each row's status and its first open hold, plus your pins and dismissals |
 | A coding thread's review card | the `data` of the review stop (`suspension` item) in the thread's run session: branch, commits, subjects and the judge's verdict |
-| *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
-| Answering in a thread | the Inbox client's `answerOne` on its open question; with none, `updateTask_tasks` with your line as a steer |
-| Pins | the `pins` flow's `listPins` read, so reading them stores nothing |
-| Dismissed failures | the `dismissals` flow's `listDismissed` read, the same way |
-
-The thread and a task's work follow their session's stream. The rest reads when something changes,
-through `client.subscribe`: a row of the sessions list on its session's notices (a turn, a board
-change, a resource), the thread's running turn on a request notice, and pins on a change to your
-user state. A session you open in another tab joins the list at the next reload. On a host whose
-push can miss a change, such as the SQLite store the lab runs on, each also reads at its old pace:
-the list and pins every 3 seconds, the running turn every 1.5.
+| Answering in a thread | the Inbox client's `answerOne` on its open question, from the row's holds; with none, the board's `steer` |
 | *Resolve*, *Open a PR*, *Merge locally* and *Request changes* | the Inbox client's `answerOne` on its review: `{ verdict: "accepted" }`, naming the `land` an accept takes, or `{ verdict: "revise", words }` |
-| *Pin* and *Unpin* | your `lab-pins` user resource (`flows/user-marks.mts`), read by scope and written through the default write flow |
-| *Dismiss* | your `lab-dismissals` user resource, the same way, kept per task attempt |
+| *Pin* and *Unpin* (`usePins`) | your `lab-pins` user resource (`flows/user-marks.mts`), read by scope and written through the default write flow |
+| *Dismiss* (`useDismissed`) | your `lab-dismissals` user resource, the same way, kept per task attempt |
+
+The thread and a task's work follow their session's stream. Every view reads again when a change
+it read could have moved, through the client's live read; pins and dismissals read on a notice of
+them on your user topic. On a host whose push can miss a change, such as the SQLite store the lab
+runs on, each also reads every 3 seconds.
 
 `desk.coder` and `desk.thread-coder`, and their plan, Codex and Cursor siblings, are on the harness kit's
 coding worker flow, `coder`: a `harnessManager` per harness, picked by the worker's

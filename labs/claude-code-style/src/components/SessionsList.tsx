@@ -1,6 +1,6 @@
 import { PlusIcon } from "lucide-react";
 import type { KeyboardEvent } from "react";
-import type { LabSession } from "../adapter";
+import type { LabSession } from "../lab";
 import { cn } from "../lib/utils";
 import { age, useNow } from "../lib/use-watch";
 import { MODES, type ModeId } from "../modes";
@@ -14,7 +14,7 @@ import { PanelToggle } from "./PanelToggle";
  * its age, a dot while its turn runs, and how many of its tasks wait on you.
  *
  * The view switch is one Tab stop, as a tab list is: ← and → (Home, End)
- * move to the other view and select it, skipping one the adapter doesn't serve.
+ * move to the other view and select it, skipping one the lab doesn't serve.
  *
  * Collapsed (`[`), it is a rail: the toggle that opens it, and *New session*.
  */
@@ -35,7 +35,7 @@ export function SessionsList({
   onView: (view: ModeId) => void;
   onSelect: (id: string) => void;
   onNew: () => void;
-  /** The modes the adapter serves; a view whose mode it doesn't serve shows disabled. */
+  /** The modes the lab serves; a view whose mode it doesn't serve shows disabled. */
   modes: readonly ModeId[];
   /** Draw the rail instead of the list. */
   collapsed: boolean;

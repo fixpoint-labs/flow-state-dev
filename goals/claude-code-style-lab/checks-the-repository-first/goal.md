@@ -27,7 +27,7 @@ second, third and fourth folders listed in `CLAUDE_CODE_STYLE_REPOSITORIES`.
   in worktrees.
 
 **Anti-game:** **refused** grades the server's own refusal and project list, read with the public
-client, never the adapter or the page. The refusal text is floored with `tell.over`, so an empty
+client, never the lab's hooks or the page. The refusal text is floored with `tell.over`, so an empty
 read is CAN'T TELL.
 
 **Model:** n/a. No model credential reaches the server.

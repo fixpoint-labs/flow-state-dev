@@ -5,7 +5,7 @@
  * charge shows when the run reported one, and a subscription run shows none.
  */
 import { describe, expect, it } from "vitest";
-import type { LabTask } from "../src/adapter";
+import type { LabTask } from "../src/lab";
 import { spendLine } from "../src/components/flow-state/spend";
 import { harnessLabelOf } from "../src/components/ThreadStatus";
 

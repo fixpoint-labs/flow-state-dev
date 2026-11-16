@@ -4,17 +4,18 @@
  *
  *   Host:   each lab's own host (`labs/claude-code-style/host.mts`,
  *           `labs/teammates/host.mts`), in this process, on a SQLite store in
- *           a scratch folder, driven through each lab's own adapter, the calls
- *           its page makes: `upload` for each file, then `send` with the
+ *           a scratch folder, driven through the calls each lab's page makes
+ *           (the Claude Code-style lab's `src/lab.ts` calls, the Teammates
+ *           adapter): `upload` for each file, then `send` with the
  *           references beside the line.
  *   Input:  two fresh PNGs, a random word drawn on each. The line names
  *           neither word.
  *   Legs:   the Claude Code-style lab's main session and the Teammates lab's
- *           Lead each name both words; a fresh adapter's read of each thread
+ *           Lead each name both words; a fresh client's read of each thread
  *           shows the line with both files, whose bytes read back.
  *
  * Control (same command): `GOAL_CONTROL=drop-attachments` patches both
- * adapters' `send` to carry no files, as on `main` before this change.
+ * labs' `send` to carry no files, as on `main` before this change.
  * `names-both` must FAIL in both labs.
  *
  * Run: pnpm tsx --tsconfig labs/teammates/tsconfig.json goals/attachments/lab-composers/run.mts
@@ -24,11 +25,13 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { randomInt } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createClient } from "@flow-state-dev/client";
+import { createClient, sessionFeed, type Client } from "@flow-state-dev/client";
+import { sessionTurnsViewRef } from "@flow-state-dev/workforce/browser";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { openLab } from "../../../labs/claude-code-style/host.mts";
-import { createWiredLab, type ThreadView } from "../../../labs/claude-code-style/src/adapter.ts";
+import { labCalls } from "../../../labs/claude-code-style/src/lab.ts";
+import { entriesOf as ccsEntriesOf, THREAD_ITEMS, type Item as CcsItem, type ThreadEntry } from "../../../labs/claude-code-style/src/lib/thread-entries.ts";
 import { openTeammates } from "../../../labs/teammates/host.mts";
 import { createLabAdapter, type ConversationView } from "../../../labs/teammates/src/adapter.ts";
 import {
@@ -62,7 +65,7 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS: Record<string, { patches: ModulePatch[] }> = {
   // Each adapter's send carries the line alone, as on main before this change.
   "drop-attachments": {
-    patches: ["labs/claude-code-style/src/adapter.ts", "labs/teammates/src/adapter.ts"].flatMap((module) => [
+    patches: ["labs/claude-code-style/src/lab.ts", "labs/teammates/src/adapter.ts"].flatMap((module) => [
       { module, from: String.raw`attachments: \[\.\.\.attachments\] \}\);`, to: "attachments: [] });" },
     ]),
   },
@@ -103,6 +106,39 @@ function until<T>(watch: (on: (value: T) => void) => () => void, check: (value: 
       resolve(value);
     });
   });
+}
+
+/** The Claude Code-style thread as its screen reads it: the session's items on the feed, and whether a turn runs, from workforce's session turns view. */
+type CcsThread = { entries: ThreadEntry[]; running: boolean };
+function watchCcsThread(client: Client, sessionId: string, on: (view: CcsThread) => void): () => void {
+  let items: CcsItem[] | undefined;
+  let running: boolean | undefined;
+  const tell = () => {
+    if (items !== undefined && running !== undefined) on({ entries: ccsEntriesOf(items), running });
+  };
+  const feed = sessionFeed(client, sessionId, { itemTypes: [...THREAD_ITEMS] });
+  const stopFeed = feed.subscribe(({ items: next, state }) => {
+    if (next.length === 0 && state === "connecting") return;
+    items = next as unknown as CcsItem[];
+    tell();
+  });
+  const stopTurns = client.live<{ status: string }[]>([], {
+    topicsFromResult: true,
+    read: async () => {
+      const answer = await client.view(sessionTurnsViewRef(), { sessionId });
+      return { value: answer.value, topics: answer.topics, ...(answer.hears === undefined ? {} : { hears: answer.hears }) };
+    },
+    onValue: (turns) => {
+      running = turns.some((turn) => turn.status === "in_progress");
+      tell();
+    },
+    pollIntervalMs: 1_500,
+  }).close;
+  return () => {
+    stopFeed();
+    feed.close();
+    stopTurns();
+  };
 }
 
 /** A scratch git checkout a lab may work in: its `.gitignore` keeps a run's notes out. */
@@ -177,14 +213,18 @@ await runGoal(async (failures, tell) => {
   const repo = checkout(join(SCRATCH, "ccs-repo"));
   const { flowState: ccsHost } = await openLab({ data: join(SCRATCH, "ccs"), userId: USER_ID, model: MODEL, utilityModel: MODEL, repositories: [repo] });
   const ccsFetch = createInProcessFetch(ccsHost as never) as never;
-  const ccsAdapter = () => createWiredLab(createClient({ userId: USER_ID, baseUrl: "", fetcher: ccsFetch }), { fetcher: ccsFetch });
-  const ccs = ccsAdapter();
+  const ccsClient = () => createClient({ userId: USER_ID, baseUrl: "", fetcher: ccsFetch });
+  const ccsLab = () => {
+    const client = ccsClient();
+    return { client, ...labCalls(client, { fetcher: ccsFetch }) };
+  };
+  const ccs = ccsLab();
   const project = await ccs.createProject("lab-composers", `file://${repo}`);
   const ccsSession = (await ccs.openSession("session", project.id)).id;
-  const main = await legOf<ThreadView>(
+  const main = await legOf<CcsThread>(
     ccs,
-    ccsAdapter(),
-    (adapter, on) => (adapter as ReturnType<typeof ccsAdapter>).watchThread(ccsSession, on),
+    ccsLab(),
+    (lab, on) => watchCcsThread((lab as ReturnType<typeof ccsLab>).client, ccsSession, on),
     (view) => view.entries,
     (view) => view.running,
     ccsSession,

@@ -9,15 +9,18 @@
  * keeps Retry off a turn the engine refuses to retry (one a task or the flow
  * itself started), where the button could only fail.
  */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { PUBLIC_REENTRY_SOURCES } from "@flow-state-dev/engine";
-import { entriesOf, RETRYABLE_SOURCES, type ThreadEntry } from "../src/adapter";
+import { entriesOf, RETRYABLE_SOURCES, type ThreadEntry } from "../src/lib/thread-entries";
 import { Entry } from "../src/components/Entry";
 import { Thread } from "../src/components/Thread";
-import { createFakeLab } from "./fake-lab";
+import { closeLabs, openTestLab, readUntil, type TestLab } from "./lab-host";
 
-afterEach(cleanup);
+afterEach(async () => {
+  cleanup();
+  await closeLabs();
+});
 
 /** An `error` item as `runAction.ts` writes one for a failed request. */
 const errorItem = (id: string, requestId: string, message: string, code = "PROVIDER_ERROR") => ({ id, type: "error", status: "failed", requestId, message, code });
@@ -30,7 +33,7 @@ const message = (id: string, requestId: string, role: string, text: string, stat
   content: [{ type: "output_text", text }],
 });
 
-describe("the adapter reads a failed turn", () => {
+describe("the thread reads a failed turn", () => {
   it("as one failed entry with the engine's reason, and marks the reply it cut off incomplete", () => {
     const entries = entriesOf([
       message("u1", "r1", "user", "Fix the build"),
@@ -98,33 +101,51 @@ describe("the line a failed turn draws", () => {
   });
 });
 
+/** A host whose main worker fails each line in `failing` once, with `<line> failed`, and answers it on a retry. */
+async function failingLab(failing: string[]): Promise<TestLab> {
+  const failed = new Set<string>();
+  return openTestLab({
+    scripts: {
+      "agent-answer": ({ said }) => {
+        const line = failing.find((text) => said.slice(said.lastIndexOf('"role":"user"')).includes(text));
+        if (line !== undefined && !failed.has(line)) {
+          failed.add(line);
+          throw new Error(`${line} failed`);
+        }
+        return { text: "Done." };
+      },
+    },
+  });
+}
+
+/** Send `line` in session `sessionId` and wait until its turn has ended. */
+async function sendAndSettle(lab: TestLab, sessionId: string, line: string) {
+  await lab.calls.send(sessionId, line);
+  await readUntil(() => lab.client.sessions.requests(sessionId, { limit: 20 }), (requests) => requests.length > 0 && requests.every((r) => r.status !== "in_progress"));
+}
+
 describe("the main thread", () => {
-  it("shows a failed turn's line and retries the newest one through the adapter", async () => {
-    const fake = createFakeLab({ speed: 0.001 });
-    const row = await fake.openSession("session", "project-vendor-notes");
-    await act(async () => {
-      await fake.send(row.id, "Fix the build");
-    });
-    act(() => fake.failTurn(row.id, "AI_GATEWAY_API_KEY is not set"));
-    render(<Thread adapter={fake} session={row} project={{ id: "project-vendor-notes", name: "vendor-notes" }} tasks={[]} onOpenThread={() => undefined} />);
-    expect(screen.getByTestId("request-recovery").textContent).toMatch(/AI_GATEWAY_API_KEY is not set/);
+  it("shows a failed turn's line with the engine's reason, and Retry runs it again as a new request", async () => {
+    const lab = await failingLab(["Fix the build"]);
+    const row = await lab.calls.openSession("session", lab.project!.id);
+    await sendAndSettle(lab, row.id, "Fix the build");
+    render(lab.wrap(<Thread session={row} project={lab.project} tasks={[]} onOpenThread={() => undefined} />));
+    await waitFor(() => expect(screen.getByTestId("request-recovery").textContent).toMatch(/Fix the build failed/), { timeout: 10_000 });
+    const turns = async () => (await lab.client.sessions.requests(row.id, { limit: 20 })).filter((r) => r.actionName === "respond");
+    const [failed] = await turns();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: /Retry/ })));
-    expect(fake.retries).toEqual([{ sessionId: row.id, requestId: expect.any(String) }]);
-    // The turn runs again, so the line keeps its reason but offers no second Retry.
-    expect(screen.getByTestId("request-recovery").textContent).toMatch(/AI_GATEWAY_API_KEY is not set/);
-    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+    // The engine runs the turn again as a new request, and it answers.
+    const again = await readUntil(turns, (requests) => requests.some((r) => r.id !== failed!.id && r.status === "completed"));
+    expect(again).toHaveLength(2);
+    await screen.findByText("Done.", undefined, { timeout: 10_000 });
   });
 
   it("offers Retry on the newest of two failed turns, not the older one", async () => {
-    const fake = createFakeLab({ speed: 0.001 });
-    const row = await fake.openSession("session", "project-vendor-notes");
-    for (const line of ["first", "second"]) {
-      await act(async () => {
-        await fake.send(row.id, line);
-      });
-      act(() => fake.failTurn(row.id, `${line} failed`));
-    }
-    render(<Thread adapter={fake} session={row} project={{ id: "project-vendor-notes", name: "vendor-notes" }} tasks={[]} onOpenThread={() => undefined} />);
+    const lab = await failingLab(["first", "second"]);
+    const row = await lab.calls.openSession("session", lab.project!.id);
+    for (const line of ["first", "second"]) await sendAndSettle(lab, row.id, line);
+    render(lab.wrap(<Thread session={row} project={lab.project} tasks={[]} onOpenThread={() => undefined} />));
+    await waitFor(() => expect(screen.getAllByTestId("request-recovery")).toHaveLength(2), { timeout: 10_000 });
     const lines = screen.getAllByTestId("request-recovery");
     expect(lines.map((line) => line.textContent?.includes("Retry"))).toEqual([false, true]);
   });

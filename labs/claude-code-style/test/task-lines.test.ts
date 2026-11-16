@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { noticeMetadata, noticeText, type TaskNotice } from "@flow-state-dev/orchestration/tasks";
 import { delegateAnswerMetadata, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
-import { entriesOf, type Item } from "../src/adapter";
+import { entriesOf, type Item } from "../src/lib/thread-entries";
 
 const task = { goal: "Review the theme toggle", title: "Theme review", assignee: "desk.reviewer" };
 const notice = (patch: Partial<TaskNotice>): TaskNotice => ({

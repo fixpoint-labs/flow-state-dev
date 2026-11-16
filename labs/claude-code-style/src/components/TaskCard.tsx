@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import type { LabTask } from "../adapter";
+import type { LabTask } from "../lab";
 import { HarnessLabels } from "../lib/harness-labels";
 import { TASK_STATUS, taskSignalTone } from "../lib/task-status";
 import { cn } from "../lib/utils";

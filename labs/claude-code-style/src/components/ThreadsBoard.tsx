@@ -1,9 +1,9 @@
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
-import type { LabAdapter, LabTask } from "../adapter";
+import { useDismissed, usePins, type LabTask } from "../lab";
 import { COLUMNS, columnOf, dismissalKey, type Column } from "../lib/columns";
 import { taskSignalTone } from "../lib/task-status";
-import { useMissing, useNow, useWatch } from "../lib/use-watch";
+import { useMissing, useNow } from "../lib/use-watch";
 import { PANE_TITLE } from "../modes";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
@@ -23,7 +23,6 @@ import { ThreadView } from "./ThreadView";
  * tasks open; the board stays in the pane behind it.
  */
 export function ThreadsBoard({
-  adapter,
   sessionId,
   tasks: listed,
   stale = false,
@@ -31,7 +30,6 @@ export function ThreadsBoard({
   onOpen,
   onMissing,
 }: {
-  adapter: LabAdapter;
   sessionId: string;
   /** The session's task rows, as the app reads them; `undefined` until read. */
   tasks: LabTask[] | undefined;
@@ -44,8 +42,8 @@ export function ThreadsBoard({
 }) {
   const tasks = listed ?? [];
   useMissing(listed, openId, onMissing);
-  const pins = useWatch((emit: (ids: string[]) => void) => adapter.watchPins(emit), [adapter]) ?? [];
-  const dismissed = useWatch((emit: (keys: string[]) => void) => adapter.watchDismissed(emit), [adapter]) ?? [];
+  const pins = usePins() ?? [];
+  const dismissed = useDismissed() ?? [];
   const isDismissed = (task: LabTask) => dismissed.includes(dismissalKey(task));
   const [collapsed, setCollapsed] = useState<Partial<Record<Column, boolean>>>({ resolved: true });
   const now = useNow(tasks.length > 0);
@@ -133,7 +131,6 @@ export function ThreadsBoard({
       {open ? (
         <ThreadView
           key={open.id}
-          adapter={adapter}
           sessionId={sessionId}
           task={open}
           pinned={pins.includes(open.id)}

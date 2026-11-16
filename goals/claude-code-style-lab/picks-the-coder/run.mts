@@ -7,7 +7,7 @@
  * another change. Threads mode: the chip on *Codex* and a change. Each signal
  * is read from the rendered page and the board's own records (`listTasks`),
  * and the plan from the repository's and the clones' git history; never from
- * the adapter or React state. The Codex runs are graded on where they were
+ * the lab's hooks or React state. The Codex runs are graded on where they were
  * filed and how they are tagged, not on how they end, so no Codex sign-in is
  * needed.
  *

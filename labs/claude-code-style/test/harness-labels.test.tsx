@@ -7,10 +7,11 @@
  */
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LabAdapter, LabTask } from "../src/adapter";
+import type { LabTask } from "../src/lab";
 import { ThreadCard } from "../src/components/ThreadCard";
 import { harnessLabelOf } from "../src/components/ThreadStatus";
 import { HarnessLabels } from "../src/lib/harness-labels";
+import { stubServer } from "./stub-server";
 
 afterEach(cleanup);
 
@@ -24,15 +25,16 @@ const planTask = {
   spend: { harness: "claude-code-plan" },
 } as unknown as LabTask;
 
-const adapter = { watchTaskWork: () => () => {} } as unknown as LabAdapter;
 const LABELS = { "claude-code": "Claude Code", "claude-code-plan": "Claude Code (plan)" };
 
 describe("a plan task's harness name", () => {
   it("reads as the readiness view's label on its card, not the harness id", () => {
     render(
-      <HarnessLabels.Provider value={LABELS}>
-        <ThreadCard adapter={adapter} sessionId="s-1" task={planTask} onOpen={() => {}} />
-      </HarnessLabels.Provider>,
+      stubServer().wrap(
+        <HarnessLabels.Provider value={LABELS}>
+          <ThreadCard sessionId="s-1" task={planTask} onOpen={() => {}} />
+        </HarnessLabels.Provider>,
+      ),
     );
     expect(screen.getByText("Claude Code (plan)")).toBeTruthy();
     expect(screen.queryByText("claude-code-plan")).toBeNull();
@@ -40,5 +42,16 @@ describe("a plan task's harness name", () => {
 
   it("reads as the label on its spend line", () => {
     expect(harnessLabelOf(planTask, LABELS)).toBe("Claude Code (plan)");
+  });
+});
+
+describe("a coding run nobody reviewed by its deadline", () => {
+  it("is marked Not reviewed on its card, so it never reads as approved, and an accepted one is not", () => {
+    const done: LabTask = { ...planTask, harness: "claude-code", assignee: "desk.thread-coder" };
+    render(stubServer().wrap(<ThreadCard sessionId="s-1" task={{ ...done, review: "deadline" }} onOpen={() => {}} />));
+    expect(screen.getByText("Not reviewed")).toBeTruthy();
+    cleanup();
+    render(stubServer().wrap(<ThreadCard sessionId="s-1" task={{ ...done, review: "accepted" }} onOpen={() => {}} />));
+    expect(screen.queryByText("Not reviewed")).toBeNull();
   });
 });

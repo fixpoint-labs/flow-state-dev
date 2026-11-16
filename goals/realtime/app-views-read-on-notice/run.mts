@@ -5,7 +5,8 @@
  * covers an app that runs as one process, so no view keeps its fallback timer
  * while its socket is open: FIX-2545), and the apps' views that this change moved,
  * driven directly with real clients (Node's `fetch` and `WebSocket`): the
- * claude-code-style lab's thread (its running turn) and pins, the Teammates
+ * claude-code-style lab's thread (its running turn) and pins (its `useThread`
+ * and `usePins`, under its own `LabProvider`), the Teammates
  * lab's conversation (whether it is answering), its divider and its Talk
  * panel (`watchTalk`, the user's message log), and Shift Manager's worker
  * conversation (`followSessionItems`, the hook's follow), its message log
@@ -58,7 +59,7 @@ import { crossingBus } from "../../lib/crossing-bus.mts";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFlows, modulePatchEnv, runGoal, type ModulePatch } from "../../lib/index.mts";
 import { labPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 import { PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
-import { createWiredLab, type ThreadView } from "../../../labs/claude-code-style/src/adapter.ts";
+import { LabProvider as CcLabProvider, usePins as useCcPins, useThread as useCcThread, type ThreadView } from "../../../labs/claude-code-style/src/lab.ts";
 import { createLabAdapter, type ConversationView, type LabTalk } from "../../../labs/teammates/src/adapter.ts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { followSessionItems, type SessionItems } from "../../../packages/shift-manager/src/lib/run.ts";
@@ -309,8 +310,29 @@ function mountViews(on: Host, sessionId: string) {
   const cc = clientOf(on);
   const ccThread = record<ThreadView>();
   const ccPins = record<string[]>();
-  const ccLab = createWiredLab(cc.client);
   const pinsClient = clientOf(on);
+  // The Claude Code-style lab's thread and pins, as its screen reads them: each on its own client.
+  function CcThreadProbe() {
+    const view = useCcThread(sessionId, false);
+    useEffect(() => {
+      if (view !== undefined) ccThread.push({ at: Date.now(), value: view });
+    }, [view]);
+    return null;
+  }
+  function CcPinsProbe() {
+    const pins = useCcPins();
+    useEffect(() => {
+      if (pins !== undefined) ccPins.push({ at: Date.now(), value: pins });
+    }, [pins]);
+    return null;
+  }
+  const ccRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  ccRoot.render(
+    createElement(React.Fragment, null, [
+      createElement(CcLabProvider, { key: "thread", client: cc.client, children: createElement(CcThreadProbe) }),
+      createElement(CcLabProvider, { key: "pins", client: pinsClient.client, children: createElement(CcPinsProbe) }),
+    ]),
+  );
   const tm = clientOf(on);
   const tmConversation = record<ConversationView>();
   const tmWindowReads = clientOf(on);
@@ -352,8 +374,7 @@ function mountViews(on: Host, sessionId: string) {
   const smRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
   smRoot.render(createElement(LabProvider, { connection: { userId: "alice", bearerToken: smToken, baseUrl: on.base }, children: createElement(ProjectProbe) }));
   const stops = [
-    ccLab.watchThread(sessionId, (value) => ccThread.push({ at: Date.now(), value })),
-    createWiredLab(pinsClient.client).watchPins((value) => ccPins.push({ at: Date.now(), value })),
+    () => ccRoot.unmount(),
     createLabAdapter(tm.client).watchConversation(sessionId, (value) => tmConversation.push({ at: Date.now(), value })),
     createLabAdapter(tmWindowReads.client).watchWindow(sessionId, () => {}),
     followSessionItems(sm.client, sessionId, { onRead: (value) => smItems.push({ at: Date.now(), value }), onFailure: () => {} }),
@@ -361,6 +382,8 @@ function mountViews(on: Host, sessionId: string) {
     () => smRoot.unmount(),
   ];
   const requestReads = (reads: Read[]) => reads.filter((r) => r.url.includes("/requests"));
+  // The Claude Code-style thread reads its turns through workforce's session turns view.
+  const turnReads = (reads: Read[]) => reads.filter((r) => r.url.includes("/views/sessionTurns"));
   // One project read lists its entries by the project's one prefix.
   const entryReads = () => smReads.filter((r) => r.url.includes(`topicPrefix=workstreams/${PROJECT}/`));
   // One log read lists the user's `workforce/messages/*`.
@@ -369,7 +392,7 @@ function mountViews(on: Host, sessionId: string) {
     shown: { ccThread, ccPins, tmConversation, smItems, tmTalk, smProject, smMessages },
     labRead: () => labRead(),
     reads: {
-      "claude-code-style thread (running turn)": () => requestReads(cc.reads),
+      "claude-code-style thread (running turn)": () => turnReads(cc.reads),
       "claude-code-style pins": () => pinsClient.reads,
       "Teammates conversation (answering)": () => requestReads(tm.reads),
       "Teammates divider": () => tmWindowReads.reads,

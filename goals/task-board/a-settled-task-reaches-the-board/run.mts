@@ -2,9 +2,9 @@
  * task-board › a settled task reaches the board (FIX-2429).
  *
  * Real `serve()` hosts on bound ports, real WebSocket clients, and the board
- * views as the apps run them: the Teammates lab adapter's `watchTasks`, the
- * claude-code-style lab adapter's `watchTasks` (a view of the merged
- * `listTasks_tasks` read and nothing else), and a live `BoardList`'s read
+ * views as the apps run them: the Teammates lab adapter's `watchTasks`, a
+ * live read of the merged `listTasks_tasks` view and nothing else
+ * (`merged-view.mts`, as an app's `useView` keeps it), and a live `BoardList`'s read
  * (`client.subscribe` on the board's narrowed topic, `listCollectionResources` on
  * each wake). Every assertion reads what a view showed, timed against when the
  * row's change could be read from the store, and counts the board reads each
@@ -67,7 +67,7 @@ import {
   workforceTree
 } from "../../lib/index.mts";
 import { createLabAdapter as teammatesLab } from "../../../labs/teammates/src/adapter.ts";
-import { createWiredLab as claudeCodeStyleLab } from "../../../labs/claude-code-style/src/adapter.ts";
+import { watchMergedBoard } from "./merged-view.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("a-settled-task-reaches-the-board");
@@ -80,11 +80,11 @@ const DOER_MS = 1_500;
 /** How long a plan step's turn takes. */
 const STEP_MS = 1_500;
 /** Each view's pace where push can miss a change: today's. */
-const PACE = { teammates: 1_500, "claude-code-style": 2_000, "board-list": 3_000 } as const;
+const PACE = { teammates: 1_500, "merged-view": 2_000, "board-list": 3_000 } as const;
 type ViewName = keyof typeof PACE;
 
 const TEAMMATES = "labs/teammates/src/adapter.ts";
-const CLAUDE_CODE_STYLE = "labs/claude-code-style/src/adapter.ts";
+const MERGED_VIEW = "goals/task-board/a-settled-task-reaches-the-board/merged-view.mts";
 const PATCHES: Record<string, ModulePatch[]> = {
   // Publish on the session that wrote, not the one that filed.
   "running-session": [
@@ -97,7 +97,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   // The lab views hear every notice under the conversation's whole topic: the view's answer's `hears` is dropped.
   "whole-topic": [
     { module: TEAMMATES, from: String.raw`return \{ value, topics, \.\.\.\(hears === undefined \? \{\} : \{ hears \}\) \};`, to: "return { value, topics };" },
-    { module: CLAUDE_CODE_STYLE, from: String.raw`, \.\.\.\(answer\.hears === undefined \? \{\} : \{ hears: answer\.hears \}\) \};`, to: " };" }
+    { module: MERGED_VIEW, from: String.raw`, \.\.\.\(answer\.hears === undefined \? \{\} : \{ hears: answer\.hears \}\) \};`, to: " };" }
   ],
   // The merged read's views hear `tasks` alone: the plan's topics and hearings are dropped.
   "tasks-only": [
@@ -107,7 +107,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
       to: 'return { value, topics: topics.filter((t) => t.resource !== "plan"), ...(hears === undefined ? {} : { hears: hears.filter((h) => h.topic.resource !== "plan") }) };'
     },
     {
-      module: CLAUDE_CODE_STYLE,
+      module: MERGED_VIEW,
       from: String.raw`topics: answer\.topics, \.\.\.\(answer\.hears === undefined \? \{\} : \{ hears: answer\.hears \}\) \};`,
       to: 'topics: answer.topics.filter((t) => t.resource !== "plan"), ...(answer.hears === undefined ? {} : { hears: answer.hears.filter((h) => h.topic.resource !== "plan") }) };'
     }
@@ -330,7 +330,7 @@ function viewsOn(on: Host, conversation: string): View[] {
 
   const ccs = tab(on);
   const cShown: Shown[] = [];
-  const stopCcs = claudeCodeStyleLab(ccs.client).watchTasks(conversation, (rows) =>
+  const stopCcs = watchMergedBoard(ccs.client, "desk", conversation, (rows) =>
     cShown.push({ at: Date.now(), rows: new Map(rows.map((r) => [r.id, { status: r.status }])) })
   );
 
@@ -364,7 +364,7 @@ function viewsOn(on: Host, conversation: string): View[] {
 
   return [
     { name: "teammates", shown: tShown, reads: () => teammates.counted.reads, close: stopTeammates },
-    { name: "claude-code-style", shown: cShown, reads: () => ccs.counted.reads, close: stopCcs },
+    { name: "merged-view", shown: cShown, reads: () => ccs.counted.reads, close: stopCcs },
     { name: "board-list", shown: lShown, reads: () => list.counted.reads, close: () => subscription.close() }
   ];
 }
@@ -518,7 +518,7 @@ await runGoal(async (failures, tell) => {
       await script(person, conversation, { op: "step", id: step, goal: "a step for itself" });
       const stepAt = await store.at("step:completed", 15_000);
       tell.over("a:plan-step · the step's ending in the store", stepAt === undefined ? [] : [stepAt]);
-      const merged = views.find((v) => v.name === "claude-code-style")!;
+      const merged = views.find((v) => v.name === "merged-view")!;
       if (stepAt !== undefined) {
         const shown = await shownAt(merged, step, (row) => row.status === "completed", 4_000);
         if (shown === undefined || shown - stepAt >= 1_000) failures.push(`a:plan-step: ${merged.name} showed the step completed ${shown === undefined ? "never (4 s)" : `${shown - stepAt} ms`} after the store (bound 1000)`);

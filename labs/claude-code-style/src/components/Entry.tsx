@@ -2,7 +2,7 @@ import type { FileContent } from "@flow-state-dev/core/items";
 import type { SentLineMark } from "@flow-state-dev/react";
 import { useState } from "react";
 import { defaultRehypePlugins } from "streamdown";
-import type { LabTask, TaskStatus, ThreadEntry } from "../adapter";
+import type { LabTask, TaskStatus, ThreadEntry } from "../lab";
 import { TASK_STATUS } from "../lib/task-status";
 import type { ToolRun, ToolStep } from "../lib/tool-steps";
 import { cn } from "../lib/utils";

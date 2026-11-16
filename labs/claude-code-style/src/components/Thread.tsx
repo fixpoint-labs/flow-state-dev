@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
-import type { LabAdapter, LabProject, LabSession, LabTask, ThreadEntry } from "../adapter";
-import { elapsed, useNow, useWatch } from "../lib/use-watch";
+import { useLab, useThread, type LabProject, type LabSession, type LabTask, type ThreadEntry } from "../lab";
+import { elapsed, useNow } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
 import { cn } from "../lib/utils";
 import { Composer } from "./Composer";
@@ -31,14 +31,12 @@ import { STARTER_LINES } from "../lib/first-run";
  * since a line about work started since would be false.
  */
 export function Thread({
-  adapter,
   session,
   project,
   tasks,
   onOpenThread,
   onViewTasks,
 }: {
-  adapter: LabAdapter;
   session: LabSession;
   project: LabProject | undefined;
   /** The session's task rows, as the app reads them for this thread and its pane; `undefined` until read. */
@@ -47,8 +45,9 @@ export function Thread({
   /** Show where this session's background tasks are listed. */
   onViewTasks?: () => void;
 }) {
-  const view = useWatch((emit: Parameters<LabAdapter["watchThread"]>[1]) => adapter.watchThread(session.id, emit), [adapter, session.id]);
+  const lab = useLab();
   const mode = modeOfWorker(session.worker);
+  const view = useThread(session.id, mode?.pane === "board");
   // What a line that names a task reads of it, and opens it with.
   const feedTasks = useMemo(() => ({ rows: tasks, open: onOpenThread }), [tasks, onOpenThread]);
   const running = view?.running ?? false;
@@ -63,9 +62,9 @@ export function Thread({
   const [stopRefused, setStopRefused] = useState<string>();
   const stop = () => {
     setStopRefused(undefined);
-    adapter.interrupt(session.id).catch((error: unknown) => setStopRefused(error instanceof Error ? error.message : String(error)));
+    lab.interrupt(session.id).catch((error: unknown) => setStopRefused(error instanceof Error ? error.message : String(error)));
   };
-  const retryOf = (requestId: string) => () => adapter.retry(session.id, requestId);
+  const retryOf = (requestId: string) => () => lab.retry(session.id, requestId);
   // A starter line picked from the empty thread: the composer takes it as its text, and nothing is sent.
   const [seed, setSeed] = useState<{ text: string; at: number }>();
   // On the document, so the keys work wherever focus is; a sheet's Esc arrives already spent.
@@ -119,7 +118,6 @@ export function Thread({
               entry.kind === "thread" ? (
                 <ThreadCard
                   key={entry.id}
-                  adapter={adapter}
                   sessionId={session.id}
                   task={tasks?.find((t) => t.id === entry.taskId)}
                   onOpen={onOpenThread}
@@ -133,7 +131,7 @@ export function Thread({
                     stillRunning={countFor(entry)}
                     onViewTasks={onViewTasks}
                     tasks={feedTasks}
-                    readFile={adapter.readFile}
+                    readFile={lab.readFile}
                     // Retry only the newest turn, and not while one runs: the engine retries a failed request as a new one.
                     onRetry={entry.kind === "failed" && entry.retryable && !running && entry.requestId !== undefined ? retryOf(entry.requestId) : undefined}
                   />
@@ -163,11 +161,11 @@ export function Thread({
           stopRefused={stopRefused}
           armed={keys.armed}
           seed={seed}
-          uploader={adapter}
+          uploader={lab}
           onSend={(text, attachments) => {
             // Your own line brings you back to the end, wherever you had scrolled to.
             feed.sent();
-            return adapter.send(session.id, text, attachments);
+            return lab.send(session.id, text, attachments);
           }}
           onStop={stop}
         />
