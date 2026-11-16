@@ -35,7 +35,7 @@ const recordedWorkSchema = z.object({
 });
 
 type Stored = { path: string; state: unknown };
-type Listing = { list(prefix?: string): Promise<Stored[]> };
+type Listing = { list(prefix?: string): Promise<Stored[]>; findBy(index: string, value: string): Promise<Stored[]> };
 
 /** `stored`, keyed under its collection as a client reads it. */
 const entriesOf = (collection: string, stored: readonly Stored[]): RecordedEntry[] =>
@@ -66,9 +66,9 @@ export function recordedWorkView() {
           markers.map((marker) => ({ topic: marker.topic, conversation: (marker.data as { conversation?: string | null } | undefined)?.conversation })),
         );
         const planPrefix = target.resourcesPrefix.slice(OBSERVED_PLAN.length + 1);
-        const [plan, opened] = await Promise.all([resources[OBSERVED_PLAN]!.list(planPrefix), resources[OBSERVED_PULL_REQUESTS]!.list()]);
-        // The session's records hold every run's; pick this run's, then cap, so
-        // earlier runs never use up this one's allowance (records key by PR, not run).
+        // A plan is per run by its key's prefix; pull requests key by pull request, so this run's are found by its index.
+        const [plan, opened] = await Promise.all([resources[OBSERVED_PLAN]!.list(planPrefix), resources[OBSERVED_PULL_REQUESTS]!.findBy("requestId", input.requestId)]);
+        // Only this run's rows are read, so earlier runs never use up its allowance.
         const runs = openedPullRequestsOf(entriesOf(OBSERVED_PULL_REQUESTS, opened), input.requestId);
         return {
           plan: plan.length === 0 ? null : { rows: planStepsOf(entriesOf(OBSERVED_PLAN, plan).slice(0, RECORDED_MAX)), truncated: plan.length > RECORDED_MAX },

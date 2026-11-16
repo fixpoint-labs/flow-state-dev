@@ -143,9 +143,9 @@ await runGoal(async (failures, tell) => {
         .map((s) => s.id)
         .sort();
     const storeRunning = async () =>
-      new Set((await stores.request.list({ userId: "alice", status: "in_progress" })).filter((r) => TURN_ACTIONS.has(r.actionName)).map((r) => r.sessionId));
+      new Set((await stores.request.list({ userId: "alice", status: "in_progress" })).filter((r) => TURN_ACTIONS.includes(r.actionName)).map((r) => r.sessionId));
     const storeTurns = async (sessionId: string) =>
-      (await stores.request.list({ sessionId, userId: "alice" })).filter((r) => TURN_ACTIONS.has(r.actionName)).map((r) => `${r.id}:${r.status}`).sort();
+      (await stores.request.list({ sessionId, userId: "alice" })).filter((r) => TURN_ACTIONS.includes(r.actionName)).map((r) => `${r.id}:${r.status}`).sort();
     const storeBoard = async (sessionId: string) => {
       const record = await stores.session.get(sessionId);
       if (record?.lineageId == null) return [];

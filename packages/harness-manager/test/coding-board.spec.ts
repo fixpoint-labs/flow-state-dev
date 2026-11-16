@@ -17,7 +17,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { planKeySegment } from "@flow-state-dev/core/harness";
+import { observedPullRequestsCollection, planKeySegment } from "@flow-state-dev/core/harness";
+import { declaredIndexes } from "@flow-state-dev/core/types";
 import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { workforce } from "@flow-state-dev/workforce/kit";
 import type { Harness } from "../src/harness";
@@ -102,6 +103,8 @@ describe("the recorded work view", () => {
     const answer = await post(["coder", session, "views", "recordedWork"], { userId: "alice", input: { requestId: "req_new" } });
     expect(answer.status, JSON.stringify(answer.body)).toBe(200);
     expect(answer.body.output.pullRequests).toEqual({ rows: [{ number: 999, url: "https://example.test/pr/999", title: "PR 999" }], truncated: false });
+    // The run's rows are found by the run, not by listing every run's: the collection declares the index.
+    expect(declaredIndexes(observedPullRequestsCollection as never).map((index) => index.name)).toEqual(["requestId"]);
   });
 });
 
