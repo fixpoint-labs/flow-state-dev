@@ -54,12 +54,14 @@ Written by `docs-writer` (sonnet), 771 words. Scenario: The support desk's handl
 Closed after the loop: all eight open findings (pass 7, findings 1 to 4; the two suspected inaccuracies; the pass-9 miss).
 
 - After the loop (review): the no-provider promise holds for generators that name a model id; a model object bypasses the mock resolver (`testFlow.ts:205`, `generator.ts:733`).
+- After the loop (review): owner request: action entries that set only `block` are written as the bare block (`name: block`, or `{ name }` when the names match). Type-check in apps/kitchen-sink/zz-act, deleted afterwards: only the planted error, plus the partial examples' missing-import errors, identical before the edit. 1423 words. Page sha256 a94a2cccb6a7.
 
 ## 5 · Fact check
 
 Checked against the code: the page as pass 4 read it after the draft, sha256 1295540771e1, and the 8 Reference row(s) pass 6 moved.
 
 - `testItems(result.items)` filters it: `messages()`, `byType("block_trace")`, `blockOutputs("draft-reply")` (byType accepts "block_trace") Untrue: `byType` is typed `<TType extends OutputItem["type"]>`, and `OutputItem` does not include `block_trace` (that is `BlockTraceItem`, a separate type). `byType("block_trace")` is a type error. Trace rows are read through `blockOutputs(blockName?)`, which returns `BlockTraceItem[]`. Use a type that is in `OutputItem`, such as `byType("error")`, or drop the `byType` example. (/home/user/flow-state-dev/packages/testing/src/test-utilities/testItems.ts:18 (OutputItem union at /home/user/flow-state-dev/packages/contracts/src/items/types.ts:806-819; BlockTraceItem at :223; page line 107))
+- Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749, `TActions[K] | TActions[K]["block"]`).
 
 ## 6 · Depth pass
 

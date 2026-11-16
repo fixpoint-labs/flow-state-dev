@@ -1462,6 +1462,7 @@ const TOOLING = /^scripts\/|^\.github\/|^\.husky\/|^\.omp\/|^\.claude\/|^\.curso
 /** Tracked files the sweep deliberately does not read, each with its reason. */
 export const EXCLUDE = [
   { path: /^docs\/contributing\/glossary\.mjs$/, over: true, why: "the glossary: it names every retired word on purpose" },
+  { path: /^docs\/contributing\/docs-revamp\/pages\/reference\/glossary\.(facts|record)\.md$/, over: true, why: "the Glossary page's fact sheet and record: they read the glossary's retired words, to keep the page off them" },
   { path: HISTORY, over: true, why: "history: specs, internal notes, changelogs, blog posts, the lockfile" },
   { path: KEPT_EXAMPLES, over: true, why: "a skill's worked example, kept for its shape: history" },
   { path: TOOLING, over: true, why: "tooling: scripts, CI and hook config, other harnesses' settings, the plugin" },
@@ -1490,7 +1491,7 @@ export const AREAS = [
   {
     id: "process",
     scope: false,
-    re: new RegExp(`${TOOLING.source}|^docs\\/contributing\\/glossary\\.mjs$|^docs\\/(PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`),
+    re: new RegExp(`${TOOLING.source}|^docs\\/contributing\\/glossary\\.mjs$|^docs\\/contributing\\/docs-revamp\\/pages\\/reference\\/glossary\\.(facts|record)\\.md$|^docs\\/(PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`),
     why: "process tooling (this glossary and the guard's own test among them)",
   },
   { id: "goals", scope: false, re: /^goals\//, why: "tests of behaviour: renamed identifiers reach them through typecheck, their words stay" },

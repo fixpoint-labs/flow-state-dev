@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 590">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" stroke="rgba(27, 26, 21, 0.45)" stroke-width="1" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" fill="#1b1a15" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="28" y="30">SCREEN</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="296" y="30">READS</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="44" width="220" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="71">Lab</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="90">--config</text>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="296" y="44" width="560" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="310" y="76">FLOWSTATE</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="310" y="92">ENGINE</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="446" y="76">The FlowState one fsdev.config.mts default-exports.</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="446" y="93">Shift Manager serves it and reads only its routes.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="248" y1="74" x2="295" y2="74" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="112" width="220" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="139">Shift Coordinator</text>
+<text class="sub" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" x="42" y="158">the home screen</text>
+<rect fill="url(#hatch)" x="296" y="112" width="560" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="296" y1="122.5" x2="856" y2="122.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="296" y="112" width="560" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="310" y="144">WORKER + SESSION</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="310" y="160">WORKFORCE</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="446" y="144">Your session with your Shift Coordinator, under a</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="446" y="161">summary of what waits and runs.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="248" y1="142" x2="295" y2="142" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="180" width="220" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="207">Inbox</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="226">/inbox</text>
+<rect fill="url(#hatch)" x="296" y="180" width="560" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="296" y1="190.5" x2="856" y2="190.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="296" y="180" width="560" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="310" y="212">SUSPENSIONS</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="310" y="228">CORE</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="446" y="212">Asks in sessions you started and their runs: work</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="446" y="229">suspended until a user approves or answers.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="248" y1="210" x2="295" y2="210" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="248" width="220" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="275">Tasks</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="294">/tasks</text>
+<rect fill="url(#hatch)" x="296" y="248" width="560" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="296" y1="258.5" x2="856" y2="258.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="296" y="248" width="560" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="310" y="280">TASKS</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="310" y="296">ORCHESTRATION</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="446" y="280">Every task not done on your boards, grouped by</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="446" y="297">state, worker or workstream.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="248" y1="278" x2="295" y2="278" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="316" width="220" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="343">Roster</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="362">/roster</text>
+<rect fill="url(#hatch)" x="296" y="316" width="560" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="296" y1="326.5" x2="856" y2="326.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="296" y="316" width="560" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="310" y="348">ROSTER</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="310" y="364">WORKFORCE</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="446" y="348">Your workers. On shift and off shift are worked</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="446" y="365">out from their tasks and asks.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="248" y1="346" x2="295" y2="346" marker-end="url(#ah)"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="28" y="384" width="220" height="60"/>
+<text class="nm" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="15px" font-weight="500" x="42" y="411">Project view</text>
+<text class="c" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12.5px" font-weight="500" x="42" y="430">/p/&lt;project id&gt;</text>
+<rect fill="url(#hatch)" x="296" y="384" width="560" height="10"/><line class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x1="296" y1="394.5" x2="856" y2="394.5"/>
+<rect class="solid" fill="none" stroke="#1b1a15" stroke-width="1.4" x="296" y="384" width="560" height="60"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="310" y="416">PROJECT</text>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="310" y="432">WORKFORCE</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="446" y="416">Its workstreams and their progress, your own</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="446" y="433">boards, and your own project coordinator to talk to it.</text>
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="248" y1="414" x2="295" y2="414" marker-end="url(#ah)"/>
+<path class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" d="M880 414 V74 H857" marker-end="url(#ah)"/><line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="856" y1="142" x2="880" y2="142"/><line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="856" y1="210" x2="880" y2="210"/><line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="856" y1="278" x2="880" y2="278"/><line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="856" y1="346" x2="880" y2="346"/><line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="856" y1="414" x2="880" y2="414"/><rect class="ground" fill="#f0ece1" x="866.8" y="101" width="26.4" height="15"/><text class="plate" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10.5px" font-weight="500" letter-spacing="1px" x="880" y="112" text-anchor="middle">01</text>
+<line class="hi" fill="none" stroke="rgba(27, 26, 21, 0.25)" stroke-width="1" x1="0" y1="468" x2="920" y2="468"/>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="494">01</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="494">Shift Manager stores nothing of its own. Every screen is a read of the Lab: each source here is read through</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="511">the Lab's routes.</text>
+<text class="n" fill="#1b1a15" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="11px" font-weight="500" x="28" y="536">02</text>
+<text class="t" fill="#3d3a32" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="12px" font-weight="500" x="60" y="536">The second label on each source names where it comes from: Workforce, Orchestration, Core or the Engine.</text>
+<g id="key">
+<line class="ln" fill="none" stroke="#1b1a15" stroke-width="1.3" x1="28" y1="564" x2="54" y2="564" marker-end="url(#ah)"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="62" y="568">READS</text>
+<rect fill="url(#hatch)" x="136" y="558" width="26" height="11"/><rect class="thin" fill="none" stroke="#1b1a15" stroke-width="1" x="136" y="558" width="26" height="11"/>
+<text class="lb" fill="#57544a" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="10px" font-weight="500" letter-spacing="1.5px" x="170" y="568">OUTLIVES THE REQUEST</text>
+</g>
+</svg>

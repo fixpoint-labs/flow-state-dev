@@ -82,7 +82,7 @@ import { reply } from "./blocks/reply";
 
 export default defineFlow({
   kind: "support",
-  actions: { reply: { block: reply } },
+  actions: { reply },
   session: {
     stateSchema: z.object({
       ticketStatus: z.enum(["open", "waiting", "solved"]).default("open"),
@@ -112,19 +112,19 @@ When the page needs an answer in a different shape, a view computes it on the se
 
 ## Rendering items
 
-`ItemsRenderer` draws a list of items in order. It has a built-in for messages, reasoning, status, errors, tool output and suspension cards. For any other type it draws a placeholder, not the item's content. The [UI components reference](../reference/ui-components.md) lists what it draws.
+`ItemsRenderer` draws a list of items in order. It has a built-in for messages, reasoning, status, errors, tool output and suspension cards. A data item draws nothing until a renderer is registered for it, and any other type draws a placeholder, not the item's content. The [UI components reference](../reference/ui-components.md) lists what it draws.
 
-To draw a type yourself, register a renderer on `FlowProvider`. A `component` item is one a flow emits to ask the page to draw a named component, and the renderer map is keyed by that name:
+To draw a type yourself, register a renderer on `FlowProvider`. A data item is a structured record a flow emits under a name, its `dataType`, and the `data` renderer map is keyed by that name:
 
 ```tsx title="src/app/order-card.tsx"
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { DataItem } from "@flow-state-dev/core/items";
 
-export function OrderCard({ item }: { item: ComponentItem }) {
-  return <div>Order {String(item.data.orderId)}</div>;
+export function OrderCard({ item }: { item: DataItem }) {
+  return <div>Order {String(item.value.orderId)}</div>;
 }
 ```
 
-In `SupportPage`, add `renderers={{ component: { "order-card": OrderCard } }}` to `FlowProvider`.
+In `SupportPage`, add `renderers={{ data: { "order-card": OrderCard } }}` to `FlowProvider`.
 
 ## What the browser never gets
 

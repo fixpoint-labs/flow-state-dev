@@ -80,7 +80,7 @@ turn with what you have. The reply reaches you as its own message after your cur
 
 ### Where you see it
 
-The user sees both conversations, because both workers' conversations are the user's own. In the sender's, the call is a `sendMessage` tool call. In the recipient's, a landed message is a `workforce:received` entry for the app to draw, and the recipient's model reads it as a line from the sender.
+The user sees both conversations, because both workers' conversations are the user's own. In the sender's, the call is a `sendMessage` tool call. In the recipient's, a landed message is a `workforce:received` data item, a structured record for the app to draw, and the recipient's model reads it as a line from the sender.
 
 Shift Manager, the browser app a workforce is worked through, draws a sent message as *To teammates.researcher: …*, and a received one as a line under the sender's name. Its Messages screen lists that log: one row per message, never another user's.
 
@@ -92,7 +92,7 @@ None.
 
 A slot is an opening a kit leaves for other kits. Messaging uses one, the workforce kit's `workerFlows`, where an app adds worker flows beside `agent`. A flow you add there receives messages through an `onMessageReceived` action, built by the `messageReceivedEntry` function from `@flow-state-dev/workforce`. The startup refusal for one that cannot is in the [Reference](../../reference/worker-messaging.md).
 
-Messaging keeps the message log, a resource collection an app's screens read, and adds a `workforce:received` item to the receiving session's conversation. The item's fields, and the log's, are in the [Reference](../../reference/worker-messaging.md).
+Messaging keeps the message log, a resource collection an app's screens read, and adds a `workforce:received` data item to the receiving session's conversation. The item's fields, and the log's, are in the [Reference](../../reference/worker-messaging.md).
 
 ## Change it
 

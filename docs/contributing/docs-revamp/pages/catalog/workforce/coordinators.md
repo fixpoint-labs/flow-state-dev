@@ -119,7 +119,7 @@ Routing is one use of tasks. A coordinator can also hand a delegate a task of it
 
 ## Slots and views
 
-A coordinator opens no slot and fills none in another kit. It serves one view, `listTasks_tasks`, the conversation's task list. It also emits one `coordinator-route` item per routing decision, recording who got the message and why. Your screen can pick these out of the conversation by their type, `coordinator-route`, and show them apart from messages.
+A coordinator opens no slot and fills none in another kit. It serves one view, `listTasks_tasks`, the conversation's task list. It also emits one `coordinator-route` data item per routing decision, a structured record of who got the message and why. Your screen can pick these out of the conversation by their `dataType`, `coordinator-route`, and show them apart from messages.
 
 ## Change it
 

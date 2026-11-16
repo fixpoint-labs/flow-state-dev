@@ -47,18 +47,18 @@ A side chain suits work that is cheap, best-effort and belongs to the turn that 
 
 ## The same request, somewhere else
 
-Give the app a queue, `bullmqWorker`, and each action call becomes a job on it. A job is a request on the same flow, worked from Redis against the same stores.
+Give the app a queue, `bullmqJobQueue`, and each action call becomes a job on it. A job is a request on the same flow, worked from Redis against the same stores.
 
 ```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
-import { bullmqWorker } from "@flow-state-dev/bullmq";
+import { bullmqJobQueue } from "@flow-state-dev/bullmq";
 import { postgresStores } from "@flow-state-dev/store-postgres";
 import support from "./src/flows/support/flow";
 
 export default createFlowState({
   flows: [support],
   stores: postgresStores({ connectionString: process.env.FSD_DB_URL }),
-  worker: bullmqWorker({ connection: process.env.REDIS_URL! }),
+  jobQueue: bullmqJobQueue({ connection: process.env.REDIS_URL! }),
 });
 ```
 
@@ -86,8 +86,8 @@ const startAudit = dispatcher({
 
 export const supportFlow = defineFlow({
   kind: "support",
-  actions: { startAudit: { block: startAudit } },
-  internal: { actions: { audit: { block: auditAccount } } },
+  actions: { startAudit },
+  internal: { actions: { audit: auditAccount } },
 });
 
 export default supportFlow();
