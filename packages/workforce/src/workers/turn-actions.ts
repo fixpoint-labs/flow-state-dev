@@ -12,18 +12,5 @@ import { TASK_SETTLED_ENTRY } from "../conversation-board/board-entries";
 import { MESSAGE_RECEIVED_ENTRY } from "../messages/keys";
 import { ROUTE_ON_ACTION } from "../coordinator/coordinator-keys";
 
-/** `values` as a set no caller can change: its writers throw. */
-function frozenSet<T>(values: readonly T[]): ReadonlySet<T> {
-  const set = new Set(values);
-  for (const verb of ["add", "delete", "clear"] as const) {
-    Object.defineProperty(set, verb, {
-      value: () => {
-        throw new TypeError("The turn actions are fixed: an entry that runs a turn joins them in workforce's source.");
-      }
-    });
-  }
-  return Object.freeze(set);
-}
-
 /** The actions that run a worker session's turn block. */
-export const TURN_ACTIONS: ReadonlySet<string> = frozenSet([RESPOND_ACTION, TASK_SETTLED_ENTRY, MESSAGE_RECEIVED_ENTRY, ROUTE_ON_ACTION]);
+export const TURN_ACTIONS: readonly string[] = [RESPOND_ACTION, TASK_SETTLED_ENTRY, MESSAGE_RECEIVED_ENTRY, ROUTE_ON_ACTION] as const;

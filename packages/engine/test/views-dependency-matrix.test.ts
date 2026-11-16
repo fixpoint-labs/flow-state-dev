@@ -364,6 +364,43 @@ describe("a view hears a change through every read path, at every scope", () => 
     expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
   });
 
+  it("request host turns × session, deleted", async () => {
+    // A deleted session's requests stay in the store, so a turns view that
+    // heard only `request` would keep showing them: it hears the session's
+    // lifecycle too, which a delete publishes.
+    const bus = createInMemoryBus();
+    const stores = { ...createInMemoryStores(), bus };
+    await seed(stores, "root");
+    await seed(stores, "a", "root");
+    const said = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "say" as never,
+      input: { v: "1" } as never,
+      userId: "u_1",
+      sessionId: "c",
+      stores,
+      runtimeConfig: { requestHost: { hostHasViews: () => true } }
+    });
+    expect(said.error).toBeUndefined();
+    await tick();
+    const run = () => runView({ flow, viewName: "host_turns", input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores });
+    const before = await run();
+    expect(before.output).toEqual({ v: "1" });
+    const heard: ChangeNotice[] = [];
+    for (const t of before.topics) {
+      const busTopic: BusTopic =
+        t.scope === "session" ? { scope: "session", id: t.id, tenantId: "" } : { scope: t.scope, id: t.scope === "user" ? "u_1" : DEFAULT_ORG_ID, tenantId: "" };
+      bus.subscribe(busTopic, (notice) => heard.push(notice));
+    }
+    await withChangeBus(stores).session.delete("c");
+    await tick();
+    await tick();
+    const after = await run();
+    expect(after.output).toEqual({ v: "absent" });
+    expect(admitted(before, heard), `${JSON.stringify(before.hears)} heard ${JSON.stringify(heard)}`).not.toEqual([]);
+  });
+
   it("request host list × user", async () => {
     // A first run in a new session makes it, on the caller's user topic.
     const { before, after, heard } = await cell("host_list", "say", "c", false);

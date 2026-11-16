@@ -341,6 +341,20 @@ describe("a user's project coordinator (BR-21, BR-22, BR-23)", () => {
     expect(listed.map((entry) => [entry.id, entry.isDefault])).toEqual([[main.id, true]]);
     expect(listed.map((entry) => entry.id)).not.toContain(project);
   });
+
+  it("not-crowded-out · lists her conversation behind more than 100 newer project sessions, which share the worker's id", async () => {
+    // The list reads sessions newest first and then leaves out project
+    // sessions: read once, 100 newer ones would leave her nothing.
+    const h = await boot();
+    const main = await h.client("alice").ensureWorkerSession({ worker: PROJECT_COORDINATOR });
+    for (let at = 0; at < 101; at += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      await h.ok("alice", "lab", await h.lab("alice"), "createProject", { id: `p${at}`, title: `P${at}`, visibility: "private" });
+      await h.coordinator("alice", { visibility: "private", id: `p${at}` });
+    }
+    const listed = await h.workerSessions("alice", PROJECT_COORDINATOR);
+    expect(listed.map((entry) => [entry.id, entry.isDefault])).toEqual([[main.id, true]]);
+  }, 120_000);
 });
 
 describe("its delegates (BR-21a, BR-21b)", () => {

@@ -327,6 +327,12 @@ export type SessionListQuery = {
   readonly fields?: Readonly<Record<string, string>>;
   /** How many rows, newest first. Defaults to and at most 100. */
   readonly limit?: number;
+  /**
+   * How many of the newest matching sessions to pass over first, to read on
+   * where `more` said a page stopped. Counted before the list leaves out a
+   * session it doesn't answer, so a page can hold fewer than `limit`.
+   */
+  readonly offset?: number;
 };
 
 /** One session as {@link RequestSessions.list} answers it: no items, no state but its readonly fields. */
@@ -436,6 +442,9 @@ export interface RequestSessions {
    * and for one that doesn't exist. Reads only: nothing is written to the
    * session and nothing runs in it. A turn the session runs now, a suspended
    * turn and a parked one are left out, and `running` says one is open.
+   * It returns the transcript, so a view that reads it hears `items` and runs
+   * again per streamed chunk; a view meant to stay quiet during a reply reads
+   * {@link turns}, not `history`.
    */
   history(sessionId: string, query?: SessionHistoryQuery): Promise<SessionHistory | undefined>;
 

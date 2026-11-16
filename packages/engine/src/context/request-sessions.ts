@@ -152,10 +152,11 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     return admitted(await sessions.get(resolveSessionStorageKey(sessionId, identity.tenantId)));
   };
   /**
-   * A one-session verb that answered nothing is heard as the caller's list is,
-   * on their own user topic, so a session made later under the id wakes the
-   * view; never on the id's own topic, which may be someone else's. A refusal
-   * and a missing session alike.
+   * A verb that left a session it was asked for unanswered (one-session, or a
+   * member of a `turns` batch) is heard as the caller's list is, on their own
+   * user topic, so a session made later under the id wakes the view; never on
+   * the id's own topic, which may be someone else's. A refusal and a missing
+   * session alike.
    */
   const unanswered = (): undefined => {
     inputs.observe?.list();
@@ -204,6 +205,8 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     const read = ids.flatMap((id, at) => (records[at] === undefined ? [] : [{ id, record: records[at]! }]));
     for (const entry of read) inputs.observe?.turns(entry.id);
     if (one && read.length === 0) return unanswered();
+    // A batch member it doesn't answer is heard the same way, never on its own topic.
+    if (read.length < ids.length) unanswered();
     if (read.length === 0 || inputs.requests === undefined) return [];
     const per = bounded(query?.limit, SESSION_TURNS_MAX);
     if (per === 0) return [];
@@ -261,6 +264,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       // Heard however few rows it answers: a session made later is a change to it.
       inputs.observe?.list();
       const limit = bounded(query?.limit, SESSION_LIST_MAX);
+      const offset = query?.offset === undefined || !Number.isFinite(query.offset) ? 0 : Math.max(0, Math.floor(query.offset));
       const fields = query?.fields ?? {};
       let state: Record<string, string> | undefined;
       if (Object.keys(fields).length > 0) {
@@ -278,7 +282,8 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
         tenantId: identity.tenantId,
         orgId: identity.orgId,
         ...(state !== undefined ? { state } : {}),
-        limit: limit + 1
+        limit: limit + 1,
+        ...(offset > 0 ? { offset } : {})
       });
       const answered: ListedSession[] = [];
       for (const candidate of stored.slice(0, limit)) {

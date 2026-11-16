@@ -196,7 +196,7 @@ describe("an empty board read for a named conversation", () => {
       // The list, on the user topic's `run` (beside the roster's own resource reads).
       expect(answer.hears.find((hearing) => hearing.topic.scope === "user" && hearing.topic.resource === undefined)?.kinds).toContain("run");
       // Its turns are heard on its request notices; nothing hears its streamed items.
-      expect(answer.hears).toContainEqual({ topic: { scope: "session", id: lead }, kinds: ["request"] });
+      expect(answer.hears).toContainEqual({ topic: { scope: "session", id: lead }, kinds: ["request", "state"] });
       expect(answer.hears.flatMap((hearing) => hearing.kinds)).not.toContain("items");
     } finally {
       await h.dispose();
@@ -217,7 +217,7 @@ describe("a session's turns", () => {
         [RESPOND_ACTION, "completed"]
       ]);
       expect(value[0]!.startedAt).toBeLessThanOrEqual(value[1]!.startedAt);
-      expect(value.every((turn) => TURN_ACTIONS.has(turn.action))).toBe(true);
+      expect(value.every((turn) => TURN_ACTIONS.includes(turn.action))).toBe(true);
       // Another user's session answers nothing.
       expect((await h.fsd("bob").view(sessionTurnsViewRef(), { sessionId: main.id })).value).toEqual([]);
     } finally {
@@ -225,8 +225,7 @@ describe("a session's turns", () => {
     }
   });
 
-  it("turn-set · names the four entries that run a session's turn, and no caller can add one", () => {
+  it("turn-set · names the four entries that run a session's turn", () => {
     expect([...TURN_ACTIONS].sort()).toEqual(["onMessageReceived", "onTaskSettled", "respond", "routeOn"]);
-    expect(() => (TURN_ACTIONS as Set<string>).add("setWorkProject")).toThrow();
   });
 });

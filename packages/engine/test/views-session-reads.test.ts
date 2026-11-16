@@ -38,7 +38,7 @@ function app(): FlowInstance {
         scope: "user",
         block: handler({
           name: "list",
-          inputSchema: z.object({ limit: z.number().optional(), fields: z.record(z.string()).optional() }),
+          inputSchema: z.object({ limit: z.number().optional(), offset: z.number().optional(), fields: z.record(z.string()).optional() }),
           outputSchema: out,
           execute: async (input, ctx) => host(ctx).list({ flowKind: "desk", ...input })
         })
@@ -157,6 +157,19 @@ describe("sessions.list in a view", () => {
     expect(list.more).toBe(true);
   });
 
+  it("pages past the newest rows with an offset, so a caller can read on to older sessions", async () => {
+    const stores = createInMemoryStores();
+    for (let at = 0; at < 5; at += 1) await seed(stores, `s${at}`, { updatedAt: at });
+    const first = (await view(stores, app(), "list", { limit: 2 })).output as { sessions: Array<{ id: string }>; more: boolean };
+    const next = (await view(stores, app(), "list", { limit: 2, offset: 2 })).output as { sessions: Array<{ id: string }>; more: boolean };
+    const last = (await view(stores, app(), "list", { limit: 2, offset: 4 })).output as { sessions: Array<{ id: string }>; more: boolean };
+    expect([first, next, last].map((page) => [page.sessions.map((session) => session.id), page.more])).toEqual([
+      [["s4", "s3"], true],
+      [["s2", "s1"], true],
+      [["s0"], false]
+    ]);
+  });
+
   it("filters by readonly fields at the store, and refuses a field the flow doesn't declare readonly", async () => {
     const stores = createInMemoryStores();
     const flow = app();
@@ -181,7 +194,7 @@ describe("sessions.list in a view", () => {
 });
 
 describe("sessions.turns in a view", () => {
-  it("answers a session's requests by status, never their words, heard on its request notices only", async () => {
+  it("answers a session's requests by status, never their words, heard on its request notices and its delete or recreate, never items", async () => {
     const stores = createInMemoryStores();
     const flow = app();
     await act(stores, flow, "mine");
@@ -190,7 +203,7 @@ describe("sessions.turns in a view", () => {
     expect(turns).toHaveLength(1);
     expect(turns[0]).toMatchObject({ sessionId: "mine", action: "touch", status: "completed" });
     expect(Object.keys(turns[0]!).sort()).toEqual(["action", "completedAtMs", "id", "sessionId", "source", "startedAtMs", "status", "updatedAt"]);
-    expect(answer.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["request"] }]);
+    expect(answer.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["request", "state"] }]);
   });
 
   it("answers another user's, a refused or a missing session as missing, heard on the caller's own user topic alone", async () => {
@@ -214,7 +227,14 @@ describe("sessions.turns in a view", () => {
     await act(stores, flow, "mine");
     const many = await view(stores, flow, "turns", { ids: ["bobs", "mine"] });
     expect((many.output as Array<{ sessionId: string }>).map((turn) => turn.sessionId)).toEqual(["mine"]);
-    expect(many.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["request"] }]);
+    // A batch with a member it doesn't answer is heard on the user topic too,
+    // so that member, made later, wakes the view; its own topic never.
+    expect(many.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["request", "state"] }, ...own]);
+    const none = await view(stores, flow, "turns", { ids: ["bobs", "nobody"] });
+    expect(none.output).toEqual([]);
+    expect(none.hears).toEqual(own);
+    const all = await view(stores, flow, "turns", { ids: ["mine"], status: ["completed"] });
+    expect(all.hears).toEqual([{ topic: { scope: "session", id: "mine" }, kinds: ["request", "state"] }]);
   });
 
   it("filters by status at the store and by action", async () => {
