@@ -71,6 +71,10 @@ No untrue claim found.
 
 - Read 1, 3 readers, no tools. Missed per question: 0, 3, 0, 0, 0, 0. Gaps: "Your page sends `reply` to the `support` flow. What does every call have to say about who is calling, and what happens to a call that leaves it out?" missed by 3 of 3 readers; the key: Every call carries a `userId`. On the page it comes from `<FlowProvider flowKind="support" userId="u1">`. The client throws `userId is required` if the value is empty, and with the default resolver the server answers 400 to an action call that names no user. The default trusts whatever `userId` the caller writes, so it identifies the caller but proves nothing. A real check is a `resolvePrincipal`, which the auth page covers. A hook with no `userId` falls back to the development identity `"devuser"`, so pass the value explicitly. Facts sec. 5, sec. 9 Q2; `cli/client.ts:57-62`; `engT/transports/http-adapter.test.ts:226-240`; `react/internal/useClient.ts:15`.. Guessed at: The page does not define 'dynamic = "force-dynamic"' semantics beyond buffering, which I took from the pitfalls list., Q2: the page does not say what the server does with a call that omits userId; I answered only what it states., Q6: I assumed the restart is of the dev server with no stores configured, as in the page's example config., The page does not say what happens to a call that omits userId; I did not guess beyond noting it is a required caller input and that the server trusts whatever userId is sent., The page does not say what happens to a call that omits userId entirely (answer to Q2 is partly inferred from the statement that the server trusts whatever userId the request carries)..
 
+## 10 · Owner read
+
+Read, 2026-11-16. The owner read the page and recorded no findings.
+
 ## Reference rows
 
 - Provider key variables: OpenAI, Anthropic and Google, the package each needs, and that the key is read from the environment so no model config is required. The page keeps only the default (OpenAI) and links to the row. → R-15

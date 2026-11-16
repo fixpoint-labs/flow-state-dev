@@ -76,6 +76,10 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 - Read 1, 3 readers, no tools. Missed per question: 0, 0, 0, 0, 0, 0. No gap. Guessed at: The page does not state the fixed cascade depth number., Where the reactive_input_invalid error item is visible beyond being an item in the turn stream is not stated., Whether create (the created kind) behaves identically to stateUpdated for blocking is inferred from the general 'a reaction blocks by default' statement., Whether a browser pin goes through client writes is inferred, since the page names client.content.update specifically and says 'other writes a client makes'., The page does not give the exact fixed cascade depth number; I did not guess it., I assumed 'agent' and 'supervisor' in the questions refer to blocks/users in the support desk example, and that the browser case means client-side writes like client.content.update., The page does not say which kind create(key, { author }) fires beyond listing `created` as a kind, so I did not assume it fires stateUpdated., Where a reactive_input_invalid error item is visible beyond being an item in the turn's stream: the page does not say., The fixed cascade depth number: the page does not give it., Whether a side-chained reaction is shown for create or patchState: the page only demonstrates it for contentUpdated..
 
+## 10 · Owner read
+
+Read, 2026-11-16. The owner read the page and recorded no findings.
+
 ## Reference rows
 
 - Reactive bindings versus `onInstance*` callbacks: both may be set on one collection; the callbacks are awaited functions that receive a logging-only hook context, so they cannot emit items or run blocks; single resources have no callbacks, only `reactTo`. → R-08 (corrected by pass 5)

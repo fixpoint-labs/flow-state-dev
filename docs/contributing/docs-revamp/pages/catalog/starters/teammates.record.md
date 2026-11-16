@@ -66,7 +66,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 1ee
 
 ## 10 · Owner read
 
-Not sampled. The owner replaces this with `Read`, the date and what they found, when they read the page.
+Read, 2026-11-16. The owner read the page and recorded no findings.
 
 ## Reference rows
 

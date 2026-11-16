@@ -78,6 +78,10 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 
 - Read 1, 3 readers, no tools. Missed per question: 0, 0, 0, 0, 3, 0. Gaps: "The flush throws `PlaceUnreadableError` ("the workspace could not be listed: ..."). Did anything reach the collection, and is it safe to catch and ignore? What about other rejections?" missed by 3 of 3 readers; the key: That is the only error a flush rejects with on purpose. It means the place could not be listed, so nothing was read, written or deleted, and a caller may swallow it. Any other rejection (a failed collection read, write or delete) means work did not reach the store, and it must not be swallowed. This is also why a custom place's `list` has to throw when it can't read: returning `[]` claims the place is readable and empty, and the flush would then delete everything it owns (W16, W37).. Guessed at: `PlaceUnreadableError` (named only in the question, not defined on the page), Exact rules for when a flush deletes versus leaves a stored entry (the page gives only the ownership rule and `ownedPaths()`), Q1: that run A's outcome kind would be `written` (the page lists the kinds but doesn't map this scenario to one), Q4: how `orphan` outcome arises, and exactly what a deleted-but-someone-else-edited file reports (inferred from the `ours: null` note), Q5: PlaceUnreadableError is not mentioned on the page; no guess made, answered as not stated, PlaceUnreadableError (not mentioned on the page; answered that the page does not say), Exact outcome kind when deleting a file the projection does not own (page only says deletion happens only for owned files), Recommended action for a contested outcome (implied retry from 'your file stays in the place to retry'), Whether Run B's file remains in the place after a conflict (inferred from the contested description and 'every other path landed').
 
+## 10 · Owner read
+
+Read, 2026-11-16. The owner read the page and recorded no findings.
+
 ## Reference rows
 
 - Mount resolution: the longest matching prefix wins when mounts nest → R-42
