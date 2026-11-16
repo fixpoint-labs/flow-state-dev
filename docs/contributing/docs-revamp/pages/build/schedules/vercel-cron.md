@@ -1,27 +1,18 @@
 ---
 title: Run on a schedule with Vercel Cron
 type: recipe
-description: "Vercel Cron fires HTTPS requests on a schedule from the Vercel control plane."
+description: "Run a flow's schedule on Vercel with one cron entry, one route and a shared secret."
 ---
 
 # Run on a schedule with Vercel Cron
 
-Vercel Cron calls a URL on your deployment on a schedule. Point it at the
-scheduled-actions dispatch endpoint and you have a scheduler, configured in
-`vercel.json` and protected by a shared secret.
+A Vercel deployment has no process that stays up to keep time. Vercel Cron fills that gap: it calls one URL on your app every few minutes. That call runs the app's schedule tick, which fires every schedule that has come due by posting to that schedule's dispatch endpoint, `/api/flows/<flow>/schedules/<name>/dispatch`. You set up one `vercel.json` entry, one route and one shared secret.
 
-This guide assumes the scheduled-actions transport is already mounted. If
-not, start with the [schedules reference](../../reference/schedules.md).
+This guide assumes the scheduled-actions transport is mounted under `/api/flows`, as in [Deploy to Vercel](../deploy/vercel.md). Options and exact answers are in the [schedules reference](../../reference/schedules.md).
 
 ## 1. Declare the schedule
 
-A static schedule is an entry on the flow's `schedules.static` map. It names
-a cron expression and the handler block to run. The flow never fires it
-itself: Vercel Cron does.
-
-The resolver for scheduled calls is built once, at the top of the file, so a
-missing `CRON_SECRET` stops the app at startup instead of on the first cron
-request. The principal is who the scheduled run belongs to.
+A static schedule is an entry on the flow's `schedules.static` map. It names a cron expression and the handler block to run.
 
 ```ts title="src/flows/support/blocks/sweep-stale-tickets.ts"
 import { handler } from "@flow-state-dev/core";
@@ -49,7 +40,7 @@ const resolveScheduled = createBearerSecretPrincipalResolver({
   principal: { userId: "system", orgId: "org_support" }
 });
 
-export default defineFlow({
+const supportFlow = defineFlow({
   kind: "support",
   actions: {},
   authentication: {
@@ -69,110 +60,93 @@ export default defineFlow({
     }
   }
 });
+
+export default supportFlow();
 ```
 
-A scheduled handler is not listed in `actions`, so callers can't run it as an
-action. The only way in is the dispatch endpoint. Branching on `ctx.source`
-means the bearer secret is accepted on scheduled calls and nowhere else. See
-[Authentication and resolvers](../../reference/authentication.md) for the resolver's
-signature and the `source` values.
+The principal is who the scheduled run belongs to: inside `sweepStaleTickets`, `ctx.user.identity.userId` is `system`. The principal must name an organization, here `org_support`, or the call is refused. The resolver is built once, at the top of the file, and branches on `ctx.source`, so the secret is accepted on scheduled calls and nowhere else. A scheduled handler is not listed in `actions`, so the dispatch endpoint is the only way to run it. [Authentication and resolvers](../../reference/authentication.md) has the resolver's signature and the `source` values.
 
-## 2. Add the cron entry
+## 2. Add the cron route
 
-Vercel Cron sends a GET and the dispatch endpoint accepts only POST, so the
-cron entry points at a small route in your app that forwards the call. The
-`schedule` here must match the `cron` on the flow entry. Nothing compares
-the two.
+The app is told how its schedules fire with `createFlowState({ scheduler })`. Pass `vercelScheduler()` only on Vercel, so `fsdev dev` and `next dev` keep their own local cron.
+
+```ts title="fsdev.config.ts"
+import { createFlowState } from "@flow-state-dev/engine";
+import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
+import { vercelScheduler } from "@flow-state-dev/vercel";
+import support from "./src/flows/support/flow";
+
+export const scheduler = vercelScheduler();
+
+export default createFlowState({
+  flows: [support],
+  adapters: [createScheduledTransportAdapter()],
+  scheduler: process.env.VERCEL ? scheduler : undefined
+  // ...your stores and other options
+});
+```
+
+The scheduler's `route` is the handler Vercel Cron calls. Export it as the `GET` of one route, and point one cron entry at it.
+
+```ts title="src/app/api/cron/schedules/route.ts"
+import { scheduler } from "../../../../../fsdev.config";
+
+export const GET = scheduler.route;
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+```
 
 ```json title="vercel.json"
 {
   "crons": [
-    { "path": "/api/cron/support/stale-ticket-sweep", "schedule": "0 8 * * *" }
+    { "path": "/api/cron/schedules", "schedule": "*/15 * * * *" }
   ]
 }
 ```
 
-```ts title="src/app/api/cron/support/stale-ticket-sweep/route.ts"
-import { createGetToPostCronShim } from "@flow-state-dev/vercel/schedules";
+That entry serves every schedule. Its `schedule` is how often the tick runs, not when your flow fires: each due time comes from the flow's own `cron`. A schedule fires on the first beat after its time, so `0 8 * * *` behind a 15-minute beat runs between 08:00 and 08:15.
 
-export const dynamic = "force-dynamic";
-export const GET = createGetToPostCronShim({
-  flowKind: "support",
-  scheduleId: "stale-ticket-sweep"
-});
-```
+## 3. Protect the route
 
-Set `NEXT_PUBLIC_BASE_URL` to your deployment's origin. The route forwards to
-the dispatch endpoint there. Options, defaults and the failure cases are in
-the [schedules reference](../../reference/schedules.md#cron-shim).
+Set `CRON_SECRET` in the project's environment variables. Vercel Cron sends it on every cron request as `Authorization: Bearer ${CRON_SECRET}`, and the tick sends the same header on each dispatch it makes.
 
-## 3. Protect the endpoint
-
-Set `CRON_SECRET` in the project's environment variables. Vercel Cron sends
-it on every cron request as `Authorization: Bearer ${CRON_SECRET}`. A
-request with the wrong secret gets `401`, from the route or the dispatch
-endpoint.
-
-That secret is the only protection: no network rule restricts either URL.
-It is checked twice. The cron route answers `401` to a request without it
-and calls nothing onward. The dispatch endpoint runs the flow's resolver
-before it reads anything else, so a stranger posting there directly gets
-`401` and learns nothing about which times have fired. Anyone who holds the
-secret can fire any schedule on a flow whose resolver accepts it. To rotate it, change
-`CRON_SECRET` in the project's environment variables. The old value stops
-working.
-
-If the flow's `authentication` sets `defaultUserId`, a request with no
-`Authorization` header runs as that user instead of failing. A wrong secret
-gets `401` either way. Leave `defaultUserId` unset on a flow that has
-scheduled handlers.
+That secret is the only protection. No network rule restricts the cron route or the dispatch endpoints. A wrong or missing secret gets `401` from both. If `CRON_SECRET` is unset, nothing is left open: the cron route refuses every call, and the app fails as it loads, because `createBearerSecretPrincipalResolver` throws on an empty secret. Anyone who holds the secret can fire any schedule on a flow whose resolver accepts it. To rotate it, change `CRON_SECRET` and redeploy.
 
 ## 4. Check a run
 
-Fire the schedule once without waiting for Vercel. With no body, the call
-stands in for the most recent scheduled time, so a second call for the same
-time returns `duplicate`:
+Call the cron route the way Vercel does:
 
 ```bash
-curl -X POST "$NEXT_PUBLIC_BASE_URL/api/flows/support/schedules/stale-ticket-sweep/dispatch" \
+curl "$APP_URL/api/cron/schedules" -H "Authorization: Bearer $CRON_SECRET"
+```
+
+It answers `200` with `{ "dispatched": <n> }`, where `n` is the number of schedules that were due, so `0` is normal between beats. That is a real tick, not a dry run, and calling it again does not run a schedule twice: each scheduled time fires at most once. `dispatched` counts the fires the tick sent, not the ones that succeeded.
+
+To fire one schedule without waiting, post to its dispatch endpoint. With no body, the call stands in for the most recent scheduled time, so a second call for the same time returns `duplicate`.
+
+```bash
+curl -X POST "$APP_URL/api/flows/support/schedules/stale-ticket-sweep/dispatch" \
   -H "Authorization: Bearer $CRON_SECRET"
 ```
 
-`202` means the handler started. It does not mean it finished: an error in
-the handler does not appear in this response. Find it in the DevTool, as
-described in [Debug a run](../debug-a-run.md). `200` with `duplicate` means
-that scheduled time has already fired, so nothing ran. `200` with `skipped`
-means the previous run has not finished. The route from step 2 passes only
-the status code back to Vercel, so Vercel's cron logs show `202` for a
-started run and `200` for both a duplicate and a skip. Status codes and the rest of the contract are in the
-[schedules reference](../../reference/schedules.md#dispatch-endpoint).
+The dispatch answers:
 
-To exercise the route from step 2 as well, send a GET to
-`/api/cron/support/stale-ticket-sweep` with the same header. If
-`NEXT_PUBLIC_BASE_URL` is unset, it answers `500 "Server misconfigured:
-missing baseUrl"`. A `GET /api/flows/support/schedules` with the same header
-lists the flow's schedules, which confirms the entry registered.
+- `202`: the handler has started. An error in it does not appear in the response.
+- `200` with `duplicate`: that time has already fired.
+- `200` with `skipped`: the previous run has not finished.
 
-Vercel Cron does not run under `vercel dev`. Use these calls while you
-develop.
+Find a handler's error in the DevTool, as described in [Debug a run](../debug-a-run.md). Vercel's cron log shows only the cron route's own answer, so a green entry says the tick ran, not that a handler succeeded. `GET /api/flows/support/schedules` with the same header lists the flow's schedules, which confirms the entry registered.
+
+Vercel Cron only runs on Vercel. Where `VERCEL` is unset, as under `fsdev dev` and `next dev`, the app's own cron fires schedules each minute, and the curl calls above work against it too.
 
 ## Many schedules at once
 
-Vercel limits how many entries `vercel.json` may hold, and the limit
-differs by plan. For schedules created at runtime, such as one per user, do
-not add an entry each. Add one entry that ticks every few minutes and have
-`createScheduleTickHandler` dispatch whatever is due. The
-schedule index holds the due times, and
-[the schedules reference](../../reference/schedules.md#tick-handler) lists the
-handler's options, cadence and delivery guarantee.
+Vercel limits how many entries `vercel.json` may hold, and the limit differs by plan, as does how often an entry may run. Check Vercel's cron documentation. You do not need an entry per schedule. The one entry above also fires schedules created at run time, such as one per user. [Let users schedule work at run time](./at-run-time.md) shows how.
 
 ## Limits
 
-- Vercel Cron calls the route once for each scheduled time. If the dispatch returns a non-2xx, the
-  run is over and the framework does not retry it.
-- If Vercel misses a scheduled time, or a run is skipped because the
-  previous one is running, that time is not run later. If you need delivery you can count on,
-  use [Cloud Scheduler](./cloud-scheduler.md) or
-  [EventBridge Scheduler](./eventbridge.md).
-- Check Vercel's cron documentation for the plan limits on entry count and
-  how often a schedule may run.
+- The tick runs once per cron beat, and each due schedule fires once per tick. After downtime or a missed beat, a schedule fires once, late, for the latest time it missed. Earlier missed times are not run.
+- If a dispatch returns a non-2xx, the run is over and the framework does not retry it.
+- A run that continues after the `202` needs the function kept alive, which [Deploy to Vercel](../deploy/vercel.md) sets up.
+- On a memory or filesystem store, the once-per-time guarantee holds per process only. Use SQLite or Postgres.
