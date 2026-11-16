@@ -56,4 +56,19 @@ describe("conversationCandidates", () => {
     expect(queries.filter((query) => query.ids === undefined).map((query) => query.offset ?? 0)).toEqual([0]);
     expect(queries.filter((query) => query.ids !== undefined)).toEqual([expect.objectContaining({ flowKind: "agent", ids: ["main"] })]);
   });
+
+  it("reads the default by id only when the first page doesn't hold it", async () => {
+    // The usual case, a default used recently, costs one read.
+    const queries: SessionListQuery[] = [];
+    const sessions = {
+      list: async (query: SessionListQuery = {}) => {
+        queries.push(query);
+        return { sessions: [listed("main", { workerId: "otto" }), listed("c1", { workerId: "otto" })], more: false };
+      },
+      read: async () => undefined
+    } as unknown as RequestSessions;
+    const ids = (await conversationCandidates(sessions, "agent", { worker: "otto" }, "main")).map((session) => session.id);
+    expect(ids).toEqual(["main", "c1"]);
+    expect(queries).toHaveLength(1);
+  });
 });

@@ -21,6 +21,8 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { runAction } from "../src";
 import { createInMemoryStores } from "../src/host";
 import { runView } from "../src/execution/runView";
+import { createFlowRegistry } from "../src";
+import { toClientSession } from "../src/routes/client-session";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
 const ORG = DEFAULT_ORG_ID;
@@ -28,9 +30,14 @@ const ORG = DEFAULT_ORG_ID;
 const out = z.any().nullable().describe("answer");
 const host = (ctx: unknown) => requestHostOf(ctx as never)!.sessions!;
 
-function app(): FlowInstance {
-  return defineFlow({
+/**
+ * The desk flow: its own singleton, or, as `collection`, the member of a
+ * collection of kind "desk" whose instance id is also "desk".
+ */
+function app(cardinality: "singleton" | "collection" = "singleton"): FlowInstance {
+  const definition = defineFlow({
     kind: "desk",
+    ...(cardinality === "collection" ? { cardinality: "collection" as const } : {}),
     session: {
       stateSchema: z.object({ workerId: z.string().readonly().optional(), project: z.string().optional(), notes: z.string().optional() }),
       // A server-written, changeable field the HTTP session list shows the caller.
@@ -96,7 +103,8 @@ function app(): FlowInstance {
         block: handler({ name: "org-list", inputSchema: z.object({}), outputSchema: out, execute: async (_input, ctx) => host(ctx).list() })
       })
     }
-  })() as unknown as FlowInstance;
+  });
+  return (cardinality === "collection" ? (definition as never as (o: { id: string }) => unknown)({ id: "desk" }) : definition()) as unknown as FlowInstance;
 }
 
 async function seed(stores: StoreRegistry, id: string, over: Partial<SessionRecord> = {}) {
@@ -204,6 +212,27 @@ describe("sessions.list in a view", () => {
 
   it("is refused in an org view, which reads no session", async () => {
     await expect(view(createInMemoryStores(), app(), "orgList", {})).rejects.toMatchObject({ name: "NoSessionError" });
+  });
+});
+
+// FIX-2754.
+describe("a session whose owner the HTTP list can't attribute", () => {
+  it("answers it with the state the HTTP list shows: none, when the row predates instance ownership and its kind is now a collection", async () => {
+    // Why it matters: the HTTP list refuses to name an owner for this row
+    // (it needs the owner migration), so it shows none of its state. A view
+    // that took the collection member whose id equals the kind as its owner
+    // would show a caller exposed fields the HTTP list withholds.
+    const stores = createInMemoryStores();
+    const flow = app("collection");
+    await seed(stores, "legacy", { flowId: undefined });
+    const registry = createFlowRegistry();
+    registry.register(flow);
+    const http = toClientSession(registry, (await stores.session.get("legacy"))!, "legacy");
+    expect(http.state).toEqual({});
+    const list = (await view(stores, flow, "list", {})).output as { sessions: Array<{ id: string; state: unknown }> };
+    expect(list.sessions.map((session) => [session.id, session.state])).toEqual([["legacy", http.state]]);
+    const read = await view(stores, flow, "identity", { id: "legacy", withState: true });
+    expect(read.output).toEqual({ flowKind: "desk", state: {} });
   });
 });
 

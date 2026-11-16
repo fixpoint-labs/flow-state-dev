@@ -29,6 +29,7 @@
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { readonlyStateFilter } from "./readonly-state-filter";
 import { clientVisibleStateKeys } from "./client-visible-state";
+import { resolveRecordOwner } from "./record-owner";
 import { isWriteRecord } from "../resources/default-write-flow";
 import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
 import type {
@@ -203,11 +204,15 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
    * exposed and readonly (`"visible"`, what the HTTP list shows); defaults filled.
    */
   const stateOf = (record: SessionRecord, cut: "readonly" | "visible"): Readonly<Record<string, unknown>> => {
-    // The owner as `record-owner` reads it: the stored instance id, or, on a
-    // legacy row, the singleton named by its kind. A flow of another kind
-    // under that address is not its owner, and declares nothing for it.
-    const at = flowAt(record.flowId ?? record.flowKind);
-    const owner = at?.kind === record.flowKind ? at : undefined;
+    // The owner as the HTTP session routes resolve it (`resolveRecordOwner`,
+    // as `toClientSession` does): the stored instance id, or, on a legacy row,
+    // only the singleton named by its kind. A row it can't attribute (another
+    // kind under the address, a collection member whose id is the kind) has
+    // no owner here either, and shows no state, as the HTTP list shows none.
+    // Only the verdict is read, never a refusal's reason, so the registry's
+    // `list` (which names the reason) is not needed.
+    const resolved = resolveRecordOwner({ get: flowAt, list: () => [] }, record);
+    const owner = resolved.ok ? resolved.flow : undefined;
     const schema = owner === undefined ? undefined : scopeStateSchema(owner, "session");
     const keys = cut === "readonly" ? getReadonlyStateKeys(schema) : owner === undefined ? [] : clientVisibleStateKeys(owner);
     // As the session's own runs read it, defaults filled.

@@ -40,7 +40,7 @@ const LISTED_PAGES_MAX = 10;
  * The worker's sessions newest first, read a page at a time until
  * {@link LISTED_MAX} of them are conversations (`workerConversations`' rule),
  * or none are left, at most {@link LISTED_PAGES_MAX} pages; and the default
- * `defaultId`, read by id beside the first page, so it is among them however
+ * `defaultId`, read by id when the first page lacks it, so it is among them however
  * many newer sessions there are. The store can't filter on a field being
  * absent, and a project's, a task's, a delegate's and a lead's sessions carry
  * the worker's id too, so newer ones of those must not crowd out a
@@ -66,9 +66,10 @@ export async function conversationCandidates(
     eligible += workerConversations(fresh, defaultId).length;
   };
   const query = { flowKind: flow, fields: criteriaState(criteria), limit: LISTED_MAX };
-  const [found, first] = await Promise.all([sessions.list({ ...query, ids: [defaultId] }), sessions.list(query)]);
-  take(found.sessions);
+  const first = await sessions.list(query);
   take(first.sessions);
+  // A default used recently is on the first page; read it by id only when it isn't.
+  if (!seen.has(defaultId)) take((await sessions.list({ ...query, ids: [defaultId] })).sessions);
   for (let page = 1, more = first.more; more && page < LISTED_PAGES_MAX && eligible < LISTED_MAX; page += 1) {
     const listed = await sessions.list({ ...query, offset: page * LISTED_MAX });
     take(listed.sessions);
