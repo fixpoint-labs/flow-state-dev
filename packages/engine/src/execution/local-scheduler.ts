@@ -59,6 +59,8 @@ export function createLocalScheduler(options: CreateLocalSchedulerOptions): Loca
   let leases: LeaseStore | undefined;
   let stopped = false;
   let leaseId: string | undefined;
+  /** When the lease held runs out, if no renewal answers: measured from when its acquire was sent. */
+  let heldUntil = 0;
   let renewing: Promise<void> = Promise.resolve();
   let running: { done: Promise<void>; stop: AbortController } | undefined;
   const timers: Array<ReturnType<typeof setInterval>> = [];
@@ -67,6 +69,7 @@ export function createLocalScheduler(options: CreateLocalSchedulerOptions): Loca
     renewing = renewing.then(async () => {
       if (stopped || leases === undefined) return;
       let lease: { leaseId: string } | null = null;
+      const sentAt = Date.now();
       try {
         lease = await leases.acquire(SCHEDULE_TICK_LEASE_KEY, { holder, durationMs: leaseMs });
       } catch {
@@ -75,16 +78,21 @@ export function createLocalScheduler(options: CreateLocalSchedulerOptions): Loca
       if (lease !== null) {
         // Stopped while acquiring: give it straight back.
         if (stopped) await leases.release(SCHEDULE_TICK_LEASE_KEY, lease.leaseId).catch(() => undefined);
-        else leaseId = lease.leaseId;
+        else {
+          leaseId = lease.leaseId;
+          heldUntil = sentAt + leaseMs;
+        }
         return;
       }
-      if (leaseId !== undefined) {
-        // Lost: another process may hold it now, so stop sending what this one claimed.
-        leaseId = undefined;
-        running?.stop.abort();
-      }
+      if (leaseId !== undefined) lose();
     });
     return renewing;
+  };
+
+  // Lost: another process may hold it now, so stop sending what this one claimed.
+  const lose = (): void => {
+    leaseId = undefined;
+    running?.stop.abort();
   };
 
   const runTick = (): void => {
@@ -111,6 +119,9 @@ export function createLocalScheduler(options: CreateLocalSchedulerOptions): Loca
   // when the store answers over the network (a crash hands over within the
   // lease plus one beat, not one beat more).
   const tick = (): void => {
+    // A renewal that never answers (a hung network store) can't say the lease
+    // was lost: give it up on the clock, before the next beat would be too late.
+    if (leaseId !== undefined && Date.now() >= heldUntil - intervalMs / 2) lose();
     void renewing.then(runTick);
   };
 

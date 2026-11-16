@@ -109,7 +109,12 @@ export async function runScheduleTick(options: RunScheduleTickOptions): Promise<
     }
   }
 
-  const claims = await Promise.allSettled(indexes.map(({ index }) => index.claimDue(now, options.maxPerTick ?? 100)));
+  // Each claim gets half a beat: one index whose store stopped answering must
+  // not hold back every other schedule's fire (it counts as a failed claim).
+  const claimWaitMs = (options.intervalMs ?? SCHEDULE_TICK_INTERVAL_MS) / 2;
+  const claims = await Promise.allSettled(
+    indexes.map(({ flowKind, index }) => withinMs(index.claimDue(now, options.maxPerTick ?? 100), claimWaitMs, flowKind))
+  );
   let claimError: unknown;
   claims.forEach((claim, i) => {
     if (claim.status === "rejected") {
@@ -146,6 +151,14 @@ export async function runScheduleTick(options: RunScheduleTickOptions): Promise<
     let status = 0;
     try {
       status = await options.dispatch(fire);
+      // 2xx is fired or queued; 200 also answers a duplicate. Anything else was not run, and is not retried.
+      if (status < 200 || status >= 300) {
+        logRuntimeEvent(logger, "error", `[flow-state] schedule not fired: ${fire.flowKind}/${fire.scheduleId} answered ${status}`, {
+          flowKind: fire.flowKind,
+          scheduleId: fire.scheduleId,
+          status
+        });
+      }
     } catch (err) {
       logRuntimeEvent(logger, "error", `[flow-state] schedule dispatch failed for ${fire.flowKind}/${fire.scheduleId}`, {
         error: err instanceof Error ? err.message : String(err)
@@ -202,6 +215,15 @@ async function writeLastTick(resourceState: ResourceStateStore, at: number): Pro
 }
 
 /** Run `task` over `items`, at most `concurrency` at once. The task catches its own failures. */
+/** `promise`, or a rejection naming the flow once `ms` pass without an answer. */
+function withinMs<T>(promise: Promise<T>, ms: number, flowKind: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`schedule tick: flow "${flowKind}"'s index did not answer its claim within ${ms} ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function runWithConcurrency<T>(items: readonly T[], concurrency: number, task: (item: T) => Promise<void>): Promise<void> {
   let cursor = 0;
   const workers: Promise<void>[] = [];
