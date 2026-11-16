@@ -7,7 +7,8 @@
  * reads exactly what the page would.
  *
  * In process there is no push socket, so every live read reads on its timer;
- * the provider's is short here.
+ * the provider's is short here. Every coding run is harness-manager's
+ * scripted coder: a test never starts a real harness.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -97,7 +98,7 @@ export async function openTestLab(options: TestLabOptions = {}): Promise<TestLab
     { "auto-title:generate": ({ said }) => ({ output: { title: firstLineOf(said) } }), ...scripts },
     () => ({ text: "Noted." }),
   ) as ModelResolver;
-  const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: [], modelResolver: resolver, ...host });
+  const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: [], modelResolver: resolver, scriptedStepMs: 20, ...host });
   const inProcess = createInProcessFetch(flowState as never) as unknown as ClientFetch;
   const asked: string[] = [];
   const held = new Map<string, Promise<void>>();
@@ -171,14 +172,20 @@ export interface VendorControl {
 /**
  * The scripts the screen's tests share. Session mode: "Compare Acme and
  * Globex" makes the main session file two research tasks, Acme's settles at
- * once and Globex's stays running until released. Threads mode: the lead
- * files a thread, "Vendor B · regions", which asks you which region matters.
- * Any other line is noted.
+ * once and Globex's stays running until released. Threads mode: a line that
+ * names vendors makes the lead file three threads: "Vendor A · pricing and
+ * uptime" keeps working, "Vendor B · regions" asks you which region matters,
+ * and "Vendor C · summary", a coding thread on the scripted coder, waits for
+ * your review. Any other line is noted.
  */
 export function vendorScripts(): { scripts: Record<string, Script>; control: VendorControl } {
   let releaseGlobex = () => {};
   const globex = new Promise<void>((resolve) => (releaseGlobex = resolve));
   holds.add(releaseGlobex);
+  // What a thread that keeps working waits on: the labs closing.
+  let close = () => {};
+  const closing = new Promise<void>((resolve) => (close = resolve));
+  holds.add(close);
   const lastUserLine = (said: string) => said.slice(said.lastIndexOf('"role":"user"'));
   const scripts: Record<string, Script> = {
     "agent-answer": async ({ said, step, signal }) => {
@@ -188,6 +195,10 @@ export function vendorScripts(): { scripts: Record<string, Script>; control: Ven
         return { text: said.includes("Globex") ? "Globex: $35 per user." : "Acme: $40 per user, 24-hour support." };
       }
       if (who === "thread") {
+        if (said.includes("Vendor A")) {
+          await Promise.race([closing, waitFor(60_000, signal)]);
+          return { text: "Vendor A: $29 per user." };
+        }
         if (step === 0) return { call: { name: "holdTaskForUser", args: { question: "Which region matters, EU or US?" } } };
         return { text: "Vendor B hosts in the EU." };
       }
@@ -198,10 +209,15 @@ export function vendorScripts(): { scripts: Record<string, Script>; control: Ven
       }
       return { text: "Noted." };
     },
-    "coordinator-judgment": ({ step, said }) =>
-      step === 0 && lastUserLine(said).includes("vendor")
-        ? { call: { name: "createTask", args: { assignee: "desk.thread", title: "Vendor B · regions", goal: "Find where Vendor B hosts. Ask the user which region matters." } } }
-        : { text: "I've started a thread for it." },
+    "coordinator-judgment": ({ step, said }) => {
+      const threads = [
+        { assignee: "desk.thread", title: "Vendor A · pricing and uptime", goal: "Compare Vendor A's price and uptime record." },
+        { assignee: "desk.thread", title: "Vendor B · regions", goal: "Find where Vendor B hosts. Ask the user which region matters." },
+        { assignee: "desk.thread-coder", title: "Vendor C · summary", goal: "Add Vendor C's summary to the CHANGELOG." },
+      ];
+      if (lastUserLine(said).includes("vendor") && step < threads.length) return { call: { name: "createTask", args: threads[step]! } };
+      return { text: "I've started a thread for each." };
+    },
   };
   return { scripts, control: { releaseGlobex: () => releaseGlobex() } };
 }

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * Files in the composer, on fixtures: paste, the + picker, previews before
+ * Files in the composer, on the lab's own host: paste, the + picker, previews before
  * Send, refusals, and the line that carries them. What a send must carry is
  * each file's reference, never its bytes, so a worker reads what the person
  * attached and a session read stays small; a failed send keeps the files, so
@@ -10,37 +10,67 @@
 import type { FileContent } from "@flow-state-dev/core/items";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LabAdapter } from "../src/adapter";
+import type { ClientFetch } from "@flow-state-dev/client";
 import { App } from "../src/App";
-import { createFakeLab } from "./fake-lab";
+import { closeLabs, openTestLab, type TestLab } from "./lab-host";
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   window.history.replaceState(null, "", "/");
   window.localStorage.clear();
+  await closeLabs();
 });
+
+/** A real one-page PDF with `text` in its text layer: the host opens an upload to read it. */
+function pdf(text: string): Uint8Array<ArrayBuffer> {
+  const content = `BT /F1 12 Tf 72 720 Td (${text}) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+  ];
+  let out = "%PDF-1.4\n";
+  const offsets = objects.map((object, i) => {
+    const at = out.length;
+    out += `${i + 1} 0 obj\n${object}\nendobj\n`;
+    return at;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((at) => `${String(at).padStart(10, "0")} 00000 n \n`).join("")}`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return new TextEncoder().encode(out);
+}
 
 const png = (name: string) => new File([new Uint8Array([137, 80, 78, 71, 1, 2, 3])], name, { type: "image/png" });
 
-/** The fake lab, with every send it took. */
-function recording(overrides: Partial<LabAdapter> = {}) {
-  const lab = createFakeLab({ speed: 0.01 });
+/**
+ * The lab's host, with every line the main session's door took, as the page
+ * sent it. `refuse.on` drops each send on the way, as a lost network does.
+ */
+async function recording(): Promise<{ lab: TestLab; sends: Array<{ text: string; attachments: readonly FileContent[] }>; refuse: { on: boolean } }> {
   const sends: Array<{ text: string; attachments: readonly FileContent[] }> = [];
-  const adapter: LabAdapter = {
-    ...lab,
-    send: async (sessionId, text, attachments = []) => {
-      sends.push({ text, attachments });
-      await lab.send(sessionId, text, attachments);
-    },
-    ...overrides,
-  };
-  return { adapter, sends };
+  const refuse = { on: false };
+  const lab = await openTestLab({
+    intercept: (inner) =>
+      (async (input, init) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (init?.method === "POST" && /\/actions\/respond$|\/respond$/.test(new URL(url, "http://x").pathname)) {
+          if (refuse.on) throw new TypeError("network down");
+          const body = JSON.parse(String(init.body)) as { input: { message: string }; attachments?: FileContent[] };
+          sends.push({ text: body.input.message, attachments: body.attachments ?? [] });
+        }
+        return inner(input, init);
+      }) as ClientFetch,
+  });
+  return { lab, sends, refuse };
 }
 
 async function open() {
   const picker = await screen.findByRole("region", { name: "Choose a project" });
-  fireEvent.click(await within(picker).findByRole("button", { name: "vendor-notes" }));
-  return (await screen.findByLabelText("Message the main session")) as HTMLTextAreaElement;
+  fireEvent.click(await within(picker).findByRole("button", { name: "vendor-notes" }, { timeout: 10_000 }));
+  return (await screen.findByLabelText("Message the main session", undefined, { timeout: 10_000 })) as HTMLTextAreaElement;
 }
 
 const composer = () => screen.getByLabelText("Message the main session").closest("form")!;
@@ -61,8 +91,8 @@ async function attached(...names: string[]) {
 
 describe("files in the main session's composer", () => {
   it("shows a pasted and a picked image before Send, sends their references, and draws them on your line", async () => {
-    const { adapter, sends } = recording();
-    render(<App adapter={adapter} />);
+    const { lab, sends } = await recording();
+    render(lab.wrap(<App />));
     const box = await open();
     paste(box, png("bug.png"));
     pick(png("trace.png"));
@@ -88,8 +118,8 @@ describe("files in the main session's composer", () => {
   });
 
   it("sends files with no words, and refuses a type it can't take by name without sending it", async () => {
-    const { adapter, sends } = recording();
-    render(<App adapter={adapter} />);
+    const { lab, sends } = await recording();
+    render(lab.wrap(<App />));
     const box = await open();
     paste(box, new File([new Uint8Array([1])], "photo.heic", { type: "image/heic" }));
     expect((await within(composer()).findByRole("status", { name: "Attachment notices" })).textContent).toBe("photo.heic isn't supported");
@@ -107,19 +137,12 @@ describe("files in the main session's composer", () => {
   });
 
   it("keeps the files with the line when a send fails, and Retry sends them", async () => {
-    let refuse = true;
-    const { adapter, sends } = recording();
-    const failing: LabAdapter = {
-      ...adapter,
-      send: async (...args) => {
-        if (refuse) throw new Error("network down");
-        await adapter.send(...args);
-      },
-    };
-    render(<App adapter={failing} />);
+    const { lab, sends, refuse } = await recording();
+    render(lab.wrap(<App />));
     const box = await open();
     paste(box, png("bug.png"));
     await attached("bug.png");
+    refuse.on = true;
     fireEvent.change(box, { target: { value: "Look at this" } });
     await act(async () => {
       fireEvent.keyDown(box, { key: "Enter" });
@@ -129,7 +152,7 @@ describe("files in the main session's composer", () => {
     expect(within(composer()).getByRole("img", { name: "bug.png" })).toBeTruthy();
     expect(box.value).toBe("Look at this");
 
-    refuse = false;
+    refuse.on = false;
     await act(async () => {
       fireEvent.click(within(composer()).getByRole("button", { name: "Retry" }));
     });
@@ -138,10 +161,10 @@ describe("files in the main session's composer", () => {
   });
 
   it("takes a PDF beside the text, and sends it by reference as a document", async () => {
-    const { adapter, sends } = recording();
-    render(<App adapter={adapter} />);
+    const { lab, sends } = await recording();
+    render(lab.wrap(<App />));
     const box = await open();
-    pick(new File([new TextEncoder().encode("%PDF-1.4\n")], "spec.pdf", { type: "application/pdf" }));
+    pick(new File([pdf("The spec")], "spec.pdf", { type: "application/pdf" }));
     await within(composer()).findByText("spec.pdf");
     await waitFor(() => expect(within(composer()).queryByLabelText("Uploading")).toBeNull());
     // A document is no refusal: nothing in the notices.
@@ -156,7 +179,7 @@ describe("files in the main session's composer", () => {
   });
 
   it("puts + in the Tab order, and Backspace in an empty box takes the last file off", async () => {
-    render(<App adapter={recording().adapter} />);
+    render((await recording()).lab.wrap(<App />));
     const box = await open();
     const plus = within(composer()).getByRole("button", { name: "Attach files" });
     expect(plus.tabIndex).toBe(0);
