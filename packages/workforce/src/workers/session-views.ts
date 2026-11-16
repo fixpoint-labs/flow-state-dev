@@ -15,7 +15,7 @@
  * (`session-views-ref.ts`), which hold no block.
  */
 import { defineView, handler, type ViewDefinition } from "@flow-state-dev/core";
-import { requireRequestHost, type RequestSessions, type SessionTurn } from "@flow-state-dev/core/internal";
+import { requireRequestHost, type ListedSession, type RequestSessions, type SessionTurn } from "@flow-state-dev/core/internal";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { inboxItems } from "@flow-state-dev/orchestration/inbox";
 import { z } from "zod";
@@ -32,6 +32,32 @@ const UNTITLED_SESSION = "Untitled";
 
 /** The most sessions the worker sessions view lists: `sessions.list`'s bound. */
 const LISTED_MAX = 100;
+/** The most pages of `sessions.list` one run reads looking for them (BP-042). */
+const LISTED_PAGES_MAX = 10;
+
+/**
+ * The worker's sessions newest first, read a page at a time until
+ * {@link LISTED_MAX} of them are conversations (`workerConversations`' rule)
+ * or none are left, at most {@link LISTED_PAGES_MAX} pages. The store can't
+ * filter on a field being absent, and a project's, a task's, a delegate's and
+ * a lead's sessions carry the worker's id too, so newer ones of those must
+ * not crowd out a conversation.
+ */
+async function conversationCandidates(
+  sessions: RequestSessions,
+  flow: string,
+  criteria: { worker: string }
+): Promise<ListedSession[]> {
+  const read: ListedSession[] = [];
+  let eligible = 0;
+  for (let page = 0; page < LISTED_PAGES_MAX && eligible < LISTED_MAX; page += 1) {
+    const listed = await sessions.list({ flowKind: flow, fields: criteriaState(criteria), limit: LISTED_MAX, offset: page * LISTED_MAX });
+    read.push(...listed.sessions);
+    eligible += workerConversations(listed.sessions, "").length;
+    if (!listed.more) break;
+  }
+  return read;
+}
 
 /** A task of a session's board that waits on the user: by id and attempt, so an app can take away what it dismissed. */
 const waitingSchema = z.object({ taskId: z.string(), attempt: z.number() });
@@ -122,7 +148,8 @@ async function waitingTasksOf(ctx: BlockContext, sessionId: string, lineageId: s
  * worker on its flow, the default first and marked, then by latest activity,
  * at most 100. A task's, a delegate's, a workstream lead's and a project
  * coordinator's session are left out (`workerConversations`, the workforce
- * client's own rule). Per row: whether a turn runs in it, read in one batched
+ * client's own rule), read on page by page so newer ones of those never crowd
+ * a conversation out (`conversationCandidates`). Per row: whether a turn runs in it, read in one batched
  * `turns` read across the listed sessions by the turn actions, so a newer
  * request of another action never hides a running reply; and the tasks of
  * its board that wait on the user. Install it in the roster flow's `views`.
@@ -148,9 +175,9 @@ export function defineWorkerSessionsView(installation: WorkerInstallation): Work
         if (userId === undefined || orgId === undefined) throw new Error("The worker sessions view needs the user and organization it runs as.");
         const [defaultId, listed] = await Promise.all([
           deriveWorkerSessionId({ userId, orgId, flow: found.flow, criteria }),
-          sessions.list({ flowKind: found.flow, fields: criteriaState(criteria), limit: LISTED_MAX })
+          conversationCandidates(sessions, found.flow, criteria)
         ]);
-        const conversations = workerConversations(listed.sessions, defaultId);
+        const conversations = workerConversations(listed, defaultId).slice(0, LISTED_MAX);
         const ids = conversations.map(({ session }) => session.id);
         const running: SessionTurn[] = ids.length === 0 ? [] : await sessions.turns(ids, { status: ["in_progress"], actions: [...TURN_ACTIONS] });
         const runningIn = new Set(running.map((turn) => turn.sessionId));

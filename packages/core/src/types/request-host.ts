@@ -327,6 +327,12 @@ export type SessionListQuery = {
   readonly fields?: Readonly<Record<string, string>>;
   /** How many rows, newest first. Defaults to and at most 100. */
   readonly limit?: number;
+  /**
+   * How many of the newest matching sessions to pass over first, to read on
+   * where `more` said a page stopped. Counted before the list leaves out a
+   * session it doesn't answer, so a page can hold fewer than `limit`.
+   */
+  readonly offset?: number;
 };
 
 /** One session as {@link RequestSessions.list} answers it: no items, no state but its readonly fields. */

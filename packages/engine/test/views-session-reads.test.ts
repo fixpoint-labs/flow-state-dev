@@ -38,7 +38,7 @@ function app(): FlowInstance {
         scope: "user",
         block: handler({
           name: "list",
-          inputSchema: z.object({ limit: z.number().optional(), fields: z.record(z.string()).optional() }),
+          inputSchema: z.object({ limit: z.number().optional(), offset: z.number().optional(), fields: z.record(z.string()).optional() }),
           outputSchema: out,
           execute: async (input, ctx) => host(ctx).list({ flowKind: "desk", ...input })
         })
@@ -155,6 +155,19 @@ describe("sessions.list in a view", () => {
     const list = (await view(stores, app(), "list", { limit: 500 })).output as { sessions: unknown[]; more: boolean };
     expect(list.sessions).toHaveLength(100);
     expect(list.more).toBe(true);
+  });
+
+  it("pages past the newest rows with an offset, so a caller can read on to older sessions", async () => {
+    const stores = createInMemoryStores();
+    for (let at = 0; at < 5; at += 1) await seed(stores, `s${at}`, { updatedAt: at });
+    const first = (await view(stores, app(), "list", { limit: 2 })).output as { sessions: Array<{ id: string }>; more: boolean };
+    const next = (await view(stores, app(), "list", { limit: 2, offset: 2 })).output as { sessions: Array<{ id: string }>; more: boolean };
+    const last = (await view(stores, app(), "list", { limit: 2, offset: 4 })).output as { sessions: Array<{ id: string }>; more: boolean };
+    expect([first, next, last].map((page) => [page.sessions.map((session) => session.id), page.more])).toEqual([
+      [["s4", "s3"], true],
+      [["s2", "s1"], true],
+      [["s0"], false]
+    ]);
   });
 
   it("filters by readonly fields at the store, and refuses a field the flow doesn't declare readonly", async () => {
