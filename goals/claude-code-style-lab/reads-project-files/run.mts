@@ -34,7 +34,7 @@ import { dirname, join } from "node:path";
 import { createClient } from "@flow-state-dev/client";
 import { SET_SESSION_FIELDS_ACTION } from "@flow-state-dev/workforce/browser";
 import { goalTmpDir, loadFixture, REPO_ROOT, runGoal, stopProcessGroup } from "../../lib/index.mts";
-import { entriesOf, type Item as LabItem } from "../../../labs/claude-code-style/src/adapter.ts";
+import { entriesOf, type Item as LabItem } from "../../../labs/claude-code-style/src/lib/thread-entries.ts";
 import { git, LAB, labCheckout, startLab } from "../lab.mts";
 
 const fixture = loadFixture<{

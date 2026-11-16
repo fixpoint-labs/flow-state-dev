@@ -52,7 +52,7 @@ import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFl
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { createLabAdapter, type LabWorker } from "../../../labs/teammates/src/adapter.ts";
-import { createWiredLab } from "../../../labs/claude-code-style/src/adapter.ts";
+import { LabProvider as CcLabProvider, usePins as useCcPins } from "../../../labs/claude-code-style/src/lab.ts";
 import { defineFlow } from "@flow-state-dev/core";
 import { labPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 
@@ -262,8 +262,17 @@ function mount(on: Host, rosterSession: string): () => void {
   // Teammates: its roster screen's watch.
   const stopTm = createLabAdapter(clientOf(on, tokenOf("tm"))).watchWorkers((rows: LabWorker[]) => show("tm", rows.filter((row) => row.own === true).map((row) => row.id)));
 
-  // claude-code-style: your pins.
-  const stopCc = createWiredLab(clientOf(on, tokenOf("cc"))).watchPins((ids) => show("cc", ids));
+  // claude-code-style: your pins, as its screen's `usePins` reads them.
+  function CcPins() {
+    const pins = useCcPins();
+    useEffect(() => {
+      if (pins !== undefined) show("cc", pins);
+    }, [pins]);
+    return null;
+  }
+  const ccRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  ccRoot.render(createElement(CcLabProvider, { client: clientOf(on, tokenOf("cc")), children: createElement(CcPins) }));
+  const stopCc = () => ccRoot.unmount();
 
   return () => {
     clearInterval(rpTimer);

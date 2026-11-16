@@ -17,7 +17,7 @@
  * builds it; a test builds one over the in-process host).
  */
 import { createContext, createElement, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { bindStoreToCallbacks, createRequestStreamStore, readEveryCollectionPage, sessionFeed, topic, type Client, type ClientFetch, type SessionConnectionStatus, type SessionFeed } from "@flow-state-dev/client";
+import { bindStoreToCallbacks, createRequestStreamStore, readEveryCollectionPage, sessionFeed, topic, type Client, type ClientFetch, type SessionConnectionStatus, type SessionFeed, type ViewValueOf } from "@flow-state-dev/client";
 import { useView } from "@flow-state-dev/react";
 import { createInboxClient, taskView, type BoardActions, type InboxAnswer, type InboxHold, type TaskView } from "@flow-state-dev/orchestration/inbox";
 import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
@@ -155,8 +155,8 @@ export interface WorkingNow {
 /** One coding harness's readiness, as harness-manager's readiness view answers it. */
 export type LabHarness = HarnessReadinessChipRow;
 
-/** Whether a run could check a repository out on this machine. */
-export type RepositoryCheck = { usable: true; how: "worktree" | "clone" } | { usable: false; problem: string };
+/** Whether a run could check a repository out on this machine, as the projects flow's `checkRepository` view answers. */
+export type RepositoryCheck = ViewValueOf<typeof checkRepositoryView>;
 
 /** How the page reaches the server outside the client: where its API is mounted, and the fetch that authenticates. */
 export interface LabConnection {
