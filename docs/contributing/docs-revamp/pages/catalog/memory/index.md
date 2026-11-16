@@ -66,11 +66,14 @@ export const mem = createMemoryCapability({
 ```ts title="src/flows/support/blocks/reply.ts"
 import { generator } from "@flow-state-dev/core";
 import { mem } from "../../../lib/memory";
+import { z } from "zod";
 
 export const reply = generator({
   name: "reply",
   model: "openai/gpt-6-luna",
   prompt: "You answer support questions. Use what you remember about the user.",
+  inputSchema: z.object({ message: z.string() }),
+  user: (input) => input.message,
   // The capability injects a <memory> context block, installs the recall tool,
   // and exposes typed helpers on ctx.cap.
   uses: [mem],

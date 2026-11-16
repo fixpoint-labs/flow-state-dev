@@ -40,6 +40,7 @@ Skipped: B-34 is kept in the sitemap, and the page was already at `search-a-coll
 - After the loop (review): line 111 reworded to drop the banned word "now": "Each call reads the bodies at call time, so an edited note is searched by its new text on the next call." The claim is unchanged; `searchResources` calls `readContent()` on every readable instance inside the call (packages/core/src/tools/resource-search-tools.ts:268-279). Page sha256 551591f97121.
 - After the loop (review): Sweep after a Codex P2 on the same class: `draftReply` answers the customer but had no `itemVisibility`; a generator with no `itemVisibility` emits no items, so the reply never reached the chat (packages/core/src/blocks/generator.ts:1271-1274). It now sets `itemVisibility: { client: true, history: true }`. Type-check in apps/kitchen-sink/zz-vis, deleted afterwards: only the planted error. 992 words. Page sha256 32ddd53e16b9.
 - After the loop (review): owner request: action entries that set only `block` are written as the bare block (`name: block`, or `{ name }` when the names match). Type-check in apps/kitchen-sink/zz-act, deleted afterwards: only the planted error, plus the partial examples' missing-import errors, identical before the edit. 983 words. Page sha256 7e2dd5a301be.
+- After the loop (review): Codex P2: `draftReply` answers the user but had no `user`, `history` or `context` slot, so the model never received the user's message (packages/core/src/blocks/generator.ts:3134-3162 builds messages only from those slots). It now declares `inputSchema: z.object({ message: z.string() })` and `user: (input) => input.message`. Type-check in apps/kitchen-sink/zz-user, deleted afterwards: only the planted error and, on generative, the reader-installed registry component path. 998 words. Page sha256 452d14ebbc63.
 
 ## 5 · Fact check
 
@@ -50,6 +51,7 @@ Checked against the code: the page as pass 4 read it after the page as it was ke
 - Re-run after the review edit: re-checked the "Always current" claim on line 111 against packages/core/src/tools/resource-search-tools.ts:268-279 (each call loops the readable refs and awaits `readContent()`; no index or cache is read). True. check-docs-page passes, recipe 715 words.
 - Re-run after the review edit: no auto-emitted items without `itemVisibility` (packages/core/src/blocks/generator.ts:1271-1274); the development warning for an action whose block is a silent generator (packages/core/src/flow/defineFlow.ts:548-573).
 - Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749, `TActions[K] | TActions[K]["block"]`).
+- Re-run after the review edit: messages are assembled from the `context`, `history` and `user` slots (packages/core/src/blocks/generator.ts:3134-3162); a whole prompt file supplies `user` from its `<user>` section (:2876-2880), which is why build/prompts-in-markdown needs no `user`.
 
 ## 6 · Depth pass
 

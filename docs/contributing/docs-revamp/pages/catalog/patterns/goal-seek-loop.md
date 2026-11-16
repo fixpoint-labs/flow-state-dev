@@ -138,11 +138,14 @@ A `goalSeekLoop` is a block, and [any block can be a tool](../../concepts/genera
 ```ts title="src/flows/research/blocks/chat-agent.ts"
 import { generator } from "@flow-state-dev/core";
 import { researchLoop } from "./research-loop";
+import { z } from "zod";
 
 export const chatAgent = generator({
   name: "chat-agent",
   model: "openai/gpt-6-luna",
   prompt: "Answer the user. For questions that need sources, call the research loop.",
+  inputSchema: z.object({ message: z.string() }),
+  user: (input) => input.message,
   tools: [researchLoop],
   // Show the reply in the chat and keep it in history.
   itemVisibility: { client: true, history: true },

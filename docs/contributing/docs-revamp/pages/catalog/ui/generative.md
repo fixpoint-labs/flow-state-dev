@@ -37,12 +37,15 @@ On the server, spread the pack's tools into a generator:
 ```ts title="src/flows/trip-concierge/blocks/concierge.ts"
 import { generator } from "@flow-state-dev/core";
 import { generativeTools } from "@flow-state-dev/ui/generative/tools";
+import { z } from "zod";
 
 export const concierge = generator({
   name: "concierge",
   model: "openai/gpt-6-luna",
   itemVisibility: { client: true, history: true },
   prompt: "You plan trips. Answer with a card when the user asks about a place or a source.",
+  inputSchema: z.object({ message: z.string() }),
+  user: (input) => input.message,
   tools: generativeTools(),
 });
 ```

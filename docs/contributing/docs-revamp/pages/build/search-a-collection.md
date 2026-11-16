@@ -80,11 +80,14 @@ Put the blocks in a generator's `tools`. The flow in step 2 already declares `ti
 import { generator, readResourceContentTool } from "@flow-state-dev/core";
 import { ticketNotes } from "../resources/ticket-notes";
 import { search } from "../tools/search";
+import { z } from "zod";
 
 export const draftReply = generator({
   name: "draft-reply",
   model: "openai/gpt-6-luna",
   prompt: "Answer the customer. Search the ticket notes for earlier context before you reply.",
+  inputSchema: z.object({ message: z.string() }),
+  user: (input) => input.message,
   tools: [
     search.globResources,
     search.grepResourceContent,
