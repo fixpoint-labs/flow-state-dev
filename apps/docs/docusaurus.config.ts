@@ -126,6 +126,7 @@ const config: Config = {
       // Workers on disk moved from /docs/orchestration/* to /docs/workforce/*
       // when Workforce became its own top-level section. The Claude Code
       // `--remote` page was removed; its address points at the SDK agent.
+      // The Cloud Scheduler and EventBridge guides were removed (no code backed them).
       "@docusaurus/plugin-client-redirects",
       {
         redirects: [
@@ -164,6 +165,14 @@ const config: Config = {
           {
             from: "/docs/workforce/mailboxes",
             to: "/docs/workforce/coordinators",
+          },
+          {
+            from: "/guides/scheduled-cloud-scheduler",
+            to: "/docs/server/scheduled",
+          },
+          {
+            from: "/guides/scheduled-eventbridge",
+            to: "/docs/server/scheduled",
           },
         ],
       },

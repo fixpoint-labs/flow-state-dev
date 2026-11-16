@@ -246,13 +246,6 @@ curl -X POST http://localhost:3000/api/flows/billing/schedules/monthly-invoices/
   dispatch returns a non-2xx, the cron run is over. The framework
   does not retry on its own.
 - **No missed-window backfill.** A skipped tick stays skipped.
-  Production workloads that need at-least-once delivery should use
-  Cloud Scheduler or EventBridge instead, both of which retry on
-  failure and dedupe at-least-once delivery.
 - **Hobby plan caps.** Vercel's Hobby plan limits cron jobs by
   count and granularity. Check the plan docs before relying on
   sub-hour schedules.
-
-For higher-reliability workloads, see
-[Cloud Scheduler](/guides/scheduled-cloud-scheduler) or
-[EventBridge Scheduler](/guides/scheduled-eventbridge).

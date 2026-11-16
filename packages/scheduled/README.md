@@ -231,6 +231,4 @@ See [the schedule index reference](https://flow-state.dev/docs/server/schedule-i
 - [Scheduled actions reference](https://flow-state.dev/docs/server/scheduled) — full reference guide
 - [Schedule index reference](https://flow-state.dev/docs/server/schedule-index) — schedule index reference
 - [Vercel Cron guide](https://flow-state.dev/guides/scheduled-vercel-cron)
-- [Cloud Scheduler guide](https://flow-state.dev/guides/scheduled-cloud-scheduler)
-- [EventBridge guide](https://flow-state.dev/guides/scheduled-eventbridge)
 - [Dynamic schedules guide](https://flow-state.dev/guides/scheduled-dynamic)

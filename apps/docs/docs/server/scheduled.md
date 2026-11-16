@@ -485,8 +485,6 @@ A few cuts kept the surface honest:
 For host-side wiring, see:
 
 - [Scheduled actions on Vercel Cron](/guides/scheduled-vercel-cron)
-- [Scheduled actions on Cloud Scheduler](/guides/scheduled-cloud-scheduler)
-- [Scheduled actions on EventBridge Scheduler](/guides/scheduled-eventbridge)
 - [Dynamic scheduled actions](/guides/scheduled-dynamic)
 - [Keeping a flow running](/guides/keeping-a-flow-running) — webhooks, schedules and dispatches on one page, with where each setting lives.
 - [Schedule index](./schedule-index.md) — when polling tick fan-out needs an index.
