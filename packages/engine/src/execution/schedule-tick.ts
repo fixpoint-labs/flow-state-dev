@@ -41,7 +41,7 @@ export const SCHEDULE_TICK_INTERVAL_MS = 60_000;
 const LAST_TICK_SCOPE_ID = "__fsd_system__";
 const LAST_TICK_KEY = "schedule-tick/last";
 
-/** The dispatch endpoint's mount prefix: the default every host mounts the scheduled transport under. */
+/** The dispatch endpoint's default mount prefix: the scheduled transport's own default `basePath`. */
 const DISPATCH_BASE_PATH = "/api/flows";
 
 /** One fire the tick sends: which schedule of which flow, for which scheduled time. */
@@ -113,7 +113,7 @@ export async function runScheduleTick(options: RunScheduleTickOptions): Promise<
   // not hold back every other schedule's fire (it counts as a failed claim).
   const claimWaitMs = (options.intervalMs ?? SCHEDULE_TICK_INTERVAL_MS) / 2;
   const claims = await Promise.allSettled(
-    indexes.map(({ flowKind, index }) => withinMs(index.claimDue(now, options.maxPerTick ?? 100), claimWaitMs, flowKind))
+    indexes.map(({ flowKind, index }) => withinMs(index.claimDue(now, options.maxPerTick ?? 100), claimWaitMs, flowKind, "claim"))
   );
   let claimError: unknown;
   claims.forEach((claim, i) => {
@@ -150,7 +150,9 @@ export async function runScheduleTick(options: RunScheduleTickOptions): Promise<
     if (options.signal?.aborted === true) return;
     let status = 0;
     try {
-      status = await options.dispatch(fire);
+      // A beat at most: an endpoint whose resolver or store stopped answering
+      // must not keep the tick from settling (the local cron skips beats until it does).
+      status = await withinMs(options.dispatch(fire), claimWaitMs * 2, `${fire.flowKind}/${fire.scheduleId}`, "fire");
       // 2xx is fired or queued; 200 also answers a duplicate. Anything else was not run, and is not retried.
       if (status < 200 || status >= 300) {
         logRuntimeEvent(logger, "error", `[flow-state] schedule not fired: ${fire.flowKind}/${fire.scheduleId} answered ${status}`, {
@@ -172,18 +174,20 @@ export async function runScheduleTick(options: RunScheduleTickOptions): Promise<
 
 /**
  * The dispatch endpoint's request for one fire:
- * `POST <base>/api/flows/<kind>/schedules/<id>/dispatch`, its body naming the
+ * `POST <base><basePath>/<kind>/schedules/<id>/dispatch`, its body naming the
  * scheduled time, with the bearer secret when there is one.
  */
 export function scheduleDispatchRequest(options: {
   readonly baseUrl: string;
   readonly fire: ScheduleDispatch;
   readonly secret?: string;
+  /** Where the scheduled transport is mounted. Default `/api/flows`. */
+  readonly basePath?: string;
 }): { url: string; path: string[]; init: { method: "POST"; headers: Record<string, string>; body: string } } {
   const base = options.baseUrl.endsWith("/") ? options.baseUrl.slice(0, -1) : options.baseUrl;
   const { flowKind, scheduleId, nominalFireTime } = options.fire;
   return {
-    url: `${base}${DISPATCH_BASE_PATH}/${encodeURIComponent(flowKind)}/schedules/${encodeURIComponent(scheduleId)}/dispatch`,
+    url: `${base}${options.basePath ?? DISPATCH_BASE_PATH}/${encodeURIComponent(flowKind)}/schedules/${encodeURIComponent(scheduleId)}/dispatch`,
     // The router's view of the same path: each segment decoded once.
     path: [flowKind, "schedules", scheduleId, "dispatch"],
     init: {
@@ -215,11 +219,11 @@ async function writeLastTick(resourceState: ResourceStateStore, at: number): Pro
 }
 
 /** Run `task` over `items`, at most `concurrency` at once. The task catches its own failures. */
-/** `promise`, or a rejection naming the flow once `ms` pass without an answer. */
-function withinMs<T>(promise: Promise<T>, ms: number, flowKind: string): Promise<T> {
+/** `promise`, or a rejection naming what was waited on once `ms` pass without an answer. */
+function withinMs<T>(promise: Promise<T>, ms: number, subject: string, what: "claim" | "fire"): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`schedule tick: flow "${flowKind}"'s index did not answer its claim within ${ms} ms`)), ms);
+    timer = setTimeout(() => reject(new Error(`schedule tick: ${what} for "${subject}" did not answer within ${ms} ms`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }

@@ -1354,10 +1354,11 @@ class InternalFlowState<TSettings extends object>
   ): Promise<ScheduleTickReport> {
     const runtime = await this.#runtime();
     const secret = secretOverride ?? process.env.CRON_SECRET;
+    const basePath = this.#scheduledBasePath();
     let send: (fire: ScheduleDispatch) => Promise<number>;
     if (baseUrl !== undefined) {
       send = async (fire) => {
-        const { url, init } = scheduleDispatchRequest({ baseUrl, fire, secret });
+        const { url, init } = scheduleDispatchRequest({ baseUrl, fire, secret, basePath });
         const response = await fetch(url, init);
         await response.body?.cancel();
         return response.status;
@@ -1365,7 +1366,7 @@ class InternalFlowState<TSettings extends object>
     } else {
       const router = await this.#init();
       send = async (fire) => {
-        const { url, path, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", fire, secret });
+        const { url, path, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", fire, secret, basePath });
         const response = await router.POST(new Request(url, init), { params: { path } });
         await response.body?.cancel();
         return response.status;
@@ -1378,6 +1379,17 @@ class InternalFlowState<TSettings extends object>
       ...(signal !== undefined ? { signal } : {}),
       logger: this.#deferredLogger
     });
+  }
+
+  /**
+   * Where the mounted scheduled transport serves its dispatch route: its
+   * `basePath` when it reports one (`createScheduledTransportAdapter` does),
+   * else the default. The engine can't import that package, so it reads the field.
+   */
+  #scheduledBasePath(): string | undefined {
+    const adapter = (this.#options.adapters ?? []).find((candidate) => candidate.source === SCHEDULED_SOURCE);
+    const basePath = (adapter as { readonly basePath?: unknown } | undefined)?.basePath;
+    return typeof basePath === "string" ? basePath : undefined;
   }
 
   // FIX-2752.

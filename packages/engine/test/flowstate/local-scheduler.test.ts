@@ -124,6 +124,35 @@ describe("the local cron", () => {
     expect(p.ticks.count).toBe(0);
   });
 
+  // The scheduled adapter takes a `basePath`; a fire sent to the default path would miss its route.
+  it("sends each fire to the path the scheduled adapter is mounted at", async () => {
+    fakeClock();
+    const hits: string[] = [];
+    const mountedAtCustom: InboundTransportAdapter & { readonly basePath: string } = {
+      source: "scheduled",
+      basePath: "/custom",
+      createBindings: () => ({
+        routes: [
+          {
+            method: "POST",
+            path: "/custom/:flowKind/schedules/*scheduleId/dispatch",
+            handler: async (req) => (hits.push(new URL(req.url).pathname), new Response("{}", { status: 202 }))
+          }
+        ]
+      })
+    };
+    const flow = defineFlow({
+      kind: "custom-mount",
+      actions: { noop: { inputSchema: z.object({}), block: noop } },
+      schedules: { static: { each: { cron: "* * * * *", block: noop } } }
+    })();
+    const app = createFlowState({ flows: [flow], stores: sharedStore(), adapters: [mountedAtCustom] });
+    apps.push(app);
+    await app.ready();
+    await vi.advanceTimersByTimeAsync(MINUTE);
+    expect(hits).toEqual(["/custom/custom-mount/schedules/each/dispatch"]);
+  });
+
   it("starts nothing with `scheduler: false`", async () => {
     fakeClock();
     const p = processOn(sharedStore(), { scheduler: false });

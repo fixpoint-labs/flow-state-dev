@@ -22,7 +22,8 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, type RuntimeLogger } from "./l
 import { SCHEDULE_TICK_INTERVAL_MS } from "./schedule-tick";
 
 /**
- * How long `stop()` waits for a running tick and a pending renewal to settle.
+ * How long `stop()` waits for a running tick and a pending renewal to settle,
+ * and then for the lease's release.
  * Bounded: a store that stopped answering (a claim that never returns) must
  * not hold shutdown open. The tick was told to stop dispatching.
  */
@@ -154,11 +155,18 @@ export function createLocalScheduler(options: CreateLocalSchedulerOptions): Loca
       const held = leaseId;
       leaseId = undefined;
       if (held !== undefined && leases !== undefined) {
-        await leases.release(SCHEDULE_TICK_LEASE_KEY, held).catch((err: unknown) => {
+        // Bounded too: a release the store never answers leaves the lease to run out.
+        const released = leases.release(SCHEDULE_TICK_LEASE_KEY, held).catch((err: unknown) => {
           logRuntimeEvent(logger, "error", "[flow-state] schedule-tick lease release failed", {
             error: err instanceof Error ? err.message : String(err)
           });
         });
+        const releaseGrace = new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, STOP_GRACE_MS);
+          (timer as { unref?: () => void }).unref?.();
+        });
+        await Promise.race([released, releaseGrace]);
+        clearTimeout(timer);
       }
     }
   };

@@ -45,6 +45,24 @@ describe("the schedule tick, when one index never answers its claim", () => {
   });
 });
 
+describe("the schedule tick, when one fire never answers", () => {
+  it("stops waiting for it after a beat, so the tick settles and the other fires are reported", async () => {
+    const tick = runScheduleTick({
+      flows: [
+        flowWith("hangs", { static: { each: { cron: "* * * * *", block: noop } } }),
+        flowWith("answers", { static: { each: { cron: "* * * * *", block: noop } } })
+      ],
+      resourceState: createInMemoryStores().resourceState,
+      dispatch: (fire) => (fire.flowKind === "hangs" ? new Promise(() => undefined) : Promise.resolve(202)),
+      now: Date.parse("2026-11-16T09:00:00.020Z"),
+      intervalMs: 40,
+      logger: {}
+    });
+    const report = await tick;
+    expect(report.dispatched.map((fire) => `${fire.flowKind}:${fire.status}`).sort()).toEqual(["answers:202", "hangs:0"]);
+  });
+});
+
 describe("the schedule tick, when the endpoint refuses a fire", () => {
   it("logs each fire answered with an error status, naming the flow, the schedule and the status", async () => {
     const errors: Array<{ message: string; context: Record<string, unknown> }> = [];
@@ -101,5 +119,26 @@ describe("the local cron, when a renewal never answers", () => {
     await vi.advanceTimersByTimeAsync(2 * 60_000);
     expect(signals[0]!.aborted).toBe(true);
     void scheduler.stop();
+  });
+});
+
+describe("the local cron, when releasing its lease never answers", () => {
+  it("still lets stop() return, leaving the lease to run out", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(Date.parse("2026-11-16T09:00:30Z"));
+    const registry = createInMemoryStores();
+    const leases: LeaseStore = {
+      acquire: (key, options) => registry.leases.acquire(key, options),
+      release: () => new Promise(() => undefined),
+      get: (key) => registry.leases.get(key),
+      pruneExpired: () => registry.leases.pruneExpired()
+    };
+    const scheduler = createLocalScheduler({ intervalMs: 60_000, tick: async () => undefined });
+    scheduler.arm(leases);
+    await vi.advanceTimersByTimeAsync(60_000);
+    let stopped = false;
+    void scheduler.stop().then(() => (stopped = true));
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(stopped).toBe(true);
   });
 });
