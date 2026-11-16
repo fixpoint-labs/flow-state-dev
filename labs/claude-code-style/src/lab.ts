@@ -598,8 +598,8 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
    * row the screen drew can be older than a question or review stop opened since.
    */
   const holdOn = async (sessionId: string, taskId: string, asks: "question" | "review"): Promise<InboxHold | undefined> => {
-    const rows = (await fsd.view(codingBoardViewRef(), { sessionId })).value;
-    return rows.find((row) => row.id === taskId)?.asks.find((hold) => hold.ask.kind === asks);
+    const tasks = (await fsd.view(codingBoardViewRef(), { sessionId })).value;
+    return tasks.find((task) => task.id === taskId)?.asks.find((hold) => hold.ask.kind === asks);
   };
   const answerReview = async (sessionId: string, task: LabTask, answer: InboxAnswer) => {
     const review = await holdOn(sessionId, task.id, "review");
