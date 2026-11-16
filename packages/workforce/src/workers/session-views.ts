@@ -45,7 +45,7 @@ const LISTED_PAGES_MAX = 10;
  * the worker's id too, so newer ones of those must not crowd out a
  * conversation, nor newer conversations the default. Each session is answered
  * once: a turn that starts between two pages moves its session to the front,
- * and shifts a row already read onto the next page.
+ * and shifts a session already read onto the next page.
  *
  * Exported for its test; not on the package root.
  */
