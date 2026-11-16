@@ -100,6 +100,10 @@ export const observedPullRequestsCollection = defineResourceCollection({
   scope: "session",
   prefetchMode: "lazy",
   stateSchema: observedPullRequestStateSchema,
+  // FIX-2725: a run's pull requests, found by the run that opened them. Rows key
+  // by pull request, so no prefix selects one run; a new index builds from the
+  // existing rows at its first lookup.
+  indexes: { requestId: (_key: string, state: { requestId?: unknown }) => (typeof state.requestId === "string" ? state.requestId : undefined) },
   client: {
     state: { read: true },
     expose: ["host", "repository", "number", "url", "title", "state", "branch", "requestId", "source", "firstSeenAt"],
