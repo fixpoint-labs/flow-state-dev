@@ -60,6 +60,7 @@ Closed after the loop: pass 7 findings 1 to 3, both suspected inaccuracies, and 
 - After the loop (review): an `internal.actions` entry is reachable from a `dispatcher()` in another registered flow through `flowKind` (`core/src/types/dispatch.ts:215`, `engine/test/context/dispatch-cross-flow.test.ts:192-234`); the sentence no longer says same flow only.
 - After the loop (review): job-queue rename: the queued-run sentence and example use `bullmqJobQueue` and the `jobQueue` option of `createFlowState`. The example type-checks in apps/kitchen-sink/zz-jobqueue, deleted afterwards: only the planted error. 1061 words. Page sha256 14a07dfadc35.
 - After the loop (review): owner request: 2 action entries that set only `block` now name the block directly. 1440 words. Page sha256 cb90abf3dc63.
+- Post-merge edit (the app fires its own schedules): the schedule paragraph says the app checks once a minute, one server of several does it, and on a serverless host one cron route does. Page sha256 f9011f5e74d3: check-docs-page.mjs exits 0.
 
 ## 5 · Fact check
 
@@ -71,6 +72,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 8d5
 - Reference row 9: Row 9: a schedule entry is "fired by an external scheduler (Vercel Cron, Cloud Scheduler, BullMQ) calling the entry's dispatch endpoint"; "each firing is a fresh run with no caller". Untrue: Static schedules are fired by the host's scheduler through the dispatch endpoint. Stored (dynamic) schedules on a long-lived host are also fired by the host's own minute tick over a schedule index. The run does have a principal: the entry's `principal`, or the gateway principal that authenticated the dispatch call when none is set. The static id must also be lowercase alphanumeric with dashes. (/home/user/flow-state-dev/packages/core/src/types/schedules.ts:157-177,238-246,271; /home/user/flow-state-dev/packages/scheduled/src/tick.ts:3,79) The row is recorded corrected.
 - Re-run after the review edit: `bullmqJobQueue` export (packages/bullmq/src/index.ts:9) and `jobQueue` option (packages/engine/src/flowstate/types.ts:374-383); default mode `colocated`, so the web process takes and runs the jobs (packages/bullmq/src/flowstate-adapter.ts:95; packages/engine/src/flowstate/createFlowState.ts:1124-1132). All true.
 - Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749).
+- Post-merge edit, checked against the code: once a minute (`SCHEDULE_TICK_INTERVAL_MS = 60_000`, `engine/src/execution/schedule-tick.ts:35`); the flow's schedules and the stored ones (`schedules.static` and `index.claimDue`, `schedule-tick.ts:101`, `:112`); one server of several, through the store lease (`engine/src/execution/local-scheduler.ts:71`); on Vercel one cron route runs the tick (`vercel/src/scheduler.ts:61`).
 
 ## 6 · Depth pass
 

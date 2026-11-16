@@ -97,6 +97,21 @@ describe("the local cron", () => {
     expect(p.ticks.count).toBe(0);
   });
 
+  // A colocated queue starts processing as the runtime resolves; `fsdev run` must still not tick.
+  it("never ticks in a process that only resolves the runtime, with a colocated job queue", async () => {
+    fakeClock();
+    const jobQueue: JobQueueAdapter = {
+      mode: "colocated",
+      createRunner: vi.fn(() => ({ dispatch: vi.fn(), close: async () => undefined })),
+      startProcessing: () => ({ close: async () => undefined })
+    };
+    const p = processOn(sharedStore(), { jobQueue });
+    apps.push(p.app);
+    await p.app.getRuntime();
+    await vi.advanceTimersByTimeAsync(3 * MINUTE);
+    expect(p.ticks.count).toBe(0);
+  });
+
   it("starts nothing with `scheduler: false`", async () => {
     fakeClock();
     const p = processOn(sharedStore(), { scheduler: false });

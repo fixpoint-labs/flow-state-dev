@@ -1167,7 +1167,9 @@ class InternalFlowState<TSettings extends object>
       if (mode !== "enqueue-only") {
         this.#processingHandle = jobQueue.startProcessing(runtime);
         // A job-queue worker ticks too (FIX-2752 D1): a web tier that can't is covered by its workers.
-        this.#armLocalScheduler(stores);
+        // Only a process-only worker, which builds no router: a colocated process arms when its router
+        // is built, so resolving the runtime alone (`fsdev run`, chat, block) never ticks.
+        if (mode === "process-only") this.#armLocalScheduler(stores);
       }
     }
 

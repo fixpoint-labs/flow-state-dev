@@ -38,6 +38,7 @@ Written by `docs-writer` (sonnet), 802 words. Scenario: The support desk: `suppo
 - Post-review edit (Cursor security review on #5226): authentication now names the principal resolver and the body-`userId` fallback; `serve` is said to bind all interfaces with no resolver check (`fsdev serve` refuses; `host: "127.0.0.1"` keeps it local); `defaultUserId`/`requireUser` are said to name the run's user, not authenticate. This is the fact sheet's own [flag] at line 217. Re-ran check-docs-page.mjs: ok.
 
 - After the loop: the SQLite example's filename is `support.db`, in the working directory. better-sqlite3 does not create parent directories (`store-sqlite/src/registry.ts:60` passes the filename straight to it), so a path under a missing folder stopped the server from starting.
+- Post-merge edit (the app fires its own schedules): the schedule paragraph says the app keeps the clock, and on a serverless host one cron route wakes it. Page sha256 1e65923ef8c0: check-docs-page.mjs exits 0.
 
 ## 5 · Fact check
 
@@ -48,6 +49,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 f5c
 - Post-review edit (Codex on #5226), checked against the code: Stripe example reads the invoice from `e.payload.data.object` (the payload is the whole Stripe event, `engine/src/transports/webhook/routes.ts:74-78`; matches `apps/docs/docs/server/webhooks.md:94-95`).
 
 - Post-review edit, checked: `flowAuthenticates` needs a non-default `resolvePrincipal` (`engine/src/routes/instance-caller.ts:91-95`); `serve` defaults to host `0.0.0.0` (`node/src/serve.ts:54-55`); the bind guard runs only in `fsdev serve`/`fsdev dev` (`fsdev/src/commands/serve.ts:109`, `dev.ts:371`).
+- Post-merge edit, checked against the code: the tick calls the schedule's dispatch URL through the app's own router, or over the network when a cron route gave it the deployment's address (`engine/src/flowstate/createFlowState.ts`, `#tick`, `scheduleDispatchRequest` then `router.POST` or `fetch`); the cron route is `vercelScheduler().route` (`vercel/src/scheduler.ts:61`).
 
 ## 6 · Depth pass
 
@@ -82,6 +84,6 @@ Not sampled. The owner replaces this with `Read`, the date and what they found, 
 - Node host rows: default port (`$PORT` or 3000), `/healthz`, `SIGTERM` drain and store release; `fsdev serve` equivalence (command row also on R-35) → R-12
 - MCP settings row: `mcp.enabled` on a flow and the adapter that maps its actions to tools (the page keeps that an MCP call is an action call) → R-34
 - Webhook binding fields (`block`, `input`), verification config on the adapter (signing secret, signature check), the receiving endpoint path `POST /api/flows/<kind>/webhooks/<provider>`, and who the caller is (`defaultUserId`/`requireUser`) → R-32
-- Schedule fields (name, cron string, block) and the tick/dispatch endpoint a scheduler calls, plus the adapter that runs it (the page keeps that Flow State does not own the clock) → R-33
+- Schedule fields (name, cron string, block) and the tick/dispatch endpoint a scheduler calls, plus the adapter that runs it (the page keeps that the app keeps the clock) → R-33
 - Webhook response rows: failed signature returns 401 and runs nothing; verified event returns 202 immediately and the block runs after the response (the page keeps the one-sentence guarantee) → R-32
 - Startup refusals table: duplicate flow id, empty `stores` map, webhook provider not set up on the host, each with what the error names → R-12
