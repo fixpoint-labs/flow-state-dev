@@ -173,6 +173,16 @@ export interface VendorControl {
   fixExports(): void;
   /** How many Globex research turns are running now. */
   globexRunning(): number;
+  /** Lets a held Acme research finish (`holdAcme`). */
+  releaseAcme(): void;
+}
+
+/** How the session-mode main turn goes once it has filed its two research tasks. */
+export interface VendorOptions {
+  /** `ends` (default) at once; `takes-acme`: waits for Acme's research, then 3 s, then says it's in; `until-stopped`: works on until stopped. */
+  mainTurn?: "ends" | "takes-acme" | "until-stopped";
+  /** Acme's research runs until `releaseAcme`. */
+  holdAcme?: boolean;
 }
 
 /**
@@ -187,7 +197,12 @@ export interface VendorControl {
  * timed out after 30s.", every attempt until `fixExports`. A line that names
  * the CHANGELOG makes it file that line as one coding thread. Any other line is noted.
  */
-export function vendorScripts(): { scripts: Record<string, Script>; control: VendorControl } {
+export function vendorScripts(options: VendorOptions = {}): { scripts: Record<string, Script>; control: VendorControl } {
+  let releaseAcme = () => {};
+  const acmeGate = new Promise<void>((resolve) => (releaseAcme = resolve));
+  holds.add(releaseAcme);
+  let acmeDone = () => {};
+  const acmeResearched = new Promise<void>((resolve) => (acmeDone = resolve));
   let releaseGlobex = () => {};
   let failGlobex: (reason: Error) => void = () => {};
   const globex = new Promise<void>((resolve, reject) => {
@@ -211,7 +226,10 @@ export function vendorScripts(): { scripts: Record<string, Script>; control: Ven
           globexTurns += 1;
           await Promise.race([globex, waitFor(60_000, signal)]).finally(() => (globexTurns -= 1));
         }
-        return { text: said.includes("Globex") ? "Globex: $35 per user." : "Acme: $40 per user, 24-hour support." };
+        if (said.includes("Globex")) return { text: "Globex: $35 per user." };
+        if (options.holdAcme) await Promise.race([acmeGate, waitFor(60_000, signal)]);
+        acmeDone();
+        return { text: "Acme: $40 per user, 24-hour support." };
       }
       if (who === "thread") {
         if (said.includes("Export failed invoices")) {
@@ -228,7 +246,28 @@ export function vendorScripts(): { scripts: Record<string, Script>; control: Ven
       if (lastUserLine(said).includes("Compare Acme and Globex")) {
         if (step === 0) return { call: { name: "createTask", args: { assignee: "desk.researcher", title: "Research Acme", goal: "Find Acme's price and support hours." } } };
         if (step === 1) return { call: { name: "createTask", args: { assignee: "desk.researcher", title: "Research Globex", goal: "Read Globex's pricing pages." } } };
-        return { text: "I'm researching both vendors in the background." };
+        if (options.mainTurn === "until-stopped") {
+          await Promise.race([closing, waitFor(60_000, signal)]);
+          // A stopped model call ends with no text, as a provider's cut stream does.
+          if (signal?.aborted) throw new DOMException("The turn was stopped.", "AbortError");
+        }
+        if (options.mainTurn === "takes-acme") {
+          // The turn runs on past Acme's settling, so the main worker takes the result into it.
+          await acmeResearched;
+          await waitFor(3_000, signal);
+          return {
+            text: "Acme's research is in. Section 1 now reads: Acme costs $40 per user, with 24-hour support.\n\nOutline:\n1. Price\n2. Support\n3. Risks\n\nGlobex is still running in the background. I'll fold it in when it lands.",
+          };
+        }
+        return { text: "I'll write the outline myself and research both vendors in the background." };
+      }
+      if (lastUserLine(said).includes("Stop the Globex research")) {
+        // The second task this session filed is Globex's.
+        const globexId = [...said.matchAll(/\\?"taskId\\?":\\?"(task_[a-z0-9]+)/g)].map((m) => m[1])[1];
+        // `step` counts every tool result the history holds; this turn's own come after its line.
+        const stepped = lastUserLine(said).includes('"role":"tool"');
+        if (!stepped && globexId !== undefined) return { call: { name: "updateTask", args: { id: globexId, status: "cancelled" } } };
+        return { text: "Stopped the Globex research." };
       }
       return { text: "Noted." };
     },
@@ -252,7 +291,7 @@ export function vendorScripts(): { scripts: Record<string, Script>; control: Ven
       return { text: "I've started a thread for each." };
     },
   };
-  return { scripts, control: { releaseGlobex: () => releaseGlobex(), failGlobex: (reason) => failGlobex(new Error(reason)), fixExports: () => void (exportsFixed = true), globexRunning: () => globexTurns } };
+  return { scripts, control: { releaseGlobex: () => releaseGlobex(), failGlobex: (reason) => failGlobex(new Error(reason)), fixExports: () => void (exportsFixed = true), globexRunning: () => globexTurns, releaseAcme: () => releaseAcme() } };
 }
 
 /** Reads `read` every 50 ms until `check` holds, or fails after `ms` with the last value. */
