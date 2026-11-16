@@ -15,9 +15,12 @@
  * filter keeps them), never the record. `history` crosses the session's
  * settled turns, by the one read a turn's own history window uses
  * (`./settled-turns`), and writes nothing. `list` lists the
- * principal's top-level sessions as `read` answers each, filtered at the store
- * and bounded, or, asked for `ids`, read by id under the same filters; `turns` reads a session's requests by status, never their
- * words.
+ * principal's top-level sessions, filtered at the store by readonly fields
+ * and bounded, or, asked for `ids`, read by id under the same filters; each
+ * with the state the HTTP session list shows the caller, exposed and readonly
+ * (`./client-visible-state`), which is display data: `read` and the filter
+ * stay readonly-only, what a block may decide on. `turns` reads a session's
+ * requests by status, never their words.
  *
  * In a view, `admit` adds the HTTP session list's per-row admission on top of
  * the owner rule (`view-routes.ts`): a session it refuses reads as one that
@@ -25,6 +28,7 @@
  */
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { readonlyStateFilter } from "./readonly-state-filter";
+import { clientVisibleStateKeys } from "./client-visible-state";
 import { isWriteRecord } from "../resources/default-write-flow";
 import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
 import type {
@@ -193,18 +197,23 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
     return undefined;
   };
 
-  /** A session's state cut to the fields its owning flow declares readonly, defaults filled. */
-  const readonlyStateOf = (record: SessionRecord): Readonly<Record<string, unknown>> => {
+  /**
+   * A session's state cut to the fields its owning flow declares readonly
+   * (`"readonly"`, what a block may decide on), or to those it shows a client,
+   * exposed and readonly (`"visible"`, what the HTTP list shows); defaults filled.
+   */
+  const stateOf = (record: SessionRecord, cut: "readonly" | "visible"): Readonly<Record<string, unknown>> => {
     // The owner as `record-owner` reads it: the stored instance id, or, on a
     // legacy row, the singleton named by its kind. A flow of another kind
     // under that address is not its owner, and declares nothing for it.
-    const owner = flowAt(record.flowId ?? record.flowKind);
-    const schema = owner?.kind === record.flowKind ? scopeStateSchema(owner, "session") : undefined;
-    const readonly = getReadonlyStateKeys(schema);
+    const at = flowAt(record.flowId ?? record.flowKind);
+    const owner = at?.kind === record.flowKind ? at : undefined;
+    const schema = owner === undefined ? undefined : scopeStateSchema(owner, "session");
+    const keys = cut === "readonly" ? getReadonlyStateKeys(schema) : owner === undefined ? [] : clientVisibleStateKeys(owner);
     // As the session's own runs read it, defaults filled.
     const effective = applyScopeStateDefaults(schema, record.state);
     const state: Record<string, unknown> = {};
-    for (const key of readonly) {
+    for (const key of keys) {
       if (Object.prototype.hasOwnProperty.call(effective, key)) state[key] = structuredClone(effective[key]);
     }
     return Object.freeze(state);
@@ -270,7 +279,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       const record = await owned(sessionId);
       if (record === undefined) return unanswered();
       inputs.observe?.identity(sessionId);
-      const state = readonlyStateOf(record);
+      const state = stateOf(record, "readonly");
       const view = {
         flowKind: record.flowKind,
         ...(record.flowId != null ? { flowId: record.flowId } : {}),
@@ -332,7 +341,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
           ...(typeof record.title === "string" && record.title.length > 0 ? { title: record.title } : {}),
           createdAt: record.createdAt,
           updatedAt: record.updatedAt,
-          state: readonlyStateOf(record)
+          state: stateOf(record, "visible")
         });
       }
       return { sessions: answered, more: stored.length > limit };

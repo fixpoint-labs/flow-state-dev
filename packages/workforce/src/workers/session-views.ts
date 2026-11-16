@@ -90,8 +90,8 @@ const listedWorkerSessionSchema = z.object({
   updatedAt: z.number(),
   /** Whether one of its turns is running now. */
   running: z.boolean(),
-  /** Its readonly state fields. */
-  fields: z.record(z.unknown()),
+  /** Its state as the HTTP session list shows the caller: the fields its flow exposes to the client and its readonly ones, such as `workProjectId`. Display data. */
+  state: z.record(z.unknown()),
   /** The conversation `findWorkerSession({ worker })` returns. */
   isDefault: z.boolean(),
   /** Its board's tasks that wait on the user: a question, a review, or a failure to retry. */
@@ -205,7 +205,7 @@ export function defineWorkerSessionsView(installation: WorkerInstallation): Work
             worker: input.worker,
             updatedAt: session.updatedAt,
             running: runningIn.has(session.id),
-            fields: { ...session.state },
+            state: { ...session.state },
             isDefault,
             waiting: await waitingTasksOf(ctx, session.id, session.lineageId)
           }))

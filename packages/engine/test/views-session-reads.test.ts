@@ -31,7 +31,11 @@ const host = (ctx: unknown) => requestHostOf(ctx as never)!.sessions!;
 function app(): FlowInstance {
   return defineFlow({
     kind: "desk",
-    session: { stateSchema: z.object({ workerId: z.string().readonly().optional(), notes: z.string().optional() }) },
+    session: {
+      stateSchema: z.object({ workerId: z.string().readonly().optional(), project: z.string().optional(), notes: z.string().optional() }),
+      // A server-written, changeable field the HTTP session list shows the caller.
+      client: { expose: ["project"] }
+    },
     actions: { touch: { block: handler({ name: "touch", inputSchema: z.object({}), execute: () => ({ ok: true }) }) } },
     views: {
       list: defineView({
@@ -104,7 +108,7 @@ async function seed(stores: StoreRegistry, id: string, over: Partial<SessionReco
       flowKind: "desk",
       flowId: "desk",
       userId: "alice",
-      state: { workerId: "otto", notes: "private" },
+      state: { workerId: "otto", project: "apollo", notes: "private" },
       version: 0,
       createdAt: 1,
       updatedAt: Number(over.updatedAt ?? 1),
@@ -125,7 +129,7 @@ const view = (stores: StoreRegistry, flow: FlowInstance, viewName: string, input
   runView({ flow, viewName, input, userId: "alice", orgId: ORG, stores, ...extra });
 
 describe("sessions.list in a view", () => {
-  it("answers the caller's own top-level sessions, newest first, with readonly state only, heard on their user topic's run", async () => {
+  it("answers the caller's own top-level sessions, newest first, with the state the HTTP list shows them, heard on their user topic's run", async () => {
     const stores = createInMemoryStores();
     const flow = app();
     await seed(stores, "old", { updatedAt: 10 });
@@ -137,7 +141,9 @@ describe("sessions.list in a view", () => {
     const answer = await view(stores, flow, "list", {});
     const list = answer.output as { sessions: Array<{ id: string; state: unknown; lineageId: string }>; more: boolean };
     expect(list.sessions.map((session) => session.id)).toEqual(["new", "old"]);
-    expect(list.sessions[0]!.state).toEqual({ workerId: "otto" });
+    // FIX-2754: readonly and exposed fields, as the HTTP list shows the same
+    // caller, so a screen labels a row from the one read; never a private field.
+    expect(list.sessions[0]!.state).toEqual({ workerId: "otto", project: "apollo" });
     expect(list.more).toBe(false);
     expect(answer.hears).toEqual([{ topic: { scope: "user" }, kinds: ["run"] }]);
   });
@@ -178,6 +184,14 @@ describe("sessions.list in a view", () => {
     const list = (await view(stores, flow, "list", { fields: { workerId: "ada" } })).output as { sessions: Array<{ id: string }> };
     expect(list.sessions.map((session) => session.id)).toEqual(["ada1"]);
     await expect(view(stores, flow, "list", { fields: { notes: "private" } })).rejects.toThrow(/only readonly state fields/);
+  });
+
+  it("refuses a filter on an exposed field: the list shows it, but a filter is trusted and takes readonly fields only", async () => {
+    // FIX-2754: an exposed field is display data; filtering on it would let a
+    // caller pick sessions by a field that changes after the session is made.
+    const stores = createInMemoryStores();
+    await seed(stores, "mine");
+    await expect(view(stores, app(), "list", { fields: { project: "apollo" } })).rejects.toThrow(/only readonly state fields/);
   });
 
   it("answers only what the view's admission lets through", async () => {
@@ -285,6 +299,15 @@ describe("sessions.history in a user view", () => {
 });
 
 describe("sessions.read in a user view", () => {
+  it("answers readonly state only, never an exposed field, though the list shows one", async () => {
+    // FIX-2754: a block reading a peer session decides on server-written,
+    // fixed fields; an exposed field is display data the list carries.
+    const stores = createInMemoryStores();
+    await seed(stores, "mine");
+    const read = await view(stores, app(), "identity", { id: "mine", withState: true });
+    expect(read.output).toEqual({ flowKind: "desk", state: { workerId: "otto" } });
+  });
+
   it("answers the caller's session and hears its identity on run alone, its state once read", async () => {
     const stores = createInMemoryStores();
     const flow = app();

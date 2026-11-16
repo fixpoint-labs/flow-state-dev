@@ -66,7 +66,7 @@ describe("a user's conversations with one worker", () => {
       expect(listed.map((entry) => [entry.id, entry.isDefault])).toEqual([[random, false]]);
       // Q2: no title yet reads "Untitled", never a guess from its words.
       expect(listed[0]?.title).toBe("Untitled");
-      expect(listed[0]?.fields).toEqual({ workerId: "otto" });
+      expect(listed[0]?.state).toEqual({ workerId: "otto" });
       expect(await alice.findWorkerSession({ worker: "otto" })).toBeUndefined();
     } finally {
       await h.dispose();

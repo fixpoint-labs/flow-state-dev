@@ -211,12 +211,14 @@ describe("a user's conversation with a worker, set to a project", () => {
     // Set from a second client: the reader sent no setWorkProject of its own.
     await h.client("alice").setWorkProject("writer", apollo);
     expect((await reader.sessions.get(writer.id)).state).toMatchObject({ workProjectId: "shared/apollo" });
-    // FIX-2725: the worker sessions view lists it, and crosses only readonly
-    // fields; the work project is read from the session itself.
+    // FIX-2754: the worker sessions view lists it with the state the session
+    // read shows, so a sidebar names its project from the one live read.
     const [row] = await h.workerSessions("alice", "writer");
     expect(row!.id).toBe(writer.id);
+    expect(row!.state).toMatchObject({ workProjectId: "shared/apollo" });
     await h.client("alice").setWorkProject("writer", beta);
     expect((await reader.sessions.get(writer.id)).state).toMatchObject({ workProjectId: "shared/beta" });
+    expect((await h.workerSessions("alice", "writer"))[0]!.state).toMatchObject({ workProjectId: "shared/beta" });
     // Reading it gives no way to write it.
     const forged = await h.tryOpenSession("alice", AGENT_FLOW, { workerId: "writer", workProjectId: "shared/apollo" });
     expect(forged.status).toBe(400);
