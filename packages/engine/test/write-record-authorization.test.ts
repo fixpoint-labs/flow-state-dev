@@ -96,11 +96,11 @@ describe("write-record authorization", () => {
       if (!existsSync(src)) return [];
       return readdirSync(src, { recursive: true })
         .map((file) => join(src, String(file)))
-        .filter((file) => file.endsWith(".ts") && readFileSync(file, "utf8").includes("startWorker: ("));
+        .filter((file) => file.endsWith(".ts") && readFileSync(file, "utf8").includes("startProcessing: ("));
     });
     expect(adapters.length).toBeGreaterThan(0);
     for (const file of adapters) expect(readFileSync(file, "utf8"), file).toContain("resolvePrincipal: rt.resolvePrincipal");
-    const worker = readFileSync(join(__dirname, "../../bullmq/src/worker.ts"), "utf8");
+    const worker = readFileSync(join(__dirname, "../../bullmq/src/job-processor.ts"), "utf8");
     expect(worker).toContain("installBuiltIns(registry)");
     expect(worker).toContain("hostResolver: deps.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver");
     // Inside the flow it reaches nothing but the agreement check: never a caller, never an owner.

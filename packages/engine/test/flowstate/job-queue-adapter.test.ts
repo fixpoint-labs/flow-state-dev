@@ -1,9 +1,9 @@
 /**
- * Tests for the `worker` option on `createFlowState` — the execution-backend
- * adapter seam. The contract under test: the adapter's dispatch side and
- * worker side both receive the SAME resolved runtime the router uses (the
+ * Tests for the `jobQueue` option on `createFlowState` — the job queue
+ * adapter seam. The contract under test: the adapter's enqueue side and
+ * processing side both receive the SAME resolved runtime the router uses (the
  * store-identity invariant), mode controls which sides run, the adapter's
- * runner is installed on the router, and dispose() closes the worker
+ * runner is installed on the router, and dispose() closes the processing side
  * before store adapters.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,8 +12,8 @@ import { z } from "zod";
 import type { CreateFlowApiRouterOptions } from "../../src/routes/createFlowApiRouter";
 import type {
   FlowStateRuntime,
-  WorkerAdapter,
-  WorkerMode
+  JobQueueAdapter,
+  JobQueueMode
 } from "../../src/flowstate/types";
 import type { FlowRunner } from "../../src/transports/runner";
 
@@ -48,11 +48,11 @@ const noopFlow = defineFlow({
 const stubModelResolver = (() => undefined) as never;
 
 /** Records every adapter interaction so tests can assert the lifecycle. */
-function makeFakeAdapter(mode?: WorkerMode) {
+function makeFakeAdapter(mode?: JobQueueMode) {
   const calls = {
     runnerRuntimes: [] as FlowStateRuntime[],
-    workerRuntimes: [] as FlowStateRuntime[],
-    workerClosed: 0,
+    processingRuntimes: [] as FlowStateRuntime[],
+    processingClosed: 0,
     adapterClosed: 0
   };
   const runner: FlowRunner = {
@@ -63,17 +63,17 @@ function makeFakeAdapter(mode?: WorkerMode) {
     })),
     close: async () => {}
   };
-  const adapter: WorkerAdapter = {
+  const adapter: JobQueueAdapter = {
     mode,
     createRunner(runtime) {
       calls.runnerRuntimes.push(runtime);
       return runner;
     },
-    startWorker(runtime) {
-      calls.workerRuntimes.push(runtime);
+    startProcessing(runtime) {
+      calls.processingRuntimes.push(runtime);
       return {
         close: async () => {
-          calls.workerClosed += 1;
+          calls.processingClosed += 1;
         }
       };
     },
@@ -84,12 +84,12 @@ function makeFakeAdapter(mode?: WorkerMode) {
   return { adapter, runner, calls };
 }
 
-function makeFlowState(adapter: WorkerAdapter) {
+function makeFlowState(adapter: JobQueueAdapter) {
   return createFlowState({
     flows: [noopFlow],
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: stubModelResolver,
-    worker: adapter
+    jobQueue: adapter
   });
 }
 
@@ -97,22 +97,22 @@ afterEach(() => {
   routerCalls.length = 0;
 });
 
-describe("createFlowState — worker adapter", () => {
-  it("colocated (default): wires runner and worker against the same runtime the router uses", async () => {
+describe("createFlowState — job queue adapter", () => {
+  it("colocated (default): wires runner and processing side against the same runtime the router uses", async () => {
     const { adapter, runner, calls } = makeFakeAdapter();
     const fs = makeFlowState(adapter);
     await fs.ready();
 
     expect(calls.runnerRuntimes).toHaveLength(1);
-    expect(calls.workerRuntimes).toHaveLength(1);
+    expect(calls.processingRuntimes).toHaveLength(1);
 
-    // Store-identity invariant: dispatch side, worker side, and the public
+    // Store-identity invariant: enqueue side, processing side, and the public
     // runtime all see the same instances.
     const runtime = await fs.getRuntime();
     expect(calls.runnerRuntimes[0]?.stores).toBe(runtime.stores);
-    expect(calls.workerRuntimes[0]?.stores).toBe(runtime.stores);
-    expect(calls.workerRuntimes[0]?.registry).toBe(runtime.registry);
-    expect(calls.workerRuntimes[0]?.runtimeConfig).toBe(runtime.runtimeConfig);
+    expect(calls.processingRuntimes[0]?.stores).toBe(runtime.stores);
+    expect(calls.processingRuntimes[0]?.registry).toBe(runtime.registry);
+    expect(calls.processingRuntimes[0]?.runtimeConfig).toBe(runtime.runtimeConfig);
 
     // The adapter's runner reaches the router.
     expect(routerCalls[0]?.runner).toBe(runner);
@@ -120,36 +120,36 @@ describe("createFlowState — worker adapter", () => {
     await fs.dispose();
   });
 
-  it("dispatch-only: installs the runner, never starts a worker", async () => {
-    const { adapter, runner, calls } = makeFakeAdapter("dispatch-only");
+  it("enqueue-only: installs the runner, never starts processing", async () => {
+    const { adapter, runner, calls } = makeFakeAdapter("enqueue-only");
     const fs = makeFlowState(adapter);
     await fs.ready();
 
     expect(calls.runnerRuntimes).toHaveLength(1);
-    expect(calls.workerRuntimes).toHaveLength(0);
+    expect(calls.processingRuntimes).toHaveLength(0);
     expect(routerCalls[0]?.runner).toBe(runner);
 
     await fs.dispose();
   });
 
-  it("worker-only: starts the worker, installs no runner", async () => {
-    const { adapter, calls } = makeFakeAdapter("worker-only");
+  it("process-only: starts processing, installs no runner", async () => {
+    const { adapter, calls } = makeFakeAdapter("process-only");
     const fs = makeFlowState(adapter);
     await fs.ready();
 
     expect(calls.runnerRuntimes).toHaveLength(0);
-    expect(calls.workerRuntimes).toHaveLength(1);
+    expect(calls.processingRuntimes).toHaveLength(1);
     expect(routerCalls[0]?.runner).toBeUndefined();
 
     await fs.dispose();
   });
 
-  it("starts the worker via getRuntime() too, not only via ready()", async () => {
+  it("starts processing via getRuntime() too, not only via ready()", async () => {
     const { adapter, calls } = makeFakeAdapter();
     const fs = makeFlowState(adapter);
     await fs.getRuntime();
 
-    expect(calls.workerRuntimes).toHaveLength(1);
+    expect(calls.processingRuntimes).toHaveLength(1);
     await fs.dispose();
   });
 
@@ -160,22 +160,22 @@ describe("createFlowState — worker adapter", () => {
     await fs.ready();
 
     expect(calls.runnerRuntimes).toHaveLength(1);
-    expect(calls.workerRuntimes).toHaveLength(1);
+    expect(calls.processingRuntimes).toHaveLength(1);
     await fs.dispose();
   });
 
-  it("dispose() closes the worker handle and the adapter", async () => {
+  it("dispose() closes the processing handle and the adapter", async () => {
     const { adapter, calls } = makeFakeAdapter();
     const fs = makeFlowState(adapter);
     await fs.ready();
     await fs.dispose();
 
-    expect(calls.workerClosed).toBe(1);
+    expect(calls.processingClosed).toBe(1);
     expect(calls.adapterClosed).toBe(1);
 
     // Idempotent: a second dispose() is a no-op.
     await fs.dispose();
-    expect(calls.workerClosed).toBe(1);
+    expect(calls.processingClosed).toBe(1);
     expect(calls.adapterClosed).toBe(1);
   });
 
@@ -184,21 +184,21 @@ describe("createFlowState — worker adapter", () => {
     const fs = makeFlowState(adapter);
     await fs.dispose();
 
-    expect(calls.workerRuntimes).toHaveLength(0);
-    expect(calls.workerClosed).toBe(0);
+    expect(calls.processingRuntimes).toHaveLength(0);
+    expect(calls.processingClosed).toBe(0);
     // Adapter close still runs so backends constructed eagerly (queues,
     // connections) are released even when the runtime never resolved.
     expect(calls.adapterClosed).toBe(1);
   });
 
-  it("rejects worker + runner together at construction", () => {
+  it("rejects jobQueue + runner together at construction", () => {
     const { adapter, runner } = makeFakeAdapter();
     expect(() =>
       createFlowState({
         flows: [noopFlow],
         stores: { default: { primary: inMemoryStores() } },
         modelResolver: stubModelResolver,
-        worker: adapter,
+        jobQueue: adapter,
         runner
       })
     ).toThrow(FlowStateConfigError);
@@ -215,5 +215,27 @@ describe("createFlowState — worker adapter", () => {
         dispatcher: runner
       } as never)
     ).toThrow(/createFlowState: the `dispatcher` option is now `runner`/);
+  });
+
+  // An old config still passing `worker` would otherwise run its queued work in process.
+  it("refuses the old `worker` option by name, pointing at jobQueue", () => {
+    const { adapter } = makeFakeAdapter();
+    expect(() =>
+      createFlowState({
+        flows: [noopFlow],
+        stores: { default: { primary: inMemoryStores() } },
+        modelResolver: stubModelResolver,
+        worker: adapter
+      } as never)
+    ).toThrow(/createFlowState: the `worker` option is now `jobQueue`/);
+  });
+
+  // An unknown mode would otherwise both enqueue and process: a web process
+  // configured to only enqueue would start consuming the queue.
+  it("refuses a mode it does not know, naming the three it does", () => {
+    const { adapter } = makeFakeAdapter();
+    expect(() => makeFlowState({ ...adapter, mode: "enqueue-and-process" as never })).toThrow(
+      /unknown job queue mode "enqueue-and-process"\. Use one of "colocated", "enqueue-only", "process-only"/
+    );
   });
 });

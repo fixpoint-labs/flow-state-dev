@@ -2,8 +2,8 @@
 /**
  * The host resolver reaches the queue worker through the adapter.
  *
- * `createFlowState({ resolvePrincipal: R, worker: bullmqWorker(...) })` must
- * give the worker R, with no caller handing it to `startWorker`: the worker
+ * `createFlowState({ resolvePrincipal: R, jobQueue: bullmqJobQueue(...) })` must
+ * give the worker R, with no caller handing it to `startProcessing`: the worker
  * holds the default write flow, which decides whether two declarations of one
  * resource agree by their resolvers. One flow inheriting R beside one naming R
  * agree on the host; they must agree on the worker too, or a queued write is
@@ -16,19 +16,19 @@ import type { Job } from "bullmq";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import type { FlowJobData } from "../src/types";
-import type { FlowWorkerDeps } from "../src/worker";
+import type { JobProcessorDeps } from "../src/job-processor";
 
 // Some test runner (the CLI, CI) can set this to a value core refuses; these
 // flows run no model.
 delete process.env.FSDEV_DEFAULT_MODEL;
 
-const captured: { deps?: FlowWorkerDeps } = {};
+const captured: { deps?: JobProcessorDeps } = {};
 
 vi.mock("../src/runtime", async () => ({
   createBullmqRuntime: vi.fn(() => ({
     queue: { name: "fsd-flows" },
     enqueueAction: vi.fn(),
-    createWorker: vi.fn((deps: FlowWorkerDeps) => {
+    createJobProcessor: vi.fn((deps: JobProcessorDeps) => {
       captured.deps = deps;
       return { close: vi.fn().mockResolvedValue(undefined) };
     }),
@@ -38,13 +38,13 @@ vi.mock("../src/runtime", async () => ({
 vi.mock("../src/stream-bridge", () => ({
   createRedisStreamBridge: vi.fn(() => ({ createPublisher: vi.fn(() => ({ publish: vi.fn(), close: vi.fn() })), createSubscriber: vi.fn() }))
 }));
-vi.mock("../src/runner", () => ({ createWorkerRunner: vi.fn(() => ({ dispatch: vi.fn(), close: vi.fn() })) }));
+vi.mock("../src/runner", () => ({ createJobQueueRunner: vi.fn(() => ({ dispatch: vi.fn(), close: vi.fn() })) }));
 vi.mock("../src/lease-backend", () => ({
   createRedisLeaseBackend: vi.fn(() => ({ leaseMs: 10_000, close: vi.fn().mockResolvedValue(undefined) }))
 }));
 
-const { bullmqWorker } = await import("../src/flowstate-adapter");
-const { createFlowJobProcessor } = await import("../src/worker");
+const { bullmqJobQueue } = await import("../src/flowstate-adapter");
+const { createFlowJobProcessor } = await import("../src/job-processor");
 
 const ORG = "org-a";
 const pins = defineResource({
@@ -83,7 +83,7 @@ describe("the host resolver on a worker started by createFlowState", () => {
       flows: [declaring("threads", true), declaring("digest", false)],
       stores: { default: { primary: inMemoryStores() } },
       resolvePrincipal: signIn,
-      worker: bullmqWorker({ connection: "redis://localhost:6379" })
+      jobQueue: bullmqJobQueue({ connection: "redis://localhost:6379" })
     } as never);
     const runtime = await state.getRuntime();
     expect(captured.deps).toBeDefined();

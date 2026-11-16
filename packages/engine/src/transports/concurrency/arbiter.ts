@@ -341,7 +341,7 @@ function runThenGiveBack<T>(
 export interface CreateConcurrencyArbiterOptions {
   /**
    * The ordered-lease backend to keep lines in. Supplied by a queue adapter
-   * whose runs land in several processes (`WorkerAdapter.leaseBackend`), so
+   * whose runs land in several processes (`JobQueueAdapter.leaseBackend`), so
    * every process lines up on the same keys. Default: a fresh in-memory
    * backend, private to this arbiter.
    */

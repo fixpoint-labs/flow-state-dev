@@ -50,49 +50,49 @@ export interface FlowStateVoiceConfig {
 }
 
 /**
- * Which sides of an execution backend this process runs.
+ * Which sides of a job queue this process runs.
  *
- * - `"colocated"` — dispatch and process in one process. The local-dev
- *   default: actions route through the backend's queue and a worker in the
- *   same process consumes them against the same resolved runtime.
- * - `"dispatch-only"` — enqueue only (the web process in a separated
- *   deployment). A dedicated worker process consumes the queue.
- * - `"worker-only"` — process only (a dedicated worker container). Build
+ * - `"colocated"` — enqueue and process in one process. The local-dev
+ *   default: actions route through the queue and are processed in the
+ *   same process against the same resolved runtime.
+ * - `"enqueue-only"` — enqueue only (the web process in a separated
+ *   deployment). A dedicated processing process consumes the queue.
+ * - `"process-only"` — process only (a dedicated processing container). Build
  *   the same `createFlowState(...)` from shared config and call `ready()`;
  *   no runner is installed and the router is typically never served.
  */
-export type WorkerMode = "colocated" | "dispatch-only" | "worker-only";
+export type JobQueueMode = "colocated" | "enqueue-only" | "process-only";
 
-/** Handle for a started worker; `close()` drains and stops it. */
-export interface WorkerHandle {
+/** Handle for a started processing side; `close()` drains and stops it. */
+export interface ProcessingHandle {
   close(): Promise<void>;
 }
 
 /**
- * An execution-backend adapter for the `worker` option of `createFlowState`.
+ * A job queue adapter for the `jobQueue` option of `createFlowState`.
  *
  * Adapter packages (e.g. `@flow-state-dev/bullmq`) return an object whose
  * shape satisfies this interface. `createFlowState` resolves the runtime
  * once and hands the SAME `{ registry, stores, runtimeConfig }` to both
- * sides, so the dispatch path and the worker can never disagree on stores —
- * the invariant that makes streaming, refresh, and the devtool read what
- * the worker writes.
+ * sides, so the enqueue path and the processing side can never disagree on
+ * stores — the invariant that makes streaming, refresh, and the devtool read
+ * what processed jobs write.
  */
-export interface WorkerAdapter {
+export interface JobQueueAdapter {
   /** Which sides this process runs. Default `"colocated"`. */
-  readonly mode?: WorkerMode;
+  readonly mode?: JobQueueMode;
   /**
-   * Build the dispatch side (enqueue + live-event bridge). Installed as the
-   * router's `FlowRunner` unless mode is `"worker-only"`.
+   * Build the enqueue side (enqueue + live-event bridge). Installed as the
+   * router's `FlowRunner` unless mode is `"process-only"`.
    */
   createRunner(runtime: FlowStateRuntime): FlowRunner;
   /**
    * Start the processing side against the resolved runtime. Called during
-   * runtime init unless mode is `"dispatch-only"`. The returned handle is
+   * runtime init unless mode is `"enqueue-only"`. The returned handle is
    * closed by `FlowState.dispose()` before store adapters are disposed, so
    * in-flight jobs drain against open stores.
    */
-  startWorker(runtime: FlowStateRuntime): WorkerHandle;
+  startProcessing(runtime: FlowStateRuntime): ProcessingHandle;
   /** Release backend resources (queues, connections). Called by `dispose()`. */
   close?(): Promise<void>;
   /**
@@ -104,7 +104,7 @@ export interface WorkerAdapter {
    * arbiter keeps the policy; the backend only orders places on a key. With
    * one, a delivery into an existing session is accepted and carries its
    * place on the job (`DispatchEnvelope.leasePlace`), which the adapter's
-   * worker waits on and gives back.
+   * processing side waits on and gives back.
    *
    * Absent → each process arbitrates only its own in-process runs, work handed
    * to the queue is not arbitrated, and a delivery into an existing session is
@@ -366,21 +366,21 @@ export interface CreateFlowStateOptions<
   /**
    * Low-level escape hatch: a pre-built FlowRunner controlling where
    * flow actions execute. Default: in-process (runAction called directly).
-   * Most deployments should use `worker` instead — it wires the runner
+   * Most deployments should use `jobQueue` instead — it wires the runner
    * AND the processing side from one adapter. Mutually exclusive with
-   * `worker`.
+   * `jobQueue`.
    */
   runner?: FlowRunner;
 
   /**
-   * Execution-backend adapter (e.g. `bullmqWorker(...)` from
-   * `@flow-state-dev/bullmq`). Wires the dispatch side and/or the worker
+   * Job queue adapter (e.g. `bullmqJobQueue(...)` from
+   * `@flow-state-dev/bullmq`). Wires the enqueue side and/or the processing
    * side per the adapter's `mode`, both against the same resolved runtime.
-   * Worker startup happens on first `ready()` / `getRouter()` /
+   * Processing starts on first `ready()` / `getRouter()` /
    * `getRuntime()` — call `ready()` eagerly in processes that must consume
    * the queue from boot. Mutually exclusive with `runner`.
    */
-  worker?: WorkerAdapter;
+  jobQueue?: JobQueueAdapter;
 
   /**
    * Interactive-harness defaults. `chat.default` is the target `fsdev chat`
@@ -422,7 +422,7 @@ export interface DevToolConnectionConfig {
  * The runtime internals of a {@link FlowState}, resolved alongside the router.
  * Off-transport consumers — background workers, queue processors, scripts —
  * need these directly rather than reaching through the HTTP router. The shape
- * is exactly what a worker runtime's `createWorker(deps)` consumes.
+ * is exactly what a job queue runtime's `createJobProcessor(deps)` consumes.
  */
 export interface FlowStateRuntime {
   /** The flow registry built from the configured `flows`. */

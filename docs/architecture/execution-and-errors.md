@@ -350,7 +350,7 @@ Two rules make the seam safe, and both are structural rather than validated:
 
 Adoption validates the stored record's full identity — flow kind, principal, tenant, org, parent session — before reusing it. The derivation alone is not sufficient, because the seam is not the only writer: the public session-create route lets a caller choose a session id, so a record can be pre-created at the deterministic child key, and `createExecutionContext` validates user/tenant/org bindings but neither flow kind nor parent session. A mismatch is a named refusal, never a silent create.
 
-The member is optional in the *type* so a hand-built test context still type-checks. It is not optional in *deployment*: a process that executes requests without one is a construction failure, `worker-only` included — that mode constructs no runner today, so a deployment whose capabilities dispatch must supply the start operation there explicitly.
+The member is optional in the *type* so a hand-built test context still type-checks. It is not optional in *deployment*: a process that executes requests without one is a construction failure, `process-only` included — that mode constructs no runner today, so a deployment whose capabilities dispatch must supply the start operation there explicitly.
 
 ### The liveness enablement gate
 
@@ -364,7 +364,7 @@ The liveness verb reads the active request registry, and three supported configu
 
 The third arm's failure deadlocks rather than merely overspending, which is why it is a hard gate arm and not a documented caveat. Sweep cadence is a construction input like the registry itself; a host that cannot answer is treated as not sweeping (fail-closed).
 
-The sweeper is constructed by `createFlowApiRouter`, so the cadence only becomes a fact once a router exists. `createFlowState` therefore leaves it unset on the runtime config it builds — a host that initializes solely through `getRuntime()` really has nothing sweeping — and stamps it onto that same config when it builds the router. The stamp is what a **colocated worker** reads: `worker.startWorker` captured the shared config during runtime init, and the context factory reads the cadence per request, so once `ready()` has started the sweeper the worker beside it stops refusing. Fail-closed is the answer for a process with no sweeper, not for a process whose own router is sweeping.
+The sweeper is constructed by `createFlowApiRouter`, so the cadence only becomes a fact once a router exists. `createFlowState` therefore leaves it unset on the runtime config it builds — a host that initializes solely through `getRuntime()` really has nothing sweeping — and stamps it onto that same config when it builds the router. The stamp is what a **colocated worker** reads: `jobQueue.startProcessing` captured the shared config during runtime init, and the context factory reads the cadence per request, so once `ready()` has started the sweeper the worker beside it stops refusing. Fail-closed is the answer for a process with no sweeper, not for a process whose own router is sweeping.
 
 A nonzero cadence is necessary but not sufficient — a cadence much larger than the threshold leaves a worker that crashed just after a sweep registered until the next tick. So the read also compares `lastHeartbeatAt` against the threshold, which is correct however the cadence is tuned and adds nothing for an operator to configure.
 
