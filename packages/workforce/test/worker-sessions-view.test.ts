@@ -1,6 +1,8 @@
 /**
- * `listWorkerSessions` (FIX-2158). Real engine; the caller is a verified user.
- * Reads the client and where a request ran, never a stored key, and seeds nothing by hand.
+ * The worker sessions view (FIX-2158's rule; FIX-2725 moved it from the
+ * client's `listWorkerSessions` onto the roster flow's view) and the session
+ * turns view. Real engine; the caller is a verified user. Reads the view and
+ * where a request ran, never a stored key, and seeds nothing by hand.
  * Project-coordinator sessions are in `project-coordinator.test.ts`, the host that names one.
  */
 import { describe, expect, it } from "vitest";
@@ -8,6 +10,9 @@ import { mockGenerator, type MockGeneratorScriptEntry } from "@flow-state-dev/te
 import type { WorkerManifest } from "../src";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
 import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
+import { sessionTurnsViewRef, workerSessionsViewRef } from "../src/workers/session-views-ref";
+import { TURN_ACTIONS } from "../src/workers/turn-actions";
+import { RESPOND_ACTION } from "../src/worker-door";
 
 /** A scripted model input as text, with its escapes dropped. */
 const textOf = (input: unknown) => JSON.stringify(input).replaceAll("\\", "");
@@ -57,8 +62,11 @@ describe("a user's conversations with one worker", () => {
     try {
       const alice = h.client("alice");
       const random = await open(h, "alice");
-      const listed = await alice.listWorkerSessions("otto");
-      expect(listed.map((entry) => [entry.session.id, entry.isDefault])).toEqual([[random, false]]);
+      const listed = await h.workerSessions("alice", "otto");
+      expect(listed.map((entry) => [entry.id, entry.isDefault])).toEqual([[random, false]]);
+      // Q2: no title yet reads "Untitled", never a guess from its words.
+      expect(listed[0]?.title).toBe("Untitled");
+      expect(listed[0]?.fields).toEqual({ workerId: "otto" });
       expect(await alice.findWorkerSession({ worker: "otto" })).toBeUndefined();
     } finally {
       await h.dispose();
@@ -77,8 +85,8 @@ describe("a user's conversations with one worker", () => {
       await use(h, "alice", main.id);
       await use(h, "alice", second);
       await use(h, "alice", first);
-      const listed = await alice.listWorkerSessions("otto");
-      expect(listed.map((entry) => [entry.session.id, entry.isDefault])).toEqual([
+      const listed = await h.workerSessions("alice", "otto");
+      expect(listed.map((entry) => [entry.id, entry.isDefault])).toEqual([
         [main.id, true],
         [first, false],
         [second, false]
@@ -95,8 +103,8 @@ describe("a user's conversations with one worker", () => {
       await h.client("alice").ensureWorkerSession({ worker: "otto" });
       await open(h, "alice");
       const bobs = await open(h, "bob");
-      expect((await h.client("bob").listWorkerSessions("otto")).map((entry) => entry.session.id)).toEqual([bobs]);
-      expect(await h.client("alice").listWorkerSessions("otto")).toHaveLength(2);
+      expect((await h.workerSessions("bob", "otto")).map((entry) => entry.id)).toEqual([bobs]);
+      expect(await h.workerSessions("alice", "otto")).toHaveLength(2);
     } finally {
       await h.dispose();
     }
@@ -114,13 +122,30 @@ describe("a user's conversations with one worker", () => {
       await h.settled();
       const run = await alice.findWorkerSession({ worker: "otto", taskId, filingSessionId: await h.filingOf("alice", front) });
       expect(run, "the task ran in its own session").toBeDefined();
-      const listed = (await alice.listWorkerSessions("otto")).map((entry) => entry.session.id);
+      const listed = (await h.workerSessions("alice", "otto")).map((entry) => entry.id);
       expect(listed).toEqual([main.id]);
       expect(listed).not.toContain(run!.id);
     } finally {
       await h.dispose();
     }
   });
+
+  it("default-behind-100 · lists the default first and marked though 100 newer conversations fill a page", async () => {
+    const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: [fallback] }) });
+    try {
+      const main = await h.client("alice").ensureWorkerSession({ worker: "otto" });
+      for (let at = 0; at < 100; at += 1) {
+        await sleep(1);
+        await open(h, "alice");
+      }
+      const listed = await h.workerSessions("alice", "otto");
+      expect(listed[0] && [listed[0].id, listed[0].isDefault]).toEqual([main.id, true]);
+      expect(listed).toHaveLength(100);
+      expect(listed.filter((entry) => entry.isDefault)).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
 
   it("message-in-default · a message another worker addresses to the worker starts in the default, though the others were used since", async () => {
     const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: tellsOtto() }) });
@@ -138,8 +163,8 @@ describe("a user's conversations with one worker", () => {
         (request) => request.actionName === MESSAGE_RECEIVED_ENTRY
       );
       expect(received.map((request) => request.sessionId)).toEqual([main.id]);
-      const [top] = await alice.listWorkerSessions("otto");
-      expect([top?.session.id, top?.isDefault]).toEqual([main.id, true]);
+      const [top] = await h.workerSessions("alice", "otto");
+      expect([top?.id, top?.isDefault]).toEqual([main.id, true]);
     } finally {
       await h.dispose();
     }
@@ -148,9 +173,76 @@ describe("a user's conversations with one worker", () => {
   it("throws when the worker isn't on the user's roster", async () => {
     const h = bootBoardHost({ standard: workers() });
     try {
-      await expect(h.client("alice").listWorkerSessions("nobody")).rejects.toThrow('No worker "nobody" on your roster.');
+      await expect(h.workerSessions("alice", "nobody")).rejects.toThrow();
     } finally {
       await h.dispose();
     }
+  });
+
+  it("waiting · names each failed task of a session's board by id and attempt, and none of a running one", async () => {
+    const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: [fallback] }) });
+    try {
+      // A coordinator conversation: its board files to its delegate.
+      const lead = await h.conversation("alice", "lead");
+      // A held task waits on nothing of the user's; a failed one does.
+      const held = await h.act("alice", lead, "createTask_tasks", { goal: "Later", assignee: "eng.tasker", held: true });
+      expect(held.error, messageOf(held.error)).toBeUndefined();
+      expect((await h.workerSessions("alice", "lead")).map((entry) => [entry.id, entry.waiting])).toEqual([[lead, []]]);
+      const heldId = (held.output as { taskId: string }).taskId;
+      const [stored] = (await h.rows("alice")).filter((task) => task.id === heldId);
+      expect(stored, "the task is on the session's board").toBeDefined();
+      const { partition: _partition, ...task } = stored!;
+      await h.writeRow("alice", decodeURIComponent(stored!.partition), { ...task, status: "errored", attempts: 2 } as never);
+      const [listed] = await h.workerSessions("alice", "lead");
+      expect(listed?.waiting).toEqual([{ taskId: heldId, attempt: 2 }]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("an empty board read for a named conversation", () => {
+  it("empty-board · is heard on the conversation's board notices, so a first task filed reaches the list", async () => {
+    const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: [fallback] }) });
+    try {
+      const lead = await h.conversation("alice", "lead");
+      // A user view runs in no session: its board read names the conversation it read for.
+      const answer = await h.fsd("alice").view(workerSessionsViewRef(), { worker: "lead" });
+      expect(answer.value.map((entry) => [entry.id, entry.waiting])).toEqual([[lead, []]]);
+      expect(answer.hears).toContainEqual({ topic: { scope: "session", id: lead, resource: "tasks" }, kinds: ["board"] });
+      // The list, on the user topic's `run` (beside the roster's own resource reads).
+      expect(answer.hears.find((hearing) => hearing.topic.scope === "user" && hearing.topic.resource === undefined)?.kinds).toContain("run");
+      // Its turns are heard on its request notices; nothing hears its streamed items.
+      expect(answer.hears).toContainEqual({ topic: { scope: "session", id: lead }, kinds: ["request", "state"] });
+      expect(answer.hears.flatMap((hearing) => hearing.kinds)).not.toContain("items");
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("a session's turns", () => {
+  it("turns · answers each turn's status, oldest first, and only turn actions", async () => {
+    const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: [fallback] }) });
+    try {
+      const main = await h.client("alice").ensureWorkerSession({ worker: "otto" });
+      await use(h, "alice", main.id);
+      await use(h, "alice", main.id);
+      const { value } = await h.fsd("alice").view(sessionTurnsViewRef(), { sessionId: main.id });
+      expect(value.map((turn) => [turn.action, turn.status])).toEqual([
+        [RESPOND_ACTION, "completed"],
+        [RESPOND_ACTION, "completed"]
+      ]);
+      expect(value[0]!.startedAt).toBeLessThanOrEqual(value[1]!.startedAt);
+      expect(value.every((turn) => TURN_ACTIONS.includes(turn.action))).toBe(true);
+      // Another user's session answers nothing.
+      expect((await h.fsd("bob").view(sessionTurnsViewRef(), { sessionId: main.id })).value).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("turn-set · names the four entries that run a session's turn", () => {
+    expect([...TURN_ACTIONS].sort()).toEqual(["onMessageReceived", "onTaskSettled", "respond", "routeOn"]);
   });
 });

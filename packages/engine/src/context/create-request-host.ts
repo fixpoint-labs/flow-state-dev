@@ -109,7 +109,8 @@ import type { WaitResumeOperation } from "./wait-resume-operation";
 import { createRequestWakes } from "../durability/request-wakes";
 import { createRequestWaits, type WaiterOf } from "../durability/wait-chain";
 import { createOwingPark } from "../durability/park-owed";
-import { createRequestSessions } from "./request-sessions";
+import { createRequestSessions, type SessionAdmission } from "./request-sessions";
+import type { SessionReadObserver } from "./view-reads";
 import type { DurabilityProvider } from "../durability/types";
 import type { WakeStore } from "../stores/types";
 
@@ -162,6 +163,11 @@ export type RequestHostInputs = {
    * answer for a process that cannot see past the one flow it was handed.
    */
   resolveFlow?: (address: string) => FlowInstance | undefined;
+  // FIX-2725 D1.
+  /** A view run's per-session admission for `sessions` (`RequestSessionsInputs.admit`). */
+  sessionAdmission?: SessionAdmission;
+  /** A view run's recording of each session read that answers (`RequestSessionsInputs.observe`). */
+  sessionReads?: SessionReadObserver;
   // FIX-1077.
   /**
    * The config this request runs under, handed to the dispatch operation so
@@ -866,6 +872,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   // write to one. The principal comes from here, never the block.
   (host as { sessions?: RequestHost["sessions"] }).sessions = createRequestSessions({
     sessions: stores.session,
+    requests: stores.request,
+    ...(inputs.sessionAdmission !== undefined ? { admit: inputs.sessionAdmission } : {}),
+    ...(inputs.sessionReads !== undefined ? { observe: inputs.sessionReads } : {}),
     identity: { userId: identity.userId, tenantId: identity.tenantId, orgId: identity.orgId },
     flow,
     ...(inputs.resolveFlow !== undefined ? { resolveFlow: inputs.resolveFlow } : {}),

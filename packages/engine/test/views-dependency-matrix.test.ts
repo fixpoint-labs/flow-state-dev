@@ -20,7 +20,7 @@ import { hearsNotice } from "@flow-state-dev/contracts/types/view-hearing";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowRegistry, runAction } from "../src";
 import { handleCreateCollectionResource } from "../src/routes/resource-routes";
-import { createInMemoryBus, createInMemoryStores, type BusTopic, type ChangeNotice } from "../src/host";
+import { createInMemoryBus, createInMemoryStores, withChangeBus, type BusTopic, type ChangeNotice } from "../src/host";
 import { runView, type ViewAnswer } from "../src/execution/runView";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
@@ -147,7 +147,29 @@ views.host_session = defineView({
     inputSchema: z.object({}),
     outputSchema: out,
     resources,
-    execute: async (_input, ctx) => ({ v: (await requestHostOf(ctx)?.sessions?.read("c")) === undefined ? "absent" : "present" })
+    // FIX-2725 D1: which lineage the session is, the one identity a read answers.
+    execute: async (_input, ctx) => ({ v: (await requestHostOf(ctx)?.sessions?.read("c"))?.lineageId ?? "absent" })
+  })
+});
+// FIX-2725 D1: the caller's sessions listed, and a session's turns.
+views.host_list = defineView({
+  scope: "session",
+  block: handler({
+    name: "list-sessions",
+    inputSchema: z.object({}),
+    outputSchema: out,
+    resources,
+    execute: async (_input, ctx) => ({ v: String((await requestHostOf(ctx)!.sessions!.list()).sessions.length) })
+  })
+});
+views.host_turns = defineView({
+  scope: "session",
+  block: handler({
+    name: "read-turns",
+    inputSchema: z.object({}),
+    outputSchema: out,
+    resources,
+    execute: async (_input, ctx) => ({ v: String((await requestHostOf(ctx)!.sessions!.turns("c"))?.length ?? "absent") })
   })
 });
 views.overlap_lineage = defineView({
@@ -221,13 +243,23 @@ function admitted(answer: ViewAnswer, heard: readonly ChangeNotice[]): ChangeNot
   return heard.filter((notice) => hearsNotice(answer.hears, notice));
 }
 
-async function cell(viewName: string, actionName: string, writer: string, writeFirst = true) {
+async function cell(viewName: string, actionName: string, writer: string, writeFirst = true, recreate = false) {
   const bus = createInMemoryBus();
   const stores = { ...createInMemoryStores(), bus };
   await seed(stores, "root");
   await seed(stores, "a", "root");
   await seed(stores, "b", "root");
   const write = async (v: string) => {
+    if (recreate && v === "2") {
+      // The session deleted and made again under its id: a new lineage.
+      const published = withChangeBus(stores);
+      const old = (await stores.session.get(writer))!;
+      await published.session.delete(writer);
+      await published.session.set(writer, { ...old, version: 0, lineageId: `lin_${v}` }, "absent");
+      await tick();
+      await tick();
+      return;
+    }
     const result = await runAction({
       orgId: DEFAULT_ORG_ID,
       flow,
@@ -289,9 +321,96 @@ describe("a view hears a change through every read path, at every scope", () => 
     expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
   });
 
-  it("request host × session", async () => {
-    // The peer session doesn't exist yet; its first run makes it.
-    const { before, after, heard } = await cell("host_session", "say", "c", false);
+  it("request host read × session", async () => {
+    // FIX-2725 D1: a read of its identity is heard on `run`, which a delete
+    // and a recreate under the same id publish.
+    const { before, after, heard } = await cell("host_session", "say", "c", true, true);
+    expect(after.output).not.toEqual(before.output);
+    expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+    expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
+  });
+
+  it("request host read × user, of a session that was deleted and is made again", async () => {
+    // A view that watched a conversation and saw it deleted must still wake
+    // when it is made again: a read that answers nothing is heard on the
+    // caller's own user topic, where every session write publishes `run`, and
+    // never on the missing session's topic, which it can't check is theirs.
+    const bus = createInMemoryBus();
+    const stores = { ...createInMemoryStores(), bus };
+    await seed(stores, "root");
+    await seed(stores, "a", "root");
+    await seed(stores, "c");
+    const published = withChangeBus(stores);
+    const run = () => runView({ flow, viewName: "host_session", input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores });
+    expect((await run()).output).toEqual({ v: "lin_matrix" });
+    const old = (await stores.session.get("c"))!;
+    await published.session.delete("c");
+    await tick();
+    const before = await run();
+    expect(before.output).toEqual({ v: "absent" });
+    expect(before.topics).not.toContainEqual({ scope: "session", id: "c" });
+    const heard: ChangeNotice[] = [];
+    for (const t of before.topics) {
+      const busTopic: BusTopic =
+        t.scope === "session" ? { scope: "session", id: t.id, tenantId: "" } : { scope: t.scope, id: t.scope === "user" ? "u_1" : DEFAULT_ORG_ID, tenantId: "" };
+      bus.subscribe(busTopic, (notice) => heard.push(notice));
+    }
+    await published.session.set("c", { ...old, version: 0, lineageId: "lin_2" }, "absent");
+    await tick();
+    await tick();
+    const after = await run();
+    expect(after.output).toEqual({ v: "lin_2" });
+    expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+    expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
+  });
+
+  it("request host turns × session, deleted", async () => {
+    // A deleted session's requests stay in the store, so a turns view that
+    // heard only `request` would keep showing them: it hears the session's
+    // lifecycle too, which a delete publishes.
+    const bus = createInMemoryBus();
+    const stores = { ...createInMemoryStores(), bus };
+    await seed(stores, "root");
+    await seed(stores, "a", "root");
+    const said = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "say" as never,
+      input: { v: "1" } as never,
+      userId: "u_1",
+      sessionId: "c",
+      stores,
+      runtimeConfig: { requestHost: { hostHasViews: () => true } }
+    });
+    expect(said.error).toBeUndefined();
+    await tick();
+    const run = () => runView({ flow, viewName: "host_turns", input: {}, userId: "u_1", orgId: DEFAULT_ORG_ID, sessionId: "a", stores });
+    const before = await run();
+    expect(before.output).toEqual({ v: "1" });
+    const heard: ChangeNotice[] = [];
+    for (const t of before.topics) {
+      const busTopic: BusTopic =
+        t.scope === "session" ? { scope: "session", id: t.id, tenantId: "" } : { scope: t.scope, id: t.scope === "user" ? "u_1" : DEFAULT_ORG_ID, tenantId: "" };
+      bus.subscribe(busTopic, (notice) => heard.push(notice));
+    }
+    await withChangeBus(stores).session.delete("c");
+    await tick();
+    await tick();
+    const after = await run();
+    expect(after.output).toEqual({ v: "absent" });
+    expect(admitted(before, heard), `${JSON.stringify(before.hears)} heard ${JSON.stringify(heard)}`).not.toEqual([]);
+  });
+
+  it("request host list × user", async () => {
+    // A first run in a new session makes it, on the caller's user topic.
+    const { before, after, heard } = await cell("host_list", "say", "c", false);
+    expect(after.output).not.toEqual(before.output);
+    expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
+    expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);
+  });
+
+  it("request host turns × session", async () => {
+    const { before, after, heard } = await cell("host_turns", "say", "c");
     expect(after.output).not.toEqual(before.output);
     expect(heard, JSON.stringify(before.topics)).not.toEqual([]);
     expect(admitted(before, heard), JSON.stringify(before.hears)).not.toEqual([]);

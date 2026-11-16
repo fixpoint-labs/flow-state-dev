@@ -27,7 +27,8 @@ const SERVES_ADMITTED = new Set([
   "route-utils.ts", // resolveOwnerFlow for a session the guard checked; write sessions never reach it
   "client-session.ts", // the same, for the client's session reads
   "debug-snapshot.ts", // debug reads of a session the guard checked
-  "session-routes.ts" // the session listing, after ownResolverVerdict
+  "session-routes.ts", // the session listing, after ownResolverVerdict
+  "view-routes.ts" // a view's session admission: its host rule runs after admitListedSession's write-record rule (FIX-2725)
 ]);
 
 describe("write-record authorization", () => {

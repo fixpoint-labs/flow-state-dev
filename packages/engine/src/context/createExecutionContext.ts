@@ -213,7 +213,7 @@ import { PAST_TURN_STATUSES } from "../execution/past-turns";
 import { readSettledTurns, type SettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
 import { NoSessionError, noSessionHandle, noSessionRecord } from "./no-session";
-import { createViewDependencies, guardViewRequestHost, recordSessionReads, refusingModelResolver, ViewModelCallError } from "./view-reads";
+import { createViewDependencies, guardViewRequestHost, recordSessionReads, refusingModelResolver, sessionReadObserver, ViewModelCallError } from "./view-reads";
 
 // FIX-2063.
 /**
@@ -1200,6 +1200,9 @@ export async function createExecutionContext<
           dispatchOperation: options.requestHost.dispatchOperation,
           serviceRoute: options.requestHost.serviceRoute,
           resolveFlow: options.requestHost.resolveFlow,
+          ...(options.requestHost.sessionAdmission !== undefined ? { sessionAdmission: options.requestHost.sessionAdmission } : {}),
+          // FIX-2725 D1: a view's session reads record where each answers.
+          ...(viewDependencies !== undefined ? { sessionReads: sessionReadObserver(viewDependencies) } : {}),
           parentTask: options.requestHost.parentTask,
           waitResume: options.requestHost.waitResume,
           waitSweeper: options.requestHost.waitSweeper,
@@ -1253,7 +1256,7 @@ export async function createExecutionContext<
   // FIX-2623 D1: the request host's reads reach stores outside `ctx.resources`
   // and the state getters, so in a view each one is recorded or refused.
   if (viewDependencies !== undefined && requestHostBuild !== undefined) {
-    guardViewRequestHost(requestHostBuild.host, viewDependencies, noSession);
+    guardViewRequestHost(requestHostBuild.host, options.viewScope ?? (noSession ? "user" : "session"));
   }
 
   if (requestHostBuild?.livenessRefusal !== undefined) {

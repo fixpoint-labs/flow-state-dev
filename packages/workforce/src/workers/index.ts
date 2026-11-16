@@ -78,3 +78,5 @@ export { workerUsageView } from "./worker-usage-ref";
 export { workerFlow, type WorkerFlowBuilder } from "./worker-flow";
 export { rosterView } from "./roster-view-ref";
 export type { RosterView } from "./roster-view";
+export { sessionTurnsViewRef, workerSessionsViewRef } from "./session-views-ref";
+export { TURN_ACTIONS } from "./turn-actions";

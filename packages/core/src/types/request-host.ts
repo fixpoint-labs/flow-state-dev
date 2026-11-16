@@ -46,6 +46,7 @@
 
 import type { WaitGateBinding, WaitOutcome, TaskAddress } from "./wait-gate";
 import type { HistoryTurn, MessageLimit } from "./scope";
+import type { RequestStatus } from "./request";
 import type { InternalBlockContext } from "./block";
 
 /** How a parent-board row is being settled. */
@@ -302,6 +303,85 @@ export type PeerSessionView = {
    * process. Untyped: parse it with your own schema.
    */
   readonly state: Readonly<Record<string, unknown>>;
+  // FIX-2725 D1.
+  /**
+   * Which session this is, among every session that has held its id: a new
+   * one is minted when the session is recreated under the same id. Server
+   * only: key a partition by it, never answer it to a client.
+   */
+  readonly lineageId: string;
+};
+
+// FIX-2725 D1.
+/** Which of the running principal's sessions {@link RequestSessions.list} reads. */
+export type SessionListQuery = {
+  /** Only sessions of flows of this kind. */
+  readonly flowKind?: string;
+  /** Only sessions owned by this flow instance. */
+  readonly flowId?: string;
+  /**
+   * Exact match on readonly state fields the flow `flowId` (else the
+   * registered flow of kind `flowKind`) declares. Any other field throws:
+   * a session's other state is not the list's to filter on.
+   */
+  readonly fields?: Readonly<Record<string, string>>;
+  /** How many rows, newest first. Defaults to and at most 100. */
+  readonly limit?: number;
+  /**
+   * How many of the newest matching sessions to pass over first, to read on
+   * where `more` said a page stopped. Counted before the list leaves out a
+   * session it doesn't answer, so a page can hold fewer than `limit`.
+   */
+  readonly offset?: number;
+};
+
+/** One session as {@link RequestSessions.list} answers it: no items, no state but its readonly fields. */
+export type ListedSession = {
+  readonly id: string;
+  readonly flowKind: string;
+  /** The flow instance that owns it; absent on a record written before instances had ids. */
+  readonly flowId?: string;
+  /** As {@link PeerSessionView.lineageId}: server only. */
+  readonly lineageId: string;
+  /** Its title, once one is set. */
+  readonly title?: string;
+  readonly createdAt: number;
+  /** When the session last changed: a request starting in it, a title. */
+  readonly updatedAt: number;
+  /** Its readonly state fields, as {@link PeerSessionView.state}. */
+  readonly state: Readonly<Record<string, unknown>>;
+};
+
+/** The running principal's top-level sessions, newest first. */
+export type SessionList = {
+  readonly sessions: readonly ListedSession[];
+  /** Whether more sessions matched than the limit let through. */
+  readonly more: boolean;
+};
+
+/** Which requests {@link RequestSessions.turns} reads. */
+export type SessionTurnsQuery = {
+  /** Only requests in one of these statuses, filtered at the store. */
+  readonly status?: readonly RequestStatus[];
+  /** Only requests of one of these actions. */
+  readonly actions?: readonly string[];
+  /** How many of each session's newest requests. Defaults to and at most 50. */
+  readonly limit?: number;
+};
+
+/** One request of a session, as {@link RequestSessions.turns} answers it: its status, never its words. */
+export type SessionTurn = {
+  readonly id: string;
+  readonly sessionId: string;
+  readonly action: string;
+  readonly status: RequestStatus;
+  /** What started it: `http`, `mcp`, `scheduled`, `notification`, and so on. */
+  readonly source: string;
+  readonly startedAtMs: number;
+  readonly completedAtMs?: number;
+  readonly updatedAt: number;
+  /** Why it failed, when it did. */
+  readonly error?: { readonly code: string; readonly message: string };
 };
 
 /** Which of another session's settled turns {@link RequestSessions.history} reads. */
@@ -362,8 +442,32 @@ export interface RequestSessions {
    * and for one that doesn't exist. Reads only: nothing is written to the
    * session and nothing runs in it. A turn the session runs now, a suspended
    * turn and a parked one are left out, and `running` says one is open.
+   * It returns the transcript, so a view that reads it hears `items` and runs
+   * again per streamed chunk; a view meant to stay quiet during a reply reads
+   * {@link turns}, not `history`.
    */
   history(sessionId: string, query?: SessionHistoryQuery): Promise<SessionHistory | undefined>;
+
+  // FIX-2725 D1.
+  /**
+   * The running principal's top-level sessions, by the rule of {@link read},
+   * filtered at the store, newest first: at most 100, with `more` set when
+   * more matched.
+   */
+  list(query?: SessionListQuery): Promise<SessionList>;
+
+  /**
+   * The requests of the session `sessionId`, newest first, at most 50, when
+   * it is the running principal's by the rule of {@link read}; `undefined`
+   * otherwise. Status, times, source and error only, never the words.
+   */
+  turns(sessionId: string, query?: SessionTurnsQuery): Promise<SessionTurn[] | undefined>;
+  /**
+   * The requests of each of `sessionIds` (at most 100) the running principal
+   * may read, newest first, at most 50 a session. A session it may not read
+   * adds nothing.
+   */
+  turns(sessionIds: readonly string[], query?: SessionTurnsQuery): Promise<SessionTurn[]>;
 }
 
 /**

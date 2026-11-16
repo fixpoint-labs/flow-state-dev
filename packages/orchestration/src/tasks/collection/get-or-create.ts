@@ -106,6 +106,15 @@ export interface ResourceBackingSpec extends CommonOptions {
    * `taskLedgers` resolver passes the one it is handed.
    */
   partition?: string;
+  // FIX-2725 D2.
+  /**
+   * The conversation a view reads this board for, in the running session's
+   * place: a user view runs in no session, so the board's notices are heard
+   * on this one's topic (the filer of a row with none, and of a board with no
+   * rows yet). The caller passes an id its owner check admitted, never input
+   * it didn't check. Absent, the running session.
+   */
+  readFor?: string;
 }
 
 export type GetOrCreateTaskCollectionOptions =
@@ -158,7 +167,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // tests wire neither handle; the field then stays absent.
   const claimIdentity = readClaimIdentity(options.ctx);
   // Who is adding tasks through this ref: the session owner, server-set.
-  const createdBy = options.ctx.session?.identity?.userId;
+  const createdBy = runningSessionOf(options.ctx)?.userId;
   // Where they file it (FIX-2133 D1), and how long a question waits when the
   // host sets a deadline for a person (the epic's D3): server-set.
   const filing = filingStampOf(options.ctx);
@@ -167,7 +176,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // to the session that filed it (whose view shows the board); server-written
   // (BP-031). No `Task.filer`: the ledger's legacy filer, else the running session.
   const legacyFiler = legacyFilerOf(options);
-  const runningSession = options.ctx.session?.identity?.id;
+  const runningSession = (options.backing === "resource" ? options.readFor : undefined) ?? runningSessionOf(options.ctx)?.id;
   /** The session an entry's board notices go to: the one rule for the publish and for a view's read of the board. */
   const filerOf = (task: Task): string | undefined => task.filer?.sessionId ?? legacyFiler?.(task) ?? runningSession;
   const onWrite = (task: Task): void => {
@@ -238,7 +247,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // A ledger a board hands rows out from delivers each ending to its filer
   // (FIX-2078), bound to this request; and stamps the filer on each row it files.
   const declaredDelivery = isDefinedTaskCollection(declared) ? declared.__taskCollection.delivery : undefined;
-  const sessionId = ctx.session?.identity?.id;
+  const sessionId = runningSessionOf(ctx)?.id;
   // The engine's identity of the running request (FIX-2123), never input (BP-031).
   const requestId = ctx.request?.identity?.id;
   const delivery =
@@ -280,6 +289,21 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   const filers = [runningSession, ...ref.list().map(filerOf)].filter((id): id is string => id !== undefined);
   recordBoardRead(ctx, { board: options.collectionId, sessionIds: filers, ledger: options.collection });
   return ref;
+}
+
+// FIX-2725 D2.
+/**
+ * The running session's identity, or `undefined` where there is none: a
+ * mock context, or a user or org view, whose `ctx.session` refuses every use
+ * (`NoSessionError`). Any other failure propagates.
+ */
+function runningSessionOf(ctx: BlockContext): BlockContext["session"]["identity"] | undefined {
+  try {
+    return ctx.session?.identity;
+  } catch (error) {
+    if (error instanceof Error && error.name === "NoSessionError") return undefined;
+    throw error;
+  }
 }
 
 /** The legacy filer a resource-backed ledger declares, bound to the partition it is read at. */
@@ -359,7 +383,7 @@ function assertKnownBacking(options: GetOrCreateTaskCollectionOptions): void {
  */
 function readClaimIdentity(ctx: BlockContext): TaskClaimIdentity | undefined {
   const requestId = ctx.request?.identity?.id;
-  const sessionId = ctx.session?.identity?.id;
+  const sessionId = runningSessionOf(ctx)?.id;
   if (requestId === undefined || sessionId === undefined) return undefined;
   const tenantId = ctx.request.identity.tenantId;
   return {
@@ -378,7 +402,7 @@ function readClaimIdentity(ctx: BlockContext): TaskClaimIdentity | undefined {
  * (`RequestHost.userDeadlineMs`; none by default, the epic's D3). Server-set.
  */
 function filingStampOf(ctx: BlockContext): FilingStamp {
-  const identity = ctx.request?.identity ?? ctx.session?.identity;
+  const identity = ctx.request?.identity ?? runningSessionOf(ctx);
   const tenantId = identity?.tenantId;
   const orgId = identity?.orgId;
   const holdDueMs = requestHostOf(ctx)?.userDeadlineMs;

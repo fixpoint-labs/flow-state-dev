@@ -184,7 +184,7 @@ a package call:
 
 | The screen | Package piece |
 |---|---|
-| The sessions list | `listWorkerSessions("desk.main")` from `@flow-state-dev/workforce/browser` |
+| The sessions list | the roster flow's worker sessions view, `workerSessionsViewRef()` from `@flow-state-dev/workforce/browser` |
 | *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject`, then workforce's `setSessionFields` with the project's repository: the session's `repository` (`flows/session-repository.mts`), which the host's run source reads |
 | The project picker and *New project* | `listProjects`, `createProject` and `checkRepository`, from `defineProjectBlocks` with the workspace host's check (`flows/projects.mts`) |
 | The picker's harness chips | the harness kit's `harnesses` flow's `readiness` view, read with no session |

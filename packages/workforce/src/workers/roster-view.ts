@@ -47,10 +47,6 @@ const recordOf = (value: unknown): Record<string, unknown> =>
  * roster flow's `views`.
  */
 export function defineRosterView(installation: WorkerInstallation): RosterView {
-  const own = installation.resources[WORKERS_RESOURCE];
-  const standard = installation.resources[STANDARD_WORKERS_RESOURCE];
-  // What a browser reads of an own row: the collection's client projection.
-  const project = (own as { client?: { data?: (state: unknown) => unknown } }).client?.data ?? ((state: unknown) => state);
   return defineView({
     scope: "user",
     key: (entry) => entry.id,
@@ -58,48 +54,66 @@ export function defineRosterView(installation: WorkerInstallation): RosterView {
       name: "workforce-roster",
       inputSchema: z.object({}),
       outputSchema: rosterSchema,
-      resources: { [WORKERS_RESOURCE]: own, [STANDARD_WORKERS_RESOURCE]: standard },
-      execute: async (_input, ctx) => {
-        const resources = ctx.resources as unknown as {
-          [WORKERS_RESOURCE]: { list(): Promise<StoredEntry[]> };
-          [STANDARD_WORKERS_RESOURCE]: { list(query?: { cursor?: string }): Promise<{ items: StoredEntry[]; nextCursor?: string }> };
-        };
-        // The standard projection answers in pages: read every one.
-        const everyStandard = async (): Promise<StoredEntry[]> => {
-          const all: StoredEntry[] = [];
-          for (let cursor: string | undefined, first = true; first || cursor !== undefined; first = false) {
-            const page = await resources[STANDARD_WORKERS_RESOURCE].list(cursor !== undefined ? { cursor } : undefined);
-            all.push(...page.items);
-            cursor = page.nextCursor;
-          }
-          return all;
-        };
-        const byPath = (a: StoredEntry, b: StoredEntry) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-        const [ownEntriesStored, standardStored] = (await Promise.all([resources[WORKERS_RESOURCE].list(), everyStandard()])).map((entries) => [...entries].sort(byPath));
-        const entryOf = (stored: StoredEntry, data: Record<string, unknown>, isStandard: boolean): z.infer<typeof rosterEntrySchema> => ({
-          id: stored.path.slice(stored.path.lastIndexOf("/") + 1),
-          flow: String(data.flow),
-          standard: isStandard,
-          description: textOrNull(data.description),
-          name: textOrNull(data.name),
-          teamName: isStandard ? textOrNull(data.teamName) : null,
-          forkedFrom: isStandard ? null : textOrNull(data.forkedFrom),
-          edited: false,
-          settings: recordOf(data.settings)
-        });
-        const ownEntries = ownEntriesStored.map((stored) => entryOf(stored, recordOf(project(stored.state)), false));
-        const copies = new Map(ownEntries.map((entry) => [entry.id, entry]));
-        // A standard worker the user edited is listed once, as their copy:
-        // still standard, on its file's team, read from their own stored.
-        const standardEntries = standardStored.map((stored) => {
-          const file = entryOf(stored, stored.state, true);
-          const copy = copies.get(file.id);
-          if (copy === undefined) return file;
-          copies.delete(file.id);
-          return { ...copy, standard: true, teamName: file.teamName, forkedFrom: null, edited: true };
-        });
-        return [...ownEntries.filter((entry) => copies.has(entry.id)), ...standardEntries];
-      }
+      resources: rosterResources(installation),
+      execute: async (_input, ctx) => readRosterEntries(ctx, installation)
     })
   });
+}
+
+// FIX-2725.
+/** The worker collections a block that reads the roster declares. */
+export function rosterResources(installation: WorkerInstallation) {
+  return {
+    [WORKERS_RESOURCE]: installation.resources[WORKERS_RESOURCE],
+    [STANDARD_WORKERS_RESOURCE]: installation.resources[STANDARD_WORKERS_RESOURCE]
+  };
+}
+
+/**
+ * The running user's roster, as the roster view answers it, read through
+ * `ctx`'s worker collections (a block that declares {@link rosterResources}).
+ */
+export async function readRosterEntries(ctx: { resources: unknown }, installation: WorkerInstallation): Promise<z.infer<typeof rosterSchema>> {
+  const own = installation.resources[WORKERS_RESOURCE];
+  // What a browser reads of an own row: the collection's client projection.
+  const project = (own as { client?: { data?: (state: unknown) => unknown } }).client?.data ?? ((state: unknown) => state);
+  const resources = ctx.resources as unknown as {
+    [WORKERS_RESOURCE]: { list(): Promise<StoredEntry[]> };
+    [STANDARD_WORKERS_RESOURCE]: { list(query?: { cursor?: string }): Promise<{ items: StoredEntry[]; nextCursor?: string }> };
+  };
+  // The standard projection answers in pages: read every one.
+  const everyStandard = async (): Promise<StoredEntry[]> => {
+    const all: StoredEntry[] = [];
+    for (let cursor: string | undefined, first = true; first || cursor !== undefined; first = false) {
+      const page = await resources[STANDARD_WORKERS_RESOURCE].list(cursor !== undefined ? { cursor } : undefined);
+      all.push(...page.items);
+      cursor = page.nextCursor;
+    }
+    return all;
+  };
+  const byPath = (a: StoredEntry, b: StoredEntry) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  const [ownEntriesStored, standardStored] = (await Promise.all([resources[WORKERS_RESOURCE].list(), everyStandard()])).map((entries) => [...entries].sort(byPath));
+  const entryOf = (stored: StoredEntry, data: Record<string, unknown>, isStandard: boolean): z.infer<typeof rosterEntrySchema> => ({
+    id: stored.path.slice(stored.path.lastIndexOf("/") + 1),
+    flow: String(data.flow),
+    standard: isStandard,
+    description: textOrNull(data.description),
+    name: textOrNull(data.name),
+    teamName: isStandard ? textOrNull(data.teamName) : null,
+    forkedFrom: isStandard ? null : textOrNull(data.forkedFrom),
+    edited: false,
+    settings: recordOf(data.settings)
+  });
+  const ownEntries = ownEntriesStored.map((stored) => entryOf(stored, recordOf(project(stored.state)), false));
+  const copies = new Map(ownEntries.map((entry) => [entry.id, entry]));
+  // A standard worker the user edited is listed once, as their copy:
+  // still standard, on its file's team, read from their own stored.
+  const standardEntries = standardStored.map((stored) => {
+    const file = entryOf(stored, stored.state, true);
+    const copy = copies.get(file.id);
+    if (copy === undefined) return file;
+    copies.delete(file.id);
+    return { ...copy, standard: true, teamName: file.teamName, forkedFrom: null, edited: true };
+  });
+  return [...ownEntries.filter((entry) => copies.has(entry.id)), ...standardEntries];
 }

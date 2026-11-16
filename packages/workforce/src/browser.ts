@@ -23,13 +23,14 @@ export {
   type EditWorkerInput,
   type HireWorkerInput,
   type RosterEntry,
-  type WorkerSessionEntry,
   type WorkforceClient,
   type WorkforceClientSource
 } from "./workers/client";
 export { rosterView } from "./workers/roster-view-ref";
 export { workerUsageView } from "./workers/worker-usage-ref";
 export type { RosterView } from "./workers/roster-view";
+export { sessionTurnsViewRef, workerSessionsViewRef } from "./workers/session-views-ref";
+export type { ListedTurn, SessionTurnsView, ListedWorkerSession, WorkerSessionsView } from "./workers/session-views";
 export {
   deriveWorkerSessionId,
   isDerivedWorkerSessionId,

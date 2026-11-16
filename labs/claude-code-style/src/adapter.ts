@@ -7,7 +7,7 @@
  *
  * | Verb            | Package call                                                              |
  * |-----------------|---------------------------------------------------------------------------|
- * | `watchSessions` | the workforce client's `listWorkerSessions`, for each built mode's worker, |
+ * | `watchSessions` | the roster flow's worker sessions view, for each built mode's worker,      |
  * |                 | and each row again on its session's notices, through `client.subscribe`  |
  * | `listProjects`  | the projects collections read by scope: only projects the user may work in |
  * | `createProject` | the project blocks' `createProject`, a private project on a repository,  |
@@ -84,6 +84,7 @@ import {
   SET_SESSION_FIELDS_ACTION,
   WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY,
+  workerSessionsViewRef,
 } from "@flow-state-dev/workforce/browser";
 import type { CreateProjectOutput } from "@flow-state-dev/workforce";
 import { isSuspensionWait, type FileContent } from "@flow-state-dev/core/items";
@@ -1243,8 +1244,9 @@ export function createWiredLab(fsd: Client, connection: LabConnection = {}): Lab
               dirty.clear();
               const next = new Map<string, LabSession>();
               for (const mode of modes) {
-                const listed = await workforce.listWorkerSessions(mode.worker);
-                for (const read of await Promise.all(listed.map((entry) => rowOf(mode.worker, entry.session.id, dismissed, rows.get(entry.session.id))))) {
+                // FIX-2725: the roster flow's worker sessions view, read as a list.
+                const listed = (await fsd.view(workerSessionsViewRef(), { worker: mode.worker })).value;
+                for (const read of await Promise.all(listed.map((entry) => rowOf(mode.worker, entry.id, dismissed, rows.get(entry.id))))) {
                   next.set(read.row.id, read.row);
                   complete &&= read.complete;
                 }

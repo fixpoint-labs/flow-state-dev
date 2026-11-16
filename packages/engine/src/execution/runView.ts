@@ -46,6 +46,7 @@ import { generateId } from "../utils/generate-id";
 import { executeBlock } from "./executeBlock";
 import { requestEndRegistryOf } from "./request-end-hooks";
 import { drainRequestSideChainPool } from "./runAction";
+import type { SessionAdmission } from "../context/request-sessions";
 
 /** What {@link runView} needs: the flow, the view, the caller, and the session for a session view. */
 export type RunViewOptions = {
@@ -63,6 +64,15 @@ export type RunViewOptions = {
   // FIX-2625 D1.
   /** The change the caller asks the view to answer for: `ctx.view.changed`. A view with no `key` ignores it. */
   changed?: ViewChange;
+  // FIX-2725 D1.
+  /**
+   * Which of the caller's sessions the view's session reads may answer, on
+   * top of the owner rule: the HTTP session list's per-row admission, which
+   * the view route builds. Absent, the owner rule alone (a direct call).
+   */
+  admitSession?: SessionAdmission;
+  /** Another registered flow by its address: what a session read needs to cut a session's state to its flow's readonly fields. */
+  resolveFlow?: (address: string) => FlowInstance | undefined;
 };
 
 /** A view's answer: its block's output, and the topics a change to what it read publishes on. */
@@ -267,6 +277,8 @@ type ReadOnlyRun = {
   source: "view";
   /** `ctx.view` on every block of the run. */
   view: ViewRunContext;
+  admitSession?: SessionAdmission;
+  resolveFlow?: (address: string) => FlowInstance | undefined;
 };
 
 /**
@@ -293,6 +305,7 @@ async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
     requestId,
     userId: run.userId,
     ...(noSession ? { noSession: true } : { sessionId: run.sessionId }),
+    viewScope: run.scope,
     orgId: run.orgId,
     tenantId: run.tenantId,
     source: run.source,
@@ -311,7 +324,9 @@ async function runReadOnly(run: ReadOnlyRun): Promise<ViewAnswer> {
     requestHost: {
       dispatchOperation: () => {
         throw readOnlyRefusal("start a request");
-      }
+      },
+      ...(run.resolveFlow !== undefined ? { resolveFlow: run.resolveFlow } : {}),
+      ...(run.admitSession !== undefined ? { sessionAdmission: run.admitSession } : {})
     }
   });
 
@@ -373,7 +388,9 @@ export async function runView(options: RunViewOptions): Promise<ViewAnswer> {
     ...(options.runtimeConfig !== undefined ? { runtimeConfig: options.runtimeConfig } : {}),
     ...(options.signal !== undefined ? { signal: options.signal } : {}),
     source: "view",
-    view: partial.context
+    view: partial.context,
+    ...(options.admitSession !== undefined ? { admitSession: options.admitSession } : {}),
+    ...(options.resolveFlow !== undefined ? { resolveFlow: options.resolveFlow } : {})
   });
   if (view.key === undefined) return answer;
   const keyed = { ...answer, keys: keysOf(options.viewName, view.key, answer.output) };

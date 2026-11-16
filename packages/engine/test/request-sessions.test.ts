@@ -71,6 +71,8 @@ describe("RequestHost.sessions.read", () => {
       flowKind: "worker",
       flowId: "worker-1",
       state: { workerId: "researcher" },
+      // FIX-2725 D1: which session it is, for a server read keyed by it.
+      lineageId: "lin_mine",
     });
   });
 
@@ -102,9 +104,9 @@ describe("RequestHost.sessions.read", () => {
 
   it("answers no state for a flow not registered here, and a legacy row by its singleton kind", async () => {
     const { sessions } = await setup();
-    expect(await sessions.read("unregistered")).toEqual({ flowKind: "worker", flowId: "gone", state: {} });
+    expect(await sessions.read("unregistered")).toEqual({ flowKind: "worker", flowId: "gone", state: {}, lineageId: "lin_unregistered" });
     // A legacy row's kind names an instance of another kind here: not its owner.
-    expect(await sessions.read("legacy")).toEqual({ flowKind: "worker-1", state: {} });
+    expect(await sessions.read("legacy")).toEqual({ flowKind: "worker-1", state: {}, lineageId: "lin_legacy" });
   });
 
   it("hands over a copy: changing the answer changes no record", async () => {

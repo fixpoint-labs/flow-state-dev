@@ -47,11 +47,13 @@ type BoardReadRecord = { board: string; covers?: string };
 /**
  * One read a view's run made: a scope's state, one of its resources by
  * accessor, or a task board; for a session, also the session itself
- * (`"session"`: its items, metadata, window, journal or record).
+ * (`"session"`: its items, metadata, window, journal or record), which flow
+ * and lineage it is (`"identity"`), or its requests' statuses (`"turns"`);
+ * for the user, the list of their sessions (`"sessions"`).
  */
 export type RecordedRead =
-  | { scope: "session"; sessionId: string; what: "state" | "session" | ResourceRead | BoardReadRecord }
-  | { scope: "user" | "org"; what: "state" | ResourceRead | BoardReadRecord };
+  | { scope: "session"; sessionId: string; what: "state" | "session" | "identity" | "turns" | ResourceRead | BoardReadRecord }
+  | { scope: "user" | "org"; what: "state" | "sessions" | ResourceRead | BoardReadRecord };
 
 /** A recorder for one run: what it read, and the topics that hear a change to it. */
 export type ReadRecorder = {
@@ -86,6 +88,25 @@ const STATE_KINDS: Record<RecordedRead["scope"], readonly ChangeKind[]> = {
 /** The kinds a read of the session itself hears: its every change but its resources and boards. */
 const SESSION_KINDS: readonly ChangeKind[] = ["items", "request", "run", "state"];
 
+// FIX-2725 D1.
+/**
+ * The kinds each read of another session, or of the user's sessions, hears.
+ * A session's flow and lineage change only when it is deleted or recreated
+ * under its id, both of which publish `run` on it. Its requests' statuses
+ * change on a request write, which publishes `request` on it; they vanish
+ * with the session, whose delete (and a recreate) publishes `state` on it but
+ * leaves its requests in the store. `state`, not `run`: a busy turn's session
+ * field deltas and its child sessions' writes publish `run`. The user's
+ * session list changes on a session written whole (made, titled, deleted) or
+ * a request's status written, each of which publishes `run` on their user
+ * topic. None hears `items`, which a reply publishes once per stored chunk.
+ */
+const PEER_KINDS: Record<"identity" | "turns" | "sessions", readonly ChangeKind[]> = {
+  identity: ["run"],
+  turns: ["request", "state"],
+  sessions: ["run"]
+};
+
 /** What one run hears under one topic, built up read by read. */
 type Hearing = { topic: WireTopic; kinds: Set<ChangeKind>; paths: Set<string> };
 
@@ -108,6 +129,8 @@ function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
       for (const kind of STATE_KINDS[read.scope]) at(scopeTopic).kinds.add(kind);
     } else if (read.what === "session") {
       for (const kind of SESSION_KINDS) at(scopeTopic).kinds.add(kind);
+    } else if (read.what === "identity" || read.what === "turns" || read.what === "sessions") {
+      for (const kind of PEER_KINDS[read.what]) at(scopeTopic).kinds.add(kind);
     } else if ("board" in read.what) {
       at({ ...scopeTopic, resource: read.what.board }).kinds.add("board");
     } else if (!covered.has(read.what.resource)) {
@@ -170,6 +193,15 @@ export type ViewDependencies = {
   resource(scope: "session" | "user" | "org", name: string, reach: StorageReach): void;
   /** A session itself read (its items, metadata, window, journal or record): heard on its every change. */
   session(sessionId: string): void;
+  // FIX-2725 D1.
+  /** Which flow and lineage another session is: heard on its `run` only. */
+  sessionIdentity(sessionId: string): void;
+  /** Another session's readonly state: heard on its `state`. */
+  sessionState(sessionId: string): void;
+  /** Another session's requests' statuses: heard on its `request` only. */
+  sessionTurns(sessionId: string): void;
+  /** The caller's sessions listed: heard on their user topic's `run`. */
+  sessionList(): void;
   // FIX-2625.
   /**
    * A task board read through its task collection, whose ledger is at
@@ -214,6 +246,18 @@ export function createViewDependencies(
     session(id) {
       record({ scope: "session", sessionId: id, what: "session" });
     },
+    sessionIdentity(id) {
+      record({ scope: "session", sessionId: id, what: "identity" });
+    },
+    sessionState(id) {
+      record({ scope: "session", sessionId: id, what: "state" });
+    },
+    sessionTurns(id) {
+      record({ scope: "session", sessionId: id, what: "turns" });
+    },
+    sessionList() {
+      record({ scope: "user", what: "sessions" });
+    },
     board(board, scope, sessionIds, covers, reach) {
       if (scope === "org") {
         record({ scope: "org", what: { board } });
@@ -249,37 +293,59 @@ export class UnrecordedReadError extends Error {
   }
 }
 
+// FIX-2725 D1.
 /**
- * Make a view's request host record or refuse each read it offers. A session
- * read records the session it read; with no session, it refuses. Liveness
- * reads the active-request registry, which no topic covers, so it refuses,
- * whether or not the host offered it.
+ * What a view's session reads record, read by read: the request host's
+ * `sessions` verbs call it where they answer a session (`request-sessions.ts`),
+ * so a session the owner rule or the view's admission refuses never has its
+ * topic named. A `read`, `turns` or `history` that leaves an asked-for session
+ * unanswered (a `turns` batch member included) records the caller's list.
+ */
+export type SessionReadObserver = {
+  /** `read` answered the session: its flow and lineage. */
+  identity(sessionId: string): void;
+  /** The state of a session `read` answered was read. */
+  state(sessionId: string): void;
+  /** `history` answered the session. */
+  history(sessionId: string): void;
+  /** `turns` answered the session. */
+  turns(sessionId: string): void;
+  /** `list` ran, or a one-session verb answered nothing: the caller's sessions, as a whole. */
+  list(): void;
+};
+
+/** The observer a view run's session reads record through: the dependency surface's rules, never the raw recorder. */
+export function sessionReadObserver(dependencies: ViewDependencies): SessionReadObserver {
+  return {
+    identity: (id) => dependencies.sessionIdentity(id),
+    state: (id) => dependencies.sessionState(id),
+    history: (id) => dependencies.session(id),
+    turns: (id) => dependencies.sessionTurns(id),
+    list: () => dependencies.sessionList()
+  };
+}
+
+/**
+ * Make a view's request host refuse what it can't record. A session or user
+ * view reads the caller's sessions, recorded where each read answers
+ * ({@link SessionReadObserver}); an org view reads no session, so each
+ * session verb refuses. Liveness reads the active-request registry, which no
+ * topic covers, so it refuses, whether or not the host offered it.
  * The other verbs read nothing outside the run (`parentTask` has no task in a
  * view) or write, and writes already refuse.
  */
-export function guardViewRequestHost(host: RequestHost, dependencies: ViewDependencies, noSession: boolean): void {
+export function guardViewRequestHost(host: RequestHost, scope: "session" | "user" | "org"): void {
   const mutable = host as { -readonly [K in keyof RequestHost]: RequestHost[K] };
-  const sessions = host.sessions;
-  if (sessions !== undefined) {
-    mutable.sessions = noSession
-      ? {
-          read: async () => {
-            throw new NoSessionError("read a session");
-          },
-          history: async () => {
-            throw new NoSessionError("read a session's history");
-          }
-        }
-      : {
-          read: async (sessionId) => {
-            dependencies.session(sessionId);
-            return sessions.read(sessionId);
-          },
-          history: async (sessionId, query) => {
-            dependencies.session(sessionId);
-            return sessions.history(sessionId, query);
-          }
-        };
+  if (host.sessions !== undefined && scope === "org") {
+    const refuse = (what: string) => async (): Promise<never> => {
+      throw new NoSessionError(what);
+    };
+    mutable.sessions = {
+      read: refuse("read a session"),
+      history: refuse("read a session's history"),
+      list: refuse("list sessions"),
+      turns: refuse("read a session's turns")
+    };
   }
   mutable.livenessOf = async () => {
     throw new UnrecordedReadError("read requests' liveness");

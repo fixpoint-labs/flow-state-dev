@@ -18,10 +18,11 @@ import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
 import { birthSession, SessionCreateRefusedError } from "../context/session-birth";
-import { getReadonlyStateKeys, mapLimit } from "@flow-state-dev/core/helpers";
+import { mapLimit } from "@flow-state-dev/core/helpers";
 import { resolveRecordOwner } from "../context/record-owner";
 import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
 import { isOrgAttributed } from "../context/org-attribution";
+import { readonlyStateFilter } from "../context/readonly-state-filter";
 import {
   asObject,
   asStringArray,
@@ -43,7 +44,6 @@ import {
 import {
   isSameSession,
   resolveSessionStorageKey,
-  tenantMatches,
   toBareSessionId
 } from "../stores/scope-keys";
 import { sessionRequestScope } from "../context/session-request-scope";
@@ -53,7 +53,7 @@ import { latestRequestStatus } from "./session-request-status";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
   flowAuthenticates,
-  ownResolverVerdict,
+  admitListedSession,
   type InstanceCallerResolver
 } from "./instance-caller";
 
@@ -192,32 +192,11 @@ function resolveStateFilter(
   const entries = [...url.searchParams.entries()].filter(([name]) => name.startsWith(STATE_FILTER_PREFIX));
   if (entries.length === 0) return {};
   const address = getString(url.searchParams.get("flowId")) ?? getString(url.searchParams.get("flowKind"));
-  const flow = address === undefined ? undefined : registry.get(address);
-  if (flow === undefined) {
-    return {
-      error:
-        "A state filter needs the flow whose readonly state fields it names: pass flowId, or " +
-        "the flowKind of a registered flow."
-    };
-  }
-  // The flow's own schema, not the merged one: the store filters the state it
-  // holds, and a field only a block declares is filled at read time, never
-  // stored at birth, so filtering on it would answer an empty list.
-  const readonly = new Set(getReadonlyStateKeys(flow.session?.stateSchema));
-  const state: Record<string, string> = {};
-  for (const [name, value] of entries) {
-    const field = name.slice(STATE_FILTER_PREFIX.length);
-    if (!readonly.has(field)) {
-      return {
-        error:
-          `Sessions of flow "${flow.kind}" can't be filtered by state field "${field}": only ` +
-          `readonly state fields are filterable` +
-          (readonly.size === 0 ? ", and this flow declares none." : ` (${[...readonly].join(", ")}).`)
-      };
-    }
-    state[field] = value;
-  }
-  return { state };
+  // The one guard a view's `sessions.list` calls too (FIX-2725).
+  return readonlyStateFilter(
+    address === undefined ? undefined : registry.get(address),
+    Object.fromEntries(entries.map(([name, value]) => [name.slice(STATE_FILTER_PREFIX.length), value]))
+  );
 }
 
 export async function handleListSessions(
@@ -328,14 +307,12 @@ export async function handleListSessions(
   //
   // The store query is tenant-scoped on every path, scoped or not. The check
   // is repeated per row so neither verdict can admit a row from another tenant
-  // (FIX-682) if that ever stops being true.
+  // (FIX-682) if that ever stops being true. A write session is never shown
+  // (FIX-2624). The one admission a view's session reads take too (FIX-2725).
+  const admission = { registry: ctx.registry, callerFor: ctx.callerFor, tenantId: ctx.tenantId, hostRule: hostRuleAdmits };
   const visible: SessionRecord[] = [];
   for (const s of sessions) {
-    if (!tenantMatches(s.tenantId, ctx.tenantId)) continue;
-    const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, s);
-    // FIX-2624: a write session is the server's, made for one writer's writes
-    // to one resource; it is no conversation, so a listing never shows it.
-    if (!isWriteSessionId(s.id) && (own ?? hostRuleAdmits(s))) visible.push(s);
+    if (await admitListedSession(admission, s)) visible.push(s);
   }
 
   // Each visible row's latest request status, only when asked:

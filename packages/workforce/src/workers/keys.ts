@@ -152,6 +152,14 @@ export const ROSTER_FLOW = "workforce-roster";
 /** The roster view's name on the roster flow (`defineRosterView`). */
 export const ROSTER_VIEW = "roster";
 
+// FIX-2725.
+/** The worker sessions view's name on the roster flow (`defineWorkerSessionsView`). */
+export const WORKER_SESSIONS_VIEW = "workerSessions";
+
+// FIX-2725.
+/** The session turns view's name on the roster flow (`defineSessionTurnsView`). */
+export const SESSION_TURNS_VIEW = "sessionTurns";
+
 // FIX-2624.
 /** The worker usage view's name on the roster flow (`defineWorkerUsageView`). */
 export const WORKER_USAGE_VIEW = "workerUsage";
