@@ -21,8 +21,11 @@ The page is about a tool that keeps several things. Each stored part, answered:
 - **What a row holds.** State plus separate content. State: `path`, `hash` (SHA-256 of the content),
   `updatedAt` (ISO string), plus whatever `createState` adds; content goes through `writeContent`.
   `W/projection.ts:43,459-473`. The capability's default `createState` adds `title` (the file's
-  basename) and `updatedAt` (a number, `Date.now()`) which is then overwritten by the ISO string
-  since the projection's `extra` spreads last: `B/capability.ts:215-218` vs `W/projection.ts:464-465`.
+  basename) and `updatedAt` (a number, `Date.now()`). `createState` is threaded on as the mount's
+  `entryState` and spreads last, so the default's numeric `updatedAt` replaces the ISO string:
+  `B/capability.ts:215-218`, `B/projection-setup.ts:108-110`, `W/projection.ts:463-465`. A collection
+  whose `stateSchema` declares `updatedAt: z.string()` therefore refuses every file saved with the
+  default; the page's example passes its own `createState` returning an ISO string (filed as FIX-2749).
   Do not document `title`; see Contradictions.
 - **Who can see it.** Decided by the collection's own `scope` (`"session"`, `"user"`, `"org"`...),
   not by bash. The reader sees the files wherever they read that collection (client, other
