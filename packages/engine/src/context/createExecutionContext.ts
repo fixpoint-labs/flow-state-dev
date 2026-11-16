@@ -3494,7 +3494,7 @@ export async function createExecutionContext<
             const covers = accessorOfHandle(read.ledger);
             const scope = covers === undefined ? undefined : accessorScope[covers];
             if (covers === undefined || scope === undefined) return;
-            viewDependencies.board(read.board, scope, read.sessionIds, covers, reachOf(covers, scope));
+            viewDependencies.board(read.board, scope, read.sessionIds, covers, reachOf(covers, scope), read.partition);
           }
         };
   // A board's changes go out on the bus; a row added to it, on its ledger's scope topic too.

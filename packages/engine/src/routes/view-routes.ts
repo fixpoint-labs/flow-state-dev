@@ -42,6 +42,7 @@ import { UnrecordedReadError, ViewModelCallError } from "../context/view-reads";
 import { FlowError } from "../errors/flow-error";
 import { runView, UnknownViewError } from "../execution/runView";
 import { isWireTopic } from "../push/socket-session";
+import { keyHearingPartitions } from "../push/partition-key";
 import { asObject, extractTenantId, jsonResponse, loadTenantSession, parseJsonBody, unknownSessionResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -63,6 +64,9 @@ type ViewRouteContext = {
   // FIX-2725 D1.
   /** The caller as each instance's own doors resolve it: the session list's admission, for the view's session reads. */
   callerFor: InstanceCallerResolver;
+  // FIX-2750.
+  /** The router's push secret, which keys the partitions an answer read; `undefined` on a host with no push. */
+  pushSecret: () => string | undefined;
 };
 
 /** Run one view for its caller. See the file header. */
@@ -148,7 +152,7 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
     return jsonResponse(200, {
       output: answer.output ?? null,
       topics: answer.topics,
-      hears: answer.hears,
+      hears: keyHearingPartitions(answer.hears, ctx.pushSecret(), tenantId ?? ""),
       ...(answer.keys !== undefined ? { keys: answer.keys } : {}),
       ...(answer.partial !== undefined ? { partial: answer.partial } : {})
     });

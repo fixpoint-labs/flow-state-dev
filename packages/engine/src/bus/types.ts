@@ -52,6 +52,14 @@ export type ChangeNotice = {
    * with ids and one without carries none.
    */
   ids?: string[];
+  // FIX-2750.
+  /**
+   * On a `board` notice, the ledger partition the row was added to, raw: the
+   * bus is the server's own, and the push edge sends it to a browser only as
+   * an opaque key (`WireNotice.partition`, `push/partition-key.ts`). Absent:
+   * any partition. A fold of notices in two partitions carries none.
+   */
+  partition?: string;
 };
 
 /** Called with each notice a subscription hears. */

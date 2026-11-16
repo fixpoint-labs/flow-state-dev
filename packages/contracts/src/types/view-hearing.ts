@@ -33,11 +33,22 @@ import type { WireNotice } from "./push-delivery";
  * - `board`, on a session topic narrowed to a board: a task board was read
  *   through its task collection, whose every write publishes its board notice
  *   there. Its ledger's own resource notices are not heard.
+ * - `board`, with `partitions`: a partitioned board was read at those
+ *   partitions, so a `board` notice that names another partition can't change
+ *   it ({@link hearsNotice}).
  */
 export type ViewHearing = {
   readonly topic: WireTopic;
   readonly kinds: readonly ChangeKind[];
   readonly paths?: readonly string[];
+  // FIX-2750.
+  /**
+   * The partitions of a partitioned board the run read, as opaque keys
+   * (`WireNotice.partition`), its empty ones included. Absent: the board was
+   * read whole, or by a server from before partitions, and every `board`
+   * notice under the topic is heard.
+   */
+  readonly partitions?: readonly string[];
 };
 
 /** Whether `subscribed` covers a notice under `heard`. */
@@ -70,9 +81,10 @@ export function mayHold(path: string, roots: readonly string[] | undefined): boo
 
 /**
  * Whether `notice` may change what an answer's run read: a hearing whose topic
- * covers it lists its kind, and a `resource` notice's path falls under the
- * hearing's roots ({@link mayHold}). Every notice, for an answer that names no
- * hearing.
+ * covers it lists its kind, a `resource` notice's path falls under the
+ * hearing's roots ({@link mayHold}), and a `board` notice's partition is one
+ * the hearing lists, when both name one. Every notice, for an answer that
+ * names no hearing.
  */
 export function hearsNotice(hears: readonly ViewHearing[] | undefined, notice: WireNotice): boolean {
   if (hears === undefined) return true;
@@ -80,6 +92,7 @@ export function hearsNotice(hears: readonly ViewHearing[] | undefined, notice: W
     (hearing) =>
       covers(hearing.topic, notice.topic) &&
       hearing.kinds.includes(notice.kind) &&
-      (notice.kind !== "resource" || notice.topic.resource === undefined || mayHold(notice.topic.resource, hearing.paths))
+      (notice.kind !== "resource" || notice.topic.resource === undefined || mayHold(notice.topic.resource, hearing.paths)) &&
+      (notice.kind !== "board" || notice.partition === undefined || hearing.partitions === undefined || hearing.partitions.includes(notice.partition))
   );
 }

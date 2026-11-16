@@ -187,30 +187,40 @@ const KIND_ORDER: readonly WireNotice["kind"][] = ["items", "request", "run", "s
 
 /**
  * Both answers' hearings, one per topic: two for the same topic merge into
- * one hearing of the kinds and paths of both, so a partial answer placed over
- * the held one never narrows what the screen hears and never grows the list.
- * A `resource` hearing with no paths rules no path out, so neither does the merge.
+ * one hearing of the kinds, paths and board partitions of both, so a partial
+ * answer placed over the held one never narrows what the screen hears and
+ * never grows the list. A `resource` hearing with no paths rules no path out,
+ * and a `board` hearing with no partitions no partition, so neither does the
+ * merge.
  */
 function unionHears(a: readonly ViewHearing[], b: readonly ViewHearing[]): ViewHearing[] {
-  const byTopic = new Map<string, { topic: WireTopic; kinds: Set<WireNotice["kind"]>; paths: Set<string> | undefined }>();
+  type Merged = { topic: WireTopic; kinds: Set<WireNotice["kind"]>; paths: Set<string> | undefined; partitions: Set<string> | undefined };
+  const byTopic = new Map<string, Merged>();
+  /** `into` widened by `from`: `undefined` (rules nothing out) wins. */
+  const widen = (into: Set<string> | undefined, from: Set<string> | undefined): Set<string> | undefined => {
+    if (into === undefined || from === undefined) return undefined;
+    for (const value of from) into.add(value);
+    return into;
+  };
   for (const hearing of [...a, ...b]) {
     const key = wireTopicKey(hearing.topic);
     const held = byTopic.get(key);
     const paths = hearing.kinds.includes("resource") && hearing.paths === undefined ? undefined : new Set(hearing.paths ?? []);
+    // FIX-2750.
+    const partitions = hearing.kinds.includes("board") && hearing.partitions === undefined ? undefined : new Set(hearing.partitions ?? []);
     if (held === undefined) {
-      byTopic.set(key, { topic: hearing.topic, kinds: new Set(hearing.kinds), paths });
+      byTopic.set(key, { topic: hearing.topic, kinds: new Set(hearing.kinds), paths, partitions });
       continue;
     }
     for (const kind of hearing.kinds) held.kinds.add(kind);
-    if (held.paths !== undefined) {
-      if (paths === undefined) held.paths = undefined;
-      else for (const path of paths) held.paths.add(path);
-    }
+    held.paths = widen(held.paths, paths);
+    held.partitions = widen(held.partitions, partitions);
   }
-  return [...byTopic.values()].map(({ topic, kinds, paths }) => ({
+  return [...byTopic.values()].map(({ topic, kinds, paths, partitions }) => ({
     topic,
     kinds: KIND_ORDER.filter((kind) => kinds.has(kind)),
-    ...(kinds.has("resource") && paths !== undefined ? { paths: [...paths].sort() } : {})
+    ...(kinds.has("resource") && paths !== undefined ? { paths: [...paths].sort() } : {}),
+    ...(kinds.has("board") && partitions !== undefined && partitions.size > 0 ? { partitions: [...partitions].sort() } : {})
   }));
 }
 

@@ -202,3 +202,64 @@ describe("publishBoardInsert · a new row, on the board's scope topic", () => {
     expect(publishBoardInsert({}, { board: "desk", taskId: "t1", ledger: {} })).toBe(false);
   });
 });
+
+// FIX-2750: a row added to a partitioned ledger names its partition, raw on
+// the bus; the push edge keys it. Rows added in one turn fold to one notice,
+// which names a partition only when every row was added to it.
+describe("publishBoardInsert · a partitioned ledger's row", () => {
+  const userDesk = defineResourceCollection({ scope: "user", pattern: "u-desk/**", stateSchema: z.object({}).passthrough() });
+  const fileInput = z.object({ partitions: z.array(z.string()) });
+
+  async function file(partitions: string[]) {
+    const bus = createInMemoryBus();
+    const heard: ChangeNotice[] = [];
+    bus.subscribe({ scope: "user", id: "alice", tenantId: "" }, (n) => heard.push(n));
+    const flow = defineFlow({
+      kind: "board-partitions",
+      resources: { userDesk },
+      actions: {
+        file: {
+          inputSchema: fileInput,
+          block: handler({
+            name: "file",
+            inputSchema: fileInput,
+            outputSchema: z.object({}),
+            resources: { userDesk },
+            execute: (input, ctx) => {
+              input.partitions.forEach((partition: string, i: number) =>
+                publishBoardInsert(ctx, { board: "desk", taskId: `t${i}`, ledger: ctx.resources.userDesk, partition })
+              );
+              return {};
+            }
+          })
+        }
+      }
+    })();
+    await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "file",
+      input: { partitions },
+      userId: "alice",
+      sessionId: "task-session",
+      stores: { ...createInMemoryStores(), bus },
+      runtimeConfig: {}
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return heard.filter((n) => n.kind === "board");
+  }
+
+  it("names the partition its row was added to", async () => {
+    expect((await file(["conv-a"])).map((n) => n.partition)).toEqual(["conv-a"]);
+  });
+
+  it("keeps the partition when every row folded into the notice was added to it", async () => {
+    expect((await file(["conv-a", "conv-a"])).map((n) => n.partition)).toEqual(["conv-a"]);
+  });
+
+  it("names none when the rows folded into the notice were added to two partitions, so every board reads", async () => {
+    const notices = await file(["conv-a", "conv-b"]);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]!.partition).toBeUndefined();
+  });
+});
