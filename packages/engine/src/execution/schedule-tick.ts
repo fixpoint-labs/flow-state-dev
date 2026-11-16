@@ -25,7 +25,7 @@
  * guarantee; this only finds what is due. A dispatch that fails is dropped,
  * not retried: at-most-once is the scheduled-actions contract.
  */
-import type { FlowInstance, ScheduleDueSource, SchedulesConfig } from "@flow-state-dev/core/types";
+import type { FlowInstance, ScheduleDueSource } from "@flow-state-dev/core/types";
 import { formatScheduleId } from "@flow-state-dev/core/types";
 import { latestScheduledTime } from "@flow-state-dev/core/internal";
 import type { ResourceStateStore } from "../stores/types";
@@ -96,7 +96,7 @@ export async function runScheduleTick(options: RunScheduleTickOptions): Promise<
   const indexes: Array<{ flowKind: string; index: ScheduleDueSource }> = [];
   const seen = new Set<ScheduleDueSource>();
   for (const flow of options.flows) {
-    const schedules = (flow as { schedules?: SchedulesConfig }).schedules;
+    const schedules = flow.schedules;
     if (schedules === undefined) continue;
     for (const [scheduleId, schedule] of Object.entries(schedules.static ?? {})) {
       if (schedule.enabled === false) continue;
@@ -186,7 +186,7 @@ export function scheduleDispatchRequest(options: {
 
 /** Whether a flow declares schedules a tick fires: a static one, or an index. */
 export function declaresTickedSchedules(flow: FlowInstance): boolean {
-  const schedules = (flow as { schedules?: SchedulesConfig }).schedules;
+  const schedules = flow.schedules;
   return schedules !== undefined && (Object.keys(schedules.static ?? {}).length > 0 || schedules.index !== undefined);
 }
 
