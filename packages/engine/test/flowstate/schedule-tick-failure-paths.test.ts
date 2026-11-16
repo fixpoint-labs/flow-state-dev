@@ -122,6 +122,29 @@ describe("the local cron, when a renewal never answers", () => {
   });
 });
 
+describe("the local cron, when one acquire never answers", () => {
+  it("tries again on a later beat, and ticks once the store answers", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(Date.parse("2026-11-16T09:00:30Z"));
+    const registry = createInMemoryStores();
+    let calls = 0;
+    const leases: LeaseStore = {
+      // The first acquire hangs, as a dropped connection would; the store answers from then on.
+      acquire: (key, options) => (++calls === 1 ? new Promise(() => undefined) : registry.leases.acquire(key, options)),
+      release: (key, id) => registry.leases.release(key, id),
+      get: (key) => registry.leases.get(key),
+      pruneExpired: () => registry.leases.pruneExpired()
+    };
+    let ticks = 0;
+    const scheduler = createLocalScheduler({ intervalMs: 60_000, tick: async () => void (ticks += 1) });
+    scheduler.arm(leases);
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    expect(calls).toBeGreaterThan(1);
+    expect(ticks).toBeGreaterThanOrEqual(1);
+    void scheduler.stop();
+  });
+});
+
 describe("the local cron, when releasing its lease never answers", () => {
   it("still lets stop() return, leaving the lease to run out", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"] });

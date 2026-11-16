@@ -71,10 +71,22 @@ export function createLocalScheduler(options: CreateLocalSchedulerOptions): Loca
       if (stopped || leases === undefined) return;
       let lease: { leaseId: string } | null = null;
       const sentAt = Date.now();
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        lease = await leases.acquire(SCHEDULE_TICK_LEASE_KEY, { holder, durationMs: leaseMs });
+        // Half a beat at most: an acquire that never answers must not hold every
+        // later renewal behind it. A late answer is dropped; the lease it took
+        // renews to this holder on the next beat, or runs out.
+        lease = await Promise.race([
+          leases.acquire(SCHEDULE_TICK_LEASE_KEY, { holder, durationMs: leaseMs }),
+          new Promise<null>((resolve) => {
+            timer = setTimeout(() => resolve(null), intervalMs / 2);
+            (timer as { unref?: () => void }).unref?.();
+          })
+        ]);
       } catch {
         // Contention or a store hiccup: not holding, idle this minute.
+      } finally {
+        clearTimeout(timer);
       }
       if (lease !== null) {
         // Stopped while acquiring: give it straight back.
