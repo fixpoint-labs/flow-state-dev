@@ -8,7 +8,8 @@
  * A leaf module: the screen imports these definitions to read and
  * write them, the host declares them on a flow it serves.
  */
-import { defineResource } from "@flow-state-dev/core";
+// The types entry, not the package root: the page bundles this file, and the root carries Node-only model resolution.
+import { defineResource } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /** The threads you pinned, by task id: each once. */
