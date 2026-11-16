@@ -81,7 +81,7 @@ Lookups the sitemap asks for:
 | 30 s | how long a waiting `defer` yields to `hold` requests that start after it | `lease-backend.ts:241`; `arbiter.ts` `deferPatienceMs` doc |
 | 32 | most `defer` requests waiting on one key, per server process | `arbiter.ts:373` (`MAX_DEFERRED_PER_KEY`), `:359` |
 | 2 s | longest gap between a waiting run's turn checks (backoff cap) | `lease-backend.ts:191` (`QUEUE_WAIT_CAP_MS = 2_000`) |
-| 10 s (10,000 ms) | default lease of a place in line with `bullmqWorker` | `packages/bullmq/src/lease-backend.ts:43`; option `leaseMs` at `packages/bullmq/src/flowstate-adapter.ts:52` |
+| 10 s (10,000 ms) | default lease of a place in line with `bullmqJobQueue` | `packages/bullmq/src/lease-backend.ts:43,169`; option `leaseMs` at `packages/bullmq/src/flowstate-adapter.ts:46-52`, passed through at `:91` |
 | 10 min (600,000 ms) | default sweeper cadence (`sweepIntervalMs`) | `packages/engine/src/durability/durability-sweeper.ts:96`, `:162` |
 
 - 3.1 The cap of 32 is per key, per process. On a queue, a request counts from acceptance until its job ends, including while it runs. bullmq README:76; `arbiter.ts` doc on `maxDeferredPerKey` and the `release/jobEnded` doc.
@@ -117,17 +117,17 @@ Lookups the sitemap asks for:
 | Deployment | Where the policy holds | Source |
 |------------|------------------------|--------|
 | One server, no queue | in memory, in the process that runs the request | OLD:180; `arbiter.ts:30-41` |
-| Queue-backed (`bullmqWorker`) | across every process: the web process and each worker, over the same Redis as the queue | `packages/bullmq/README.md:66-68`; OLD:181 |
+| Queue-backed (`bullmqJobQueue`) | across every process: the web process and each one processing jobs, over the same Redis as the queue | `packages/bullmq/README.md:66-68`; `packages/bullmq/src/flowstate-adapter.ts:11-14,87-98`; `packages/engine/src/flowstate/types.ts:96-113`; OLD:181 |
 | Several web servers, each running requests in process, no queue between | each server keeps its own keys; two requests on one session can run at once if they land on different servers | OLD:182; `arbiter.ts:35-40` ("`arbitratesAcrossProcesses` is false") |
-| A runner passed straight to `createFlowState`, not via a `worker` adapter | applies no policy to the work it dispatches; a delivery into an existing session is refused with `external-dispatcher` | OLD:183; `arbiter.ts:35-40` |
+| A runner passed straight to `createFlowState`, not via a `jobQueue` adapter | applies no policy to the work it dispatches; a delivery into an existing session is refused with `external-dispatcher` | OLD:183; `arbiter.ts:35-40` |
 
 On a queue (bullmq README:66-78, OLD:185-197, `lease-backend.ts` engine `planQueueWait`):
 
 - 6.1 A run takes its place on the key when accepted; runs start in accepted order.
-- 6.2 A waiting job never holds a worker slot: it goes back on the queue as a delayed job for at most 2 s between checks (not counted as a BullMQ attempt). bullmq README:68; `lease-backend.ts:191`.
+- 6.2 A waiting job never holds a job slot: it goes back on the queue as a delayed job for at most 2 s between checks (not counted as a BullMQ attempt). bullmq README:68; `lease-backend.ts:191`.
 - 6.3 A retried job keeps its place; the next job in line starts as soon as a run finishes. bullmq README:68.
 - 6.4 `hold` and `defer` work the same on a queue. A `hold` key reads busy from acceptance until the run ends. A waiting `defer` holds no key for its first 30 s of waiting, so `queue` requests do not wait behind it and `reject` requests are not refused because of it; once it lines up behind the running replies, or starts, it holds the key. bullmq README:72; OLD:189.
-- 6.5 Lease: a place has a lease (`leaseMs`, default 10 s) the worker keeps renewing. Worker dies: key frees when the lease runs out. Alive but cannot reach Redis to renew: it aborts the run's signal at half the lease, and the request ends `interrupted`. A run that honours `ctx.signal` has stopped before another run can take the key; one that ignores it can overlap the next. bullmq README:78; `errors.ts:118-135` (`ConcurrencyLeaseLostError`).
+- 6.5 Lease: a place has a lease (`leaseMs`, default 10 s) the process running the job keeps renewing. That process dies: key frees when the lease runs out. Alive but cannot reach Redis to renew: it aborts the run's signal at half the lease, and the request ends `interrupted`. A run that honours `ctx.signal` has stopped before another run can take the key; one that ignores it can overlap the next. bullmq README:78; `errors.ts:118-135` (`ConcurrencyLeaseLostError`).
 - 6.6 A deferred request waiting on another server starts once a crashed server's lease runs out. bullmq README:74; `hold-defer.test.ts:169-200` ("runs once the crashed process's place expires, and not before"; live process that renews keeps the key held, `:202`).
 - 6.7 Redis unreachable when a run needs a place: the run is not started and the caller is told why. It never goes ahead without the policy. `arbiter.ts:34-35` ("An unreachable backend refuses the dispatch; nothing runs unarbitrated"). OLD:195.
 - 6.8 Delivery into an existing session (`dispatcher()` with `session: { id }`) runs under the recipient's policy. Declare `concurrency: "allow"` on an entry that should run in parallel. bullmq README:70.
@@ -147,13 +147,13 @@ A concurrency policy stores no user-owned data. The parts it touches:
 | Part | Who owns it | Who can see it | Where it is stored | How many |
 |------|-------------|----------------|--------------------|----------|
 | The policy declaration | the flow author, on the action or `request` | anyone reading the flow definition | in the flow definition (code); no store | one per action, plus one flow default |
-| A place on a key (the line) | the process or worker running the request | nobody through the API; its holder shows up as `requestId` in a `reject` refusal | in memory of the running process by default; in Redis when `bullmqWorker` supplies the backend (`packages/bullmq/src/lease-backend.ts`) | one line per key; one place per queued, held or deferred request; at most 32 waiting `defer` per key per process |
+| A place on a key (the line) | the process running the request (web or job processing) | nobody through the API; its holder shows up as `requestId` in a `reject` refusal | in memory of the running process by default; in Redis when `bullmqJobQueue` supplies the backend (`packages/bullmq/src/lease-backend.ts`) | one line per key; one place per queued, held or deferred request; at most 32 waiting `defer` per key per process |
 | The refused request | nobody: nothing is created for a `reject`, or for a `defer` past the cap | n/a | not stored | none |
 | A request waiting for its turn | the session's user (a normal request record) | the owner through request status | the request store | one per request |
 
 - 8.1 Nothing is created for a refused `reject`/over-cap `defer` request: no request record and no live stream. `arbiter.ts:15-18`, `:357-358` ("before anything is written for it").
 - 8.2 Keys are tenant-namespaced, so identical ids in two tenants never collide. `arbiter.ts:175-178`.
-- 8.3 The in-memory arbiter state is lost when the process dies; with Redis, a dead worker's places expire with the lease. `lease-backend.ts` (bullmq) and bullmq README:78. Pass 5: confirm the "lost on process death" for the in-memory default (in-memory places "do not expire", `arbiter.ts:~106`).
+- 8.3 The in-memory arbiter state is lost when the process dies; with Redis, a dead processing process's places expire with the lease. `lease-backend.ts` (bullmq) and bullmq README:78. Pass 5: confirm the "lost on process death" for the in-memory default (in-memory places "do not expire", `arbiter.ts:~106`).
 
 ## 9. Left out, for lack of an observable surface or because it is not Reference
 
@@ -167,7 +167,7 @@ A concurrency policy stores no user-owned data. The parts it touches:
 1. `ConcurrencyDeferLimitError` is a subclass of `ConcurrencyRejectedError`, so the HTTP body for an over-cap `defer` carries `error: "ConcurrencyRejected"` (`concurrency-refusal.ts:36`), not a defer-specific code. OLD says "409 over HTTP" only. Consistent.
 2. OLD:17 says the `queue` timeout is "status 503". The error's `status` is 503 (`errors.ts:104`); no route that maps it to an HTTP response was read. Pass 5 should find the HTTP mapping (or state it as the error's `status`).
 3. OLD:20 says `defer` "waits until nothing on the key is running or waiting", while the shipped doc comment says "no request holds or waits on the key" (`core/types/concurrency.ts:36-37`). Same meaning.
-4. OLD:127 says the lease default is "ten seconds by default with `bullmqWorker`". Confirmed: `packages/bullmq/src/lease-backend.ts:43`.
+4. OLD:127 gives a ten-second lease default for the BullMQ adapter, `bullmqJobQueue` (`packages/bullmq/src/index.ts:9`). Default confirmed: `packages/bullmq/src/lease-backend.ts:43,169`.
 5. The in-process (no-backend) arbiter is described in OLD as "enforced in memory". Confirmed by `arbiter.ts:30-41`.
 
 ## 11. Revise round 1 (pass 8): changes to what the page states

@@ -1,7 +1,7 @@
 ---
 title: Run background jobs with BullMQ
 type: recipe
-description: "Run flow actions as jobs on a Redis queue, in the web process or in worker processes of their own."
+description: "Run flow actions as jobs on a Redis queue, in the web process or in processes of their own."
 ---
 
 # Run background jobs with BullMQ
@@ -25,16 +25,16 @@ REDIS_URL=redis://localhost:6379
 
 ## 2. Give the app a queue
 
-The queue is a setting of the app, not of one action. `bullmqWorker` is the `worker` option of `createFlowState`:
+The queue is a setting of the app, not of one action. `bullmqJobQueue` is the `jobQueue` option of `createFlowState`:
 
 ```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
-import { bullmqWorker } from "@flow-state-dev/bullmq";
+import { bullmqJobQueue } from "@flow-state-dev/bullmq";
 import support from "./src/flows/support/flow";
 
 const flowstate = createFlowState({
   flows: [support],
-  worker: bullmqWorker({ connection: process.env.REDIS_URL! }),
+  jobQueue: bullmqJobQueue({ connection: process.env.REDIS_URL! }),
 });
 
 // The queue starts on first use. Start it at boot so this process takes jobs at once.
@@ -44,32 +44,32 @@ process.on("SIGTERM", () => void flowstate.dispose());
 export default flowstate;
 ```
 
-`support` is the support desk's flow, defined in its own file. Every action call becomes a job. Actions run through the BullMQ queue, and a worker in the same process runs them against the same stores. [`bullmqWorker` options](../reference/background-work.md) covers the connection forms, retries and dead-letter queues.
+`support` is the support desk's flow, defined in its own file. Every action call becomes a job. Actions run through the BullMQ queue, and the same process takes the jobs and runs them against the same stores. [`bullmqJobQueue` options](../reference/background-work.md) covers the connection forms, retries and dead-letter queues.
 
 `fsdev serve` starts the queue for you, so the two lines after `createFlowState` are for any other way of starting the app.
 
 ## 3. Call the action as before
 
-Nothing changes in the page. `session.sendAction("buildReport", ...)` resolves when the job is on the queue, not when it finishes, and `session.items` fills as the worker writes items.
+Nothing changes in the page. `session.sendAction("buildReport", ...)` resolves when the job is on the queue, not when it finishes, and `session.items` fills as the job writes items.
 
-You can open the stream as soon as the action returns its request id, even before a worker picks the job up. [Live updates](./live-updates.md) shows the page side.
+You can open the stream as soon as the action returns its request id, even before the job is picked up. [Live updates](./live-updates.md) shows the page side.
 
-## 4. Move the work to worker processes
+## 4. Run the jobs in a process of their own
 
-For production, run the web process and the workers in separate containers. Both build the same `FlowState` from one config, and a `mode` tells each which side to run:
+For production, run the web process and job processing in separate containers. Both build the same `FlowState` from one config, and a `mode` tells each which side to run:
 
 ```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
-import { bullmqWorker } from "@flow-state-dev/bullmq";
+import { bullmqJobQueue } from "@flow-state-dev/bullmq";
 import { postgresStores } from "@flow-state-dev/store-postgres";
 import support from "./src/flows/support/flow";
 
 const flowstate = createFlowState({
   flows: [support],
   stores: postgresStores({ connectionString: process.env.FSD_DB_URL }),
-  worker: bullmqWorker({
+  jobQueue: bullmqJobQueue({
     connection: process.env.REDIS_URL!,
-    mode: process.env.QUEUE_MODE === "worker-only" ? "worker-only" : "dispatch-only",
+    mode: process.env.QUEUE_MODE === "process-only" ? "process-only" : "enqueue-only",
     concurrency: 4,
   }),
 });
@@ -77,30 +77,30 @@ const flowstate = createFlowState({
 export default flowstate;
 ```
 
-The web container sets `QUEUE_MODE=dispatch-only`. It enqueues jobs and runs none. `QUEUE_MODE` is this app's own variable name. `concurrency: 4` is the number of jobs one worker process runs at a time.
+The web container sets `QUEUE_MODE=enqueue-only`. It enqueues jobs and runs none. `QUEUE_MODE` is this app's own variable name. `concurrency: 4` is the number of jobs one processing container runs at a time.
 
-The worker container starts a small script:
+The processing container starts a small script:
 
-```ts title="worker.ts"
+```ts title="process-jobs.ts"
 import flowstate from "./fsdev.config";
 
 await flowstate.ready();
 process.on("SIGTERM", () => void flowstate.dispose());
 ```
 
-Run it with the container's `QUEUE_MODE=worker-only`, using the TypeScript runner you already use. No `fsdev` command starts a worker-only process.
+Run it with the container's `QUEUE_MODE=process-only`, using the TypeScript runner you already use. No `fsdev` command runs in `process-only` mode.
 
-Both containers must reach the same stores. If they do not, jobs enqueue and run, but the web process never sees the worker's output and the request stays `in_progress`. Nothing reports the mismatch. The default in-memory stores belong to one process, so use Postgres, or SQLite on a shared disk on one machine. [Stores](../reference/stores.md) lists the backends.
+Both containers must reach the same stores. If they do not, jobs enqueue and run, but the web process never sees what the jobs wrote and the request stays `in_progress`. Nothing reports the mismatch. The default in-memory stores belong to one process, so use Postgres, or SQLite on a shared disk on one machine. [Stores](../reference/stores.md) lists the backends.
 
 ## When a job is late or fails
 
-**No worker is running.** The POST for `buildReport` gets its 202, because the job is on the queue. The request then sits as `in_progress`. If no worker claims it within `queuedGraceMs`, ten minutes by default (an option of `createFlowState`), it is marked `interrupted`.
+**Nothing is processing jobs.** The POST for `buildReport` gets its 202, because the job is on the queue. The request then sits as `in_progress`. If nothing claims it within `queuedGraceMs`, ten minutes by default (an option of `createFlowState`), it is marked `interrupted`.
 
 **A retry while the client reconnects.** The job runs again, three attempts counting the first. Each attempt numbers its events after the last one stored, so the stream reads as one run and does not restart at zero. Reconnecting needs no code: the client resumes after the last event it received (`Last-Event-ID` or `starting_after`) and replays the rest from the store.
 
 ## Next
 
-- [`bullmqWorker` reference](../reference/background-work.md): connection, `prefix`, retries, dead-letter queues, jobs enqueued by hand, and which failures skip retries.
+- [`bullmqJobQueue` reference](../reference/background-work.md): connection, `prefix`, retries, dead-letter queues, jobs enqueued by hand, and which failures skip retries.
 - [Concurrency policies](../reference/concurrency.md): how `queue` and the other policies hold across containers.
 - [Run on a schedule](../reference/schedules.md): BullMQ's repeating jobs as the scheduler.
 - [Deploy with Docker](./deploy/docker.md): the two containers in one compose file.

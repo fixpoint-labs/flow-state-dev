@@ -1,12 +1,12 @@
 ---
 title: Run a flow from your own code
 type: recipe
-description: "Call a flow's action from a cron job, queue worker or script with runAction."
+description: "Call a flow's action from a cron job, job processor or script with runAction."
 ---
 
 # Run a flow from your own code
 
-A nightly job needs to send a reply through the `support` flow. A worker runs one flow per queued message. A script reacts to a webhook your own code already received. None of these is an HTTP request, so none of them can call the flow through a client.
+A nightly job needs to send a reply through the `support` flow. A job processor runs one flow per queued message. A script reacts to a webhook your own code already received. None of these is an HTTP request, so none of them can call the flow through a client.
 
 Work a user triggers belongs on HTTP. `runAction` checks no credentials and builds no HTTP response, so a user's request should reach the flow through your server.
 

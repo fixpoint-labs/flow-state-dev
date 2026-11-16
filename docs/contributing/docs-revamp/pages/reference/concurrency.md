@@ -59,7 +59,7 @@ export const supportFlow = defineFlow({
     appendMessage:    { block: appendMessage, concurrency: "allow" }, // every message lands
     respond:          { block: respond, concurrency: "hold" },        // a user's message
     reportResult:     { block: reportResult, concurrency: "defer" },  // a finished job's follow-up
-    exportTranscript: { block: exportTranscript },                    // inherits "queue"
+    exportTranscript,                    // inherits "queue"
   },
 });
 ```
@@ -130,7 +130,7 @@ Use `hold` for a user's turn and `defer` for follow-up work that must land after
 | Cancel | Cancelled while waiting, it never runs. |
 | Newer `hold` requests | It waits for every `hold` running on the key. It also waits for `hold` requests that start while it waits, for up to 30 seconds. After that it waits only for the `hold` requests already running, then runs. |
 | Time limit | No overall limit. The wait ends when the request ahead of it finishes, throws or is cancelled. |
-| Server crash | A deferred request waiting on another server starts once the crashed server's lease on the key runs out (10 seconds by default with `bullmqWorker`). |
+| Server crash | A deferred request waiting on another server starts once the crashed server's lease on the key runs out (10 seconds by default with `bullmqJobQueue`). |
 | After it starts | It waits for nothing else. A message sent while it runs starts at once, beside it. |
 | Cap | At most 32 `defer` requests wait on one key in each server process. The next is refused the way `reject` refuses and nothing is created for it. Retry once the session quiets down. |
 
@@ -154,13 +154,13 @@ A request that [suspends](./durable-execution.md) to wait for a user gives up it
 | Deployment | Where the policy holds |
 |---|---|
 | One server, no queue | In memory, in the process that runs the request. |
-| Queue-backed, such as [`bullmqWorker`](../build/background-jobs-bullmq.md) | Across every process, the web process and each worker, over the same Redis as the queue. |
+| Queue-backed, such as [`bullmqJobQueue`](../build/background-jobs-bullmq.md) | Across every process, the web process and each one processing jobs, over the same Redis as the queue. |
 | Several web servers, each running requests in process, no queue between them | Each server keeps its own keys, so two requests on one session can run at once if they land on different servers. Run that shape as a single instance, or put a queue in front of it. |
-| A runner you pass to `createFlowState` directly, not through a `worker` adapter | No policy is applied to the work it dispatches. A [delivery into an existing session](./background-work.md#starting-a-job-from-a-flow) is refused: the `dispatcher()` block throws `DispatchRefusedError`, and its `refused` field reads `external-dispatcher`. |
+| A runner you pass to `createFlowState` directly, not through a `jobQueue` adapter | No policy is applied to the work it dispatches. A [delivery into an existing session](./background-work.md#starting-a-job-from-a-flow) is refused: the `dispatcher()` block throws `DispatchRefusedError`, and its `refused` field reads `external-flow-runner`. |
 
 ### On a queue
 
-Order of starts, the wait limit, how a waiting run avoids holding a worker slot, and what happens when a worker dies or loses Redis are in [Background work](./background-work.md) and the [`@flow-state-dev/bullmq` README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/bullmq#concurrency-across-workers). The 32-request `defer` cap is counted in the process that accepted the request, not across the queue, and a request counts from acceptance until its job ends.
+Order of starts, the wait limit, how a waiting run avoids holding a job slot, and what happens when a process running jobs dies or loses Redis are in [Background work](./background-work.md) and the [`@flow-state-dev/bullmq` README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/bullmq#concurrency-across-workers). The 32-request `defer` cap is counted in the process that accepted the request, not across the queue, and a request counts from acceptance until its job ends.
 
 ## Related settings
 
