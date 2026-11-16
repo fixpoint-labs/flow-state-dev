@@ -133,13 +133,19 @@ A schedule is written with `ctx.resources.schedules`, from any block that declar
 
 ```ts title="src/flows/support/blocks/schedule-digest.ts"
 import { handler } from "@flow-state-dev/core";
+import { parseNextFireAt } from "@flow-state-dev/scheduled";
 import { z } from "zod";
 import { schedules } from "../schedules";
 
 export const scheduleDigest = handler({
   name: "schedule-digest",
   // Check the cron here: a bad one is saved and never fires.
-  inputSchema: z.object({ cron: z.string().regex(/^\S+(\s+\S+){4}$/) }),
+  inputSchema: z.object({
+    cron: z
+      .string()
+      .regex(/^\S+(\s+\S+){4}$/)
+      .refine((cron) => parseNextFireAt(cron) !== null, "Not a valid cron"),
+  }),
   resources: { schedules },
   execute: async (input, ctx) => {
     // replace: a second call changes the time instead of failing.
@@ -179,7 +185,7 @@ Start the app's server with `CRON_SECRET` set, call `scheduleDigest` with `{ "cr
 
 ## When it stays silent
 
-A schedule that never fires has one of two causes. Either the flow does not name `index` under `schedules`. Or the cron does not parse: the write returns normally, the row gets no index entry, and a warning is logged. Check the cron before writing it, as `scheduleDigest` does.
+A schedule that never fires has one of two causes. Either the flow does not name `index` under `schedules`. Or the cron does not parse: the write returns normally, the row gets no index entry, and a warning is logged. Check it with `parseNextFireAt` before writing, as `scheduleDigest` does.
 
 If the server is down when a schedule is due, it fires once when the server returns, for the latest time it missed. Earlier missed times are dropped. A fire that fails is dropped, not retried. A dynamic fire runs in the ticking process and is lost if that process crashes mid-run. For work that must survive that, use a static schedule.
 
