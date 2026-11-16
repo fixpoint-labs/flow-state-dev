@@ -167,6 +167,12 @@ export async function seedSession(lab: TestLab, mode: ModeId, line: string): Pro
 export interface VendorControl {
   /** Lets the held Globex research finish. */
   releaseGlobex(): void;
+  /** Fails the held Globex research with `reason`. */
+  failGlobex(reason: string): void;
+  /** The invoice export works from its next attempt. */
+  fixExports(): void;
+  /** How many Globex research turns are running now. */
+  globexRunning(): number;
 }
 
 /**
@@ -176,11 +182,20 @@ export interface VendorControl {
  * names vendors makes the lead file three threads: "Vendor A · pricing and
  * uptime" keeps working, "Vendor B · regions" asks you which region matters,
  * and "Vendor C · summary", a coding thread on the scripted coder, waits for
- * your review. Any other line is noted.
+ * your review. A line that names billing makes it file two: "Weekly uptime
+ * digest" keeps working, and "Export failed invoices" fails, "The export
+ * timed out after 30s.", every attempt until `fixExports`. Any other line is noted.
  */
 export function vendorScripts(): { scripts: Record<string, Script>; control: VendorControl } {
   let releaseGlobex = () => {};
-  const globex = new Promise<void>((resolve) => (releaseGlobex = resolve));
+  let failGlobex: (reason: Error) => void = () => {};
+  const globex = new Promise<void>((resolve, reject) => {
+    releaseGlobex = resolve;
+    failGlobex = reject;
+  });
+  globex.catch(() => undefined);
+  let exportsFixed = false;
+  let globexTurns = 0;
   holds.add(releaseGlobex);
   // What a thread that keeps working waits on: the labs closing.
   let close = () => {};
@@ -191,11 +206,18 @@ export function vendorScripts(): { scripts: Record<string, Script>; control: Ven
     "agent-answer": async ({ said, step, signal }) => {
       const who = /You are ([\w-]+)/.exec(said)?.[1];
       if (who === "researcher") {
-        if (said.includes("Globex")) await Promise.race([globex, waitFor(60_000, signal)]);
+        if (said.includes("Globex")) {
+          globexTurns += 1;
+          await Promise.race([globex, waitFor(60_000, signal)]).finally(() => (globexTurns -= 1));
+        }
         return { text: said.includes("Globex") ? "Globex: $35 per user." : "Acme: $40 per user, 24-hour support." };
       }
       if (who === "thread") {
-        if (said.includes("Vendor A")) {
+        if (said.includes("Export failed invoices")) {
+          if (!exportsFixed) throw new Error("The export timed out after 30s.");
+          return { text: "Exported." };
+        }
+        if (said.includes("Vendor A") || said.includes("Weekly uptime digest")) {
           await Promise.race([closing, waitFor(60_000, signal)]);
           return { text: "Vendor A: $29 per user." };
         }
@@ -216,10 +238,15 @@ export function vendorScripts(): { scripts: Record<string, Script>; control: Ven
         { assignee: "desk.thread-coder", title: "Vendor C · summary", goal: "Add Vendor C's summary to the CHANGELOG." },
       ];
       if (lastUserLine(said).includes("vendor") && step < threads.length) return { call: { name: "createTask", args: threads[step]! } };
+      const billing = [
+        { assignee: "desk.thread", title: "Weekly uptime digest", goal: "Write the weekly uptime digest." },
+        { assignee: "desk.thread", title: "Export failed invoices", goal: "Export the failed invoices to a CSV." },
+      ];
+      if (lastUserLine(said).includes("billing") && step < billing.length) return { call: { name: "createTask", args: billing[step]! } };
       return { text: "I've started a thread for each." };
     },
   };
-  return { scripts, control: { releaseGlobex: () => releaseGlobex() } };
+  return { scripts, control: { releaseGlobex: () => releaseGlobex(), failGlobex: (reason) => failGlobex(new Error(reason)), fixExports: () => void (exportsFixed = true), globexRunning: () => globexTurns } };
 }
 
 /** Reads `read` every 50 ms until `check` holds, or fails after `ms` with the last value. */
