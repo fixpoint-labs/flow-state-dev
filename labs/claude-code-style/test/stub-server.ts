@@ -10,16 +10,21 @@
 import { createElement, type ReactNode } from "react";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
+import type { RecordedWorkView } from "@flow-state-dev/harness-manager/browser";
+import type { ViewOutput } from "@flow-state-dev/core/types";
 import { LabProvider, type LabTask } from "../src/lab";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+
+/** A run's recorded work, as the recorded work view answers it. */
+type RecordedWork = ViewOutput<RecordedWorkView>;
 
 /** What the stand-in serves. */
 export interface StubData {
   /** Each session's stored items, by session id. */
   items?: Record<string, unknown[]>;
   /** Each run's recorded work, by request id, as the recorded work view answers it. */
-  recorded?: Record<string, { plan?: { rows: { id: string; title: string; status: string | null }[]; truncated: boolean } | null; pullRequests?: { number: number | null; url: string; title: string | null }[] }>;
+  recorded?: Record<string, { plan?: RecordedWork["plan"]; pullRequests?: RecordedWork["pullRequests"]["rows"] }>;
   /** Answers a POST the screen made: a throw fails it as a lost connection does. Absent: done. */
   answer?: (posted: Posted) => Promise<void> | void;
 }

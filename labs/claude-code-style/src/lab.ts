@@ -273,36 +273,36 @@ export function useLab(): LabCalls {
 export function useTasks(sessionId: string | undefined): { value: LabTask[] | undefined; stale: boolean } {
   const { client, pollIntervalMs } = useLabContext();
   const read = useView(codingBoardViewRef(), { sessionId: sessionId ?? "" }, { client, pollIntervalMs, enabled: sessionId !== undefined });
-  const value = useMemo(() => (read.value === undefined || sessionId === undefined ? undefined : read.value.map((row) => labTaskOf(row, sessionId))), [read.value, sessionId]);
+  const value = useMemo(() => (read.value === undefined || sessionId === undefined ? undefined : read.value.map((task) => labTaskOf(task, sessionId))), [read.value, sessionId]);
   return { value, stale: read.stale };
 }
 
 /** A coding board row in the screen's fields, with its first open hold and its `taskView`. Exported for its test. */
-export function labTaskOf(row: CodingBoardTask, sessionId: string): LabTask {
-  const hold = row.asks[0];
-  const startedAt = row.startedAt ?? row.run?.startedAt;
-  const run = { ...(typeof row.run?.startedAt === "number" ? { startedAt: row.run.startedAt } : {}), ...(typeof row.leaseUntil === "number" ? { leaseUntil: row.leaseUntil } : {}) };
+export function labTaskOf(task: CodingBoardTask, sessionId: string): LabTask {
+  const hold = task.asks[0];
+  const startedAt = task.startedAt ?? task.run?.startedAt;
+  const run = { ...(typeof task.run?.startedAt === "number" ? { startedAt: task.run.startedAt } : {}), ...(typeof task.leaseUntil === "number" ? { leaseUntil: task.leaseUntil } : {}) };
   return {
-    id: row.id,
-    title: row.title ?? row.goal,
-    goal: row.goal,
-    status: row.status as TaskStatus,
-    attempts: row.attempts,
-    asks: row.asks,
-    ...(row.assignee === undefined ? {} : { assignee: row.assignee }),
-    ...(row.statusNote == null ? {} : { statusNote: row.statusNote }),
-    ...(typeof row.updatedAt === "number" ? { updatedAt: row.updatedAt } : {}),
+    id: task.id,
+    title: task.title ?? task.goal,
+    goal: task.goal,
+    status: task.status as TaskStatus,
+    attempts: task.attempts,
+    asks: task.asks,
+    ...(task.assignee === undefined ? {} : { assignee: task.assignee }),
+    ...(task.statusNote == null ? {} : { statusNote: task.statusNote }),
+    ...(typeof task.updatedAt === "number" ? { updatedAt: task.updatedAt } : {}),
     ...(typeof startedAt === "number" ? { startedAt } : {}),
-    ...(row.spend == null ? {} : { spend: row.spend }),
+    ...(task.spend == null ? {} : { spend: task.spend }),
     ...(hold === undefined ? {} : { openHold: { kind: hold.ask.kind === "confirm" ? "input" : hold.ask.kind, prompt: hold.ask.prompt } }),
-    ...(row.harness === null ? {} : { harness: row.harness }),
-    ...(row.pullRequests.length === 0 ? {} : { pullRequests: row.pullRequests.map((number) => ({ number, url: null, title: null })) }),
-    ...(row.harness !== null && row.status === "completed" ? { review: row.review } : {}),
-    ...(row.landed === null ? {} : { landed: row.landed }),
-    ...(row.error === null ? {} : { error: row.error }),
+    ...(task.harness === null ? {} : { harness: task.harness }),
+    ...(task.pullRequests.length === 0 ? {} : { pullRequests: task.pullRequests.map((number) => ({ number, url: null, title: null })) }),
+    ...(task.harness !== null && task.status === "completed" ? { review: task.review } : {}),
+    ...(task.landed === null ? {} : { landed: task.landed }),
+    ...(task.error === null ? {} : { error: task.error }),
     ...(Object.keys(run).length === 0 ? {} : { run }),
-    ...(typeof row.run?.sessionId === "string" && typeof row.run?.requestId === "string" ? { runLink: { sessionId: row.run.sessionId, requestId: row.run.requestId } } : {}),
-    view: taskView({ ...row, board: sessionId } as Parameters<typeof taskView>[0]),
+    ...(typeof task.run?.sessionId === "string" && typeof task.run?.requestId === "string" ? { runLink: { sessionId: task.run.sessionId, requestId: task.run.requestId } } : {}),
+    view: taskView({ ...task, board: sessionId } as Parameters<typeof taskView>[0]),
   };
 }
 
@@ -334,16 +334,16 @@ export function useSessions(): LabSession[] | undefined {
     if (values.some((value) => value === undefined)) return undefined;
     const gone = new Set(dismissed ?? []);
     return values
-      .flatMap((rows) => rows!)
-      .map((row): LabSession => {
-        const project = row.state[WORK_PROJECT_STATE_KEY];
+      .flatMap((listed) => listed!)
+      .map((session): LabSession => {
+        const project = session.state[WORK_PROJECT_STATE_KEY];
         return {
-          id: row.id,
-          title: row.title,
-          worker: row.worker,
-          updatedAt: row.updatedAt,
-          running: row.running,
-          waiting: row.waiting.filter((task) => !gone.has(dismissalKey({ id: task.taskId, attempts: task.attempt }))).length,
+          id: session.id,
+          title: session.title,
+          worker: session.worker,
+          updatedAt: session.updatedAt,
+          running: session.running,
+          waiting: session.waiting.filter((task) => !gone.has(dismissalKey({ id: task.taskId, attempts: task.attempt }))).length,
           projectId: typeof project === "string" ? project : null,
         };
       })
@@ -591,7 +591,7 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
         return { items: page.items.map((entry) => ({ topic: entry.topic, clientData: entry.value })), ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }) };
       },
     };
-    return (await readEveryCollectionPage(pages, scope, PROJECTS_PATTERN)).map((row) => row.clientData as { id: string; title: string; members: string[]; repository: string | null });
+    return (await readEveryCollectionPage(pages, scope, PROJECTS_PATTERN)).map((entry) => entry.clientData as { id: string; title: string; members: string[]; repository: string | null });
   };
   /** A task's open hold that asks for `asks`, from the board row's `asks`. */
   const holdOf = (task: LabTask, asks: "question" | "review") => task.asks?.find((hold) => hold.ask.kind === asks);

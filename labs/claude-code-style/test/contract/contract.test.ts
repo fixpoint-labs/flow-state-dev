@@ -196,15 +196,15 @@ function watch(sessionId: string, threads = false) {
   const hook = renderHook(
     () => {
       const view = useThread(sessionId, threads);
-      const rows = useTasks(sessionId).value;
+      const board = useTasks(sessionId).value;
       useEffect(() => {
         if (view === undefined) return;
         drawn.push(view);
         thread.tell(view);
       }, [view]);
       useEffect(() => {
-        if (rows !== undefined) tasks.tell(rows);
-      }, [rows]);
+        if (board !== undefined) tasks.tell(board);
+      }, [board]);
       return useLab();
     },
     { wrapper: ({ children }: { children: ReactNode }) => target!.lab.wrap(children) as never },
