@@ -137,7 +137,7 @@ describe("the threads-mode screen", () => {
     await waitFor(() => expect((within(view).getByRole("button", { name: "Request changes" }) as HTMLButtonElement).disabled).toBe(false), SLOW);
     fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
     // Back to work with your words: a request for changes, not a line said in passing.
-    await waitFor(() => expect(box.value).toBe(""), SLOW);
+    await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe(""), SLOW);
     await waitFor(() => expect(card("Vendor C · summary").dataset.column).not.toBe("review"), SLOW);
   });
 
