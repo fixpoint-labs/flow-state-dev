@@ -18,7 +18,8 @@
  *   d  — no view run starts a request.
  *
  * Controls (run this file again with a patch applied as it loads):
- *   GOAL_CONTROL=unrecorded-session-reads  `list` and `turns` record nothing: must FAIL a.
+ *   GOAL_CONTROL=unrecorded-session-reads  `list` records nothing: must FAIL a.
+ *   GOAL_CONTROL=turns-deaf-to-request     turns hear no `request`: must FAIL b.
  *   GOAL_CONTROL=admit-by-input            the reads skip the owner rule: must FAIL c.
  *   GOAL_CONTROL=user-only-admission       the reads check the user id alone: must FAIL c.
  */
@@ -46,11 +47,12 @@ const SESSIONS = "packages/engine/src/context/request-sessions.ts";
 const PATCHES: Record<string, ModulePatch[]> = {
   "unrecorded-session-reads": [
     // `list` itself: the read that answers nothing is heard on the same topic, and stays.
-    { module: SESSIONS, from: String.raw`(Promise<SessionList> \{\n\s*//[^\n]*\n\s*)inputs\.observe\?\.list\(\);`, to: "$1" },
-    { module: SESSIONS, from: String.raw`for \(const entry of read\) inputs\.observe\?\.turns\(entry\.id\);`, to: "" }
+    // Turns' recording is `turns-deaf-to-request`'s to break, so each control fails its own signal.
+    { module: SESSIONS, from: String.raw`(Promise<SessionList> \{\n\s*//[^\n]*\n\s*)inputs\.observe\?\.list\(\);`, to: "$1" }
   ],
-  // The turns view stops hearing a request's status: the reply never shows as it runs and ends.
-  "turns-deaf-to-request": [{ module: "packages/engine/src/context/view-reads.ts", from: String.raw`turns: \["request"\],`, to: "turns: []," }],
+  // The turns view stops hearing a request's status (it keeps a session's birth and delete):
+  // the reply never shows as it runs and ends.
+  "turns-deaf-to-request": [{ module: "packages/engine/src/context/view-reads.ts", from: String.raw`turns: \["request", "state"\],`, to: 'turns: ["state"],' }],
   "admit-by-input": [{ module: SESSIONS, from: String.raw`const own = principalSession\(record, identity\);`, to: "const own = record;" }],
   "user-only-admission": [
     {
@@ -215,51 +217,67 @@ await runGoal(async (failures, tell) => {
 
     // ---------------------------------------------------------------- b
     {
-      await quiet([alice.views]);
-      const before = { sessions: sessions.length, turns: turns.length, board: board.length };
-      const callsBefore = alice.views.length;
-      // One reply of 40 stored chunks: a turn in progress whose items land one batch at a time.
-      const requestId = `req_reply_${RUN_STAMP}`;
-      const now = Date.now();
-      const session = (await stores.session.get(conversation))!;
-      await stores.request.set(
-        requestId,
-        { id: requestId, flowKind: session.flowKind, flowId: session.flowId, actionName: "respond", userId: "alice", orgId: session.orgId ?? undefined, sessionId: conversation, source: "http", status: "in_progress", startedAtMs: now, state: {}, version: 0, createdAt: now, updatedAt: now } as never,
-        "absent" as never
-      );
-      // The bound alone passes a view that never woke: the reply must also show, running, then done.
-      const shownRunning = await within(
-        async () => (last(sessions) ?? []).some((s) => s.id === conversation && s.running) && (last(turns) ?? []).some((t) => t.id === requestId && t.status === "in_progress"),
-        Date.now()
-      );
-      if (shownRunning === undefined) failures.push("b:quiet: the reply never showed as a running turn of a running session within 3 s");
-      for (let chunk = 0; chunk < 40; chunk += 1) {
-        await (stores.request as unknown as { persistItems(id: string, items: unknown[]): Promise<unknown> }).persistItems(requestId, [
-          { id: `${requestId}_${chunk}`, type: "message", role: "assistant", status: "in_progress", requestId, itemIndex: chunk, ts: Date.now(), content: [{ type: "output_text", text: `chunk ${chunk} ` }] }
-        ]);
-        await delay(25);
-      }
-      const ran = (await stores.request.get(requestId))!;
-      await stores.request.set(requestId, { ...ran, status: "completed", completedAtMs: Date.now() } as never, ran.version as never);
-      const shownDone = await within(
-        async () => (last(turns) ?? []).some((t) => t.id === requestId && t.status === "completed") && (last(sessions) ?? []).some((s) => s.id === conversation && !s.running),
-        Date.now()
-      );
-      if (shownDone === undefined) failures.push("b:quiet: the reply's turn never showed completed, and its session no longer running, within 3 s");
-      else evidence.push(`b: the reply showed running ${shownRunning} ms after it started and completed ${shownDone} ms after it ended`);
-      await quiet([alice.views]);
-      const runs = { sessions: sessions.length - before.sessions, turns: turns.length - before.turns, board: board.length - before.board };
-      const calls = alice.views.slice(callsBefore);
-      const byView = {
-        sessions: calls.filter((c) => c.url.includes("workerSessions")).length,
-        turns: calls.filter((c) => c.url.includes("sessionTurns")).length,
-        board: calls.filter((c) => c.url.includes("codingBoard")).length
+      // One reply: a turn in progress whose `chunks` items land one batch at a time, 25 ms apart.
+      // Answers the view calls each screen made over it.
+      const reply = async (chunks: number): Promise<Record<"sessions" | "turns" | "board", number>> => {
+        await quiet([alice.views]);
+        const callsBefore = alice.views.length;
+        const requestId = `req_reply_${chunks}_${RUN_STAMP}`;
+        const now = Date.now();
+        const session = (await stores.session.get(conversation))!;
+        await stores.request.set(
+          requestId,
+          { id: requestId, flowKind: session.flowKind, flowId: session.flowId, actionName: "respond", userId: "alice", orgId: session.orgId ?? undefined, sessionId: conversation, source: "http", status: "in_progress", startedAtMs: now, state: {}, version: 0, createdAt: now, updatedAt: now } as never,
+          "absent" as never
+        );
+        // The bound alone passes a view that never woke: the reply must also show, running, then done.
+        const shownRunning = await within(
+          async () => (last(sessions) ?? []).some((s) => s.id === conversation && s.running) && (last(turns) ?? []).some((t) => t.id === requestId && t.status === "in_progress"),
+          Date.now()
+        );
+        if (shownRunning === undefined) failures.push(`b:quiet: the ${chunks}-chunk reply never showed as a running turn of a running session within 3 s`);
+        for (let chunk = 0; chunk < chunks; chunk += 1) {
+          await (stores.request as unknown as { persistItems(id: string, items: unknown[]): Promise<unknown> }).persistItems(requestId, [
+            { id: `${requestId}_${chunk}`, type: "message", role: "assistant", status: "in_progress", requestId, itemIndex: chunk, ts: Date.now(), content: [{ type: "output_text", text: `chunk ${chunk} ` }] }
+          ]);
+          await delay(25);
+        }
+        const ran = (await stores.request.get(requestId))!;
+        await stores.request.set(requestId, { ...ran, status: "completed", completedAtMs: Date.now() } as never, ran.version as never);
+        const shownDone = await within(
+          async () => (last(turns) ?? []).some((t) => t.id === requestId && t.status === "completed") && (last(sessions) ?? []).some((s) => s.id === conversation && !s.running),
+          Date.now()
+        );
+        if (shownDone === undefined) failures.push(`b:quiet: the ${chunks}-chunk reply's turn never showed completed, and its session no longer running, within 3 s`);
+        else evidence.push(`b: the ${chunks}-chunk reply showed running ${shownRunning} ms after it started and completed ${shownDone} ms after it ended`);
+        await quiet([alice.views]);
+        const calls = alice.views.slice(callsBefore);
+        return {
+          sessions: calls.filter((c) => c.url.includes("workerSessions")).length,
+          turns: calls.filter((c) => c.url.includes("sessionTurns")).length,
+          board: calls.filter((c) => c.url.includes("codingBoard")).length
+        };
       };
-      tell.over("b:quiet · view calls during a 40-chunk reply", Object.values(byView));
-      for (const [view, n] of Object.entries(byView)) if (n > 3) failures.push(`b:quiet: the ${view} view ran ${n} times during a 40-chunk reply (bound 3)`);
-      if (Object.values(byView).every((n) => n <= 3)) evidence.push(`b: during 40 chunks, sessions ${byView.sessions}, turns ${byView.turns}, board ${byView.board} view runs (answers ${runs.sessions}/${runs.turns}/${runs.board})`);
+      // Each of the reply's two status writes (start, end) is heard by the sessions view twice: on the
+      // user topic, which its list hears, and on the session's `request`, which its running read hears.
+      // The turns view and the board hear one topic each. None hears a chunk, so a longer reply runs
+      // them no more often: the counts at 40 and 120 chunks must be equal.
+      const BOUND = { sessions: 4, turns: 3, board: 3 } as const;
+      const short = await reply(40);
+      const long = await reply(120);
+      tell.over("b:quiet · view calls during a 40-chunk reply", Object.values(short));
+      tell.over("b:quiet · view calls during a 120-chunk reply", Object.values(long));
+      for (const [counts, chunks] of [[short, 40], [long, 120]] as const) {
+        for (const view of ["sessions", "turns", "board"] as const) {
+          if (counts[view] > BOUND[view]) failures.push(`b:quiet: the ${view} view ran ${counts[view]} times during a ${chunks}-chunk reply (bound ${BOUND[view]}, 2 per lifecycle edge for sessions)`);
+        }
+      }
+      const grew = (["sessions", "turns", "board"] as const).filter((view) => long[view] !== short[view]);
+      if (grew.length > 0) failures.push(`b:quiet: the run count changed with the reply's length: ${grew.map((view) => `${view} ${short[view]} at 40 chunks, ${long[view]} at 120`).join("; ")}`);
+      if (grew.length === 0 && (["sessions", "turns", "board"] as const).every((view) => short[view] <= BOUND[view])) {
+        evidence.push(`b: sessions ${short.sessions}, turns ${short.turns}, board ${short.board} view runs at 40 chunks and the same at 120`);
+      }
     }
-
     // ---------------------------------------------------------------- c
     {
       const names = (topics: unknown, id: string) => JSON.stringify(topics).includes(`"${id}"`);

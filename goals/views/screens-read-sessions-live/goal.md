@@ -15,7 +15,7 @@
   - the Lead sessions, and whether a turn action is in progress in each;
   - the conversation's turn requests and their status;
   - the board rows at the conversation's current partition.
-- `b:quiet`: during the 40-chunk reply, the sessions, turns and board views each run at most 3 times. The reply must also show: within 3 s of its start, its session reads running and its turn `in_progress`; within 3 s of its end, the turn reads `completed` and the session no longer running. The bound alone would pass a view that never woke.
+- `b:quiet`: replies of 40 and of 120 chunks each run the three views the same number of times, so nothing wakes per chunk. The sessions view runs at most 4 times (2 per lifecycle edge); the turns view and the board run at most 3 times. The sessions bound is 2 per edge because one status write is heard twice: on the user topic, which the list hears, and on the session's `request`, which the running read hears. Each reply must also show: within 3 s of its start, its session reads running and its turn `in_progress`; within 3 s of its end, the turn reads `completed` and the session no longer running. The bound alone would pass a view that never woke.
 - `c:own-only`: in none of the six cases does a view answer anything or name a topic of the session asked for, and bob's sessions list holds none of alice's.
 - `d:no-actions`: the store holds no more requests after three view runs than before.
 
@@ -23,7 +23,7 @@
 **Model:** n/a (no model turn: the reply's chunks are stored by the goal, not generated).
 **Run:** `cd goals && pnpm tsx views/screens-read-sessions-live/run.mts` (with `FSDEV_DEFAULT_MODEL` and `FSDEV_INTENT_*` unset)
 **Controls:**
-- `GOAL_CONTROL=unrecorded-session-reads`: `list` and `turns` record nothing (a scratch patch to `request-sessions.ts`). Must FAIL `a:equals-store`: a new session never reaches the list.
+- `GOAL_CONTROL=unrecorded-session-reads`: `list` records nothing (a scratch patch to `request-sessions.ts`). Must FAIL `a:equals-store`: a new session never reaches the list. Turns' hearing is broken by `turns-deaf-to-request` instead, so that each control fails only its own signal.
 - `GOAL_CONTROL=admit-by-input`: the reads skip the owner rule. Must FAIL `c:own-only`.
 - `GOAL_CONTROL=user-only-admission`: the reads check the user id alone, skipping org, tenant, the view's admission and the write-session drop. Must FAIL `c:own-only`.
 - `GOAL_CONTROL=turns-deaf-to-request`: a session's turns hear no `request` notice (a scratch patch to `view-reads.ts`). Must FAIL `b:quiet`: the reply never shows as running, nor as done.
@@ -44,3 +44,5 @@ Not covered:
 | 2026-11-15 | claude/fix-2725-impl-board, merged with sub-PR 1's Codex fixes (f7e8e63723), pre-push | n/a | PASS | a: 29 / 77 / 29 ms · b: 2 / 1 / 0 view runs over 40 chunks · c: 6 cases clean · d: no request. The board's own fallback dropped: the engine's `read` now hears an unanswered session on the caller's user topic. Controls re-run: each fails its own signal only (`unrecorded-session-reads` a, `admit-by-input` c, `user-only-admission` c) |
 | 2026-11-16 | claude/fix-2725-impl-board (review round 1, pre-push) | n/a | FAIL (b) | `b:quiet` now also requires the reply to show. a, c and d pass. The reply showed running 23 ms after it started and completed 20 ms after it ended. But the sessions view ran 4 times (bound 3), in four runs out of four: twice at the reply's start (+1, +12 ms) and twice at its end (+1035, +1047 ms), none during the 40 chunks. Each lifecycle write wakes it on two topics: the list's user-topic `run` and the batched running read's session `request`. Under `turns-deaf-to-request` and `unrecorded-session-reads` it stays within 3. Open with the coordinator |
 | 2026-11-16 | same | n/a | FAIL (expected) | `turns-deaf-to-request`: `b:quiet`, the reply never showed running or done · `unrecorded-session-reads`: `a` (and `b`) · `admit-by-input`, `user-only-admission`: `c` (and the same 4-run `b` as the base run) |
+| 2026-11-16 | claude/fix-2725-impl-board, merged with bf330aeada (review round 2, pre-push) | n/a | PASS ×3 | Bound reshaped (the coordinator's decision, option b). b: sessions 4, turns 2, board 0 view runs at 40 chunks and the same at 120, in all three runs. Each reply showed running 21–31 ms after it started and completed 20–29 ms after it ended · a: 13–33 / 80–96 / 29–36 ms · c: 6 cases clean · d: no request |
+| 2026-11-16 | same | n/a | FAIL (expected) | Each control fails its own signal only: `unrecorded-session-reads` fails a (the new session never reached the list); `admit-by-input` and `user-only-admission` fail c; `turns-deaf-to-request` fails b (neither reply showed running or done, at 40 or at 120 chunks) |
