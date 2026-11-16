@@ -19,7 +19,7 @@ function cronCall(authorization: string | null, url = "https://my-app.vercel.app
 
 /** A ticker that records each tick's options. */
 function recordingTicker(tick: ScheduleTicker["tick"] = async () => EMPTY) {
-  const calls: Array<{ baseUrl?: string } | undefined> = [];
+  const calls: Array<{ baseUrl?: string; secret?: string } | undefined> = [];
   const ticker: ScheduleTicker = {
     tick: (options) => {
       calls.push(options);
@@ -42,7 +42,7 @@ describe("vercelScheduler", () => {
     const res = await scheduler.route(cronCall(`Bearer ${SECRET}`));
 
     expect(res.status).toBe(200);
-    expect(calls).toEqual([{ baseUrl: "https://my-app.vercel.app" }]);
+    expect(calls).toEqual([{ baseUrl: "https://my-app.vercel.app", secret: SECRET }]);
   });
 
   // Anyone can reach a cron route's URL; only Vercel Cron holds the secret.

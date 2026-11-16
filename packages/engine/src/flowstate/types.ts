@@ -128,10 +128,12 @@ export interface ScheduleTicker {
    * due time. Builds the runtime when it hasn't been, so a cold function's
    * first request can be the tick. `baseUrl`: dispatch over the network to
    * this deployment (each fire its own request) instead of through the
-   * app's router in this process. Rejects when a schedule index's claim does,
-   * after firing everything else.
+   * app's router in this process. `secret`: the bearer each fire carries
+   * (default `process.env.CRON_SECRET`), so an adapter that authenticates its
+   * own caller with a configured secret sends that same secret on. Rejects
+   * when a schedule index's claim does, after firing everything else.
    */
-  tick(options?: { baseUrl?: string }): Promise<ScheduleTickReport>;
+  tick(options?: { baseUrl?: string; secret?: string }): Promise<ScheduleTickReport>;
 }
 
 /**

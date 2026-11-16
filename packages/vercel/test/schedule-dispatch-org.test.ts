@@ -50,8 +50,8 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-function boot() {
-  vi.stubEnv("CRON_SECRET", SECRET);
+function boot(secretFrom: "env" | "option" = "env") {
+  vi.stubEnv("CRON_SECRET", secretFrom === "env" ? SECRET : "");
   const rows: ScheduleIndexEntry[] = [];
   const index: ScheduleIndex = {
     async upsert(row) {
@@ -98,7 +98,7 @@ function boot() {
     actions: { plan }
   })() as unknown as FlowInstance;
 
-  const scheduler = vercelScheduler();
+  const scheduler = vercelScheduler(secretFrom === "option" ? { secret: SECRET } : {});
   const app = createFlowState({
     flows: [flow],
     adapters: [createScheduledTransportAdapter()],
@@ -136,6 +136,17 @@ function boot() {
 }
 
 describe("a dynamic schedule fired through the Vercel route", () => {
+  // The secret that let the cron call in is the one each fire carries, or the
+  // flow's bearer check refuses every fire of an app that configures it in code.
+  it("carries the adapter's configured secret on each fire when CRON_SECRET is unset", async () => {
+    const h = boot("option");
+    await h.planIn("globex");
+
+    expect((await h.cron()).status).toBe(200);
+    expect(h.statuses).toEqual([202]);
+    expect((await h.fired())?.orgId).toBe("globex");
+  });
+
   it.each(["globex", DEFAULT_ORG_ID, "Acme.Corp/EU"])("fires a schedule a run saved in %j into that org", async (orgId) => {
     const h = boot();
     await h.planIn(orgId);

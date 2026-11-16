@@ -22,7 +22,8 @@ import type { SchedulerAdapter, ScheduleTicker } from "@flow-state-dev/engine/ho
 export interface VercelSchedulerOptions {
   /**
    * The secret Vercel Cron sends as `Authorization: Bearer <secret>`. Default
-   * `process.env.CRON_SECRET`, read on each call.
+   * `process.env.CRON_SECRET`, read on each call. Each fire the tick sends
+   * carries the same secret to the dispatch endpoint.
    */
   secret?: string;
 }
@@ -51,12 +52,13 @@ export function vercelScheduler(options: VercelSchedulerOptions = {}): VercelSch
       };
     },
     route: async (req) => {
-      if (!authorize(req, options.secret ?? process.env.CRON_SECRET ?? "")) return new Response("Unauthorized", { status: 401 });
+      const secret = options.secret ?? process.env.CRON_SECRET ?? "";
+      if (!authorize(req, secret)) return new Response("Unauthorized", { status: 401 });
       if (ticker === undefined) {
         return new Response("Server misconfigured: pass this scheduler to createFlowState({ scheduler })", { status: 500 });
       }
       try {
-        const report = await ticker.tick({ baseUrl: new URL(req.url).origin });
+        const report = await ticker.tick({ baseUrl: new URL(req.url).origin, secret });
         return Response.json({ dispatched: report.dispatched.length });
       } catch (err) {
         console.error("[flow-state] schedule tick failed; the next cron call retries", err);

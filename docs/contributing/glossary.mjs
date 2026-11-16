@@ -331,6 +331,23 @@ export const ENTRIES = [
     ],
   },
   {
+    term: "Scheduler",
+    means: "What decides when the app's one schedule tick runs (`createFlowState({ scheduler })`, `SchedulerAdapter`, `ScheduleTicker`). The default is the engine's local cron, held by one process through a store lease; `vercelScheduler()` runs the tick from one Vercel Cron route; `scheduler: false` turns scheduling off.",
+    decision: "FIX-2752",
+    retires: [
+      {
+        id: "per-host-schedule-tick-names",
+        check: "sweep",
+        // Each host had its own way to fire schedules; the engine's one tick replaces them all. The user
+        // docs and package READMEs follow at release (release-docs), so this reads code and the
+        // architecture docs only.
+        files: new RegExp(`${CODE.source}|^docs/architecture/.*\\.md$`),
+        pattern:
+          /\b(serveScheduleTicks|startScheduleTick|registerStaticSchedules|createScheduleDispatchProcessor|createBullmqScheduleIndex|createGetToPostCronShim|createScheduleTickHandler)\b/,
+      },
+    ],
+  },
+  {
     term: "Flow runner",
     means: "What decides where a flow action runs (`FlowRunner`).",
     decision: "FIX-2245",

@@ -421,7 +421,7 @@ class InternalFlowState<TSettings extends object>
     this.#allAdapters = collectAdapters(this.#stores);
 
     // The schedule tick's one entry point, handed to whichever scheduler runs it.
-    const ticker: ScheduleTicker = { tick: (tickOptions) => this.#tick(tickOptions?.baseUrl, undefined) };
+    const ticker: ScheduleTicker = { tick: (tickOptions) => this.#tick(tickOptions?.baseUrl, undefined, tickOptions?.secret) };
     if (options.scheduler === undefined) {
       this.#localScheduler = createLocalScheduler({
         tick: (signal) => this.#tick(undefined, signal),
@@ -1339,12 +1339,16 @@ class InternalFlowState<TSettings extends object>
    * The schedule tick: fire what is due across every registered flow. Over the
    * network to `baseUrl` when given (each fire its own request to this
    * deployment), else through this app's own router, which it builds when no
-   * one has. Bears `CRON_SECRET` when the environment sets it, as a host's
-   * cron would.
+   * one has. Bears `secretOverride` when the adapter passes one, else
+   * `CRON_SECRET` when the environment sets it, as a host's cron would.
    */
-  async #tick(baseUrl: string | undefined, signal: AbortSignal | undefined): Promise<ScheduleTickReport> {
+  async #tick(
+    baseUrl: string | undefined,
+    signal: AbortSignal | undefined,
+    secretOverride?: string
+  ): Promise<ScheduleTickReport> {
     const runtime = await this.#runtime();
-    const secret = process.env.CRON_SECRET;
+    const secret = secretOverride ?? process.env.CRON_SECRET;
     let send: (fire: ScheduleDispatch) => Promise<number>;
     if (baseUrl !== undefined) {
       send = async (fire) => {
