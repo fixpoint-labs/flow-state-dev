@@ -65,6 +65,16 @@ export function noticeIdsOf(value: unknown): string[] | undefined {
   return Array.isArray(value) && value.every((id) => typeof id === "string") ? (value as string[]) : undefined;
 }
 
+// FIX-2750.
+/**
+ * A notice's board partition key as it arrived off a wire: the value when it
+ * is a string, else `undefined`. One that isn't is dropped, never the notice:
+ * no partition wakes every board.
+ */
+export function noticePartitionOf(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 /**
  * The ids two notices of one topic and kind carry together: their union, in
  * the order first named, or `undefined` (read everything) when either carries
@@ -95,6 +105,15 @@ export type WireNotice = {
    * a reader that can't use them reads everything.
    */
   ids?: string[];
+  // FIX-2750.
+  /**
+   * On a `board` notice, the partition of a partitioned ledger the change is
+   * in, as an opaque key: a keyed digest the server makes, which names no
+   * session and can't be matched by guessing one. A reader compares it with
+   * the keys an answer read (`ViewHearing.partitions`) and nothing else.
+   * Absent: any partition, and every board under the topic reads.
+   */
+  partition?: string;
 };
 
 /**

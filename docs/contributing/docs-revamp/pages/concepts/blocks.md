@@ -72,7 +72,7 @@ Then the connector. `cleanMessage` returns an object, and `draftReply` wants a s
 
 `itemVisibility: { client: true, history: true }` shows the reply to the user and keeps it in the model's history for later turns. The [items reference](../reference/items.md) lists the other settings and the defaults for each kind of block.
 
-A flow exposes a block as an action, a call a client can make. `defineFlow({ kind: "support", actions: { reply: { block: handleTicket } } })` makes this one callable as `reply`, because a sequencer is a block like any other.
+A flow exposes a block as an action, a call a client can make. `defineFlow({ kind: "support", actions: { reply: handleTicket } })` makes this one callable as `reply`, because a sequencer is a block like any other.
 
 ## What passes between steps
 

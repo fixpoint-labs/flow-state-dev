@@ -610,7 +610,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           stores,
           runtimeConfig,
           tenantIdHeader: options.tenantIdHeader,
-          callerFor
+          callerFor,
+          pushSecret: () => push.secret?.()
         });
       }
 

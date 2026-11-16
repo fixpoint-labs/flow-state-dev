@@ -80,7 +80,7 @@ Tables: what each store persists · who owns a record and what keys it · what a
 **R-17 · Pause, resume and replay** · `reference/durable-execution`
 Tables: what `suspend` returns · what runs again on resume · idempotency keys · several pauses in one run · pausing in generators and routers · retention and cleanup · errors. Figure: *A request's states*, a state figure. Lookups: Which blocks are skipped on resume? · How long is a paused run kept? · What happens to a pause nobody resolves? Sources: `advanced/durable-execution` (the rest) · `advanced/block-memoization-and-replay`, `advanced/idempotency`. From: C-15, B-03.
 
-**R-18 · Concurrency policies** · `reference/concurrency`
+**R-18 · Concurrency policies** · `reference/concurrency` · reference
 Tables: each policy: what a second request on one session does. Lookups: What is the default? · Which policy queues? Sources: `advanced/concurrency-policies` (keep, trim). From: C-15.
 
 **R-19 · Background work** · `reference/background-work`
@@ -157,7 +157,7 @@ Tables: each component and its props, grouped: common, flow-aware. Lookups: Whic
 
 ## The site's own pages
 
-**R-39 · Glossary** · `reference/glossary`
+**R-39 · Glossary** · `reference/glossary` · reference
 Generated from `docs/contributing/glossary.mjs`, grouped by layer: app, kit, flow, block, engine. Lookups: What does "worker" mean here? Sources: `glossary` (keep; group by layer). From: every page's first use of a term.
 
 **R-40 · Upgrading** · `reference/upgrading/<release>`

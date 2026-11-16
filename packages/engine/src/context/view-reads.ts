@@ -36,13 +36,15 @@ import type { StorageReach } from "../resources/lineage-scope";
  */
 type ResourceRead = { resource: string; root: string };
 
-// FIX-2625.
+// FIX-2625; FIX-2750 (the partition).
 /**
  * A task board read through its task collection: heard on its board notices,
  * which cover its ledger's accessor when `covers` is set. With none (an org
- * board's), the ledger's own notices stay heard beside it.
+ * board's), the ledger's own notices stay heard beside it. A partitioned
+ * ledger's read names its `partition`: a board notice naming another one
+ * is not heard.
  */
-type BoardReadRecord = { board: string; covers?: string };
+type BoardReadRecord = { board: string; covers?: string; partition?: string };
 
 /**
  * One read a view's run made: a scope's state, one of its resources by
@@ -70,7 +72,11 @@ const readKey = (read: RecordedRead): string =>
   [
     read.scope,
     read.scope === "session" ? read.sessionId : "",
-    typeof read.what === "string" ? read.what : "board" in read.what ? `b:${read.what.board}:${read.what.covers ?? ""}` : `r:${read.what.resource}`
+    typeof read.what === "string"
+      ? read.what
+      : "board" in read.what
+        ? `b:${read.what.board}:${read.what.covers ?? ""}:${read.what.partition ?? ""}`
+        : `r:${read.what.resource}`
   ].join("\u0000");
 
 /**
@@ -107,8 +113,13 @@ const PEER_KINDS: Record<"identity" | "turns" | "sessions", readonly ChangeKind[
   sessions: ["run"]
 };
 
-/** What one run hears under one topic, built up read by read. */
-type Hearing = { topic: WireTopic; kinds: Set<ChangeKind>; paths: Set<string> };
+// FIX-2750 (the partitions).
+/**
+ * What one run hears under one topic, built up read by read. `partitions` are
+ * the board partitions read there; `whole` is set once a board was read whole
+ * there, which hears every partition.
+ */
+type Hearing = { topic: WireTopic; kinds: Set<ChangeKind>; paths: Set<string>; partitions: Set<string>; whole: boolean };
 
 /** Every read's hearing, merged per topic and sorted by topic, leaving out resource reads a board read covers. */
 function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
@@ -120,7 +131,7 @@ function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
   const at = (topic: WireTopic): Hearing => {
     const key = wireTopicKey(topic);
     let hearing = byTopic.get(key);
-    if (hearing === undefined) byTopic.set(key, (hearing = { topic, kinds: new Set(), paths: new Set() }));
+    if (hearing === undefined) byTopic.set(key, (hearing = { topic, kinds: new Set(), paths: new Set(), partitions: new Set(), whole: false }));
     return hearing;
   };
   for (const read of all) {
@@ -132,7 +143,13 @@ function hearingsOf(reads: Iterable<RecordedRead>): Hearing[] {
     } else if (read.what === "identity" || read.what === "turns" || read.what === "sessions") {
       for (const kind of PEER_KINDS[read.what]) at(scopeTopic).kinds.add(kind);
     } else if ("board" in read.what) {
-      at({ ...scopeTopic, resource: read.what.board }).kinds.add("board");
+      const hearing = at({ ...scopeTopic, resource: read.what.board });
+      hearing.kinds.add("board");
+      // Read whole, it hears every partition: the ones listed no longer narrow it.
+      if (read.what.partition === undefined) {
+        hearing.whole = true;
+        hearing.partitions.clear();
+      } else if (!hearing.whole) hearing.partitions.add(read.what.partition);
     } else if (!covered.has(read.what.resource)) {
       const hearing = at(scopeTopic);
       hearing.kinds.add("resource");
@@ -159,7 +176,8 @@ export function createReadRecorder(): ReadRecorder {
       hearingsOf(seen.values()).map((hearing) => ({
         topic: hearing.topic,
         kinds: KIND_ORDER.filter((kind) => hearing.kinds.has(kind)),
-        ...(hearing.kinds.has("resource") ? { paths: [...hearing.paths].sort() } : {})
+        ...(hearing.kinds.has("resource") ? { paths: [...hearing.paths].sort() } : {}),
+        ...(!hearing.whole && hearing.partitions.size > 0 ? { partitions: [...hearing.partitions].sort() } : {})
       }))
   };
 }
@@ -219,8 +237,19 @@ export type ViewDependencies = {
    * - **org ledger:** no session is heard. A filer is another member's
    *   session, which no client payload names; the ledger's own notices on
    *   the org topic carry a change to a row, so its read stays heard.
+   *
+   * A partitioned ledger's read names its `partition`: each
+   * hearing it records lists it, so a board notice naming another partition
+   * wakes no watcher. With none, the board was read whole and hears them all.
    */
-  board(board: string, scope: "session" | "user" | "org", sessionIds: readonly string[], covers: string, reach: StorageReach): void;
+  board(
+    board: string,
+    scope: "session" | "user" | "org",
+    sessionIds: readonly string[],
+    covers: string,
+    reach: StorageReach,
+    partition?: string
+  ): void;
 };
 
 /**
@@ -258,15 +287,16 @@ export function createViewDependencies(
     sessionList() {
       record({ scope: "user", what: "sessions" });
     },
-    board(board, scope, sessionIds, covers, reach) {
+    board(board, scope, sessionIds, covers, reach, partition) {
+      const at = partition !== undefined ? { partition } : {};
       if (scope === "org") {
-        record({ scope: "org", what: { board } });
+        record({ scope: "org", what: { board, ...at } });
         return;
       }
       if (sessionIds.length === 0) return;
-      for (const id of new Set(sessionIds)) record({ scope: "session", sessionId: id, what: { board, covers } });
+      for (const id of new Set(sessionIds)) record({ scope: "session", sessionId: id, what: { board, covers, ...at } });
       // A session ledger's scope topic is the running session's, which `sessionIds` names first.
-      if (scope === "user" || sharesLineage(reach)) record({ scope: "user", what: { board, covers } });
+      if (scope === "user" || sharesLineage(reach)) record({ scope: "user", what: { board, covers, ...at } });
     }
   };
 }

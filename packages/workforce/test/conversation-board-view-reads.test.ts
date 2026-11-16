@@ -55,14 +55,22 @@ describe("the board's list, run as a session view", () => {
         "user:tasks",
         "user:workforceWorkers"
       ]);
+      // FIX-2750: both ledgers are read at the conversation's own partition,
+      // and each board hearing lists it, so another conversation's filing on
+      // the user topic wakes no read of this board.
+      const partitions = [
+        ...new Set(answer.reads.flatMap((read) => (typeof read.what !== "string" && "board" in read.what && read.what.partition !== undefined ? [read.what.partition] : [])))
+      ];
+      expect(partitions).toHaveLength(1);
+      expect(partitions[0]!.startsWith(conv)).toBe(true);
       expect(answer.hears).toEqual([
         // The session's state only: a reply streaming in the conversation re-reads no board.
         { topic: { scope: "session", id: conv }, kinds: ["state"] },
-        { topic: { scope: "session", id: conv, resource: "plan" }, kinds: ["board"] },
-        { topic: { scope: "session", id: conv, resource: "tasks" }, kinds: ["board"] },
+        { topic: { scope: "session", id: conv, resource: "plan" }, kinds: ["board"], partitions },
+        { topic: { scope: "session", id: conv, resource: "tasks" }, kinds: ["board"], partitions },
         { topic: { scope: "user" }, kinds: ["resource"], paths: ["workforce/workers"] },
-        { topic: { scope: "user", resource: "plan" }, kinds: ["board"] },
-        { topic: { scope: "user", resource: "tasks" }, kinds: ["board"] }
+        { topic: { scope: "user", resource: "plan" }, kinds: ["board"], partitions },
+        { topic: { scope: "user", resource: "tasks" }, kinds: ["board"], partitions }
       ]);
     } finally {
       await host.dispose();

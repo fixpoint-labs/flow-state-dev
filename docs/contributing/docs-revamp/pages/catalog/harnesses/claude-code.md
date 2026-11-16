@@ -83,7 +83,7 @@ const tidy = sequencer({ name: "tidy", inputSchema: z.object({ prompt: z.string(
 
 export default defineFlow({
   kind: "tidy",
-  actions: { tidy: { block: tidy } },
+  actions: { tidy },
 });
 ```
 

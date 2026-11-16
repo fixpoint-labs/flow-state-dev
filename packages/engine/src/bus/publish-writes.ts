@@ -135,15 +135,17 @@ function noticeKey(notice: ChangeNotice): string {
   return `${scope}\u0000${tenantId}\u0000${id}\u0000${resource ?? ""}\u0000${notice.kind}\u0000${notice.origin?.requestId ?? ""}`;
 }
 
-// FIX-2625.
+// FIX-2625; FIX-2750 (the partition).
 /**
  * `next` folded onto the notice `held` for the same topic, kind and origin:
- * the ids of both, unioned up to the cap, or none when either names none.
+ * the ids of both, unioned up to the cap, or none when either names none; and
+ * their partition when both name the same one, else none.
  */
 function fold(held: ChangeNotice | undefined, next: ChangeNotice): ChangeNotice {
   const ids = next.ids === undefined ? undefined : unionNoticeIds(held === undefined ? [] : held.ids, next.ids);
-  const { ids: _named, ...notice } = next;
-  return ids === undefined ? notice : { ...notice, ids };
+  const partition = held === undefined || held.partition === next.partition ? next.partition : undefined;
+  const { ids: _named, partition: _in, ...notice } = next;
+  return { ...notice, ...(ids !== undefined ? { ids } : {}), ...(partition !== undefined ? { partition } : {}) };
 }
 
 // FIX-1506.

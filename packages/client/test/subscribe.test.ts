@@ -571,6 +571,17 @@ describe("client.subscribe on a host with push", () => {
     ]);
   });
 
+  // FIX-2750: a board notice's partition key reaches the subscriber as sent;
+  // one that isn't a string is dropped, never the notice, so every board reads.
+  it("passes a board notice's partition, and drops one that isn't a string but keeps the notice", async () => {
+    const { fetcher } = server({ push: { transport: "websocket" } });
+    const { onChange, socket } = await connected(client(fetcher), [S1], undefined, true);
+    onChange.mockClear();
+    socket.frame({ type: "notice", ...notice(S1, "board"), partition: "k1" });
+    socket.frame({ type: "notice", ...notice(S1, "board"), partition: ["k1"] });
+    expect(onChange.mock.calls).toEqual([[{ topic: S1, kind: "board", partition: "k1" }], [{ topic: S1, kind: "board" }]]);
+  });
+
   it("reconnects at once when the server ends the socket at its age limit", async () => {
     const { fetcher, mints } = server({ push: { transport: "websocket" } });
     const { socket } = await connected(client(fetcher), [S1], 1000, true);

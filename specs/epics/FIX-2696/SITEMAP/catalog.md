@@ -279,16 +279,16 @@ pattern has them) · Next. One figure each: *the pattern's shape*, its blocks an
 between them, drawn on the grid K-19 uses. Marks: arrow, dashed outline on what runs inside one
 action run, hatching where a list or transcript is stored. Config tables → `reference/patterns`.
 
-| Id | Page | Words | Job | Cold-read questions | Examples | Source verdict |
-| --- | --- | --- | --- | --- | --- | --- |
-| K-20 | Parallel Tasks | 800 | Split a goal once, run the pieces side by side, combine | One task fails: what does the result hold? · Is there a review step? · Where do you swap the planner? | `parallelTasks` basic use; a custom synthesizer | Keep |
-| K-21 | Supervisor | 1,000 | Fan out, review each result, retry the ones rejected | Who decides a result is good? · How many retries does a task get? · What does a worker receive on a retry? | `supervisor` basic use; a reviewer | Keep |
-| K-22 | Plan and Execute | 1,300 | Plan a task graph, work through it, replan with what came back | When does it replan? · A step fails: what happens to steps that depend on it? · Where does the goal come from in a conversation? | `planAndExecute` basic use; a custom step executor | Keep; trim |
-| K-23 | Debate | 1,300 | Agents argue assigned positions; a judge reads the transcript and decides | Who ends the debate? · Pick a winner or synthesize: who chooses? · When is debate the wrong tool? | `debate` basic use; stances | Keep; trim |
-| K-24 | Round Robin | 1,100 | A fixed roster takes turns; an optional referee critiques each round | What stops the loop? · What does the referee change? · Who reads the contributions? | `roundRobin` basic use; a referee | Keep |
-| K-25 | Routed Specialists | 700 | A controller picks the next specialist over a shared workspace until it converges | Who decides which specialist runs next? · What do specialists share? · What ends it? | `routedSpecialists` minimal example | Keep |
-| K-26 | Event Actors | 900 | Actors react to topics they watch; no controller | You add an actor: what else changes? · One actor throws: what happens to the others? · How does an actor trigger another? | `eventActors` basic use; topic matching | Keep |
-| K-27 | Response Auditor | 1,000 | Run a finished answer through analyzers that score and annotate it | What does an analyzer return? · Where does the audit show? · How do you add your own analyzer? | The auditor after a generator; a custom analyzer | Keep |
+| Id | Page | Slug | Words | Job | Cold-read questions | Examples | Source verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| K-20 | Parallel Tasks | `catalog/patterns/parallel-tasks` | 800 | Split a goal once, run the pieces side by side, combine | One task fails: what does the result hold? · Is there a review step? · Where do you swap the planner? | `parallelTasks` basic use; a custom synthesizer | Keep |
+| K-21 | Supervisor | `catalog/patterns/supervisor` | 1,000 | Fan out, review each result, retry the ones rejected | Who decides a result is good? · How many retries does a task get? · What does a worker receive on a retry? | `supervisor` basic use; a reviewer | Keep |
+| K-22 | Plan and Execute | `catalog/patterns/plan-and-execute` | 1,300 | Plan a task graph, work through it, replan with what came back | When does it replan? · A step fails: what happens to steps that depend on it? · Where does the goal come from in a conversation? | `planAndExecute` basic use; a custom step executor | Keep; trim |
+| K-23 | Debate | `catalog/patterns/debate` | 1,300 | Agents argue assigned positions; a judge reads the transcript and decides | Who ends the debate? · Pick a winner or synthesize: who chooses? · When is debate the wrong tool? | `debate` basic use; stances | Keep; trim |
+| K-24 | Round Robin | `catalog/patterns/round-robin` | 1,100 | A fixed roster takes turns; an optional referee critiques each round | What stops the loop? · What does the referee change? · Who reads the contributions? | `roundRobin` basic use; a referee | Keep |
+| K-25 | Routed Specialists | `catalog/patterns/routed-specialists` | 700 | A controller picks the next specialist over a shared workspace until it converges | Who decides which specialist runs next? · What do specialists share? · What ends it? | `routedSpecialists` minimal example | Keep |
+| K-26 | Event Actors | `catalog/patterns/event-actors` | 900 | Actors react to topics they watch; no controller | You add an actor: what else changes? · One actor throws: what happens to the others? · How does an actor trigger another? | `eventActors` basic use; topic matching | Keep |
+| K-27 | Response Auditor | `catalog/patterns/response-auditor` | 1,000 | Run a finished answer through analyzers that score and annotate it | What does an analyzer return? · Where does the audit show? · How do you add your own analyzer? | The auditor after a generator; a custom analyzer | Keep |
 
 All eight: FIX-2703. Sources: `patterns/parallelTasks`, `patterns/supervisor`, `patterns/plan-and-execute`, `patterns/debate`, `patterns/round-robin`, `patterns/routed-specialists`, `patterns/event-actors`, `patterns/response-auditor`.
 
@@ -318,14 +318,14 @@ All eight: FIX-2703. Sources: `patterns/parallelTasks`, `patterns/supervisor`, `
 Each: `catalog/tools/<name>` · catalog · kit template without slots. Provider and option tables →
 `reference/tools`.
 
-| Id | Page | Words | Job | Cold-read questions | Figures | Examples | Source verdict |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| K-30 | Search | 600 | Web search across providers behind one interface | Which provider is used when you name none? · How do you restrict domains? · What comes back? | None | `search` in `tools`; a domain filter | Keep |
-| K-31 | Fetch | 500 | One page as clean Markdown | What happens with no provider key? · What comes back on a failed fetch? · How does it pair with search? | None | `fetch` in `tools` | Keep |
-| K-32 | Crawl | 600 | Follow links from a root URL and return each page | How do you bound a crawl? · Which URLs are followed? · When should you use a provider instead of the built-in crawler? | None | `crawl` with a pattern | Keep |
-| K-33 | MCP tools | 500 | Connect an MCP server and give its tools to a generator | How do you turn one tool off for a turn? · What helps the model pick the right tool? · Where is the server configured? | None | An MCP server in `tools` | Keep |
-| K-34 | Bash | 1,100 | Run shell commands in a sandbox whose files persist | Where do files written by a command go after the request? · What can the sandbox reach? · Which line gives a generator the tool? | *Sandbox and store*: the sandbox for one run, the files kept. Marks: dashed outline on the sandbox, hatching on the stored files, arrow (`SYNCS`) | `createBashCapability` in `uses` | Keep, trim |
-| K-35 | Workspace | 1,000 | Move files between stored collections and the place an agent works | Two runs change one file: what happens? · What does the flush report say? · When do you reach for this over Bash? | *Stored files, working files*: two columns and the sync between. Marks: hatching, arrow, red on a conflict | Projecting a collection to disk; writing one file | Keep, trim |
+| Id | Page | Slug | Words | Job | Cold-read questions | Figures | Examples | Source verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| K-30 | Search | `catalog/tools/search` | 600 | Web search across providers behind one interface | Which provider is used when you name none? · How do you restrict domains? · What comes back? | None | `search` in `tools`; a domain filter | Keep |
+| K-31 | Fetch | `catalog/tools/fetch` | 500 | One page as clean Markdown | What happens with no provider key? · What comes back on a failed fetch? · How does it pair with search? | None | `fetch` in `tools` | Keep |
+| K-32 | Crawl | `catalog/tools/crawl` | 600 | Follow links from a root URL and return each page | How do you bound a crawl? · Which URLs are followed? · When should you use a provider instead of the built-in crawler? | None | `crawl` with a pattern | Keep |
+| K-33 | MCP tools | `catalog/tools/mcp` | 500 | Connect an MCP server and give its tools to a generator | How do you turn one tool off for a turn? · What helps the model pick the right tool? · Where is the server configured? | None | An MCP server in `tools` | Keep |
+| K-34 | Bash | `catalog/tools/bash` | 1,100 | Run shell commands in a sandbox whose files persist | Where do files written by a command go after the request? · What can the sandbox reach? · Which line gives a generator the tool? | *Sandbox and store*: the sandbox for one run, the files kept. Marks: dashed outline on the sandbox, hatching on the stored files, arrow (`SYNCS`) | `createBashCapability` in `uses` | Keep, trim |
+| K-35 | Workspace | `catalog/tools/workspace` | 1,000 | Move files between stored collections and the place an agent works | Two runs change one file: what happens? · What does the flush report say? · When do you reach for this over Bash? | *Stored files, working files*: two columns and the sync between. Marks: hatching, arrow, red on a conflict | Projecting a collection to disk; writing one file | Keep, trim |
 
 All six: FIX-2703. Sources: `tools/search`, `tools/fetch`, `tools/crawl`, `tools/mcp`, `tools/bash`, `tools/workspace`.
 

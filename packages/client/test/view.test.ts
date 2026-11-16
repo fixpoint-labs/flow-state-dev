@@ -203,6 +203,59 @@ describe("watchView", () => {
       ]);
     });
 
+    // FIX-2750: Greptile and Cursor on #5306. A board's partial answer (a known
+    // task changed) is placed over the held one, merging their hearings; the
+    // partitions the board read must survive it, or another conversation's
+    // filing reads the board again.
+    it("keeps a board's partitions across a partial answer, so another conversation's filing still reads nothing", async () => {
+      const desk = { scope: "session", id: "s1", resource: "desk" } as const;
+      const userDesk = { scope: "user", resource: "desk" } as const;
+      const hears: ViewHearing[] = [
+        { topic: desk, kinds: ["board"], partitions: ["key-a"] },
+        { topic: userDesk, kinds: ["board"], partitions: ["key-a"] }
+      ];
+      const fake = fakeViewClient((options) =>
+        options?.changed?.ids !== undefined
+          ? { value: [{ id: "a", n: 2 }], topics: [desk, userDesk], keys: ["a"], partial: { removed: [] }, hears }
+          : { value: [{ id: "a", n: 1 }], topics: [desk, userDesk], keys: ["a"], hears }
+      );
+      watchView(fake.client, ROSTER, {}, {}, { pollIntervalMs: null });
+      await flush();
+      // A task on screen changes: the board answers partially for it.
+      fake.notify({ topic: desk, kind: "board", ids: ["a"] });
+      await flush();
+      expect(fake.calls.some((call) => call?.changed !== undefined)).toBe(true);
+      const settled = fake.views();
+      // Another conversation files its task, on the user topic every board hears.
+      fake.notify({ topic: userDesk, kind: "board", partition: "key-b" });
+      await flush();
+      expect(fake.views()).toBe(settled);
+      // A row filed into this conversation's partition still reads.
+      fake.notify({ topic: userDesk, kind: "board", partition: "key-a" });
+      await flush();
+      expect(fake.views()).toBe(settled + 1);
+    });
+
+    it("merges two answers' partitions, and hears every partition when either read the board whole", () => {
+      const board = { scope: "user", resource: "desk" } as const;
+      const held = (partitions?: string[]) => ({
+        entries: [{ id: "a" }],
+        keys: ["a"],
+        topics: [board] as WireTopic[],
+        hears: [{ topic: board, kinds: ["board"], ...(partitions !== undefined ? { partitions } : {}) }] as ViewHearing[]
+      });
+      const answer = (partitions?: string[]): ViewResult => ({
+        value: [{ id: "a" }],
+        keys: ["a"],
+        topics: [board],
+        partial: { removed: [] },
+        hears: [{ topic: board, kinds: ["board"], ...(partitions !== undefined ? { partitions } : {}) }]
+      });
+      expect(placePartial(held(["k2"]), answer(["k1", "k2"])).hears).toEqual([{ topic: board, kinds: ["board"], partitions: ["k1", "k2"] }]);
+      expect(placePartial(held(), answer(["k1"])).hears).toEqual([{ topic: board, kinds: ["board"] }]);
+      expect(placePartial(held(["k1"]), answer()).hears).toEqual([{ topic: board, kinds: ["board"] }]);
+    });
+
     const hearing = (): ViewResult => ({
       value: "v",
       topics: [{ scope: "user" }, { scope: "session", id: "s1", resource: "desk" }],

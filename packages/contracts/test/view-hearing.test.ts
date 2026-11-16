@@ -55,3 +55,31 @@ describe("hearsNotice", () => {
     expect(hearsNotice(hears, { topic: { scope: "session", id: "s1" }, kind: "resync" })).toBe(false);
   });
 });
+
+// FIX-2750.
+describe("hearsNotice, for a board notice that names its partition", () => {
+  const board = { scope: "user", resource: "tasks" } as const;
+  const readA: ViewHearing[] = [{ topic: board, kinds: ["board"], partitions: ["key-a"] }];
+  const readWhole: ViewHearing[] = [{ topic: board, kinds: ["board"] }];
+
+  it("wakes an answer that read the notice's partition, even one it read empty", () => {
+    expect(hearsNotice(readA, { topic: board, kind: "board", partition: "key-a" })).toBe(true);
+  });
+
+  it("does not wake an answer that read only other partitions: another conversation's filing costs no read", () => {
+    expect(hearsNotice(readA, { topic: board, kind: "board", partition: "key-b" })).toBe(false);
+  });
+
+  it("wakes every board for a notice that names no partition: an older server's", () => {
+    expect(hearsNotice(readA, { topic: board, kind: "board" })).toBe(true);
+  });
+
+  it("wakes an answer that read the board whole, or names no partitions: an unpartitioned ledger, an older server", () => {
+    expect(hearsNotice(readWhole, { topic: board, kind: "board", partition: "key-b" })).toBe(true);
+  });
+
+  it("narrows board notices only: a partition never gates another kind", () => {
+    const both: ViewHearing[] = [{ topic: board, kinds: ["board", "resource"], partitions: ["key-a"] }];
+    expect(hearsNotice(both, { topic: board, kind: "resource", partition: "key-b" })).toBe(true);
+  });
+});

@@ -18,11 +18,17 @@
  * - **`crossing` frames.** After the first ticket, and on each change, the
  *   socket says whether its process's bus hears other processes. A control
  *   frame about the socket, never a notice kind.
+ * - **A board partition goes out as its key**, made under the push secret.
+ *   The secret is read on each use, so it can change while the socket is
+ *   open; the browser's answers then hold keys made under the old one. Before
+ *   the first key made under a new secret, the socket sends a `resync` on
+ *   every topic it holds, so each view reads again and holds the new keys.
  */
 import { type WireTopic } from "@flow-state-dev/core";
 import { PUSH_CLOSE_CODES, wireTopicKey, type PushServerFrame } from "@flow-state-dev/core/internal";
 import type { BusTopic, ChangeBus, ChangeNotice } from "../bus/types";
 import { verifyPushTicket } from "./ticket";
+import { boardPartitionKey } from "./partition-key";
 import type { NoticeIdScopes } from "../runtime-config";
 
 /** The socket session's clocks. */
@@ -77,7 +83,10 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
   const { bus, io, userId } = options;
   const logger = options.logger ?? console;
   /** Bus key → the topic as the wire names it, and its unsubscribe. */
-  const subscriptions = new Map<string, { wireKey: string; off: () => void }>();
+  const subscriptions = new Map<string, { wire: WireTopic; wireKey: string; off: () => void }>();
+  // FIX-2750.
+  /** The secret this socket's partition keys were last made under, or its first ticket checked with. */
+  let keyedUnder: string | undefined;
   let crossingOff: (() => void) | undefined;
   let accepted = false;
   let ended = false;
@@ -129,12 +138,24 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
       topic: toWire(topic),
       kind: notice.kind,
       ...(notice.origin !== undefined ? { origin: notice.origin } : {}),
-      ...(!off && notice.ids !== undefined ? { ids: notice.ids } : {})
+      ...(!off && notice.ids !== undefined ? { ids: notice.ids } : {}),
+      // FIX-2750: a partition leaves the server only as its opaque key.
+      ...(notice.partition !== undefined ? { partition: partitionKey(notice.topic.tenantId, notice.partition) } : {})
     });
+  };
+  /** `partition`'s key under the current secret, after a `resync` on every topic held when the secret changed. */
+  const partitionKey = (tenantId: string, partition: string): string => {
+    const secret = options.secret();
+    if (keyedUnder !== undefined && secret !== keyedUnder) {
+      for (const { wire } of subscriptions.values()) send({ type: "notice", topic: wire, kind: "resync" });
+    }
+    keyedUnder = secret;
+    return boardPartitionKey(secret, tenantId, partition);
   };
 
   const subscribe = (ticket: unknown): void => {
-    const checked = verifyPushTicket(ticket, options.secret(), userId);
+    const secret = options.secret();
+    const checked = verifyPushTicket(ticket, secret, userId);
     if (!checked.ok) {
       logger.warn(`[flow-state] push socket refused a ticket (${checked.reason}); closing it`, {
         reason: checked.reason,
@@ -147,6 +168,7 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
       const key = busKey(granted.bus);
       if (subscriptions.has(key)) continue;
       subscriptions.set(key, {
+        wire: toWire(granted.bus),
         wireKey: wireTopicKey(toWire(granted.bus)),
         off: bus.subscribe(granted.bus, (notice) => hear(notice, granted.bus))
       });
@@ -156,6 +178,7 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
     send({ type: "subscribed" });
     if (accepted) return;
     accepted = true;
+    keyedUnder = secret;
     clearTimeout(ticketTimer);
     send({ type: "crossing", crosses: bus.crossesProcesses });
     crossingOff = bus.onCrossingChange((crosses) => send({ type: "crossing", crosses }));

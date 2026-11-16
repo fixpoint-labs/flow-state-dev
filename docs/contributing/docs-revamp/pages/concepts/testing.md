@@ -28,7 +28,7 @@ import { handleTicket } from "./blocks/handle-ticket";
 export default defineFlow({
   kind: "support",
   requireUser: true,
-  actions: { reply: { block: handleTicket } },
+  actions: { reply: handleTicket },
 })();
 ```
 
@@ -157,7 +157,7 @@ import { countTicket } from "../src/flows/support/blocks/count-ticket";
 const flow = defineFlow({
   kind: "support",
   requireUser: true,
-  actions: { count: { block: countTicket } },
+  actions: { count: countTicket },
 })();
 
 it("adds one to the count", async () => {

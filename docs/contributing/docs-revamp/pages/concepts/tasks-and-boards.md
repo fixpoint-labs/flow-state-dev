@@ -41,7 +41,7 @@ const board = taskBoard({
 
 export default defineFlow({
   kind: "research",
-  actions: { run: { block: board.drain } },
+  actions: { run: board.drain },
 })();
 ```
 

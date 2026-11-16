@@ -172,6 +172,9 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // host sets a deadline for a person (the epic's D3): server-set.
   const filing = filingStampOf(options.ctx);
 
+  // The partition a resource-backed board reads and writes, checked before any storage.
+  const partition = options.backing === "resource" ? checkedPartition(options) : undefined;
+
   // A board notice for every committed write of a row, lifecycle change or not,
   // to the session that filed it (whose view shows the board); server-written
   // (BP-031). No `Task.filer`: the ledger's legacy filer, else the running session.
@@ -189,8 +192,14 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     onWrite(event.task);
     // FIX-2625: a row added to a ledger also goes out on the ledger's own scope
     // topic, so a view that never named its filer's session still hears it.
+    // FIX-2750: naming its partition, so a view of another partition skips it.
     if (event.kind === "added" && options.backing === "resource") {
-      publishBoardInsert(options.ctx, { board: options.collectionId, taskId: event.task.id, ledger: options.collection });
+      publishBoardInsert(options.ctx, {
+        board: options.collectionId,
+        taskId: event.task.id,
+        ledger: options.collection,
+        ...(partition !== undefined ? { partition } : {}),
+      });
     }
     options.ctx.emit.data(
       TASK_CHANGE_DATA_TYPE,
@@ -232,7 +241,6 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     });
   }
 
-  const partition = checkedPartition(options);
   // The ledger's ending recorder, read off the declaration the engine hands
   // back as the handle's config, so every resolution of the ledger (a board's
   // drain, a task entry's gate, the task tools) writes its endings through it.
@@ -287,7 +295,13 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // names (each entry's, and the running one's), and every added row's goes
   // out on the ledger's scope topic too. An org ledger's view hears no filer.
   const filers = [runningSession, ...ref.list().map(filerOf)].filter((id): id is string => id !== undefined);
-  recordBoardRead(ctx, { board: options.collectionId, sessionIds: filers, ledger: options.collection });
+  // FIX-2750: at its partition, so a row added to another partition wakes no view of this one.
+  recordBoardRead(ctx, {
+    board: options.collectionId,
+    sessionIds: filers,
+    ledger: options.collection,
+    ...(partition !== undefined ? { partition } : {}),
+  });
   return ref;
 }
 

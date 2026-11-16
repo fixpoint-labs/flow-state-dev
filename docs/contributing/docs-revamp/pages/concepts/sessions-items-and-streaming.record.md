@@ -48,6 +48,7 @@ Written by `docs-writer` (sonnet), 1014 words. Scenario: A support desk: a custo
 - After the owner's review edits, page sha256 a706f07764d9: exit 0.
 
 - Post-review edit (Codex): line 23 now says the user message is recorded only when the action sets `userMessage`. Re-ran `node scripts/check-docs-page.mjs` on the page: passes.
+- After the loop (review): emit.data migration: the items table row is `data` / `ctx.emit.data`; the progress-card example calls `ctx.emit.data`; the paragraph under it defines a data item once and names the first argument its `dataType`. Type-check in apps/kitchen-sink/zz-emitdata, deleted afterwards: only the planted errors. 1023 words. Page sha256 526e6f261cd4.
 
 ## 5 · Fact check
 
@@ -60,6 +61,7 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 c60
 - After the owner's review edits, page sha256 a706f07764d9: Owner review, 2026-11-13: the session is where a flow keeps many requests as one record, a conversation for a chat and a log for a workflow. Codex review: a reconnect does not replay the missed text pieces, and the reply can lack those words until the message arrives whole; a reload reads the saved items. Checked: `replayRequestEvents` skips `content.delta` and loads no snapshot (`engine/src/streaming/resume.ts:130-160`).
 
 - Post-review edit (Codex): checked `userMessage` against `packages/engine/src/execution/runAction.ts:1825-1846`; the user-role message item is emitted only when `action.userMessage` is defined. Matches facts line 34.
+- Re-run after the review edit: `ctx.emit.data(dataType, value, options?)` (packages/core/src/types/block.ts:508-527) with `EmitDataOptions` (:143-155); the engine builds `item_data_keyed:<key>` and replaces `value` (packages/engine/src/context/createExecutionContext.ts:377-414); the data default is `{ client: true, history: false }` (packages/contracts/src/items/resolve-visibility.ts:42,52); the keyed test asserts one stored `value` of `{ a: 99 }` (packages/engine/test/execution.test.ts:2919,2946-2959).
 
 ## 6 · Depth pass
 

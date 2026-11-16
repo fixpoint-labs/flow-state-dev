@@ -120,7 +120,7 @@ A transport "translates whatever it receives (an HTTP request, an MCP `tools/cal
 
 - `fsdev run <flowId> <action> -i '<json>'` runs an action from the terminal with NDJSON output. With an `fsdev.config.ts`, it looks the flow up by instance id in the config's registry and uses the config's stores and models. `cliDoc:13-40`; `apps/docs/docs/cli/configuration.md:11-18`. [page: one sentence, "the terminal"]
 - `fsdev dev` serves the same router plus the DevTool UI on a fixed loopback port, `4200`; `fsdev serve` is the production counterpart. `cliDoc:102-129`, `:163-183`. [ref]
-- A caller in the same process (a script, a test, a queue worker) uses `createInProcessFetch(flowState)` from `@flow-state-dev/engine` as a client's `fetcher`: each request goes straight to the engine, no web server, no port. The routes, checks and answers are the same as over HTTP, and credentials still go through `resolvePrincipal`. `ha:62-85`; `eng/routes/in-process-fetch.ts:1-30`, `:90`. [ref/page, one sentence] 
+- A caller in the same process (a script, a test, a job processor) uses `createInProcessFetch(flowState)` from `@flow-state-dev/engine` as a client's `fetcher`: each request goes straight to the engine, no web server, no port. The routes, checks and answers are the same as over HTTP, and credentials still go through `resolvePrincipal`. `ha:62-85`; `eng/routes/in-process-fetch.ts:1-30`, `:90`. [ref/page, one sentence] 
 - The terminal and in-process calls are action calls: `fsdev run` names an action; `createInProcessFetch` carries the same action route. `cliDoc:13-18`; `ha:66-72`. [page]
 
 ### 4f. Another system: a custom transport

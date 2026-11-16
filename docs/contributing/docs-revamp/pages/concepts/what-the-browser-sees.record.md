@@ -47,6 +47,8 @@ Written by `docs-writer` (sonnet), 774 words. Scenario: The support desk: flow `
 
 - Post-review edit (Cursor security review on #5226): line 76, the figure description and the figure's key label (`STAYS ON THE SERVER` → `NOT IN CLIENT DATA`) now describe client data, not the stream. Re-ran check-docs-page.mjs and lint-brand: ok.
 - After the loop (review): the opening no longer says nothing else gets through; a live `state_change` item carries the raw delta, unexposed fields included (`packages/react/src/internal/mergeStateChangeIntoSnapshot.ts:11`; FIX-2730).
+- After the loop (review): emit.data migration: `ItemsRenderer` sentence says a data item draws nothing until a renderer is registered; the renderer paragraph defines a data item by its `dataType` and the `data` map; `OrderCard` takes a `DataItem` and reads `item.value`; the provider prop is `renderers={{ data: ... }}`. Type-check in apps/kitchen-sink/zz-emitdata, deleted afterwards: only the planted errors. 858 words. Page sha256 a096a560af10.
+- After the loop (review): owner request: action entries that set only `block` are written as the bare block (`name: block`, or `{ name }` when the names match). Type-check in apps/kitchen-sink/zz-act, deleted afterwards: only the planted error, plus the partial examples' missing-import errors, identical before the edit. 1352 words. Page sha256 bee44bbb6d55.
 
 ## 5 · Fact check
 
@@ -62,6 +64,8 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 d5d
 
 - Post-review edit (Codex on #5226), checked against the code: a request sent through `useAction` is not followed by a default `useSession` (`react/src/hooks/useSession.ts:1918-1919`); `client.expose` narrowed to client data, since `state_change` deltas carry raw unexposed keys (`react/src/internal/mergeStateChangeIntoSnapshot.ts:8-14`).
 - Re-run after the review edit: no wrong claim. Client data is the exposed projection and the stream's `state_change` delta carries raw keys (`packages/react/src/internal/mergeStateChangeIntoSnapshot.ts:8-13`; `packages/contracts/src/items/types.ts:554-565`).
+- Re-run after the review edit: `DataItem` is exported from `@flow-state-dev/core/items` (packages/core/src/items/index.ts:6; packages/contracts/src/items/index.ts:21) with `dataType` and `value` (packages/contracts/src/items/types.ts:506-523); `renderers.data` (packages/react/src/registry/block-renderers.ts:53-58,83-85); an unregistered data item renders nothing and other types fall to the JSON block (packages/react/src/components/ItemRenderer.ts:263-267,285-303); keyed dedup applies to data items (packages/react/src/components/ItemsRenderer.ts:95-116).
+- Re-run after the review edit: an action entry is a block or `{ block, ... }` (packages/core/src/types/flow.ts:749, `TActions[K] | TActions[K]["block"]`).
 
 ## 6 · Depth pass
 

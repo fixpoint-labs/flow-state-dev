@@ -233,27 +233,31 @@ docs. `examples/hello-chat/src/app.tsx` is the one runnable example that uses th
     2. a built-in for `message`, `reasoning`, `status`, `error`, `tool_output`, and for
        `suspension` an approval, question, selection or form card chosen by `reason` and the
        resume schema's shape;
-    3. otherwise a JSON `<pre>` showing `{ type, component?, status }`
-       (`ItemRenderer.ts:289-302`).
-    So **an item type with no renderer shows a small JSON block with its type, its component key
-    (for `component` and `container` items) and its status**, not the item's content. Add a
-    renderer for it in `FlowProvider`'s `renderers`. Types without a built-in beyond `message`,
-    `reasoning`, `status`, `error`, `tool_output`, `suspension`: `block_trace`, `source`,
-    `component`, `container` and any other type. Note that `block_trace` is never sent to the
-    client (item 34), so only `source`, `component` and `container` show in practice.
+    3. a `data` item with no renderer for its `dataType` renders nothing (`ItemRenderer.ts:10-11,263-267`);
+    4. otherwise a JSON `<pre>` showing `{ type, component?, status }`
+       (`ItemRenderer.ts:285-303`).
+    So **a data item with no renderer draws nothing, and any other type with no renderer shows a
+    small JSON block with its type, its container key (for `container` items) and its status**,
+    not the item's content. Add a renderer for it in `FlowProvider`'s `renderers`. Types without a
+    built-in beyond `message`, `reasoning`, `status`, `error`, `tool_output`, `suspension`:
+    `block_trace`, `source`, `data`, `container` and any other type. Note that `block_trace` is
+    never sent to the client (item 34), so only `source` and `container` show the JSON block in
+    practice.
 40. Four types render nothing, with no renderer needed: `state_change`, `resource_change`,
     `suspension_resume` and `continuation` (`ItemRenderer.ts:64-75`).
 41. The registry shape: `RendererRegistry = { message?, reasoning?, block_trace?, tool_output?,
     status?, source?, error?, suspension?, component?: Record<string, ...>, container?:
-    Record<string, ...> }`, each slot a React component or `false`
-    (`packages/react/src/registry/block-renderers.ts:31-47`). `component` and `container` items
-    look up a second key, the item's `component` name (`block-renderers.ts:57-72`).
+    Record<string, ...>, data?: Record<string, ...> }`, each slot a React component or `false`
+    (`packages/react/src/registry/block-renderers.ts:33-59`). `component` holds only the renderers
+    a `suspension` item names with `render.component` (`block-renderers.ts:47-51`). `container`
+    items look up a second key, the item's `component` name, and `data` items their `dataType`
+    (`block-renderers.ts:79-85`; `ItemRenderer.ts:244-249`).
     Every custom renderer receives `{ item }` as its only prop (`ItemRenderer.ts:12`;
     `react.md:338`).
-42. A `component` item whose key matches a registered `container` renderer is not rendered on its
-    own: the container owns it (`ItemRenderer.ts:261-271`). Reference-level; omit.
-43. Register renderers on `FlowProvider`: `renderers={{ message: ChatMessage, component: {
-    chart: Chart } }}` (`react.md:13-34`). Nested providers merge; a child's key overrides the
+42. A `data` item owned by a container with a registered renderer is not rendered on its
+    own: the container renderer manages it (`ItemsRenderer.ts:118-160,188-193`). Reference-level; omit.
+43. Register renderers on `FlowProvider`: `renderers={{ message: ChatMessage, data: {
+    chart: Chart } }}` (`block-renderers.ts:53-58`; `FlowContext.ts:21-45`). Nested providers merge; a child's key overrides the
     parent's, and `false` in the child wins over a parent renderer
     (`FlowContext.ts:66-98`; `react.md:42`).
 44. Example custom renderer: `function ChatMessage({ item }: { item: MessageItem })` with
@@ -262,11 +266,11 @@ docs. `examples/hello-chat/src/app.tsx` is the one runnable example that uses th
     reads only `output_text` parts (`ItemRenderer.ts:82-86`); a custom renderer sees all
     content parts. Prop types match `OutputItem` members from `@flow-state-dev/core/items`
     (`ItemRenderer.ts:15-25`).
-45. `ItemsRenderer` by default drops a component item's earlier snapshots that share a `key`
+45. `ItemsRenderer` by default drops a data item's earlier snapshots that share a `key`
     within a request, keeping the latest (`deduplicateByKey`, default true), and hides
     sub-agent items (`history: false`) unless `showSubAgents` is set
-    (`ItemsRenderer.ts:31-46`, `:98-115`). Reference-level; one clause at most, if the page shows
-    a keyed component.
+    (`ItemsRenderer.ts:31-46`, `:98-115`, `:177-179`). Reference-level; one clause at most, if the page shows
+    a keyed data item.
 46. `ItemsRenderer` also takes `toolGroupRenderer` and `live` to group consecutive `tool_output`
     and `reasoning` items (`ItemsRenderer.ts:47-66`). Reference only.
 47. Custom renderers for suspensions: `renderers.suspension` replaces the built-in card, `false`
@@ -403,9 +407,10 @@ exposed names when no filter is given; state it only if a test is cited by pass 
 2. A field in session state is not on the page: it is not in the scope's `client.expose`, so the
    server never copies it into `clientData`; also a patch to an unexposed key is dropped
    (items 21-25, 33).
-3. An item type with no renderer: a small JSON block with the item's `type` (and `component` key
-   and `status`); add a renderer under that type in `FlowProvider`'s `renderers`, keyed by
-   `item.component` for `component` and `container` items (items 38-41, 43).
+3. An item type with no renderer: a data item draws nothing; any other type shows a small JSON
+   block with the item's `type` (and container key and `status`). Add a renderer under that type in
+   `FlowProvider`'s `renderers`, keyed by `item.dataType` in the `data` map for data items and by
+   `item.component` for `container` items (items 38-41, 43).
 4. Not using React: import `createClient` from `@flow-state-dev/client` (items 1-2, 53).
 
 ## Left out for lack of an observable surface
@@ -436,7 +441,7 @@ exposed names when no filter is given; state it only if a test is cited by pass 
 - Item 62: the credentials bullet names `fetcher` on `FlowProvider` or `createClient`
   (`config-client.md:86-102`; item 49).
 - Item 39: built-ins confirmed as message, reasoning, status, error, tool_output, suspension.
-- The page defines a `component` item before the renderer map (item 41).
+- The page defines a data item before the renderer map (item 41).
 
 ## Revise round 3 notes
 

@@ -154,8 +154,7 @@ Schedules you create while the app runs, like a reminder a user sets, come from
 for the time you want, and the tick runs it. A `dispatcher()` block (below) has no delay option.
 
 Read next: [Scheduled actions](/docs/server/scheduled), then the guide for your scheduler:
-[Vercel Cron](/guides/scheduled-vercel-cron), [Cloud Scheduler](/guides/scheduled-cloud-scheduler),
-[EventBridge](/guides/scheduled-eventbridge), or BullMQ's own repeatable jobs in
+[Vercel Cron](/guides/scheduled-vercel-cron), or BullMQ's own repeatable jobs in
 [Background jobs with BullMQ](/guides/background-jobs-bullmq). For stored schedules, see
 [Dynamic scheduled actions](/guides/scheduled-dynamic).
 
