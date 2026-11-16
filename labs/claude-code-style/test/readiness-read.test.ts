@@ -12,7 +12,7 @@ import { createClient } from "@flow-state-dev/client";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { scriptedModels } from "../../test-support/contract";
 import { openLab } from "../host.mts";
-import { createWiredLab } from "../src/adapter";
+import { labCalls } from "../src/lab";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -34,7 +34,7 @@ describe("the readiness chips", () => {
     cleanups.push(async () => (flowState as unknown as { dispose?: () => Promise<void> }).dispose?.());
     const fetcher = createInProcessFetch(flowState as never) as unknown as typeof fetch;
     const client = createClient({ userId: "u_lab", baseUrl: "", fetcher });
-    const lab = createWiredLab(client, { fetcher });
+    const lab = labCalls(client, { fetcher });
 
     expect((await lab.readHarnesses()).map((harness) => harness.harness)).toEqual(["claude-code", "claude-code-plan", "codex", "cursor"]);
     expect((await lab.readHarnesses(true)).map((harness) => harness.harness)).toEqual(["claude-code", "claude-code-plan", "codex", "cursor"]);

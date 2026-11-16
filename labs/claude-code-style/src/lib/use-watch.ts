@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import type { Unsubscribe } from "../adapter";
+/** Stops a watch. */
+type Unsubscribe = () => void;
 
 /**
  * The latest value a `watch*` verb reports, re-subscribing when `deps` change.

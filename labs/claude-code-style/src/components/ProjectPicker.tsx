@@ -1,6 +1,6 @@
 import { useSubmit } from "@flow-state-dev/react";
 import { useState } from "react";
-import type { LabHarness, LabProject, RepositoryCheck } from "../adapter";
+import type { LabHarness, LabProject, RepositoryCheck } from "../lab";
 import { PICKER_COPY, repositoryDisclosure } from "../lib/first-run";
 import type { ModeId } from "../modes";
 import { HarnessReadiness } from "./flow-state/harness-readiness";

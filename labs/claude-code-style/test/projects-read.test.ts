@@ -15,7 +15,7 @@ import { createClient } from "@flow-state-dev/client";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { scriptedModels } from "../../test-support/contract";
 import { openLab } from "../host.mts";
-import { createWiredLab } from "../src/adapter";
+import { labCalls } from "../src/lab";
 import { PROJECTS_FLOW } from "../flows/projects.mts";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -54,7 +54,7 @@ describe("the project picker", () => {
       return inProcess(input, init);
     }) as typeof fetch;
     const client = createClient({ userId: "u_lab", baseUrl: "", fetcher });
-    const lab = createWiredLab(client, { fetcher });
+    const lab = labCalls(client, { fetcher });
 
     expect(await lab.checkRepository(join(data, "not-listed"))).toMatchObject({ usable: false });
     expect(asked.filter((line) => /\/sessions\b|\/actions\//.test(line))).toEqual([]);
@@ -81,7 +81,7 @@ describe("the project picker", () => {
       return inProcess(input, init);
     }) as typeof fetch;
     const client = createClient({ userId: "u_lab", baseUrl: "", fetcher });
-    const lab = createWiredLab(client, { fetcher });
+    const lab = labCalls(client, { fetcher });
 
     const made = await lab.createProject("Acme Web", `file://${repository}`);
     expect(made).toEqual({ id: "private/acme-web", name: "Acme Web" });

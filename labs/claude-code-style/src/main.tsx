@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createLabAdapter } from "./adapter";
+import { createClient } from "@flow-state-dev/client";
+import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
+import { LabProvider } from "./lab";
 import { App } from "./App";
 import "./styles.css";
 
@@ -10,8 +12,14 @@ const applyScheme = () => document.documentElement.classList.toggle("dark", dark
 applyScheme();
 dark.addEventListener("change", applyScheme);
 
+// The served lab, as the user the page was served for.
+const fetcher = withBearerToken(readBearerToken());
+const client = createClient({ userId: readUserId(), baseUrl: readBasePath(), fetcher });
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App adapter={createLabAdapter()} />
+    <LabProvider client={client} connection={{ basePath: readBasePath(), fetcher }}>
+      <App />
+    </LabProvider>
   </StrictMode>,
 );

@@ -2,7 +2,7 @@
  * A session the lab opens works in a repository: the one the picked project
  * names, written by the server when the session opens (workforce's
  * `setSessionFields`), and read back off the session as the client reads it.
- * On the lab's own host, in process, with the real adapter.
+ * On the lab's own host, in process, through `src/lab.ts`'s calls.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createClient } from "@flow-state-dev/client";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { openLab } from "../host.mts";
-import { createWiredLab } from "../src/adapter";
+import { labCalls } from "../src/lab";
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -41,7 +41,7 @@ describe("a session the lab opens", () => {
     });
     const fetcher = createInProcessFetch(flowState as never) as never;
     const client = createClient({ userId: "u_lab", baseUrl: "", fetcher });
-    const lab = createWiredLab(client, { fetcher });
+    const lab = labCalls(client, { fetcher });
     await lab.createProject("first", `file://${first}`);
     const picked = await lab.createProject("second", `file://${second}`);
 

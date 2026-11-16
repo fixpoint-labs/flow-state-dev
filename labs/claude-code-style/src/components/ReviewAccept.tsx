@@ -1,6 +1,6 @@
 import { useSubmit } from "@flow-state-dev/react";
 import { useState } from "react";
-import type { LabAdapter, LabTask, TaskWork } from "../adapter";
+import { useLab, type LabTask, type TaskWork } from "../lab";
 import { cn } from "../lib/utils";
 import { LAND_LABEL, type LandedWork, orderedLands, type ReviewLand } from "./flow-state/review-hold";
 
@@ -11,7 +11,8 @@ import { LAND_LABEL, type LandedWork, orderedLands, type ReviewLand } from "./fl
  * moment it is sent until the run's next review stop arrives, so it never reads as accepted while the
  * landing is still going on.
  */
-export function useReviewAccept(adapter: LabAdapter, sessionId: string, task: Pick<LabTask, "id" | "harness" | "openHold">, work: TaskWork | undefined) {
+export function useReviewAccept(task: LabTask, work: TaskWork | undefined) {
+  const lab = useLab();
   const review = work?.review;
   const lands = review?.lands ?? [];
   const failed = review?.landFailed ?? null;
@@ -22,7 +23,7 @@ export function useReviewAccept(adapter: LabAdapter, sessionId: string, task: Pi
   const [answered, setAnswered] = useState<string | null>(null);
   const awaitingReview = task.openHold?.kind === "review";
   const submit = useSubmit(async (land?: ReviewLand) => {
-    await adapter.resolve(sessionId, task.id, land);
+    await lab.resolve(task, land);
     setAnswered(round);
   });
   return {

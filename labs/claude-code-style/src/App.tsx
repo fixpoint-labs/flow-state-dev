@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HarnessLabels, harnessLabels } from "./lib/harness-labels";
-import type { LabHarness, LabAdapter, LabProject, LabSession, LabTask } from "./adapter";
+import { useLab, useSessions, useTasks, type LabHarness, type LabProject, type LabSession } from "./lab";
 import { PaneHeader } from "./components/PaneHeader";
 import { PaneResizer } from "./components/PaneResizer";
 import { PanelToggle } from "./components/PanelToggle";
@@ -18,7 +18,6 @@ import { paneColumn, sidebarColumn, usePaneWidth, useSidebarWidth } from "./lib/
 import { focusComposer, focusWhenDrawn, useLabKeys } from "./lib/keys";
 import { usePanels } from "./lib/panels";
 import { EMPTY_PANE } from "./lib/first-run";
-import { useWatch } from "./lib/use-watch";
 import { modeById, modeOfWorker, PANE_TITLE, type ModeId } from "./modes";
 
 /**
@@ -50,8 +49,9 @@ const KEYS = [
   ["Esc", "Close a dialog"],
 ] as const;
 
-export function App({ adapter }: { adapter: LabAdapter }) {
-  const listed = useWatch((emit: (rows: LabSession[]) => void) => adapter.watchSessions(emit), [adapter]);
+export function App() {
+  const lab = useLab();
+  const listed = useSessions();
   const sessions = listed ?? [];
   // What the page's address named when it loaded, or on Back, until the sessions are read.
   const [start] = useState(readAddress);
@@ -95,8 +95,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const [harnesses, setHarnesses] = useState<LabHarness[]>();
   useEffect(() => {
     let live = true;
-    void adapter.listProjects().then((rows) => live && setProjects(rows));
-    void adapter.readHarnesses().then(
+    void lab.listProjects().then((rows) => live && setProjects(rows));
+    void lab.readHarnesses().then(
       (rows) => live && setHarnesses(rows),
       // A failed read draws no chips rather than "checking" forever.
       () => live && setHarnesses([]),
@@ -104,8 +104,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     return () => {
       live = false;
     };
-  }, [adapter]);
-  const recheck = async () => setHarnesses(await adapter.readHarnesses(true));
+  }, [lab]);
+  const recheck = async () => setHarnesses(await lab.readHarnesses(true));
   // Each harness's name, as the readiness view labels it: what a card's harness tag shows.
   const labels = useMemo(() => harnessLabels(harnesses), [harnesses]);
 
@@ -174,31 +174,15 @@ export function App({ adapter }: { adapter: LabAdapter }) {
 
   // ProjectPicker holds its buttons while this runs and shows a refusal.
   const openNew = (mode: ModeId, project: LabProject) =>
-    adapter.openSession(mode, project.id).then((row) => pick(mode, row.id));
+    lab.openSession(mode, project.id).then((row) => pick(mode, row.id));
   const inView = sessions.filter((s) => modeOfWorker(s.worker)?.id === view);
 
   const selected = inView.find((s) => s.id === selectedId);
   const pane = selected ? modeOfWorker(selected.worker)?.pane : undefined;
   const paneCollapsed = panels.paneCollapsed && pane !== undefined;
-  // The open session's tasks, read once for the main thread and its pane (FIX-2399 E1). Each read
-  // carries the session it was read for, so a switch never hands one session the last one's rows.
+  // The open session's tasks, read once for the main thread and its pane (FIX-2399 E1): the coding board view.
   // `stale` while the last read failed: the rows are the last ones read, and a task's quiet can't be told from them.
-  const read = useWatch(
-    (emit: (read: { sessionId: string; rows: LabTask[]; stale: boolean }) => void) => {
-      if (selected === undefined) return () => undefined;
-      let last: { sessionId: string; rows: LabTask[]; stale: boolean } | undefined;
-      const send = (next: { rows?: LabTask[]; stale?: boolean }) => {
-        if (next.rows === undefined && last === undefined) return;
-        last = { sessionId: selected.id, rows: next.rows ?? last!.rows, stale: next.stale ?? last?.stale ?? false };
-        emit(last);
-      };
-      return adapter.watchTasks(selected.id, (rows) => send({ rows }), (stale) => send({ stale }));
-    },
-    [adapter, selected?.id],
-  );
-  const current = selected !== undefined && read?.sessionId === selected.id ? read : undefined;
-  const taskRows = current?.rows;
-  const tasksStale = current?.stale === true;
+  const { value: taskRows, stale: tasksStale } = useTasks(selected?.id);
   useLabKeys({
     palette: () => setSwitching((open) => !open),
     step: (by) => {
@@ -224,7 +208,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         <div className="relative min-h-0 min-w-0">
           <SessionsList
             view={view}
-            modes={adapter.modes}
+            modes={lab.modes}
             sessions={inView}
             selectedId={selectedId}
             onView={pickView}
@@ -239,7 +223,6 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           {selected ? (
             <Thread
               key={selected.id}
-              adapter={adapter}
               session={selected}
               project={projects.find((p) => p.id === selected.projectId)}
               tasks={taskRows}
@@ -257,10 +240,10 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               projects={projects}
               harnesses={harnesses}
               onRecheck={recheck}
-              onCheckRepository={(repository) => adapter.checkRepository(repository)}
+              onCheckRepository={(repository) => lab.checkRepository(repository)}
               onPick={(project) => openNew(view, project)}
               onCreate={async (name, repository) => {
-                const created = await adapter.createProject(name, repository);
+                const created = await lab.createProject(name, repository);
                 setProjects((rows) => [...rows, created]);
               }}
             />
@@ -286,7 +269,6 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               <TasksPane
                 // Keyed by session: a switch never judges the open task against the last session's rows.
                 key={selected.id}
-                adapter={adapter}
                 sessionId={selected.id}
                 tasks={taskRows}
                 stale={tasksStale}
@@ -298,7 +280,6 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               <ThreadsBoard
                 // Keyed by session: a switch never judges the open task against the last session's rows.
                 key={selected.id}
-                adapter={adapter}
                 sessionId={selected.id}
                 tasks={taskRows}
                 stale={tasksStale}
@@ -316,7 +297,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           </div>
         </div>
       </div>
-      <Switcher open={switching} onOpenChange={setSwitching} sessions={sessions} modes={adapter.modes} onPick={(mode, id) => {
+      <Switcher open={switching} onOpenChange={setSwitching} sessions={sessions} modes={lab.modes} onPick={(mode, id) => {
           // A pick goes somewhere: the key list, if it was open under the switcher, closes too.
           setSwitching(false);
           setKeysOpen(false);

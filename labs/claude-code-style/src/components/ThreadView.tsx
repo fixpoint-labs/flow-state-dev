@@ -1,7 +1,6 @@
 import { isSendKey, useDraftSend, useJumpToLatest, useSubmit } from "@flow-state-dev/react";
 import { useMemo, type FormEvent, type KeyboardEvent } from "react";
-import type { LabAdapter, LabTask } from "../adapter";
-import { useWatch } from "../lib/use-watch";
+import { useLab, useTaskWork, withPullRequestLinks, type LabTask } from "../lab";
 import { Entry } from "./Entry";
 import { LoadEarlier } from "./LoadEarlier";
 import { ReviewCard } from "./ReviewCard";
@@ -33,14 +32,12 @@ import { HarnessTag, PULL_REQUEST_HINT, PullRequestOpen, statusColumn, statusLin
  * *Resolve* when none is listed. Where the work landed shows under the header.
  */
 export function ThreadView({
-  adapter,
   sessionId,
   task,
   pinned,
   dismissed = false,
   onClose,
 }: {
-  adapter: LabAdapter;
   sessionId: string;
   task: LabTask;
   pinned: boolean;
@@ -48,10 +45,8 @@ export function ThreadView({
   dismissed?: boolean;
   onClose: () => void;
 }) {
-  const work = useWatch(
-    (emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit),
-    [adapter, sessionId, task.id],
-  );
+  const lab = useLab();
+  const work = useTaskWork(task);
   const { text, setText, sending, failure, submit } = useDraftSend("claude-code-style:task-draft", task.id);
   // The board keys this view by task, so a change of task remounts it and the feed starts over.
   const feed = useJumpToLatest();
@@ -61,10 +56,10 @@ export function ThreadView({
   const finished = task.status === "completed" || task.status === "cancelled" || task.status === "errored";
 
   // Accept and a send share the composer: nothing else goes while one is on its way.
-  const accept = useReviewAccept(adapter, sessionId, task, work);
-  const pin = useSubmit(() => (pinned ? adapter.unpin(task.id) : adapter.pin(task.id)));
-  const dismiss = useSubmit(() => adapter.dismiss(task));
-  const actions = useMemo(() => adapter.taskActions(sessionId), [adapter, sessionId]);
+  const accept = useReviewAccept(task, work);
+  const pin = useSubmit(() => (pinned ? lab.unpin(task.id) : lab.pin(task.id)));
+  const dismiss = useSubmit(() => lab.dismiss(task));
+  const actions = useMemo(() => lab.taskActions(sessionId), [lab, sessionId]);
   // The composer holds while a send or an accept is on its way. Readiness gates only the review's own buttons: a working thread still takes a steer or an answer.
   const held = sending || accept.waiting;
 
@@ -74,14 +69,14 @@ export function ThreadView({
     if (accept.waiting) return;
     void submit((line) => {
       feed.sent();
-      return adapter.sayInThread(sessionId, task.id, line);
+      return lab.sayInThread(sessionId, task, line);
     });
   };
   const requestChanges = () => {
     if (accept.waiting) return;
     void submit((line) => {
       feed.sent();
-      return adapter.requestChanges(sessionId, task.id, line);
+      return lab.requestChanges(task, line);
     });
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -207,7 +202,7 @@ export function ThreadView({
       ) : null}
       {/* Ready for review is said once, by its card at the end of the feed; a failure's reason, by the alert above. */}
       {column === "review" || (task.status === "errored" && task.error !== undefined) ? null : waitsOnPullRequest(task) ? (
-        <PullRequestOpen task={task} className="block" />
+        <PullRequestOpen task={withPullRequestLinks(task, work)} className="block" />
       ) : (
         <div className="truncate text-xs text-muted-foreground" title={statusLine(task)}>{statusLine(task)}</div>
       )}

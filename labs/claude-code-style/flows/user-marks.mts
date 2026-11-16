@@ -3,7 +3,7 @@
  * Your marks on threads: the threads you pinned and the failed attempts you
  * dismissed. Each is a user resource the screen reads by scope and key with no
  * session, and writes through the default write flow (`runBy: "default"`), so
- * a pin is one line in the adapter and no flow of the lab's.
+ * a pin is one line in `src/lab.ts` and no flow of the lab's.
  *
  * A leaf module: the screen imports these definitions to read and
  * write them, the host declares them on a flow it serves.

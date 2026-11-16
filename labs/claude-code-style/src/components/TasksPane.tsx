@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { LabAdapter, LabTask, TaskStatus } from "../adapter";
+import { useLab, useTaskWork, withPullRequestLinks, type LabTask, type TaskStatus } from "../lab";
 import { FINISHED, TASK_STATUS } from "../lib/task-status";
-import { useMissing, useNow, useWatch } from "../lib/use-watch";
+import { useMissing, useNow } from "../lib/use-watch";
 import { Clamp } from "./Clamp";
 import { PANE_TITLE } from "../modes";
 import { cn } from "../lib/utils";
@@ -33,7 +33,6 @@ import { TaskCard, TaskDoneRow } from "./TaskCard";
  * `data-stale`.
  */
 export function TasksPane({
-  adapter,
   sessionId,
   tasks: listed,
   stale = false,
@@ -41,7 +40,6 @@ export function TasksPane({
   onOpen,
   onMissing,
 }: {
-  adapter: LabAdapter;
   sessionId: string;
   /** The session's task rows, as the app reads them; `undefined` until read. */
   tasks: LabTask[] | undefined;
@@ -111,7 +109,7 @@ export function TasksPane({
           ) : null}
         </div>
       )}
-      {open ? <TaskSheet adapter={adapter} sessionId={sessionId} task={open} onClose={close} /> : null}
+      {open ? <TaskSheet sessionId={sessionId} task={open} onClose={close} /> : null}
     </aside>
   );
 }
@@ -123,13 +121,11 @@ export function TasksPane({
  * the link, and that a line in the Steer box wakes it. A failed task's error
  * shows as an error.
  */
-function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter; sessionId: string; task: LabTask; onClose: () => void }) {
+function TaskSheet({ sessionId, task, onClose }: { sessionId: string; task: LabTask; onClose: () => void }) {
   const labels = useContext(HarnessLabels);
-  const actions = useMemo(() => adapter.taskActions(sessionId), [adapter, sessionId]);
-  const work = useWatch(
-    (emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit),
-    [adapter, sessionId, task.id],
-  );
+  const lab = useLab();
+  const actions = useMemo(() => lab.taskActions(sessionId), [lab, sessionId]);
+  const work = useTaskWork(task);
   const status = TASK_STATUS[task.status];
   return (
     <SessionOverlay
@@ -169,7 +165,7 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
           <ErrorBody message={task.error} />
         </div>
       ) : null}
-      {waitsOnPullRequest(task) ? <PullRequestOpen task={task} className="mb-3 block" /> : null}
+      {waitsOnPullRequest(task) ? <PullRequestOpen task={withPullRequestLinks(task, work)} className="mb-3 block" /> : null}
       {work === undefined || work.entries.length === 0 ? <p className="text-sm text-muted-foreground">Nothing yet.</p> : null}
       <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}

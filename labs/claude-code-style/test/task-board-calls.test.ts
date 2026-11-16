@@ -1,14 +1,14 @@
 /**
- * The adapter's task changes go through the board's own calls:
+ * The lab's task changes go through the board's own calls:
  * orchestration's `inbox.board(at)` on the session that holds the board, so the
  * lab spells no task action of its own. A steer typed in a thread with no open
- * question is that client's `steer`, not a raw `updateTask` send, and a failed
- * row carries its error, read once per attempt from the board's `getTask`.
+ * question is that client's `steer`, not a raw `updateTask` send. A coding
+ * board row is drawn as the view answered it, with its first open hold.
  */
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
-import { createWiredLab, type LabTask } from "../src/adapter";
-import { liveOver } from "./live-over";
+import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import { labCalls, labTaskOf } from "../src/lab";
 
 type Sent = { flow: string; action: string; input: Record<string, unknown>; sessionId: string };
 
@@ -21,26 +21,16 @@ function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Rec
   const sent: Sent[] = [];
   const outputs = new Map<string, Record<string, unknown>>();
   const client = {
-    get live() {
-      return liveOver(this as never);
-    },
-    subscribe: () => ({ close: () => {} }),
     sessions: {
       get: async (id: string) => ({ id, flowKind: "agent", flowId: "agent", state: {} }),
     },
-    view: async (ref: { flow: string; view: string }, _input: unknown, options: { sessionId: string }) => ({
-      value: rows,
-      topics: [{ scope: "session", id: options.sessionId }],
-      keys: rows.map((task) => String(task.id)),
-    }),
     flow: (flow: string) => ({
       send: async (action: string, input: Record<string, unknown>, options: { sessionId: string }) => {
         const entry = { flow, action, input, sessionId: options.sessionId };
         sent.push(entry);
         const id = `r${sent.length}`;
         outputs.set(id, answer(entry));
-        // Only `getTask`, a read the adapter makes through its own `run`, reads the started request's answer.
-        return action.startsWith("getTask_") ? { id, result: async () => ({ status: "completed", output: outputs.get(id) }) } : { id };
+        return { id };
       },
       request: (id: string) => ({ result: async () => ({ status: "completed", output: outputs.get(id) }) }),
     }),
@@ -50,16 +40,16 @@ function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Rec
 
 const RUNNING = { id: "t1", goal: "Fix the typo", status: "in_progress", attempts: 1 };
 
-describe("the adapter's task actions", () => {
+describe("the lab's task actions", () => {
   it("sends a steer typed in a thread with no open question through the board client's steer", async () => {
     const lab = fakeClient([RUNNING]);
-    await createWiredLab(lab.client).sayInThread("s1", "t1", "Use the British spelling.");
+    await labCalls(lab.client).sayInThread("s1", { ...RUNNING, title: RUNNING.goal, status: "in_progress", asks: [] }, "Use the British spelling.");
     expect(lab.sent).toEqual([{ flow: "agent", action: "updateTask_tasks", input: { id: "t1", message: "Use the British spelling." }, sessionId: "s1" }]);
   });
 
   it("cancels, releases and retries on the session's own board, and hands back the dependents a cancel took", async () => {
     const lab = fakeClient([RUNNING], (sent) => (sent.input.status === "cancelled" ? { ok: true, cancelled: ["t2"] } : { ok: true }));
-    const actions = createWiredLab(lab.client).taskActions("s1");
+    const actions = labCalls(lab.client).taskActions("s1");
     expect(await actions.cancel("t1")).toEqual(["t2"]);
     await actions.release("t1");
     await actions.retry("t1");
@@ -74,50 +64,49 @@ describe("the adapter's task actions", () => {
 
   it("rejects with the board's own words when it refuses", async () => {
     const lab = fakeClient([RUNNING], () => ({ ok: false, error: "Task t1 is already cancelled." }));
-    await expect(createWiredLab(lab.client).taskActions("s1").retry("t1")).rejects.toThrow("Task t1 is already cancelled.");
+    await expect(labCalls(lab.client).taskActions("s1").retry("t1")).rejects.toThrow("Task t1 is already cancelled.");
   });
 
-  it("carries a failed row's error, read once for its attempt, and none on a row that didn't fail", async () => {
-    const failed = { id: "t9", goal: "Export invoices", status: "errored", attempts: 2 };
-    const lab = fakeClient([RUNNING, failed], (sent) =>
-      sent.action === "getTask_tasks" ? { ok: true, task: { ...failed, error: "The export timed out after 30s." } } : { ok: true },
-    );
-    const wired = createWiredLab(lab.client);
-    const read = () =>
-      new Promise<LabTask[]>((resolve) => {
-        const stop = wired.watchTasks("s1", (rows) => {
-          stop();
-          resolve(rows);
-        });
-      });
-    const rows = await read();
-    expect(rows.find((r) => r.id === "t9")?.error).toBe("The export timed out after 30s.");
-    expect(rows.find((r) => r.id === "t1")?.error).toBeUndefined();
-    await read();
-    expect(lab.sent.filter((s) => s.action === "getTask_tasks")).toEqual([{ flow: "agent", action: "getTask_tasks", input: { id: "t9" }, sessionId: "s1" }]);
+});
+
+/** A coding board row as the view answers it. */
+const boardRow = (row: Partial<CodingBoardTask>): CodingBoardTask => ({
+  id: "t1",
+  goal: "Fix the typo",
+  status: "in_progress",
+  attempts: 1,
+  asks: [],
+  harness: null,
+  review: null,
+  landed: null,
+  error: null,
+  pullRequests: [],
+  ...row,
+});
+
+describe("a coding board row, as the screen draws it", () => {
+  it("waits on you for its first open hold, a confirm read as input", () => {
+    const hold = (kind: string, prompt: string) => ({ ask: { kind, prompt } }) as unknown as CodingBoardTask["asks"][number];
+    expect(labTaskOf(boardRow({ asks: [hold("review", "Review the change")] }), "s1").openHold).toEqual({ kind: "review", prompt: "Review the change" });
+    expect(labTaskOf(boardRow({ asks: [hold("confirm", "Go ahead?"), hold("question", "Which one?")] }), "s1").openHold).toEqual({ kind: "input", prompt: "Go ahead?" });
+    expect(labTaskOf(boardRow({}), "s1").openHold).toBeUndefined();
   });
 
-  it("asks again for a failed row's error after a read of it failed", async () => {
-    const failed = { id: "t9", goal: "Export invoices", status: "errored", attempts: 2 };
-    let reads = 0;
-    const lab = fakeClient([failed], (sent) => {
-      if (sent.action !== "getTask_tasks") return { ok: true };
-      reads += 1;
-      if (reads === 1) throw new Error("Network error");
-      return { ok: true, task: { ...failed, error: "The export timed out after 30s." } };
-    });
-    const wired = createWiredLab(lab.client);
-    // The first watch's read fails on the dropped getTask, so it shows nothing.
-    const first = wired.watchTasks("s1", () => {});
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    first();
-    expect(reads).toBe(1);
-    const rows = await new Promise<LabTask[]>((resolve) => {
-      const stop = wired.watchTasks("s1", (next) => {
-        stop();
-        resolve(next);
-      });
-    });
-    expect(rows.find((r) => r.id === "t9")?.error).toBe("The export timed out after 30s.");
+  it("carries the view's error, harness and pull request numbers, and nothing for a null", () => {
+    const failed = labTaskOf(boardRow({ status: "errored", error: "The export timed out after 30s.", harness: "codex", pullRequests: [7] }), "s1");
+    expect(failed).toMatchObject({ error: "The export timed out after 30s.", harness: "codex", pullRequests: [{ number: 7, url: null, title: null }] });
+    const plain = labTaskOf(boardRow({}), "s1");
+    expect(plain.error).toBeUndefined();
+    expect(plain.harness).toBeUndefined();
+    expect(plain.pullRequests).toBeUndefined();
+    // How a review ended is a finished coding task's only.
+    expect(plain.review).toBeUndefined();
+    expect(labTaskOf(boardRow({ status: "completed", harness: "codex", review: "deadline" }), "s1").review).toBe("deadline");
+  });
+
+  it("names the run its work is read from, once a run has started", () => {
+    const run = { sessionId: "run-1", requestId: "req-1", startedAt: 5 } as CodingBoardTask["run"];
+    expect(labTaskOf(boardRow({ run }), "s1")).toMatchObject({ runLink: { sessionId: "run-1", requestId: "req-1" }, run: { startedAt: 5 }, startedAt: 5 });
+    expect(labTaskOf(boardRow({}), "s1").runLink).toBeUndefined();
   });
 });
