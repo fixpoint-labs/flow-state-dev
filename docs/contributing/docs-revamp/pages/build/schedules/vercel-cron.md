@@ -29,10 +29,8 @@ export const sweepStaleTickets = handler({
 
 ```ts title="src/flows/support/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
-import {
-  createBearerSecretPrincipalResolver,
-  defaultBodyUserIdPrincipalResolver
-} from "@flow-state-dev/engine";
+import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
+import { resolveUser } from "../../lib/session";
 import { sweepStaleTickets } from "./blocks/sweep-stale-tickets";
 
 const resolveScheduled = createBearerSecretPrincipalResolver({
@@ -47,7 +45,7 @@ const supportFlow = defineFlow({
     resolvePrincipal: async (ctx) =>
       ctx.source === "scheduled"
         ? resolveScheduled(ctx)
-        : defaultBodyUserIdPrincipalResolver(ctx), // your existing auth
+        : resolveUser(ctx),
     requireUser: true
   },
   schedules: {
@@ -64,7 +62,7 @@ const supportFlow = defineFlow({
 export default supportFlow();
 ```
 
-The principal is who the scheduled run belongs to: inside `sweepStaleTickets`, `ctx.user.identity.userId` is `system`. The principal must name an organization, here `org_support`, or the call is refused. The resolver is built once, at the top of the file, and branches on `ctx.source`, so the secret is accepted on scheduled calls and nowhere else. A scheduled handler is not listed in `actions`, so the dispatch endpoint is the only way to run it. [Authentication and resolvers](../../reference/authentication.md) has the resolver's signature and the `source` values.
+The principal is who the scheduled run belongs to: inside `sweepStaleTickets`, `ctx.user.identity.userId` is `system`. The principal must name an organization, here `org_support`, or the call is refused. The resolver branches on `ctx.source`, so the secret is accepted on scheduled calls and nowhere else. `resolveUser` is your own auth, returning a verified `userId` and `orgId` ([Auth and tenancy](../../concepts/auth-and-tenancy.md)). A scheduled handler is not listed in `actions`, so the dispatch endpoint is the only way to run it. [Authentication and resolvers](../../reference/authentication.md) has the resolver's signature and the `source` values.
 
 ## 2. Add the cron route
 
@@ -121,7 +119,7 @@ Call the cron route the way Vercel does:
 curl "$APP_URL/api/cron/schedules" -H "Authorization: Bearer $CRON_SECRET"
 ```
 
-It answers `200` with `{ "dispatched": <n> }`, where `n` is the number of schedules that were due, so `0` is normal between beats. That is a real tick, not a dry run, and calling it again does not run a schedule twice: each scheduled time fires at most once. `dispatched` counts the fires the tick sent, not the ones that succeeded.
+It answers `200` with `{ "dispatched": <n> }`, where `n` is the number of schedules that were due, so `0` is normal between beats. It is a real tick, but each scheduled time fires at most once. `dispatched` counts the fires the tick sent, not the ones that succeeded.
 
 To fire one schedule without waiting, post to its dispatch endpoint. With no body, the call stands in for the most recent scheduled time, so a second call for the same time returns `duplicate`.
 
@@ -138,7 +136,7 @@ The dispatch answers:
 
 Find a handler's error in the DevTool, as described in [Debug a run](../debug-a-run.md). Vercel's cron log shows only the cron route's own answer, so a green entry says the tick ran, not that a handler succeeded. `GET /api/flows/support/schedules` with the same header lists the flow's schedules, which confirms the entry registered.
 
-Vercel Cron only runs on Vercel. Where `VERCEL` is unset, as under `fsdev dev` and `next dev`, the app's own cron fires schedules each minute, and the curl calls above work against it too.
+Where `VERCEL` is unset, as under `fsdev dev` and `next dev`, the app's own cron fires schedules each minute. The dispatch call works against it; the cron route answers `500` there, because `vercelScheduler()` is not passed in.
 
 ## Many schedules at once
 

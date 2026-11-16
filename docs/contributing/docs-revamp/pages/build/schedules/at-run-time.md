@@ -6,7 +6,7 @@ description: "Store a user's schedule as a row, and let the app's one clock fire
 
 # Let users schedule work at run time
 
-A schedule you write in code is the same for everyone and changes when you deploy. A schedule a user sets, such as "send me my ticket digest at 8", is different for each user and changes any time. You can't deploy for that, and you can't add a cron entry per user.
+A schedule you write in code is the same for everyone and changes when you deploy. A schedule a user sets, such as "send me my ticket digest at 8", is different for each user and changes any time. You can't deploy for that, or add a cron entry per user.
 
 So it is a row of data, saved like any other record a user owns, and the app has one clock that reads the rows. Each minute the clock fires the rows that are due. Adding a schedule is writing a row. Removing it is deleting the row.
 
@@ -26,7 +26,7 @@ export const schedules = defineScheduleCollection({
 });
 ```
 
-`index` is the list of when each schedule next fires. The clock reads it to find what is due, and the collection keeps it up to date. The flow names it too, in step 2. The example keeps it in SQLite; Postgres and the index methods are in the [schedules reference](../../reference/schedules.md).
+`index` is the list of when each schedule next fires. The clock reads it to find what is due, and the collection keeps it up to date. The example keeps it in SQLite; Postgres and the index methods are in the [schedules reference](../../reference/schedules.md).
 
 ```ts title="src/lib/schedule-index.ts"
 import Database from "better-sqlite3";
@@ -65,13 +65,11 @@ Under `schedules`, `resolve` uses the kind-to-block map to turn a due row back i
 
 ```ts title="src/flows/support/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
-import {
-  createBearerSecretPrincipalResolver,
-  defaultBodyUserIdPrincipalResolver,
-} from "@flow-state-dev/engine";
+import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
 import { createResourceCollectionScheduleResolver } from "@flow-state-dev/scheduled";
 import { z } from "zod";
 import { scheduleIndex } from "../../lib/schedule-index";
+import { resolveUser } from "../../lib/session";
 import { cancelDigest } from "./blocks/cancel-digest";
 import { scheduleDigest } from "./blocks/schedule-digest";
 import { sendTicketDigest } from "./blocks/send-ticket-digest";
@@ -92,7 +90,7 @@ const support = defineFlow({
     resolvePrincipal: async (ctx) =>
       ctx.source === "scheduled"
         ? resolveScheduled(ctx)
-        : defaultBodyUserIdPrincipalResolver(ctx), // your existing auth
+        : resolveUser(ctx),
     requireUser: true,
   },
   schedules: {
@@ -107,7 +105,7 @@ const support = defineFlow({
 export default support();
 ```
 
-The `authentication` option is how the clock gets in. It accepts the clock's calls with your `CRON_SECRET` and authenticates them as `system`, as in [Run on a schedule with Vercel Cron](./vercel-cron.md). The handler itself runs as the schedule's owner.
+`authentication` lets the clock in: it accepts calls bearing your `CRON_SECRET` as `system`, as in [Run on a schedule with Vercel Cron](./vercel-cron.md). The handler itself runs as the schedule's owner. `resolveUser` is your own auth, returning a verified `userId` and `orgId` ([Auth and tenancy](../../concepts/auth-and-tenancy.md)).
 
 The clock needs no code of yours. With no `scheduler` option, `createFlowState` runs one in any process that serves the app. Each minute it fires every due schedule of every flow, static and dynamic. Across servers sharing a store, one process ticks and each scheduled time fires once. It does not run under `fsdev run`, so a schedule made in a one-off run fires once a server is up. The scheduled adapter mounts the route the clock calls:
 
