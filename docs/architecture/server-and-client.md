@@ -386,6 +386,24 @@ org. `items`, `state` and `resync` name nothing. Ids are hints: a reader that
 can't use them reads everything, and a client from before them ignores the
 field.
 
+A `board` notice for a row added to a partitioned ledger (a conversation's
+board, kept per conversation on the user's scope) also names its `partition`
+(FIX-2750), and a view's answer lists the partitions it read in its hearing
+(`ViewHearing.partitions`), empty ones included. The client's hearing rule
+(`hearsNotice`) skips a `board` notice whose partition the answer didn't read,
+so one conversation's filing, which goes out on the user topic every board of
+that user hears, wakes no other conversation's board. A notice with no
+partition (an unpartitioned ledger's, an older server's, or a fold of two
+partitions) wakes every board, and so does an answer that lists none. Inside
+the server the partition is raw; it reaches a browser only as an opaque key
+(`push/partition-key.ts`): an HMAC-SHA256 under the router's push secret over
+the tenant and the partition, made where it leaves the server, by the socket
+for a notice and by the view route for an answer. A partition is often a
+session id, so the key is keyed rather than a plain hash, which could be
+matched by hashing guessed ids. The push secret is the one every process
+behind an address already shares for tickets; a host with no push names no
+partition in its answers.
+
 Three points every notice passes, so each rule lives once:
 
 - **The publish queue** (`publishNotices`, `bus/publish-writes.ts`) folds one
@@ -395,10 +413,13 @@ Three points every notice passes, so each rule lives once:
   (100) a notice names none and means read everything. Notices of different
   topics or kinds still merge to `null`. Ids read off a wire (a socket frame,
   a Postgres payload) go through `noticeIdsOf`: anything but a list of strings
-  is dropped, never the notice.
+  is dropped, never the notice. The publish queue keeps a fold's `partition`
+  only when every notice in it names the same one; a partition read off a
+  wire that isn't a string is dropped the same way.
 - **The bus.** The in-memory bus hands the notice over whole. The Postgres
-  bus carries ids in its `NOTIFY` payload and, past 8000 bytes, drops them
-  before it widens the topic. It decides nothing about what a browser sees.
+  bus carries ids and a board's partition in its `NOTIFY` payload and, past
+  8000 bytes, drops them before it widens the topic. It decides nothing about
+  what a browser sees.
 - **The push edge** (`push/socket-session.ts` `hear`). `noticeIds` on
   `createFlowState` or `createFlowApiRouter` turns ids off per topic scope
   (`{ org: false }`); every push edge of the app reads it. With ids off, the
@@ -408,8 +429,9 @@ Three points every notice passes, so each rule lives once:
   from before ids, mid-deploy on a shared bus, sends an entry's path with no
   ids, and the edge can't tell that path from a single resource's name. A
   subscription narrowed to the resource keeps its path, since its client named
-  it. Every full read stays: connect, reconnect, `resync`, a poll tick and a
-  bus that doesn't cross processes all reach a reader as `null`.
+  it. A board notice's partition goes out as its key, never raw. Every full
+  read stays: connect, reconnect, `resync`, a poll tick and a bus that doesn't
+  cross processes all reach a reader as `null`.
 
 ## React Setup
 

@@ -18,6 +18,12 @@
  * member's view never hears, so its row also goes out on the session owner's
  * user topic, narrowed to the board and naming no task: where a
  * lineage-shared resource's write publishes (`publishSessionResourceChange`).
+ *
+ * A row added to a partitioned ledger names its partition on each of those
+ * notices, raw: the bus is the server's own. The push edge sends it
+ * to a browser only as an opaque key (`push/partition-key.ts`), which a view's
+ * answer lists for each partition it read, so a board of another partition
+ * (another conversation's) skips the notice.
  */
 import type { BoardNoticeSeam, TopicScope } from "@flow-state-dev/core/internal";
 import { publishNotices } from "./publish-writes";
@@ -61,16 +67,19 @@ export function createBoardNoticeSeam(
       if (at === undefined) return;
       const tenantId = request.tenantId ?? "";
       const origin = { requestId: request.requestId };
+      // FIX-2750: the partition rides on the bus raw; the push edge keys it.
+      const partition = insert.partition !== undefined ? { partition: insert.partition } : {};
       publishNotices(bus, [
         {
           topic: { scope: at.scope, id: at.id, tenantId, resource: insert.board },
           kind: "board",
           origin,
-          ...(at.scope === "user" ? {} : { ids: [insert.taskId] })
+          ...(at.scope === "user" ? {} : { ids: [insert.taskId] }),
+          ...partition
         },
         ...(at.lineageOwnerUserId === undefined
           ? []
-          : [{ topic: { scope: "user" as const, id: at.lineageOwnerUserId, tenantId, resource: insert.board }, kind: "board" as const, origin }])
+          : [{ topic: { scope: "user" as const, id: at.lineageOwnerUserId, tenantId, resource: insert.board }, kind: "board" as const, origin, ...partition }])
       ]);
     }
   };

@@ -15,6 +15,9 @@
  * ({@link publishBoardInsert}): the engine reads the ledger's scope off the
  * handle it handed out, so a view hears a row filed from a session it never
  * named, and no notice names a filer's session to anyone but that session.
+ * On a partitioned ledger the insert and the read both name the partition, so
+ * a view of one partition skips a row added to another; a browser sees the
+ * partition only as an opaque key.
  *
  * Its read half: where the task collection is built, in a view's run, it
  * calls {@link recordBoardRead}, and the engine's seam under
@@ -52,6 +55,13 @@ export interface BoardInsert {
   readonly taskId: string;
   /** The ledger's resource collection handle, as `ctx.resources` handed it out: the engine reads its scope off it. */
   readonly ledger: object;
+  // FIX-2750.
+  /**
+   * The ledger partition the row was added to, on a partitioned ledger. The
+   * notice names it only as an opaque key, so a view of another partition
+   * skips it.
+   */
+  readonly partition?: string;
 }
 
 /** The seam the engine attaches under {@link BOARD_NOTICE_SEAM}. */
@@ -118,6 +128,13 @@ export interface BoardRead {
   readonly sessionIds: readonly string[];
   /** The ledger's resource collection handle, as `ctx.resources` handed it out. */
   readonly ledger: object;
+  // FIX-2750.
+  /**
+   * The partition read, on a partitioned ledger: the view hears the rows
+   * added to it ({@link BoardInsert.partition}), and no other partition's.
+   * Absent: the ledger was read whole.
+   */
+  readonly partition?: string;
 }
 
 /** The seam a view's run attaches under {@link BOARD_READ_SEAM}. */

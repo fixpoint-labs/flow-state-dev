@@ -95,6 +95,15 @@ export type WireNotice = {
    * a reader that can't use them reads everything.
    */
   ids?: string[];
+  // FIX-2750.
+  /**
+   * On a `board` notice, the partition of a partitioned ledger the change is
+   * in, as an opaque key: a keyed digest the server makes, which names no
+   * session and can't be matched by guessing one. A reader compares it with
+   * the keys an answer read (`ViewHearing.partitions`) and nothing else.
+   * Absent: any partition, and every board under the topic reads.
+   */
+  partition?: string;
 };
 
 /**

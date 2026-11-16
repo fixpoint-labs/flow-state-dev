@@ -256,6 +256,20 @@ describe("the Postgres bus · a notice's ids", () => {
     expect(heard[0]).toEqual({ topic: { ...s1, resource: "tasks" }, kind: "board", ids: ["t1", "t2"] });
   });
 
+  // FIX-2750: a board insert's partition crosses too, so a view on another
+  // process skips a row filed in a partition it never read.
+  it("carries a board notice's partition to another process's subscribers", async () => {
+    const network = new FakeNotifyNetwork();
+    const here = busOn(network);
+    const there = busOn(network);
+    const heard = hear(there, s1);
+    hear(here, s1);
+    await until(() => there.crossesProcesses && here.crossesProcesses);
+    await here.publish({ topic: { ...s1, resource: "tasks" }, kind: "board", partition: "conv-a" });
+    await until(() => heard.length === 1);
+    expect(heard[0]).toEqual({ topic: { ...s1, resource: "tasks" }, kind: "board", partition: "conv-a" });
+  });
+
   it("drops the ids before it widens the topic, when they make the payload too large", async () => {
     const network = new FakeNotifyNetwork();
     const here = busOn(network);

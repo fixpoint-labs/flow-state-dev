@@ -23,6 +23,7 @@ import { type WireTopic } from "@flow-state-dev/core";
 import { PUSH_CLOSE_CODES, wireTopicKey, type PushServerFrame } from "@flow-state-dev/core/internal";
 import type { BusTopic, ChangeBus, ChangeNotice } from "../bus/types";
 import { verifyPushTicket } from "./ticket";
+import { boardPartitionKey } from "./partition-key";
 import type { NoticeIdScopes } from "../runtime-config";
 
 /** The socket session's clocks. */
@@ -129,7 +130,9 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
       topic: toWire(topic),
       kind: notice.kind,
       ...(notice.origin !== undefined ? { origin: notice.origin } : {}),
-      ...(!off && notice.ids !== undefined ? { ids: notice.ids } : {})
+      ...(!off && notice.ids !== undefined ? { ids: notice.ids } : {}),
+      // FIX-2750: a partition leaves the server only as its opaque key.
+      ...(notice.partition !== undefined ? { partition: boardPartitionKey(options.secret(), notice.topic.tenantId, notice.partition) } : {})
     });
   };
 

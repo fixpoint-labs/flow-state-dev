@@ -113,9 +113,14 @@ function readServerFrame(value: unknown): PushServerFrame | undefined {
     topic.scope === "session" ? typeof topic.id === "string" : topic.scope === "user" || topic.scope === "org";
   if (!scoped) return undefined;
   // FIX-2625: ids that aren't a list of strings are dropped, never the notice (`noticeIdsOf`).
-  const { ids, ...notice } = frame;
+  // FIX-2750: so is a partition that isn't a string: with none, every board reads.
+  const { ids, partition, ...notice } = frame;
   const named = noticeIdsOf(ids);
-  return (named !== undefined ? { ...notice, ids: named } : notice) as PushServerFrame;
+  return {
+    ...notice,
+    ...(named !== undefined ? { ids: named } : {}),
+    ...(typeof partition === "string" ? { partition } : {})
+  } as PushServerFrame;
 }
 
 /** The hub one client holds. */
