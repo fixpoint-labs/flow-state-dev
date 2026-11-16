@@ -996,6 +996,9 @@ importers:
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../packages/testing
+      '@flow-state-dev/vercel':
+        specifier: workspace:*
+        version: link:../packages/vercel
       '@flow-state-dev/workforce':
         specifier: workspace:*
         version: link:../packages/workforce
@@ -1434,9 +1437,6 @@ importers:
         specifier: ^5.0.0
         version: 5.11.0(supports-color@8.1.1)
     devDependencies:
-      '@flow-state-dev/scheduled':
-        specifier: workspace:*
-        version: link:../scheduled
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing

@@ -190,11 +190,11 @@ Steps: declare the binding · verify the signature · map the event to an action
 **B-14 · Receive Slack events** · `build/webhooks/slack` · recipe · 650 words · as B-12, plus the URL challenge. Source: `guides/webhooks-slack-events` (keep).
 
 **B-15 · Run on a schedule with Vercel Cron** · `build/schedules/vercel-cron` · recipe · 650 words
-Steps: declare the schedule · the cron entry · protect the endpoint · check a run. Questions: Who is the user of a scheduled run? · What stops a stranger calling the endpoint? Links: `reference/schedules`. Source: `guides/scheduled-vercel-cron` (keep).
+Steps: declare the schedule · `scheduler: vercelScheduler()` and its one route · the one cron entry and its secret · check a run. Questions: Who is the user of a scheduled run? · What stops a stranger calling the endpoint? Links: `reference/schedules`. Source: `guides/scheduled-vercel-cron` (keep).
 
-**B-16 · Run on a schedule with Cloud Scheduler** · `build/schedules/cloud-scheduler` · recipe · 500 words · as B-15. Source: `guides/scheduled-cloud-scheduler` (keep).
+**B-16 · Run on a schedule with Cloud Scheduler** · Cut (FIX-2752): no code ever backed the guide, and the app fires its own schedules, so a long-lived host needs no outside cron. Its source guide is removed; do not plan a page for it.
 
-**B-17 · Run on a schedule with EventBridge** · `build/schedules/eventbridge` · recipe · 500 words · as B-15. Source: `guides/scheduled-eventbridge` (keep).
+**B-17 · Run on a schedule with EventBridge** · Cut (FIX-2752), as B-16. Its source guide is removed; do not plan a page for it.
 
 **B-18 · Let users schedule work at run time** · `build/schedules/at-run-time` · 750 words
 Steps: store a schedule as data · one tick that runs what is due · let a flow add or remove one. Questions: Where are user-made schedules kept? · What runs them? Links: `reference/schedules`. Source: `guides/scheduled-dynamic` (rewrite; half is Reference) · `server/schedule-index` (to Reference).
@@ -281,4 +281,5 @@ Steps: open both views · find the field · check what is exposed. Questions: A 
 | `guides/adding-skills-to-your-app` | K-42 |
 | `guides/choosing-patterns-with-benchmarks` | K-19 |
 | `guides/projects-on-org-scope` | Cut; C-07 and C-17 cover organization-wide data |
+| `guides/scheduled-cloud-scheduler`, `guides/scheduled-eventbridge` | Cut (FIX-2752); the app fires its own schedules, and B-15 is the one serverless route |
 | `guides/writing-ui-stories` | Contributor docs |

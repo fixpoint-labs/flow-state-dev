@@ -1,10 +1,11 @@
 /**
  * @flow-state-dev/bullmq — BullMQ host/runtime adapter.
  *
- * Provides durable background jobs, native cron scheduling, and full-flow
- * job queue dispatch for long-lived self-hosted FSD deployments. Composes
- * from existing framework seams (runAction, ScheduleIndex, dispatch contract)
- * with FlowRunner/StreamBridge interfaces for pluggable execution.
+ * Provides durable background jobs and full-flow job queue dispatch for
+ * long-lived self-hosted FSD deployments. Composes from existing framework
+ * seams (runAction, the dispatch contract) with FlowRunner/StreamBridge
+ * interfaces for pluggable execution. Schedules need nothing from it: the
+ * engine's local cron, elected by the shared store's lease, fires them.
  */
 export { bullmqJobQueue } from "./flowstate-adapter";
 export type { BullmqJobQueueOptions, BullmqJobQueueAdapter } from "./flowstate-adapter";
@@ -23,8 +24,6 @@ export type {
 export type { CreateJobQueueRunnerOptions } from "./runner";
 export { createRedisStreamBridge } from "./stream-bridge";
 export type { CreateRedisStreamBridgeOptions } from "./stream-bridge";
-export { createBullmqScheduleIndex } from "./schedule-index";
-export type { CreateBullmqScheduleIndexOptions } from "./schedule-index";
 export { resolveProducerConnection, resolveProcessorConnection } from "./connection";
 export type { ResolvedConnection } from "./connection";
 export { toJobOptions, resolveDlqName } from "./retry";

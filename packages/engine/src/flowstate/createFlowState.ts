@@ -1412,7 +1412,7 @@ class InternalFlowState<TSettings extends object>
       warnOnce(
         "engine/local-cron-on-vercel",
         "This app declares schedules and runs on Vercel, where nothing keeps the local cron running between " +
-          "requests. Pass `scheduler: vercelScheduler()` (from `@flow-state-dev/vercel`) to createFlowState and route its cron to it."
+          "requests. Pass `scheduler: vercelScheduler()` (from `@flow-state-dev/vercel`) to createFlowState and export its `route` as the GET of the route one Vercel Cron entry calls."
       );
     }
     this.#localScheduler.arm(stores.leases);

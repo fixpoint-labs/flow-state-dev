@@ -87,7 +87,7 @@ export function createLocalScheduler(options: CreateLocalSchedulerOptions): Loca
     return renewing;
   };
 
-  const tick = (): void => {
+  const runTick = (): void => {
     if (stopped || leaseId === undefined || running !== undefined) return;
     const stop = new AbortController();
     const done = options
@@ -104,6 +104,14 @@ export function createLocalScheduler(options: CreateLocalSchedulerOptions): Loca
         running = undefined;
       });
     running = { done, stop };
+  };
+
+  // Each beat's renewal timer fires just before its tick: tick on that
+  // renewal's answer, so a contender ticks on the beat it takes the lease even
+  // when the store answers over the network (a crash hands over within the
+  // lease plus one beat, not one beat more).
+  const tick = (): void => {
+    void renewing.then(runTick);
   };
 
   const every = (ms: number, fn: () => unknown): void => {

@@ -4,9 +4,12 @@
  * Provides `createVercelHandler` to wrap a flow-state-dev router into
  * Next.js App Router handlers with Vercel-specific SSE shaping and
  * runtime configuration. One import + one route file to deploy any
- * FSD app to Vercel.
+ * FSD app to Vercel. `vercelScheduler` fires the app's schedules from one
+ * Vercel Cron route.
  */
 export { createVercelHandler, createVercelBareHandler } from "./handler";
+export { vercelScheduler } from "./scheduler";
+export type { VercelScheduler, VercelSchedulerOptions } from "./scheduler";
 export type {
   FlowApiRouter,
   VercelHandlerInput,

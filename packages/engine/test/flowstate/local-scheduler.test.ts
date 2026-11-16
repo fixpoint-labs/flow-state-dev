@@ -199,6 +199,40 @@ describe("the schedule-tick lease", () => {
     expect(b.ticks.count).toBeGreaterThanOrEqual(1);
   });
 
+  // The handover bound is the lease (two minutes) plus one beat to notice it ran out. A contender
+  // that waited one beat more to tick after taking the lease would hand over in four.
+  it("ticks on the beat a contender takes the lease, so a crash hands over within three minutes", async () => {
+    fakeClock();
+    const registry = createInMemoryStores();
+    let aAlive = true;
+    const aStore: StoreAdapter = {
+      capabilities: ["primary"],
+      resolve: async () => ({
+        ...registry,
+        leases: withAcquire(registry.leases, async (key, options) => (aAlive ? registry.leases.acquire(key, options) : null))
+      })
+    };
+    const a = processOn(aStore);
+    // b's store answers over a network, as Postgres does: an acquire resolves on I/O, not in the same microtask run.
+    const overNetwork = withAcquire(registry.leases, async (key, options) => {
+      await new Promise((resolve) => setImmediate(resolve));
+      return registry.leases.acquire(key, options);
+    });
+    const b = processOn({ capabilities: ["primary"], resolve: async () => ({ ...registry, leases: overNetwork }) });
+    apps.push(a.app, b.app);
+    await a.app.ready();
+    // b started half a minute after a: its beats fall between a's.
+    await vi.advanceTimersByTimeAsync(MINUTE / 2);
+    await b.app.ready();
+    await vi.advanceTimersByTimeAsync(MINUTE / 2);
+    // a has just renewed and ticked; it dies now, holding a lease good for two more minutes.
+    expect([a.ticks.count, b.ticks.count]).toEqual([1, 0]);
+    aAlive = false;
+    await vi.advanceTimersByTimeAsync(3 * MINUTE);
+    expect(a.ticks.count).toBe(1);
+    expect(b.ticks.count).toBeGreaterThanOrEqual(1);
+  });
+
   it("idles when acquiring the lease throws (SQLITE_BUSY)", async () => {
     fakeClock();
     const p = processOn(

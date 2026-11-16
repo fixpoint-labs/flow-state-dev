@@ -95,7 +95,7 @@ A delivery with a bad signature is refused with `401` and nothing runs. A verifi
 
 With no `sessionId` on the binding, each event runs in its own fresh session. Derive one from the payload, as in ``sessionId: (e) => `customer-${e.payload.data.object.customer}` ``, and one customer's invoices share a session while another customer gets a separate one. No end user is involved, so the run uses `defaultUserId: "system"`, with `requireUser: false`. Those two fields name the user the run acts as; they do not authenticate anyone. `verify` guards the webhook route; the app's other routes need a resolver. See [Webhooks](../reference/webhooks.md) and the [Stripe recipe](../build/webhooks/stripe.md).
 
-**A schedule.** A schedule is a name and a cron string on the flow, with the block to run. Flow State does not own the clock. Your scheduler, such as Vercel Cron or EventBridge, calls a URL the schedule adapter serves for that schedule when the time comes, and the adapter runs the block. It is not an action call either. See [Schedules](../reference/schedules.md).
+**A schedule.** A schedule is a name and a cron string on the flow, with the block to run. The app keeps the clock: when the time comes it calls a URL the schedule adapter serves for that schedule, and the adapter runs the block. On a serverless host, one cron route wakes the app to do it. It is not an action call either. See [Schedules](../reference/schedules.md).
 
 ## What it gets you
 
