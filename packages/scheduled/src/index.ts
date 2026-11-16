@@ -35,7 +35,6 @@ export { findScheduledRequest } from "./findScheduledRequest";
 export {
   createResourceCollectionScheduleResolver,
   defaultParseScheduleId,
-  formatScheduleId,
   type CreateResourceCollectionScheduleResolverOptions,
   type ParsedScheduleId,
   type ScheduleResourceState

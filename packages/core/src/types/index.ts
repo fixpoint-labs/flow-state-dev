@@ -145,6 +145,7 @@ export type {
 
 export {
   defineScheduleBinding,
+  formatScheduleId,
   isKnownTimeZone,
   validateScheduleConfig,
   validateSchedulesConfig

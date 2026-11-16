@@ -31,14 +31,13 @@
  */
 import { defineResourceCollection, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { isKnownTimeZone, type SchedulesConfig } from "@flow-state-dev/core/types";
+import { formatScheduleId, isKnownTimeZone, type SchedulesConfig } from "@flow-state-dev/core/types";
 import { dispatchThroughSeam, isFiveFieldCron } from "@flow-state-dev/core/internal";
 import {
   FIRED_RECORDS_PATTERN,
   createResourceCollectionScheduleResolver,
   defineScheduleCollection,
   firedRecordCollectionKey,
-  formatScheduleId,
   parseNextFireAt,
   type ScheduleIndex
 } from "@flow-state-dev/scheduled/collection";

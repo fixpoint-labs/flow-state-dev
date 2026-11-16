@@ -68,13 +68,25 @@ import {
   type ConcurrencyArbiter
 } from "../transports/concurrency/arbiter";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
+import { SCHEDULED_SOURCE } from "../execution/transport-sources";
+import { InMemoryLeaseStore } from "../stores/memory/lease-store";
+import { FilesystemLeaseStore } from "../stores/filesystem/lease-store";
+import { createLocalScheduler, type LocalScheduler } from "../execution/local-scheduler";
+import {
+  declaresTickedSchedules,
+  runScheduleTick,
+  scheduleDispatchRequest,
+  type ScheduleDispatch,
+  type ScheduleTickReport
+} from "../execution/schedule-tick";
 import type {
   CreateFlowStateOptions,
   FlowState,
   FlowStateModelsConfig,
   FlowStateRuntime,
   ProcessingHandle,
-  JobQueueMode
+  JobQueueMode,
+  ScheduleTicker
 } from "./types";
 
 /**
@@ -327,6 +339,11 @@ class InternalFlowState<TSettings extends object>
    * every process of the deployment lines up on the same keys.
    */
   readonly #arbiter: ConcurrencyArbiter;
+  // FIX-2752.
+  /** The built-in local cron, when `scheduler` is omitted; armed once a router or job processing starts. */
+  readonly #localScheduler: LocalScheduler | undefined;
+  /** What `dispose()` stops: the local cron, or an adapter's handle. */
+  readonly #schedulerHandle: { stop(): Promise<void> } | undefined;
 
   constructor(options: CreateFlowStateOptions<TSettings>) {
 
@@ -402,6 +419,18 @@ class InternalFlowState<TSettings extends object>
     this.#kitPlan = planKits(options.kits ?? [], options.fill, options.root);
 
     this.#allAdapters = collectAdapters(this.#stores);
+
+    // The schedule tick's one entry point, handed to whichever scheduler runs it.
+    const ticker: ScheduleTicker = { tick: (tickOptions) => this.#tick(tickOptions?.baseUrl, undefined) };
+    if (options.scheduler === undefined) {
+      this.#localScheduler = createLocalScheduler({
+        tick: (signal) => this.#tick(undefined, signal),
+        logger: this.#deferredLogger
+      });
+      this.#schedulerHandle = this.#localScheduler;
+    } else if (options.scheduler !== false) {
+      this.#schedulerHandle = options.scheduler.start(ticker);
+    }
   }
 
   get activeProfile(): string {
@@ -459,6 +488,14 @@ class InternalFlowState<TSettings extends object>
   async dispose(): Promise<void> {
     if (this.#disposed) return;
     this.#disposed = true;
+
+    // The schedule tick dispatches through the router and writes the stores:
+    // stop it, and let a running tick settle, before either closes.
+    try {
+      await this.#schedulerHandle?.stop();
+    } catch (err) {
+      console.error("[flowstate] scheduler stop failed", err);
+    }
 
     // Let an in-flight init settle so adapters that opened pools mid-init
     // still get a clean dispose. Either surface (getRuntime / getRouter) can
@@ -1129,6 +1166,8 @@ class InternalFlowState<TSettings extends object>
       }
       if (mode !== "enqueue-only") {
         this.#processingHandle = jobQueue.startProcessing(runtime);
+        // A job-queue worker ticks too (FIX-2752 D1): a web tier that can't is covered by its workers.
+        this.#armLocalScheduler(stores);
       }
     }
 
@@ -1295,8 +1334,93 @@ class InternalFlowState<TSettings extends object>
       .finally(() => this.#dispatchedRuns.delete(child));
   }
 
+  // FIX-2752.
+  /**
+   * The schedule tick: fire what is due across every registered flow. Over the
+   * network to `baseUrl` when given (each fire its own request to this
+   * deployment), else through this app's own router, which it builds when no
+   * one has. Bears `CRON_SECRET` when the environment sets it, as a host's
+   * cron would.
+   */
+  async #tick(baseUrl: string | undefined, signal: AbortSignal | undefined): Promise<ScheduleTickReport> {
+    const runtime = await this.#runtime();
+    const secret = process.env.CRON_SECRET;
+    let send: (fire: ScheduleDispatch) => Promise<number>;
+    if (baseUrl !== undefined) {
+      send = async (fire) => {
+        const { url, init } = scheduleDispatchRequest({ baseUrl, fire, secret });
+        const response = await fetch(url, init);
+        await response.body?.cancel();
+        return response.status;
+      };
+    } else {
+      const router = await this.#init();
+      send = async (fire) => {
+        const { url, path, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", fire, secret });
+        const response = await router.POST(new Request(url, init), { params: { path } });
+        await response.body?.cancel();
+        return response.status;
+      };
+    }
+    return runScheduleTick({
+      flows: runtime.registry.list(),
+      resourceState: runtime.stores.resourceState,
+      dispatch: send,
+      ...(signal !== undefined ? { signal } : {}),
+      logger: this.#deferredLogger
+    });
+  }
+
+  // FIX-2752.
+  /**
+   * A `process-only` job-queue process's router has no runner: the router is
+   * typically never served there, and its jobs arrive from the queue. When it
+   * ticks schedules, a fire it claims dispatches through that router, so it is
+   * given the queue's runner: a fire is enqueued as an action is on this
+   * deployment, keeping the queue's retries and surviving a worker crash.
+   */
+  #tickRunner(runtime: FlowStateRuntime): FlowRunner | undefined {
+    const jobQueue = this.#options.jobQueue;
+    if (jobQueue === undefined || jobQueue.mode !== "process-only" || this.#options.scheduler === false) return undefined;
+    if (!this.#registry.list().some(declaresTickedSchedules)) return undefined;
+    return jobQueue.createRunner(runtime);
+  }
+
+  /**
+   * Start the local cron, when it is the scheduler and a registered flow
+   * declares a schedule it fires. Called once a router is built or job
+   * processing starts: a process that only resolves the runtime (`fsdev run`)
+   * never ticks.
+   */
+  #armLocalScheduler(stores: StoreRegistry): void {
+    if (this.#localScheduler === undefined) return;
+    if (!this.#registry.list().some(declaresTickedSchedules)) return;
+    // D2: a lease that lives in one process (memory) or can race (filesystem)
+    // cannot keep a second server from ticking too. Warned, not refused: it is
+    // what `fsdev dev` and tests run on.
+    if (
+      process.env.NODE_ENV === "production" &&
+      (stores.leases instanceof InMemoryLeaseStore || stores.leases instanceof FilesystemLeaseStore)
+    ) {
+      warnOnce(
+        "engine/local-cron-unelected-lease",
+        "The local cron fires this app's schedules on in-memory or filesystem stores, whose lease can't keep a " +
+          "second server from firing them too: run one server, or use SQLite or Postgres stores."
+      );
+    }
+    if (process.env.VERCEL !== undefined && process.env.VERCEL.length > 0) {
+      warnOnce(
+        "engine/local-cron-on-vercel",
+        "This app declares schedules and runs on Vercel, where nothing keeps the local cron running between " +
+          "requests. Pass `scheduler: vercelScheduler()` (from `@flow-state-dev/vercel`) to createFlowState and route its cron to it."
+      );
+    }
+    this.#localScheduler.arm(stores.leases);
+  }
+
   async #doInit(): Promise<FlowApiRouter> {
-    const { registry, stores, runtimeConfig } = await this.#runtime();
+    const runtime = await this.#runtime();
+    const { registry, stores, runtimeConfig } = runtime;
 
     // The SECOND of the two places the sweep cadence reaches the shared config,
     // and the one that covers a caller who resolved the runtime first:
@@ -1318,7 +1442,19 @@ class InternalFlowState<TSettings extends object>
         resolveStaleSweep(this.#options).staleSweepIntervalMs;
     }
 
-    return createFlowApiRouter({
+    // FIX-2752: the tick fires schedules only through the scheduled transport's
+    // endpoint, whatever the scheduler, so a flow with schedules it fires (a
+    // static one, or an index) and no endpoint would never fire one. Refused
+    // here, naming the line to add. A resolver alone is fired by nothing here.
+    const unmounted = registry.list().find(declaresTickedSchedules);
+    if (unmounted !== undefined && !(this.#options.adapters ?? []).some((adapter) => adapter.source === SCHEDULED_SOURCE)) {
+      throw new FlowStateConfigError(
+        `createFlowState: flow "${unmounted.id}" declares schedules, but the scheduled transport is not mounted, so none ` +
+          "would fire. Add `adapters: [createScheduledTransportAdapter()]` (from `@flow-state-dev/scheduled`)."
+      );
+    }
+
+    const router = createFlowApiRouter({
       registry,
       stores,
       runtimeConfig,
@@ -1331,11 +1467,13 @@ class InternalFlowState<TSettings extends object>
       staleSweepIntervalMs: this.#options.staleSweepIntervalMs,
       staleSweepThresholdMs: this.#options.staleSweepThresholdMs,
       queuedGraceMs: this.#options.queuedGraceMs,
-      runner: this.#options.runner ?? this.#jobQueueRunner,
+      runner: this.#options.runner ?? this.#jobQueueRunner ?? this.#tickRunner(runtime),
       // The same arbiter the dispatch operation uses, so one flow-level
       // concurrency policy is enforced once across the process — see `#arbiter`.
       arbiter: this.#arbiter
     });
+    this.#armLocalScheduler(stores);
+    return router;
   }
 }
 

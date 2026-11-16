@@ -38,9 +38,10 @@ import { workerRoutineVerbs } from "../src/routines/routines";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
-import { boardWorkers, bootBoardHost, ORG, type BoardHostOptions } from "./conversation-board-harness";
+import { boardWorkers, bootBoardHost, ORG, SCHEDULER_SECRET, type BoardHostOptions } from "./conversation-board-harness";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
-import { parseNextFireAt, runScheduleTick, scheduleDispatchRequest, type ScheduleIndex, type ScheduleIndexEntry } from "@flow-state-dev/scheduled/collection";
+import { defaultParseScheduleId, parseNextFireAt, type ScheduleIndex, type ScheduleIndexEntry } from "@flow-state-dev/scheduled/collection";
+import type { ScheduleTicker } from "@flow-state-dev/engine/host";
 import { SUBSCRIPTION_POLLS_PATTERN } from "../src/subscriptions/keys";
 
 /** Users whose read access to private threads a test has taken away. */
@@ -230,8 +231,11 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     { id: "eng.watcher", declared: { flow: "follower", description: "Watches threads." }, body: "", skills: [] },
     ...(options.standard ?? [])
   ];
+  // The app's own schedule tick, which a test beats by hand.
+  let ticker: ScheduleTicker | undefined;
   const board = bootBoardHost({
     ...options,
+    scheduler: { start: (t) => ((ticker = t), { stop: async () => undefined }) },
     hire: { ...options.hire, routines: { providers, ...(poll === undefined ? {} : { poll }), ...options.hire?.routines } },
     standard,
     // A coordinator's conversation keeps event routines too (its routine actions).
@@ -263,17 +267,19 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   /** One beat of the shared tick at the current (faked) time: claim the due polls, dispatch each, wait for what they started. */
   const tick = async () => {
     if (index === undefined) throw new Error("tick: this host doesn't poll");
-    const router = await board.router();
-    await runScheduleTick({
-      index,
-      dispatch: async (entry, scheduleId) => {
-        const { url, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", flowKind: "github-service", entry, scheduleId });
-        const request = new Request(url, { ...init, headers: { ...init.headers, "x-user": "scheduler" } });
-        const res = await router.POST(request, { params: { path: ["github-service", "schedules", scheduleId, "dispatch"] } });
-        fires.push({ userId: entry.userId, key: entry.key, at: entry.nextFireAt, status: res.status });
-        return res.status;
+    const previous = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = SCHEDULER_SECRET;
+    try {
+      const report = await ticker!.tick();
+      for (const fire of report.dispatched) {
+        if (fire.flowKind !== "github-service") continue;
+        const id = defaultParseScheduleId(fire.scheduleId)!;
+        fires.push({ userId: id.userId, key: id.collectionKey, at: fire.nominalFireTime, status: fire.status });
       }
-    });
+    } finally {
+      if (previous === undefined) delete process.env.CRON_SECRET;
+      else process.env.CRON_SECRET = previous;
+    }
     await board.settled();
   };
 

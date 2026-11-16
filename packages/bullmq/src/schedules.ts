@@ -10,9 +10,9 @@
  */
 import { Worker, UnrecoverableError } from "bullmq";
 import type { Queue, Job } from "bullmq";
+import { formatScheduleId } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "@flow-state-dev/engine/host";
 import { resolveProcessorConnection } from "./connection";
-import { dynamicScheduleId } from "./schedule-id";
 import type { BullmqConnectionOptions } from "./types";
 
 export interface RegisterStaticSchedulesOptions {
@@ -131,7 +131,7 @@ export function createScheduleDispatchProcessor(
     // Static schedules (from registerStaticSchedules) have no userId and are
     // dispatched by their bare name. User-scoped schedules (from the schedule
     // index) carry the org and user, and dispatch by the dynamic id
-    // `<orgId>/<userId>/<key>`, each part URL-encoded (`./schedule-id`). The
+    // `<orgId>/<userId>/<key>`, each part URL-encoded (core's `formatScheduleId`). The
     // id travels as one more encoded path segment, since
     // the router decodes each segment once.
     const userId = data.userId;
@@ -141,7 +141,7 @@ export function createScheduleDispatchProcessor(
       );
     }
     const dispatchId = userId !== undefined
-      ? dynamicScheduleId(data.orgId as string, userId, scheduleId)
+      ? formatScheduleId(data.orgId as string, userId, scheduleId)
       : scheduleId;
     const url = `${baseUrl}/api/flows/${encodeURIComponent(flowKind)}/schedules/${encodeURIComponent(dispatchId)}/dispatch`;
 
