@@ -36,7 +36,7 @@ export const RUN = { sessionId: "run-1", requestId: "q1" } as const;
 /** A coding run's review stop, as its run session stores it. */
 export const reviewStop = (id: string, review: unknown) => ({ id, type: "suspension", kind: "review", status: "pending", requestId: RUN.requestId, itemIndex: 0, ts: 1, data: review });
 
-/** The review hold a coding task's row carries, answered at the run's stop `stop`. */
+/** The review hold a coding task carries on the board, answered at the run's stop `stop`. */
 const reviewHold = (stop = "stop-1"): InboxHold =>
   ({
     id: stop,
