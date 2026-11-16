@@ -180,8 +180,10 @@ export interface LabCalls {
   /** A line in a thread: answers its open question, else steers its task. */
   sayInThread(sessionId: string, task: LabTask, line: string): Promise<void>;
   taskActions(sessionId: string): TaskBoardCalls;
-  resolve(task: LabTask, land?: ReviewLand): Promise<void>;
-  requestChanges(task: LabTask, words: string): Promise<void>;
+  /** Accept the review task `task` holds you on in session `sessionId`'s board, landing it as `land` says. */
+  resolve(sessionId: string, task: LabTask, land?: ReviewLand): Promise<void>;
+  /** Ask for changes, in `words`, on the review task `task` holds you on in session `sessionId`'s board. */
+  requestChanges(sessionId: string, task: LabTask, words: string): Promise<void>;
   pin(taskId: string): Promise<void>;
   unpin(taskId: string): Promise<void>;
   dismiss(task: Pick<LabTask, "id" | "attempts">): Promise<void>;
@@ -591,10 +593,16 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
     };
     return (await readEveryCollectionPage(pages, scope, PROJECTS_PATTERN)).map((entry) => entry.clientData as { id: string; title: string; members: string[]; repository: string | null });
   };
-  /** A task's open hold that asks for `asks`, from the board row's `asks`. */
-  const holdOf = (task: LabTask, asks: "question" | "review") => task.asks?.find((hold) => hold.ask.kind === asks);
-  const answerReview = async (task: LabTask, answer: InboxAnswer) => {
-    const review = holdOf(task, "review");
+  /**
+   * The open hold task `taskId` holds you on that asks for `asks`, read from the coding board now: the
+   * row the screen drew can be older than a question or review stop opened since.
+   */
+  const holdOn = async (sessionId: string, taskId: string, asks: "question" | "review"): Promise<InboxHold | undefined> => {
+    const rows = (await fsd.view(codingBoardViewRef(), { sessionId })).value;
+    return rows.find((row) => row.id === taskId)?.asks.find((hold) => hold.ask.kind === asks);
+  };
+  const answerReview = async (sessionId: string, task: LabTask, answer: InboxAnswer) => {
+    const review = await holdOn(sessionId, task.id, "review");
     if (review === undefined) throw new Error(`The thread "${task.id}" isn't waiting on your review.`);
     await inbox.answerOne(review, answer);
   };
@@ -687,7 +695,7 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
     },
     sayInThread: async (sessionId, task, line) => {
       // A line answers the question the thread holds you on; with none open, it is a steer on its task.
-      const question = holdOf(task, "question");
+      const question = await holdOn(sessionId, task.id, "question");
       if (question !== undefined) {
         await inbox.answerOne(question, { text: line });
         return;
@@ -701,8 +709,8 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
       release: async (id) => (await boardAt(sessionId)).release(id),
       retry: async (id) => (await boardAt(sessionId)).retry(id),
     }),
-    resolve: (task, land) => answerReview(task, { value: acceptOf(land) }),
-    requestChanges: (task, words) => answerReview(task, { value: { verdict: "revise", words } }),
+    resolve: (sessionId, task, land) => answerReview(sessionId, task, { value: acceptOf(land) }),
+    requestChanges: (sessionId, task, words) => answerReview(sessionId, task, { value: { verdict: "revise", words } }),
     pin: async (taskId) => {
       await pins().update((s) => ({ pinned: s.pinned.includes(taskId) ? s.pinned : [...s.pinned, taskId] }));
     },

@@ -56,7 +56,7 @@ export function ThreadView({
   const finished = task.status === "completed" || task.status === "cancelled" || task.status === "errored";
 
   // Accept and a send share the composer: nothing else goes while one is on its way.
-  const accept = useReviewAccept(task, work);
+  const accept = useReviewAccept(sessionId, task, work);
   const pin = useSubmit(() => (pinned ? lab.unpin(task.id) : lab.pin(task.id)));
   const dismiss = useSubmit(() => lab.dismiss(task));
   const actions = useMemo(() => lab.taskActions(sessionId), [lab, sessionId]);
@@ -76,7 +76,7 @@ export function ThreadView({
     if (accept.waiting) return;
     void submit((line) => {
       feed.sent();
-      return lab.requestChanges(task, line);
+      return lab.requestChanges(sessionId, task, line);
     });
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {

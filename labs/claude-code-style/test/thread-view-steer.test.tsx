@@ -39,14 +39,17 @@ const REVIEW = {
 describe("a coding thread's composer after it accepts a review", () => {
   it("frees the composer once a landing moves the task on to its pull request, so you can say a merge", async () => {
     const server = stubServer({ items: { [RUN.sessionId]: [reviewStop("stop-1", REVIEW)] } });
-    const view = (task: LabTask) =>
-      server.wrap(
+    // The board holds the task as the view draws it.
+    const view = (task: LabTask) => {
+      server.board["s-1"] = [task];
+      return server.wrap(
         <SessionOverlayProvider>
           <SessionOverlayArea>
             <ThreadView sessionId="s-1" task={task} pinned={false} onClose={() => {}} />
           </SessionOverlayArea>
         </SessionOverlayProvider>,
       );
+    };
     const { rerender } = render(view(reviewTask));
     fireEvent.click(await waitFor(() => within(screen.getByRole("dialog")).getByRole("button", { name: "Open a PR" })));
     await waitFor(() => expect(server.posts.map(verdictOf)).toContainEqual({ verdict: "accepted", land: "pull-request" }));

@@ -11,7 +11,7 @@ import { LAND_LABEL, type LandedWork, orderedLands, type ReviewLand } from "./fl
  * moment it is sent until the run's next review stop arrives, so it never reads as accepted while the
  * landing is still going on.
  */
-export function useReviewAccept(task: LabTask, work: TaskWork | undefined) {
+export function useReviewAccept(sessionId: string, task: LabTask, work: TaskWork | undefined) {
   const lab = useLab();
   const review = work?.review;
   const lands = review?.lands ?? [];
@@ -23,7 +23,7 @@ export function useReviewAccept(task: LabTask, work: TaskWork | undefined) {
   const [answered, setAnswered] = useState<string | null>(null);
   const awaitingReview = task.openHold?.kind === "review";
   const submit = useSubmit(async (land?: ReviewLand) => {
-    await lab.resolve(task, land);
+    await lab.resolve(sessionId, task, land);
     setAnswered(round);
   });
   return {

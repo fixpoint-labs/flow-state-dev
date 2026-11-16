@@ -41,9 +41,17 @@ function stubRun(review: ReviewDetail | undefined, answer?: (posted: Posted) => 
   return { server, accepted, emit };
 }
 
+/** Draws `task`'s card, its board holding `task` as drawn; `rerender` draws `next`, and the board holds it from then. */
 function renderCard(task: LabTask, run: ReturnType<typeof stubRun>, onOpen = vi.fn()) {
+  run.server.board["s-1"] = [task];
   const { rerender } = render(run.server.wrap(<ThreadCard sessionId="s-1" task={task} onOpen={onOpen} />));
-  return { onOpen, rerender: (next: LabTask) => rerender(run.server.wrap(<ThreadCard sessionId="s-1" task={next} onOpen={onOpen} />)) };
+  return {
+    onOpen,
+    rerender: (next: LabTask) => {
+      run.server.board["s-1"] = [next];
+      rerender(run.server.wrap(<ThreadCard sessionId="s-1" task={next} onOpen={onOpen} />));
+    },
+  };
 }
 
 const card = () => screen.getByRole("region", { name: "Task: Add a CHANGELOG line" });

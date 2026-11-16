@@ -2,7 +2,8 @@
  * A stand-in for the lab's server at the client's fetch, for a component's
  * test that draws one screen from data the test names: each session's stored
  * items, each run's recorded work, and a session stream the test can push an
- * item on. Every other POST is recorded and answered done, or as `answer`
+ * item on, and each board's rows as the coding board view answers them now
+ * (the lab reads a task's open hold there when you answer it). Every other POST is recorded and answered done, or as `answer`
  * says. The screen still reads through `src/lab.ts` and the real client;
  * only the host behind them is stood in for. A test of how the screen and the
  * host work together uses `lab-host.ts`.
@@ -25,6 +26,11 @@ export interface StubData {
   items?: Record<string, unknown[]>;
   /** Each run's recorded work, by request id, as the recorded work view answers it. */
   recorded?: Record<string, { plan?: RecordedWork["plan"]; pullRequests?: RecordedWork["pullRequests"]["rows"] }>;
+  /**
+   * Each board's tasks by its session id, as the coding board view answers them: a row's `id` and
+   * `asks`. Read on every view call, so a test that changes a row here changes what the server holds.
+   */
+  board?: Record<string, LabTask[]>;
   /** Answers a POST the screen made: a throw fails it as a lost connection does. Absent: done. */
   answer?: (posted: Posted) => Promise<void> | void;
 }
@@ -60,8 +66,9 @@ export const underReview = (task: LabTask, stop = "stop-1"): LabTask => ({
   runLink: { ...RUN },
 });
 
-/** A client over the stand-in, `wrap` to put a tree under the lab's provider on it, every POST made, and `push` for a new item. */
+/** A client over the stand-in, `wrap` to put a tree under the lab's provider on it, every POST made, `board` to change what the coding board holds, and `push` for a new item. */
 export function stubServer(data: StubData = {}) {
+  const board = data.board ?? {};
   const posts: Posted[] = [];
   const streams = new Map<string, (frame: string) => void>();
   let requests = 0;
@@ -76,6 +83,10 @@ export function stubServer(data: StubData = {}) {
         return json({ output: { plan: run?.plan ?? null, pullRequests: { rows: run?.pullRequests ?? [], truncated: false } }, topics: [] });
       }
       if (path.endsWith("/views/sessionTurns")) return json({ output: [], topics: [] });
+      if (path.endsWith("/views/codingBoard")) {
+        const { sessionId } = body.input as { sessionId: string };
+        return json({ output: (board[sessionId] ?? []).map((task) => ({ id: task.id, asks: task.asks ?? [] })), topics: [] });
+      }
       const posted = { path, body };
       posts.push(posted);
       await data.answer?.(posted);
@@ -107,6 +118,7 @@ export function stubServer(data: StubData = {}) {
   return {
     client,
     posts,
+    board,
     /** Sends `item` on session `sessionId`'s stream, as the host does when it stores one. */
     push: (sessionId: string, item: { requestId?: string }) => {
       at += 1;

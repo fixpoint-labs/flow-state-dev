@@ -8,22 +8,26 @@
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import type { CodingBoardTask } from "@flow-state-dev/harness-manager/browser";
+import type { InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { labCalls, labTaskOf } from "../src/lab";
 
 type Sent = { flow: string; action: string; input: Record<string, unknown>; sessionId: string };
 
 /**
- * A client whose board holds `rows`. A send is answered by `answer`; only the
- * board client's routine (`flow.request(id).result`) can read its answer, by the
- * request's id, so a send through any other path fails.
+ * A client whose board holds `rows`, as the coding board view answers them. A
+ * send is answered by `answer`; only the board client's routine
+ * (`flow.request(id).result`) can read its answer, by the request's id, so a
+ * send through any other path fails. An answer to a run's stop is recorded in `answered`.
  */
 function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Record<string, unknown> = () => ({ ok: true })) {
   const sent: Sent[] = [];
+  const answered: { flow: string; requestId: string; body: Record<string, unknown> }[] = [];
   const outputs = new Map<string, Record<string, unknown>>();
   const client = {
     sessions: {
       get: async (id: string) => ({ id, flowKind: "agent", flowId: "agent", state: {} }),
     },
+    view: async () => ({ value: rows }),
     flow: (flow: string) => ({
       send: async (action: string, input: Record<string, unknown>, options: { sessionId: string }) => {
         const entry = { flow, action, input, sessionId: options.sessionId };
@@ -32,19 +36,66 @@ function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Rec
         outputs.set(id, answer(entry));
         return { id };
       },
-      request: (id: string) => ({ result: async () => ({ status: "completed", output: outputs.get(id) }) }),
+      request: (id: string) => ({
+        result: async () => ({ status: "completed", output: outputs.get(id) }),
+        answer: async (body: Record<string, unknown>) => void answered.push({ flow, requestId: id, body }),
+      }),
     }),
   } as unknown as Client;
-  return { client, sent };
+  return { client, sent, answered };
 }
 
-const RUNNING = { id: "t1", goal: "Fix the typo", status: "in_progress", attempts: 1 };
+/** A review hold on the run's stop `stop`. */
+const reviewHold = (stop: string) =>
+  ({
+    id: stop,
+    source: { kind: "suspension", flowId: "coder", sessionId: "run-1", requestId: "q1", suspensionId: stop },
+    ask: { kind: "review", prompt: "Accept the changes?" },
+    openedAt: 1,
+    answerable: true,
+    unanswerable: null,
+  }) as unknown as InboxHold;
+
+/** A question `id` the task holds on its own row, answered through the board in session s1. */
+const questionHold = (id: string) =>
+  ({
+    id,
+    source: { kind: "task", flowId: "agent", sessionId: "s1", action: "updateTask_tasks", taskId: "t1" },
+    ask: { kind: "question", prompt: "Which spelling?" },
+    openedAt: 1,
+    answerable: true,
+    unanswerable: null,
+  }) as unknown as InboxHold;
+
+const RUNNING = { id: "t1", goal: "Fix the typo", status: "in_progress", attempts: 1, asks: [] };
 
 describe("the lab's task actions", () => {
   it("sends a steer typed in a thread with no open question through the board client's steer", async () => {
     const lab = fakeClient([RUNNING]);
     await labCalls(lab.client).sayInThread("s1", { ...RUNNING, title: RUNNING.goal, status: "in_progress", asks: [] }, "Use the British spelling.");
     expect(lab.sent).toEqual([{ flow: "agent", action: "updateTask_tasks", input: { id: "t1", message: "Use the British spelling." }, sessionId: "s1" }]);
+  });
+
+  it("answers the question the board holds now, even when the drawn row was read before it opened", async () => {
+    // The screen drew the row with no question; the run has since asked one. The line answers it, not steers.
+    const lab = fakeClient([{ ...RUNNING, asks: [questionHold("ask-1")] }]);
+    await labCalls(lab.client).sayInThread("s1", { ...RUNNING, title: RUNNING.goal, status: "in_progress", asks: [] }, "British.");
+    expect(lab.sent).toEqual([{ flow: "agent", action: "updateTask_tasks", input: { id: "t1", answers: "ask-1", message: "British." }, sessionId: "s1" }]);
+  });
+
+  it("answers the review stop the board holds now, not the one the drawn row named", async () => {
+    // The drawn row names an answered round's stop; the run has stopped for review again since.
+    const lab = fakeClient([{ ...RUNNING, asks: [reviewHold("stop-2")] }]);
+    const drawn = { ...RUNNING, title: RUNNING.goal, status: "in_progress" as const, asks: [reviewHold("stop-1")] };
+    await labCalls(lab.client).requestChanges("s1", drawn, "Shorter, please.");
+    expect(lab.answered.map((a) => a.body.suspensionId)).toEqual(["stop-2"]);
+  });
+
+  it("refuses a review answer when the board holds no review, whatever the drawn row says", async () => {
+    const lab = fakeClient([{ ...RUNNING, asks: [] }]);
+    const drawn = { ...RUNNING, title: RUNNING.goal, status: "in_progress" as const, asks: [reviewHold("stop-1")] };
+    await expect(labCalls(lab.client).resolve("s1", drawn)).rejects.toThrow(`The thread "t1" isn't waiting on your review.`);
+    expect(lab.answered).toEqual([]);
   });
 
   it("cancels, releases and retries on the session's own board, and hands back the dependents a cancel took", async () => {

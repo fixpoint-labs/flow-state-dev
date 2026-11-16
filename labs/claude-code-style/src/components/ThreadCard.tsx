@@ -108,7 +108,7 @@ function ReviewActions({
   viewThread: ReactNode;
 }) {
   const work = useTaskWork(task);
-  const accept = useReviewAccept(task, work);
+  const accept = useReviewAccept(sessionId, task, work);
   return (
     <div className="mt-1.5 min-w-0">
       <div className="flex flex-wrap gap-1.5">
