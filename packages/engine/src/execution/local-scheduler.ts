@@ -29,7 +29,7 @@ import { SCHEDULE_TICK_INTERVAL_MS } from "./schedule-tick";
 const STOP_GRACE_MS = 5_000;
 
 /** Sentinel key the local cron's single-holder lease is taken under. */
-export const SCHEDULE_TICK_LEASE_KEY = "__schedule_tick__";
+const SCHEDULE_TICK_LEASE_KEY = "__schedule_tick__";
 
 /** The local cron. */
 export interface LocalScheduler {

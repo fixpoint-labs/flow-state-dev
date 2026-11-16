@@ -68,7 +68,6 @@
     "ioredis": "^5.0.0"
   },
   "devDependencies": {
-    "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "vitest": "^3.2.4"
   },
