@@ -92,6 +92,10 @@ describe("the tasks pane's sheet", () => {
     await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("cancelled"), SLOW);
     const retry = await within(sheet("Research Globex")).findByRole("button", { name: "Retry" }, SLOW);
     expect(within(sheet("Research Globex")).queryByRole("textbox", { name: "Steer this task" })).toBeNull();
+    // The row can read cancelled before the Cancel press has its answer; until then the press holds
+    // every button, Retry included, and a click on it sends nothing. A person waits for the outcome.
+    await within(sheet("Research Globex")).findByText("Cancelled.", undefined, SLOW);
+    expect((retry as HTMLButtonElement).disabled).toBe(false);
     // Once the cancelled run's turn has ended (a scripted turn doesn't hear the cancel): a retry
     // that lands while it still runs is a race of the board's own, not the screen's.
     control.releaseGlobex();

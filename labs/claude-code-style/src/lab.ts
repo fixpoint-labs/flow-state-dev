@@ -36,13 +36,13 @@ import {
   PROJECTS_PATTERN,
   SET_SESSION_FIELDS_ACTION,
   sessionTurnsViewRef,
+  TURN_ACTIONS,
   WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY,
   workerSessionsViewRef,
 } from "@flow-state-dev/workforce/browser";
 import type { CreateProjectOutput } from "@flow-state-dev/workforce";
 import type { FileContent } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import { parseBlobRef } from "@flow-state-dev/core/attachments";
 import { modeById, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
@@ -197,8 +197,6 @@ const RECENT_TURNS = 50;
 const READINESS_VIEW = harnessReadinessViewRef("harnesses");
 /** A request stream's answers that mean it is not there for this caller. */
 const STREAM_GONE: ReadonlySet<number> = new Set([401, 403, 404]);
-/** A write to the plan a harness records, as a live read hears it. */
-const PLAN_PATHS = [OBSERVED_PLAN, OBSERVED_PLAN_LIST];
 
 const logFailedRead = (error: unknown): void => console.warn("[claude-code-style]", error);
 
@@ -602,8 +600,12 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
   };
   const pins = () => fsd.resource(labPins);
   const dismissals = () => fsd.resource(labDismissals);
+  // Read from the running requests, not the turns view: that lists a session's newest turns only,
+  // and a turn still running behind them is stopped all the same.
   const runningTurns = async (sessionId: string) =>
-    (await fsd.view(sessionTurnsViewRef(), { sessionId })).value.filter((turn) => turn.status === "in_progress");
+    (await fsd.sessions.requests(sessionId, { status: "in_progress", limit: 50 }))
+      .filter((request) => TURN_ACTIONS.includes(request.actionName))
+      .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
 
   return {
     modes: MODES.map((mode) => mode.id),

@@ -42,8 +42,8 @@ function stubRun(review: ReviewDetail | undefined, answer?: (posted: Posted) => 
 }
 
 function renderCard(task: LabTask, run: ReturnType<typeof stubRun>, onOpen = vi.fn()) {
-  render(run.server.wrap(<ThreadCard sessionId="s-1" task={task} onOpen={onOpen} />));
-  return { onOpen };
+  const { rerender } = render(run.server.wrap(<ThreadCard sessionId="s-1" task={task} onOpen={onOpen} />));
+  return { onOpen, rerender: (next: LabTask) => rerender(run.server.wrap(<ThreadCard sessionId="s-1" task={next} onOpen={onOpen} />)) };
 }
 
 const card = () => screen.getByRole("region", { name: "Task: Add a CHANGELOG line" });
@@ -119,15 +119,22 @@ describe("a thread card's accept", () => {
   it("a retry that fails with the same message is a new round, so its buttons come back", async () => {
     const failure = { land: "pull-request" as const, message: "no push remote" };
     const run = stubRun({ ...REVIEW, landFailed: failure, landAttempts: [failure] });
-    renderCard(codingTask(), run);
+    const { rerender } = renderCard(codingTask(), run);
     fireEvent.click(await waitFor(() => within(card()).getByRole("button", { name: "Retry: Open a PR" })));
     await waitFor(() => expect(run.accepted()).toEqual(["pull-request"]));
     // The answered stop stays the latest until the run stops for review again: the accept stays down.
     expect(within(card()).getAllByRole("button", { name: "Landing…" })).toHaveLength(2);
-    // The run tried again, failed with the same words, and stopped for review under a new round.
+    // The run tried again, failed with the same words, and stopped for review under a new round:
+    // the board's row holds the new stop too.
     await act(async () => run.emit({ ...REVIEW, landFailed: failure, landAttempts: [failure] }, "stop-2"));
+    rerender(underReview(codingTask(), "stop-2"));
     await waitFor(() => expect(within(card()).getByRole("button", { name: "Retry: Open a PR" })).toBeTruthy());
     expect(within(card()).queryByRole("button", { name: "Landing…" })).toBeNull();
+    // The second retry answers the new round's stop, not the one already answered.
+    fireEvent.click(within(card()).getByRole("button", { name: "Retry: Open a PR" }));
+    await waitFor(() => expect(run.accepted()).toEqual(["pull-request", "pull-request"]));
+    const answered = run.server.posts.filter((posted) => verdictOf(posted) !== undefined).map((posted) => posted.body.suspensionId);
+    expect(answered).toEqual(["stop-1", "stop-2"]);
   });
 
   it("keeps Request changes: it opens the task's view, where the words go", async () => {

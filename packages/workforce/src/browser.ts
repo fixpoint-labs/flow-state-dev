@@ -31,6 +31,7 @@ export { workerUsageView } from "./workers/worker-usage-ref";
 export type { RosterView } from "./workers/roster-view";
 export { sessionTurnsViewRef, workerSessionsViewRef } from "./workers/session-views-ref";
 export type { ListedTurn, SessionTurnsView, ListedWorkerSession, WorkerSessionsView } from "./workers/session-views";
+export { TURN_ACTIONS } from "./workers/turn-actions";
 export {
   deriveWorkerSessionId,
   isDerivedWorkerSessionId,
