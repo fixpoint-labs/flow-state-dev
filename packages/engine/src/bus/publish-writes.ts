@@ -215,6 +215,29 @@ function notice(topic: BusTopic, kind: ChangeKind, id?: string): ChangeNotice {
   return id === undefined ? { topic, kind } : { topic, kind, ids: [id] };
 }
 
+/** The `run` a session's owner's user topic hears of a write to one of their sessions. */
+function ownerRunNotice(owner: { userId: string; tenantId: string | undefined }): ChangeNotice {
+  return notice(userTopic(owner.userId, owner.tenantId), "run");
+}
+
+// FIX-2754.
+/**
+ * Publishes on a session's owner's user topic the `run` a whole-record write
+ * to the session publishes (`sessionNotices`), for a field delta the engine
+ * knows a list of the owner's sessions shows. The store wrapper publishes a
+ * delta without it, since it can't tell which fields a flow shows; the
+ * execution context, which holds the flow, calls this beside the delta.
+ * `session` is the stored record, whose owner and tenant name the topic as
+ * the wrapper names them.
+ */
+export function publishSessionOwnerRun(
+  bus: ChangeBus,
+  session: { userId?: string | null; tenantId?: string | null }
+): void {
+  if (session.userId == null) return;
+  publishNotices(bus, [ownerRunNotice({ userId: session.userId, tenantId: session.tenantId ?? undefined })]);
+}
+
 // ---------------------------------------------------------------------------
 // Whose session a write is under
 // ---------------------------------------------------------------------------
@@ -330,7 +353,7 @@ class Identities {
     if (identity.parentSessionId !== undefined) {
       notices.push(notice(sessionTopic(identity.parentSessionId, identity.tenantId), "run", identity.id));
     }
-    if (toOwner && identity.userId !== undefined) notices.push(notice(userTopic(identity.userId, identity.tenantId), "run"));
+    if (toOwner && identity.userId !== undefined) notices.push(ownerRunNotice({ userId: identity.userId, tenantId: identity.tenantId }));
     return notices;
   }
 
@@ -353,7 +376,7 @@ class Identities {
     // The request on its session's notice, the session on its parent's
     // (FIX-2625); nothing on its owner's user topic, which spans their orgs.
     const notices = [notice(sessionTopic(identity.sessionId, identity.tenantId), kind, identity.requestId)];
-    if (toOwner && identity.userId !== undefined) notices.push(notice(userTopic(identity.userId, identity.tenantId), "run"));
+    if (toOwner && identity.userId !== undefined) notices.push(ownerRunNotice({ userId: identity.userId, tenantId: identity.tenantId }));
     const session = await this.session(resolveSessionStorageKey(identity.sessionId, identity.tenantId));
     if (session?.parentSessionId !== undefined) {
       notices.push(notice(sessionTopic(session.parentSessionId, identity.tenantId), "run", identity.sessionId));
