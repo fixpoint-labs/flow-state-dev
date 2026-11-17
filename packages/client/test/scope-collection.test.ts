@@ -124,4 +124,22 @@ describe("client.resource on a collection", () => {
     expect(output).toEqual({ planned: { entry: "p", version: 0 } });
     expect(calls[0]).toEqual({ call: `POST ${BASE}/actions/plan`, body: { userId: "alice", input: { entry: "p", version: 0 } } });
   });
+
+  it("lists every entry page after page, and stops on a cursor the server already sent", async () => {
+    const pages: Record<string, { items: unknown[]; nextCursor?: string }> = {
+      "": { items: [{ topic: "a", storageKey: "projects/a", value: { name: "A" }, version: 1 }], nextCursor: "c1" },
+      c1: { items: [{ topic: "b", storageKey: "projects/b", value: { name: "B" }, version: 1 }] },
+    };
+    const read = (cursor: string) => pages[cursor] ?? { items: [], nextCursor: "c1" };
+    const lister = (loop: boolean) =>
+      vi.fn<ClientFetch>(async (input) => {
+        const cursor = new URL(String(input), "http://x").searchParams.get("cursor") ?? "";
+        return json(loop ? { items: [], nextCursor: "again" } : read(cursor));
+      });
+    const all = await client(lister(false)).resource(projects).listAll();
+    expect(all.map((entry) => entry.topic)).toEqual(["a", "b"]);
+    const looping = lister(true);
+    await expect(client(looping).resource(projects).listAll()).rejects.toThrow(/same page cursor twice/);
+    expect(looping).toHaveBeenCalledTimes(2);
+  });
 });

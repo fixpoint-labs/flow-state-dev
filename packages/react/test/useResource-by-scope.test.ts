@@ -110,6 +110,26 @@ describe("useResource at user or org scope", () => {
 
 // FIX-2625: a notice that names entries re-reads those entries, not the
 // collection; anything it can't place safely reads the collection.
+describe("useResource through a host's own client", () => {
+  it("reads and subscribes through the client it is handed, outside any provider, at the pace it names", async () => {
+    const { fakeClient } = await import("./support/fake-client");
+    const own: Array<{ topics: readonly WireTopic[]; options: SubscribeOptions }> = [];
+    const read = vi.fn(async () => ({ value: { pinned: ["mine"] }, version: 1 }));
+    const client = fakeClient({
+      subscribe: (topics, options) => {
+        own.push({ topics, options });
+        return { close() {} };
+      },
+      resource: () => ({ read, update: vi.fn() })
+    });
+    const { result } = renderHook(() => useResource(pins, { client, pollIntervalMs: 250 }));
+    await waitFor(() => expect(result.current.value).toEqual({ pinned: ["mine"] }));
+    expect(own).toHaveLength(1);
+    expect(own[0]!.options.pollIntervalMs).toBe(250);
+    expect(subscriptions).toEqual([]);
+  });
+});
+
 describe("useResource · a collection notice that names its entries", () => {
   type Entry = { topic: string; storageKey: string; value: { name: string }; version: number };
   function org(entries: Entry[]) {

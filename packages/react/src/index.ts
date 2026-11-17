@@ -168,6 +168,7 @@ export {
 
 export { useSubscription, type UseSubscriptionOptions } from "./hooks/useSubscription";
 export { useView, type UseViewOptions, type UseViewResult } from "./hooks/useView";
+export { useSessionFeed, type UseSessionFeedOptions, type UseSessionFeedResult } from "./hooks/useSessionFeed";
 export {
   useSessionList,
   type SessionList,

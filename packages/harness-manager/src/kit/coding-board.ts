@@ -55,6 +55,8 @@ const codingTaskSchema = listedTaskSchema.extend({
   error: z.string().nullable(),
   /** The numbers of the pull requests it waits on to merge or close; their links are the recorded work view's. */
   pullRequests: z.array(z.number().nullable()),
+  /** The flow its run's session runs on, where that run's own stream is read; `null` with no run, or once its session is gone. */
+  runFlow: z.string().nullable(),
 });
 
 const codingBoardSchema = z.array(codingTaskSchema);
@@ -135,6 +137,7 @@ export function codingBoardView(installation: WorkerInstallation, defaultHarness
             landed: landedOf(output.landed) ?? null,
             error: entry.status === "errored" && typeof task?.error === "string" ? task.error : null,
             pullRequests: wait === null ? [] : wait.pullRequests.map((pullRequest) => pullRequest.number),
+            runFlow: task?.run?.sessionId === undefined ? null : (flows.get(task.run.sessionId) ?? null),
           };
         });
       },

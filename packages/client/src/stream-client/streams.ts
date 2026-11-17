@@ -166,6 +166,9 @@ export function createSSEClientFromResponse(
  */
 const REQUEST_STREAM_MAX_EMPTY_CONNECTIONS = 5;
 
+/** Answers that say the request is not there for this caller: a reconnecting stream ends on them. */
+const STREAM_GONE: ReadonlySet<number> = new Set([401, 403, 404]);
+
 /** A request status after which the server sends nothing more on the stream. */
 function endsRequestStream(event: RequestStreamEvent): boolean {
   return (
@@ -190,6 +193,13 @@ function endsRequestStream(event: RequestStreamEvent): boolean {
  * up with `onError` after {@link REQUEST_STREAM_MAX_EMPTY_CONNECTIONS}
  * connections in a row that delivered nothing and carried no heartbeat. An error answer (a 404 for a request that is not there,
  * say) or a failed connection is reported with `onError` and not retried.
+ *
+ * With `reconnect: true` a failed connection opens again too, without limit,
+ * after the client's backoff (1 s, doubling, at most 30 s; reset once a
+ * connection delivers), resuming after the last event, with nothing reported.
+ * The give-up after empty answers still holds, so a request that already
+ * ended is not followed forever. A 401, 403 or 404 still ends the stream with
+ * `onError`, and `close()` ends it, a pending reconnect included.
  */
 export function openRequestStream(
   target: {
@@ -197,7 +207,7 @@ export function openRequestStream(
     /** The stream's URL for one connection, resuming after `startingAfter` when given. */
     url: (startingAfter: number | undefined) => string;
   },
-  options: RequestSSECallbacks & StreamResumeOptions
+  options: RequestSSECallbacks & StreamResumeOptions & { reconnect?: boolean }
 ): RequestStreamHandle {
   const { fetcher } = target;
   const controller = new AbortController();
@@ -209,6 +219,8 @@ export function openRequestStream(
   let startingAfter = options.startingAfter;
   let ended = false;
   let emptyConnections = 0;
+  /** Connections in a row that delivered nothing, empty or failed: what the backoff waits on. */
+  let quietConnections = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const connect = async (): Promise<void> => {
@@ -217,6 +229,8 @@ export function openRequestStream(
     // connection: a host that caps response length ending it is not an empty
     // answer, so it does not use up the give-up budget.
     let alive = false;
+    // A failure the stream opens again after, under `reconnect`, rather than one it reports and stops on.
+    let retrying = false;
     const failed = await consumeSSE({
       fetcher,
       url: target.url(startingAfter),
@@ -275,20 +289,29 @@ export function openRequestStream(
         }
       },
       onError: (error) => {
-        if (!closed) {
-          options.onError?.(error);
+        if (closed) return;
+        if (options.reconnect === true && !STREAM_GONE.has((error as { status?: number }).status ?? 0)) {
+          retrying = true;
+          return;
         }
+        options.onError?.(error);
       }
     });
 
-    if (closed || ended || failed) return;
+    if (closed || ended || (failed && !retrying)) return;
     if (delivered || alive) {
       emptyConnections = 0;
-      void connect();
-      return;
+      quietConnections = 0;
+      if (!failed) {
+        void connect();
+        return;
+      }
     }
-    emptyConnections += 1;
-    if (emptyConnections >= REQUEST_STREAM_MAX_EMPTY_CONNECTIONS) {
+    // Every connection that brought nothing sets the backoff; only an empty answer counts toward giving
+    // up, under `reconnect` too: a settled request resumed past its end answers empty, every time.
+    quietConnections += 1;
+    if (!failed) emptyConnections += 1;
+    if (!failed && emptyConnections >= REQUEST_STREAM_MAX_EMPTY_CONNECTIONS) {
       options.onError?.(
         new Error(
           `Request stream ended ${emptyConnections} times in a row with no event before the request ended`
@@ -299,7 +322,7 @@ export function openRequestStream(
     timer = setTimeout(() => {
       timer = undefined;
       void connect();
-    }, backoffDelay(emptyConnections - 1));
+    }, backoffDelay(quietConnections - 1));
   };
 
   void connect();

@@ -6,7 +6,9 @@
  * A user or org resource is read by scope and key with no session
  * (`client.resource`), and read again when a change notice under its path
  * lands on the caller's user or org topic: the live read every screen uses,
- * with no poll of its own. A collection's notice that names entries it shows
+ * which also reads on the client's timer wherever push can miss a change
+ * (`pollIntervalMs` sets its pace). `client` reads through a host's own
+ * client instead of the provider's. A collection's notice that names entries it shows
  * re-reads just those entries. It is written through the flow its `runBy` names,
  * at the version read, and read again once the write settles. A collection's
  * value is its first page of entries, and its setters name an entry.
@@ -19,6 +21,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import {
   topic,
+  type Client,
   type CollectionSnapshotEntry,
   type ScopeCollectionHandle,
   type ScopeEntry,
@@ -99,15 +102,21 @@ async function withNamedEntries<TValue>(
 
 /** Read now, and again on each resource notice under `roots` of the caller's user or org topic. */
 function liveScopeDriver(
-  client: ReturnType<typeof useClient>,
+  client: Pick<Client, "subscribe">,
   scope: "user" | "org",
-  roots: readonly string[] | undefined
+  roots: readonly string[] | undefined,
+  pollIntervalMs: number | undefined
 ): ReadDriver {
   return (read) => {
     const live = liveRead(
       (topics, options) => client.subscribe(topics, options),
       [scope === "user" ? topic.user() : topic.org()],
-      { read, hear: (notice) => notice.kind === "resource", ...(roots === undefined ? {} : { paths: roots }) }
+      {
+        read,
+        hear: (notice) => notice.kind === "resource",
+        ...(roots === undefined ? {} : { paths: roots }),
+        ...(pollIntervalMs === undefined ? {} : { pollIntervalMs })
+      }
     );
     return () => live.close();
   };
@@ -128,10 +137,20 @@ export function useResource<TDef extends ScopeResourceDef>(
      * needs it. At user or org scope, the resource's key, as `client.resource`'s.
      */
     key?: string;
+    /**
+     * At user or org scope, the client to read and write through, for a host
+     * that holds its own (its user, origin and `fetcher`). Pass a stable
+     * reference. Default: the provider's client.
+     */
+    client?: Pick<Client, "resource" | "subscribe">;
+    /** At user or org scope, how often to read where push can miss a change, in ms. Default: the client's live-read pace. */
+    pollIntervalMs?: number;
   } = {}
 ): UseResourceResult<TDef> {
   type TValue = ClientValue<TDef>;
-  const client = useClient();
+  const built = useClient();
+  const client = options.client ?? built;
+  const { pollIntervalMs } = options;
   const atSession = def.scope === "session";
   const key = options.key ?? def.ref ?? def.pattern ?? "";
   const collection = def.pattern !== undefined;
@@ -153,8 +172,8 @@ export function useResource<TDef extends ScopeResourceDef>(
     return prefix.length > 0 ? [prefix] : undefined;
   }, [collection, key]);
   const driver = useMemo(
-    () => (handle === undefined ? undefined : liveScopeDriver(client, scope, roots)),
-    [client, handle, scope, roots]
+    () => (handle === undefined ? undefined : liveScopeDriver(client, scope, roots, pollIntervalMs)),
+    [client, handle, scope, roots, pollIntervalMs]
   );
   // A collection's entries as last read, for this handle, while no other read
   // is out: a notice that names entries re-reads just those over them (FIX-2625).

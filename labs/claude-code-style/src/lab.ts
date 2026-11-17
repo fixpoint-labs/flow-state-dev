@@ -1,24 +1,25 @@
 /**
- * The lab's reads and writes, in the app's words. Every read is a kit
- * package's view or a direct read, and every write a package call; nothing
- * here assembles what the server computes. The screen calls these hooks, and
- * no other file in `src/` reaches the server.
+ * The lab's reads and writes, in the app's words. Every read is a package
+ * hook over a kit package's view or a direct read, and every write a package
+ * call; nothing here assembles what the server computes, opens a stream or
+ * addresses a flow. The screen calls these hooks, and no file in `src/`
+ * reaches the server itself (`test/inventory.test.ts`).
  *
  * | Hook or call       | What it is over                                                                  |
  * |--------------------|----------------------------------------------------------------------------------|
- * | `useSessions`      | workforce's worker sessions view, per mode's worker, less your dismissals        |
+ * | `useSessions`      | workforce's worker sessions view (`useView`), per mode's worker, less your dismissals |
  * | `useTasks`         | harness-manager's coding board view, at user scope                               |
- * | `useThread`        | the session's items on the client's `sessionFeed`, and workforce's session turns view |
- * | `useTaskWork`      | a task's run session on `sessionFeed`, the run request's stream for the call in flight, and harness-manager's recorded work view |
- * | `usePins`, `useDismissed` | your `lab-pins` and `lab-dismissals` user resources, read by scope with no session |
- * | `useLab()`         | the writes: open a session, send, stop, retry, answer and act on a task, pin, dismiss, and the picker's reads |
+ * | `useThread`        | the session's items (react's `useSessionFeed`), and workforce's session turns view |
+ * | `useTaskWork`      | a task's run session (`useSessionFeed`), the run request's stream for the call in flight (`useRequestStream`), and harness-manager's recorded work view |
+ * | `usePins`, `useDismissed` | your `lab-pins` and `lab-dismissals` user resources (`useResource`), read by scope with no session |
+ * | `useLab()`         | the writes, through workforce's client (open a session, send, stop, retry) and orchestration's inbox (answer and act on a task); pin, dismiss, and the picker's reads |
  *
  * `LabProvider` holds the one client the hooks call through (`main.tsx`
  * builds it; a test builds one over the in-process host).
  */
 import { createContext, createElement, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { bindStoreToCallbacks, createRequestStreamStore, readEveryCollectionPage, sessionFeed, topic, type Client, type ClientFetch, type SessionConnectionStatus, type SessionFeed, type ViewValueOf } from "@flow-state-dev/client";
-import { useView } from "@flow-state-dev/react";
+import type { Client, ClientFetch, SessionConnectionStatus, ViewValueOf } from "@flow-state-dev/client";
+import { useRequestStream, useResource, useSessionFeed, useView } from "@flow-state-dev/react";
 import { createInboxClient, taskView, type BoardActions, type InboxAnswer, type InboxHold, type TaskView } from "@flow-state-dev/orchestration/inbox";
 import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -34,11 +35,8 @@ import {
   parseProjectRef,
   projectRef,
   PROJECTS_PATTERN,
-  SET_SESSION_FIELDS_ACTION,
   sessionTurnsViewRef,
-  TURN_ACTIONS,
   WORK_PROJECT_STATE_KEY,
-  WORKER_ID_STATE_KEY,
   workerSessionsViewRef,
 } from "@flow-state-dev/workforce/browser";
 import type { CreateProjectOutput } from "@flow-state-dev/workforce";
@@ -127,8 +125,8 @@ export type LabTask = Pick<CodingBoardTask, "id" | "goal"> & {
   view?: TaskView;
   /** When this attempt's run started, and the row's lease deadline, for the time signal. */
   run?: { startedAt?: number; leaseUntil?: number };
-  /** The run working it, or the one that last did: where its work is read. */
-  runLink?: { sessionId: string; requestId: string };
+  /** The run working it, or the one that last did: where its work is read, and the flow its session runs on, where its own stream is. */
+  runLink?: { sessionId: string; requestId: string; flow?: string };
 };
 
 /** A board's task changes, as the opened task's action row makes them. */
@@ -193,14 +191,10 @@ export interface LabCalls {
 const TASKS_BOARD = "tasks";
 /** How often a live read reads where push can miss a change, in ms. */
 const READ_EVERY_MS = 3000;
-/** How many recent requests a Stop's 409 check reads. */
-const RECENT_TURNS = 50;
 /** The harness kit's readiness view. */
 const READINESS_VIEW = harnessReadinessViewRef("harnesses");
-/** A request stream's answers that mean it is not there for this caller. */
-const STREAM_GONE: ReadonlySet<number> = new Set([401, 403, 404]);
-
-const logFailedRead = (error: unknown): void => console.warn("[claude-code-style]", error);
+/** The one item type a run request's own stream is read for: the tool call in flight. */
+const TOOL_CALLS = { itemTypes: ["tool_output"] };
 
 /** Each session's Stop under way: the turns it aborted (`null` while it reads which), until each has ended. */
 class Stops {
@@ -229,9 +223,12 @@ interface LabContextValue {
   pollIntervalMs: number;
   calls: LabCalls;
   stops: Stops;
-  /** The feed of each thread open on screen, so a send there streams its answer into it. */
-  threadFeeds: Map<string, SessionFeed>;
+  /** Where each thread open on screen keeps a send's streamed answer, so a send there shows it as it is written. */
+  threadFeeds: ThreadFeeds;
 }
+
+/** Each open thread's feed's `followResponse`, by session. */
+type ThreadFeeds = Map<string, (response: Response) => void>;
 
 const LabContext = createContext<LabContextValue | null>(null);
 
@@ -256,7 +253,7 @@ export function LabProvider({
 }) {
   const value = useMemo(() => {
     const stops = new Stops();
-    const threadFeeds = new Map<string, SessionFeed>();
+    const threadFeeds: ThreadFeeds = new Map();
     return { client, pollIntervalMs, stops, threadFeeds, calls: labCalls(client, connection, stops, threadFeeds) };
     // The connection is read once, with the client.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -301,7 +298,9 @@ export function labTaskOf(task: CodingBoardTask, sessionId: string): LabTask {
     ...(task.landed === null ? {} : { landed: task.landed }),
     ...(task.error === null ? {} : { error: task.error }),
     ...(Object.keys(run).length === 0 ? {} : { run }),
-    ...(typeof task.run?.sessionId === "string" && typeof task.run?.requestId === "string" ? { runLink: { sessionId: task.run.sessionId, requestId: task.run.requestId } } : {}),
+    ...(typeof task.run?.sessionId === "string" && typeof task.run?.requestId === "string"
+      ? { runLink: { sessionId: task.run.sessionId, requestId: task.run.requestId, ...(task.runFlow === null ? {} : { flow: task.runFlow }) } }
+      : {}),
     view: taskView({ ...task, board: sessionId } as Parameters<typeof taskView>[0]),
   };
 }
@@ -355,69 +354,44 @@ export function useSessions(): LabSession[] | undefined {
 /** Your pinned task ids. */
 export function usePins(): string[] | undefined {
   const { client, pollIntervalMs } = useLabContext();
-  return useUserMark(client, pollIntervalMs, labPins.ref, async () => (await client.resource(labPins).state()).pinned);
+  return useResource(labPins, { client, pollIntervalMs }).value?.pinned;
 }
 
 /** The failed attempts you dismissed, as `dismissalKey`s. */
 export function useDismissed(): string[] | undefined {
   const { client, pollIntervalMs } = useLabContext();
-  return useUserMark(client, pollIntervalMs, labDismissals.ref, async () => (await client.resource(labDismissals).state()).dismissed);
+  return useResource(labDismissals, { client, pollIntervalMs }).value?.dismissed;
 }
 
-/** A user resource of yours, read again on each notice of it on your user topic. */
-function useUserMark(client: Client, pollIntervalMs: number, ref: string, read: () => Promise<string[]>): string[] | undefined {
-  const [value, setValue] = useState<string[]>();
-  useEffect(
+/** One session's items of `types` on its feed, in the screen's words: `items` once the history landed, its connection and how many runs are unfinished. */
+function useFeed(client: Client, sessionId: string | null, types: readonly string[]) {
+  const feed = useSessionFeed(sessionId, { client, itemTypes: types });
+  return useMemo(
     () =>
-      client.live([topic.user({ resource: ref })], {
-        read,
-        onValue: setValue,
-        hear: (notice) => notice.topic.resource === ref,
-        pollIntervalMs,
-        onError: logFailedRead,
-      }).close,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [client, ref, pollIntervalMs],
+      feed === undefined
+        ? undefined
+        : {
+            ...(feed.items === undefined ? {} : { items: feed.items as unknown as Item[], ...(feed.hasEarlier ? { loadEarlier: feed.loadEarlier } : {}) }),
+            connection: feed.state as ConnectionState,
+            runs: feed.runs === null ? null : feed.runs.length,
+            followResponse: feed.followResponse,
+          },
+    [feed?.items, feed?.hasEarlier, feed?.state, feed?.runs, feed?.loadEarlier, feed?.followResponse],
   );
-  return value;
-}
-
-/** One session's items of `types` on the session feed, with its connection state and unfinished runs. */
-function useFeed(client: Client, sessionId: string | null, types: readonly string[], onFeed?: (feed: SessionFeed | undefined) => void) {
-  const [read, setRead] = useState<{ sessionId: string; items?: Item[]; loadEarlier?: () => Promise<void>; connection?: ConnectionState; runs: number | null }>();
-  useEffect(() => {
-    if (sessionId === null) return;
-    const feed = sessionFeed(client, sessionId, { itemTypes: [...types] });
-    onFeed?.(feed);
-    const loadEarlier = () => feed.loadEarlier();
-    const stop = feed.subscribe(({ items, hasEarlier, state, runs }) => {
-      // No items until the history lands.
-      const landed = !(items.length === 0 && state === "connecting");
-      setRead((prev) => ({
-        sessionId,
-        ...(landed ? { items: items as unknown as Item[], ...(hasEarlier ? { loadEarlier } : {}) } : prev?.sessionId === sessionId ? { items: prev.items, loadEarlier: prev.loadEarlier } : {}),
-        connection: state,
-        runs: runs === null ? null : runs.length,
-      }));
-    });
-    return () => {
-      stop();
-      feed.close();
-      onFeed?.(undefined);
-      setRead(undefined);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, sessionId]);
-  return read?.sessionId === sessionId ? read : undefined;
 }
 
 /** What a session's main thread shows: its items on the session feed, its turns from the session turns view. */
 export function useThread(sessionId: string, threads: boolean): ThreadView | undefined {
   const { client, pollIntervalMs, stops, threadFeeds } = useLabContext();
-  const feed = useFeed(client, sessionId, THREAD_ITEMS, (open) => {
-    if (open === undefined) threadFeeds.delete(sessionId);
-    else threadFeeds.set(sessionId, open);
-  });
+  const feed = useFeed(client, sessionId, THREAD_ITEMS);
+  const follow = feed?.followResponse;
+  useEffect(() => {
+    if (follow === undefined) return;
+    threadFeeds.set(sessionId, follow);
+    return () => {
+      if (threadFeeds.get(sessionId) === follow) threadFeeds.delete(sessionId);
+    };
+  }, [threadFeeds, sessionId, follow]);
   const turns = useView(sessionTurnsViewRef(), { sessionId }, { client, pollIntervalMs }).value;
   useSyncExternalStore(stops.subscribe, stops.snapshot);
   // A stopped line stays once its turn leaves the turns read.
@@ -459,7 +433,11 @@ export function useTaskWork(task: LabTask | undefined): TaskWork | undefined {
   const coding = task?.harness !== undefined && task.runLink !== undefined;
   const feed = useFeed(client, runSession, [...THREAD_ITEMS, "suspension"]);
   const recorded = useView(recordedWorkViewRef(), { requestId: task?.runLink?.requestId ?? "" }, { client, pollIntervalMs, sessionId: runSession ?? undefined, enabled: coding }).value;
-  const streamed = useRequestCalls(client, runSession, running);
+  const runFlow = task?.runLink?.flow;
+  // The run request's own stream sends a call as it starts; a dropped one opens again, resuming where it was.
+  // Each call shows as it lands, not on the next frame: a call is a line, not a token.
+  const streamed = useRequestStream({ client, flowKind: runFlow, source: { requestId: running ?? "" }, filter: TOOL_CALLS, reconnect: true, flush: "immediate", enabled: running !== null && runFlow !== undefined })
+    .items as unknown as readonly Item[];
   return useMemo(() => {
     if (task === undefined) return undefined;
     if (runSession === null) return { entries: [] };
@@ -480,53 +458,6 @@ export function useTaskWork(task: LabTask | undefined): TaskWork | undefined {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task === undefined, runSession, running, feed, recorded, streamed]);
-}
-
-/**
- * The tool calls of one running request as its own stream sends them, each
- * as it starts. A dropped connection opens again after a backoff (1 s,
- * doubling to 30 s), resuming after the last event it heard; an answer that
- * says the request is not there for you (401, 403, 404) stops it.
- */
-function useRequestCalls(client: Client, runSession: string | null, requestId: string | null): readonly Item[] {
-  const [calls, setCalls] = useState<{ requestId: string; items: readonly Item[] }>();
-  useEffect(() => {
-    if (runSession === null || requestId === null) return;
-    const store = createRequestStreamStore();
-    let live = true;
-    let handle: { close(): void } | undefined;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    let failures = 0;
-    const open = (flowKind: string): void => {
-      if (!live) return;
-      const heard = store.lastSequenceNumber;
-      handle = client.flow(flowKind).request(requestId).stream({
-        ...(heard > 0 ? { startingAfter: heard } : {}),
-        ...bindStoreToCallbacks(store, {
-          itemFilter: (item) => item.type === "tool_output",
-          onChange: () => {
-            failures = 0;
-            store.flushDeltas();
-            if (live) setCalls({ requestId, items: store.getSorted() as unknown as Item[] });
-          },
-        }),
-        onError: (error) => {
-          handle?.close();
-          handle = undefined;
-          if (!live || store.status !== "in_progress" || STREAM_GONE.has((error as { status?: number }).status ?? 0)) return;
-          retry = setTimeout(() => open(flowKind), Math.min(30_000, 1_000 * 2 ** failures));
-          failures += 1;
-        },
-      });
-    };
-    client.sessions.get(runSession).then((detail) => open(detail.flowKind), logFailedRead);
-    return () => {
-      live = false;
-      if (retry !== undefined) clearTimeout(retry);
-      handle?.close();
-    };
-  }, [client, runSession, requestId]);
-  return calls?.requestId === requestId ? calls.items : [];
 }
 
 /**
@@ -554,45 +485,20 @@ function fileReader({ basePath = "", fetcher = (input, init) => fetch(input, ini
  * The lab's writes over one client: what `useLab()` hands a screen. Exported
  * for the tests that make no screen; a page gets them from `LabProvider`.
  */
-export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Stops = new Stops(), threadFeeds: Map<string, SessionFeed> = new Map()): LabCalls {
+export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Stops = new Stops(), threadFeeds: ThreadFeeds = new Map()): LabCalls {
   const workforce = createWorkforceClient(fsd);
   const inbox = createInboxClient(fsd);
-  const flows = new Map<string, Promise<string>>();
-  /** The flow a worker's sessions run on, from the roster. */
-  const flowOf = (worker: string) => {
-    if (!flows.has(worker)) {
-      flows.set(
-        worker,
-        workforce.roster().then((roster) => {
-          const found = roster.find((entry) => entry.id === worker);
-          if (found === undefined) throw new Error(`No worker "${worker}" on your roster.`);
-          return found.flow;
-        }),
-      );
-    }
-    return flows.get(worker)!;
+  // The instance of its flow that owns the session; its base flow for a session from before instance ownership.
+  const flowOfSession = async (sessionId: string) => {
+    const session = await fsd.sessions.get(sessionId);
+    return session.flowId ?? session.flowKind;
   };
-  const flowOfSession = async (sessionId: string) => (await fsd.sessions.get(sessionId)).flowKind;
   const boardAt = async (sessionId: string): Promise<BoardActions> => inbox.board({ flowId: await flowOfSession(sessionId), sessionId, board: TASKS_BOARD });
-  /** Run one action in a session and hand back its output, or throw why it failed. */
-  const run = async (flow: string, sessionId: string, action: string, input: unknown): Promise<unknown> => {
-    const started = await fsd.flow(flow).send(action, input, { sessionId });
-    const { status, error, output } = await started.result();
-    if (status !== "completed") throw new Error(error?.message ?? `${action} ended ${status}`);
-    if ((output as { ok?: boolean } | undefined)?.ok === false) throw new Error((output as { error?: string }).error);
-    return output;
-  };
   /** Every project of yours at `scope`, by scope with no session. */
-  const everyProject = async (scope: "org" | "user") => {
-    const collection = fsd.resource({ scope, pattern: PROJECTS_PATTERN });
-    const pages = {
-      listCollectionResources: async (_sessionId: string, _ref: string, options: { limit?: number; cursor?: string } = {}) => {
-        const page = await collection.list(options);
-        return { items: page.items.map((entry) => ({ topic: entry.topic, clientData: entry.value })), ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }) };
-      },
-    };
-    return (await readEveryCollectionPage(pages, scope, PROJECTS_PATTERN)).map((entry) => entry.clientData as { id: string; title: string; members: string[]; repository: string | null });
-  };
+  const everyProject = async (scope: "org" | "user") =>
+    (await fsd.resource({ scope, pattern: PROJECTS_PATTERN }).listAll()).map(
+      (entry) => entry.value as { id: string; title: string; members: string[]; repository: string | null },
+    );
   /**
    * The open hold task `taskId` holds you on that asks for `asks`, read from the coding board now: the
    * row the screen drew can be older than a question or review stop opened since.
@@ -614,12 +520,6 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
   };
   const pins = () => fsd.resource(labPins);
   const dismissals = () => fsd.resource(labDismissals);
-  // Read from the running requests, not the turns view: that lists a session's newest turns only,
-  // and a turn still running behind them is stopped all the same.
-  const runningTurns = async (sessionId: string) =>
-    (await fsd.sessions.requests(sessionId, { status: "in_progress", limit: 50 }))
-      .filter((request) => TURN_ACTIONS.includes(request.actionName))
-      .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
 
   return {
     modes: MODES.map((mode) => mode.id),
@@ -644,25 +544,21 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
       const { worker } = modeById(mode);
       const project = parseProjectRef(projectId);
       if (project === undefined) throw new Error(`"${projectId}" names no project.`);
-      const flow = await flowOf(worker);
-      const created = await fsd.flow(flow).createSession({ state: { [WORKER_ID_STATE_KEY]: worker } });
-      await workforce.setWorkProject(worker, project, { sessionId: created.id });
       // The repository the session works in: the project's, written by the server, once, at open.
       const repository = (await everyProject(project.visibility === "shared" ? "org" : "user")).find((entry) => entry.id === project.id)?.repository;
-      if (typeof repository === "string") await run(flow, created.id, SET_SESSION_FIELDS_ACTION, { worker, fields: { [REPOSITORY_FIELD]: repository } });
+      const created = await workforce.startSession(worker, typeof repository === "string" ? { fields: { [REPOSITORY_FIELD]: repository } } : {});
+      await workforce.setWorkProject(worker, project, { sessionId: created.id });
       return { id: created.id, title: NEW_SESSION_TITLE, worker, updatedAt: created.updatedAt, running: false, waiting: 0, projectId };
     },
     send: async (sessionId, text, attachments = []) => {
-      const flow = fsd.flow(await flowOfSession(sessionId));
-      const feed = threadFeeds.get(sessionId);
+      const follow = threadFeeds.get(sessionId);
       // With the thread open, stream the send so its answer shows as it is written.
-      if (feed === undefined) {
-        await flow.send("respond", { message: text }, { sessionId, attachments: [...attachments] });
+      if (follow === undefined) {
+        await workforce.send(sessionId, text, { attachments: [...attachments] });
         return;
       }
-      const response = await flow.send("respond", { message: text }, { sessionId, stream: true, attachments: [...attachments] });
-      if (!response.ok) throw new Error(`The send was refused (${response.status}).`);
-      if (response.headers.get("content-type")?.includes("text/event-stream")) feed.followResponse(response);
+      const response = await workforce.send(sessionId, text, { stream: true, attachments: [...attachments] });
+      if (response.headers.get("content-type")?.includes("text/event-stream")) follow(response);
     },
     upload: (request) => fsd.upload(request),
     readFile: fileReader(connection),
@@ -674,21 +570,7 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
         if (stops.get(sessionId) === stop) stops.set(sessionId, undefined);
       };
       try {
-        const turns = await runningTurns(sessionId);
-        stop.ids = new Set(turns.map((turn) => turn.id));
-        const flow = await flowOfSession(sessionId);
-        for (const turn of turns) {
-          await fsd
-            .flow(flow)
-            .request(turn.id)
-            .abort()
-            .catch(async (error: unknown) => {
-              // A 409 is a turn that ended meanwhile, or one an answer resumed first: the record decides.
-              if ((error as { status?: number }).status !== 409) throw error;
-              const now = (await fsd.sessions.requests(sessionId, { limit: RECENT_TURNS })).find((r) => r.id === turn.id);
-              if (now?.status === "in_progress") throw new Error("The turn went on before the stop reached it. Press Stop again.");
-            });
-        }
+        stop.ids = new Set(await workforce.stopTurns(sessionId));
       } catch (error) {
         done();
         throw error;
@@ -696,9 +578,7 @@ export function labCalls(fsd: Client, connection: LabConnection = {}, stops: Sto
       if (stop.ids.size === 0) done();
       else stops.set(sessionId, stop);
     },
-    retry: async (sessionId, requestId) => {
-      await fsd.flow(await flowOfSession(sessionId)).request(requestId).retry();
-    },
+    retry: (sessionId, requestId) => workforce.retryTurn(sessionId, requestId),
     sayInThread: async (sessionId, task, line) => {
       // A line answers the question the thread holds you on; with none open, it is a steer on its task.
       const question = await holdOn(sessionId, task.id, "question");
