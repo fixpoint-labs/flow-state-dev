@@ -169,8 +169,8 @@ describe("the coder addressing review feedback on its pull request", () => {
     expect((await act(lab, "coordinator", conversation, "respond", { message: ASK })).error).toBeUndefined();
 
     const task = await eventually(async () => {
-      const row = (Object.values(await lab.stored("user", "tasks/")) as any[]).find((r) => r.assignee === CODER);
-      return ["completed", "failed", "errored", "cancelled"].includes(row?.status) ? row : undefined;
+      const entry = (Object.values(await lab.stored("user", "tasks/")) as any[]).find((r) => r.assignee === CODER);
+      return ["completed", "failed", "errored", "cancelled"].includes(entry?.status) ? entry : undefined;
     }, "the coder's task to end");
 
     expect(stub.runs).toHaveLength(1);
