@@ -27,6 +27,9 @@ export {
   type MessageAddress,
   type WorkerMessageResourceState
 } from "./message-log";
+// FIX-2771 D1: a worker's open messages, and the answers to the ones on screen.
+export { workerMessagesViewRef } from "./worker-messages-view-ref";
+export type { WorkerMessagesView } from "./worker-messages-view";
 export { DEFAULT_MESSAGE_BUDGET, DEFAULT_MESSAGES_PER_TURN, type MessageLimits } from "./message-limits";
 export { sendMessageInputSchema } from "./message-tool";
 export { MAX_LISTED_RECIPIENTS, rosterDisplayName, rosterTeamName, workerRecipients, type WorkerRecipients } from "./recipients";

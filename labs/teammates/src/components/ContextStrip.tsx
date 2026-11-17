@@ -1,5 +1,5 @@
-import type { AppHarness, AppContext } from "../app";
-import { HarnessReadiness } from "./flow-state/harness-readiness";
+import type { LabContext } from "../../flows/lab-context.mts";
+import { HarnessReadiness, type HarnessReadinessChipRow } from "./flow-state/harness-readiness";
 import { harnessName } from "../lib/harness";
 
 /**
@@ -14,8 +14,8 @@ export function ContextStrip({
   harnesses,
   onRecheck,
 }: {
-  context: AppContext | undefined;
-  harnesses: AppHarness[] | undefined;
+  context: LabContext | undefined;
+  harnesses: HarnessReadinessChipRow[] | undefined;
   onRecheck: () => Promise<unknown>;
 }) {
   const chip = "rounded-full border border-border px-2 py-0.5 font-mono text-[11px] text-muted-foreground";

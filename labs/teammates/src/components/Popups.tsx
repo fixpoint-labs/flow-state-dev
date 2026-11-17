@@ -1,7 +1,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { attemptDurationMs, commandsRun, runSummaryLine, type BoardTask, type AppCalls, type AppTalk, type AppWorker, type SessionStep, type WorkingNow } from "../app";
+import { useSessionFeed } from "@flow-state-dev/react";
+import type { RosterEntry, WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
+import { attemptDurationMs, commandsRun, runSummaryLine, useAppClient, type BoardTask, type AppCalls, type SessionStep, type WorkingNow } from "../app";
 import type { RecordedWork } from "@flow-state-dev/harness-manager/browser";
 import { harnessName } from "../lib/harness";
+import { settingOf, takesTasks } from "../lib/roster";
+import { exchangeOf, useTalk } from "../lib/talk";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
@@ -53,10 +57,14 @@ export const taskLabel = (line: string, task: { harness?: string; model?: string
  * `harness:` differs from the harness of the worker the task was filed for.
  * A task that isn't a coding task, or whose worker's harness isn't known, has none.
  */
-function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly AppWorker[]): AppWorker[] {
-  const own = coders.find((w) => w.id === task.to)?.harness;
-  if (own === undefined) return [];
-  return coders.filter((w) => w.takesTasks && w.harness !== undefined && w.harness !== own);
+function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly RosterEntry[]): { id: string; harness: string }[] {
+  const own = coders.find((w) => w.id === task.to);
+  const ownHarness = own === undefined ? undefined : settingOf(own, "harness");
+  if (ownHarness === undefined) return [];
+  return coders.flatMap((w) => {
+    const harness = settingOf(w, "harness");
+    return takesTasks(w) && harness !== undefined && harness !== ownHarness ? [{ id: w.id, harness }] : [];
+  });
 }
 
 /** The line a task waiting on its pull request offers, while nothing tells it of a merge. */
@@ -112,7 +120,7 @@ export type AnswerStatus = "working" | "replied" | "no answer";
  * (one a waited send took as its result is in the log too); `no answer` when
  * the reply is the framework's "no answer"; `working` until then.
  */
-export const answerIn = (talk: readonly AppTalk[], messageId: string): AnswerStatus => {
+export const answerIn = (talk: readonly WorkerMessageResourceState[], messageId: string): AnswerStatus => {
   const reply = talk.find((row) => row.inReplyTo === messageId);
   if (reply !== undefined) return reply.noAnswer === true ? "no answer" : "replied";
   return "working";
@@ -140,7 +148,7 @@ export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, fo
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   /** The roster's coding workers: a failed or cancelled coding task can be re-run on another's harness. */
-  coders: readonly AppWorker[];
+  coders: readonly RosterEntry[];
   /** For a task popup, who filed it, to ask for a follow-up once it ended; absent when its conversation isn't on the roster. */
   followUp?: FollowUp;
   onClose: () => void;
@@ -151,7 +159,7 @@ export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, fo
     // Keyed by conversation: a switch never judges the task against the last conversation's rows.
     <TaskPopup key={popup.sessionId} adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} followUp={followUp} onClose={onClose} onMissing={onMissing} />
   ) : (
-    <MessagePopup adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} onClose={onClose} />
+    <MessagePopup popup={popup} nameOf={nameOf} lookOf={lookOf} onClose={onClose} />
   );
 }
 
@@ -168,7 +176,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
-  coders: readonly AppWorker[];
+  coders: readonly RosterEntry[];
   followUp?: FollowUp;
   onClose: () => void;
   onMissing?: () => void;
@@ -199,7 +207,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
   const rerun: TaskRerunOption[] =
     task === undefined || !isCoding(task.to)
       ? []
-      : rerunTargets(task, coders).map((worker) => ({ label: harnessName(worker.harness!), run: () => actions.rerun(task, worker.id) }));
+      : rerunTargets(task, coders).map((worker) => ({ label: harnessName(worker.harness), run: () => actions.rerun(task, worker.id) }));
   // A verdict you gave here stays in the feed, after the steps it was given over.
   // Each is kept with the task and run it was given on: Back can move this popup to another task, and a run's steps can be read again.
   const [given, setGiven] = useState<readonly Decision[]>([]);
@@ -487,16 +495,17 @@ function QuestionPopup({ adapter, sessionId, task }: { adapter: AppCalls; sessio
 }
 
 /** One message: what was sent, what the worker that read it did, and its reply. */
-function MessagePopup({ adapter, popup, nameOf, lookOf, onClose }: {
-  adapter: AppCalls;
+function MessagePopup({ popup, nameOf, lookOf, onClose }: {
   popup: Extract<Popup, { kind: "message" }>;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   onClose: () => void;
 }) {
-  const watch = useCallback<typeof adapter.watchRun>((messageId, onChange) => adapter.watchExchange(popup.to, messageId, onChange), [adapter, popup.to]);
-  const steps = useWatch(watch, popup.messageId) ?? [];
-  const talk = useWatch(adapter.watchTalk, popup.to) ?? [];
+  // The message's row says where it was delivered, a task's session included, and whether it was answered.
+  const talk = useTalk(popup.to, [popup.messageId]) ?? [];
+  const { client } = useAppClient();
+  const feed = useSessionFeed(talk.find((m) => m.id === popup.messageId)?.toSession, { client });
+  const steps = useMemo(() => exchangeOf(feed?.items ?? [], popup.messageId), [feed?.items, popup.messageId]);
   const to = nameOf(popup.to);
   const line = `Messaged ${to}`;
   return (

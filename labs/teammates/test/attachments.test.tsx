@@ -12,8 +12,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, describe, expect, it } from "vitest";
 import type { AppCalls } from "../src/app";
 import { App } from "../src/components/App";
-import { AppProvider } from "../src/app";
-import { createFixtureApp } from "./fake-app";
+import { createFixtureApp, FixtureProvider } from "./fake-app";
 
 afterEach(() => {
   cleanup();
@@ -62,7 +61,7 @@ async function attached(...names: string[]) {
 describe("files in a teammate's composer", () => {
   it("shows a pasted and a picked image before Send, sends their references, and draws them on your line", async () => {
     const { adapter, sends } = recording();
-    render(<AppProvider calls={adapter}><App /></AppProvider>);
+    render(<FixtureProvider calls={adapter}><App /></FixtureProvider>);
     const box = await open();
     paste(box, png("bug.png"));
     pick(png("trace.png"));
@@ -89,7 +88,7 @@ describe("files in a teammate's composer", () => {
 
   it("sends files with no words, and refuses a type it can't take by name without sending it", async () => {
     const { adapter, sends } = recording();
-    render(<AppProvider calls={adapter}><App /></AppProvider>);
+    render(<FixtureProvider calls={adapter}><App /></FixtureProvider>);
     const box = await open();
     paste(box, new File([new Uint8Array([1])], "photo.heic", { type: "image/heic" }));
     expect((await within(composer()).findByRole("status", { name: "Attachment notices" })).textContent).toBe("photo.heic isn't supported");
@@ -116,7 +115,7 @@ describe("files in a teammate's composer", () => {
         await adapter.send(...args);
       },
     };
-    render(<AppProvider calls={failing}><App /></AppProvider>);
+    render(<FixtureProvider calls={failing}><App /></FixtureProvider>);
     const box = await open();
     paste(box, png("bug.png"));
     await attached("bug.png");
@@ -149,7 +148,7 @@ describe("files in a teammate's composer", () => {
         return adapter.upload(request);
       },
     };
-    render(<AppProvider calls={held}><App /></AppProvider>);
+    render(<FixtureProvider calls={held}><App /></FixtureProvider>);
     const box = await open();
     paste(box, png("bug.png"));
     fireEvent.change(box, { target: { value: "Look at this" } });
@@ -169,7 +168,7 @@ describe("files in a teammate's composer", () => {
 
   it("takes a PDF beside the text, and sends it by reference as a document", async () => {
     const { adapter, sends } = recording();
-    render(<AppProvider calls={adapter}><App /></AppProvider>);
+    render(<FixtureProvider calls={adapter}><App /></FixtureProvider>);
     const box = await open();
     pick(new File([new TextEncoder().encode("%PDF-1.4\n")], "spec.pdf", { type: "application/pdf" }));
     await within(composer()).findByText("spec.pdf");
@@ -186,7 +185,7 @@ describe("files in a teammate's composer", () => {
   });
 
   it("puts + in the Tab order, and Backspace in an empty box takes the last file off", async () => {
-    render(<AppProvider calls={recording().adapter}><App /></AppProvider>);
+    render(<FixtureProvider calls={recording().adapter}><App /></FixtureProvider>);
     const box = await open();
     const plus = within(composer()).getByRole("button", { name: "Attach files" });
     expect(plus.tabIndex).toBe(0);

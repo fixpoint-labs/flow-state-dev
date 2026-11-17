@@ -247,6 +247,32 @@ describe("a session's turns", () => {
     }
   });
 
+  // FIX-2771: an app's idle age is its last turn's, never the session's updatedAt, which a board pass moves.
+  it("dispatch-not-a-turn · a board dispatch moves the session's updatedAt but adds no turn, so the last turn holds", async () => {
+    const h = bootBoardHost({ standard: workers(), agentAnswer: mockGenerator({ script: [fallback] }) });
+    try {
+      const lead = await h.conversation("alice", "lead");
+      await h.post("alice", lead, "respond", { message: "Hi." }, "coordinator");
+      await h.settled();
+      const before = (await h.fsd("alice").view(sessionTurnsViewRef(), { sessionId: lead })).value;
+      const movedFrom = (await h.session(lead)).updatedAt;
+      expect(before.map((turn) => turn.action)).toEqual([RESPOND_ACTION]);
+      await sleep(5);
+      // A slow task: the board's pass runs in the conversation, and the task is still running when the turns are read.
+      const filed = await h.act("alice", lead, "createTask_tasks", { goal: "Check the logs [slow:1000]", assignee: "eng.tasker" });
+      expect(filed.error, messageOf(filed.error)).toBeUndefined();
+      const dispatched = async () => (await h.requestsOf(lead)).some((request) => request.actionName === "dispatch" && request.status === "completed");
+      for (let i = 0; i < 200 && !(await dispatched()); i++) await sleep(10);
+      expect(await dispatched()).toBe(true);
+      expect((await h.session(lead)).updatedAt).toBeGreaterThan(movedFrom);
+      const after = (await h.fsd("alice").view(sessionTurnsViewRef(), { sessionId: lead })).value;
+      expect(after).toEqual(before);
+      await h.settled();
+    } finally {
+      await h.dispose();
+    }
+  }, 20_000);
+
   it("turn-set · names the four entries that run a session's turn", () => {
     expect([...TURN_ACTIONS].sort()).toEqual(["onMessageReceived", "onTaskSettled", "respond", "routeOn"]);
   });

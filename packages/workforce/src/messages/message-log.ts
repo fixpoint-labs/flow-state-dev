@@ -11,6 +11,23 @@ import { WORKER_MESSAGES_PATTERN, WORKER_MESSAGES_RESOURCE, workerMessageResourc
 
 export * from "./log-row";
 
+// FIX-2771 D1.
+/** The index a message is found by under its sender and its recipient while it is open (`isOpenMessage`). */
+export const OPEN_MESSAGES_INDEX = "open";
+
+// FIX-2771 D1.
+/** The index an answer is found by under the id of the message it answers. */
+export const IN_REPLY_TO_INDEX = "inReplyTo";
+
+/**
+ * A message still open: on its way (`unconfirmed`), or asked for a reply that
+ * hasn't come (no `answeredBy`) and neither refused nor undeliverable.
+ */
+export function isOpenMessage(row: WorkerMessageResourceState): boolean {
+  if (row.status === "unconfirmed") return true;
+  return row.replyRequested === true && row.answeredBy === undefined && row.status !== "refused" && row.status !== "undeliverable";
+}
+
 /**
  * The log, at `workforce/messages/*` in the user's scope. Shared across flows:
  * a message runs between whatever flows its two workers run on, and the
@@ -23,7 +40,15 @@ export const workerMessagesCollection = defineResourceCollection({
   prefetchMode: "lazy",
   stateSchema: workerMessageResourceStateSchema,
   // The user's own rows, read by an app's Messages view; nobody writes them but the server.
-  client: { state: { read: true } }
+  client: { state: { read: true } },
+  // FIX-2771 D1: what the worker messages view finds rows by. Changing what an
+  // index function returns for rows already stored needs a `version` bump on
+  // its declaration (`{ version: 2, value }`): the bump is what rebuilds the
+  // index from the rows (`ResourceIndexDeclaration`).
+  indexes: {
+    [OPEN_MESSAGES_INDEX]: (_key, row) => (isOpenMessage(row) ? [row.from, row.to] : null),
+    [IN_REPLY_TO_INDEX]: (_key, row) => row.inReplyTo
+  }
 });
 
 /** Where the chain rows live, one per user's turn whose exchange sent a message. **Pinned**: persisted. */

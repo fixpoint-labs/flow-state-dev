@@ -8,7 +8,8 @@
  * claude-code-style lab's thread (its running turn) and pins (its `useThread`
  * and `usePins`, under its own `LabProvider`), the Teammates
  * lab's conversation (whether it is answering), its divider and its Talk
- * panel (`watchTalk`, the user's message log), and Shift Manager's worker
+ * lines (`useTalk`, workforce's worker messages view, under its
+ * `AppProvider`), and Shift Manager's worker
  * conversation (`followSessionItems`, the hook's follow), its message log
  * (`useMessages`), a project's entries (`useProjectRead`) and a task screen
  * waiting on its run's link (`TaskProvider`), the last three under the real
@@ -60,7 +61,8 @@ import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, kitFl
 import { appPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 import { PROJECTS_FLOW } from "@flow-state-dev/workforce/browser";
 import { AppProvider as CcAppProvider, usePins as useCcPins, useThread as useCcThread, type ThreadView } from "../../../labs/claude-code-style/src/app/index.ts";
-import { createAppCalls, type ConversationView, type AppTalk } from "../../../labs/teammates/src/app/index.ts";
+import { AppProvider as TmAppProvider, createAppCalls, type ConversationView } from "../../../labs/teammates/src/app/index.ts";
+import { useTalk } from "../../../labs/teammates/src/lib/talk.ts";
 import { kitchenSinkWorkforce } from "../../../apps/kitchen-sink/lib/workforce-kit.ts";
 import { followSessionItems, type SessionItems } from "../../../packages/shift-manager/src/lib/run.ts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
@@ -138,7 +140,7 @@ function deskFlow(): FlowInstance {
     kind: "desk",
     resources: WRITES,
     actions: {
-      // A message from the Talk panel's worker, as `sendMessage` logs it.
+      // A message from the Talk panel's worker, as `sendMessage` logs it: one it waits on a reply to, so it is open.
       logMessage: {
         inputSchema: z.object({ id: z.string() }),
         block: handler({
@@ -150,7 +152,7 @@ function deskFlow(): FlowInstance {
             const at = Date.now();
             await collection(ctx, WORKER_MESSAGES_RESOURCE).create(id, {
               id, exchange: id, from: TALK_WORKER, to: "writer", text: `line ${id}`, at,
-              fromSession: ctx.session.identity.id, fromFlow: "desk", toSession: ctx.session.identity.id, toFlow: "desk", hop: 1, status: "delivered",
+              fromSession: ctx.session.identity.id, fromFlow: "desk", toSession: ctx.session.identity.id, toFlow: "desk", hop: 1, status: "delivered", replyRequested: true,
             });
             return {};
           },
@@ -339,7 +341,19 @@ function mountViews(on: Host, sessionId: string) {
   const sm = clientOf(on);
   const smItems = record<SessionItems>();
   const talk = clientOf(on);
-  const tmTalk = record<AppTalk[]>();
+  const tmTalk = record<{ id: string }[]>();
+  // Teammates' Talk lines under its provider: the worker's open messages, as its screen reads them.
+  function TalkProbe() {
+    const rows = useTalk(TALK_WORKER);
+    const key = rows === undefined ? null : rows.map((m) => m.id).join(",");
+    useEffect(() => {
+      if (rows !== undefined) tmTalk.push({ at: Date.now(), value: rows });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key]);
+    return null;
+  }
+  const talkRoot: Root = createRoot(happy.document.createElement("div") as unknown as Element);
+  talkRoot.render(createElement(TmAppProvider, { calls: createAppCalls(talk.client), client: talk.client, children: createElement(TalkProbe) }));
   // Shift Manager under its real provider: a project's entries, as its view reads them.
   const smToken = `tok-sm-${(mounts += 1)}`;
   const smReads: Read[] = [];
@@ -378,7 +392,7 @@ function mountViews(on: Host, sessionId: string) {
     createAppCalls(tm.client).watchConversation(sessionId, (value) => tmConversation.push({ at: Date.now(), value })),
     createAppCalls(tmWindowReads.client).watchWindow(sessionId, () => {}),
     followSessionItems(sm.client, sessionId, { onRead: (value) => smItems.push({ at: Date.now(), value }), onFailure: () => {} }),
-    createAppCalls(talk.client).watchTalk(TALK_WORKER, (value) => tmTalk.push({ at: Date.now(), value })),
+    () => talkRoot.unmount(),
     () => smRoot.unmount(),
   ];
   const requestReads = (reads: Read[]) => reads.filter((r) => r.url.includes("/requests"));
@@ -397,7 +411,7 @@ function mountViews(on: Host, sessionId: string) {
       "Teammates conversation (answering)": () => requestReads(tm.reads),
       "Teammates divider": () => tmWindowReads.reads,
       "Shift Manager conversation": () => sm.reads,
-      "Teammates Talk": () => talk.reads.filter((r) => r.url.includes(WORKER_MESSAGES_RESOURCE)),
+      "Teammates Talk": () => talk.reads.filter((r) => r.url.includes("/views/workerMessages")),
       "Shift Manager project entries": entryReads,
       "Shift Manager message log": logReads,
     } as Record<string, () => Read[]>,

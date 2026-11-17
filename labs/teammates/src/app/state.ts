@@ -8,7 +8,6 @@ import type { Client } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { createWorkforceClient, type WorkforceClient } from "@flow-state-dev/workforce/browser";
 import { createInboxClient, type InboxHold } from "@flow-state-dev/orchestration/inbox";
-import { CODER_FLOW } from "@flow-state-dev/harness-manager/browser";
 import { sessionFeeds, type SessionFeed } from "../lib/session-feed";
 import type { Item } from "./items";
 import type { Unsubscribe } from "./reads";
@@ -39,17 +38,13 @@ export interface AppState {
   wake(sessionId: string): void;
   /** Each worker's conversation, and the flow it runs on, once opened. */
   conversations: Map<string, { sessionId: string; flow: string }>;
-  /** Told each time a conversation opens, so a worker's activity is watched from then. */
-  conversationOpened: Set<() => void>;
   flowOfSession: Map<string, string>;
-  /** The workers, by id, so a line under a worker's name reads as a task's ending. */
+  /** The workers, by id, so a line under a worker's name reads as a task's ending: the roster as last read (`watchRoster`). */
   workerIds: Set<string>;
-  /** Each coding worker's `harness:`, from the last roster the watch reported. */
+  /** Each coding worker's `harness:`, from the same roster. */
   harnesses: Map<string, string>;
   /** The worker's conversation, opened once. */
   conversationOf(worker: string): Promise<{ sessionId: string; flow: string }>;
-  /** Any conversation of the user's: the message log is read through one. */
-  anyConversation(): Promise<{ sessionId: string; flow: string }>;
 }
 
 /** The shared state over `client`, with nothing read yet. */
@@ -58,21 +53,27 @@ export function appState(client: Client): AppState {
   const feeds = sessionFeeds(client);
   const stopWatchers = new Map<string, Set<() => void>>();
   const conversations = new Map<string, { sessionId: string; flow: string }>();
-  const conversationOpened = new Set<() => void>();
   const flowOfSession = new Map<string, string>();
 
+  // The roster, watched from the first conversation opened on: what `workerIds` and `harnesses` hold before its feed is read.
+  let rosterRead: Promise<void> | undefined;
+  const rosterKnown = () => (rosterRead ??= new Promise<void>((landed) => void workforce.watchRoster((roster) => {
+    state.workerIds = new Set(roster.map((w) => w.id));
+    state.harnesses = new Map(roster.flatMap((w) => (typeof w.settings.harness === "string" ? [[w.id, w.settings.harness] as const] : [])));
+    landed();
+  })));
   const conversationOf = async (worker: string) => {
     const known = conversations.get(worker);
     if (known !== undefined) return known;
+    await rosterKnown();
     const session = await workforce.ensureWorkerSession({ worker });
     const opened = { sessionId: session.id, flow: session.flowKind };
     conversations.set(worker, opened);
     flowOfSession.set(session.id, session.flowKind);
-    for (const tell of [...conversationOpened]) tell();
     return opened;
   };
 
-  return {
+  const state: AppState = {
     client,
     workforce,
     inbox: createInboxClient(client),
@@ -87,11 +88,10 @@ export function appState(client: Client): AppState {
     stopWatchers,
     wake: (sessionId) => stopWatchers.get(sessionId)?.forEach((tell) => tell()),
     conversations,
-    conversationOpened,
     flowOfSession,
     workerIds: new Set(),
     harnesses: new Map(),
     conversationOf,
-    anyConversation: async () => conversations.values().next().value ?? (await conversationOf((await workforce.roster()).find((w) => w.flow !== CODER_FLOW)!.id)),
   };
+  return state;
 }

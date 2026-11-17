@@ -18,10 +18,9 @@ import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BoardTask, ConversationEntry } from "../src/app";
 import { App } from "../src/components/App";
-import { AppProvider } from "../src/app";
 import { createNotifier, teammateAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
 import { ENDING_SHOWN_MS, needsOf, statusOf, type StatusInputs } from "../src/lib/status";
-import { createFixtureApp } from "./fake-app";
+import { createFixtureApp, FixtureProvider } from "./fake-app";
 
 const NOW = 1_000_000_000;
 const coder = (id: string) => id === "cursor";
@@ -161,7 +160,7 @@ describe("a teammate waiting on your yes, on screen", () => {
       { permission: "granted", requestPermission: async () => "granted" },
     );
     vi.stubGlobal("Notification", Fake);
-    render(<AppProvider calls={createFixtureApp({ speed: 0.05 })}><App /></AppProvider>);
+    render(<FixtureProvider calls={createFixtureApp({ speed: 0.05 })}><App /></FixtureProvider>);
     await waitFor(() => expect(row("writer")).toBeTruthy());
     await act(async () => fireEvent.click(within(workers()).getByRole("checkbox", { name: "Notify me" })));
     expect((within(workers()).getByRole("checkbox", { name: "Notify me" }) as HTMLInputElement).checked).toBe(true);

@@ -23,23 +23,35 @@
  * Lead's conversation starts past the 50-turn history window.
  * `failTurn` leaves a failed turn in a conversation, as an engine `error` item
  * would; Retry runs that turn's line again.
+ *
+ * The reads that are package views (FIX-2771: the roster, the lab's context,
+ * harness readiness, busy status, the worker messages view, and a message
+ * popup's session feed) and workforce's roster writes are answered by the
+ * double's `client`, which the screen reads through `AppProvider`.
  */
-import type { SessionConnectionStatus } from "@flow-state-dev/client";
+import type { Client, SessionConnectionStatus } from "@flow-state-dev/client";
+import { createElement, type ReactNode } from "react";
+import { CODER_FLOW } from "@flow-state-dev/harness-manager/browser";
 import { taskView } from "@flow-state-dev/orchestration/inbox";
+import { RECEIVED_MESSAGE_DATA_TYPE, SEND_MESSAGE_TOOL, type RosterEntry, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import {
+  AppProvider,
   rerunOverrides,
   runSteps,
   type ConversationEntry,
   type ReviewDetail,
   type TaskAnswer,
   type AppCalls,
-  type SessionStep,
-  type AppTalk,
   type BoardTask,
   type Unsubscribe,
   type WindowMark,
-  type AppWorker,
 } from "../src/app";
+
+/** A worker as the double keeps it: what its roster row says, flattened. */
+type FixtureTeammate = { id: string; name: string; role: string; takesTasks?: boolean; own?: boolean; edited?: boolean; harness?: string; icon?: string; color?: string };
+
+/** A message in the double's log: what the screen reads of a log row. */
+type AppTalk = { id: string; from: string; to: string; text: string; inReplyTo?: string; replyRequested?: boolean; at: number };
 
 /** How the double keeps time, and what it plays. */
 export interface FixtureOptions {
@@ -63,7 +75,7 @@ export interface FixtureOptions {
    * first time, and the review is asked again with the error.
    */
   lands?: boolean;
-  /** How many roster reads fail as an unreachable server would, before one lands. */
+  /** How many roster view reads fail as an unreachable server would, before one lands. */
   unreachableReads?: number;
   /** Board rows already there when the lab opens, each filed by the conversation of the worker `filer` names. */
   tasks?: (BoardTask & { filer: string })[];
@@ -71,6 +83,20 @@ export interface FixtureOptions {
 
 /** The fixture, plus what a test does to its server. */
 export interface FixtureApp extends AppCalls {
+  /**
+   * The client the screen's package hooks read through: it answers the roster,
+   * lab-context, readiness, worker sessions, session turns and worker messages
+   * views, workforce's roster writes, and a session's items for a message popup.
+   */
+  client: Client;
+  /** Another tab's hire: a teammate of the user's own on the roster. */
+  hire(teammate: { name: string; role: string; instructions: string }): Promise<{ id: string }>;
+  /** Another tab's fire of one of the user's own teammates. */
+  fire(worker: string): Promise<void>;
+  /** The roster as a client's roster view reads it now. */
+  roster(): RosterEntry[];
+  /** Each roster write the screen sent through workforce's client, in order: its action and input. */
+  readonly rosterWrites: { action: string; input: Record<string, unknown> }[];
   /** Every conversation's feed reports `state` from now on. */
   setConnection(state: SessionConnectionStatus): void;
   /** The newest turn of conversation `sessionId` failed with `reason`: a reply under way is left incomplete. */
@@ -122,7 +148,7 @@ const RUN_TOOLS: Record<string, Record<"read" | "edit" | "check", [string, Recor
 const WINDOW_TURNS = 50;
 const MINUTE = 60_000;
 
-const ROSTER: AppWorker[] = [
+const ROSTER: FixtureTeammate[] = [
   { id: "teammates.chief-of-staff", name: "Lead", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
   { id: "teammates.researcher", name: "researcher", icon: "🔎", color: "teal", role: "Finds facts for the team, and replies to whoever asked." },
   { id: "teammates.writer", name: "writer", icon: "✎", color: "violet", role: "Drafts and tightens copy when you or another worker asks." },
@@ -153,7 +179,7 @@ interface FixtureTurn {
 }
 
 interface FixtureWorker {
-  row: AppWorker;
+  row: FixtureTeammate;
   sessionId: string;
   entries: ConversationEntry[];
   /** The turns running now: a line you send starts one beside the others. */
@@ -562,6 +588,151 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
 
   const retries: { sessionId: string; requestId: string }[] = [];
 
+  // Workforce's roster writes and reads, as its roster flow answers them.
+  const rosterRows = (): RosterEntry[] =>
+    [...workers.values()].filter((w) => !fired.has(w.row.id)).map(({ row }) => ({
+      id: row.id,
+      flow: row.takesTasks ? CODER_FLOW : "agent",
+      standard: row.own !== true,
+      description: row.role,
+      name: row.name,
+      teamName: null,
+      forkedFrom: null,
+      edited: row.edited === true,
+      settings: { ...(row.harness === undefined ? {} : { harness: row.harness }), ...(row.icon === undefined ? {} : { icon: row.icon }), ...(row.color === undefined ? {} : { color: row.color }) },
+    }));
+  const hire = ({ id, description }: { id: string; description?: string }) => {
+    if (workers.has(id) && !fired.has(id)) throw new Error(`"${id}" is already on your roster`);
+    workers.set(id, { row: { id, name: id, role: description ?? "", own: true }, sessionId: `conversation:${id}`, entries: [], turns: [], lastActiveAt: now(), deferred: [] });
+    fired.delete(id);
+    notify();
+    return { id, flow: "agent" };
+  };
+  // As the workforce's edit: a file's teammate becomes the user's copy, under the same id; a null name clears it.
+  const edit = ({ id, name }: { id: string; name?: string | null }) => {
+    const w = worker(id);
+    if (name !== undefined) w.row = { ...w.row, name: name === null ? id.slice(id.lastIndexOf(".") + 1) : name };
+    if (!w.row.own) w.row = { ...w.row, edited: true };
+    notify();
+    return { id, flow: "agent" };
+  };
+  const reset = (id: string) => {
+    const w = worker(id);
+    const file = ROSTER.find((row) => row.id === id);
+    if (file === undefined) throw new Error(`"${id}" isn't a standard worker`);
+    if (!w.row.edited) throw new Error(`You haven't edited "${id}"`);
+    w.row = file;
+    notify();
+    return { id };
+  };
+  const fire = (id: string) => {
+    if (!worker(id).row.own) throw new Error(`"${id}" is a standard worker`);
+    // Its conversation stays readable, so it keeps its place here and leaves the roster.
+    fired.add(id);
+    notify();
+    return { id };
+  };
+  /** A log row as the worker messages view answers it: answered once a reply names it, delivered to the recipient's conversation. */
+  const logRow = (m: AppTalk): WorkerMessageResourceState => {
+    const answer = log.find((r) => r.inReplyTo === m.id);
+    return {
+      id: m.id, from: m.from, to: m.to, text: m.text, exchange: m.id, at: m.at, hop: 1, status: "unconfirmed",
+      fromSession: worker(m.from).sessionId, fromFlow: "agent", toSession: worker(m.to).sessionId, toFlow: "agent",
+      ...(m.inReplyTo === undefined ? {} : { inReplyTo: m.inReplyTo }),
+      ...(m.replyRequested === true ? { replyRequested: true as const } : {}),
+      ...(answer === undefined ? {} : { answeredBy: answer.id }),
+    };
+  };
+  /** The worker messages view: the worker's open messages (every row of the double's is on its way), and each id's row and answer. */
+  const workerMessages = ({ worker: id, ids = [] }: { worker: string; ids?: string[] }) =>
+    log.filter((m) => m.from === id || m.to === id || ids.includes(m.id) || (m.inReplyTo !== undefined && ids.includes(m.inReplyTo))).sort((a, b) => a.at - b.at).map(logRow);
+  /** A session's items as the server stores them, for a message popup's feed: a turn starts at your line or a received message. */
+  const itemsOf = (sessionId: string) => {
+    let requestId = "turn-0";
+    return (bySession(sessionId)?.entries ?? []).flatMap((e, i): Record<string, unknown>[] => {
+      if (e.kind === "user" || e.kind === "received") requestId = `turn-${e.id}`;
+      const at = { id: e.id, requestId, itemIndex: i, ts: i + 1, status: "completed" };
+      if (e.kind === "received") return [{ ...at, type: "data", dataType: RECEIVED_MESSAGE_DATA_TYPE, value: { id: e.messageId, text: e.text } }];
+      if (e.kind === "assistant") return [{ ...at, type: "message", role: "assistant", status: e.streaming ? "in_progress" : "completed", content: [{ type: "output_text", text: e.text }] }];
+      if (e.kind === "sent") return [{ ...at, type: "tool_output", toolCall: { name: SEND_MESSAGE_TOOL, arguments: JSON.stringify({ to: e.to, text: e.text }) }, output: { sent: e.messageId } }];
+      return [];
+    });
+  };
+  const rosterWrites: FixtureApp["rosterWrites"] = [];
+  const VIEWS: Record<string, (input: any) => unknown> = {
+    roster: () => {
+      if (unreachable > 0) {
+        unreachable -= 1;
+        throw new TypeError("fetch failed");
+      }
+      return rosterRows();
+    },
+    context: () => ({ folder: "/work/launch-site", folderProblem: null, model: "openai/gpt-6-luna", harness: "cursor", delegates: { [LEAD]: "all" as const } }),
+    readiness: () => [
+      { harness: "claude-code", label: "Claude Code", ready: true, reason: null, remedy: null, unanswered: false },
+      { harness: "codex", label: "Codex", ready: false, reason: "Codex has no credential", remedy: "Run `codex login`", unanswered: false },
+      { harness: "cursor", label: "Cursor", ready: true, reason: null, remedy: null, unanswered: false },
+    ],
+    // Only a teammate has a conversation; it runs while a turn of its does.
+    workerSessions: ({ worker: id }) => {
+      const w = workers.get(id);
+      return w === undefined || w.row.takesTasks ? [] : [{ id: w.sessionId, title: "Untitled", worker: id, updatedAt: w.lastActiveAt, running: w.turns.length > 0, state: {}, isDefault: true, waiting: [] }];
+    },
+    // Its last turn: running now, or ended when it was last active.
+    sessionTurns: ({ sessionId }) => {
+      const w = bySession(sessionId);
+      if (w === undefined) return [];
+      const running = w.turns.length > 0;
+      return [{ id: `turn:${w.lastActiveAt}`, action: "respond", status: running ? "in_progress" : "completed", source: "user", startedAt: w.lastActiveAt, completedAt: running ? null : w.lastActiveAt, error: null }];
+    },
+    workerMessages,
+  };
+  const client = {
+    userId: "you",
+    async view(ref: { view: string }, input: unknown) {
+      const answer = VIEWS[ref.view];
+      if (answer === undefined) throw new Error(`the double serves no view "${ref.view}"`);
+      return { value: answer(input ?? {}), topics: [] };
+    },
+    // Every change the double makes is a notice to every live read, one per turn of the event loop however many
+    // changes it holds, as a socket delivers them; subscribing reads nothing by itself.
+    subscribe(_topics: unknown, options: { onChange: (notice: null) => void }) {
+      let due = false;
+      const heard = () => {
+        if (due) return;
+        due = true;
+        setTimeout(() => {
+          due = false;
+          options.onChange(null);
+        }, 0);
+      };
+      listeners.add(heard);
+      return { close: () => void listeners.delete(heard) };
+    },
+    resource: () => ({
+      async send(action: string, input: any) {
+        rosterWrites.push({ action, input });
+        if (action === "hire") return hire(input);
+        if (action === "edit") return edit(input);
+        if (action === "reset") return reset(input.id);
+        if (action === "fire") return fire(input.id);
+        throw new Error(`the double has no roster action "${action}"`);
+      },
+    }),
+    sessions: {
+      async state(sessionId: string) {
+        const items = itemsOf(sessionId);
+        return { items, at: items.length, sessionCreatedAt: 1, pagination: { offset: 0, limit: 200, total: items.length, hasMore: false } };
+      },
+      stream(sessionId: string, handlers: { onItem: (event: { item: unknown }) => void; onRuns?: (event: { runs: unknown[] }) => void }) {
+        queueMicrotask(() => handlers.onRuns?.({ runs: [] }));
+        const heard = () => itemsOf(sessionId).forEach((item) => handlers.onItem({ item }));
+        listeners.add(heard);
+        return { close: () => void listeners.delete(heard) };
+      },
+    },
+  } as unknown as Client;
+
   const fake: FixtureApp = {
     refuseNextStop() {
       refuseStop = true;
@@ -596,39 +767,6 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
       if (!w || line?.kind !== "user") throw new Error(`No failed turn "${requestId}" to retry.`);
       w.entries = w.entries.map((e) => (e.kind === "failed" ? { ...e, retryable: false } : e));
       startTurn(w, { kind: "user", entryId: line.id, text: line.text });
-    },
-
-    async readContext() {
-      return { folder: "/work/launch-site", folderProblem: null, model: "openai/gpt-6-luna", harness: "cursor", delegates: { [LEAD]: "all" as const } };
-    },
-
-    async readHarnesses() {
-      return [
-        { harness: "claude-code", label: "Claude Code", ready: true, reason: null, remedy: null, unanswered: false },
-        { harness: "codex", label: "Codex", ready: false, reason: "Codex has no credential", remedy: "Run `codex login`", unanswered: false },
-        { harness: "cursor", label: "Cursor", ready: true, reason: null, remedy: null, unanswered: false },
-      ];
-    },
-
-    async listWorkers() {
-      return [...workers.values()].filter((w) => !fired.has(w.row.id)).map((w) => w.row);
-    },
-
-    watchWorkers(onChange, onError) {
-      if (unreachable > 0) {
-        unreachable -= 1;
-        // Told after the call returns, as a read that failed would be.
-        queueMicrotask(() => onError?.(new TypeError("fetch failed")));
-        return () => {};
-      }
-      let last = "";
-      return watch(() => {
-        const rows = [...workers.values()].filter((w) => !fired.has(w.row.id)).map((w) => w.row);
-        const seen = JSON.stringify(rows);
-        if (seen === last) return;
-        last = seen;
-        onChange(rows);
-      });
     },
 
     async openConversation(workerId) {
@@ -704,19 +842,6 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
       say(w, approve ? "Published." : "Left it unpublished.")();
     },
 
-    watchTalk(workerId, onChange) {
-      return watch(() => onChange(log.filter((m) => m.from === workerId || m.to === workerId).sort((a, b) => a.at - b.at)));
-    },
-
-    watchActivity(workerId, onChange) {
-      return watch(() => {
-        const w = worker(workerId);
-        // A worker that takes tasks is busy while one of its runs is.
-        const running = w.row.takesTasks ? tasks.some((t) => t.to === workerId && t.status === "running") : w.turns.length > 0;
-        onChange({ running, lastActiveAt: w.lastActiveAt });
-      });
-    },
-
     watchWindow(sessionId, onChange) {
       return watch(() => {
         const w = bySession(sessionId);
@@ -728,38 +853,11 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
       });
     },
 
-    async hire({ name, role }) {
-      if (workers.has(name) && !fired.has(name)) throw new Error(`"${name}" is already on your roster`);
-      const row: AppWorker = { id: name, name, role, own: true };
-      workers.set(name, { row, sessionId: `conversation:${name}`, entries: [], turns: [], lastActiveAt: now(), deferred: [] });
-      notify();
-      return row;
-    },
-
-    async editTeammate(workerId, { name }) {
-      // As the workforce's edit: a file's teammate becomes the user's copy, under the same id.
-      const w = worker(workerId);
-      const id = w.row.id;
-      if (name !== undefined) w.row = { ...w.row, name: name.trim() === "" ? id.slice(id.lastIndexOf(".") + 1) : name.trim() };
-      if (!w.row.own) w.row = { ...w.row, edited: true };
-      notify();
-    },
-
-    async resetTeammate(workerId) {
-      const w = worker(workerId);
-      const file = ROSTER.find((row) => row.id === workerId);
-      if (file === undefined) throw new Error(`"${workerId}" isn't a standard worker`);
-      if (!w.row.edited) throw new Error(`You haven't edited "${workerId}"`);
-      w.row = file;
-      notify();
-    },
-
-    async fire(workerId) {
-      if (!worker(workerId).row.own) throw new Error(`"${workerId}" is a standard worker`);
-      // Its conversation stays readable, so it keeps its place here and leaves the roster.
-      fired.add(workerId);
-      notify();
-    },
+    client,
+    hire: async ({ name, role }) => hire({ id: name, description: role }),
+    fire: async (workerId) => void (await fire(workerId)),
+    roster: () => rosterRows(),
+    rosterWrites,
 
     watchTasks(sessionId, onChange) {
       // Each row with its view, as the adapter reads one from the board's row (no holds: a fixture's wait is its `waiting`).
@@ -879,22 +977,41 @@ export function createFixtureApp(options: FixtureOptions = {}): FixtureApp {
       return () => {};
     },
 
-    watchExchange(workerId, messageId, onChange) {
-      // The recipient's turn that read the message: from its received entry to the next thing it was given.
-      return watch(() => {
-        const entries = worker(workerId).entries;
-        const at = entries.findIndex((e) => e.kind === "received" && e.messageId === messageId);
-        if (at < 0) return onChange([]);
-        const steps: SessionStep[] = [];
-        for (const e of entries.slice(at)) {
-          if (steps.length > 0 && (e.kind === "user" || e.kind === "received")) break;
-          if (e.kind === "received") steps.push({ id: e.id, kind: "given", text: e.text });
-          else if (e.kind === "assistant") steps.push({ id: e.id, kind: "said", text: e.text, ...(e.streaming ? { streaming: true } : {}) });
-          else if (e.kind === "sent") steps.push({ id: e.id, kind: "sent", text: e.text, to: e.to });
-        }
-        onChange(steps);
-      });
-    },
   };
   return fake;
 }
+
+/**
+ * `AppProvider` over a double's calls and its client: a test's calls spread
+ * from a double keep its `client`; ones that hold none read through a client
+ * that answers nothing, for a screen that reads no package view.
+ */
+export function FixtureProvider({ calls, client, children }: { calls: AppCalls; client?: Client; children?: ReactNode }) {
+  const held = (calls as Partial<FixtureApp>).client;
+  return createElement(AppProvider, { calls, client: client ?? held ?? NO_CLIENT }, children);
+}
+
+/**
+ * `lab`'s client with its roster view reads answered by `answer`, given the
+ * read's number (from 1) and the double's own read: a server that is down, or
+ * slow, for the roster alone.
+ */
+export function rosterReadsBy(lab: FixtureApp, answer: (call: number, read: () => Promise<unknown>) => Promise<unknown>): Client {
+  let calls = 0;
+  const view = (ref: { view: string }, input: unknown, options?: unknown) =>
+    ref.view === "roster" ? answer(++calls, () => lab.client.view(ref as never, input as never, options as never)) : lab.client.view(ref as never, input as never, options as never);
+  return { ...lab.client, view } as unknown as Client;
+}
+
+/** A roster row as workforce's roster view answers it, for a screen drawn without the double: a standard teammate on the agent flow unless `fields` say otherwise. */
+export const rosterEntry = (fields: Partial<RosterEntry> & { id: string }): RosterEntry => ({
+  flow: "agent", standard: true, description: null, name: null, teamName: null, forkedFrom: null, edited: false, settings: {}, ...fields,
+});
+
+/** A client with nothing behind it: every read waits. */
+const NO_CLIENT = {
+  userId: "you",
+  view: () => new Promise(() => {}),
+  subscribe: () => ({ close: () => {} }),
+  sessions: { state: () => new Promise(() => {}), stream: () => ({ close: () => {} }) },
+} as unknown as Client;
