@@ -16,7 +16,7 @@ const root = fileURLToPath(new URL("../../../../../", import.meta.url));
 const allowlist = JSON.parse(readFileSync(`${root}labs/teammates/test/inventory-allowlist.json`, "utf8"));
 if (process.argv.includes("--control")) allowlist.push({ file: "src/app/planted.ts", symbol: "Planted", kind: "type" });
 
-/** Owner by file, from the epic's set row for each job; `shared` is plumbing every job's calls go through. */
+/** Owner by file: the epic's set row for each job, and the coordinator's B1 to B5. */
 const OWNER = {
   "src/app/tasks.ts": "t3",
   "src/app/runs.ts": "t3",
@@ -24,17 +24,17 @@ const OWNER = {
   configuration: "t1",
   "src/app/setup.ts": "t1",
   "src/app/talk.ts": "t1",
-  "src/app/workers.ts": "t1 / t2 (roster vs. activity)",
+  "src/app/workers.ts": "t1 (B5)",
   "src/app/conversations.ts": "t2",
   "src/app/files.ts": "t2",
   "src/app/window.ts": "t2",
   "src/components/App.tsx": "t2",
   "src/lib/session-feed.ts": "t2",
-  "src/app/calls.ts": "shared (B2)",
-  "src/app/state.ts": "shared (B2)",
-  "src/app/reads.ts": "shared (B2)",
-  "src/app/items.ts": "shared (B2)",
-  "src/app/steps.ts": "shared (B3)",
+  "src/app/calls.ts": "last Teammates child (B2)",
+  "src/app/state.ts": "last Teammates child (B2)",
+  "src/app/reads.ts": "last Teammates child (B2)",
+  "src/app/items.ts": "last Teammates child (B2)",
+  "src/app/steps.ts": "t2 (B3)",
 };
 
 const unclassified = allowlist.filter((e) => !(e.file in OWNER));

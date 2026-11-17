@@ -14,7 +14,7 @@ flowchart TD
   E["FIX-2773"] --> D1["D1 · answer and brief on the coding board row"]
   D1 -.->|"rejected"| X1["a one-task read when a popup opens"]
   E --> K["decided, not asked · the row type, the hooks, the answers, the tests"]
-  E --> B["boundaries · B1 to B5, for the cross-spec review"]
+  E --> B["boundaries · B1 to B5, decided by the coordinator"]
 ```
 
 <a name="d1"></a>
@@ -98,7 +98,7 @@ It comes down to what opening a popup costs: on the row it costs nothing.
 
 ## Open
 
-None. The boundaries with siblings (B1 to B5) are for the cross-spec review and are in
+None. The boundaries with siblings (B1 to B5) were decided by the coordinator and are in
 [SPEC.md](SPEC.md#boundaries-with-siblings).
 
 ## Settled
@@ -106,7 +106,8 @@ None. The boundaries with siblings (B1 to B5) are for the cross-spec review and 
 - **The 12 entries.** `node specs/issues/FIX-2773/poc/entries/check.mjs` re-derives them from the
   real allowlist and fails on an entry no owner row classifies. On `origin/main` `e90786196b`: 57
   entries; 12 this issue's (6 in `tasks.ts`, 6 in `runs.ts`); the fake's `gone` entry the last
-  Teammates child's (B1); t1 9, t2 22, t1 or t2 6, shared 7. With `--control` (a planted unclassified entry) it FAILs, as it must.
+  Teammates child's (B1), with the four shared types (B2); t1 15 (`workers.ts` by B5), t2 25
+  (`steps.ts` by B3). With `--control` (a planted unclassified entry) it FAILs, as it must.
 - **Not checked before the gate:** whether the coding board view meets the settled-task goal's
   signals for Teammates (a settled task within 1 s; 0 board reads over 10 s while a reply streams).
   Claude-code-style reads the view today, and no goal measures it there. It is the implementation's
@@ -157,3 +158,7 @@ doesn't touch the review stop's data or either app's review card.
   entry, which this issue can't remove unless it merges last. Each Teammates child cuts its own
   scenarios; the last of FIX-2771, FIX-2772 and FIX-2773 to merge deletes the file and the entry.
   This issue's goal is now the 12 `src/app/` entries and the fake's task and run scenarios.
+- **B2 to B5 decided (coordinator, 2026-11-17)** — the last Teammates child removes the shared
+  plumbing types, after each child removes its own fields; FIX-2772 owns `steps.ts` and moves it to
+  `src/lib/`; the first child to merge adds the client to `main.tsx` and `AppProvider`; FIX-2771
+  owns `workers.ts`. This issue's count stays 12.

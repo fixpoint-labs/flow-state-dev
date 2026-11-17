@@ -131,13 +131,13 @@ flowchart LR
 |---|---|
 | **Removes** | Teammates' `taskCalls` and `runCalls` (about 600 of 709 lines); seven types; the row-copy merge across three sources; a hand-built request stream; the fake's task and run scenarios |
 | **Adds** | Four nullable fields on a published view. A second copy of claude-code-style's task hooks, which FIX-2756 pulls into one place (ER-7) |
-| **Leaves** | The fake's file and its `gone` entry, unless this issue merges last of the three ([B1](#boundaries-with-siblings)). `steps.ts`'s types and the shared plumbing ([B2, B3](#boundaries-with-siblings)). `cleared.ts`'s and `attention.ts`'s "needs you", computed on the screen (the epic keeps it) |
+| **Leaves** | The fake's file and its `gone` entry, unless this issue merges last of the three ([B1](#boundaries-with-siblings)). `steps.ts`'s types (FIX-2772's) and the shared plumbing (the last child's) ([B2, B3](#boundaries-with-siblings)). `cleared.ts`'s and `attention.ts`'s "needs you", computed on the screen (the epic keeps it) |
 
 **Net: down.** One of two ways to show a task goes; the view gains four fields.
 
 ## Boundaries with siblings
 
-For the epic's cross-spec review. B1 is decided; B2 to B5 are recommendations, open until that review.
+All five were decided by the coordinator (2026-11-17), as engineering calls.
 
 - **B1 · The fake. Decided by the coordinator (2026-11-17).** Fifteen test files use
   `test/fake-app.ts`; four are task tests. It implements all of `AppCalls`, so FIX-2771 and
@@ -146,18 +146,20 @@ For the epic's cross-spec review. B1 is decided; B2 to B5 are recommendations, o
   the task and run scenarios. Whichever of FIX-2771, FIX-2772 and FIX-2773 merges last deletes the
   file and owns its `test/fake-app.ts · (file) · gone` entry. The coordinator amends the epic's row,
   which gave the whole fake to this issue.
-- **B2 · Shared plumbing.** `AppCalls` (`calls.ts`), `AppState` (`state.ts`), `Unsubscribe`
-  (`reads.ts`) and `Item` (`items.ts`) serve every job. Recommended: the child whose change leaves
-  one unused deletes it, by the orphan rule. This issue removes `TaskCalls`, `RunCalls`,
-  `runFlows` and `openHolds` from them.
-- **B3 · `steps.ts`.** `SessionStep`, `StepRun` and `RunSummary` are used by conversations (t2),
-  talk (t1) and a task's run (here). Recommended: FIX-2772 owns them; this issue keeps calling
-  `runSteps`.
-- **B4 · The provider.** Hooks need the client in context. Today `AppProvider` holds only
-  `AppCalls`. Recommended: the first of the three to merge adds `client` and `pollIntervalMs` to
-  it, as claude-code-style's `useAppContext`; the others use it.
-- **B5 · `workers.ts`.** Its `topic` import and `Activity` serve both the roster (t1) and activity
-  (t2). Not this issue's; named so the review assigns it.
+- **B2 · Shared plumbing. Decided.** `AppCalls` (`calls.ts`), `AppState` (`state.ts`),
+  `Unsubscribe` (`reads.ts`) and `Item` (`items.ts`) serve every job. Each child first removes its
+  own fields from them; this issue removes `TaskCalls`, `RunCalls`, `runFlows` and `openHolds`. The
+  last Teammates child to merge removes the four types and their entries.
+- **B3 · `steps.ts`. Decided.** `SessionStep`, `StepRun` and `RunSummary` are used by
+  conversations (t2), talk (t1) and a task's run (here). FIX-2772 owns them: it moves `steps.ts` to
+  `src/lib/` and lists the three as screen types. This issue keeps calling `runSteps`, from
+  wherever `steps.ts` is when it merges.
+- **B4 · The provider. Decided.** Hooks need the client in context. Today `AppProvider` holds
+  only `AppCalls`. The first Teammates child to merge builds the client in `main.tsx` and adds
+  `client` and `pollIntervalMs` to `AppProvider`, as claude-code-style's `useAppContext`; the
+  others use it. If that is this issue, it does both.
+- **B5 · `workers.ts`. Decided.** Its `topic` import and `Activity` serve both the roster (t1)
+  and activity (t2). FIX-2771 owns them, since it deletes `workers.ts`. Not this issue's.
 - **The coding board view** is also changed by FIX-2766. Same file, no shared field: whichever
   lands second rebases.
 
