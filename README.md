@@ -29,7 +29,7 @@ The starters run from a clone of this repository. They are workspace packages th
 
 ## Run a starter
 
-You need Node.js 22.18 or newer and pnpm 10.4.1 (`corepack enable && corepack prepare pnpm@10.4.1`).
+You need Node.js 24 or newer and pnpm 12.18.0 (`corepack enable && corepack prepare pnpm@12.18.0`).
 
 ```bash
 git clone https://github.com/fixpoint-labs/flow-state-dev

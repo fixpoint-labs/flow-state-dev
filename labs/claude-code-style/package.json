@@ -8,6 +8,9 @@
   "exports": {
     ".": "./cli/index.ts"
   },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "vite build && cd ../.. && tsx packages/fsdev/bin/fsdev.ts dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev/claude-code-style",
     "build": "vite build",

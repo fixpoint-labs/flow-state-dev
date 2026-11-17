@@ -33,7 +33,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24 # apps/* and labs/* require Node 24; packed-install keeps 22, the packages' floor
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -289,7 +289,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24 # apps/* and labs/* require Node 24; packed-install keeps 22, the packages' floor
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -556,7 +556,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24 # apps/* and labs/* require Node 24; packed-install keeps 22, the packages' floor
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -680,7 +680,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24 # apps/* and labs/* require Node 24; packed-install keeps 22, the packages' floor
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile

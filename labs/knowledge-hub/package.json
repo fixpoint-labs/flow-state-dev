@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Incubation lab: the Knowledge Hub (FIX-882–884). Capture layer — logActivity into a user-scoped inbox with a deterministic mailroom pass; the sweeper/workforce work lands in the follow-on issues.",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "FSDEV_DEBUG_ENDPOINTS=1 KH_MCP_SECRET=test tsx ../../packages/fsdev/bin/fsdev.ts dev",
     "typecheck": "tsc --noEmit",
