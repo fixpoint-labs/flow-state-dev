@@ -209,4 +209,10 @@ inventory is a ratchet.
   `principalOwnsRequest`; the read returns a projection, never the record. Wording: the measured
   baseline, the delegate shape, how the checks divide the work, the division's defaults.
 
+- **Cross-spec review (2026-11-17)** — the Teammates children run in parallel, so no one child
+  can delete the shared fake app. Each cuts its own scenarios into its ledger; whichever of
+  FIX-2771, FIX-2772 and FIX-2773 merges last deletes the fake, its `gone` entry and the shared
+  plumbing types (`AppCalls`, `AppState`, `Unsubscribe`, `Item`). FIX-2772 owns `steps.ts`;
+  FIX-2771 owns `workers.ts`. A coordinator call, recorded in each child spec.
+
 **Open:** none.
