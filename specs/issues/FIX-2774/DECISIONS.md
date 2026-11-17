@@ -61,6 +61,12 @@ It comes down to whether they can differ: one view can't; two reads can, after e
 one in a flow that isn't a worker's. Then the task screen reads its session, FIX-2776's line
 stands, and **task-equals-item** grades only worker flows.
 
+**The amendment it carries.** This PR marks FIX-2776's line as superseded, in its
+`DECISIONS.md` (*Decided, not asked*) and its `SPEC.md` siblings table, so merging this PR is
+how D2 is signed. If D2 flips at the gate, that amendment is dropped from this PR and FIX-2776
+stands as written: its five task-ask sites read the run session, and the census's `(D2)` rows
+go back to FIX-2776.
+
 ## Decided, not asked
 
 - **The view finds an ask's worker without hearing `run` on the user topic** (the constraint

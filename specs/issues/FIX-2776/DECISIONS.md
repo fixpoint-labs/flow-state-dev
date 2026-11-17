@@ -109,6 +109,9 @@ with that reason.
   non-coding tasks too.
 - **A task's asks** come from its row's holds (the task-list view) and the run session's pending
   suspensions (`deriveSuspensions` over the session's feed, one session).
+  *Superseded by [FIX-2774 D2](../FIX-2774/DECISIONS.md#d2) (2026-11-17): the five task-ask
+  sites in `TaskInspector`, `TaskSession` and `TaskFrame` read FIX-2774's `inbox` view, and are
+  FIX-2774's to move.*
 - **Goal controls follow the code.** Controls that swap `src/lib/run.ts` or `src/lib/send.ts`
   move to the module that replaces each, and must still fire.
 - **No new file layout.** Where Shift Manager's hooks live is the implementer's; ER-8's file map
