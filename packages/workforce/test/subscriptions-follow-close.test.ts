@@ -68,6 +68,22 @@ describe("a followed pull request's close, on push", () => {
     }
   });
 
+  it("still reaches the session after it saves its own routine on the PR it follows", async () => {
+    // The routine lands on the follow's subscription (one per session and thread): the close must stay heard.
+    const host = bootSubscriptionsHost();
+    try {
+      const session = await following(host);
+      expect(await host.subscribe("alice", session, { thread: PR, kinds: ["review"] })).toHaveProperty("id");
+      expect((await host.subscriptionRows("alice")).map((r) => [r.kinds, r.hearsClose])).toEqual([[["review"], true]]);
+      await host.route(merged());
+      const heard = await host.heard(session);
+      expect(heard).toHaveLength(1);
+      expect(heard[0]).toContain("merged");
+    } finally {
+      await host.dispose();
+    }
+  });
+
   it("leaves a routine on the same PR as signed: its own merge ends it unheard", async () => {
     const host = bootSubscriptionsHost();
     try {
