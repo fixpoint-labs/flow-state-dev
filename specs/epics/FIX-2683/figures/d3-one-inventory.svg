@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3, how the apps are held to the result. Chosen: one inventory module, with a bar per app: Teammates meets all of it, Shift Manager the content rules. Instead of: a copy of the rules in each app. It comes down to the first row: each app's test and the closure run the same rules, where three copies drift until a test passes what the closure fails. The price is the second row: Shift Manager is not held to the caps on its own files. The third row is also a cost: the module lives outside each app, so a starter's test reaches a shared file. Locks in: each app's list of screen types, a new one by reviewed PR. Flips if: logic grows in Shift Manager where L3 and L4 can't see it."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3, how the apps are held to the result. Chosen: one inventory module, with an allowlist per app that only shrinks: Teammates meets all of it, Shift Manager the content rules. Instead of: a copy of the rules in each app. It comes down to the first row: each app's test and the closure run the same rules, where three copies drift until a test passes what the closure fails. The price is the second row: Shift Manager is not held to the caps on its own files. The third row is also a cost: the module lives outside each app, so a starter's test reaches a shared file. Locks in: an allowlist that only shrinks; each child deletes its entries and the closure needs none. Flips if: review finds server logic in Shift Manager's cli or scripts folders, which L3 does not scan."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">One module, a bar per app</text>
+    <text class="t-h c-code" x="228" y="112">One module, an allowlist per app</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">A copy of the rules per app</text>
@@ -87,14 +87,14 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Each app's list of screen types</text>
-    <text class="t-s" x="32" y="389">a new one goes on it by reviewed PR</text>
+    <text class="t-b" x="32" y="371">An allowlist that only shrinks</text>
+    <text class="t-s" x="32" y="389">each child deletes its entries; closure needs none</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">Logic grows where L3 and L4 can't see</text>
-    <text class="t-s" x="494" y="389">then Shift Manager takes L1's classes for src/</text>
+    <text class="t-b" x="494" y="371">Review finds logic in cli/ or scripts/</text>
+    <text class="t-s" x="494" y="389">L3 doesn't scan them; then it does</text>
   </g>
 </svg>

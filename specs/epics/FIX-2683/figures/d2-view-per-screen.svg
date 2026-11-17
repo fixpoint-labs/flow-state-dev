@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, when Shift Manager reads what it shows. Chosen: a view per screen, with one workforce view for the Inbox and its count. Instead of: the snapshot, rebuilt in the client from views. It comes down to the first row: an answer across sessions is one server view, where the rebuilt snapshot stitches per-session reads in the client, which the owner ruled out. The price is the second row: opening a screen reads its view, so the rule that moving around costs no reads is retired. The third row favours the choice: each screen re-reads only the rows a notice names, where the snapshot re-reads everything. Locks in: a new workforce user view whose cost grows with a user's sessions. Flips if: the Inbox view takes more than a second for a user with dozens of sessions."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, when Shift Manager reads what it shows. Chosen: a view per screen, with one workforce view for the Inbox and its count. Instead of: the snapshot, rebuilt in the client from views. It comes down to the first row: an answer across sessions is one server view, where the rebuilt snapshot stitches per-session reads in the client, which the owner ruled out. The price is the second row: opening a screen reads its view, so the rule that moving around costs no reads is retired. The third row favours the choice: each screen re-reads only the rows a notice names, where the snapshot re-reads everything. Locks in: a new pending-asks read and a workforce view on it, scoped to the user's tenant. Flips if: the Inbox view takes more than a second for a user with dozens of sessions, or re-runs on every streamed chunk."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -86,14 +86,14 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">A new workforce user view</text>
-    <text class="t-s" x="32" y="389">its cost grows with a user's worker sessions</text>
+    <text class="t-b" x="32" y="371">A pending-asks read and an Inbox view</text>
+    <text class="t-s" x="32" y="389">over the suspension store, scoped to the tenant</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">The Inbox view takes over a second</text>
-    <text class="t-s" x="494" y="389">for a user with dozens of worker sessions</text>
+    <text class="t-b" x="494" y="371">The Inbox takes over a second</text>
+    <text class="t-s" x="494" y="389">for dozens of sessions, or re-runs per chunk</text>
   </g>
 </svg>
