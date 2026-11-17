@@ -214,7 +214,12 @@ export async function legA(n: number, ask: string, failures: string[], notes: st
       failures.push(`a:row-changes: the coding task never held its work for review (${now?.status}: ${now?.statusNote ?? ""})`);
     } else {
       await until(async () => ((await shown(page)).rows.find((r) => r.id === filed.id)?.column === "review" ? true : undefined), 10_000, 100);
-      await page.locator(`main[aria-label="Main thread"] [data-entry="thread"][data-task-id="${filed.id}"]`).getByRole("button", { name: /^(Resolve|Merge locally)$/ }).first().click();
+      await page
+        .locator(`main[aria-label="Main thread"] [data-entry="thread"][data-task-id="${filed.id}"]`)
+        .getByRole("button", { name: /^(Resolve|Merge locally)$/ })
+        .first()
+        .click()
+        .catch((error: Error) => failures.push(`a:row-changes: no accept on the task's card to resolve its review: ${error.message.split("\n")[0]}`));
       const done = await until(async () => (taskOf(filed.id)?.status === "completed" ? true : undefined), 3 * 60_000, 250);
       if (done === undefined) failures.push(`a:row-changes: ${filed.id} never read completed after Resolve`);
     }
@@ -250,33 +255,38 @@ export async function legA(n: number, ask: string, failures: string[], notes: st
     notes.push(`idle: ${idleReads.length} view reads in ${IDLE_MS / 1000} s; ${viewReads.length} view reads in all`);
 
     // ── a:pin · Pin on the task, through the default write flow, still pinned after a reload.
-    const pinFrom = Date.now();
-    await page.locator(`aside[aria-label="Tasks"] [data-task-id="${filed.id}"]`).click();
-    const sheet = page.locator('[role="dialog"][aria-label^="Task: "]');
-    await sheet.getByRole("button", { name: "Pin", exact: true }).click();
-    const pressed = await until(async () => ((await sheet.getByRole("button", { name: "Unpin", exact: true }).getAttribute("aria-pressed")) === "true" ? true : undefined), 10_000, 100);
-    if (pressed === undefined) failures.push("a:pin: the button never showed the task pinned");
-    await page.reload();
-    await page.getByRole("tab", { name: "Projects" }).click().catch(() => undefined);
-    const pinnedAfter = await until(async () => ((await shown(page)).rows.find((r) => r.id === filed.id)?.column === "pinned" ? true : undefined), 30_000, 250);
-    if (pinnedAfter === undefined) {
-      // A reload may land on no session: open the one the run made, as a person would.
-      await page.getByRole("navigation", { name: "Sessions" }).locator("li button").first().click().catch(() => undefined);
-      const again = await until(async () => ((await shown(page)).rows.find((r) => r.id === filed.id)?.column === "pinned" ? true : undefined), 30_000, 250);
-      if (again === undefined) failures.push("a:pin: after a reload the task's row isn't under Pinned");
+    try {
+      const pinFrom = Date.now();
+      await page.locator(`aside[aria-label="Tasks"] [data-task-id="${filed.id}"]`).click();
+      const sheet = page.locator('[role="dialog"][aria-label^="Task: "]');
+      await sheet.getByRole("button", { name: "Pin", exact: true }).click();
+      const pressed = await until(async () => ((await sheet.getByRole("button", { name: "Unpin", exact: true }).getAttribute("aria-pressed")) === "true" ? true : undefined), 10_000, 100);
+      if (pressed === undefined) failures.push("a:pin: the button never showed the task pinned");
+      await page.reload();
+      await page.getByRole("tab", { name: "Projects" }).click().catch(() => undefined);
+      const pinnedAfter = await until(async () => ((await shown(page)).rows.find((r) => r.id === filed.id)?.column === "pinned" ? true : undefined), 30_000, 250);
+      if (pinnedAfter === undefined) {
+        // A reload may land on no session: open the one the run made, as a person would.
+        await page.getByRole("navigation", { name: "Sessions" }).locator("li button").first().click().catch(() => undefined);
+        const again = await until(async () => ((await shown(page)).rows.find((r) => r.id === filed.id)?.column === "pinned" ? true : undefined), 30_000, 250);
+        if (again === undefined) failures.push("a:pin: after a reload the task's row isn't under Pinned");
+      }
+      const pins = store.resources().find((r) => r.scope_type === "user" && r.resource_key === "lab-pins");
+      if (!(pins !== undefined && (JSON.parse(pins.state).pinned ?? []).includes(filed.id))) failures.push(`a:pin: the store's lab-pins doesn't hold ${filed.id}`);
+      const writes = store.requests(pinFrom).filter((r) => r.created_at >= pinFrom);
+      const onDefault = writes.filter((r) => r.flow_kind === DEFAULT_WRITE_FLOW);
+      const sessions = new Map(store.sessions().map((s) => [s.id, s]));
+      if (onDefault.length !== 1) failures.push(`a:pin: ${onDefault.length} request(s) on the default write flow for one pin (all new requests: ${writes.map((r) => r.flow_kind).join(", ") || "none"})`);
+      for (const r of onDefault) {
+        const s = r.session_id === null ? undefined : sessions.get(r.session_id);
+        if (s === undefined || s.user_id !== user || r.user_id !== user) failures.push(`a:pin: the pin's request ${r.id} isn't in a session owned by ${user} (session ${r.session_id}, its user ${s?.user_id}, the request's ${r.user_id})`);
+      }
+      notes.push(`pin: ${writes.length} new request(s): ${writes.map((r) => `${r.flow_kind} ${r.status}`).join(", ")}`);
+      if (errors.length > 0) notes.push(`page errors: ${errors.slice(0, 3).join(" | ")}`);
+    } catch (error) {
+      // A page that never drew the row can't be pinned from it: graded, not thrown.
+      failures.push(`a:pin: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
     }
-    const pins = store.resources().find((r) => r.scope_type === "user" && r.resource_key === "lab-pins");
-    if (!(pins !== undefined && (JSON.parse(pins.state).pinned ?? []).includes(filed.id))) failures.push(`a:pin: the store's lab-pins doesn't hold ${filed.id}`);
-    const writes = store.requests(pinFrom).filter((r) => r.created_at >= pinFrom);
-    const onDefault = writes.filter((r) => r.flow_kind === DEFAULT_WRITE_FLOW);
-    const sessions = new Map(store.sessions().map((s) => [s.id, s]));
-    if (onDefault.length !== 1) failures.push(`a:pin: ${onDefault.length} request(s) on the default write flow for one pin (all new requests: ${writes.map((r) => r.flow_kind).join(", ") || "none"})`);
-    for (const r of onDefault) {
-      const s = r.session_id === null ? undefined : sessions.get(r.session_id);
-      if (s === undefined || s.user_id !== user || r.user_id !== user) failures.push(`a:pin: the pin's request ${r.id} isn't in a session owned by ${user} (session ${r.session_id}, its user ${s?.user_id}, the request's ${r.user_id})`);
-    }
-    notes.push(`pin: ${writes.length} new request(s): ${writes.map((r) => `${r.flow_kind} ${r.status}`).join(", ")}`);
-    if (errors.length > 0) notes.push(`page errors: ${errors.slice(0, 3).join(" | ")}`);
 
     // ── a:no-read-session · every session the run made has a request, a task or a run in it.
     const made = tell.over("a:no-read-session · sessions the run made", store.sessions(startedAt).filter((s) => s.flow_kind !== "closure-probe"));

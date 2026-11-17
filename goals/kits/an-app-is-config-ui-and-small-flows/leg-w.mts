@@ -74,6 +74,8 @@ export async function probeWrites(origin: string, user: string, store: Store, fa
     const scope = probeResources[ref].scope;
     for (const [write, send] of Object.entries(contentWrites(api, sessionId, ref))) {
       const res = await send();
+      // Long enough for the store's watcher to see a version a route wrote, before the next write replaces it.
+      await new Promise((r) => setTimeout(r, 400));
       probed.push(`${write} at ${scope}: ${res.status}`);
       if (res.status !== 501) failures.push(`w:routes: client.content ${write} at ${scope} scope answered ${res.status}, not 501: ${(await res.text()).slice(0, 160)}`);
     }
