@@ -8,10 +8,12 @@
  *   b  the teammates host on the same kits (`b:installs`, `b:folder`, `b:one-home`)
  *   w  every client write to a user or org resource is a request in a flow
  *      (`w:routes`, `w:no-runby`, `w:recorded`), read from leg a's run
+ *   j2 Shift Manager opens Projects, Usage and Schedules: each draws, none makes a session
+ *      only to read, and reading writes nothing but Usage's one Re-check
  *   j4 a task's change re-reads its one row, and no socket frame carries a row
  *   j5 one hook: the retired read names stay gone, and a view calls no model
  *
- * `GOAL_LEGS=a,b,w,j4,j5` (the default) picks legs; leg w and j4 ride on leg a.
+ * `GOAL_LEGS=a,b,w,j2,j4,j5` (the default) picks legs; leg w and j4 ride on leg a.
  *
  * Controls (`GOAL_CONTROL=<name>`, same command), each must FAIL what it names:
  *   - `todays-main`: the inventory on the lab as it was before the epic's first
@@ -23,6 +25,8 @@
  *   - `direct-write`: the content routes write a user or org collection instead
  *     of answering 501. FAILS `w:routes` and `w:recorded`.
  *   - `skip-unknown`: the kits' claim pass reports nothing unclaimed. FAILS `b:folder`.
+ *   - `schedules-write`: Shift Manager's Schedules sends a write each time it reads (pages built
+ *     from a patched copy). FAILS `j2:read-writes-nothing`.
  *
  * Run: cd goals && pnpm tsx kits/an-app-is-config-ui-and-small-flows/run.mts
  */
@@ -32,6 +36,7 @@ import { join } from "node:path";
 import { createClient } from "@flow-state-dev/client";
 import { assertPatched, describePatches, goalAttempts, goalTmpDir, loadFixture, modulePatchEnv, REPO_ROOT, runGoal, RUN_STAMP, type ModulePatch, type Tell } from "../../lib/index.mts";
 import { inventoryOf } from "./inventory.mts";
+import { journeyTwo } from "./journey-j2.mts";
 import { legA, type LegA } from "./leg-a.mts";
 import { legB } from "./leg-b.mts";
 import { probeWrites, recordedWrites } from "./leg-w.mts";
@@ -39,7 +44,7 @@ import { MODEL_VIEWS, PROBE_FLOW } from "./probe-flow.mts";
 
 const fixture = loadFixture<{ ask: string }>(import.meta.url);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const LEGS = new Set((process.env.GOAL_LEGS ?? "a,b,w,j4,j5").split(",").map((s) => s.trim()));
+const LEGS = new Set((process.env.GOAL_LEGS ?? "a,b,w,j2,j4,j5").split(",").map((s) => s.trim()));
 const LAB = join(REPO_ROOT, "labs/claude-code-style");
 /** The parent of the epic's first implementation merge (#5090): the lab before the epic built anything. */
 const TODAYS_MAIN = "705c14017a";
@@ -62,7 +67,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   ],
   "skip-unknown": [{ module: KITS, from: String.raw`await opened\.unclaimed\(\)`, to: "await opened.unclaimed().then(() => [])" }],
 };
-const KNOWN = ["", "todays-main", "planted-adapter", ...Object.keys(PATCHES)];
+const KNOWN = ["", "todays-main", "planted-adapter", "schedules-write", ...Object.keys(PATCHES)];
 if (!KNOWN.includes(CONTROL)) throw new Error(`setup: unknown GOAL_CONTROL "${CONTROL}"; known: ${KNOWN.filter(Boolean).join(", ")}`);
 const scratch = goalTmpDir("closure-an-app-is-config");
 const MARK = join(scratch, "patched.txt");
@@ -158,6 +163,10 @@ await runGoal(async (failures, tell) => {
   // ── leg b
   if (LEGS.has("b")) await legB(failures, notes, tell, patchEnv, new Set(CONTROL === "skip-unknown" ? ["b:folder"] : ["b:installs", "b:folder", "b:one-home"]));
   if (CONTROL === "skip-unknown") return { failures, evidence: notes.join(" · ") };
+
+  // ── journey j2: Shift Manager reads user and org data
+  if (LEGS.has("j2") || CONTROL === "schedules-write") await journeyTwo(CONTROL, failures, notes, tell);
+  if (CONTROL === "schedules-write") return { failures, evidence: notes.join(" · ") };
 
   // ── leg a in the browser, then w, j4 and j5 on the same lab.
   let a: LegA | undefined;
