@@ -15,7 +15,7 @@
  */
 import { createClient, viewRef } from "@flow-state-dev/client";
 import { watchView } from "@flow-state-dev/client/internal";
-import { labPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
+import { appPins } from "../../../labs/claude-code-style/flows/user-marks.mts";
 import { listFlowRoutes } from "../../../packages/engine/src/routes/router.ts";
 import type { Tell } from "../../lib/index.mts";
 import { PINS_SEEN_VIEW, probeResources, PROBE_FLOW } from "./probe-flow.mts";
@@ -168,7 +168,7 @@ export async function pinSeam(origin: string, user: string, failures: string[], 
     const latencies: number[] = [];
     for (let i = 1; i <= 5; i++) {
       const id = `closure-seam-${i}-${Date.now()}`;
-      await fsd.resource(labPins).update((s) => ({ pinned: [...s.pinned, id] }));
+      await fsd.resource(appPins).update((s) => ({ pinned: [...s.pinned, id] }));
       const written = Date.now();
       let reached: number | undefined;
       for (const end = written + 3_000; Date.now() < end && reached === undefined; await new Promise((r) => setTimeout(r, 20))) {
