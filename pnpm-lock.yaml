@@ -996,6 +996,9 @@ importers:
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../packages/testing
+      '@flow-state-dev/vercel':
+        specifier: workspace:*
+        version: link:../packages/vercel
       '@flow-state-dev/workforce':
         specifier: workspace:*
         version: link:../packages/workforce
@@ -1434,12 +1437,6 @@ importers:
         specifier: ^5.0.0
         version: 5.11.0(supports-color@8.1.1)
     devDependencies:
-      '@flow-state-dev/scheduled':
-        specifier: workspace:*
-        version: link:../scheduled
-      '@flow-state-dev/testing':
-        specifier: workspace:*
-        version: link:../testing
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
@@ -1834,6 +1831,9 @@ importers:
       '@flow-state-dev/patterns':
         specifier: workspace:*
         version: link:../patterns
+      '@flow-state-dev/scheduled':
+        specifier: workspace:*
+        version: link:../scheduled
       '@flow-state-dev/store-sqlite':
         specifier: workspace:*
         version: link:../store-sqlite
@@ -1919,9 +1919,6 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../engine
-      '@flow-state-dev/scheduled':
-        specifier: workspace:*
-        version: link:../scheduled
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.14(hono@4.12.27)

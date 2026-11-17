@@ -113,7 +113,10 @@ export {
   type FlowStateVoiceConfig,
   type JobQueueAdapter,
   type ProcessingHandle,
-  type JobQueueMode
+  type JobQueueMode,
+  type SchedulerAdapter,
+  type ScheduleTicker,
+  type ScheduleTickReport
 } from "./flowstate/types";
 export {
   createResponseEmitter,

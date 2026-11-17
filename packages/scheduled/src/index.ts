@@ -5,9 +5,10 @@
  *
  *   POST /api/flows/:kind/schedules/:scheduleId/dispatch
  *
- * Hosts run their own scheduler (Vercel Cron, Cloud Scheduler,
- * EventBridge, GitHub Actions, `node-cron`) and POST to this endpoint
- * when a schedule is due. The framework owns the configuration model
+ * The engine's schedule tick POSTs to this endpoint when a schedule is
+ * due: each minute from the local cron (`createFlowState`'s default), or
+ * once per call of a scheduler adapter's route (`vercelScheduler()` from
+ * `@flow-state-dev/vercel`). The framework owns the configuration model
  * (`schedules` on `defineFlow`), dispatch contract, two-phase auth
  * (gateway → schedule.principal), one firing per scheduled time, and provenance
  * stamping (`source: 'scheduled'`).
@@ -35,7 +36,6 @@ export { findScheduledRequest } from "./findScheduledRequest";
 export {
   createResourceCollectionScheduleResolver,
   defaultParseScheduleId,
-  formatScheduleId,
   type CreateResourceCollectionScheduleResolverOptions,
   type ParsedScheduleId,
   type ScheduleResourceState

@@ -19,20 +19,8 @@
 import { CronExpressionParser } from "cron-parser";
 import type { ResourceStateStore } from "@flow-state-dev/engine/host";
 import type { ResolvedPrincipal } from "@flow-state-dev/core/types";
+import { latestScheduledTime } from "@flow-state-dev/core/internal";
 import { firedRecordKey } from "./firedRecords";
-
-/** The latest scheduled time at or before `at`, or `null` when the cron has none. */
-function latestAtOrBefore(cron: string, timezone: string, at: number): number | null {
-  try {
-    // `prev()` is strictly before its current date, so start a millisecond on.
-    return CronExpressionParser.parse(cron, { tz: timezone, currentDate: new Date(at + 1) })
-      .prev()
-      .toDate()
-      .getTime();
-  } catch {
-    return null;
-  }
-}
 
 /** The first scheduled time strictly after `at`, or `null` when the cron has none. */
 function firstAfter(cron: string, timezone: string, at: number): number | null {
@@ -85,7 +73,7 @@ export type ScheduledTimeResult =
  */
 export function scheduledTimeOf(cron: string, timezone: string, carried: string | undefined, now: number): ScheduledTimeResult {
   if (carried === undefined) {
-    const at = latestAtOrBefore(cron, timezone, now + SCHEDULED_TIME_TOLERANCE_MS);
+    const at = latestScheduledTime(cron, timezone, now + SCHEDULED_TIME_TOLERANCE_MS);
     if (at === null) {
       return { ok: false, error: "not_a_scheduled_time", message: `schedule "${cron}" has no scheduled time already due` };
     }
@@ -99,7 +87,7 @@ export function scheduledTimeOf(cron: string, timezone: string, carried: string 
       message: `nominalFireTime ${JSON.stringify(carried)} is not an ISO-8601 time`
     };
   }
-  const candidates = [latestAtOrBefore(cron, timezone, sent), firstAfter(cron, timezone, sent)].filter(
+  const candidates = [latestScheduledTime(cron, timezone, sent), firstAfter(cron, timezone, sent)].filter(
     (time): time is number => time !== null && Math.abs(time - sent) <= SCHEDULED_TIME_TOLERANCE_MS
   );
   const at = candidates.sort((x, y) => Math.abs(x - sent) - Math.abs(y - sent))[0];
@@ -122,9 +110,9 @@ export function scheduledTimeOf(cron: string, timezone: string, carried: string 
 
 /** Whether `at` is more than one period behind the latest scheduled time already due at `now`. */
 function isStale(cron: string, timezone: string, at: number, now: number): boolean {
-  const latest = latestAtOrBefore(cron, timezone, now + SCHEDULED_TIME_TOLERANCE_MS);
+  const latest = latestScheduledTime(cron, timezone, now + SCHEDULED_TIME_TOLERANCE_MS);
   if (latest === null || at >= latest) return false;
-  const before = latestAtOrBefore(cron, timezone, latest - 1);
+  const before = latestScheduledTime(cron, timezone, latest - 1);
   return before !== null && at < before;
 }
 

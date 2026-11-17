@@ -81,6 +81,10 @@ No untrue claim found.
 
 - Read 1, 3 readers, no tools. Missed per question: 0, 0, 0, 0, 0, 0. No gap. Guessed at: `draftReply` (not described on the page; treated only as a block that reads user state), `licenses` (the page uses `licenses`; treated as an equivalent org-state field), `user.stateSchema` (the page declares user state with `userStateSchema` on a block; treated as the same thing), Session-scope `client.expose` form (the page only shows `user: { client: { expose: [...] } }`; session scope assumed to work the same way), Bob's plan value `free` (the page says his plan stays his, and shows Bob on `free` in a figure description), `draftReply` (not mentioned on the page; treated as just another block), `licenses` (the page's org field is `licenses`; treated as the same kind of org-state field), `user.stateSchema` on the flow (page only shows `userStateSchema` on a block; treated as equivalent), `session` client.expose syntax (page only shows the `user` scope's expose; extended by analogy), Bob's plan value when he has not set one (page example says "free"; otherwise the schema default), draftReply (the page never mentions it; I treated it as just a block that reads user state), licenses (the page uses `licenses`; I treated it as an equivalent org-state field), session-scope `client.expose` syntax (the page only shows the `user` scope form; I inferred the session form), flow's `user.stateSchema` (the page declares user state with `userStateSchema` on a block, not on the flow; I took the question to mean the same thing).
 
+## 10 · Owner read
+
+Read, 2026-11-16. The owner read the page and recorded no findings.
+
 ## Reference rows
 
 - Operation semantics: incState adds to a number as one step; patchState merges fields; state is read-only on ctx and changes only through these calls. The page keeps the model (read and write through ctx) and links to this row, which already exists as the page's own Next target. → R-07

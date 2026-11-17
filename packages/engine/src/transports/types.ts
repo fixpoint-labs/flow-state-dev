@@ -169,6 +169,9 @@ export interface InboundRequestEnvelope {
    * budget off the carried core that `runAction` runs. This within-run
    * degradation is the accepted cost of the dynamic schedule's ad-hoc path,
    * alongside its non-recoverability; static bindings have neither limitation.
+   *
+   * Not serializable, so a dispatch carrying it runs in the dispatching
+   * process whatever runner is installed: a job queue never sees it.
    */
   resolvedActionCore?: ActionCore;
 

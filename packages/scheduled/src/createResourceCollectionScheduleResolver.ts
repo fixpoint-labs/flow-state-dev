@@ -70,20 +70,8 @@ export interface CreateResourceCollectionScheduleResolverOptions {
 }
 
 /**
- * The dispatch id of a dynamic schedule: `<orgId>/<userId>/<key>`, each part
- * URL-encoded so an org or user id containing `/` round-trips. The inverse of
- * {@link defaultParseScheduleId}.
- *
- * Put it on a dispatch URL as one more encoded path segment, since the router
- * decodes each segment once:
- * `/api/flows/<kind>/schedules/${encodeURIComponent(formatScheduleId(...))}/dispatch`.
- */
-export function formatScheduleId(orgId: string, userId: string, key: string): string {
-  return [orgId, userId, key].map(encodeURIComponent).join("/");
-}
-
-/**
- * Default `parseId`: `<orgId>/<userId>/<key>`. Splits on the first two `/`
+ * Default `parseId`: `<orgId>/<userId>/<key>`, the inverse of core's
+ * `formatScheduleId`. Splits on the first two `/`
  * and URL-decodes each part; the key keeps any further `/`, so a hand-built
  * nested key stays whole. All three parts must be non-empty, and an id with
  * fewer parts names no org and parses as `null`.

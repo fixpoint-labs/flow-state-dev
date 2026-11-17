@@ -25,6 +25,7 @@ import { createGateway } from "@ai-sdk/gateway";
 import { createFlowState, inMemoryStores, filesystemStores, type FlowState, type StoreAdapter } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
+import { vercelScheduler } from "@flow-state-dev/vercel";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
@@ -109,6 +110,12 @@ const pgStores = vercelPostgresStores();
 // its pool, so this is safe regardless of the active profile (dev never builds
 // the pool, leaving the proxy a no-op, so nothing is scheduled outside prod).
 setScheduleIndexImpl(pgStores.scheduleIndex);
+
+// When this app's schedules fire. On Vercel no process stays up for the local
+// cron, so one Vercel Cron entry (`vercel.json`) calls this scheduler's route
+// (`app/api/cron/schedules`). Everywhere else (`next dev`, `fsdev dev`) the
+// default local cron fires them each minute.
+export const scheduler = vercelScheduler();
 
 // The team under `workforce/`.
 //
@@ -228,6 +235,7 @@ const flowstate = createFlowState({
   // runtime the router uses.
   jobQueue: bullmqDispatch ? bullmq : undefined,
   adapters: [createScheduledTransportAdapter()],
+  scheduler: process.env.VERCEL ? scheduler : undefined,
   // Who every caller is, for every flow that brings no resolver of its own:
   // the assistant's flow and the workforce's copies. One
   // organization and one user, both constants, read from nothing on the

@@ -13,7 +13,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { CronExpressionParser } from "cron-parser";
-import { createScheduledTransportAdapter, formatScheduleId } from "@flow-state-dev/scheduled";
+import { formatScheduleId } from "@flow-state-dev/core";
+import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { messageOf, ORG } from "./conversation-board-harness";
 import { bootSubscriptionsHost, event, github, revoked, type SubscriptionsHost } from "./subscriptions-harness";

@@ -30,8 +30,8 @@ import {
   createScheduledTransportAdapter,
   defaultParseScheduleId,
   defineScheduleCollection,
-  formatScheduleId,
 } from "../src";
+import { formatScheduleId } from "@flow-state-dev/core/types";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
 const SECRET = "scheduler-secret-do-not-share";

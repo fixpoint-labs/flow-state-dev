@@ -75,6 +75,10 @@ Checked against the code: the page as pass 4 read it after the draft, sha256 f9d
 
 - Read 1, 3 readers, no tools. Missed per question: 0, 0, 0, 0, 0, 3. Gaps: "`supportAgent` already gets tools from a capability through `uses`. You edit it to add `tools: [lookUpOrder]`. Which tools can the model call now?" missed by 3 of 3 readers; the key: Only `lookUpOrder`. Declaring `tools` on a generator fences it: tools a capability would contribute are dropped once the block declares `tools`, even `tools: []`. Declaring nothing leaves the capability's tools in (section 5, `fence:1-30`, `cfg:73`). The model only gets what you hand it, so the list you declare is all it can reach (section 7). To keep the capability's tools, list them yourself.. Guessed at: Question 6: the page never mentions capabilities or the `uses` option, so I could not say whether `tools: [lookUpOrder]` adds to or replaces the tools a capability provides., Question 3: whether `lookUpOrder` can be a step in `handleTicket` specifically. I read it from the general statement that a block can be a tool or a step., The page does not say how `tools` combines with tools from a capability via `uses`. Capabilities are not mentioned on this page, so Q6 is unanswerable from it., The exact limits on the loop and the exact behavior of failed tool calls are only referred to the generators reference, so I did not guess them., Question 5: I treated "what happens to the customer's request" as covered only by the general statement that a failing tool does not end the run. The page does not describe the order-service-down case or the final reply specifically., Question 6: "capability" and `uses` do not appear on the page, so I could not say how they combine with `tools`..
 
+## 10 · Owner read
+
+Read, 2026-11-16. The owner read the page and recorded no findings.
+
 ## Reference rows
 
 - Failed tool call: the run continues, the model receives the error and may retry or answer; listed beside the tool-loop limits (what ends a loop, step cap). → R-02

@@ -1,8 +1,8 @@
 /**
  * Scheduled-actions transport adapter. Mounts
  * `POST /api/flows/:flowKind/schedules/:scheduleId/dispatch` and
- * `GET /api/flows/:flowKind/schedules` per flow. Hosts run the actual
- * scheduler; the adapter handles auth, validation, firing each scheduled
+ * `GET /api/flows/:flowKind/schedules` per flow (under `basePath`). The
+ * engine's schedule tick sends the fires; the adapter handles auth, validation, firing each scheduled
  * time at most once (recorded in the host's store), overlap policy, and
  * `source: "scheduled"` provenance.
  */
@@ -25,11 +25,13 @@ export interface CreateScheduledTransportAdapterOptions {
  */
 export function createScheduledTransportAdapter(
   options: CreateScheduledTransportAdapterOptions = {}
-): InboundTransportAdapter {
+): InboundTransportAdapter & { readonly basePath: string } {
   const basePath = normalizeBasePath(options.basePath ?? "/api/flows");
 
   return {
     source: SCHEDULED_TRANSPORT_SOURCE,
+    // Read by the engine's schedule tick, so each fire is sent where these routes are mounted.
+    basePath,
     createBindings(host: InboundTransportHost) {
       return {
         routes: [

@@ -41,8 +41,11 @@ describe("@flow-state-dev/bullmq exports", () => {
     expect(typeof mod.createRedisStreamBridge).toBe("function");
   });
 
-  it("exports schedule index factory", async () => {
-    const mod = await import("../src/index");
-    expect(typeof mod.createBullmqScheduleIndex).toBe("function");
+  // FIX-2752 D1: the engine's tick fires every schedule, elected by the store's lease; BullMQ keeps no schedule path of its own.
+  it("exports no schedule path of its own", async () => {
+    const mod: Record<string, unknown> = await import("../src/index");
+    expect(Object.keys(mod).filter((name) => /schedul/i.test(name))).toEqual([]);
+    const removed = "@flow-state-dev/bullmq/schedules";
+    await expect(import(/* @vite-ignore */ removed)).rejects.toThrow();
   });
 });

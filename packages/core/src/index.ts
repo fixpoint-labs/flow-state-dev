@@ -314,7 +314,7 @@ export type {
   SchedulesConfig
 } from "./types/schedules";
 
-export { defineScheduleBinding } from "./types/schedules";
+export { defineScheduleBinding, formatScheduleId } from "./types/schedules";
 
 export type {
   ConcurrencyConfig,

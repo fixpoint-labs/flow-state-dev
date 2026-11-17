@@ -3,9 +3,10 @@
  *
  * The framework owns the configuration model and dispatch contract — the
  * `@flow-state-dev/scheduled` adapter mounts a route per flow, validates
- * incoming dispatches, and invokes `runAction`. The host owns the actual
- * scheduler (Vercel Cron, Cloud Scheduler, EventBridge, GitHub Actions,
- * `node-cron`) and any storage backing dynamic schedules.
+ * incoming dispatches, and invokes `runAction`. The engine's one schedule
+ * tick fires every static and dynamic schedule through that endpoint; when it
+ * runs is `createFlowState({ scheduler })` (the engine's local cron by
+ * default). The app owns any storage backing dynamic schedules.
  *
  * `schedules` is a *resolution surface*: a static map (the framework-cron
  * case) plus an optional `resolve(scheduleId, ctx)` hook that returns a
@@ -238,21 +239,62 @@ export type SchedulesConfig = {
   // FIX-2536.
   /**
    * The schedule index this flow's dynamic schedules are mirrored into
-   * (`@flow-state-dev/scheduled`'s `ScheduleIndex`). A long-lived host that
-   * finds one (`serve()`) claims due entries from it each minute and dispatches
-   * them to this flow, so the flow's schedules fire with no cron of the host's
-   * own. Typed structurally so this contract can live in core.
+   * (`@flow-state-dev/scheduled`'s `ScheduleIndex`). The app's schedule tick
+   * claims due entries from it and dispatches them to this flow, so the
+   * flow's schedules fire with no cron of the host's own. One index serves
+   * one flow. Typed structurally so this contract can live in core.
    */
   index?: ScheduleDueSource;
 };
 
-/** One due entry a schedule index hands back: who it runs as, in which org, its key, and the time it fires for. */
+/**
+ * One due entry a schedule index hands back: who it runs as, in which org, its
+ * key, the time it was due, and the cron and time zone it runs on (so a tick
+ * that comes late fires it for its latest due time, not the first it missed).
+ */
 export type ScheduleDueEntry = {
   userId: string;
   orgId?: string;
   key: string;
+  cron: string;
+  /** IANA time zone the cron is read in. Default `"UTC"`. */
+  timezone?: string;
   nextFireAt: number;
 };
+
+// FIX-2752.
+/**
+ * The dispatch id of a dynamic schedule: `<orgId>/<userId>/<key>`, each part
+ * URL-encoded so an org or user id containing `/` round-trips. The engine's
+ * schedule tick dispatches by it, and `@flow-state-dev/scheduled`'s
+ * `defaultParseScheduleId` reads it back.
+ *
+ * Put it on a dispatch URL as one more encoded path segment, since the router
+ * decodes each segment once:
+ * `/api/flows/<kind>/schedules/${encodeURIComponent(formatScheduleId(...))}/dispatch`.
+ */
+export function formatScheduleId(orgId: string, userId: string, key: string): string {
+  return [orgId, userId, key].map(encodeURIComponent).join("/");
+}
+
+// FIX-2752.
+/**
+ * The latest scheduled time of `cron` in `timezone` at or before `at` (ms), or
+ * `null` when the cron has none (or does not parse). Shared by the engine's
+ * schedule tick, which fires each schedule for its latest due time, and the
+ * scheduled endpoint, which checks the time a fire carries.
+ */
+export function latestScheduledTime(cron: string, timezone: string, at: number): number | null {
+  try {
+    // `prev()` is strictly before its current date, so start a millisecond on.
+    return CronExpressionParser.parse(cron, { tz: timezone, currentDate: new Date(at + 1) })
+      .prev()
+      .toDate()
+      .getTime();
+  } catch {
+    return null;
+  }
+}
 
 /** What a host's tick needs of a schedule index: claim the entries due by `now`, advancing them. */
 export type ScheduleDueSource = {

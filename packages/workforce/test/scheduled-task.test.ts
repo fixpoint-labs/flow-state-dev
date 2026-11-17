@@ -8,7 +8,8 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CronExpressionParser } from "cron-parser";
-import { createScheduledTransportAdapter, formatScheduleId, type ScheduleIndex, type ScheduleIndexEntry } from "@flow-state-dev/scheduled";
+import { formatScheduleId } from "@flow-state-dev/core";
+import { createScheduledTransportAdapter, type ScheduleIndex, type ScheduleIndexEntry } from "@flow-state-dev/scheduled";
 import { bootBoardHost, ORG, type BoardHost } from "./conversation-board-harness";
 import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
 import { ROSTER_FLOW } from "../src/workers/keys";

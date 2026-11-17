@@ -2,9 +2,8 @@
  * `defineScheduleCollection` — opinionated wrapper around
  * `defineResourceCollection` that mirrors every create/update/delete on
  * a user-scoped schedule collection into a `ScheduleIndex`. The index
- * is what the tick handler (`createScheduleTickHandler` in
- * `@flow-state-dev/vercel/schedules`) scans each cron beat for due
- * rows.
+ * is what the engine's schedule tick claims due rows from, when the flow
+ * names it as `schedules.index`.
  *
  * Behaviour:
  *  - `enabled: false` rows are removed from the index (or skipped on

@@ -2,7 +2,8 @@
 import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { createScheduledTransportAdapter, formatScheduleId } from "@flow-state-dev/scheduled";
+import { formatScheduleId } from "@flow-state-dev/core";
+import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
