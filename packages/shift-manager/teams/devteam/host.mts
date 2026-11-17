@@ -83,6 +83,7 @@ import {
   createRoutinesCapability,
   createWorkforceCapability,
   defineAgentWorkerFlow,
+  followPullRequest,
   githubSubscriptionProvider,
   defineWorkerInventoryCollection,
   inventoryWorkers,
@@ -136,7 +137,7 @@ import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { DOCUMENT_KEY, INSPECT_ENTRY, WORKER_FACTS_DATA_TYPE, workerOf } from "./worker-config.mts";
 import { editedTree } from "./edited-tree.mts";
 import { defineAnswerPhase, defineImplementPhase, noteStartingFiles } from "./phase.mts";
-import { defineCoderJudge } from "./judge.mts";
+import { defineCoderJudge, JUDGE_MODEL } from "./judge.mts";
 import { CODER_FLOW, coderHarnessNames, defineCoderWorkerFlow, HARNESS_SETTING } from "./workforce/flows/workers/coder.mts";
 import {
   DRAIN_ENTRY,
@@ -689,7 +690,12 @@ export function operatorGitHubToken(env: NodeJS.ProcessEnv = process.env): strin
  */
 function operatorGitHub(operator: string, token: string | undefined, apiUrl: string | undefined) {
   const reads = (ctx: BlockContext) => (ctx.session.identity as { userId?: string }).userId === operator;
-  const github = githubSubscriptionProvider({ token: (ctx) => (reads(ctx) ? token : undefined), ...(apiUrl === undefined ? {} : { apiUrl }) });
+  const github = githubSubscriptionProvider({
+    token: (ctx) => (reads(ctx) ? token : undefined),
+    ...(apiUrl === undefined ? {} : { apiUrl }),
+    // A routine's `interest` is judged on the model the coder's judge and best fit run on.
+    screens: { interestModel: JUDGE_MODEL },
+  });
   return {
     ...github,
     async canRead(key: string, ctx: BlockContext) {
@@ -1116,6 +1122,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(options.withoutJudge === true ? {} : { judge: defineCoderJudge() }),
     ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
     ...(options.approveTools === true ? { approveTools: true } : {}),
+    // A run's session follows the pull request it opens, polled: a Lab on a laptop has no public URL for GitHub to push to.
+    onPullRequestRecorded: followPullRequest({ providers: [github], installation }),
     harness: labSlot(options.harness),
     ...(options.harnessName === undefined ? {} : { harnessName: options.harnessName }),
     ...(options.harnesses === undefined
