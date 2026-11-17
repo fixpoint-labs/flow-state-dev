@@ -142,13 +142,13 @@ The five worker files, as read from `tree/workers/*/WORKER.md`:
 The app with its kits and the `workforce/` folder, from `host.mts` and the tree.
 
 - `cfg` (the app's config file) is the entry: `export default await openTeammates({...})`. `cfg:50-66`. [page]
-- The app is `createFlowState({ kits: [...], fill: {...}, flows: [...], stores: {...}, adapters: [...], durable: true, resolvePrincipal, ... })`. `host:362-413`. [page; excerpt]
+- The app is `createFlowState({ kits: [...], fill: {...}, flows: [...], stores: {...}, durable: true, resolvePrincipal, ... })`. `host:362-413`. [page; excerpt]
 - Three kits in `kits: [...]` (a kit is a feature an app installs): `workforce({...})`, `harnesses({...})`, and `claudeCode()`. `host:363-391`. [page]
   - `workforce({ directory: tree, agent: {...}, routines: {...}, github: {...} })` from `@flow-state-dev/workforce/kit`: reads the `workforce/` folder and serves the roster flow and the `agent` flow. `host:364-388`, `host:71-72`. [page]
   - `harnesses({ workspace, defaultHarness, review: true, checks, runTimeoutMs, logReadiness: true })` from `@flow-state-dev/harness-manager/kit`: adds the `coder` flow (every coding worker runs on it), the `harnesses` flow with its `readiness` view, and the readiness lines in the workers' context. `host:390`, `host:62`, `hm/kit/coder-flow.ts:1-12`, `host:23-26`. [page]
   - `claudeCode()` from `@flow-state-dev/claude-code`: fills the harness slot for Claude Code. `host:391`. [page; with `fill` below]
 - The slot: `fill: { [harnesses.slots.harnesses]: [codexHarness(), cursorHarness({ model: CURSOR_MODEL })] }`: the harnesses kit leaves an opening, `harnesses.slots.harnesses`, and the app fills it with Codex's and Cursor's harnesses; `claudeCode()` fills it with Claude Code's on its own. `host:393-398`, `host:391`, `hm/kit/harnesses-kit.ts:92-93` (the doc comment example). [page, as "slots it opens / fills" for a starter]
-- Adapter: `createScheduledTransportAdapter()` is the route `serve()`'s tick dispatches each due clock routine and poll to. `host:401-402`. [ref]
+- No adapter: the route `serve()`'s tick dispatches each due clock routine and poll to is the router's built-in scheduled endpoint. [ref]
 - `durable: true`. `host:403`. [ref]
 - One extra flow, `lab-context`, whose `context` view answers (with no session) what the lab works on and with: the working folder, its problem if any, the model, the default harness, and each worker's delegates. The screen's context strip and first-run lines read it. `host:143-179`, `host:349-360`, `host:34-39`. [ref]
 - Stores: `stores: { default: { primary: sqliteStores({ filename: options.store }) } }`. `host:400`. [page]

@@ -9,42 +9,37 @@
  * once, for its latest due time after a gap (D3), so a restart over 9 AM still
  * sends the morning digest and an outage never sends a burst.
  *
- * The scheduled endpoint is `@flow-state-dev/scheduled`'s, which this package
- * cannot load; a stand-in adapter mounted on the same route records what the
- * tick sent.
+ * The scheduled endpoint is the router's own (its tests are under
+ * `test/transports/scheduled/`); here the router's `POST` is wrapped to record
+ * what the tick sent and answer 202, so these tests read the tick alone.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { SchedulesConfig } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores } from "../../src";
-import type { InboundTransportAdapter, ScheduleTicker, SchedulerAdapter } from "../../src/host";
+import { createFlowState, inMemoryStores, type FlowState } from "../../src";
+import type { ScheduleTicker, SchedulerAdapter } from "../../src/host";
 
 type Sent = { flowKind: string; scheduleId: string; nominalFireTime: string | undefined; authorization: string | null };
 
-/** The scheduled endpoint's route, recording each dispatch and answering 202. */
-function scheduledStandIn(sent: Sent[]): InboundTransportAdapter {
-  return {
-    source: "scheduled",
-    createBindings: () => ({
-      routes: [
-        {
-          method: "POST",
-          path: "/api/flows/:flowKind/schedules/*scheduleId/dispatch",
-          handler: async (req, ctx) => {
-            const body = (await req.json()) as { nominalFireTime?: string };
-            sent.push({
-              flowKind: ctx.params.flowKind!,
-              scheduleId: ctx.params.scheduleId!,
-              nominalFireTime: body.nominalFireTime,
-              authorization: req.headers.get("authorization")
-            });
-            return new Response(JSON.stringify({ status: "accepted" }), { status: 202 });
-          }
-        }
-      ]
-    })
-  };
+/**
+ * Record each dispatch the tick sends to `app`'s router, answering 202 in the
+ * endpoint's place. The tick sends through the same router `getRouter()`
+ * returns, reading its `POST` on each fire.
+ */
+async function recordFires(app: FlowState, sent: Sent[]): Promise<void> {
+  const router = await app.getRouter();
+  vi.spyOn(router, "POST").mockImplementation(async (req, ctx) => {
+    const [flowKind, , scheduleId] = ctx.params.path ?? [];
+    const body = (await req.json()) as { nominalFireTime?: string };
+    sent.push({
+      flowKind: flowKind!,
+      scheduleId: scheduleId!,
+      nominalFireTime: body.nominalFireTime,
+      authorization: req.headers.get("authorization")
+    });
+    return new Response(JSON.stringify({ status: "accepted" }), { status: 202 });
+  });
 }
 
 /** A scheduler adapter that hands the test the ticker. */
@@ -79,9 +74,9 @@ describe("the schedule tick", () => {
     const app = createFlowState({
       flows: [scheduledFlow("digest", { static: { morning: { cron: "* * * * *", block: noop } } })],
       stores: inMemoryStores(),
-      adapters: [scheduledStandIn(sent)],
       scheduler
     });
+    await recordFires(app, sent);
     const report = await scheduler.ticker!.tick();
     expect(sent).toEqual([{ flowKind: "digest", scheduleId: "morning", nominalFireTime: "2026-11-16T09:00:00.000Z", authorization: null }]);
     expect(report.dispatched).toEqual([
@@ -93,7 +88,7 @@ describe("the schedule tick", () => {
   it("sends a scheduled time once: a second tick in the same minute sends nothing (the last-tick record)", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(T);
-    const { app, sent, ticker } = staticApp("* * * * *");
+    const { app, sent, ticker } = await staticApp("* * * * *");
     await ticker.tick();
     vi.setSystemTime(T + 20_000);
     await ticker.tick();
@@ -104,7 +99,7 @@ describe("the schedule tick", () => {
   it("after a gap, fires a static schedule once, for the latest time it missed (D3)", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(T);
-    const { app, sent, ticker } = staticApp("*/5 * * * *");
+    const { app, sent, ticker } = await staticApp("*/5 * * * *");
     await ticker.tick();
     // Down from 09:00:30 to 09:23:10: 09:05, 09:10, 09:15 and 09:20 were missed.
     vi.setSystemTime(Date.parse("2026-11-16T09:23:10Z"));
@@ -116,7 +111,7 @@ describe("the schedule tick", () => {
   it("on a first tick, looks back one interval only: a schedule added today does not fire a time long past", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.parse("2026-11-16T09:30:00Z"));
-    const { app, sent, ticker } = staticApp("0 9 * * *");
+    const { app, sent, ticker } = await staticApp("0 9 * * *");
     await ticker.tick();
     expect(sent).toEqual([]);
     await app.dispose();
@@ -136,7 +131,7 @@ describe("the schedule tick, dynamic schedules", () => {
         [{ userId: "alice", orgId: "Acme/EU", key: "poll", cron: "*/5 * * * *", nextFireAt: Date.parse("2026-11-16T09:05:00Z") }]
       )
     };
-    const { app, sent, ticker } = appWith([scheduledFlow("follower", { index })]);
+    const { app, sent, ticker } = await appWith([scheduledFlow("follower", { index })]);
     const report = await ticker.tick();
     expect(claimedAt).toEqual([now]);
     expect(sent).toEqual([
@@ -149,7 +144,7 @@ describe("the schedule tick, dynamic schedules", () => {
   it("claims an index two flows name once, for the first flow that names it", async () => {
     let claims = 0;
     const index = { claimDue: async () => ((claims += 1), []) };
-    const { app, ticker } = appWith([scheduledFlow("one", { index }), scheduledFlow("two", { index })]);
+    const { app, ticker } = await appWith([scheduledFlow("one", { index }), scheduledFlow("two", { index })]);
     await ticker.tick();
     expect(claims).toBe(1);
     await app.dispose();
@@ -163,7 +158,7 @@ describe("the schedule tick, dynamic schedules", () => {
         { userId: "alice", orgId: "acme", key: "new", cron: "* * * * *", nextFireAt: at }
       ]
     };
-    const { app, sent, ticker } = appWith([scheduledFlow("follower", { index })]);
+    const { app, sent, ticker } = await appWith([scheduledFlow("follower", { index })]);
     await ticker.tick();
     expect(sent.map((s) => s.scheduleId)).toEqual(["acme/alice/new"]);
     await app.dispose();
@@ -173,7 +168,7 @@ describe("the schedule tick, dynamic schedules", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(T);
     const down = { claimDue: async () => Promise.reject(new Error("index down")) };
-    const { app, sent, ticker } = appWith([
+    const { app, sent, ticker } = await appWith([
       scheduledFlow("broken", { index: down }),
       scheduledFlow("digest", { static: { morning: { cron: "* * * * *", block: noop } } })
     ]);
@@ -184,14 +179,15 @@ describe("the schedule tick, dynamic schedules", () => {
 });
 
 /** An app with one static schedule on `cron`, its ticker and what the endpoint received. */
-function staticApp(cron: string) {
+async function staticApp(cron: string) {
   return appWith([scheduledFlow("digest", { static: { morning: { cron, block: noop } } })]);
 }
 
-/** An app serving `flows`, with the scheduled endpoint's stand-in, its ticker and what the endpoint received. */
-function appWith(flows: ReturnType<typeof scheduledFlow>[]) {
+/** An app serving `flows`, recording what the tick sent, with its ticker. */
+async function appWith(flows: ReturnType<typeof scheduledFlow>[]) {
   const sent: Sent[] = [];
   const scheduler = capturing();
-  const app = createFlowState({ flows, stores: inMemoryStores(), adapters: [scheduledStandIn(sent)], scheduler });
+  const app = createFlowState({ flows, stores: inMemoryStores(), scheduler });
+  await recordFires(app, sent);
   return { app, sent, ticker: scheduler.ticker! };
 }

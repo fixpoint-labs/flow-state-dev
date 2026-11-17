@@ -14,7 +14,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { CronExpressionParser } from "cron-parser";
 import { formatScheduleId } from "@flow-state-dev/core";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { messageOf, ORG } from "./conversation-board-harness";
 import { bootSubscriptionsHost, event, github, revoked, type SubscriptionsHost } from "./subscriptions-harness";
@@ -51,7 +50,6 @@ function boot(
   } = {}
 ) {
   host = bootSubscriptionsHost({
-    adapters: [createScheduledTransportAdapter()],
     hire: { routines: { providers: [options.provider ?? github], ...(options.declared === undefined ? {} : { declared: options.declared }) } },
     ...(options.stores === undefined ? {} : { stores: options.stores }),
     ...(options.hold === undefined ? {} : { hold: options.hold }),
@@ -740,8 +738,7 @@ describe("the app's declared routines", () => {
     // A redeploy changes the cron; hold its seed's write, and pause on the first host meanwhile.
     const second = bootSubscriptionsHost({
       stores: stores as never,
-      adapters: [createScheduledTransportAdapter()],
-      hire: { routines: { providers: [github], declared: declared("30 7 * * *") } }
+        hire: { routines: { providers: [github], declared: declared("30 7 * * *") } }
     });
     const gap = await holdWrite(second, (k, state) => k === key && state.cron === "30 7 * * *");
     const seeding = second.act("alice", "roster-alice", "listRoutines", {}, "roster");
@@ -768,7 +765,7 @@ describe("the app's declared routines", () => {
     // A redeploy moves the entry to #999 while the resume waits on its read check.
     const moved = declared();
     (moved[1]!.trigger as { event: { thread: string } }).event.thread = "github:acme/api#999";
-    const second = bootSubscriptionsHost({ stores: stores as never, adapters: [createScheduledTransportAdapter()], hire: { routines: { providers: [github], declared: moved } } });
+    const second = bootSubscriptionsHost({ stores: stores as never, hire: { routines: { providers: [github], declared: moved } } });
     await second.act("alice", "roster-alice", "listRoutines", {}, "roster");
     gated.open();
     expect((await resuming).output).toMatchObject({ ok: false, error: expect.stringMatching(/^changed/) });

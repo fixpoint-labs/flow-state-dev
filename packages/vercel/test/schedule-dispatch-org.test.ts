@@ -20,7 +20,6 @@ import type { FlowInstance, ResourceCollectionRef } from "@flow-state-dev/core/t
 import { createBearerSecretPrincipalResolver, createFlowState, runAction, type FlowState } from "@flow-state-dev/engine";
 import {
   createResourceCollectionScheduleResolver,
-  createScheduledTransportAdapter,
   defineScheduleCollection,
   type ScheduleIndex,
   type ScheduleIndexEntry
@@ -101,7 +100,6 @@ function boot(secretFrom: "env" | "option" = "env") {
   const scheduler = vercelScheduler(secretFrom === "option" ? { secret: SECRET } : {});
   const app = createFlowState({
     flows: [flow],
-    adapters: [createScheduledTransportAdapter()],
     modelResolver: createMockModelResolver({}),
     scheduler
   });

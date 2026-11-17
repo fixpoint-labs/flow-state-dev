@@ -70,7 +70,6 @@ The app is told how its schedules fire with `createFlowState({ scheduler })`. Pa
 
 ```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { vercelScheduler } from "@flow-state-dev/vercel";
 import support from "./src/flows/support/flow";
 
@@ -78,7 +77,6 @@ export const scheduler = vercelScheduler();
 
 export default createFlowState({
   flows: [support],
-  adapters: [createScheduledTransportAdapter()],
   scheduler: process.env.VERCEL ? scheduler : undefined
   // ...your stores and other options
 });

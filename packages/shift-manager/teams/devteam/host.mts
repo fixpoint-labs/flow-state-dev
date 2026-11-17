@@ -45,6 +45,7 @@ import {
   PrincipalResolutionError,
   resolveUserStorageKey,
   runAction,
+  SCHEDULED_TRANSPORT_SOURCE,
   type FlowState
 } from "@flow-state-dev/engine";
 import { ensureSessionRecord, type PrincipalResolver } from "@flow-state-dev/engine/host";
@@ -68,7 +69,6 @@ import {
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
-import { createScheduledTransportAdapter, SCHEDULED_TRANSPORT_SOURCE } from "@flow-state-dev/scheduled";
 import { createSQLiteScheduleIndex } from "@flow-state-dev/store-sqlite";
 import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
 import Database from "better-sqlite3";
@@ -1345,11 +1345,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),
     // Each user's MCP keys are written through the Lab's own route, never an
     // action, whose input its request record keeps.
-    // and `serve()`'s tick dispatches each due clock routine and poll through the scheduled route.
-    adapters: [
-      createScheduledTransportAdapter(),
-      ...(options.mcpServers === undefined ? [] : [mcpCredentialsAdapter(Object.keys(options.mcpServers))]),
-    ],
+    adapters: options.mcpServers === undefined ? [] : [mcpCredentialsAdapter(Object.keys(options.mcpServers))],
   } as never);
 
   // The Error Reporter's runs write through these stores, and every host stops

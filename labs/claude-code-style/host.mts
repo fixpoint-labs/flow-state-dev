@@ -52,7 +52,6 @@ import { cursorHarness } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
 import { ASK_MARKER_IGNORED, scriptedHarness, type Harness } from "@flow-state-dev/harness-manager";
 import { codingDrainBudgetMs, harnesses } from "@flow-state-dev/harness-manager/kit";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { createSQLiteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { initializeSchema } from "@flow-state-dev/store-sqlite/host";
 import { githubSubscriptionProvider, projectSourceCapability } from "@flow-state-dev/workforce";
@@ -258,7 +257,6 @@ export async function openLab(options: LabOptions): Promise<{ flowState: ReturnT
     },
     flows: [projects, ...goalFlows],
     stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
-    adapters: [createScheduledTransportAdapter()],
     durable: true,
     // A shutdown waits for a coding run still going, its checks and judge included, rather than the engine's 30 s default.
     dispatchDrainTimeoutMs: codingDrainBudgetMs({ checks }),

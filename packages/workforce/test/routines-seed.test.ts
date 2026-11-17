@@ -14,7 +14,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient } from "@flow-state-dev/client";
 import { formatScheduleId } from "@flow-state-dev/core";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { CronExpressionParser } from "cron-parser";
 import { ORG } from "./conversation-board-harness";
 import { bootSubscriptionsHost, github, revoked, type SubscriptionsHost } from "./subscriptions-harness";
@@ -44,7 +43,6 @@ afterEach(async () => {
 
 function boot(declared: DeclaredRoutine[] = DECLARED) {
   host = bootSubscriptionsHost({
-    adapters: [createScheduledTransportAdapter()],
     hire: { routines: { providers: [github], declared } }
   });
   return host;

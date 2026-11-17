@@ -1,8 +1,18 @@
 # Scheduled Actions Adapter
 
-`@flow-state-dev/scheduled` mounts the endpoint a flow's schedules are
-fired through, over HTTPS. It is a concrete `InboundTransportAdapter` —
-see [Inbound Transports](./inbound-transports.md) for the contract.
+The engine's router mounts the endpoint a flow's schedules are fired
+through, over HTTPS, on every app: a built-in `InboundTransportAdapter`
+beside the HTTP adapter (`packages/engine/src/transports/scheduled/`), in the
+list `createFlowApiRouter` builds before the app's own `adapters`. See
+[Inbound Transports](./inbound-transports.md) for the contract. There is no
+line to add: a flow declares `schedules` and its routes answer, also when
+it is registered after the router is built. The routes live under
+`/api/flows` only, like webhooks; an app that registers the same path is
+refused at startup by the router's collision check.
+
+`@flow-state-dev/scheduled` keeps what a flow definition needs (schedule
+collections, the resolver over them, the `ScheduleIndex` contract) and
+imports no engine; the engine never imports it.
 
 `host.dispatch` runs the action. `RequestRecord.source = "scheduled"`
 carries provenance. The framework owns the dispatch contract,
@@ -11,8 +21,7 @@ fires every schedule of every flow ([The tick](#the-tick)). The host
 owns the storage that backs dynamic schedules, and on a serverless host
 the one cron route that runs the tick. There is no retry queue.
 
-Install, mounting, static/dynamic examples, and the Vercel walkthrough
-live in
+Static/dynamic examples and the Vercel walkthrough live in
 [Scheduled actions](../../apps/docs/docs/server/scheduled.md).
 
 ## Endpoint shape
@@ -88,7 +97,11 @@ failures return 400 `invalid_schedule`.
 `handleDispatch` runs in this order:
 
 1. Validate the URL `scheduleId` against the dynamic-id pattern.
-2. Resolve the flow. Unknown → 404.
+2. Resolve the flow. Unknown, or registered with no `schedules` → 404
+   `{ error: "flow_not_found" }`, the same bytes for both, before the body
+   is read or any resolver runs: an app with no schedules never sees a
+   `scheduled` call, and the route can't confirm an instance the caller
+   can't see. The listing route does the same.
 3. Parse the body (both fields optional). Preserve `rawBody` for
    signature-checking resolvers.
 4. Gateway auth via `host.resolvePrincipal({ source: "scheduled" })`.
@@ -171,8 +184,8 @@ schedule (the only thing the adapter writes), and `host.dispatch`. It never list
 — the engine's tick finds due ids: static ones from the flow's config,
 dynamic ones from the flow's `ScheduleIndex`.
 
-`findScheduledRequest` lives in `@flow-state-dev/scheduled`, not on
-`ActiveRequestRegistry`. Promoting it to a registry method is a
+`findScheduledRequest` lives beside the endpoint in the engine
+(`transports/scheduled/`), not on `ActiveRequestRegistry`. Promoting it to a registry method is a
 non-breaking follow-up if the scan is hot.
 
 ## Envelope construction
@@ -297,8 +310,8 @@ scheduler only calls `ScheduleTicker.tick`:
   On Vercel with the local default, startup warns to pass it.
 - **`false`**: nothing fires the tick.
 
-A flow that declares a static schedule or an index with no scheduled
-transport mounted fails `ready()`, naming the line to add.
+The tick sends each fire to `/api/flows/<kind>/schedules/<id>/dispatch`,
+the router's own path.
 
 `schedules.index` is a structural `{ claimDue(now, limit) }` in core, so a
 flow carries its index without core loading this package.
@@ -329,4 +342,4 @@ user's fastest subscription's cadence (5, 10, 15, 20, 30 or 60 minutes).
   adapter boundary.
 - [`@flow-state-dev/scheduled` README](../../packages/scheduled/README.md)
 - [Scheduled actions](../../apps/docs/docs/server/scheduled.md) —
-  install, mounting, examples, the Vercel route.
+  examples, the Vercel route.

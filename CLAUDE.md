@@ -136,7 +136,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/node`              | Node HTTP host adapter — serve a long-lived FSD server in one call      |
 | `@flow-state-dev/bullmq`            | BullMQ host/runtime adapter — durable background jobs, native cron, full-flow worker dispatch |
 | `@flow-state-dev/mcp`               | MCP transport adapter                                                   |
-| `@flow-state-dev/scheduled`         | Scheduled-actions transport                                             |
+| `@flow-state-dev/scheduled`         | Schedule collections, resolver and schedule-index contract (the dispatch endpoint is the engine's) |
 | `@flow-state-dev/voice-openai`      | OpenAI voice transport                                                  |
 | `@flow-state-dev/claude-code`       | Claude Code integration — run a Claude Code agent in-process as a harness block (Agent SDK) |
 | `@flow-state-dev/codex`             | Codex integration — run OpenAI's Codex agent as a block through the Codex SDK, returning core's neutral harness handle |

@@ -427,7 +427,7 @@ flow X over MCP") lives on the flow definition, not the adapter shape.
 | `http` | The default HTTP adapter |
 | `mcp` | MCP server adapter (`@flow-state-dev/mcp`) |
 | `webhook` | Webhook receivers |
-| `scheduled` | Scheduled dispatch (`@flow-state-dev/scheduled`, FIX-440) |
+| `scheduled` | Scheduled dispatch (the router's built-in scheduled endpoint; `SCHEDULED_TRANSPORT_SOURCE` from `@flow-state-dev/engine`) |
 | `notification` | No built-in transport sends it. A custom transport may use it, and the DevTool labels those requests *Notification* |
 
 Custom transports pick their own string, except `cli`, which is reserved for
@@ -438,8 +438,9 @@ anything else.
 
 ## The scheduled adapter shape
 
-`@flow-state-dev/scheduled` (FIX-440) is the third concrete adapter
-after HTTP and MCP. It mounts a single dispatch route per flow
+The scheduled endpoint (FIX-440; built into the router since FIX-2753) is
+the router's second built-in adapter after HTTP, mounted on every app with
+no line. It mounts a single dispatch route per flow
 (`POST /api/flows/:flowKind/schedules/:scheduleId/dispatch`) and a
 listing sibling (`GET /api/flows/:flowKind/schedules`). Dispatch is
 fire-and-forget: the adapter builds an envelope with

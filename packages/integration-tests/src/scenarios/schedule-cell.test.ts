@@ -27,10 +27,9 @@ import {
 } from "@flow-state-dev/engine/host";
 import {
   createResourceCollectionScheduleResolver,
-  createScheduledTransportAdapter,
   defaultParseScheduleId,
   defineScheduleCollection,
-} from "../src";
+} from "@flow-state-dev/scheduled";
 import { formatScheduleId } from "@flow-state-dev/core/types";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
@@ -147,7 +146,6 @@ function boot() {
   const router = createFlowApiRouter({
     registry,
     stores,
-    adapters: [createScheduledTransportAdapter()],
   });
   const register = (flow: unknown, pin?: InstanceOwnerPin) => {
     registry.register(flow as FlowInstance, pin === undefined ? undefined : { pin });

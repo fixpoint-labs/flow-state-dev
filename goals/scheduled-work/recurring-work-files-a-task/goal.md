@@ -20,7 +20,7 @@
 
 **Controls:**
 
-- `GOAL_CONTROL=memory-dedupe` patches the endpoint's claim (`packages/scheduled/src/scheduledTime.ts`) to read and write the fired record in the process's own memory instead of the shared store: today's per-process dedupe. It must FAIL `b:exactly-one-task`. It also fails `b:early-files-nothing`, by the same cause: a fresh process doesn't know the time already fired. No leg has an isolating red state for the two.
+- `GOAL_CONTROL=memory-dedupe` patches the endpoint's claim (`packages/engine/src/transports/scheduled/scheduledTime.ts`) to read and write the fired record in the process's own memory instead of the shared store: today's per-process dedupe. It must FAIL `b:exactly-one-task`. It also fails `b:early-files-nothing`, by the same cause: a fresh process doesn't know the time already fired. No leg has an isolating red state for the two.
 - Today's `main` has no schedule actions on the roster flow, so it fails leg a before any task (`a1:` setup, the roster's save not defined) and leg c with it.
 
 ## Verdict log

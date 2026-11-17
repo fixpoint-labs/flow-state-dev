@@ -41,7 +41,7 @@ export const SCHEDULE_TICK_INTERVAL_MS = 60_000;
 const LAST_TICK_SCOPE_ID = "__fsd_system__";
 const LAST_TICK_KEY = "schedule-tick/last";
 
-/** The dispatch endpoint's default mount prefix: the scheduled transport's own default `basePath`. */
+/** Where the router mounts its built-in scheduled endpoint: the framework's own namespace. */
 const DISPATCH_BASE_PATH = "/api/flows";
 
 /** One fire the tick sends: which schedule of which flow, for which scheduled time. */
@@ -183,20 +183,19 @@ export async function runScheduleTick(options: RunScheduleTickOptions): Promise<
 
 /**
  * The dispatch endpoint's request for one fire:
- * `POST <base><basePath>/<kind>/schedules/<id>/dispatch`, its body naming the
+ * `POST <base>/api/flows/<kind>/schedules/<id>/dispatch` (the router's built-in
+ * scheduled endpoint), its body naming the
  * scheduled time, with the bearer secret when there is one.
  */
 export function scheduleDispatchRequest(options: {
   readonly baseUrl: string;
   readonly fire: ScheduleDispatch;
   readonly secret?: string;
-  /** Where the scheduled transport is mounted. Default `/api/flows`. */
-  readonly basePath?: string;
 }): { url: string; path: string[]; init: { method: "POST"; headers: Record<string, string>; body: string } } {
   const base = options.baseUrl.endsWith("/") ? options.baseUrl.slice(0, -1) : options.baseUrl;
   const { flowKind, scheduleId, nominalFireTime } = options.fire;
   return {
-    url: `${base}${options.basePath ?? DISPATCH_BASE_PATH}/${encodeURIComponent(flowKind)}/schedules/${encodeURIComponent(scheduleId)}/dispatch`,
+    url: `${base}${DISPATCH_BASE_PATH}/${encodeURIComponent(flowKind)}/schedules/${encodeURIComponent(scheduleId)}/dispatch`,
     // The router's view of the same path: each segment decoded once.
     path: [flowKind, "schedules", scheduleId, "dispatch"],
     init: {

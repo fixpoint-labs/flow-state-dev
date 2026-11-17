@@ -5,13 +5,11 @@ import {
   createMockTransportHost,
   createInboundTransportConformanceTests
 } from "@flow-state-dev/testing/conformance";
-import { ConcurrencyRejectedError, type ActiveRequestRegistry } from "@flow-state-dev/engine/host";
-import { PrincipalResolutionError } from "@flow-state-dev/engine";
-import { createInMemoryResourceStateStore } from "@flow-state-dev/engine/host";
-import {
-  createScheduledTransportAdapter,
-  SCHEDULED_TRANSPORT_SOURCE
-} from "../src";
+import { ConcurrencyRejectedError, type ActiveRequestRegistry } from "../../../src/host";
+import { PrincipalResolutionError } from "../../../src";
+import { createInMemoryResourceStateStore } from "../../../src/host";
+import { SCHEDULED_TRANSPORT_SOURCE } from "../../../src";
+import { createScheduledEndpointAdapter } from "../../../src/transports/scheduled/createScheduledEndpointAdapter";
 import { recentTimes } from "./recent-times";
 
 /** The latest time of the flows' monthly cron ("0 0 1 * *") already due. */
@@ -116,14 +114,14 @@ function makeStubActiveRegistry(entries: unknown[] = []): ActiveRequestRegistry 
   } as ActiveRequestRegistry;
 }
 
-describe("createScheduledTransportAdapter — dispatch", () => {
+describe("createScheduledEndpointAdapter — dispatch", () => {
   it("declares source 'scheduled'", () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     expect(adapter.source).toBe(SCHEDULED_TRANSPORT_SOURCE);
   });
 
   it("returns 400 for an invalid schedule id pattern", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = withFlow(createMockTransportHost(), buildFlow());
     const route = adapter.createBindings(host).routes!.find((r) => r.method === "POST")!;
     const { request, ctx } = postRequest("billing", "BAD ID");
@@ -134,7 +132,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("returns 404 when the flow is not registered", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = createMockTransportHost();
     const route = adapter.createBindings(host).routes!.find((r) => r.method === "POST")!;
     const { request, ctx } = postRequest("missing", "monthly-invoices");
@@ -145,7 +143,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("returns 404 when the schedule id is not declared and there is no resolver", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = withFlow(
       withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
       buildFlow()
@@ -159,7 +157,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("dispatches a static schedule and stamps source/metadata", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = withFlow(
       withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
       buildFlow()
@@ -186,7 +184,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("dispatches a dynamic schedule via the resolver and stamps origin='dynamic'", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const flow = buildFlow({
       kind: "reminders",
       actions: {
@@ -227,7 +225,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("returns 404 when the resolver returns null", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const flow = buildFlow({
       kind: "reminders",
       actions: { sendDigest: { inputSchema: z.object({}), block: noopBlock } },
@@ -244,7 +242,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("returns 500 when the resolver throws", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const flow = buildFlow({
       kind: "reminders",
       actions: { sendDigest: { inputSchema: z.object({}), block: noopBlock } },
@@ -267,7 +265,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("returns 400 when the resolver returns a malformed config", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const flow = buildFlow({
       kind: "reminders",
       actions: { sendDigest: { inputSchema: z.object({}), block: noopBlock } },
@@ -296,7 +294,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
       }
     });
     const host = withFlow(withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()), flow);
-    const route = createScheduledTransportAdapter().createBindings(host).routes!.find((r) => r.method === "POST")!;
+    const route = createScheduledEndpointAdapter().createBindings(host).routes!.find((r) => r.method === "POST")!;
     const { request, ctx } = postRequest("reminders", "u_1/anything");
     const response = await route.handler(request, ctx);
     expect(response.status).toBe(400);
@@ -306,7 +304,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("returns 401 when the gateway resolver throws PrincipalResolutionError", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = withFlow(
       withActiveRegistry(
         createMockTransportHost({
@@ -325,7 +323,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("answers a scheduled time already fired 200 duplicate", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = withFlow(
       withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
       buildFlow()
@@ -354,7 +352,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("onOverlap='skip' (default) short-circuits when an in-flight request matches", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = withFlow(
       withActiveRegistry(
         createMockTransportHost(),
@@ -389,7 +387,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("onOverlap='allow' bypasses the in-flight check", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const flow = defineFlow({
       kind: "billing",
       actions: {
@@ -431,7 +429,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("schedule.principal overrides the gateway principal", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const flow = defineFlow({
       kind: "reminders",
       actions: {
@@ -464,7 +462,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("static schedule with no principal falls back to the gateway principal", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = withFlow(
       withActiveRegistry(
         createMockTransportHost({ resolvePrincipal: () => ({ userId: "system", orgId: "org_sys" }) }),
@@ -480,7 +478,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 
   it("disabled static schedule responds 404", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const flow = defineFlow({
       kind: "billing",
       actions: {
@@ -507,9 +505,9 @@ describe("createScheduledTransportAdapter — dispatch", () => {
   });
 });
 
-describe("createScheduledTransportAdapter — list", () => {
+describe("createScheduledEndpointAdapter — list", () => {
   it("returns static entries plus dynamic.provided=true when a resolver is wired", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const flow = defineFlow({
       kind: "billing",
       actions: {
@@ -534,7 +532,7 @@ describe("createScheduledTransportAdapter — list", () => {
   });
 
   it("dynamic.provided=false when no resolver is set", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = withFlow(createMockTransportHost(), buildFlow());
     const route = adapter.createBindings(host).routes!.find((r) => r.method === "GET")!;
     const { request, ctx } = listRequest("billing");
@@ -544,7 +542,7 @@ describe("createScheduledTransportAdapter — list", () => {
   });
 
   it("404 when the flow is not registered", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = createMockTransportHost();
     const route = adapter.createBindings(host).routes!.find((r) => r.method === "GET")!;
     const { request, ctx } = listRequest("missing");
@@ -553,7 +551,7 @@ describe("createScheduledTransportAdapter — list", () => {
   });
 
   it("returns 401 when the principal resolver rejects the listing request", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = withFlow(
       createMockTransportHost({
         resolvePrincipal: () => {
@@ -569,9 +567,9 @@ describe("createScheduledTransportAdapter — list", () => {
   });
 });
 
-describe("createScheduledTransportAdapter — edge cases", () => {
+describe("createScheduledEndpointAdapter — edge cases", () => {
   it("static schedule wins when both static and dynamic resolvers match the id", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const flow = defineFlow({
       kind: "billing",
       actions: {
@@ -604,7 +602,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
   });
 
   it("returns 503 when host.dispatch throws (flow unregistered between resolve and dispatch)", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const baseHost = withFlow(
       withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
       buildFlow()
@@ -646,7 +644,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
     const host = hostRefusingThroughAccepted(
       new ConcurrencyRejectedError("billing:u_1", "req-holder")
     );
-    const route = createScheduledTransportAdapter()
+    const route = createScheduledEndpointAdapter()
       .createBindings(host)
       .routes!.find((r) => r.method === "POST")!;
     const body = { nominalFireTime: MONTH_START };
@@ -676,7 +674,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
 
   it("answers 503 when acceptance fails for another reason, and does not dedupe the fire", async () => {
     const host = hostRefusingThroughAccepted(new Error("lease backend unreachable"));
-    const route = createScheduledTransportAdapter()
+    const route = createScheduledEndpointAdapter()
       .createBindings(host)
       .routes!.find((r) => r.method === "POST")!;
     const body = { nominalFireTime: MONTH_START };
@@ -699,7 +697,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
   });
 
   it("treats an empty body as no nominalFireTime and synthesizes one", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = withFlow(
       withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
       buildFlow()
@@ -719,7 +717,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
   });
 
   it("treats unparseable JSON as an empty body", async () => {
-    const adapter = createScheduledTransportAdapter();
+    const adapter = createScheduledEndpointAdapter();
     const host = withFlow(
       withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
       buildFlow()
@@ -738,7 +736,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
 
 createInboundTransportConformanceTests({
   name: "scheduled",
-  factory: () => createScheduledTransportAdapter(),
+  factory: () => createScheduledEndpointAdapter(),
   helpers: {
     buildEnvelope: async (adapter, host) => {
       const flow = buildFlow();

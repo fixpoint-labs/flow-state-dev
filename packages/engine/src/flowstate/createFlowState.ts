@@ -68,7 +68,6 @@ import {
   type ConcurrencyArbiter
 } from "../transports/concurrency/arbiter";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
-import { SCHEDULED_SOURCE } from "../execution/transport-sources";
 import { InMemoryLeaseStore } from "../stores/memory/lease-store";
 import { FilesystemLeaseStore } from "../stores/filesystem/lease-store";
 import { createLocalScheduler, type LocalScheduler } from "../execution/local-scheduler";
@@ -1354,11 +1353,10 @@ class InternalFlowState<TSettings extends object>
   ): Promise<ScheduleTickReport> {
     const runtime = await this.#runtime();
     const secret = secretOverride ?? process.env.CRON_SECRET;
-    const basePath = this.#scheduledBasePath();
     let send: (fire: ScheduleDispatch) => Promise<number>;
     if (baseUrl !== undefined) {
       send = async (fire) => {
-        const { url, init } = scheduleDispatchRequest({ baseUrl, fire, secret, basePath });
+        const { url, init } = scheduleDispatchRequest({ baseUrl, fire, secret });
         const response = await fetch(url, init);
         await response.body?.cancel();
         return response.status;
@@ -1366,7 +1364,7 @@ class InternalFlowState<TSettings extends object>
     } else {
       const router = await this.#init();
       send = async (fire) => {
-        const { url, path, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", fire, secret, basePath });
+        const { url, path, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", fire, secret });
         const response = await router.POST(new Request(url, init), { params: { path } });
         await response.body?.cancel();
         return response.status;
@@ -1379,17 +1377,6 @@ class InternalFlowState<TSettings extends object>
       ...(signal !== undefined ? { signal } : {}),
       logger: this.#deferredLogger
     });
-  }
-
-  /**
-   * Where the mounted scheduled transport serves its dispatch route: its
-   * `basePath` when it reports one (`createScheduledTransportAdapter` does),
-   * else the default. The engine can't import that package, so it reads the field.
-   */
-  #scheduledBasePath(): string | undefined {
-    const adapter = (this.#options.adapters ?? []).find((candidate) => candidate.source === SCHEDULED_SOURCE);
-    const basePath = (adapter as { readonly basePath?: unknown } | undefined)?.basePath;
-    return typeof basePath === "string" ? basePath : undefined;
   }
 
   // FIX-2752.
@@ -1463,18 +1450,6 @@ class InternalFlowState<TSettings extends object>
     if (runtimeConfig.requestHost !== undefined) {
       runtimeConfig.requestHost.staleSweepIntervalMs =
         resolveStaleSweep(this.#options).staleSweepIntervalMs;
-    }
-
-    // FIX-2752: the tick fires schedules only through the scheduled transport's
-    // endpoint, whatever the scheduler, so a flow with schedules it fires (a
-    // static one, or an index) and no endpoint would never fire one. Refused
-    // here, naming the line to add. A resolver alone is fired by nothing here.
-    const unmounted = registry.list().find(declaresTickedSchedules);
-    if (unmounted !== undefined && !(this.#options.adapters ?? []).some((adapter) => adapter.source === SCHEDULED_SOURCE)) {
-      throw new FlowStateConfigError(
-        `createFlowState: flow "${unmounted.id}" declares schedules, but the scheduled transport is not mounted, so none ` +
-          "would fire. Add `adapters: [createScheduledTransportAdapter()]` (from `@flow-state-dev/scheduled`)."
-      );
     }
 
     const router = createFlowApiRouter({
