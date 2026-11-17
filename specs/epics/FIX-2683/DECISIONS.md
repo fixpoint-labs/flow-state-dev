@@ -85,7 +85,7 @@ boards, directory, conversations, and the snapshot's deletion.
 | ER-3 | No legacy path. A child that moves a job deletes what it replaces in the same PR: no alias, no dual read, no flag, no fallback to the old module | The coordinator · every job child uses | Each child's spec review; the closure |
 | ER-4 | Neither read model grows: no new verb in Teammates' `src/app/`, no new section in Shift Manager's `reads.ts`, and each such file's line count never passes its merge-base's. A screen's new need is a package view or hook. Carries [FIX-2618 ER-8](../FIX-2618/DECISIONS.md#who-owns-what), and ends when each file goes | inv builds the ratchet · FIX-2369's children use | Each PR's checks; sibling epics' spec reviews |
 | ER-5 | An answer across sessions is one read on the server, never stitched in the client from per-session reads. Shift Manager's Inbox and boards are one workforce user view ([D2](#d2)) | s1 builds · asks, s2, s4 use | s1's spec review; leg s |
-| ER-6 | Pending asks are read at the source for the verified user, filtered in the store (BP-033), never past `expiresAt`, and heard only on suspension changes. A suspension record carries no tenant, so the read joins the session or gains the fields with a dual read of old rows (BP-030), never trusting the caller. Tests: same user in another tenant is never listed; an expired ask is gone; an ask resolved in a dispatch-run session is gone in the same update | asks builds · s1 uses | asks' spec review; leg s |
+| ER-6 | Pending asks are read at the source for the verified user, filtered in the store (BP-033), never past `expiresAt`, and heard only on suspension changes. A suspension record carries no tenant or organization, and its `sessionId` is optional, but every record has a `requestId`, and the request record carries `tenantId` and `orgId` (`RequestRecord`, `engine/stores/types.ts`). So the read joins on the request and compares its tenant and organization with the verified principal's, as the session's request scope does; or the suspension gains those fields with a dual read of old rows (BP-030). Never from the caller. A record the read can't scope is not listed. Tests: same user in another tenant is never listed; same user in another organization is never listed; an expired ask is gone; an ask resolved in a dispatch-run session is gone in the same update; a sessionless ask is listed only through its request's scope | asks builds · s1 uses | asks' spec review; leg s |
 | ER-7 | Nothing here pulls code the starters share into a new package or kit. A copy both keep stays a copy; the child names it for FIX-2756 | The coordinator · every job child uses | The cross-spec review |
 | ER-8 | Deletion lands file by file. The coordinator maps each `src/app/` file to one Teammates child once FIX-2755 merges. Shift Manager's three jobs each move their screens off the snapshot; s4 alone deletes `lab-data.tsx`'s snapshot, its re-read, `reads.ts` and the snapshot types | The coordinator · every job child uses | Each wake after FIX-2755 merges; the closure |
 
@@ -96,7 +96,7 @@ boards, directory, conversations, and the snapshot's deletion.
 | `src/app/` files | FIX-2755, t1, t2, t3 | FIX-2755 lands the split; no child renames or re-splits it. FIX-2755's notes on Threads mode's per-card reads go to t3 if they recur |
 | `useSessionFeed`, `useRequestStream` and their siblings in `react` | t2, s3, FIX-2757 | Whichever child finds a hook missing adds it; the other uses it. Neither keeps an app copy |
 | The coding board and recorded work views (harness-manager) | t3, claude-code-style | t3 reads the views claude-code-style reads. A row Teammates needs extends that view; no second board view |
-| The ask predicate | asks, s1, `react` | asks moves `suspensionShape` from `react` to core, beside `isUserSuspension` and `suspendForUserKindOf`; `deriveSuspensions` stays in `react` for one chat |
+| The ask predicate | asks, s1, `react`, the ui registry | asks moves the predicate behind `suspensionShape` to core, beside `isUserSuspension` and `suspendForUserKindOf`. `react` keeps exporting `suspensionShape` as public package surface (ER-3's no-alias rule covers app read paths, not this), and the ui registry's suspension card is unchanged. A change to a published export carries a changeset. `deriveSuspensions` stays in `react` for one chat |
 | The pending-asks read and the Inbox view | asks, s1, s2, FIX-2756 | asks builds the read beside `RequestSessions.read`/`history`; s1 composes it with `inboxItems`' task holds; s2's sidebar counts read the view; FIX-2756 may serve Teammates' "needs you" from it later |
 | Answering an ask | s1, s3, [FIX-2743](https://linear.app/fixpoint-labs/issue/FIX-2743) | The Inbox lists what FIX-2743's unauthenticated answer path can answer. Related, not parented |
 | Views over a sequencer | t1 to t3, s1 to s3, [FIX-2684](https://linear.app/fixpoint-labs/issue/FIX-2684) | A child whose view comes out untyped uses FIX-2684's fix or names its hand-written type on the allowlist, never in a new module |
@@ -175,7 +175,7 @@ inventory is a ratchet.
 | Finding | Objective | Changes the approach? | Disposition |
 |---|---|---|---|
 | The Inbox can't extend existing views; it needs a read over `SuspensionStore` | 1 | Yes | Folded: a new child, D2, ER-6 |
-| `SuspensionRecord` has no tenant; the read must enforce the principal | 7 | Yes | Folded: ER-6 and its three tests |
+| `SuspensionRecord` has no tenant; the read must enforce the principal | 7 | Yes | Folded: ER-6, scoped through the request, and its tests |
 | Per-rule `it.fails` can't measure one of six children | 3 | Yes | Folded: the allowlist ratchet (D3, ER-2) |
 | `readEveryScopeEntry` duplicates `listAll()` | 1 | No | Recorded for s2 |
 
@@ -190,5 +190,8 @@ inventory is a ratchet.
   allowlist ratchet. Codex: Shift Manager's snapshot goes in an ordered final child, and the
   delegate list is s3's. Gitar: the inventory child waits on FIX-2629; D3's fallback now names
   the folders L3 doesn't scan.
+- **Review round 2 (2026-11-17)** — Gitar: `react` keeps exporting `suspensionShape` while the
+  predicate moves to core; ER-6 scopes through the request record, which carries tenant and
+  organization, since a suspension's session is optional.
 
 **Open:** none.
