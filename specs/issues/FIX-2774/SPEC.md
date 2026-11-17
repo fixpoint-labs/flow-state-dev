@@ -153,6 +153,7 @@ and in harness-manager's coding board view.
 | FIX-2770's `sessions.userSuspensions` and its `suspension` notice (#5361) | **Builds on**: the view's one read of asks |
 | orchestration's `inboxItems` (FIX-2133), the one place an Inbox item is built | **Reused** on the server, unchanged; two input fields widen |
 | harness-manager's coding board view (FIX-2725 D2): `inboxItems` over one conversation's ledger, at user scope | **Pattern followed**, for every conversation at once. Not reused: it answers one conversation and coding rows only |
+| `reads.ts`'s `inboxSection` (FIX-2133): today's merge of every board row (with its `holder`), the found asks and `flowOf` into `inboxItems`, failing whole when a board didn't load | **Lifted** into the view, not re-derived: the same row mapping, suspension mapping and `flowOf`, with the session list's flows replaced by the view's `sessions.read` answers. It is the merge the view must reproduce |
 | workforce's roster view and `readRosterEntries`; the inventory collection the roster flow declares | **Reused** for the worker flow kinds, as `workerFlowNames` reads them in the browser |
 | [FIX-2409](../FIX-2409/SPEC.md)'s live snapshot read and its goal `its-summary-changes-on-its-own` | **Superseded** for these screens: the goal is re-pointed at the view, its four legs kept |
 | [FIX-1662 PLAN S3](../FIX-1662/PLAN.md): the count and the list from one snapshot | **Kept**, from one view |

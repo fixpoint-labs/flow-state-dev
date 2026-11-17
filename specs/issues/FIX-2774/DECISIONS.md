@@ -37,8 +37,12 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 It comes down to needs-you marks: one answer can't disagree with itself; two can.
 
 **What would change my mind:** the epic's own test, the view costing more than a second for a
-user with dozens of conversations, or re-running often enough that leg c can't hold. Then the
-view splits its `tasks` into a second view, and the board's marks read `items` alone.
+user with dozens of conversations, or re-running often enough that leg c can't hold. Before
+splitting, try the lever the epic's [D2](../../epics/FIX-2683/DECISIONS.md#d2) names, narrower
+hearing: for example, the ledger heard only on a change to a row's holds or status rather than
+on every write. The epic hasn't settled that, and it may not be expressible on today's
+dependency surface. If it doesn't hold the leg either, the view splits its `tasks` into a second
+view, and the board's marks read `items` alone.
 
 <a name="d2"></a>
 ## D2 · A task's asks are its Inbox item, read from the same view
