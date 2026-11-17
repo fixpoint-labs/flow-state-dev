@@ -102,7 +102,8 @@ flowchart LR
   R -->|"each app's allowlist"| T1
   A["FIX-XXX · a user's pending asks"] -->|"one read across sessions"| S1["FIX-XXX · Shift Manager's Inbox and boards"]
   R --> S1
-  S1 -->|"its screens off the snapshot"| S4["FIX-XXX · Shift Manager's snapshot goes"]
+  S1 -->|"its screens off the snapshot"| S4
+  S1 -->|"the Inbox view, for the sidebar counts"| S2["FIX-XXX · Shift Manager's snapshot goes"]
   S2["FIX-XXX · Shift Manager's directory"] --> S4
   S3["FIX-XXX · Shift Manager's conversations"] --> S4
   classDef proposed stroke-dasharray:4 3
@@ -112,9 +113,10 @@ flowchart LR
 An edge is what one issue hands the next. The inventory child also feeds T2, T3, S2 and S3, and
 every child, FIX-2763 included, blocks the closure; those edges are left off to keep the graph
 readable. **The order:** FIX-2629 merges, then the inventory child. FIX-2755 lands, then the
-three Teammates jobs run in parallel. The pending-asks read lands before Shift Manager's Inbox;
-the three Shift Manager jobs run in parallel, each moving its screens off the snapshot, and the
-snapshot child deletes it last ([ER-8](DECISIONS.md#who-owns-what)).
+three Teammates jobs run in parallel. The pending-asks read lands before Shift Manager's Inbox.
+The Inbox child and the conversations child run in parallel; the directory child starts once the
+Inbox view has landed, since its sidebar counts read that view. Each moves its screens off the
+snapshot, and the snapshot child deletes it last ([ER-8](DECISIONS.md#who-owns-what)).
 
 ## What stays as it is
 
