@@ -132,8 +132,8 @@ export function runCalls(state: AppState): RunCalls {
     },
     async readPullRequests(runSessionId) {
       try {
-        const rows = await readSessionPullRequests(client, runSessionId);
-        return rows.map(({ number, url, title }) => ({ number, url, title }));
+        const pullRequests = await readSessionPullRequests(client, runSessionId);
+        return pullRequests.map(({ number, url, title }) => ({ number, url, title }));
       } catch (error) {
         console.warn(`teammates: the pull requests of run session ${runSessionId} couldn't be read`, error);
         return [];

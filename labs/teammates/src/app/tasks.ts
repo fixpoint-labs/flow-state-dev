@@ -146,18 +146,18 @@ const UPDATE_TASK = taskActionName("updateTask", TASK_BOARD);
 /** The board's one-task read: a re-run copies the whole brief from it. */
 const GET_TASK = taskActionName("getTask", TASK_BOARD);
 
-/** Whether `copy` of a row is of the same attempt (try count and run) as `row`: a retry's copies speak only for it. */
-function sameAttempt(copy: Record<string, any> | undefined, row: Record<string, any>): boolean {
-  return copy !== undefined && (copy.attempts ?? 0) === (row.attempts ?? 0) && (copy.run?.sessionId ?? null) === (row.run?.sessionId ?? null);
+/** Whether `copy` of a row is of the same attempt (try count and run) as `entry`: a retry's copies speak only for it. */
+function sameAttempt(copy: Record<string, any> | undefined, entry: Record<string, any>): boolean {
+  return copy !== undefined && (copy.attempts ?? 0) === (entry.attempts ?? 0) && (copy.run?.sessionId ?? null) === (entry.run?.sessionId ?? null);
 }
 
 /** The latest copy of each board row in a conversation's items, oldest filing first. */
 export function boardCopies(items: readonly Item[]): Map<string, Record<string, any>> {
-  const rows = new Map<string, Record<string, any>>();
+  const copies = new Map<string, Record<string, any>>();
   for (const item of items) {
-    if (item.type === "data" && item.dataType === TASK_CHANGE && item.value?.task?.id) rows.set(item.value.task.id, item.value.task);
+    if (item.type === "data" && item.dataType === TASK_CHANGE && item.value?.task?.id) copies.set(item.value.task.id, item.value.task);
   }
-  return rows;
+  return copies;
 }
 
 /**
@@ -166,47 +166,47 @@ export function boardCopies(items: readonly Item[]): Map<string, Record<string, 
  * @param harnessOf A worker's `harness:` setting, for a coding task whose run hasn't reported one yet.
  */
 export function toBoardTask(
-  row: Record<string, any>,
+  entry: Record<string, any>,
   harnessOf: (worker: string) => string | undefined = () => undefined,
   holds?: readonly InboxHold[],
 ): BoardTask {
-  const error = typeof row.error === "string" ? row.error : undefined;
+  const error = typeof entry.error === "string" ? entry.error : undefined;
   const status: BoardTask["status"] =
-    row.status === "completed" ? "done" : row.status === "errored" ? "failed" : row.status === "cancelled" ? "cancelled" : "running";
+    entry.status === "completed" ? "done" : entry.status === "errored" ? "failed" : entry.status === "cancelled" ? "cancelled" : "running";
   // A teammate's answer is the output as is; a coding run's is its output's `answer`. Blank is none.
-  const answer = answerTextOf(row.output);
+  const answer = answerTextOf(entry.output);
   // One read of the row as orchestration's task view: its folded spend, and its oldest open hold.
-  const view = typeof row.id === "string" && typeof row.status === "string" ? taskView({ ...row, board: row.board ?? "" } as InboxTaskInput, holds) : null;
+  const view = typeof entry.id === "string" && typeof entry.status === "string" ? taskView({ ...entry, board: entry.board ?? "" } as InboxTaskInput, holds) : null;
   const spend = view?.spend ?? null;
   return {
-    id: row.id,
-    to: row.assignee ?? "",
-    title: row.title ?? row.goal ?? row.id,
+    id: entry.id,
+    to: entry.assignee ?? "",
+    title: entry.title ?? entry.goal ?? entry.id,
     status,
-    boardStatus: String(row.status ?? ""),
-    goal: String(row.goal ?? ""),
+    boardStatus: String(entry.status ?? ""),
+    goal: String(entry.goal ?? ""),
     ...(answer === undefined ? {} : { result: answer }),
     ...(error === undefined ? {} : { error }),
-    ...(typeof row.context === "string" ? { context: row.context } : {}),
-    ...(Array.isArray(row.labels) ? { labels: row.labels.filter((label: unknown): label is string => typeof label === "string") } : {}),
-    ...(typeof row.priority === "number" ? { priority: row.priority } : {}),
-    ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
-    ...(typeof row.run?.sessionId === "string" && typeof row.run?.requestId === "string" ? { runRequestId: row.run.requestId } : {}),
-    ...(typeof row.statusNote === "string" ? { note: row.statusNote } : {}),
-    ...startedAtOf(row),
-    ...harnessAndModel(spend, harnessOf(row.assignee ?? "")),
+    ...(typeof entry.context === "string" ? { context: entry.context } : {}),
+    ...(Array.isArray(entry.labels) ? { labels: entry.labels.filter((label: unknown): label is string => typeof label === "string") } : {}),
+    ...(typeof entry.priority === "number" ? { priority: entry.priority } : {}),
+    ...(typeof entry.run?.sessionId === "string" ? { runSessionId: entry.run.sessionId } : {}),
+    ...(typeof entry.run?.sessionId === "string" && typeof entry.run?.requestId === "string" ? { runRequestId: entry.run.requestId } : {}),
+    ...(typeof entry.statusNote === "string" ? { note: entry.statusNote } : {}),
+    ...startedAtOf(entry),
+    ...harnessAndModel(spend, harnessOf(entry.assignee ?? "")),
     ...(spend === null ? {} : { spend }),
     ...waitingOf(view),
     ...(view === null ? {} : { view }),
-    ...runOf(row),
-    ...landedOf(row.output?.landed),
-    ...pullRequestsOf(row),
+    ...runOf(entry),
+    ...landedOf(entry.output?.landed),
+    ...pullRequestsOf(entry),
   };
 }
 
 /** A row's open pull-request wait, as harness-manager's browser reader reads it: the pull requests by number, or nothing. */
-function pullRequestsOf(row: Record<string, any>): Pick<BoardTask, "pullRequests"> {
-  const wait = pullRequestWait(row as PullRequestWaitInput);
+function pullRequestsOf(entry: Record<string, any>): Pick<BoardTask, "pullRequests"> {
+  const wait = pullRequestWait(entry as PullRequestWaitInput);
   return wait === null ? {} : { pullRequests: wait.pullRequests.map(({ number }) => ({ number })) };
 }
 
@@ -224,23 +224,23 @@ function landedOf(value: unknown): { landed?: LandedWork } {
 }
 
 /** A row's run start and lease deadline, each only when the row has it. */
-function runOf(row: Record<string, any>): Pick<BoardTask, "run"> {
+function runOf(entry: Record<string, any>): Pick<BoardTask, "run"> {
   const run = {
-    ...(typeof row.run?.startedAt === "number" ? { startedAt: row.run.startedAt as number } : {}),
-    ...(typeof row.leaseUntil === "number" ? { leaseUntil: row.leaseUntil as number } : {}),
+    ...(typeof entry.run?.startedAt === "number" ? { startedAt: entry.run.startedAt as number } : {}),
+    ...(typeof entry.leaseUntil === "number" ? { leaseUntil: entry.leaseUntil as number } : {}),
   };
   return Object.keys(run).length === 0 ? {} : { run };
 }
 
 /** When this attempt's run started: its run link's start, else the task's own (rows before either carry neither, BP-030). */
-function startedAtOf(row: Record<string, any>): { startedAt?: number } {
+function startedAtOf(entry: Record<string, any>): { startedAt?: number } {
   // This attempt's start: a retry keeps the task's own `startedAt` (its first start), so the run's comes first.
-  const at = typeof row.run?.startedAt === "number" ? row.run.startedAt : row.startedAt;
+  const at = typeof entry.run?.startedAt === "number" ? entry.run.startedAt : entry.startedAt;
   return typeof at === "number" ? { startedAt: at } : {};
 }
 
 /** The fields a re-file copies from a task, as the board's `refile` takes them. */
-function refileRowOf(task: BoardTask): RefiledTask {
+function refileEntryOf(task: BoardTask): RefiledTask {
   return { goal: task.goal, title: task.title, context: task.context ?? null, assignee: task.to, labels: task.labels ?? null, priority: task.priority ?? null };
 }
 
@@ -270,13 +270,13 @@ function waitingOf(view: TaskView | null): { waiting?: TaskWaiting } {
  *
  * @param flowOf The flow that owns a session: the conversation's, or a run's.
  */
-export function holdsOfTasks(sessionId: string, rows: readonly Record<string, any>[], flowOf: (sessionId: string) => string | undefined): Map<string, InboxHold[]> {
-  const inboxRows: InboxTaskInput[] = rows.map((row) => ({
-    ...(row as InboxTaskInput),
+export function holdsOfTasks(sessionId: string, copies: readonly Record<string, any>[], flowOf: (sessionId: string) => string | undefined): Map<string, InboxHold[]> {
+  const inboxEntries: InboxTaskInput[] = copies.map((entry) => ({
+    ...(entry as InboxTaskInput),
     board: sessionId,
     holder: { sessionId, action: UPDATE_TASK },
   }));
-  const items = inboxItems({ rows: inboxRows, suspensions: [], flowOf });
+  const items = inboxItems({ rows: inboxEntries, suspensions: [], flowOf });
   return new Map(items.flatMap((item) => (item.task === null ? [] : [[item.task.taskId, [...item.holds]] as const])));
 }
 
@@ -325,7 +325,7 @@ export function taskCalls(state: AppState): TaskCalls {
   return {
     watchTasks(sessionId, onChange, onStale) {
       const show = stableList(onChange);
-      let rows = new Map<string, Record<string, any>>();
+      let copies = new Map<string, Record<string, any>>();
       /** Each row as the board's last read answered it: a task settles, and its run links, on its own session. */
       let listed = new Map<string, Record<string, any>>();
       /**
@@ -333,7 +333,7 @@ export function taskCalls(state: AppState): TaskCalls {
        * questions, its review), and the conversation hears of those only when the task ends, so the
        * run's session is followed too.
        */
-      const runRows = new Map<string, Record<string, any>>();
+      const runCopies = new Map<string, Record<string, any>>();
       const runFeeds = new Map<string, Unsubscribe>();
       /**
        * A row is the board read's: every committed write of a row sends a board notice, so the read
@@ -341,17 +341,17 @@ export function taskCalls(state: AppState): TaskCalls {
        * the run's, stands in. The copies add only what the read never carries: {@link BRIEF} and
        * {@link UNPROJECTED}.
        */
-      const rowOf = (id: string): Record<string, any> => {
+      const copyOf = (id: string): Record<string, any> => {
         const board = listed.get(id);
-        if (board === undefined) return rows.get(id) ?? runRows.get(id)!;
+        if (board === undefined) return copies.get(id) ?? runCopies.get(id)!;
         const kept: Record<string, unknown> = {};
         for (const field of BRIEF) {
-          const value = runRows.get(id)?.[field] ?? rows.get(id)?.[field];
+          const value = runCopies.get(id)?.[field] ?? copies.get(id)?.[field];
           if (value !== undefined) kept[field] = value;
         }
         // An ended task's output and error are its last attempt's: a copy from before a retry says nothing of this one.
         if (isTerminalStatus(board.status)) {
-          const current = [runRows.get(id), rows.get(id)].filter((copy) => sameAttempt(copy, board));
+          const current = [runCopies.get(id), copies.get(id)].filter((copy) => sameAttempt(copy, board));
           for (const field of UNPROJECTED) {
             const value = current.find((copy) => copy![field] !== undefined)?.[field];
             if (value !== undefined) kept[field] = value;
@@ -360,13 +360,13 @@ export function taskCalls(state: AppState): TaskCalls {
         return { ...board, ...kept };
       };
       const followRuns = (current: readonly Record<string, any>[]) => {
-        for (const row of current) {
-          const runSession = row.run?.sessionId;
+        for (const entry of current) {
+          const runSession = entry.run?.sessionId;
           if (typeof runSession !== "string") continue;
           // An ended task's run is let go once the run's own copy says it ended (it carries the output
           // the board read doesn't), or never followed when no copy of it was ever read.
-          const copy = runRows.get(row.id);
-          if (isTerminalStatus((sameAttempt(copy, row) ? copy! : row).status)) {
+          const copy = runCopies.get(entry.id);
+          if (isTerminalStatus((sameAttempt(copy, entry) ? copy! : entry).status)) {
             runFeeds.get(runSession)?.();
             runFeeds.set(runSession, () => {});
             continue;
@@ -375,16 +375,16 @@ export function taskCalls(state: AppState): TaskCalls {
           // Claimed before the watch starts: a feed already loaded calls back at once, and that publish follows runs again.
           runFeeds.set(runSession, () => {});
           const stop = watchFeed(runSession, boardCopies, (read) => {
-            const fromRun = read.get(row.id);
+            const fromRun = read.get(entry.id);
             if (fromRun === undefined) return;
-            runRows.set(row.id, fromRun);
+            runCopies.set(entry.id, fromRun);
             publish();
           });
           runFeeds.set(runSession, stop);
         }
       };
-      /** Every row, the conversation's order first, each as {@link rowOf} settles it. */
-      const merged = (): Record<string, any>[] => [...new Set([...rows.keys(), ...listed.keys()])].map(rowOf);
+      /** Every row, the conversation's order first, each as {@link copyOf} settles it. */
+      const merged = (): Record<string, any>[] => [...new Set([...copies.keys(), ...listed.keys()])].map(copyOf);
       // Set once the watch stops: a read or a flow lookup that lands after it shows nothing and follows no run.
       let stopped = false;
       const publish = () => {
@@ -393,7 +393,7 @@ export function taskCalls(state: AppState): TaskCalls {
         const flowOf = (id: string) => (id === sessionId ? flowOfSession.get(sessionId) : runFlows.get(id));
         const holds = holdsOfTasks(sessionId, current, flowOf);
         openHolds.set(sessionId, holds);
-        show(current.map((row) => toBoardTask(row, (worker) => state.harnesses.get(worker), holds.get(row.id) ?? [])));
+        show(current.map((entry) => toBoardTask(entry, (worker) => state.harnesses.get(worker), holds.get(entry.id) ?? [])));
         learnFlows(current);
         followRuns(current);
       };
@@ -401,7 +401,7 @@ export function taskCalls(state: AppState): TaskCalls {
       const learnFlows = (current: readonly Record<string, any>[]) => {
         const unknown = [
           ...(flowOfSession.has(sessionId) ? [] : [sessionId]),
-          ...current.flatMap((row) => (typeof row.run?.sessionId === "string" && !runFlows.has(row.run.sessionId) && (row.holds?.length ?? 0) > 0 ? [row.run.sessionId as string] : [])),
+          ...current.flatMap((entry) => (typeof entry.run?.sessionId === "string" && !runFlows.has(entry.run.sessionId) && (entry.holds?.length ?? 0) > 0 ? [entry.run.sessionId as string] : [])),
         ];
         if (unknown.length === 0) return;
         void Promise.all(
@@ -434,7 +434,7 @@ export function taskCalls(state: AppState): TaskCalls {
         onError: logFailedRead,
       }).close;
       const stopFeed = watchFeed(sessionId, boardCopies, (read) => {
-        rows = read;
+        copies = read;
         publish();
       });
       return () => {
@@ -485,7 +485,7 @@ export function taskCalls(state: AppState): TaskCalls {
         retry: async (taskId) => (await board()).retry(taskId),
         rerun: async (task, worker) => {
           const whole = await withBrief(task);
-          return (await board()).refile(refileRowOf(whole), rerunOverrides(whole, worker));
+          return (await board()).refile(refileEntryOf(whole), rerunOverrides(whole, worker));
         },
       };
     },

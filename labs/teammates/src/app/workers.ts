@@ -57,7 +57,7 @@ export interface Activity {
 }
 
 /** A roster entry as the screen lists it. */
-function toWorkerRow(w: RosterEntry): AppWorker {
+function toAppWorker(w: RosterEntry): AppWorker {
   return {
     id: w.id,
     name: w.name ?? w.id.slice(w.id.lastIndexOf(".") + 1),
@@ -113,7 +113,7 @@ export function workerCalls(state: AppState): WorkerCalls {
         (roster) => {
           state.workerIds = new Set(roster.map((w) => w.id));
           state.harnesses = new Map(roster.flatMap((w) => (typeof w.settings?.harness === "string" ? [[w.id, w.settings.harness] as const] : [])));
-          onChange(roster.map(toWorkerRow));
+          onChange(roster.map(toAppWorker));
         },
         onError === undefined ? undefined : { onError },
       );
@@ -122,7 +122,7 @@ export function workerCalls(state: AppState): WorkerCalls {
       const roster = await workforce.roster();
       state.workerIds = new Set(roster.map((w) => w.id));
       state.harnesses = new Map(roster.flatMap((w) => (typeof w.settings?.harness === "string" ? [[w.id, w.settings.harness] as const] : [])));
-      return roster.map(toWorkerRow);
+      return roster.map(toAppWorker);
     },
     watchActivity(worker, onChange) {
       // A worker that takes tasks only has no conversation: it is idle here. One that has one is
@@ -154,7 +154,7 @@ export function workerCalls(state: AppState): WorkerCalls {
       const hired = (await workforce.roster()).find((w) => w.id === written.id && !w.standard);
       if (hired === undefined) throw new Error(`teammates: "${name}" was hired but isn't on the roster`);
       state.workerIds.add(hired.id);
-      return toWorkerRow(hired);
+      return toAppWorker(hired);
     },
     async editTeammate(worker, { name, instructions }) {
       await workforce.edit({

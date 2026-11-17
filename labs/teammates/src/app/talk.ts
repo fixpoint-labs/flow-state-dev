@@ -37,9 +37,9 @@ export interface AppTalk {
 }
 
 /** The session a message was delivered to, from the message log; undefined while the log doesn't hold it. */
-export function destinationOf(rows: readonly unknown[], messageId: string): string | undefined {
-  for (const row of rows) {
-    const parsed = workerMessageResourceStateSchema.safeParse(row);
+export function destinationOf(entries: readonly unknown[], messageId: string): string | undefined {
+  for (const entry of entries) {
+    const parsed = workerMessageResourceStateSchema.safeParse(entry);
     if (parsed.success && parsed.data.id === messageId) return parsed.data.toSession;
   }
   return undefined;
@@ -58,7 +58,7 @@ export function exchangeOf(items: readonly Item[], messageId: string): SessionSt
 /** The message log and one message's exchange, watched. */
 export interface TalkCalls {
   /** Every message to or from `worker`, oldest first. */
-  watchTalk(worker: string, onChange: (rows: AppTalk[]) => void): Unsubscribe;
+  watchTalk(worker: string, onChange: (entries: AppTalk[]) => void): Unsubscribe;
   /**
    * What `worker` did with one message it was sent: the turn in its own
    * conversation that read it, from the message to the turn's end, live.
@@ -76,9 +76,9 @@ export function talkCalls(state: AppState): TalkCalls {
       return client.live([topic.user()], {
         read: async () => {
           const { sessionId } = await anyConversation();
-          const rows = await readEveryCollectionPage(client.resources, sessionId, WORKER_MESSAGES_RESOURCE);
-          return rows
-            .map((row) => workerMessageResourceStateSchema.safeParse(row.clientData))
+          const entries = await readEveryCollectionPage(client.resources, sessionId, WORKER_MESSAGES_RESOURCE);
+          return entries
+            .map((entry) => workerMessageResourceStateSchema.safeParse(entry.clientData))
             .flatMap((parsed) => (parsed.success ? [parsed.data] : []))
             .filter((m) => m.from === worker || m.to === worker)
             .sort((a, b) => a.at - b.at)
@@ -108,10 +108,10 @@ export function talkCalls(state: AppState): TalkCalls {
       void (async () => {
         // A reply lands where the message it answers was sent from, a task's session included: the log row says where.
         // A failed log read falls back to the recipient's conversation rather than leaving the popup unwatched.
-        const rows = await anyConversation()
+        const entries = await anyConversation()
           .then(({ sessionId: logSession }) => readEveryCollectionPage(client.resources, logSession, WORKER_MESSAGES_RESOURCE))
           .catch(() => []);
-        const sessionId = destinationOf(rows.map((row) => row.clientData), messageId) ?? (await conversationOf(worker)).sessionId;
+        const sessionId = destinationOf(entries.map((entry) => entry.clientData), messageId) ?? (await conversationOf(worker)).sessionId;
         if (!live) return;
         stop = watchFeed(sessionId, (items) => exchangeOf(items, messageId), stableList(onChange));
       })();

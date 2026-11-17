@@ -83,7 +83,7 @@ export function toEntries(
   retryableTurns: ReadonlySet<string> = new Set(),
   stopped: readonly string[] = [],
 ): ConversationEntry[] {
-  const rows = boardCopies(items);
+  const copies = boardCopies(items);
   const entries: ConversationEntry[] = [];
   /** The turn the last run of steps belongs to: a run never spans two. */
   let runTurn: unknown;
@@ -111,8 +111,8 @@ export function toEntries(
       // task it answered; one stored before answers were marked names none.
       const notice = parseNotice(item);
       const taskId = notice?.taskId ?? delegateAnswerOf(item)?.taskId ?? "";
-      const row = rows.get(taskId);
-      const task = row === undefined ? undefined : toBoardTask(row);
+      const copy = copies.get(taskId);
+      const task = copy === undefined ? undefined : toBoardTask(copy);
       // An answer is a finished task, never one drawn as failed.
       const cancelled = task?.status === "cancelled";
       const failed = notice !== undefined && task?.status !== "done" && !cancelled;
