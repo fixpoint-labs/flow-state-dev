@@ -160,7 +160,12 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     /** The open thread's view, in place of the board. */
     // A thread's view is a sheet over the main thread.
     const threadView = () => page.locator('[role="dialog"][aria-label^="Task: "]');
-    const back = () => page.getByRole("button", { name: "Back to tasks" }).click().catch(() => undefined);
+    // Back to the main thread: close the thread's sheet with its Close button, as a person does. The sheet covers the
+    // main thread, its cards included, so a step that clicks a card waits for the sheet to go.
+    const back = async () => {
+      await threadView().getByRole("button", { name: "Close", exact: true }).click();
+      await threadView().waitFor({ state: "hidden" });
+    };
     const rowFor = (taskId: string) => page.locator(`aside[aria-label="Tasks"] [data-task-id="${taskId}"]`);
     const cardFor = (taskId: string) => page.locator(`main[aria-label="Main thread"] [data-entry="thread"][data-task-id="${taskId}"]`);
     /** The column a task's board row is under now, opening a collapsed group to look. */
