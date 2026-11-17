@@ -269,13 +269,13 @@ function SessionBody({
             {/* The harness refuses, by name and before its run, a type it doesn't take. */}
             <PromptInput onSubmit={handleSubmit} client={uploads} sessionId={sessionId}>
               <PromptInputAttachments />
+              <PromptInputAttachButton className="ml-2 sm:ml-4" />
               <PromptInputTextarea
                 name="message"
                 placeholder={`Ask ${label}…`}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
               />
-              <PromptInputAttachButton />
               {/* While a turn runs, Stop and Send are two buttons: one that did both would stop the turn when a line was meant. */}
               {(session.isStreaming || waiting) && (
                 <PromptInputButton aria-label="Stop" data-testid="turn-stop" onClick={() => void stopTurn()}>

@@ -1083,6 +1083,7 @@ function ChatPanel({
           </div>
           <PromptInput onSubmit={send} attachments={draftFiles}>
             <PromptInputAttachments />
+            <PromptInputAttachButton className="ml-2 sm:ml-4" disabled={composerDisabled} />
             <PromptInputTextarea
               name="message"
               placeholder={
@@ -1095,7 +1096,6 @@ function ChatPanel({
               onChange={(e) => onSetMessage(e.target.value)}
               disabled={composerDisabled}
             />
-            <PromptInputAttachButton disabled={composerDisabled} />
             {/* While a turn runs, Stop and Send are two buttons: one that did both would stop the turn when a line was meant. */}
             {session.isStreaming && (
               <PromptInputButton
