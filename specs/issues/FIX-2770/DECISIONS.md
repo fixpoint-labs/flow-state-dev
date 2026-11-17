@@ -79,8 +79,11 @@ absence.
   `list` and `turns`, under the same identity (`RequestSessionsInputs.identity`), so the user,
   tenant and organization are never the caller's. It answers `{ suspensions, more, next? }`,
   oldest first by `(createdAt, suspensionId)`, at most 200 a page. When `more` is true, `next` is
-  the last row's `{ createdAt, suspensionId }`; passing it back as `after` reads on from strictly
-  after that pair, so a tie on `createdAt` neither repeats nor skips a row. A user view may call
+  the `{ createdAt, suspensionId }` of the last row **the store returned**; passing it back as
+  `after` reads on from strictly after that pair, so a tie on `createdAt` neither repeats nor
+  skips a row. Rows the credential check below drops come after the store, so a page can hold
+  fewer than 200 rows, or none, while `more` is true. `next` still points past the dropped rows,
+  never at the last row shown, so paging neither stalls on them nor skips the rows after them. A user view may call
   it; an org view may not, as for the other session reads.
 - **The query, and its convergence point.** `SuspensionStore.listPendingForUser({ userId,
   tenantId, orgId, flowKinds, now, limit, after? })` is the one place the scope is applied, and nothing
@@ -96,7 +99,7 @@ absence.
   names as `isUserSuspension` does. In SQLite and Postgres the join and every predicate are one
   statement; nothing is read back and filtered.
 - **The projection.** The store selects only these: `suspensionId`, `requestId`, `flowKind`,
-  `flowId` (the suspension's, else the request's), `sessionId` (the request's), `kind` (by
+  `flowId` (the request's, else the suspension's), `sessionId` (the request's), `kind` (by
   `suspendForUserKindOf`), `shape` (by the moved `suspensionShape`), `title`, `message`, `allow`,
   `resumeSchema`, `render`, `createdAt`, `expiresAt`. These are what today's Inbox list and card
   draw. Never `stepInput`, `resumeData`, `data`, `resolvedBy`, `blockInstanceId` or `stepIndex`.
@@ -115,11 +118,24 @@ absence.
   spec settles:** the worker lookup must not hear `run` on the user topic. Where the mapping
   comes from (a field the server stamps where this read can carry it, or a per-session read whose
   hearing is narrower) is FIX-2774's design, against this constraint.
-- **A view's admission still applies.** In a view, a row whose flow instance has its own resolver
-  that refuses this caller is left out, as the session list leaves out such a session
-  (`admitListedSession`). That is a credential check per instance, after the query, not a scope
-  filter: scope is all in the query. ER-6's "never a filter after the store" is about the user,
-  tenant, organization and flow predicates, so this check doesn't conflict with it.
+- **Every row passes the instance's own credential check, with or without a session.** The
+  query compares stored ids with the view's principal; it can't ask a flow instance with a
+  resolver of its own whether it would accept this request. So every projected row goes through
+  `ownResolverVerdict` (`routes/instance-caller.ts`), judged on the row's request: it drops a
+  write record, re-resolves the caller with that instance's resolver, requires the row's user and
+  organization to be that answer, and applies the instance's pin. A refusal drops the row, as a
+  missing request does. When the row has a session, `admitListedSession`'s host rule applies on
+  top, as for the session list. A sessionless ask has no `SessionRecord` for
+  `admitListedSession`, so calling `ownResolverVerdict` directly is what covers it.
+  **The shape it reads adds no field.** `ownResolverVerdict` takes `OwnedRecord` (`flowKind`,
+  `flowId`) plus `userId` and `orgId`, and `isWriteRecord` reads `sessionId`. The projection
+  already carries the request's `flowKind`, `flowId` and `sessionId`. Its user and organization
+  are the principal's, since the query matched them exactly, so the verb passes the principal's
+  `userId` and `orgId` rather than projecting them.
+  **This is the check ER-6 allows after the store, not a scope filter.** ER-6's "never a filter
+  after the store" covers the scope predicates: user, tenant, organization, flow, status,
+  expiry and the waits-on-a-person reasons, all of which stay in the query. This check
+  re-asks an instance's own sign-in about rows already in scope, and it can only remove rows.
 - **The ask predicate moves.** `suspensionShape`, `SuspensionShape` and the schema classification
   they read move to `contracts/src/types/suspension.ts`, beside `isUserSuspension` and
   `suspendForUserKindOf`, re-exported by core. `@flow-state-dev/react` keeps exporting both
@@ -157,7 +173,11 @@ absence.
   `{ suspensions: [], more: false }` with no store call, and 51 throw `FlowStateConfigError`
   naming the limit; an ask answered in a dispatch run's session is gone in the update the
   answer's notice causes (the ghost ask); a chunk, a turn start and a turn finish wake no view
-  that read only this.
+  that read only this. Two credential cases: a row whose stored user and organization match the
+  view's principal, with no `sessionId`, on an instance whose own resolver refuses this request,
+  is not listed; its sessioned twin is not listed either. A page where the check drops rows
+  answers `more: true` with fewer rows, and its `next` reads on to the rows after the dropped
+  ones.
 
 ## Considered and dropped
 
@@ -212,6 +232,9 @@ Round 2 (#5348, 2026-11-17):
 - Cursor 4605231000, for the implementer: `createInMemoryStores` and `createFilesystemStores` pass the request store they build to the suspension store; no store reaches a sibling any other way.
 - Cursor 4605231010: the slicing order is the implementer's build plan; declined here.
 
+Round 3, security (#5348, 2026-11-17), past the two-round budget because it is a security fix:
+- Cursor 4605355747 (High): a sessionless ask never reached `ownResolverVerdict`, so a caller an instance's own resolver refuses could read it. Every row now passes that check, with or without a session; two engine tests, shown failing first. Left open for the owner.
+
 ## How it got here
 
 - **Draft** — ER-6 built as a fifth request-host session read over one required, joined store
@@ -222,3 +245,6 @@ Round 2 (#5348, 2026-11-17):
   shape, and one rule for the flow list's bounds. D1 to D3 unchanged.
 - **Review round 2** — the worker lookup the draft prescribed would hear every turn; its design
   moves to FIX-2774 under a named constraint, and the quiet leg checks the view's whole hearing.
+- **Review round 3 (security)** — a sessionless ask skipped the instance's own credential check.
+  Every row now passes `ownResolverVerdict`, judged on its request; `next` points past rows the
+  check drops. No decision changed.
