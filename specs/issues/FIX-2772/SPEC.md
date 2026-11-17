@@ -13,7 +13,7 @@ calls the replacement can't make without the owner.
 |---|---|---|
 | **talks to a teammate in the lab** | Sees the reply stream in, a run of steps, Stop, Retry on a failed turn, and approvals, through 600 lines of Teammates' own calls | Sees the same, read through `react`'s session feed and workforce's turns view and client |
 | **has a long conversation** | Sees the *Earlier turns summarized* divider where the worker's word-for-word reading begins | Sees the same divider, read from workforce's turns view ([D1](DECISIONS.md#d1)) |
-| **presses Stop and sends a follow-up at once** | The follow-up runs; only the turns running at the press stop | The same, now in workforce's client, so Claude Code-style gets it too ([D2](DECISIONS.md#d2)) |
+| **presses Stop and sends a follow-up at once** | The follow-up runs. Only the turns running when Stop looked stop | The same, now in workforce's client, so Claude Code-style gets it too. A line sent from another tab that starts after Stop looked may run, as it can today ([D2](DECISIONS.md#d2)) |
 | **starts an app from Teammates** | Copies `session-feed.ts`, a call interface per job and 22 inventory findings in this area | Copies screens and thin hooks over package reads: none of the 22 |
 | **maintains the epic** | Teammates' allowlist has 57 entries | It has 35 once this merges; `session-feed.ts`' last 3 go with the last `watchFeed` caller ([Where this meets its siblings](#where-this-meets-its-siblings)) |
 
@@ -118,9 +118,12 @@ ratchet only asks for a reason when a type stays in the same file, so a moved ty
 without one. The implementer writes the reasons, and review checks them
 ([Decided, not asked](DECISIONS.md#decided-not-asked)).
 
-**Docs:** no user page. The changesets for `core`, `engine` and `workforce` say that a session
-turns row carries `historyStart` and that `stopTurns` leaves a turn its client sent after the stop
-began; `/release-docs` writes them up. Teammates is private: the last Teammates child rewrites its
+**Docs:** no user page. Each of `core`, `engine` and `workforce` gets a `patch` changeset, which
+`/release-docs` writes up. They say three things:
+- A session turns row carries `historyStart`.
+- Workforce's browser entry exports the history summary resource.
+- `send` returns its request id, and `stopTurns` leaves a turn its client sent after the stop
+  began. It also says what Stop does not promise across clients. Teammates is private: the last Teammates child rewrites its
 README ([the epic's docs line](../../epics/FIX-2683/SPEC.md#whats-in-the-box)).
 
 ```mermaid
@@ -176,15 +179,16 @@ one on 2026-11-17, as an engineering call ([ER-8](../../epics/FIX-2683/DECISIONS
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | `historyStart` on `SessionTurn` and the turns view's row | `client.sessions.requests` (has it, but is a client value, L3); the session snapshot (no requests) | **Extends** the turns view: the one read of a session's turns a screen already uses |
-| `stopTurns` leaves a turn its client sent after the stop began | A Teammates guard around its own `abort` calls | **Extends** the workforce client: the guard needs `.flow(`, which L3 forbids, and Claude Code-style has the same race |
+| A public browser export of the history summary resource | A second `defineResource` of `historySummary` in the app; reading the session state through the client (L3) | **Exports the existing definition**: the one workforce's workers already declare (`earlier.resource`), so there is one definition of the resource ([D1](DECISIONS.md#d1)) |
+| `stopTurns` leaves a turn its client sent after the stop began, and `send` returns its request id | A Teammates guard around its own `abort` calls; a stop marker on the session that the server checks (D2's option b) | **Extends** the workforce client. The guard needs `.flow(`, which L3 forbids. Claude Code-style has the same race. The `send` change is shared with FIX-2776 |
 
 | The debt | |
 |---|---|
 | **Removes** | `window.ts` and `files.ts` as call modules, most of `conversations.ts` (384), three call interfaces, and `session-feed.ts`' connection and runs watches; 22 allowlist entries. The rest of `session-feed.ts` (108 lines) goes with the last `watchFeed` caller |
-| **Adds** | One optional field on a published view row and one rule in the workforce client, both permanent by design |
+| **Adds** | One optional field on a published view row, one public export of an existing resource definition, and one rule in the workforce client (with `send` returning its request id). All three are permanent by design and ship as `patch` changesets |
 | **Leaves** | The conversation entries drawn twice, here and in Claude Code-style (FIX-2756). The scaffolding entries, for the last Teammates child. A second open feed on one session while `watchFeed` has callers ([Where this meets its siblings](#where-this-meets-its-siblings)) |
 
-**Net: down.** About 500 lines of Teammates' calls and 22 findings go; one field and one rule come
+**Net: down.** About 500 lines of Teammates' calls and 22 findings go; one field, one export and one rule come
 to packages two apps share.
 
 ## Sign off
@@ -194,16 +198,17 @@ package hooks and clients, this issue's 22 entries gone, the conversation's goal
 wrong: the epic's closure finds Teammates still reaching the server in its conversation.
 
 **[The debt](#whats-already-here-and-the-debt), net down:** Teammates' conversation calls go, and
-`session-feed.ts` with the last `watchFeed` caller; one view field and one client rule come. If wrong: the turns view carries a
+`session-feed.ts` with the last `watchFeed` caller; one view field, one resource export and one client rule come. If wrong: the turns view carries a
 field only Teammates reads.
 
 1. **[D1](DECISIONS.md#d1) · Keep the *Earlier turns summarized* divider, by adding each turn's
    `historyStart` to workforce's session turns view.** The one to weigh. If wrong: a published
    view grows a field for one screen in one private app.
-2. **[D2](DECISIONS.md#d2) · Stop keeps leaving a follow-up line to run, by teaching workforce's
-   `stopTurns` to leave a turn its client sent after the stop began.** If wrong: a package
-   behaviour change for a race few people hit.
+2. **[D2](DECISIONS.md#d2) · Stop stops the turns running when it looks and the ones you sent
+   before it, and your own follow-up keeps running. A turn from another tab that starts after
+   Stop looked may run.** Instead of a stop marker on the server. If wrong: a person who stops
+   in one tab and sends from another sees that turn finish, and presses Stop again.
 
-Improvement · `labs/teammates`, `workforce`, `core`, `engine` · M (22 entries; two package
+Improvement · `labs/teammates`, `workforce`, `core`, `engine` · M (22 entries; three package
 changes, each with a changeset) · after FIX-2755 and FIX-2769 (both merged) · blocks FIX-2778 ·
 [Linear](https://linear.app/fixpoint-labs/issue/FIX-2772) · epic [FIX-2683](../../epics/FIX-2683/SPEC.md)
