@@ -548,19 +548,19 @@ read); the worker flows callback (say slot).
 | Slot | A typed place a kit declares, with a schema and a merge policy, which other kits fill | The declaring kit |
 | Registry item | A styled component published for an app to copy and restyle | The app, once copied |
 
-### Retired terms the change removes
+### Retired terms
 
-Counts are tracked files that mention the term on `main` as of 2026-11-10: package, app and lab
-source, then docs. Counted by search, not by hand.
+None of these is in package, app or lab source. The vocabulary sweep
+(`goals/vocabulary/one-word-per-thing/sweep.mjs`) fails a change that brings one back.
 
-| Retired | Say instead | Where it lives today | Files |
-| -- | -- | -- | -- |
-| Read, as the hook | View | `reads` on `defineFlow`, `ReadConfig`, `runRead` (`packages/core/src/types/flow.ts`, `packages/engine/src/execution/runRead.ts`) | 22 / 1 |
-| A client's read call | `useView` and the view call | `fsd.flow(kind).read(name, input, { sessionId })` (`packages/client/src/client.ts`) | 9 / 4 |
-| A scope's `derived` | View | `client.derived` on a scope (`packages/core/src/types/flow.ts`) | 13 / 10 |
-| Own session, lab session, reader session | Direct read | `ownSession`, `labSession`, `readerSessionId` in the labs and Shift Manager | 27 / 0 |
-| The worker flows callback | Workforce's worker flows slot | `workerFlows` on `createWorkerInstallation` | 76 / 13 |
-| Calling the installation by hand | The workforce kit's install | `createWorkerInstallation`, `hireWorkforce` | 43 / 13, 67 / 21 |
+| Retired | Say instead | What the code has |
+| -- | -- | -- |
+| Read, as the hook | View | `views` on `defineFlow` and `defineView` (`packages/core`), run by `runView` (`packages/engine/src/execution/runView.ts`). A flow has no `reads`, and there is no `ReadConfig` or `runRead` |
+| A client's read call | `useView` and the view call | `fsd.view(ref, input)` and `useView` (`packages/react`); a flow handle has no `read` |
+| A scope's `derived` | View | A scope has no `client.derived`; a computed value for a screen is a view |
+| Own session, lab session, reader session | Direct read | `fsd.resource(def)` reads a user or org resource by scope and key with no session (`GET /resources/:scope/:key`); `client.flow(kind).identity()` names the caller's user and org. No `ownSession`, `labSession` or `readerSessionId` |
+| The worker flows callback | Workforce's worker flows slot | `workforce.slots.workerFlows`, filled by kits such as the harnesses kit |
+| Calling the installation by hand | The workforce kit's install | `createFlowState({ kits: [workforce({ … })] })`; only workforce's own code calls its installation functions |
 
 "View" in its everyday sense stays: "derived views" in prose and loose uses in older issues mean
 the English word, not the hook.
@@ -581,35 +581,33 @@ the English word, not the hook.
   shared reader's "use or refuse every file" has one kit to answer to, and anything one kit adds
   to another's idea goes through a slot. What would change it: a kit whose files only make sense
   inside another kit's tree, such as a team that exists only under workforce's teams.
-- [ ] **What a refused file does to the app's start.** Open, owned by FIX-2626. Today workforce's
-  reader collects every refusal and the host decides. Recommend refusing to start, so a refusal is
-  never only a log line.
+- [x] **What a refused file does to the app's start.** Decided by FIX-2626 D2: any refusal stops
+  the app starting, naming the file.
 - [x] **Whether dependencies can be inferred instead of declared.** Decided by FIX-2623 D1:
   recorded per run, in production. FIX-2621 measured the cost at under 1% of a read.
-- [ ] **How a view answers for just some of its keys.** Open, owned by FIX-2623 and FIX-2625.
-  Recommend the client asks the same view with the keys it heard and places the rows it gets back;
-  a change that moves other rows (a new pin reorders the board) is the view's to report as more
-  keys, or as no keys.
+- [x] **How a view answers for just some of its keys.** Decided by FIX-2625 D1: the client asks
+  the same view with the notice that woke it (`changed`, with its ids), a keyed view may answer only
+  those rows (`ctx.view.partial`, flagged `partial`), and one that says nothing answers whole.
 - [ ] **Serving each answer on one route only.** Punted to a follow-up epic: some data reaches a
   client two ways today. Recommend filing it at the epic's wrap, as the epic plans.
 
-## Where today's code differs
+## Where the code stands
 
-| Target | Today |
+| Target | The code |
 | -- | -- |
-| A view at user or org scope runs with no session | Built (FIX-2623): `defineView` and flow `views`, run by `runView` (`packages/engine/src/execution/runView.ts`) at `POST /api/flows/:flowKind/views/:viewName`. Flow reads still run on a session the caller must already have, until their callers move |
-| A view never writes and stores nothing | Built, for views and reads alike: one runner, whose stores refuse every write with `read_only` (`runView.ts`, `readOnlyStores`) |
-| A view's answer names the topics of what it read | Built: the engine's recorder (`packages/engine/src/context/view-reads.ts`). No client hook uses it yet (`useView`, FIX-2623's next PR) |
+| A view at user or org scope runs with no session | Built: `defineView` and flow `views`, run by `runView` (`packages/engine/src/execution/runView.ts`) at `POST /api/flows/:flowKind/views/:viewName` |
+| A view never writes and stores nothing | Built: its stores refuse every write with `read_only` (`readOnlyStores`, `runView.ts`), and a model call in it is refused (`view_model_call`) |
+| A view's answer names the topics of what it read | Built: the engine's recorder (`packages/engine/src/context/view-reads.ts`); `useView` and `watchView` follow those topics |
 | Rows of a view's answer have keys | Built: a view's `key`; a keyed answer whose keys repeat is refused |
-| One hook computes every answer a screen sees | Two: a flow's `reads` and a scope's `client.derived`, which projects state into the snapshot (`packages/core/src/types/flow.ts`; `apps/kitchen-sink/flows/chat-agent/flow.ts` declares `derived`) |
-| A client reads a user resource by scope and name, with no session | Every resource route names a session (`packages/engine/src/routes/parseFlowRoute.ts`; `ResourcesApi` in `packages/client/src/client.ts` takes a `sessionId` on every call). The claude-code-style lab finds or makes a session per flow to read through (`ownSession`, `labs/claude-code-style/src/adapter.ts`) |
-| Pins are a user resource on the default write flow | Pins are a hand-written flow with `pin` and `unpin` actions and a `listPins` read, over user state (`labs/claude-code-style/workforce/flows/pins.mts`), reached through `ownSession("pins")` (`adapter.ts`) |
-| A resource names the flow that writes it, or can't be written from a client | No resource names a writer. A client writes collection entries directly through the content routes, with a session (`createCollectionResource`, `updateResourceContent`, `deleteCollectionResource` in `packages/client/src/client.ts`) |
-| A notice may carry the keys of the rows that changed | A notice says a topic changed and never what, and carries no ids (`packages/contracts/src/types/change-notice.ts`) |
-| A client watches a view, and the server works out what it depends on | A client names topics itself: a session, its user or its org, optionally one resource (`WireTopic`, `change-notice.ts`; `fsd.subscribe` in `adapter.ts`) |
-| A watcher's access is re-checked every hour | Already true: a push socket closes an hour after it opens and the client reconnects (`maxAgeMs`, `packages/engine/src/push/socket-session.ts`) |
-| An app installs workforce as one kit config | A host builds the installation with a circular callback, spreads the flows by hand and casts them (`workerFlows: () => flows as never`, `hireWorkforce(installation)`, two flows that serve only a read; `labs/teammates/host.mts`) |
-| A kit's views and client half replace each app's read model | Each app writes its own: `labs/claude-code-style/src/adapter.ts` (1,535 lines), `labs/teammates/src/adapter.ts` (1,888), `packages/shift-manager/src/lib/reads.ts` (1,110) |
-| One shared reader for every kit's owned folder, on a Node-only engine entry point | The reader's parts (`openRoot`, `classify`, `validateSegment`, `IGNORED_ENTRIES`, the refusal wording) are workforce's own, on its Node-only loader entry point, with the "used or refused" rule already stated there (`packages/workforce/src/loader/index.ts`) |
-| Kit components ship behind the kit's own React entry point | Workforce's panels ship from the React package's workforce entry point (`./workforce` in `packages/react/package.json`) |
-| No kit, no slot, no `defineKit` | None exists. A capability installs into one block and can't add flows or views (`packages/core/src/capability/define-capability.ts`) |
+| One hook computes every answer a screen sees | Built: views. A flow has no `reads`, and a scope no `client.derived` |
+| A client reads a user resource by scope and name, with no session | Built: `GET /api/flows/resources/:scope/:key` and its entries, through `fsd.resource(def)` or `useResource`; no session is found or made. The claude-code-style lab reads its pins this way (`usePins`, `labs/claude-code-style/src/lab.ts`) |
+| Pins are a user resource on the default write flow | Built: `lab-pins` and `lab-dismissals` are user resources with `runBy: "default"` (`labs/claude-code-style/flows/user-marks.mts`), written in one line through `fsd.resource(labPins).update(…)` |
+| A resource names the flow that writes it, or can't be written from a client | Built: a resource's `runBy` names its writer flow, or `"default"` for the default write flow (`fsd-default-write`, `packages/engine/src/resources/default-write-flow.ts`). A client write to a resource with no `runBy` is refused. The content routes' create, update and delete answer 501 at user and org scope, until FIX-2633 moves the skills collection's grants onto the default write flow |
+| A notice may carry the keys of the rows that changed | Built: a notice carries the ids of the rows that changed, up to a cap; no ids means read everything (`packages/contracts/src/types/push-delivery.ts`). A host turns ids off per scope (`noticeIds`, `packages/engine/src/runtime-config.ts`) |
+| A client watches a view, and the server works out what it depends on | Built: `useView` and `watchView` subscribe to the topics the view's answer names, and re-read with the notice that woke them |
+| A watcher's access is re-checked every hour | Built: a push socket closes an hour after it opens and the client reconnects (`maxAgeMs`, `packages/engine/src/push/socket-session.ts`) |
+| An app installs workforce as one kit config | Built: `createFlowState({ kits: [workforce({ … }), harnesses({ … })] })` in both labs' hosts; no worker flows callback, and the installation is workforce's own |
+| A kit's views and client half replace each app's read model | In part. The claude-code-style lab reads through `src/lab.ts` (733 lines), whose hooks wrap the kits' views; that module still calls the client itself (FIX-2757). Teammates keeps `labs/teammates/src/adapter.ts` (1,813 lines, FIX-2683) and Shift Manager `packages/shift-manager/src/lib/reads.ts` (1,014), each for a follow-up epic |
+| One shared reader for every kit's owned folder, on a Node-only engine entry point | Built: `@flow-state-dev/engine/folder` (`openRoot`, `openStructuralDirectory`, `classify`, `IGNORED_ENTRIES`, the refusal wording, and the claim pass that uses or refuses every file). A segment name is checked by `segmentNameProblem` (`packages/core/src/helpers/segment-name.ts`) |
+| Kit components ship behind the kit's own React entry point | Built: `@flow-state-dev/workforce/react` |
+| A kit, with slots | Built: `defineKit` and `slot` (`packages/core/src/kit/define-kit.ts`), installed in `requires` order by `createFlowState({ kits })` (`packages/engine/src/flowstate/kits.ts`) |
