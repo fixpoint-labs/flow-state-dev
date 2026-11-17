@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="What changes. Before: the conversation screens call Teammates' own calls (conversations, window, files, activity), which reach the server through the lab's session-feed wrapper, the client's live reads with topic, and client.flow calls for send, stop, approve and retry. After: the same screens read through package hooks: react's useSessionFeed for the items, workforce's session turns view (carrying each turn's historyStart, D1) for running, stopped, retryable, the window and activity, the history summary resource through useResource, workforce's client for send, stopTurns (leaving a line sent after the press, D2) and retryTurn, and react's approval hook. Gone: session-feed.ts, the conversation, window and file call interfaces, and 24 allowlist entries."
+<svg viewBox="0 0 940 470" role="img" aria-label="What changes. Before: the conversation screens call Teammates' own calls (conversations, window, files, steps), which reach the server through the lab's session-feed wrapper, the client's live reads with topic, and client.flow calls for send, stop, approve and retry. After: the same screens read through package hooks: react's useSessionFeed for the items, workforce's session turns view (carrying each turn's historyStart, D1) for running, stopped, retryable and the window, the history summary resource through useResource, workforce's client for send, stopTurns (leaving a line sent after the press, D2) and retryTurn, and react's approval hook. Gone: the conversation, window and file call interfaces, and 22 allowlist entries; session-feed.ts goes with the last watchFeed caller."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -29,11 +29,11 @@
   <text class="t-lbl" x="32" y="36">BEFORE</text>
   <rect class="screen" x="32" y="48" width="414" height="44" rx="5"/>
   <text class="t-h" x="46" y="68">Conversation, the roster row's status, the composer</text>
-  <text class="t-s" x="46" y="84">useApp().watchConversation · watchWindow · watchActivity · send …</text>
+  <text class="t-s" x="46" y="84">useApp().watchConversation · watchConnection · watchWindow · send …</text>
   <path class="arrow" d="M239,92 L239,110"/>
   <rect class="gone" x="32" y="112" width="414" height="96" rx="5"/>
   <text class="t-h c-gone" x="46" y="132">Teammates' own calls in src/app/</text>
-  <text class="t-b" x="46" y="152">conversations.ts · window.ts · files.ts · workers.ts' activity</text>
+  <text class="t-b" x="46" y="152">conversations.ts · window.ts · files.ts · steps.ts</text>
   <text class="t-s" x="46" y="170">ConversationCalls · WindowCalls · FileCalls · ConversationView …</text>
   <text class="t-s" x="46" y="188">one shared AppState: feeds, stops, the turns this page sent</text>
   <path class="arrow" d="M120,208 L120,236"/>
@@ -52,8 +52,8 @@
   <text class="t-s" x="330" y="276">send · abort ·</text>
   <text class="t-s" x="330" y="292">answer · retry</text>
   <text class="t-lbl" x="32" y="340">ON THE ALLOWLIST</text>
-  <text class="t-b" x="32" y="360">24 entries: 13 server reaches (client imports,</text>
-  <text class="t-b" x="32" y="378">.flow and .subscribe calls) and 11 hand-written types</text>
+  <text class="t-b" x="32" y="360">22 entries: 10 server reaches (client imports,</text>
+  <text class="t-b" x="32" y="378">.flow and .subscribe calls) and 12 hand-written types</text>
   <text class="t-s" x="32" y="404">one of them App.tsx's ClientHttpError, for a failed roster read</text>
 
   <rect class="panel" x="478" y="14" width="446" height="440" rx="6"/>
@@ -82,8 +82,8 @@
   <text class="t-h c-code" x="720" y="268">the client, from the entry</text>
   <text class="t-s" x="720" y="286">upload; main.tsx builds it</text>
   <text class="t-lbl" x="494" y="340">ON THE ALLOWLIST</text>
-  <text class="t-b" x="494" y="360">The 24 are gone: 20 deleted, 4 named screen types</text>
-  <text class="t-b" x="494" y="378">with their reason (entries, the view, the divider, where</text>
-  <text class="t-b" x="494" y="396">files are read), as claude-code-style names its own</text>
+  <text class="t-b" x="494" y="360">The 22 are gone: 15 deleted, 7 named screen types</text>
+  <text class="t-b" x="494" y="378">with their reason (entries, the view, the divider,</text>
+  <text class="t-b" x="494" y="396">a line's files, a run of steps), as claude-code-style does</text>
   <text class="t-s" x="494" y="420">thick border: a package change this issue makes</text>
 </svg>

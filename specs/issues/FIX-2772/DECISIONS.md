@@ -12,7 +12,7 @@ does yet, and each needs a package change.
 
 ```mermaid
 flowchart TD
-  I["FIX-2772 · Teammates' conversations"] --> M["the conversation on useSessionFeed, the turns view and the workforce client · 24 entries go"]
+  I["FIX-2772 · Teammates' conversations"] --> M["the conversation on useSessionFeed, the turns view and the workforce client · 22 entries go"]
   I --> D1["D1 · keep the divider · historyStart on the turns view"]
   D1 -.->|"rejected · retires a graded goal step"| X1["drop the divider"]
   I --> D2["D2 · stopTurns leaves a line sent after the stop"]
@@ -44,7 +44,7 @@ the divider goes, `window.ts` is deleted outright, and no package changes for it
 |---|---|
 | **Instead of** | Using `stopTurns` as it is, which reads the running turns after the press and stops every one, the follow-up included · or keeping Teammates' own guard around its own `abort` calls |
 | **Because** | Teammates pins the behaviour in a test (*leaves a line sent after the press to run on*, `test/watch-on-notice.test.ts`): a line sent while the stop's read is in flight starts its own turn, and Stop never reaches it. Teammates does it by naming each send's request id and aborting by hand, a `.flow(` call L3 forbids. Workforce's `stopTurns` has the same race, so Claude Code-style can stop your follow-up today. The fix belongs where both starters stop a turn: the workforce client names each send's request id, and a `stopTurns` call leaves any turn that client sent after the call began. No new option; one rule for every caller |
-| **Locks in** | The workforce client sets the request id of each `send`, and `stopTurns` resolves to the turns it stopped without the ones its client sent after the call began. A `workforce` changeset (`patch`) says so. A send from another tab or client is still stopped: only the client that pressed Stop knows what it sent after |
+| **Locks in** | One `send` contract, shared with [FIX-2776](https://linear.app/fixpoint-labs/issue/FIX-2776) (#5365), which makes `send` take a `taskId` and return `{ requestId }`:<br>1. The workforce client sets the request id of each `send`.<br>2. `send` returns that id.<br>3. `stopTurns` leaves any turn this client sent after the stop began, and resolves to the turns it stopped.<br>Whichever implementation PR lands second rebases onto the other's `send`. A `workforce` changeset says so. A send from another tab or client is still stopped, because only the client that pressed Stop knows what it sent after the press |
 
 ![D2, Stop then send. Chosen: stopTurns leaves a turn its client sent after the stop began. Instead of: stopTurns as it is, which stops the follow-up too. It comes down to Teammates' test that the follow-up runs. Price: a behaviour change in the workforce client. Also: Claude Code-style gets the same fix. Flips if the owner accepts the race in both starters](figures/d2-stop-leaves-the-new-line.svg)
 
@@ -61,11 +61,17 @@ workforce is unchanged.
   code they and `conversations.ts` hold (`toEntries`, `answeringOf`, `windowMarkOf`, the file read)
   moves to `src/lib/`, unchanged in behaviour. The implementer may lay it out otherwise inside
   those limits.
-- **Reclassifying is not a way out.** Four types become screen types, each with the reason the
-  settings require, the way Claude Code-style names `ThreadEntry`, `ThreadView` and
-  `AppConnection`: `ConversationEntry` (drawn from stored items), `ConversationView` (assembled
+- **Reclassifying is not a way out.** Seven types become screen types, each with the reason the
+  settings require, the way Claude Code-style names `ThreadEntry`, `ThreadView`, `AppConnection`
+  and `ToolStep`: `ConversationEntry` (drawn from stored items), `ConversationView` (assembled
   from the feed and the turns), `WindowMark` (the divider, computed), `AppConnection` (the page's
-  own base path and fetch, for a line's files). Every other type is deleted. A type a view returns
+  own base path and fetch, for a line's files), and `steps.ts`' `SessionStep`, `StepRun` and
+  `RunSummary` (a turn's tool calls grouped into a run, from its items). Every other type is deleted.
+  **Each of the seven gets its own written reason on the screen-type list, `steps.ts`' three
+  included.** Today the ratchet only asks for a reason when a type stays in the same file, so a
+  type in a moved file (all seven move to `src/lib/`) would pass without one. The implementer
+  writes the reasons, and review checks them. The coordinator is closing that gap in the ratchet
+  separately. A type a view returns
   takes its type from the view.
 - **The convergence point for "no new finding" is the inventory test**, which every writer of a
   file under `labs/teammates/src` passes through on `pnpm test`; it already fails on a new finding,
@@ -73,18 +79,19 @@ workforce is unchanged.
 - **`ClientHttpError` goes by reading the error's own `status`.** `App.tsx` keeps telling a status
   the server answered from a dead socket; it reads `status` off the failed read's error, with no
   client value. The roster watch that throws it is FIX-2771's.
-- **Activity reads the turns view** on the worker's conversation once it opens: running is a turn
-  in progress, last active is the newest turn's end or start. A worker with no conversation is
-  idle, as today. The turns view lists the turn actions only, which is what `QUIET_ACTIONS`
-  approximates by leaving out `dispatch`.
-- **Running, stopped and retryable read the turns view too**, as Claude Code-style's thread does,
-  instead of the last 20 requests. A stopped line stays once its turn leaves the read, as today.
+- **Running, stopped and retryable read the turns view**, as Claude Code-style's thread does,
+  instead of the last 20 requests. The turns view lists the turn actions only, which is what
+  `QUIET_ACTIONS` approximates by leaving out `dispatch`. A stopped line stays once its turn leaves the read, as today.
 - **Approvals answer through `react`'s approval hook**, not a Teammates call.
 - **`send` streams through the workforce client** and hands its `Response` to the open
   conversation's `useSessionFeed().followResponse`, as Claude Code-style's `threadFeeds` does.
-- **Sibling edges are proposals for cross-spec review**, not decisions here:
-  `session-feed.ts`' last three entries, `steps.ts`' three types, and `workers.ts`' activity
-  ([Where this meets its siblings](SPEC.md#where-this-meets-its-siblings)).
+- **Sibling edges, decided by the coordinator (2026-11-17)** as engineering calls
+  ([Where this meets its siblings](SPEC.md#where-this-meets-its-siblings)):
+  - `session-feed.ts`: this issue removes `watchState` and `watchRuns`. `sessionFeed`, `watch` and `SessionFeed` belong to the last child off `watchFeed`.
+  - `steps.ts`: this issue's.
+  - The busy dot (`workers.ts` · `topic`, `Activity`): FIX-2771's.
+  - The client in `main.tsx`: the first Teammates child to merge adds it.
+  - The shared types and the fake's file: the last Teammates child to merge removes them. Each child ledgers its own scenarios.
 - **Tests.** Each Teammates test that pins a conversation behaviour is ported to the hooks with
   its assertion intact; the Stop test is the one D2 must keep green.
 
@@ -99,16 +106,17 @@ workforce is unchanged.
 
 ## Open
 
-None for the owner. The three sibling edges go to cross-spec review.
+None. The coordinator has decided the sibling edges.
 
 <a name="settled"></a>
 ## Settled
 
 - **The entry counts.** `node specs/issues/FIX-2772/poc/entry-ledger/check.mjs`, on `main`
-  `e90786196b`: 57 entries, each owned once (this issue 24, plus 3 if it takes `steps.ts`;
-  FIX-2771 13; FIX-2773 13; the shared scaffolding 4). Its negative control, `PLANT=1`, adds an
-  unowned entry and fails naming it. The premise held: the epic's row maps to 24 entries without
-  overlap.
+  `e90786196b`, with the coordinator's rulings: 57 entries, each owned once. This issue owns 22,
+  the last child off `watchFeed` 3, FIX-2771 15, FIX-2773 12, and the last Teammates child to
+  merge 5. Its negative control, `PLANT=1`, adds an unowned entry, and the check fails naming it.
+  The first draft counted 24 (it held the busy dot and all of `session-feed.ts`, without
+  `steps.ts`). The rulings moved those entries, and the ledger still finds no overlap.
 
 ## Analysis
 
@@ -127,10 +135,14 @@ covers the set.
 4. **New factors.** FIX-2769 merged today with the allowlist this reads.
 5. **Necessity.** Yes: the epic's closure needs an empty allowlist.
 6. **Ergonomics.** A starter's conversation is hooks over package reads, as in Claude Code-style.
-7. **Concerns.** Landing order with the siblings for `session-feed.ts`.
+7. **Concerns.** Landing order with the siblings for `session-feed.ts`. The coordinator has decided it (the last child off `watchFeed`).
 
 ## How it got here
 
 - **Draft** — the conversation job framed as the 24 allowlist entries the epic's row names,
   replaced by Claude Code-style's pieces; two gaps (the divider's `historyStart`, Stop's follow-up)
   go into workforce and core as D1 and D2.
+- **Boundaries (2026-11-17)** — the coordinator's rulings on the sibling edges. The busy dot moves
+  to FIX-2771. `steps.ts` is this issue's. `session-feed.ts`' last three entries belong to the last
+  child off `watchFeed`, as Gitar's review thread also asked. The client and the scaffolding go to
+  the first and last Teammates child to merge. This issue owns 22 entries.
