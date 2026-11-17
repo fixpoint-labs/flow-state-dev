@@ -27,14 +27,21 @@
  * - H: the host keeps no wiring a kit replaces.
  * - own sessions: no own-session helper in the app's source.
  *
- * The rules read source with patterns, not a parser: a finding written in an
- * unusual form can pass. Imports only Node's built-ins; never a package export.
+ * The rules read most source with patterns, not a parser: a finding written
+ * in an unusual form can pass. L3's calls are the exception: the TypeScript
+ * compiler finds each `.subscribe(` and `.flow(` call and its holder, the
+ * innermost function, method, class, or function bound to a const around it
+ * (`(module)` outside them all), so a call moved out of an allowlisted
+ * function can't keep that function's entry. Imports Node's built-ins and
+ * `typescript` (the repo's own dev dependency: this runs only in tests and
+ * goals); never a package export.
  */
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 /** The repository's root, which the ratchet reads the merge-base from. */
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -137,17 +144,49 @@ const stripComments = (text: string) =>
   text.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, "")).replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
 const codeOf = (abs: string) => stripComments(readFileSync(abs, "utf8"));
 
-/** A top-level declaration: what a call outside an exported function is keyed by. */
-const TOP = /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function\*?|const|let|var|class)\s+(\w+)/;
+/** A parsed file, and the innermost named holder of any position in it. */
+interface Parsed {
+  source: ts.SourceFile;
+  /** The innermost function, method, class, or function bound to a const holding `pos`; `(module)` outside them all. */
+  holderAt(pos: number): string;
+  /** The 1-based line of `pos`. */
+  lineOf(pos: number): number;
+}
 
-/** Each line of `code` with the top-level declaration that holds it. */
-function withHolders(code: string): { line: string; at: number; holder: string }[] {
-  let holder = "(module)";
-  return code.split("\n").map((line, i) => {
-    const top = TOP.exec(line);
-    if (top) holder = top[1]!;
-    return { line, at: i + 1, holder };
-  });
+/** The name a node holds what's inside it under, or `undefined` when it holds nothing by name. */
+function holderName(node: ts.Node): string | undefined {
+  if (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) return node.name?.text ?? "default";
+  if (ts.isMethodDeclaration(node) || ts.isConstructorDeclaration(node)) {
+    if (ts.isConstructorDeclaration(node)) return "constructor";
+    return ts.isIdentifier(node.name) || ts.isStringLiteral(node.name) || ts.isPrivateIdentifier(node.name) ? node.name.text : undefined;
+  }
+  if ((ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isClassExpression(node)) && ts.isVariableDeclaration(node.parent) && node.parent.initializer === node) {
+    const list = node.parent.parent;
+    if (ts.isVariableDeclarationList(list) && list.flags & ts.NodeFlags.Const && ts.isIdentifier(node.parent.name)) return node.parent.name.text;
+  }
+  return undefined;
+}
+
+/**
+ * Parses `text` with the TypeScript compiler, so a holder is its real lexical
+ * scope: strings, template literals, regular expressions and JSX text can't
+ * shift it, and a call after a function's end isn't that function's.
+ */
+function parse(text: string, rel: string): Parsed {
+  const source = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true, rel.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const holders: { start: number; end: number; name: string }[] = [];
+  const visit = (node: ts.Node) => {
+    const name = holderName(node);
+    if (name !== undefined) holders.push({ start: node.getStart(source), end: node.getEnd(), name });
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return {
+    source,
+    // Holders are pushed outermost first, so the last one containing `pos` is the innermost.
+    holderAt: (pos) => holders.filter((h) => h.start <= pos && pos < h.end).at(-1)?.name ?? "(module)",
+    lineOf: (pos) => source.getLineAndCharacterOfPosition(pos).line + 1,
+  };
 }
 
 /** The value imports `text` makes from `pkg`: each name not marked `type`, plus any namespace, default, dynamic or re-export form. */
@@ -199,13 +238,22 @@ function overCaps(root: string): Finding[] {
 /** L3: each value imported from the client, by its name, and each `.subscribe(` and `.flow(` call, by the declaration that holds it. */
 function reachingTheServer(root: string, entry: string): Finding[] {
   return filesUnder("src", root).filter(isCode).flatMap((rel) => {
-    const code = codeOf(join(root, rel));
-    const imports: Finding[] = valueImports(code, "@flow-state-dev/client")
+    const text = readFileSync(join(root, rel), "utf8");
+    const imports: Finding[] = valueImports(stripComments(text), "@flow-state-dev/client")
       .filter((name) => !(rel === entry && name === "createClient"))
       .map((name) => ({ rule: "L3", file: rel, symbol: name, kind: "client import", detail: `${rel}: imports ${name} from the client` }));
-    const calls: Finding[] = withHolders(code).flatMap(({ line, at, holder }) =>
-      [...line.matchAll(/\.(subscribe|flow)\(/g)].map((m) => ({ rule: "L3" as const, file: rel, symbol: holder, kind: `${m[1]} call`, detail: `${rel}:${at}: a .${m[1]}( call in ${holder}` })),
-    );
+    const parsed = parse(text, rel);
+    const calls: Finding[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && /^(subscribe|flow)$/.test(node.expression.name.text)) {
+        const method = node.expression.name.text;
+        const pos = node.expression.name.getStart(parsed.source);
+        const holder = parsed.holderAt(pos);
+        calls.push({ rule: "L3", file: rel, symbol: holder, kind: `${method} call`, detail: `${rel}:${parsed.lineOf(pos)}: a .${method}( call in ${holder}` });
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(parsed.source);
     return [...imports, ...calls];
   });
 }
@@ -244,17 +292,26 @@ export function hostWiring(hostFile: string): string[] {
 function hostFindings(root: string): Finding[] {
   const host = join(root, "host.mts");
   if (!existsSync(host)) return [];
-  return withHolders(codeOf(host))
-    .filter(({ line }) => WIRING.test(line))
-    .map(({ line, at, holder }) => ({ rule: "H", file: "host.mts", symbol: holder, kind: "host wiring", detail: `host.mts:${at}: ${line.trim()}` }));
+  const text = readFileSync(host, "utf8");
+  const parsed = parse(text, "host.mts");
+  const starts = parsed.source.getLineStarts();
+  return stripComments(text)
+    .split("\n")
+    .flatMap((line, i) => {
+      if (!WIRING.test(line)) return [];
+      const holder = parsed.holderAt(starts[i]! + (line.length - line.trimStart().length));
+      return [{ rule: "H" as const, file: "host.mts", symbol: holder, kind: "host wiring", detail: `host.mts:${i + 1}: ${line.trim()}` }];
+    });
 }
 
 /** Own sessions: each own-session helper named in the app's source code, by its name. */
 function sessionHelpers(root: string): Finding[] {
   return filesUnder("src", root).filter(isCode).flatMap((rel) =>
-    withHolders(codeOf(join(root, rel))).flatMap(({ line, at }) =>
-      [...line.matchAll(OWN_SESSION)].map((m) => ({ rule: "own sessions" as const, file: rel, symbol: m[1]!, kind: "own session", detail: `${rel}:${at}: ${m[1]}, an own-session helper` })),
-    ),
+    codeOf(join(root, rel))
+      .split("\n")
+      .flatMap((line, i) =>
+        [...line.matchAll(OWN_SESSION)].map((m) => ({ rule: "own sessions" as const, file: rel, symbol: m[1]!, kind: "own session", detail: `${rel}:${i + 1}: ${m[1]}, an own-session helper` })),
+      ),
   );
 }
 

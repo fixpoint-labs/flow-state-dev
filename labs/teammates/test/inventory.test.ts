@@ -65,6 +65,28 @@ describe("the lab's inventory", () => {
       );
     });
 
+    // A call keyed to the wrong holder can take the entry of one it replaced: each plant
+    // drops the `.subscribe(` in `watch` and adds one after the file's last function, so the
+    // counts still match. Each is keyed by its innermost holder, `(module)` outside them all.
+    for (const [where, outside, holder] of [
+      ["at module level, after the function", "void (globalThis as any).subscribe([], {});\n", "(module)"],
+      ["in an abstract class's method", "export abstract class Planted {\n  go(c: any) {\n    return c.subscribe([], {});\n  }\n}\n", "go"],
+      ["in a string-heavy class that a line scanner misreads", "export abstract class Quoted {\n  note = 'it\\'s {';\n  go(c: any) {\n    return c.subscribe([`}`], {});\n  }\n}\n", "go"],
+    ] as const) {
+      it(`a call moved out of an allowlisted function, ${where}: it is keyed by its own scope`, () => {
+        const app = copy();
+        const file = at(app, "src/lib/session-feed.ts");
+        const text = readFileSync(file, "utf8");
+        const dropped = text.replace(/^(\s*)(.*)\.subscribe\(/m, "$1$2.subscribeDropped(");
+        expect(dropped).not.toBe(text);
+        writeFileSync(file, `${dropped}\n${outside}`);
+        expect(checkInventory(app)).toEqual([
+          expect.stringMatching(new RegExp(`^src/lib/session-feed\\.ts:\\d+: a \\.subscribe\\( call in ${holder.replace(/[()]/g, "\\$&")} \\(L3: not on the allowlist\\)$`)),
+          "src/lib/session-feed.ts · watch · subscribe call: on the allowlist, but the finding is gone: delete the entry",
+        ]);
+      });
+    }
+
     it("an own-session helper planted in src/lib/", () => {
       // Built at run time: the vocabulary sweep and the closure's grep read this file too.
       const helper = ["openReader", "Session"].join("");

@@ -10,7 +10,7 @@
   {"file":"src/lib/projects.ts","symbol":"viewRef","kind":"client import"},
   {"file":"src/lib/reads.ts","symbol":"ClientHttpError","kind":"client import"},
   {"file":"src/lib/reads.ts","symbol":"readEveryCollectionPage","kind":"client import"},
-  {"file":"src/lib/reads.ts","symbol":"createLabReader","kind":"flow call"},
+  {"file":"src/lib/reads.ts","symbol":"read","kind":"flow call"},
   {"file":"src/lib/routines.ts","symbol":"ClientHttpError","kind":"client import"},
   {"file":"src/lib/run.ts","symbol":"ClientHttpError","kind":"client import"},
   {"file":"src/lib/run.ts","symbol":"compareItemOrder","kind":"client import"},
