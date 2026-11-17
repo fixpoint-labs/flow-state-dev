@@ -656,9 +656,10 @@ export type FlowDefinition<
   webhooks?: WebhookConfig;
 
   /**
-   * Per-flow scheduled-action config. When set, the
-   * `@flow-state-dev/scheduled` adapter mounts
-   * `POST /api/flows/:kind/schedules/:scheduleId/dispatch` for this flow.
+   * Per-flow scheduled-action config. When set, the router's built-in
+   * scheduled endpoint answers
+   * `POST /api/flows/:kind/schedules/:scheduleId/dispatch` for this flow
+   * (with no `schedules`, it answers as for an unknown flow).
    * Static entries are validated at registration; dynamic entries
    * returned by `resolve` are validated at dispatch.
    */

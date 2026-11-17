@@ -17,21 +17,14 @@ import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { __resetDeprecationWarningsForTests } from "@flow-state-dev/core";
 import type { SchedulesConfig } from "@flow-state-dev/core/types";
-import { createFlowState, filesystemStores, inMemoryStores, type StoreAdapter } from "../../src";
-import { createInMemoryStores, type InboundTransportAdapter, type JobQueueAdapter, type LeaseStore } from "../../src/host";
+import { createBearerSecretPrincipalResolver, createFlowState, filesystemStores, inMemoryStores, type StoreAdapter } from "../../src";
+import { createInMemoryStores, type JobQueueAdapter, type LeaseStore } from "../../src/host";
 import type { FlowRunner } from "../../src/transports/runner";
 import type { StoreRegistry } from "../../src/stores/types";
 
 const MINUTE = 60_000;
+const SECRET = "local-cron-secret";
 const noop = handler({ name: "local-cron-noop", inputSchema: z.object({}), execute: () => ({}) });
-
-/** The scheduled endpoint's route; answers 202. */
-const scheduledStandIn: InboundTransportAdapter = {
-  source: "scheduled",
-  createBindings: () => ({
-    routes: [{ method: "POST", path: "/api/flows/:flowKind/schedules/*scheduleId/dispatch", handler: async () => new Response("{}", { status: 202 }) }]
-  })
-};
 
 /** A flow on an index that counts its claims: one process's ticks. */
 function countedFlow(schedules: Partial<SchedulesConfig> = {}) {
@@ -59,7 +52,7 @@ function withAcquire(leases: LeaseStore, acquire: LeaseStore["acquire"]): LeaseS
 /** A process: a FlowState over `stores` whose ticks are counted. */
 function processOn(stores: StoreAdapter, extra: { scheduler?: false; jobQueue?: JobQueueAdapter } = {}) {
   const { flow, ticks } = countedFlow();
-  const app = createFlowState({ flows: [flow], stores, adapters: [scheduledStandIn], ...extra });
+  const app = createFlowState({ flows: [flow], stores, ...extra });
   return { app, ticks };
 }
 
@@ -91,7 +84,7 @@ describe("the local cron", () => {
   // `register()` after start is public: a scheduled flow registered then must still fire.
   it("ticks for a scheduled flow registered after the router is built", async () => {
     fakeClock();
-    const app = createFlowState({ flows: [], stores: sharedStore(), adapters: [scheduledStandIn] });
+    const app = createFlowState({ flows: [], stores: sharedStore() });
     apps.push(app);
     await app.ready();
     const { flow, ticks } = countedFlow();
@@ -124,33 +117,30 @@ describe("the local cron", () => {
     expect(p.ticks.count).toBe(0);
   });
 
-  // The scheduled adapter takes a `basePath`; a fire sent to the default path would miss its route.
-  it("sends each fire to the path the scheduled adapter is mounted at", async () => {
+  // FIX-2753: the endpoint is the router's own, so a fire needs no adapter line to land.
+  it("fires a static schedule through the router's built-in endpoint, with no adapters", async () => {
     fakeClock();
-    const hits: string[] = [];
-    const mountedAtCustom: InboundTransportAdapter & { readonly basePath: string } = {
-      source: "scheduled",
-      basePath: "/custom",
-      createBindings: () => ({
-        routes: [
-          {
-            method: "POST",
-            path: "/custom/:flowKind/schedules/*scheduleId/dispatch",
-            handler: async (req) => (hits.push(new URL(req.url).pathname), new Response("{}", { status: 202 }))
-          }
-        ]
-      })
-    };
+    vi.stubEnv("CRON_SECRET", SECRET);
+    const ran: string[] = [];
+    const recorded = handler({
+      name: "local-cron-recorded",
+      inputSchema: z.object({}).passthrough(),
+      execute: () => (ran.push("ran"), {})
+    });
     const flow = defineFlow({
-      kind: "custom-mount",
+      kind: "built-in-mount",
+      authentication: {
+        resolvePrincipal: createBearerSecretPrincipalResolver({ secret: SECRET, principal: { userId: "system", orgId: "org_sys" } }),
+        requireUser: true
+      },
       actions: { noop: { inputSchema: z.object({}), block: noop } },
-      schedules: { static: { each: { cron: "* * * * *", block: noop } } }
+      schedules: { static: { each: { cron: "* * * * *", block: recorded } } }
     })();
-    const app = createFlowState({ flows: [flow], stores: sharedStore(), adapters: [mountedAtCustom] });
+    const app = createFlowState({ flows: [flow], stores: sharedStore() });
     apps.push(app);
     await app.ready();
     await vi.advanceTimersByTimeAsync(MINUTE);
-    expect(hits).toEqual(["/custom/custom-mount/schedules/each/dispatch"]);
+    await vi.waitFor(() => expect(ran).toEqual(["ran"]));
   });
 
   it("starts nothing with `scheduler: false`", async () => {
@@ -189,7 +179,7 @@ describe("the local cron", () => {
       // A store that stopped answering: the claim never settles.
       schedules: { index: { claimDue: () => ((claims += 1), new Promise<never>(() => undefined)) } }
     })();
-    const app = createFlowState({ flows: [flow], stores: sharedStore(), adapters: [scheduledStandIn] });
+    const app = createFlowState({ flows: [flow], stores: sharedStore() });
     await app.ready();
     await vi.advanceTimersByTimeAsync(MINUTE);
     expect(claims).toBe(1);
@@ -305,14 +295,14 @@ describe("the schedule-tick lease", () => {
 });
 
 describe("startup checks", () => {
-  it("fails ready() for a flow that declares schedules with no scheduled transport mounted, naming the line", async () => {
+  it("starts a flow that declares schedules with no adapters", async () => {
     const { flow } = countedFlow();
     const app = createFlowState({ flows: [flow], stores: sharedStore(), scheduler: false });
     apps.push(app);
-    await expect(app.ready()).rejects.toThrow(/"counted" declares schedules.*createScheduledTransportAdapter\(\)/s);
+    await expect(app.ready()).resolves.toBeUndefined();
   });
 
-  it("starts a flow whose schedules only resolve, with no index for the tick to claim, without the transport", async () => {
+  it("starts a flow whose schedules only resolve, with no index for the tick to claim", async () => {
     const flow = defineFlow({
       kind: "resolve-only",
       actions: { noop: { inputSchema: z.object({}), block: noop } },

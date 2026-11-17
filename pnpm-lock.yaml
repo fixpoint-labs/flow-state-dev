@@ -1102,9 +1102,6 @@ importers:
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../../packages/react
-      '@flow-state-dev/scheduled':
-        specifier: workspace:*
-        version: link:../../packages/scheduled
       '@flow-state-dev/store-sqlite':
         specifier: workspace:*
         version: link:../../packages/store-sqlite
@@ -1315,9 +1312,6 @@ importers:
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../../packages/react
-      '@flow-state-dev/scheduled':
-        specifier: workspace:*
-        version: link:../../packages/scheduled
       '@flow-state-dev/store-sqlite':
         specifier: workspace:*
         version: link:../../packages/store-sqlite
@@ -2031,9 +2025,6 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
-      '@flow-state-dev/engine':
-        specifier: workspace:*
-        version: link:../engine
       cron-parser:
         specifier: ^5.5.0
         version: 5.5.0
@@ -2041,9 +2032,6 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
-      '@flow-state-dev/testing':
-        specifier: workspace:*
-        version: link:../testing
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
@@ -2102,9 +2090,6 @@ importers:
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../react
-      '@flow-state-dev/scheduled':
-        specifier: workspace:*
-        version: link:../scheduled
       '@flow-state-dev/store-sqlite':
         specifier: workspace:*
         version: link:../store-sqlite

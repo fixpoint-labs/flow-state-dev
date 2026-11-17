@@ -11,7 +11,6 @@ import { createFlowState, runAction } from "@flow-state-dev/engine";
 import type { ScheduleTicker } from "@flow-state-dev/engine/host";
 import { routeServiceEvent } from "@flow-state-dev/engine/internal";
 import { type InboundTransportHost } from "@flow-state-dev/engine/host";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { defaultParseScheduleId } from "@flow-state-dev/scheduled/collection";
 import { createSQLiteScheduleIndex, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -253,7 +252,7 @@ async function boot(options: BootOptions) {
     modelResolver: createMockModelResolver({}),
     logger: silentLogger,
     staleSweepIntervalMs: 0,
-    adapters: [createScheduledTransportAdapter(), { source: "poll-goal", createBindings: (h: InboundTransportHost) => ((captured = h), {}) }],
+    adapters: [{ source: "poll-goal", createBindings: (h: InboundTransportHost) => ((captured = h), {}) }],
     resolvePrincipal: (context: any) => {
       // The tick's dispatch carries `CRON_SECRET` as its bearer.
       if (context.request?.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`) return { userId: "scheduler", orgId: ORG };

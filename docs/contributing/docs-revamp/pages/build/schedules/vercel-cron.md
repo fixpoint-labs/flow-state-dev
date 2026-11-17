@@ -8,7 +8,7 @@ description: "Run a flow's schedule on Vercel with one cron entry, one route and
 
 A Vercel deployment has no process that stays up to keep time. Vercel Cron fills that gap: it calls one URL on your app every few minutes. That call runs the app's schedule tick, which fires every schedule that has come due by posting to that schedule's dispatch endpoint, `/api/flows/<flow>/schedules/<name>/dispatch`. You set up one `vercel.json` entry, one route and one shared secret.
 
-This guide assumes the scheduled-actions transport is mounted under `/api/flows`, as in [Deploy to Vercel](../deploy/vercel.md). Options and exact answers are in the [schedules reference](../../reference/schedules.md).
+This guide assumes the app serves its flows under `/api/flows`, where the schedule routes live, as in [Deploy to Vercel](../deploy/vercel.md). Options and exact answers are in the [schedules reference](../../reference/schedules.md).
 
 ## 1. Declare the schedule
 
@@ -70,7 +70,6 @@ The app is told how its schedules fire with `createFlowState({ scheduler })`. Pa
 
 ```ts title="fsdev.config.ts"
 import { createFlowState } from "@flow-state-dev/engine";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { vercelScheduler } from "@flow-state-dev/vercel";
 import support from "./src/flows/support/flow";
 
@@ -78,7 +77,6 @@ export const scheduler = vercelScheduler();
 
 export default createFlowState({
   flows: [support],
-  adapters: [createScheduledTransportAdapter()],
   scheduler: process.env.VERCEL ? scheduler : undefined
   // ...your stores and other options
 });

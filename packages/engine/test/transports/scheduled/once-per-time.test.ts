@@ -1,7 +1,7 @@
 /**
  * At most once per scheduled time (FIX-2085 D2): two hosts over one store, a
  * restart, a late or early fire, a fire with no time. Each host is its own
- * router and its own adapter over a shared store, as two processes are, so a
+ * router (scheduled endpoint built in) over a shared store, as two processes are, so a
  * guarantee that lives in one process's memory fails here.
  */
 import { describe, it, expect, vi } from "vitest";
@@ -13,11 +13,10 @@ import {
   createFlowRegistry,
   disposeFlowApiRouter,
   type StoreRegistry
-} from "@flow-state-dev/engine";
+} from "../../../src";
 import {
   createInMemoryStores
-} from "@flow-state-dev/engine/host";
-import { createScheduledTransportAdapter } from "../src";
+} from "../../../src/host";
 import { recentTimes } from "./recent-times";
 
 const SECRET = "scheduler-secret";
@@ -50,11 +49,11 @@ function flowWith(cron: string) {
   })();
 }
 
-/** One host: its own registry, router and adapter, over `stores`. */
+/** One host: its own registry and router, over `stores`. */
 function host(stores: StoreRegistry, cron = MONTHLY) {
   const registry = createFlowRegistry();
   registry.register(flowWith(cron));
-  return createFlowApiRouter({ registry, stores, adapters: [createScheduledTransportAdapter()] });
+  return createFlowApiRouter({ registry, stores });
 }
 
 async function fire(router: ReturnType<typeof host>, body?: unknown) {
@@ -101,7 +100,7 @@ describe("one firing per scheduled time", () => {
     const before = host(stores);
     expect((await fire(before, { nominalFireTime: LATEST })).status).toBe(202);
     await disposeFlowApiRouter(before);
-    // A fresh adapter and router: nothing in memory survives.
+    // A fresh router: nothing in memory survives.
     const after = host(stores);
     try {
       const again = await fire(after, { nominalFireTime: LATEST });

@@ -39,7 +39,6 @@ import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { boardWorkers, bootBoardHost, ORG, SCHEDULER_SECRET, type BoardHostOptions } from "./conversation-board-harness";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { defaultParseScheduleId, parseNextFireAt, type ScheduleIndex, type ScheduleIndexEntry } from "@flow-state-dev/scheduled/collection";
 import type { ScheduleTicker } from "@flow-state-dev/engine/host";
 import { SUBSCRIPTION_POLLS_PATTERN } from "../src/subscriptions/keys";
@@ -256,7 +255,6 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     }),
     adapters: [
       { source: "subscriptions-test", createBindings: (h: InboundTransportHost) => ((host = h), {}) },
-      ...(poll === undefined ? [] : [createScheduledTransportAdapter()]),
       ...(options.adapters ?? [])
     ]
   });

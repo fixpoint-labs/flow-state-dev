@@ -16,23 +16,9 @@
  * Postgres). On the memory store, and on the filesystem store, whose lock is
  * per store instance, it holds per process only.
  */
-import { CronExpressionParser } from "cron-parser";
-import type { ResourceStateStore } from "@flow-state-dev/engine/host";
 import type { ResolvedPrincipal } from "@flow-state-dev/core/types";
-import { latestScheduledTime } from "@flow-state-dev/core/internal";
-import { firedRecordKey } from "./firedRecords";
-
-/** The first scheduled time strictly after `at`, or `null` when the cron has none. */
-function firstAfter(cron: string, timezone: string, at: number): number | null {
-  try {
-    return CronExpressionParser.parse(cron, { tz: timezone, currentDate: new Date(at) })
-      .next()
-      .toDate()
-      .getTime();
-  } catch {
-    return null;
-  }
-}
+import { firedRecordKey, latestScheduledTime, nextScheduledTime } from "@flow-state-dev/core/internal";
+import type { ResourceStateStore } from "../../stores";
 
 /**
  * How far a sender's clock may sit from ours and still land on the time it
@@ -87,7 +73,7 @@ export function scheduledTimeOf(cron: string, timezone: string, carried: string 
       message: `nominalFireTime ${JSON.stringify(carried)} is not an ISO-8601 time`
     };
   }
-  const candidates = [latestScheduledTime(cron, timezone, sent), firstAfter(cron, timezone, sent)].filter(
+  const candidates = [latestScheduledTime(cron, timezone, sent), nextScheduledTime(cron, timezone, sent)].filter(
     (time): time is number => time !== null && Math.abs(time - sent) <= SCHEDULED_TIME_TOLERANCE_MS
   );
   const at = candidates.sort((x, y) => Math.abs(x - sent) - Math.abs(y - sent))[0];

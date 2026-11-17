@@ -18,7 +18,7 @@ import type { DispatchType } from "@flow-state-dev/core/types";
 /** Stamped by the webhook adapter. Resolves a `webhook` entry. */
 export const WEBHOOK_SOURCE = "webhook";
 
-/** Stamped by the scheduled adapter. Resolves a `schedule` entry. */
+/** Stamped by the scheduled endpoint, the router's built-in. Resolves a `schedule` entry. */
 export const SCHEDULED_SOURCE = "scheduled";
 
 /**

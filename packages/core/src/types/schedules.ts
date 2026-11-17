@@ -2,7 +2,7 @@
  * Per-flow scheduled-action configuration types.
  *
  * The framework owns the configuration model and dispatch contract — the
- * `@flow-state-dev/scheduled` adapter mounts a route per flow, validates
+ * engine's router mounts the scheduled endpoint on every app, validates
  * incoming dispatches, and invokes `runAction`. The engine's one schedule
  * tick fires every static and dynamic schedule through that endpoint; when it
  * runs is `createFlowState({ scheduler })` (the engine's local cron by
@@ -294,6 +294,50 @@ export function latestScheduledTime(cron: string, timezone: string, at: number):
   } catch {
     return null;
   }
+}
+
+// FIX-2753.
+/**
+ * The first scheduled time of `cron` in `timezone` strictly after `at` (ms), or
+ * `null` when the cron has none (or does not parse). The scheduled endpoint
+ * reads it beside {@link latestScheduledTime} to find the scheduled time a
+ * fire's carried time is nearest.
+ */
+export function nextScheduledTime(cron: string, timezone: string, at: number): number | null {
+  try {
+    return CronExpressionParser.parse(cron, { tz: timezone, currentDate: new Date(at) })
+      .next()
+      .toDate()
+      .getTime();
+  } catch {
+    return null;
+  }
+}
+
+// FIX-2753.
+/**
+ * Where the scheduled endpoint keeps each schedule's fired record: the latest
+ * scheduled time it fired, one row per schedule, in the user cell of the
+ * principal the schedule runs as. A flow that deletes a schedule deletes its
+ * record with it, through a collection over this pattern, at user scope. A
+ * key holds `/`, so any depth.
+ */
+export const FIRED_RECORDS_PATTERN = "scheduled-fires/**";
+
+/** {@link FIRED_RECORDS_PATTERN}'s prefix, without its wildcard. */
+const FIRED_RECORDS_PREFIX = "scheduled-fires/";
+
+/**
+ * A schedule's fired-record key within {@link FIRED_RECORDS_PATTERN}: the
+ * flow the schedule is dispatched on, then its dispatch id.
+ */
+export function firedRecordCollectionKey(flowKind: string, scheduleId: string): string {
+  return `${flowKind}/${scheduleId}`;
+}
+
+/** A schedule's fired-record resource key, prefix included. */
+export function firedRecordKey(flowKind: string, scheduleId: string): string {
+  return `${FIRED_RECORDS_PREFIX}${firedRecordCollectionKey(flowKind, scheduleId)}`;
 }
 
 /** What a host's tick needs of a schedule index: claim the entries due by `now`, advancing them. */

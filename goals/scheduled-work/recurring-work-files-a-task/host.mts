@@ -23,7 +23,6 @@ import "./clock.mts";
 import { z } from "zod";
 import { defineFlow, formatScheduleId, handler } from "@flow-state-dev/core";
 import { createBearerSecretPrincipalResolver, createFlowState } from "@flow-state-dev/engine";
-import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {
   ROSTER_FLOW,
@@ -109,7 +108,6 @@ const state = createFlowState({
     }
   },
   stores: { default: { primary: sqliteStores({ filename: DB }) } },
-  adapters: [createScheduledTransportAdapter()],
   logger: silentLogger,
   staleSweepIntervalMs: 0,
   resolvePrincipal: (context: any) => {

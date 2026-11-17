@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { ActiveRequestEntry, ActiveRequestRegistry } from "@flow-state-dev/engine/host";
-import { findScheduledRequest } from "../src";
+import type { ActiveRequestEntry, ActiveRequestRegistry } from "../../../src/host";
+import { findScheduledRequest } from "../../../src/transports/scheduled/findScheduledRequest";
 
 const baseEntry = {
   actionName: "doThing",
