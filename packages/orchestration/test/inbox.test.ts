@@ -490,6 +490,20 @@ describe("a board's task actions: inbox.board(at)", () => {
     ]);
   });
 
+  it("get reads one task whole through the board's getTask, its brief uncut", async () => {
+    // A re-run copies the brief from this read: a cut brief would drop a long brief's instructions.
+    const context = "Keep the npm ones. ".repeat(2_000);
+    const task = { id: "t1", goal: "Audit the licenses", status: "errored", context, labels: ["legal"], priority: 2, attempts: 1 };
+    const { send, actions } = boardClient({ ok: true, task });
+    expect(await actions.get("t1")).toEqual(task);
+    expect(send.mock.calls[0]).toEqual(["getTask_eng_work", { id: "t1" }, { sessionId: "s_desk" }]);
+  });
+
+  it("get rejects with the board's words when it can't read the task, and when its answer names no task", async () => {
+    await expect(boardClient({ ok: false, error: 'not_found: no task "t1"' }).actions.get("t1")).rejects.toThrow('not_found: no task "t1"');
+    await expect(boardClient({ ok: true }).actions.get("t1")).rejects.toThrow(/names no task/);
+  });
+
   it("reads its answer by the request's id, however long the session is", async () => {
     const { actions, request, result } = boardClient({ ok: true, cancelled: ["t4"] });
     expect(await actions.cancel("t1")).toEqual(["t4"]);
