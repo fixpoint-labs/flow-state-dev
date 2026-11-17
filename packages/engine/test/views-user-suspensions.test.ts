@@ -21,6 +21,8 @@ import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint
 import { createInMemoryStores } from "../src/host";
 import { withChangeBus } from "../src/bus/publish-writes";
 import type { ChangeNotice } from "../src/bus/types";
+import { hearsNotice, type ViewHearing } from "@flow-state-dev/contracts/types/view-hearing";
+import type { WireNotice } from "@flow-state-dev/contracts/types/push-delivery";
 import type { RequestRecord, SessionRecord } from "../src/stores/types";
 
 const verified = {
@@ -166,6 +168,80 @@ describe("a user view on sessions.userSuspensions", () => {
   });
 });
 
+describe("a sessionless pending suspension on a flow the host signs in", () => {
+  // The inbox flow resolves its callers itself; the worker flow is on the
+  // host's resolver. A caller the inbox accepts as alice, whom the host
+  // refuses, must read none of the worker's suspensions, as the HTTP session
+  // list's host rule refuses its sessions; nor one whose owner can't be resolved.
+  async function bootHostRule() {
+    const respond = { respond: { block: handler({ name: "respond", inputSchema: z.object({}), execute: () => ({ ok: true }) }) } };
+    const worker = defineFlow({ kind: "worker", actions: respond })() as unknown as FlowInstance;
+    const inbox = defineFlow({
+      kind: "inbox",
+      authentication: verified,
+      actions: {},
+      views: {
+        pending: defineView({
+          scope: "user",
+          block: handler({
+            name: "pending",
+            inputSchema: z.object({}),
+            outputSchema: z.object({ ids: z.array(z.string()) }),
+            execute: async (_input, ctx) => ({
+              ids: (await requestHostOf(ctx)!.sessions!.userSuspensions({ flowKinds: ["worker"] })).suspensions.map((entry) => entry.suspensionId)
+            })
+          })
+        })
+      }
+    })() as unknown as FlowInstance;
+    const registry = createFlowRegistry();
+    registry.register(inbox);
+    registry.register(worker);
+    const stores = withChangeBus(createInMemoryStores());
+    const seed = async (id: string, flowId: string) => {
+      await stores.request.set(id, { ...request(id, "worker"), flowId }, "absent");
+      await stores.suspensions.set(pendingRecord(id, "worker", { flowId }));
+    };
+    // The host's resolver: only a caller carrying the host's own header.
+    const router = createFlowApiRouter({
+      registry,
+      stores,
+      staleSweepIntervalMs: 0,
+      resolvePrincipal: (context: { request?: Request }) =>
+        context.request?.headers.get("x-host-ok") === "yes" ? { userId: "alice", orgId: "acme" } : null
+    });
+    routers.push(router);
+    return { router, seed };
+  }
+
+  const inboxView = async (router: ReturnType<typeof createFlowApiRouter>, headers: Record<string, string> = {}) => {
+    const path = ["inbox", "views", "pending"];
+    const response = await router.POST(
+      new Request(`http://test/api/flows/${path.join("/")}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-verified-user": "alice", "x-verified-org": "acme", ...headers },
+        body: JSON.stringify({ input: {} })
+      }),
+      { params: { path } }
+    );
+    expect(response.status).toBe(200);
+    return ((await response.json()) as { output: { ids: string[] } }).output.ids;
+  };
+
+  it("is not listed to a caller the host's resolver refuses, and is listed once it accepts them", async () => {
+    const { router, seed } = await bootHostRule();
+    await seed("r_host", "worker");
+    expect(await inboxView(router)).toEqual([]);
+    expect(await inboxView(router, { "x-host-ok": "yes" })).toEqual(["s_r_host"]);
+  });
+
+  it("is not listed when its owner can't be resolved", async () => {
+    const { router, seed } = await bootHostRule();
+    await seed("r_ghost", "ghost-instance");
+    expect(await inboxView(router, { "x-host-ok": "yes" })).toEqual([]);
+  });
+});
+
 describe("the suspension notice", () => {
   it("is published on the owner's user topic when a suspension is written or its request's are deleted, and not on a prune", async () => {
     const { stores, seed, heard } = await boot();
@@ -268,6 +344,29 @@ describe("the suspension notice", () => {
     await settle();
     expect(heard.some((notice) => notice.kind === "run")).toBe(true);
     expect(heard.filter((notice) => notice.kind === "suspension")).toEqual([]);
+  });
+
+  it("wakes the view when a session holding a pending suspension is deleted, which drops it from the read", async () => {
+    // The read admits a sessioned row only while its session exists, but a
+    // session delete leaves its requests and suspensions in the store: the
+    // view must hear the delete, or a watcher with polling off keeps the card.
+    const { router, seed, heard } = await boot();
+    await seed("r1", "worker", "sess_1");
+    const before = await view(router);
+    expect(before.output.ids).toEqual(["s_r1"]);
+    await settle();
+    heard.splice(0);
+    const deleted = await router.DELETE(
+      new Request("http://test/api/flows/sessions/sess_1", { method: "DELETE", headers: { "x-verified-user": "alice", "x-verified-org": "acme" } }),
+      { params: { path: ["sessions", "sess_1"] } }
+    );
+    expect(deleted.status).toBe(204);
+    await settle();
+    expect((await view(router)).output.ids).toEqual([]);
+    const wakes = heard.filter((notice) =>
+      hearsNotice(before.hears as ViewHearing[], { topic: { scope: notice.topic.scope as "user" }, kind: notice.kind } as WireNotice)
+    );
+    expect(wakes.map((notice) => notice.kind)).toEqual(["suspension"]);
   });
 
   it("is published when a suspended request's suspensions are deleted", async () => {

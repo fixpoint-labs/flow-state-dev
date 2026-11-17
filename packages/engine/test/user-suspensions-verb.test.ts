@@ -101,6 +101,13 @@ describe("sessions.userSuspensions: the scope", () => {
   });
 });
 
+describe("sessions.userSuspensions: a host with no suspension store", () => {
+  it("refuses with a config error, as an overlong flow list does, rather than answering nothing", async () => {
+    const { read } = sessions([], { suspensions: undefined });
+    await expect(read.userSuspensions({ flowKinds: ["worker"] })).rejects.toThrow(FlowStateConfigError);
+  });
+});
+
 describe("sessions.userSuspensions: paging", () => {
   it("answers exactly 200 rows with more: false and no next", async () => {
     const entries = Array.from({ length: 200 }, (_, at) => entry(at));

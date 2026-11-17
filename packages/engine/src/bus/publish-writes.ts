@@ -31,6 +31,7 @@
  * | a session's state field delta | `run` on the session and on its parent |
  * | any other session write | the same, and `run` on its owner's user topic |
  * | a session born (`set` over `"absent"`) or deleted | also `state` on the session |
+ * | a session deleted | also `suspension` on its owner's user topic |
  * | a suspension that waits on a person written (`set`) | `suspension` on the request owner's user topic, under the request's tenant |
  * | a request's suspensions deleted (`deleteForRequest`) while the read lists one of them | the same |
  *
@@ -42,6 +43,15 @@
  * every turn's finish. Pruning resolved suspensions (`pruneTerminalBefore`)
  * publishes nothing either. Nor does a suspension whose request is not
  * stored: the pending read joins to the request, so it never listed one.
+ *
+ * A session delete leaves its requests and suspensions stored, but the
+ * pending read answers a suspension in a session only while the session
+ * exists, so the delete publishes `suspension` too. It does so on every
+ * session delete, without reading whether the session held one: a delete is
+ * never per turn, notices for one topic in one microtask turn fold into one,
+ * and a user with no Inbox open hears nothing, so the cost is one Inbox read
+ * per delete a watcher sees, where the check would cost a suspension-store
+ * read on every delete.
  *
  * The user topic is what a list of the user's sessions watches: it hears a
  * session made, titled or deleted and a request's status written, not the
@@ -534,6 +544,8 @@ function sessionWrites(store: SessionStore, bus: ChangeBus, identities: Identiti
         publishNotices(bus, identities.sessionNotices(identity, "run"));
         // Deleting takes the state away: a view that read only it must hear.
         publishNotices(bus, [notice(sessionTopic(identity.id, identity.tenantId), "state")]);
+        // And the session's pending suspensions out of its owner's pending read (FIX-2770).
+        if (identity.userId !== undefined) publishNotices(bus, [notice(userTopic(identity.userId, identity.tenantId), "suspension")]);
       }
     },
     ...Object.fromEntries(DELTA_METHODS.map((name) => [name, delta]))

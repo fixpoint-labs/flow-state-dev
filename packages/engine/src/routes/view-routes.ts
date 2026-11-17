@@ -148,7 +148,7 @@ export async function handleRunView(request: Request, route: ViewRoute, ctx: Vie
       signal: request.signal,
       resolveFlow: (address) => ctx.registry.get(address),
       admitSession: viewSessionAdmission(ctx, flow, tenantId),
-      admitSuspension: (entry) => viewSuspensionAdmission(ctx, entry)
+      admitSuspension: (entry) => viewSuspensionAdmission(ctx, flow, entry)
     });
     return jsonResponse(200, {
       output: answer.output ?? null,
@@ -189,13 +189,28 @@ function viewSessionAdmission(ctx: ViewRouteContext, flow: FlowInstance, tenantI
 /**
  * Whether a view's read of the caller's pending suspensions may answer one
  * row: the instance's own credential check, judged on the row's request,
- * with or without a session (`ownResolverVerdict`). A sessionless ask has no
- * session for `admitListedSession` to judge, so this is what covers it; a row
- * with a session also passes the session admission (`request-sessions.ts`).
- * It only removes rows the store's query already scoped to the caller.
+ * with or without a session, by the rule `admitListedSession` applies to a
+ * session: a row of an instance with a resolver of its own is judged on that
+ * resolver's word (`ownResolverVerdict`); any other row needs an owner that
+ * resolves and an organization, and, when the view's own flow resolves its
+ * callers itself, the host's resolver must name the same user and
+ * organization for the row's owner. A sessionless suspension has no session
+ * for `admitListedSession` to judge, so this is what covers it; a row with a
+ * session also passes the session admission (`request-sessions.ts`). It only
+ * removes rows the store's query already scoped to the caller.
  */
-async function viewSuspensionAdmission(ctx: ViewRouteContext, entry: Parameters<SuspensionAdmission>[0]): Promise<boolean> {
-  return (await ownResolverVerdict(ctx.registry, ctx.callerFor, entry)) !== false;
+async function viewSuspensionAdmission(
+  ctx: ViewRouteContext,
+  flow: FlowInstance,
+  entry: Parameters<SuspensionAdmission>[0]
+): Promise<boolean> {
+  const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, entry);
+  if (own !== undefined) return own;
+  const owner = resolveRecordOwner(ctx.registry, entry);
+  if (!owner.ok || !isOrgAttributed(entry)) return false;
+  if (!flowAuthenticates(flow)) return true;
+  const caller = await ctx.callerFor(owner.flow);
+  return caller !== undefined && caller.userId === entry.userId && caller.orgId === entry.orgId;
 }
 
 // FIX-2625 D1.

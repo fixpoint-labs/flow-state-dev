@@ -14,13 +14,19 @@
 // the item taxonomy, so their declarations live in the zero-dependency
 // `@flow-state-dev/contracts` layer. Re-exported here to preserve this path's
 // surface; the record/filter machinery below still references them locally.
-import type { ResumeAction, SuspensionReason, SuspensionStatus, SuspendForUserKind } from "@flow-state-dev/contracts";
-export type { ResumeAction, SuspensionReason, SuspensionStatus, SuspendForUserKind };
-export { isUserSuspension, suspendForUserKindOf } from "@flow-state-dev/contracts";
-export { USER_SUSPENSION_REASONS, suspensionShape } from "@flow-state-dev/contracts/types/suspension";
-export type { SuspensionShape } from "@flow-state-dev/contracts/types/suspension";
-import { suspendForUserKindOf } from "@flow-state-dev/contracts";
-import { suspensionShape, type SuspensionShape } from "@flow-state-dev/contracts/types/suspension";
+// One entrypoint: the contracts module that defines them, which also carries
+// the stored reason set and the card shape the pending read projects.
+import {
+  suspendForUserKindOf,
+  suspensionShape,
+  type ResumeAction,
+  type SuspensionReason,
+  type SuspensionShape,
+  type SuspensionStatus,
+  type SuspendForUserKind
+} from "@flow-state-dev/contracts/types/suspension";
+export type { ResumeAction, SuspensionReason, SuspensionShape, SuspensionStatus, SuspendForUserKind };
+export { USER_SUSPENSION_REASONS, isUserSuspension, suspendForUserKindOf, suspensionShape } from "@flow-state-dev/contracts/types/suspension";
 
 /**
  * Returned by `ctx.suspend()` when a human skips an optional suspension (resumed

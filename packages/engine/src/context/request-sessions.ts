@@ -346,7 +346,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       // Heard however few rows it answers: a suspension made later is a change to it.
       inputs.observe?.suspensions();
       if (flowKinds.length === 0) return { suspensions: [], more: false };
-      if (inputs.suspensions === undefined) throw new Error("sessions.userSuspensions has no suspension store to read");
+      if (inputs.suspensions === undefined) throw new FlowStateConfigError("sessions.userSuspensions has no suspension store to read");
       // The scope is the running request's, every key present (BP-031):
       // an unbound tenant or organization matches only unbound requests.
       const stored = await inputs.suspensions.listPendingForUser({
