@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, how Teammates reads the messages workers send each other once its own read goes. Chosen: a new workforce view of the message log, one worker's messages newest first, bounded. Instead of: reading every page of the log in the browser through the existing resource hook. It comes down to the first row: on each new message the view is one server read that sends only that worker's recent rows, while every page means every open tab reads the whole log again, once per worker on screen. The price is the second row: one more public view on workforce with a release note, where the hook option adds only an option to a hook. The third row is a tie: either way the rows are typed by workforce, not by the app. Locks in: a public view name other apps and FIX-2756 will read. Flips if: Shift Manager's Messages screen needs the whole log anyway and no bound fits it."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, how Teammates reads the messages workers send each other once its own read goes. Chosen: a workforce view of one worker's open messages and of the answers to the messages on screen, found through two declared indexes on the log. Instead of: reading every page of the log in the browser through the existing resource hook. It comes down to the first row: on each new message the view reads one worker's open rows and one indexed lookup per message on screen, however long the history, while every page means every open tab reads the whole log again, once per worker on screen. The price is the second row: one public view and two indexes on the log, with an index write on every message write, where the hook option adds only an option. The third row is a tie: either way a person sees exactly what they see today. Locks in: a public view and two indexes on workforce's log. Flips if: Teammates needs a message history list, which no screen shows today."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">A workforce view of the message log</text>
+    <text class="t-h c-code" x="228" y="112">A view of open messages, by index</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Every page, through the resource hook</text>
@@ -55,8 +55,8 @@
     <text class="t-lbl" x="32" y="169">MESSAGE ARRIVES</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">One server read, recent rows sent</text>
-    <text class="t-s" x="248" y="179">only that worker's, newest first, bounded</text>
+    <text class="t-b" x="248" y="161">Reads open rows and answers on screen</text>
+    <text class="t-s" x="248" y="179">an index lookup each; history doesn't count</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Every tab reads the whole log again</text>
     <text class="t-s" x="612" y="179">once per worker on screen, and it only grows</text>
@@ -65,8 +65,8 @@
   <g id="row-price">
     <text class="t-lbl" x="32" y="222">NEW SURFACE</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">One public view on workforce</text>
-    <text class="t-s" x="248" y="241">a release note; old messages past the bound go</text>
+    <text class="t-b" x="248" y="223">A public view and two log indexes</text>
+    <text class="t-s" x="248" y="241">an index write on every message write</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">One option on an existing hook</text>
     <text class="t-s" x="612" y="241">no new name to keep</text>
@@ -74,27 +74,27 @@
   </g>
 
   <g id="row-tie">
-    <text class="t-lbl" x="32" y="280">THE ROW'S TYPE</text>
+    <text class="t-lbl" x="32" y="280">WHAT A PERSON SEES</text>
     <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">Workforce's</text>
-    <text class="t-s" x="248" y="299">the view's answer</text>
+    <text class="t-b" x="248" y="281">Today's screen</text>
+    <text class="t-s" x="248" y="299">every open message and answer</text>
     <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">Workforce's</text>
-    <text class="t-s" x="612" y="299">the log's own schema</text>
+    <text class="t-b" x="612" y="281">Today's screen</text>
+    <text class="t-s" x="612" y="299">the same, from the whole log</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">A public view name on workforce</text>
-    <text class="t-s" x="32" y="389">Shift Manager and FIX-2756 will read it too</text>
+    <text class="t-b" x="32" y="371">A public view and two log indexes</text>
+    <text class="t-s" x="32" y="389">what Teammates shows stays as it is</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">Shift Manager needs the whole log anyway</text>
-    <text class="t-s" x="494" y="389">and no bound fits its Messages screen</text>
+    <text class="t-b" x="494" y="371">Teammates needs a message history list</text>
+    <text class="t-s" x="494" y="389">no screen shows one today</text>
   </g>
 </svg>

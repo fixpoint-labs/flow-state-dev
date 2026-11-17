@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="Teammates' people, context and talk, today and after. Today the roster list, the teammate panel, the context strip, the first-run lines and the message lines read through three files of the app's own read model, workers, setup and talk, 351 lines that carry 14 inventory findings, and the configuration is 608 lines against a 300-line cap. After, the same screens read workforce's roster view, its worker sessions view and a new message log view, the harness kit's readiness view, and the lab's own context view from a small flow, each through the package hook that keeps a view current; the three files are deleted, the host is cut to fit, and the configuration is at most 300 lines."
+<svg viewBox="0 0 940 400" role="img" aria-label="Teammates' people, context and talk, today and after. Today the roster list, the teammate panel, the context strip, the first-run lines and the message lines read through three files of the app's own read model, workers, setup and talk, 351 lines that carry 14 inventory findings, and the configuration is 608 lines against a 300-line cap. After, the same screens read workforce's roster view, its session views and a new message view over two log indexes, the harness kit's readiness view, and the lab's own context view from a small flow, each through the package hook that keeps a view current; the three files are deleted, the host is cut to fit, and the configuration is at most 300 lines."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -52,14 +52,14 @@
     <rect class="kit" x="494" y="106" width="210" height="96" rx="5"/>
     <text class="t-lbl" x="508" y="124">KIT VIEWS, AS THEY ARE</text>
     <text class="t-s" x="508" y="144">workforce's roster</text>
-    <text class="t-s" x="508" y="160">workforce's worker sessions</text>
+    <text class="t-s" x="508" y="160">workforce's session views</text>
     <text class="t-s" x="508" y="176">the harness kit's readiness</text>
     <text class="t-s" x="508" y="192">the lab's context (a small flow)</text>
     <rect class="new" x="714" y="106" width="210" height="96" rx="5"/>
     <text class="t-lbl" x="728" y="124">ADDED TO WORKFORCE · D1</text>
-    <text class="t-b" x="728" y="146">The message log view</text>
-    <text class="t-s" x="728" y="166">one worker's messages,</text>
-    <text class="t-s" x="728" y="182">newest first, bounded</text>
+    <text class="t-b" x="728" y="146">The message view</text>
+    <text class="t-s" x="728" y="166">a worker's open messages</text>
+    <text class="t-s" x="728" y="182">and answers, by two indexes</text>
     <path class="arrow" d="M709 202 V220"/>
     <rect class="n-box" x="494" y="220" width="430" height="46" rx="5"/>
     <text class="t-b" x="510" y="248">The server: the same records, read by the views</text>

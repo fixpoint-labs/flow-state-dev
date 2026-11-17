@@ -9,7 +9,7 @@
 | **hires, edits or fires a teammate** | The list follows, through the app's own roster watch and row type | The same, through workforce's roster view and its row type |
 | **opens Teammates for the first time** | Sees the folder, model, harness and delegates, from the app's own call | The same lines, from the lab's context view |
 | **checks which harnesses are ready** | A one-off read the app wrote | The harness kit's readiness view; Re-check rereads it |
-| **sees a teammate busy, or workers' messages** | Each worker row rereads the whole message log on every new message | One server read gives that worker's newest messages ([D1](DECISIONS.md#d1)); the busy dot reads workforce's worker sessions view |
+| **sees a teammate busy, or workers' messages** | Each worker row rereads the whole message log on every new message | One indexed read gives that worker's open messages and the answers on screen ([D1](DECISIONS.md#d1)); the busy dot and idle age read workforce's session views |
 | **starts an app from Teammates** | Copies 351 lines of read model for this area and a 397-line host, over the 300-line cap | Copies screens over package views, and a host of about 89 lines |
 
 ## The goal, and how we'll know it's met
@@ -61,10 +61,10 @@ Left is today, right is after: the dashed box goes; the blue box is what the fra
 | `src/app/workers.ts` · `AppWorker` · type | Workforce's `RosterEntry`, from `rosterView` |
 | `src/app/workers.ts` · `NewTeammate` · type | Workforce's `HireWorkerInput` |
 | `src/app/workers.ts` · `TeammateEdit` · type | Workforce's `EditWorkerInput` |
-| `src/app/workers.ts` · `Activity` · type | Workforce's worker sessions view row (`running`, `updatedAt`) |
+| `src/app/workers.ts` · `Activity` · type | Workforce's worker sessions view (the default session, `running`) and session turns view (the last turn's time) |
 | `src/app/workers.ts` · `topic` · client import | The same view: no topic named by the app |
 | `src/app/workers.ts` · `WorkerCalls` · type | Deleted: hooks read, workforce's client writes |
-| `src/app/talk.ts` · `AppTalk` · type | The new message log view's row ([D1](DECISIONS.md#d1)) |
+| `src/app/talk.ts` · `AppTalk` · type | The new message view's row, the log's own schema ([D1](DECISIONS.md#d1)) |
 | `src/app/talk.ts` · `topic` · client import | The same view |
 | `src/app/talk.ts` · `readEveryCollectionPage` · client import | The same view |
 | `src/app/talk.ts` · `TalkCalls` · type | Deleted |
@@ -76,8 +76,8 @@ The three files are deleted (ER-3). `poc/entries/check.mts` checks the fifteen a
 ```diff
 - const activity = useWatch(adapter.watchActivity, worker.id);
 - const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
-+ const sessions = useView(workerSessionsViewRef(), { worker: worker.id }).value;
-+ const activity = sessions?.find((s) => s.isDefault);
++ const conversation = useView(workerSessionsViewRef(), { worker: worker.id }).value?.find((s) => s.isDefault);
++ const turns = useView(sessionTurnsViewRef(), { sessionId: conversation?.id ?? "" }, { enabled: conversation !== undefined }).value;
 + const talk = useView(workerMessagesViewRef(), { worker: worker.id }).value ?? [];
 ```
 
@@ -95,7 +95,7 @@ Each seam is **decided** by the coordinator (2026-11-17) as an engineering call.
 | `AppCalls`, `AppState`, `Unsubscribe`, `Item`, `test/fake-app.ts` | The last Teammates child to merge. Each child takes out its own state fields and fake scenarios, listed in its ledger |
 | The message popup's turn | `react`'s `useSessionFeed`, already on `main`, on the row's `toSession`: no wait on FIX-2772 |
 | Each worker's delegates | Kept in the lab's context view; FIX-2756's candidate |
-| The message log view and FIX-2775 | A note: the coordinator carries "read the D1 view" into FIX-2775's spec |
+| The message view and FIX-2775 | A note only: FIX-2775 decides its own read; its screen needs whole exchanges, which this view doesn't serve |
 
 ## What stays as it is
 
@@ -107,9 +107,10 @@ Each seam is **decided** by the coordinator (2026-11-17) as an engineering call.
 | Already here | What this does with it |
 |---|---|
 | Workforce's `rosterView` and `watchRoster` | **Builds on**: the roster list reads the view |
-| Workforce's worker sessions view ([FIX-2725](https://linear.app/fixpoint-labs/issue/FIX-2725)) | **Builds on**: the busy dot |
+| Workforce's worker sessions and session turns views ([FIX-2725](https://linear.app/fixpoint-labs/issue/FIX-2725)) | **Builds on**: the busy dot, and the idle age from turns, not `updatedAt` |
+| Declared field indexes (`indexes`, `findBy`; on SQLite and Postgres an index, elsewhere a scan) | **Builds on**: no store change |
 | The harness kit's readiness view | **Builds on**, unchanged |
-| The message log collection (`workforce/messages/*`, user scope) | **Extends**: a view reads it ([D1](DECISIONS.md#d1)) |
+| The message log collection (`workforce/messages/*`, user scope) | **Extends**: two declared indexes, and a view reads through them ([D1](DECISIONS.md#d1)) |
 | Ways to read the message log today | **Two, both in apps** (`watchTalk`, Shift Manager's `useMessages`), each reading every page. None in a package: searched `WORKER_MESSAGES`, `workerMessage`, `readEveryCollectionPage` |
 | `operatorGitHub`, `operatorGitHubToken`, `sqliteScheduleIndex`, `setupCommandFrom`, `checkCommandsFrom` | **Reused**: the host drops its copies, as claude-code-style's did |
 | [FIX-2683 ER-4](../../epics/FIX-2683/DECISIONS.md#who-owns-what), the read-model ratchet | **Kept**: three files go, none grows, none is added |
@@ -117,23 +118,24 @@ Each seam is **decided** by the coordinator (2026-11-17) as an engineering call.
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| A message log view on workforce's roster flow | `useResource` over the collection; `listAll()` | **Composed** on the collection the roster flow declares. The hook reads one page in random key order; `listAll()` is not live ([D1](DECISIONS.md#d1)) |
+| A view of a worker's open messages and of replies, on workforce's roster flow | `useResource` over the collection; `listAll()`; a newest-N view | **Composed** on the collection the roster flow declares, through `findBy`. The hook reads one page in random key order; `listAll()` reads all history; a window drops open rows ([D1](DECISIONS.md#d1)) |
+| Two declared indexes on the log (`open`, `inReplyTo`) | The engine's declared indexes, as task rows and pull requests use them | **Reuse** of the mechanism: two declarations, no store change |
 
 | The debt | |
 |---|---|
 | **Removes** | `workers.ts` (174 lines), `setup.ts` (53), `talk.ts` (124); about 308 host lines (copies of package helpers, the context flow, the prose); 15 allowlist entries |
-| **Adds** | One workforce view. Permanent by design |
+| **Adds** | One workforce view and two log indexes (an index write per log write). Permanent by design |
 | **Leaves** | Shift Manager's log read (FIX-2775). Delegates read off the worker files (FIX-2756). Five shared entries (the last Teammates child) |
 
-**Net: down.** 351 lines of read model and about 308 host lines go; one workforce view comes.
+**Net: down.** 351 lines of read model and about 308 host lines go; one workforce view and two indexes come.
 
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** 15 entries gone, the cap met, every screen as today. If wrong: the entries go while the reads move somewhere the inventory doesn't look.
 
-**[The debt](#whats-already-here-and-the-debt), net down:** three read-model files and most of the host go; one workforce view comes. If wrong: the view is a second message read beside Shift Manager's, if FIX-2775 keeps its own.
+**[The debt](#whats-already-here-and-the-debt), net down:** three read-model files and most of the host go; one view and two indexes come. If wrong: an index every message write pays for, read by one app.
 
-1. **[D1](DECISIONS.md#d1) · Teammates' message lines read a new workforce view of the log, one worker's newest messages, instead of every page in the browser.** If wrong: a public view we keep for one screen, or a bound that hides an old message someone looks for.
+1. **[D1](DECISIONS.md#d1) · Teammates' message lines read a new workforce view of a worker's open messages and the answers on screen, through two declared indexes on the log, instead of every page in the browser.** If wrong: a public view and two indexes kept for one app's screens.
 
 **Open: none.** D1 is the one to weigh; the seams are decided.
 
