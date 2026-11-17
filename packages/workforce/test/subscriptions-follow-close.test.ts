@@ -13,6 +13,7 @@
  * still decide it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { unheard, type Routed } from "../src/service-flows/service-flow";
 import { bootSubscriptionsHost, event, pollTimeline, type SubscriptionsHost } from "./subscriptions-harness";
 
 const PR = "github:acme/api#412";
@@ -58,6 +59,8 @@ describe("a followed pull request's close, on push", () => {
       expect(await host.subscribe("alice", coordinator, { thread: "github:acme/api", unmatched: true, interest: "what nobody picked up" }, undefined, "coordinator")).toHaveProperty("id");
       const routed = await host.route(merged({ sender: { id: "octocat", name: "The Octocat", role: "member" } }));
       expect(routed.output).not.toHaveProperty("unmatched");
+      // The exported helper answers as routing does.
+      expect(unheard(routed.output as Routed)).toBe(false);
       expect(await host.heard(session)).toHaveLength(1);
       expect((await host.serviceRows("alice")).filter((message) => message.forward !== undefined)).toEqual([]);
     } finally {

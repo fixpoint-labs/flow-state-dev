@@ -215,6 +215,8 @@ const routedSchema = z.object({
    * none, why it was dropped.
    */
   unmatched: z.object({ forwarded: z.number().int().min(0), dropped: z.enum(UNMATCHED_DROPS).optional() }).optional(),
+  /** Present when a subscription hears the event as its thread's close: heard, whatever the verdicts say. */
+  closeHeard: z.literal(true).optional(),
   ownerRuns: z.array(
     z.object({
       flowKind: z.string(),
@@ -230,13 +232,14 @@ export type Routed = z.infer<typeof routedSchema>;
 
 /**
  * Whether no subscription heard a routed event, each by its own choice: every
- * verdict a refusal on the event's content, and none cut. Only such an event
+ * verdict a refusal on the event's content, none cut, and no subscription
+ * hearing it as its thread's close. Only such an event
  * may be forwarded as unmatched: one refused `interest:
  * unjudged`, or by a screen that failed, was heard by nobody but not unheard,
  * so an outage forwards nothing.
  */
-export function unheard(routed: Pick<Routed, "verdicts" | "verdictsCut">): boolean {
-  return routed.verdictsCut === 0 && routed.verdicts.every(refusedOnContent);
+export function unheard(routed: Pick<Routed, "verdicts" | "verdictsCut" | "closeHeard">): boolean {
+  return routed.closeHeard !== true && routed.verdictsCut === 0 && routed.verdicts.every(refusedOnContent);
 }
 
 const deliveredSchema = z.object({
@@ -394,7 +397,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       // Unheard: every ordinary verdict refused on content (none passed, none failed or held), and no
       // subscription hears it as its thread's close. Read before the owner-run cap, so an event the cap
       // cut off still counts as heard.
-      const unheard = ordinaryVerdicts.every(refusedOnContent) && !closing.some((c) => c.entry.hearsClose === true);
+      const closeHeard = closing.some((c) => c.entry.hearsClose === true);
+      const unheard = ordinaryVerdicts.every(refusedOnContent) && !closeHeard;
       const take = (candidate: Candidate, verdict: Routed["verdicts"][number], forward?: ForwardMark): boolean => {
         // Past the cap, a passing subscription is refused: the event reaches no more sessions.
         const capped = verdict.pass && delivered.size >= maxOwnerRuns;
@@ -426,7 +430,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         verdicts: recorded,
         verdictsCut: nominated.length - recorded.length,
         ownerRuns,
-        ...(unheard ? { unmatched: { forwarded, ...(forwarded === 0 ? { dropped } : {}) } } : {})
+        ...(unheard ? { unmatched: { forwarded, ...(forwarded === 0 ? { dropped } : {}) } } : {}),
+        ...(closeHeard ? { closeHeard: true as const } : {})
       };
     }
   });
